@@ -29,7 +29,7 @@ from typing import TypeVar
 from mplang.utils.path_template import PathTemplate
 
 # Type variable for generic resource types
-T = TypeVar("T", bound="Resource")
+T = TypeVar("T", bound="ResourceName")
 
 # =============================================================================
 # Scope Definitions

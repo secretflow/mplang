@@ -22,7 +22,6 @@ from jax.tree_util import tree_flatten, tree_unflatten
 # Enable 64-bit precision in JAX for testing different dtypes
 jax.config.update("jax_enable_x64", True)
 
-from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.plib import jax2stablehlo
 from mplang.plib.stablehlo_handler import StablehloHandler
@@ -106,9 +105,6 @@ class TestStablehloHandler:
         """Verify end-to-end compilation and execution pipeline for diverse function types."""
         # Establish ground truth via local JAX execution
         expected = test_function(*inputs)
-
-        # Generate tensor metadata for runtime input validation
-        inputs_info = [TensorInfo(shape=x.shape, dtype=x.dtype) for x in inputs]
 
         # Compile function to portable StableHLO MLIR representation
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")

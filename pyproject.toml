@@ -54,9 +54,7 @@ ignore = [
     "E704",  # Multiple statements on one line (def)
     "W503",  # Line break before binary operator (conflicts with black)
     "E731",  # Do not assign a lambda expression, use a def
-    "F841",  # Local variable assigned but never used
     "E402",  # Module level import not at top of file
-    "F821",  # Undefined name (sometimes false positive with type checking)
     "F541",  # f-string is missing placeholders
     "E203",  # Whitespace before ':' (conflicts with black)
 ]

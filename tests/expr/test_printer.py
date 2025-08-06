@@ -571,7 +571,7 @@ class TestPrinterIndentation:
         func_def = FuncDefExpr(["x"], body)
 
         # Print first expression
-        result1 = printer.print_expr(func_def)
+        printer.print_expr(func_def)
 
         # Print second expression - indentation should be reset
         simple_expr = RankExpr(pmask_2p)

@@ -58,7 +58,7 @@ def cmd_main(main, nodes_def):
         nodes_def = conf["nodes"]
         all_node_ids = list(sorted(list(nodes_def.keys())))
         devices_conf = parse_device_conf(conf["devices"])
-        device_ctx = DeviceContext(devices_conf)
+        DeviceContext(devices_conf)
         used_node_ids = list(
             set(sum([info.node_ids for info in devices_conf.values()], []))
         )

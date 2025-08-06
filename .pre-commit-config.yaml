@@ -33,6 +33,7 @@ repos:
       - id: autoflake
         args: [
           --remove-all-unused-imports,
+          --remove-unused-variables,
           --in-place,
           --ignore-init-module-imports,
           --ignore-pass-after-docstring,

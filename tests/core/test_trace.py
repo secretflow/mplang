@@ -512,7 +512,7 @@ class TestTrace:
 
         def structured_func(args_tuple, kwargs_dict):
             x, y = args_tuple
-            z = kwargs_dict["key"]
+            kwargs_dict["key"]
             return x  # Return first argument for simplicity
 
         args = (mock_mpobject, 42)

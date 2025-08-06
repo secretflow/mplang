@@ -1,0 +1,890 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+import numpy as np
+import pytest
+
+from mplang.core.base import MPType, TensorInfo
+from mplang.core.dtype import DType
+from mplang.core.mpir import Reader, Writer
+from mplang.core.pfunc import PFunction
+from mplang.expr import Expr
+from mplang.expr.ast import (
+    AccessExpr,
+    CallExpr,
+    CondExpr,
+    ConstExpr,
+    ConvExpr,
+    EvalExpr,
+    FuncDefExpr,
+    RandExpr,
+    RankExpr,
+    ShflExpr,
+    ShflSExpr,
+    TupleExpr,
+    VariableExpr,
+    WhileExpr,
+)
+
+
+class TestBasicExpressions:
+    """Test basic expression serialization/deserialization."""
+
+    def test_rank_expr_roundtrip(self):
+        """Test RankExpr roundtrip."""
+        original = RankExpr(pmask=7)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, RankExpr)
+        assert result.pmask == 7
+
+    def test_const_expr_roundtrip(self):
+        """Test ConstExpr roundtrip."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (3,))
+        data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        original = ConstExpr(tensor_info, data.tobytes(), pmask=7)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, ConstExpr)
+        assert result.pmask == 7
+        assert result.data_bytes == data.tobytes()
+
+    def test_tuple_expr_roundtrip(self):
+        """Test TupleExpr roundtrip."""
+        rank_expr = RankExpr(pmask=7)
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        const_expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        original = TupleExpr([rank_expr, const_expr])
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, TupleExpr)
+        assert len(result.args) == 2
+
+    def test_access_expr_roundtrip(self):
+        """Test AccessExpr roundtrip."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        elem1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        elem2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tuple_expr = TupleExpr([elem1, elem2])
+
+        original = AccessExpr(tuple_expr, 1)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, AccessExpr)
+        assert result.index == 1
+
+    def test_variable_expr_roundtrip(self):
+        """Test VariableExpr roundtrip."""
+        mptype = MPType(DType.from_numpy(np.float32), (3,), pmask=7)
+        original = VariableExpr("test_var", mptype)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, VariableExpr)
+        assert result.name == "test_var"
+
+
+class TestFunctionExpressions:
+    """Test function-related expressions (basic tests only)."""
+
+    def test_eval_expr_serialization(self):
+        """Test EvalExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (3,))
+        const_expr = ConstExpr(
+            tensor_info, np.array([1.0, 2.0, 3.0]).tobytes(), pmask=7
+        )
+
+        pfunc = PFunction(
+            fn_type="builtin",
+            fn_name="add",
+            fn_body=None,
+            fn_text=None,
+            ins_info=[tensor_info, tensor_info],
+            outs_info=[tensor_info],
+        )
+
+        original = EvalExpr(pfunc, [const_expr, const_expr], rmask=None)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Just verify serialization works
+        assert len(proto.nodes) >= 2  # At least const + eval nodes
+        eval_node = None
+        for node in proto.nodes:
+            if node.op_type == "eval":
+                eval_node = node
+                break
+        assert eval_node is not None
+        assert "pfunc" in eval_node.attrs
+
+    def test_func_def_expr_serialization(self):
+        """Test FuncDefExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        params = ["x", "y"]
+        original = FuncDefExpr(params, body)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Just verify serialization works
+        assert len(proto.nodes) >= 2  # At least body + func_def nodes
+        func_node = None
+        for node in proto.nodes:
+            if node.op_type == "func_def":
+                func_node = node
+                break
+        assert func_node is not None
+        assert "params" in func_node.attrs
+
+
+class TestUtilityFunctions:
+    """Test utility functions in mpir module."""
+
+    def test_dtype_to_proto_conversion(self):
+        """Test dtype to protobuf conversion."""
+        from mplang.core.mpir import DTYPE_MAPPING, dtype_to_proto
+        from mplang.protos import mpir_pb2
+
+        # Test DType conversion
+        dtype = DType.from_numpy(np.float32)
+        result = dtype_to_proto(dtype)
+        assert result == mpir_pb2.MPTypeProto.DataType.F32
+
+        # Test numpy dtype conversion
+        result = dtype_to_proto(np.float32)
+        assert result == mpir_pb2.MPTypeProto.DataType.F32
+
+        # Test unsupported dtype
+        with pytest.raises(ValueError, match="Invalid dtype"):
+            dtype_to_proto("invalid_dtype")
+
+    def test_proto_to_dtype_conversion(self):
+        """Test protobuf to dtype conversion."""
+        from mplang.core.mpir import proto_to_dtype
+        from mplang.protos import mpir_pb2
+
+        # Test basic conversion
+        result = proto_to_dtype(mpir_pb2.MPTypeProto.DataType.F32)
+        assert result.name == "float32"
+
+        # Test unsupported enum
+        with pytest.raises(ValueError, match="Unsupported dtype enum"):
+            proto_to_dtype(999)  # Invalid enum value
+
+    def test_attr_to_proto_conversions(self):
+        """Test attribute to protobuf conversions."""
+        from mplang.core.mpir import attr_to_proto
+        from mplang.protos import mpir_pb2
+
+        # Test int
+        attr = attr_to_proto(42)
+        assert attr.type == mpir_pb2.AttrProto.INT
+        assert attr.i == 42
+
+        # Test float
+        attr = attr_to_proto(3.14)
+        assert attr.type == mpir_pb2.AttrProto.FLOAT
+        assert abs(attr.f - 3.14) < 1e-6  # Use approximate comparison for float
+
+        # Test string
+        attr = attr_to_proto("test")
+        assert attr.type == mpir_pb2.AttrProto.STRING
+        assert attr.s == "test"
+
+        # Test bytes
+        test_bytes = b"test_bytes"
+        attr = attr_to_proto(test_bytes)
+        assert attr.type == mpir_pb2.AttrProto.BYTES
+        assert attr.raw_bytes == test_bytes
+
+        # Test list of ints
+        attr = attr_to_proto([1, 2, 3])
+        assert attr.type == mpir_pb2.AttrProto.INTS
+        assert list(attr.ints) == [1, 2, 3]
+
+        # Test list of floats
+        attr = attr_to_proto([1.0, 2.0, 3.0])
+        assert attr.type == mpir_pb2.AttrProto.FLOATS
+        assert list(attr.floats) == [1.0, 2.0, 3.0]
+
+        # Test list of strings
+        attr = attr_to_proto(["a", "b", "c"])
+        assert attr.type == mpir_pb2.AttrProto.STRINGS
+        assert list(attr.strs) == ["a", "b", "c"]
+
+        # Test PFunction
+        pfunc = PFunction(
+            fn_type="builtin",
+            fn_name="add",
+            fn_body=None,
+            fn_text=None,
+            ins_info=[],
+            outs_info=[],
+        )
+        attr = attr_to_proto(pfunc)
+        assert attr.type == mpir_pb2.AttrProto.FUNCTION
+        assert attr.func.type == "builtin"
+        assert attr.func.name == "add"
+
+        # Test unsupported type
+        with pytest.raises(TypeError, match="Unsupported attribute type"):
+            attr_to_proto(object())
+
+
+class TestComplexExpressions:
+    """Test complex expression serialization/deserialization."""
+
+    def test_rand_expr_roundtrip(self):
+        """Test RandExpr roundtrip."""
+        from mplang.core.dtype import UINT64
+
+        tensor_info = TensorInfo(UINT64, (3, 3))
+        original = RandExpr(tensor_info, pmask=7)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, RandExpr)
+        assert result.pmask == 7
+        assert result.typ.dtype.name == "uint64"
+        assert result.typ.shape == (3, 3)
+
+    def test_cond_expr_serialization(self):
+        """Test CondExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        pred = ConstExpr(
+            TensorInfo(DType.from_numpy(np.bool_), ()),
+            np.array(True).tobytes(),
+            pmask=7,
+        )
+
+        # Create simple function bodies for then/else branches
+        then_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        else_body = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+
+        then_fn = FuncDefExpr([], then_body)
+        else_fn = FuncDefExpr([], else_body)
+
+        args: list[Expr] = [
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+        ]
+        original = CondExpr(pred, then_fn, else_fn, args)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Verify serialization works
+        assert len(proto.nodes) >= 3  # pred, args, cond (functions are embedded)
+        cond_node = None
+        for node in proto.nodes:
+            if node.op_type == "cond":
+                cond_node = node
+                break
+        assert cond_node is not None
+        assert "then_fn" in cond_node.attrs
+        assert "else_fn" in cond_node.attrs
+
+    def test_while_expr_serialization(self):
+        """Test WhileExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+
+        # Create simple function bodies for condition and loop body
+        cond_body = ConstExpr(
+            TensorInfo(DType.from_numpy(np.bool_), ()),
+            np.array(True).tobytes(),
+            pmask=7,
+        )
+        loop_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        cond_fn = FuncDefExpr(["x"], cond_body)
+        body_fn = FuncDefExpr(["x"], loop_body)
+
+        args: list[Expr] = [
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+        ]
+        original = WhileExpr(cond_fn, body_fn, args)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Verify serialization works
+        assert len(proto.nodes) >= 2  # args, while (functions are embedded)
+        while_node = None
+        for node in proto.nodes:
+            if node.op_type == "while":
+                while_node = node
+                break
+        assert while_node is not None
+        assert "cond_fn" in while_node.attrs
+        assert "body_fn" in while_node.attrs
+
+    def test_conv_expr_serialization(self):
+        """Test ConvExpr serialization (write only)."""
+        mptype1 = MPType(DType.from_numpy(np.float32), (2,), pmask=3)  # Party 0 and 1
+        mptype2 = MPType(DType.from_numpy(np.float32), (2,), pmask=4)  # Party 2
+        var1 = VariableExpr("x", mptype1)
+        var2 = VariableExpr("y", mptype2)
+
+        original = ConvExpr([var1, var2])
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Verify serialization works
+        assert len(proto.nodes) >= 3  # var1, var2, conv
+        conv_node = None
+        for node in proto.nodes:
+            if node.op_type == "conv":
+                conv_node = node
+                break
+        assert conv_node is not None
+
+    def test_shfl_s_expr_serialization(self):
+        """Test ShflSExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        src_val = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        original = ShflSExpr(src_val, pmask=3, src_ranks=[0, 1])
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Verify serialization works
+        assert len(proto.nodes) >= 2  # src_val, shfl_s
+        shfl_node = None
+        for node in proto.nodes:
+            if node.op_type == "shfl_s":
+                shfl_node = node
+                break
+        assert shfl_node is not None
+        assert "pmask" in shfl_node.attrs
+        assert "src_ranks" in shfl_node.attrs
+
+    def test_shfl_expr_serialization(self):
+        """Test ShflExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        src = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        index = ConstExpr(
+            TensorInfo(DType.from_numpy(np.int32), ()), np.array(1).tobytes(), pmask=7
+        )
+
+        original = ShflExpr(src, index)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Verify serialization works
+        assert len(proto.nodes) >= 3  # src, index, shfl
+        shfl_node = None
+        for node in proto.nodes:
+            if node.op_type == "shfl":
+                shfl_node = node
+                break
+        assert shfl_node is not None
+
+    def test_call_expr_serialization(self):
+        """Test CallExpr serialization (write only)."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+
+        # Create function definition
+        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        fn = FuncDefExpr(["x"], body)
+
+        # Create arguments
+        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+
+        original = CallExpr(fn, [arg])
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Verify serialization works
+        assert len(proto.nodes) >= 4  # body, fn, arg, call
+        call_node = None
+        for node in proto.nodes:
+            if node.op_type == "call":
+                call_node = node
+                break
+        assert call_node is not None
+
+
+class TestWriterReader:
+    """Test Writer and Reader classes."""
+
+    def test_writer_reset(self):
+        """Test Writer reset functionality."""
+        writer = Writer()
+
+        # Create some expression
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        # Process expression
+        writer.dumps(expr)
+        assert len(writer._nodes) > 0
+        assert len(writer._expr_ids) > 0
+
+        # Reset and verify
+        writer.reset()
+        assert len(writer._nodes) == 0
+        assert len(writer._expr_ids) == 0
+        assert writer._counter == 0
+
+    def test_writer_expr_naming(self):
+        """Test Writer expression naming."""
+        writer = Writer()
+
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+
+        name1 = writer.expr_name(expr1)
+        name2 = writer.expr_name(expr2)
+
+        assert name1 != name2
+        assert name1.startswith("%")
+        assert name2.startswith("%")
+
+        # Same expression should get same name
+        name1_again = writer.expr_name(expr1)
+        assert name1 == name1_again
+
+    def test_writer_value_naming(self):
+        """Test Writer value naming for multi-output expressions."""
+        writer = Writer()
+
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tuple_expr = TupleExpr([expr1, expr2])
+
+        # Single output should not have index
+        value_name = writer.value_name(expr1)
+        assert ":" not in value_name
+
+        # Multi-output should have index
+        value_name_0 = writer.value_name(tuple_expr, 0)
+        value_name_1 = writer.value_name(tuple_expr, 1)
+        assert ":0" in value_name_0
+        assert ":1" in value_name_1
+
+    def test_reader_empty_graph(self):
+        """Test Reader with empty graph."""
+        from mplang.protos import mpir_pb2
+
+        reader = Reader()
+        empty_graph = mpir_pb2.GraphProto()
+
+        result = reader.loads(empty_graph)
+        assert result is None
+
+    def test_reader_invalid_output(self):
+        """Test Reader with invalid output reference."""
+        from mplang.protos import mpir_pb2
+
+        reader = Reader()
+        graph = mpir_pb2.GraphProto()
+        graph.outputs.append("nonexistent_node")
+
+        with pytest.raises(ValueError, match="Output .* not found"):
+            reader.loads(graph)
+
+    def test_reader_unsupported_node_type(self):
+        """Test Reader with unsupported node type."""
+        from mplang.protos import mpir_pb2
+
+        # Create a graph with unsupported node type
+        graph = mpir_pb2.GraphProto()
+        node = graph.nodes.add()
+        node.name = "%0"
+        node.op_type = "unsupported_op"
+        graph.outputs.append("%0")
+
+        reader = Reader()
+        with pytest.raises(ValueError, match="Unsupported node type"):
+            reader.loads(graph)
+
+
+class TestErrorHandling:
+    """Test error handling in mpir module."""
+
+    def test_invalid_dtype_conversion(self):
+        """Test error handling for invalid dtype conversions."""
+        from mplang.core.mpir import dtype_to_proto
+
+        with pytest.raises(ValueError, match="Invalid dtype"):
+            dtype_to_proto(object())
+
+    def test_unsupported_attribute_type(self):
+        """Test error handling for unsupported attribute types."""
+        from mplang.core.mpir import attr_to_proto
+
+        with pytest.raises(TypeError, match="Unsupported attribute type"):
+            attr_to_proto(set())  # Unsupported type
+
+    def test_mixed_type_lists(self):
+        """Test error handling for mixed type lists in attributes."""
+        from mplang.core.mpir import attr_to_proto
+
+        with pytest.raises(TypeError, match="Unsupported tuple/list type"):
+            attr_to_proto([1, "string", 3.14])  # Mixed types
+
+    def test_reader_missing_input(self):
+        """Test Reader error when input is missing."""
+        from mplang.protos import mpir_pb2
+
+        # Create graph with missing dependency
+        graph = mpir_pb2.GraphProto()
+
+        # Add a tuple node that references non-existent input
+        node = graph.nodes.add()
+        node.name = "%0"
+        node.op_type = "tuple"
+        node.inputs.append("nonexistent")  # Missing input
+        graph.outputs.append("%0")
+
+        reader = Reader()
+        with pytest.raises(ValueError, match="Input .* not found"):
+            reader.loads(graph)
+
+
+class TestEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    def test_empty_tuple_expr(self):
+        """Test TupleExpr with empty args - serialization only."""
+        original = TupleExpr([])
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        # Empty tuple expr produces a graph with 1 node (the tuple itself)
+        assert len(proto.nodes) == 1
+        assert proto.nodes[0].op_type == "tuple"
+        assert len(proto.nodes[0].inputs) == 0
+
+        # Note: Empty tuple has no outputs, so reader returns None
+        # This is expected behavior for an empty tuple
+
+    def test_complex_nested_structure(self):
+        """Test complex nested expression structure."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+
+        # Create nested structure: tuple(const, access(tuple(const, const), 1))
+        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        const3 = ConstExpr(tensor_info, np.array([5.0, 6.0]).tobytes(), pmask=7)
+
+        inner_tuple = TupleExpr([const2, const3])
+        access_expr = AccessExpr(inner_tuple, 1)
+        outer_tuple = TupleExpr([const1, access_expr])
+
+        writer = Writer()
+        proto = writer.dumps(outer_tuple)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, TupleExpr)
+        assert len(result.args) == 2
+        assert isinstance(result.args[1], AccessExpr)
+
+    def test_multiple_output_expression_naming(self):
+        """Test expression naming with multiple outputs."""
+        writer = Writer()
+
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tuple_expr = TupleExpr([const1, const2])
+
+        # Multiple outputs should have different names
+        names = [
+            writer.value_name(tuple_expr, i) for i in range(len(tuple_expr.mptypes))
+        ]
+        assert len(set(names)) == len(names)  # All names should be unique
+        assert all(":" in name for name in names)  # Should have output indices
+
+    def test_writer_with_duplicate_expressions(self):
+        """Test that Writer properly handles duplicate expression references."""
+        writer = Writer()
+
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        shared_const = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        # Create multiple references to the same expression
+        tuple1 = TupleExpr([shared_const])
+        tuple2 = TupleExpr([shared_const])
+        final_tuple = TupleExpr([tuple1, tuple2])
+
+        proto = writer.dumps(final_tuple)
+
+        # Note: The current implementation creates separate nodes for each
+        # expression instance, not sharing them. This test verifies current behavior.
+        const_nodes = [node for node in proto.nodes if node.op_type == "const"]
+        assert len(const_nodes) >= 1  # At least one const node exists
+
+        # Verify the structure is correct
+        tuple_nodes = [node for node in proto.nodes if node.op_type == "tuple"]
+        assert len(tuple_nodes) == 3  # tuple1, tuple2, final_tuple
+
+    def test_large_shape_tensor(self):
+        """Test handling of tensors with large shapes."""
+        large_shape = (100, 200, 50)
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), large_shape)
+        large_data = np.ones(large_shape, dtype=np.float32)
+
+        original = ConstExpr(tensor_info, large_data.tobytes(), pmask=1)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, ConstExpr)
+        assert result.mptypes[0].shape == large_shape
+
+    def test_zero_pmask(self):
+        """Test expressions with pmask = 0."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        original = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=0)
+
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, ConstExpr)
+        assert result.pmask == 0
+
+    def test_reader_proto_to_attr_edge_cases(self):
+        """Test Reader._proto_to_attr with edge cases."""
+        from mplang.protos import mpir_pb2
+
+        reader = Reader()
+
+        # Test empty lists
+        attr_proto = mpir_pb2.AttrProto()
+        attr_proto.type = mpir_pb2.AttrProto.INTS
+        # ints list is empty by default
+        result = reader._proto_to_attr(attr_proto)
+        assert result == []
+
+        # Test empty strings list
+        attr_proto = mpir_pb2.AttrProto()
+        attr_proto.type = mpir_pb2.AttrProto.STRINGS
+        result = reader._proto_to_attr(attr_proto)
+        assert result == []
+
+    def test_attr_to_proto_edge_cases(self):
+        """Test attr_to_proto with edge cases."""
+        from mplang.core.mpir import attr_to_proto
+        from mplang.protos import mpir_pb2
+
+        # Test empty list - should work and create INTS type
+        attr = attr_to_proto([])
+        assert attr.type == mpir_pb2.AttrProto.INTS
+        assert list(attr.ints) == []
+
+        # Test mixed type list - should fail
+        with pytest.raises(TypeError, match="Unsupported tuple/list type"):
+            attr_to_proto([1, "string", 3.14])
+
+    def test_writer_counter_overflow_simulation(self):
+        """Test that writer can handle many expressions."""
+        writer = Writer()
+
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (1,))
+
+        # Create many expressions to test counter behavior
+        expressions = []
+        for i in range(100):
+            data = np.array([float(i)], dtype=np.float32)
+            expr = ConstExpr(tensor_info, data.tobytes(), pmask=7)
+            expressions.append(expr)
+
+        # Create a tuple with all expressions
+        big_tuple = TupleExpr(expressions)
+
+        proto = writer.dumps(big_tuple)
+
+        # Should have 101 nodes (100 consts + 1 tuple)
+        assert len(proto.nodes) == 101
+
+        # All names should be unique
+        names = [node.name for node in proto.nodes]
+        assert len(set(names)) == len(names)
+
+
+class TestComplexExpressionRoundtrip:
+    """Test complex expression roundtrip to expose serialization/deserialization bugs."""
+
+    def test_cond_expr_roundtrip(self):
+        """Test CondExpr roundtrip - this should expose the CallExpr fn type issue."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        pred = ConstExpr(
+            TensorInfo(DType.from_numpy(np.bool_), ()),
+            np.array(True).tobytes(),
+            pmask=7,
+        )
+
+        # Create simple function bodies for then/else branches
+        then_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        else_body = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+
+        then_fn = FuncDefExpr([], then_body)
+        else_fn = FuncDefExpr([], else_body)
+
+        args: list[Expr] = [
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+        ]
+        original = CondExpr(pred, then_fn, else_fn, args)
+
+        # Test roundtrip
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        # Verify basic properties
+        assert isinstance(result, CondExpr)
+        assert isinstance(result.pred, ConstExpr)
+
+        # This is where we expect to find the issue:
+        # The then_fn and else_fn should be FuncDefExpr but might be something else
+        print(f"Original then_fn type: {type(original.then_fn)}")
+        print(f"Deserialized then_fn type: {type(result.then_fn)}")
+        print(f"Original else_fn type: {type(original.else_fn)}")
+        print(f"Deserialized else_fn type: {type(result.else_fn)}")
+
+        # These assertions should expose the bug
+        assert isinstance(
+            result.then_fn, FuncDefExpr
+        ), f"Expected FuncDefExpr, got {type(result.then_fn)}"
+        assert isinstance(
+            result.else_fn, FuncDefExpr
+        ), f"Expected FuncDefExpr, got {type(result.else_fn)}"
+
+    def test_while_expr_roundtrip(self):
+        """Test WhileExpr roundtrip - this should expose similar issues."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+
+        # Create simple function bodies for condition and loop body
+        cond_body = ConstExpr(
+            TensorInfo(DType.from_numpy(np.bool_), ()),
+            np.array(True).tobytes(),
+            pmask=7,
+        )
+        loop_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+
+        cond_fn = FuncDefExpr(["x"], cond_body)
+        body_fn = FuncDefExpr(["x"], loop_body)
+
+        args: list[Expr] = [
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+        ]
+        original = WhileExpr(cond_fn, body_fn, args)
+
+        # Test roundtrip
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        # Verify basic properties and expose issues
+        assert isinstance(result, WhileExpr)
+
+        print(f"Original cond_fn type: {type(original.cond_fn)}")
+        print(f"Deserialized cond_fn type: {type(result.cond_fn)}")
+        print(f"Original body_fn type: {type(original.body_fn)}")
+        print(f"Deserialized body_fn type: {type(result.body_fn)}")
+
+        # These assertions should expose the bug
+        assert isinstance(
+            result.cond_fn, FuncDefExpr
+        ), f"Expected FuncDefExpr, got {type(result.cond_fn)}"
+        assert isinstance(
+            result.body_fn, FuncDefExpr
+        ), f"Expected FuncDefExpr, got {type(result.body_fn)}"
+
+    def test_call_expr_roundtrip(self):
+        """Test CallExpr roundtrip - this should expose the evaluator assertion error."""
+        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+
+        # Create function definition
+        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        fn = FuncDefExpr(["x"], body)
+
+        # Create arguments
+        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+
+        original = CallExpr(fn, [arg])
+
+        # Test roundtrip
+        writer = Writer()
+        proto = writer.dumps(original)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        # Verify basic properties and expose issues
+        assert isinstance(result, CallExpr)
+
+        print(f"Original fn type: {type(original.fn)}")
+        print(f"Deserialized fn type: {type(result.fn)}")
+
+        # This assertion should expose the bug that causes the evaluator to fail
+        assert isinstance(
+            result.fn, FuncDefExpr
+        ), f"Expected FuncDefExpr, got {type(result.fn)}"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

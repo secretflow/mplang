@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "grpcio-tools==1.56.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mplang"
+version = "0.1.0"
+description = "Multi-Party Programming Language"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "SecretFlow Team", email = "secretflow-contact@service.alipay.com"}
+]
+requires-python = ">=3.10"
+dependencies = [
+    "spu==0.9.4.dev20250618", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "grpcio==1.56.2",
+    "grpcio-tools==1.56.2",
+    "protobuf>=4.21.6,<5.0",
+    "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "isort",
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "pytest-testmon",
+    "sphinx>=7.0.0",
+    "sphinx_rtd_theme>=1.2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["mplang*"]
+
+[tool.setuptools.package-data]
+mplang = ["protos/*.proto"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--strict-markers --strict-config"

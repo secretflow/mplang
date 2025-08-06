@@ -1,0 +1,105 @@
+// Copyright 2025 Ant Group Co., Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package secretflow;
+
+// Custom attribute message (without name field since it's the map key)
+message AttrProto {
+  // Define possible attribute types
+  enum AttrType {
+    UNDEFINED = 0;
+    FLOAT = 1;
+    INT = 2;
+    STRING = 3;
+    BOOL = 4;
+    BYTES = 5;
+    FLOATS = 6;
+    INTS = 7;
+    STRINGS = 8;
+    FUNCTION = 10; // Textual function reference
+    GRAPH = 11;    // Nested function graph
+  }
+
+  AttrType type = 1;         // Type of the attribute
+  float f = 2;               // FLOAT
+  int64 i = 3;               // INT
+  string s = 4;              // STRING
+  bool b = 5;                // BOOL
+  bytes raw_bytes = 6;       // BYTES - for raw binary data
+  repeated float floats = 7; // FLOATS
+  repeated int64 ints = 8;   // INTS
+  repeated string strs = 9;  // STRINGS
+  FuncProto func = 10;       // FUNCTION - textual function reference
+  GraphProto graph = 11;     // GRAPH - nested function graph
+}
+
+message FuncProto {
+  string type = 1;       // Function type.
+  string name = 2;       // Function name
+  string body = 3;       // Function body as a string (e.g., Python code)
+  string doc_string = 4; // Documentation string
+  map<string, AttrProto> attrs = 5; // Function attributes
+}
+
+message MPTypeProto {
+  enum DataType {
+    UNDEFINED = 0;
+    U8 = 1;          // uint8_t
+    I8 = 2;          // int8_t
+    U16 = 3;         // uint16_t
+    I16 = 4;         // int16_t
+    U32 = 5;         // uint32_t
+    I32 = 6;         // int32_t
+    U64 = 7;         // uint64_t
+    I64 = 8;         // int64_t
+    F16 = 9;         // float16
+    F32 = 10;        // float32
+    F64 = 11;        // double
+    STRING = 12;     // string
+    BOOL = 13;       // bool
+    COMPLEX64 = 14;  // complex with float32 real and imaginary components
+    COMPLEX128 = 15; // complex with float64 real and imaginary components
+    BFLOAT16 = 16;
+  }
+
+  DataType dtype = 1;               // data type
+  repeated int64 shape_dims = 2;    // shape
+  bytes pmask = 3;                  // party mask
+  map<string, AttrProto> attrs = 4; // attributes
+}
+
+message NodeProto {
+  string op_type = 1;
+  string name = 2;
+  repeated string inputs = 3;         // {name:index}
+  repeated MPTypeProto outs_info = 5; //
+  map<string, AttrProto> attrs = 4;
+  string doc_string = 6;
+}
+
+message VersionInfo {
+  int32 major = 1;  // Major version, incompatible changes
+  int32 minor = 2;  // Minor version, backward compatible changes
+  int32 patch = 3;  // Patch version, bug fixes
+  string extra = 4; // Extra information, like "beta", "rc1", etc.
+}
+
+message GraphProto {
+  VersionInfo version = 1;
+  repeated NodeProto nodes = 2;
+  repeated string outputs = 3; // {name:index}
+  map<string, AttrProto> attrs = 4;
+}

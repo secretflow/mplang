@@ -20,10 +20,11 @@ from typing import final
 import numpy as np
 
 try:
-    pass
+    import jax.numpy as jnp  # noqa: F401
 
     _JAX_AVAILABLE = True
 except ImportError:
+    jnp = None  # Set to None when JAX is not available
     _JAX_AVAILABLE = False
 
 
@@ -147,8 +148,8 @@ class DType:
         """Convert custom DType to JAX dtype."""
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
-        import jax.numpy as jnp
-
+        # jnp is guaranteed to be available here due to the check above
+        assert jnp is not None, "JAX should be available"
         return jnp.dtype(self.name)
 
     def to_python_type(self) -> type:

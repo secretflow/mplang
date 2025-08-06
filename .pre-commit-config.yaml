@@ -31,7 +31,12 @@ repos:
     rev: v2.3.1
     hooks:
       - id: autoflake
-        args: [--remove-all-unused-imports, --in-place, --ignore-init-module-imports]
+        args: [
+          --remove-all-unused-imports,
+          --in-place,
+          --ignore-init-module-imports,
+          --ignore-pass-after-docstring,
+        ]
 
   # Import sorting (should run before black)
   - repo: https://github.com/pycqa/isort

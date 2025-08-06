@@ -58,13 +58,11 @@ class ResourceName(ABC):
     @abstractmethod
     def to_string(self) -> str:
         """Convert to resource path string"""
-        pass
 
     @classmethod
     @abstractmethod
     def parse(cls, path: str) -> ResourceName | None:
         """Parse resource object from path string"""
-        pass
 
     def __str__(self) -> str:
         return self.to_string()
@@ -164,7 +162,9 @@ class ExecutionName(ResourceName):
 
     def symbol(self, symbol_id: str) -> SymbolName:
         """Create an execution-scoped symbol resource"""
-        return SymbolName.execution_symbol(self.session_id, self.execution_id, symbol_id)
+        return SymbolName.execution_symbol(
+            self.session_id, self.execution_id, symbol_id
+        )
 
     def message(self, msg_id: str, frm_rank: int) -> MessageName:
         """Create a message resource under this execution"""

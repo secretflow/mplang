@@ -43,7 +43,6 @@ from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2
 from mplang.runtime.executor.resource import (
     ExecutionName,
     MessageName,
-    ResourceParser,
     SessionName,
     SymbolName,
 )
@@ -894,22 +893,22 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False):
             if worker.is_alive():
                 logging.info(f"Terminating process {worker.pid}")
                 worker.terminate()
-        
+
         # Wait a bit for graceful termination
         for worker in workers:
             worker.join(timeout=2)
-        
+
         # Force kill any remaining processes
         for worker in workers:
             if worker.is_alive():
                 logging.warning(f"Force killing process {worker.pid}")
                 worker.kill()
-        
+
         logging.info("All child processes terminated")
         sys.exit(0)
 
     # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
 
     try:
@@ -923,10 +922,10 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False):
             if worker.is_alive():
                 logging.info(f"Cleaning up process {worker.pid}")
                 worker.terminate()
-        
+
         for worker in workers:
             worker.join(timeout=2)
-        
+
         for worker in workers:
             if worker.is_alive():
                 logging.warning(f"Force killing remaining process {worker.pid}")

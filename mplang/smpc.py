@@ -14,9 +14,9 @@
 
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable
 
 from jax.tree_util import tree_unflatten
 
@@ -198,15 +198,5 @@ def srun(pyfn: Callable, *, fe_type: str = "jax"):
     @wraps(pyfn)
     def wrapped(*args, **kwargs):
         return _get_sapi().seval(fe_type, pyfn, *args, **kwargs)
-        # if fe_type == "jax":
-        #     is_mpobject = lambda x: isinstance(x, MPObject)
-        #     # suppose the arguments is already sealed, so it's a mpobject.
-        #     flat_fn, in_vars = PyPFunction.from_jax_function(
-        #         is_mpobject, pyfn, *args, **kwargs
-        #     )
-        #     out_flat = _get_sapi().seval(flat_fn, in_vars, {})
-        #     return tree_unflatten(flat_fn.out_tree, out_flat)
-        # else:
-        #     raise ValueError("SPU only support JAX for now")
 
     return wrapped

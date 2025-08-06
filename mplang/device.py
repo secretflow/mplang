@@ -23,11 +23,12 @@ transformation between devices.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial, wraps
-from typing import Any, Callable
+from typing import Any
 
-from jax.tree_util import tree_flatten, tree_map, tree_unflatten
+from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc

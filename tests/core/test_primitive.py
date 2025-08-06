@@ -26,10 +26,9 @@ For complex operations: define a function and trace it
 
 import numpy as np
 import pytest
-from jax.tree_util import tree_unflatten
 
 from mplang.core.base import Mask, Rank, TensorInfo, cur_ctx
-from mplang.core.dtype import FLOAT32, INT32, UINT64
+from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.primitive import (
     _switch_ctx,
     cond,

@@ -16,7 +16,6 @@
 Tests for trace module.
 """
 
-from typing import Union
 from unittest.mock import Mock
 
 import pytest
@@ -24,14 +23,14 @@ import pytest
 from mplang.core.base import Mask, MPContext, MPObject, MPType, TensorInfo
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.trace import TraceContext, TracedFunction, TraceVar, VarNamer, trace
-from mplang.expr.ast import ConstExpr, VariableExpr
+from mplang.expr.ast import VariableExpr
 
 
 class MockMPObject(MPObject):
     """Mock MPObject for testing."""
 
     def __init__(
-        self, mptype: MPType, name: str = "mock", ctx: Union[MPContext, None] = None
+        self, mptype: MPType, name: str = "mock", ctx: MPContext | None = None
     ):
         self._mptype = mptype
         self._name = name

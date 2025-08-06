@@ -20,8 +20,7 @@ import numpy as np
 import pytest
 
 from mplang.core.base import Mask, Rank, TensorInfo
-from mplang.core.dtype import FLOAT32, INT32, UINT64
-from mplang.core.pfunc import PFunction
+from mplang.core.dtype import FLOAT32, UINT64
 from mplang.expr import (
     AccessExpr,
     CallExpr,

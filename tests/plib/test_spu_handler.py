@@ -16,11 +16,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import jax.numpy as jnp
 import numpy as np
-import pytest
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.base import TensorInfo, TensorLike
+from mplang.core.base import TensorInfo
 from mplang.plib.spu_fe import SpuFE
 from mplang.plib.spu_handler import SpuHandler, SpuValue
 from mplang.runtime.grpc_comm import LinkCommunicator

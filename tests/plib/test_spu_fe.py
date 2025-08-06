@@ -20,7 +20,6 @@ import spu.libspu as libspu
 from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFuncTypes
 from mplang.plib.spu_fe import SpuFE, Visibility
-from mplang.utils.func_utils import normalize_fn
 
 
 class TestSpuFECompile:

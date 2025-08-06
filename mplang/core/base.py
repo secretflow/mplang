@@ -17,7 +17,7 @@ from __future__ import annotations
 import contextlib
 import copy
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np

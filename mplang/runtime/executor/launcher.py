@@ -24,32 +24,13 @@ and executor_client modules.
 from mplang.device import DeviceContext, parse_device_conf
 
 # Re-export client components
-from mplang.runtime.driver import ExecutorDriver, make_stub, new_uuid
-
-# Re-export path utilities for backward compatibility
-from mplang.runtime.executor.resource import (
-    EXECUTION_PATH,
-    EXECUTION_SYMBOL_PATH,
-    MESSAGE_PATH,
-    SESSION_PATH,
-    SESSION_SYMBOL_PATH,
-    SYMBOL_PATH,
-)
+from mplang.runtime.driver import ExecutorDriver
 
 # Re-export server components
-from mplang.runtime.executor.server import (
-    Execution,
-    ExecutorService,
-    ExecutorState,
-    GrpcCommunicator,
-    LinkCommFactory,
-    Session,
-    Symbol,
-    g_link_factory,
-    serve,
-    start_cluster,
-)
+from mplang.runtime.executor.server import serve, start_cluster
 from mplang.runtime.simulation import Simulator
+
+# Re-export path utilities for backward compatibility
 
 
 def cmd_main(main, nodes_def):
@@ -72,7 +53,7 @@ def cmd_main(main, nodes_def):
     spu_mask = 0  # Default mask
 
     if args.config:
-        with open(args.config, "r") as file:
+        with open(args.config) as file:
             conf = json.load(file)
         nodes_def = conf["nodes"]
         all_node_ids = list(sorted(list(nodes_def.keys())))

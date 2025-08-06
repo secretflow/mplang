@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import PyTreeDef, tree_flatten, tree_unflatten
+from jax.tree_util import PyTreeDef, tree_flatten
 
 # Enable 64-bit precision for JAX to match tensor types
 jax.config.update("jax_enable_x64", True)

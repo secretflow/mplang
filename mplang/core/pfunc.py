@@ -15,10 +15,10 @@
 from __future__ import annotations
 
 import copy
-from abc import ABC, ABCMeta, abstractmethod
-from functools import wraps
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence
 from types import MappingProxyType
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from mplang.core.base import TensorInfo, TensorLike
 

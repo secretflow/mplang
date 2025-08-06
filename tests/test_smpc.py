@@ -20,7 +20,6 @@ import mplang
 import mplang.random as mpr
 import mplang.simp as simp
 import mplang.smpc as smpc
-from mplang.expr.printer import Printer
 
 
 class TestSmpcBasics:
@@ -42,12 +41,6 @@ class TestSmpcBasics:
             # Reveal the result
             revealed = smpc.reveal(sum_result)
             return data, revealed
-
-        # printer = Printer(indent_size=2)
-        # copts = mplang.CompileOptions(world_size=num_parties)
-        # compiled = mplang.compile(copts, test_seal_reveal)
-        # print("Compiled function IR:")
-        # print(printer.print_expr(compiled.make_expr()))
 
         data, revealed = mplang.eval(sim, test_seal_reveal)
         data_vals, revealed_vals = mplang.fetch(sim, (data, revealed))

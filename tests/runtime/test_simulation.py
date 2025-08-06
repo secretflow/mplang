@@ -29,8 +29,8 @@ import pytest
 # Enable JAX x64 mode to match type expectations
 jax.config.update("jax_enable_x64", True)
 
-from mplang.core.base import Mask, MPObject, MPType, Rank, TensorInfo, with_ctx
-from mplang.core.dtype import FLOAT32, INT32, UINT64
+from mplang.core.base import Mask, MPObject, MPType, Rank, with_ctx
+from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.primitive import cond, constant, prank, pshfl_s, run_jax, while_loop
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar

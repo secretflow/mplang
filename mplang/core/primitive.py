@@ -22,8 +22,9 @@ TraceContext by default, automatically switching contexts as needed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial, wraps
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from jax.tree_util import tree_map, tree_unflatten
 
@@ -52,12 +53,11 @@ from mplang.expr.ast import (
     RankExpr,
     ShflExpr,
     ShflSExpr,
-    VariableExpr,
     WhileExpr,
 )
 from mplang.plib import jax2stablehlo
 from mplang.utils import mask_utils
-from mplang.utils.func_utils import normalize_fn, var_demorph
+from mplang.utils.func_utils import var_demorph
 
 
 def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:

@@ -201,7 +201,7 @@ def cmd_main(main_func):
     args = parser.parse_args()
 
     # Load config file
-    with open(args.config, "r") as file:
+    with open(args.config) as file:
         conf = json.load(file)
     nodes_def = conf["nodes"]
 

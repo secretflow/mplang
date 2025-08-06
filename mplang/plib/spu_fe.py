@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum
-from typing import Sequence
 
 import jax.numpy as jnp
 import spu.libspu as libspu

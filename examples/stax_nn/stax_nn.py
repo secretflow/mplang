@@ -220,7 +220,7 @@ def run_model(model_name, run_cpu=True):
 
 def main():
     if args.action == "up":
-        with open(args.config, "r") as file:
+        with open(args.config) as file:
             conf = json.load(file)
         mprt.start_cluster(conf["nodes"], debug_execution=True)
         return
@@ -229,7 +229,7 @@ def main():
         run_model(args.model, run_cpu=True)
         return
 
-    with open(args.config, "r") as file:
+    with open(args.config) as file:
         conf = json.load(file)
     mpd.init(conf["devices"], conf["nodes"])
     return run_model(args.model, run_cpu=False)

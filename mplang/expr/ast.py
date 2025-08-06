@@ -78,12 +78,10 @@ class Expr(ABC):
     @abstractmethod
     def _compute_mptypes(self) -> list[MPType]:
         """Computes the types of the expression's outputs."""
-        pass
 
     @abstractmethod
     def accept(self, visitor: ExprVisitor) -> Any:
         """Accept a visitor for the visitor pattern."""
-        pass
 
 
 # ============================================================================

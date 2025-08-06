@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import functools
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
 
 import jax
 from jax.lib import xla_extension as xla

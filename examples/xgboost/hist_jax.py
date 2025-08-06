@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from functools import partial
-from typing import List, NamedTuple, Optional, Tuple
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -65,7 +65,7 @@ class TreeEnsemble(NamedTuple):
     """
 
     max_depth: int
-    trees: List[Tree]
+    trees: list[Tree]
     initial_prediction: float
     bins: jnp.ndarray
 
@@ -246,7 +246,7 @@ def _compute_best_split_per_node(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for a single node using a combined GH histogram.
     This version performs vectorized calculations on the stacked G and H data.
@@ -303,7 +303,7 @@ def compute_best_split(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for all nodes at the current tree level by vmapping
     over the combined GH histogram.
@@ -493,7 +493,7 @@ def predict_tree(x: jnp.ndarray, model: Tree) -> jnp.ndarray:
         def go_right(node_idx: jnp.ndarray) -> jnp.ndarray:
             return 2 * node_idx + 2
 
-        def body(state: Tuple[jnp.ndarray, Tree]) -> Tuple[jnp.ndarray, Tree]:
+        def body(state: tuple[jnp.ndarray, Tree]) -> tuple[jnp.ndarray, Tree]:
             cur_node, model = state
             feature_idx, threshold = model.feature[cur_node], model.threshold[cur_node]
             next_node = jax.lax.cond(
@@ -501,7 +501,7 @@ def predict_tree(x: jnp.ndarray, model: Tree) -> jnp.ndarray:
             )
             return (next_node, model)
 
-        def condition(state: Tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
+        def condition(state: tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
             return ~model.is_leaf[state[0]]
 
         final_node, _ = jax.lax.while_loop(condition, body, (jnp.int32(0), model))
@@ -574,7 +574,7 @@ def fit_tree_ensemble(
     )
 
     y_pred = initial_y_pred * jnp.ones(x.shape[0])
-    trees: List[Tree] = []
+    trees: list[Tree] = []
 
     # The Python for-loop is "unrolled" by JAX during JIT compilation.
     for _ in range(n_estimators):
@@ -635,7 +635,7 @@ class XGBoostJAX:
                 "Objective must be 'binary:logistic' or 'reg:squarederror'"
             )
         self.objective = objective
-        self.model: Optional[TreeEnsemble] = None
+        self.model: TreeEnsemble | None = None
 
     def fit(self, x: jnp.ndarray, y: jnp.ndarray):
         """Fits the model to the training data based on the objective."""
@@ -759,7 +759,7 @@ def predict_tree_leaves(x: jnp.ndarray, tree: Tree) -> jnp.ndarray:
         def go_right(node_idx: jnp.ndarray) -> jnp.ndarray:
             return 2 * node_idx + 2
 
-        def body(state: Tuple[jnp.ndarray, Tree]) -> Tuple[jnp.ndarray, Tree]:
+        def body(state: tuple[jnp.ndarray, Tree]) -> tuple[jnp.ndarray, Tree]:
             cur_node, model = state
             feature_idx, threshold = model.feature[cur_node], model.threshold[cur_node]
             next_node = jax.lax.cond(
@@ -767,7 +767,7 @@ def predict_tree_leaves(x: jnp.ndarray, tree: Tree) -> jnp.ndarray:
             )
             return (next_node, model)
 
-        def condition(state: Tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
+        def condition(state: tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
             return ~tree.is_leaf[state[0]]
 
         final_node, _ = jax.lax.while_loop(condition, body, (jnp.int32(0), tree))
@@ -799,7 +799,7 @@ def predict_ensemble_leaves(x: jnp.ndarray, ensemble: TreeEnsemble) -> jnp.ndarr
 def print_leaf_predictions(
     x: jnp.ndarray,
     ensemble: TreeEnsemble,
-    y_true: Optional[jnp.ndarray] = None,
+    y_true: jnp.ndarray | None = None,
     max_samples: int = 10,
     learning_rate: float = 0.1,
     objective: str = "binary:logistic",
@@ -902,7 +902,7 @@ def count_samples_per_node_ensemble(
 def print_node_sample_counts(
     x: jnp.ndarray,
     ensemble: TreeEnsemble,
-    tree_idx: Optional[int] = None,
+    tree_idx: int | None = None,
     show_only_leaves: bool = False,
 ):
     """

@@ -56,8 +56,9 @@ compile for a multi-party setting.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from mplang.core.base import Mask, MPContext, MPObject, MPType, with_ctx
 from mplang.core.pfunc import get_fn_name

@@ -182,7 +182,7 @@ class TestUtilityFunctions:
 
     def test_dtype_to_proto_conversion(self):
         """Test dtype to protobuf conversion."""
-        from mplang.core.mpir import DTYPE_MAPPING, dtype_to_proto
+        from mplang.core.mpir import dtype_to_proto
         from mplang.protos import mpir_pb2
 
         # Test DType conversion

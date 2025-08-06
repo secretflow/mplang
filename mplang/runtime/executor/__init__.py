@@ -21,7 +21,7 @@ This module contains the executor runtime implementation including:
 - Main entry point for executor service
 """
 
-from .resource import (
+from mplang.runtime.executor.resource import (
     ExecutionName,
     MessageName,
     ResourceName,

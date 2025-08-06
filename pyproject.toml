@@ -49,7 +49,17 @@ line_length = 88
 
 [tool.flake8]
 max-line-length = 88
-ignore = ["E501", "E704", "W503", "E731", "F841", "E402", "F821", "F541"]
+ignore = [
+    "E501",  # Line too long (handled by black)
+    "E704",  # Multiple statements on one line (def)
+    "W503",  # Line break before binary operator (conflicts with black)
+    "E731",  # Do not assign a lambda expression, use a def
+    "F841",  # Local variable assigned but never used
+    "E402",  # Module level import not at top of file
+    "F821",  # Undefined name (sometimes false positive with type checking)
+    "F541",  # f-string is missing placeholders
+    "E203",  # Whitespace before ':' (conflicts with black)
+]
 exclude = ["mplang/protos/"]
 
 [tool.mypy]

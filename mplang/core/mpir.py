@@ -22,7 +22,6 @@ import spu.libspu as spu_api
 from mplang.core.base import MPType, TensorInfo
 from mplang.core.dtype import DType
 from mplang.core.pfunc import PFunction
-from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
@@ -30,6 +29,7 @@ from mplang.expr.ast import (
     ConstExpr,
     ConvExpr,
     EvalExpr,
+    Expr,
     FuncDefExpr,
     RandExpr,
     RankExpr,
@@ -39,6 +39,7 @@ from mplang.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
+from mplang.expr.visitor import ExprVisitor
 from mplang.protos import mpir_pb2
 
 # Single mapping table for dtype conversion

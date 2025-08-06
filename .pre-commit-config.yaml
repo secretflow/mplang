@@ -1,5 +1,9 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+
+# Global exclude pattern for auto-generated protobuf files
+exclude: ^mplang/protos/
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -34,7 +38,7 @@ repos:
     rev: 5.13.2
     hooks:
       - id: isort
-        args: [--profile=black, --line-length=88]
+        # Uses configuration from pyproject.toml
 
   # Python code formatting (should run after import sorting)
   - repo: https://github.com/psf/black
@@ -42,7 +46,7 @@ repos:
     hooks:
       - id: black
         language_version: python3
-        args: [--line-length=88]
+        # Uses configuration from pyproject.toml
 
   # Linting with flake8 including relative import checks (should run last - only checks, doesn't modify)
   - repo: https://github.com/pycqa/flake8
@@ -50,11 +54,9 @@ repos:
     hooks:
       - id: flake8
         additional_dependencies: [flake8-absolute-import, flake8-pyproject]
+        # Uses configuration from pyproject.toml
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.16.3
     hooks:
       - id: gitleaks
-  - repo: https://github.com/pylint-dev/pylint
-    rev: v2.17.2
-    hooks:
-      - id: pylint

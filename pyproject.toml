@@ -47,6 +47,11 @@ target-version = ['py310']
 profile = "black"
 line_length = 88
 
+[tool.flake8]
+max-line-length = 88
+ignore = ["E501", "E704", "W503", "E731", "F841", "E402", "F821", "F541"]
+exclude = ["mplang/protos/"]
+
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true

@@ -16,7 +16,7 @@
 Expression transformer based on visitor pattern.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from mplang.expr.ast import (
     AccessExpr,

@@ -22,8 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black",
-    "isort",
+    "ruff",
     "mypy",
     "pytest",
     "pytest-cov",
@@ -39,13 +38,48 @@ include = ["mplang*"]
 [tool.setuptools.package-data]
 mplang = ["protos/*.proto"]
 
-[tool.black]
+[tool.ruff]
+# Use recommended settings with black-compatible formatting
 line-length = 88
-target-version = ['py310']
+target-version = "py310"
 
-[tool.isort]
-profile = "black"
-line_length = 88
+# Exclude generated files
+exclude = [
+    "mplang/protos/*",
+    "protos/*",
+]
+
+[tool.ruff.lint]
+# Use recommended rule set
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "ICN", # flake8-import-conventions
+    "PIE", # flake8-pie
+    "PYI", # flake8-pyi
+    "RSE", # flake8-raise
+    "RUF", # ruff-specific rules
+]
+
+# Ignore some rules that cause too much noise initially
+ignore = [
+    "E501",   # line-too-long (will be handled by formatter when possible)
+    "F401",   # unused-import (may be used in other contexts)
+    "E731",   # lambda-assignment (can be acceptable in some cases)
+    "RUF002", # ambiguous-unicode-character-docstring (may be intentional)
+]
+
+[tool.ruff.format]
+# Use black-compatible formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
 [tool.mypy]
 python_version = "3.10"

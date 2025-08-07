@@ -314,7 +314,7 @@ class TestMPICommunication:
     def test_edge_cases_and_error_handling(self):
         """Test edge cases and error handling for MPI primitives"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        mplang.Simulator(num_parties)
 
         # Test with single party
         single_party_sim = mplang.Simulator(1)

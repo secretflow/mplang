@@ -200,9 +200,9 @@ def test_is_treedef_list_simple_lists():
     # Simple list of arrays
     array_list = [np.array([1, 2]), np.array([3, 4])]
     _, tree_def = tree_flatten(array_list)
-    assert is_treedef_list(
-        tree_def
-    ), "List of arrays should be recognized as TreeDef list"
+    assert is_treedef_list(tree_def), (
+        "List of arrays should be recognized as TreeDef list"
+    )
 
     # Empty list
     empty_list = []
@@ -212,9 +212,9 @@ def test_is_treedef_list_simple_lists():
     # Single element list
     single_list = [42]
     _, tree_def = tree_flatten(single_list)
-    assert is_treedef_list(
-        tree_def
-    ), "Single element list should be recognized as TreeDef list"
+    assert is_treedef_list(tree_def), (
+        "Single element list should be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_nested_structures():
@@ -222,30 +222,30 @@ def test_is_treedef_list_nested_structures():
     # Nested list
     nested_list = [[1, 2], [3, 4]]
     _, tree_def = tree_flatten(nested_list)
-    assert not is_treedef_list(
-        tree_def
-    ), "Nested list should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Nested list should not be recognized as TreeDef list"
+    )
 
     # Dictionary
     dict_structure = {"a": 1, "b": 2}
     _, tree_def = tree_flatten(dict_structure)
-    assert not is_treedef_list(
-        tree_def
-    ), "Dictionary should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Dictionary should not be recognized as TreeDef list"
+    )
 
     # Tuple
     tuple_structure = (1, 2, 3)
     _, tree_def = tree_flatten(tuple_structure)
-    assert not is_treedef_list(
-        tree_def
-    ), "Tuple should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Tuple should not be recognized as TreeDef list"
+    )
 
     # Complex nested structure
     complex_structure = {"data": [1, 2], "config": {"param": 3}}
     _, tree_def = tree_flatten(complex_structure)
-    assert not is_treedef_list(
-        tree_def
-    ), "Complex nested structure should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Complex nested structure should not be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_args_kwargs_structure():
@@ -253,23 +253,23 @@ def test_is_treedef_list_args_kwargs_structure():
     # (args, kwargs) tuple structure
     args_kwargs = ([1, 2, 3], {"param": 4})
     _, tree_def = tree_flatten(args_kwargs)
-    assert not is_treedef_list(
-        tree_def
-    ), "Args/kwargs structure should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Args/kwargs structure should not be recognized as TreeDef list"
+    )
 
     # Empty args with kwargs
     empty_args_kwargs = ([], {"param": 4})
     _, tree_def = tree_flatten(empty_args_kwargs)
-    assert not is_treedef_list(
-        tree_def
-    ), "Empty args with kwargs should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Empty args with kwargs should not be recognized as TreeDef list"
+    )
 
     # Args with empty kwargs
     args_empty_kwargs = ([1, 2], {})
     _, tree_def = tree_flatten(args_empty_kwargs)
-    assert not is_treedef_list(
-        tree_def
-    ), "Args with empty kwargs should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Args with empty kwargs should not be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_non_list_containers():
@@ -280,9 +280,9 @@ def test_is_treedef_list_non_list_containers():
     Point = namedtuple("Point", ["x", "y"])
     point = Point(1, 2)
     _, tree_def = tree_flatten(point)
-    assert not is_treedef_list(
-        tree_def
-    ), "Named tuple should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Named tuple should not be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_mixed_types():
@@ -290,16 +290,16 @@ def test_is_treedef_list_mixed_types():
     # List with mixed types (all leaf nodes)
     mixed_list = [1, "hello", 3.14, True]
     _, tree_def = tree_flatten(mixed_list)
-    assert is_treedef_list(
-        tree_def
-    ), "List with mixed leaf types should be recognized as TreeDef list"
+    assert is_treedef_list(tree_def), (
+        "List with mixed leaf types should be recognized as TreeDef list"
+    )
 
     # List with arrays and scalars
     mixed_array_list = [np.array([1, 2]), 42, "test"]
     _, tree_def = tree_flatten(mixed_array_list)
-    assert is_treedef_list(
-        tree_def
-    ), "List with mixed arrays and scalars should be recognized as TreeDef list"
+    assert is_treedef_list(tree_def), (
+        "List with mixed arrays and scalars should be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_complex_elements():
@@ -307,23 +307,23 @@ def test_is_treedef_list_complex_elements():
     # List containing structures with multiple values each
     list_with_multi_value_dicts = [{"a": 1, "b": 2}, {"c": 3, "d": 4}]
     _, tree_def = tree_flatten(list_with_multi_value_dicts)
-    assert not is_treedef_list(
-        tree_def
-    ), "List with multi-value dict elements should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "List with multi-value dict elements should not be recognized as TreeDef list"
+    )
 
     # List containing lists (each sublist has multiple leaves)
     list_with_lists = [[1, 2], [3, 4]]
     _, tree_def = tree_flatten(list_with_lists)
-    assert not is_treedef_list(
-        tree_def
-    ), "List with list elements should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "List with list elements should not be recognized as TreeDef list"
+    )
 
     # List containing tuples (each tuple has multiple leaves)
     list_with_tuples = [(1, 2), (3, 4)]
     _, tree_def = tree_flatten(list_with_tuples)
-    assert not is_treedef_list(
-        tree_def
-    ), "List with tuple elements should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "List with tuple elements should not be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_single_value_elements():
@@ -331,16 +331,16 @@ def test_is_treedef_list_single_value_elements():
     # List containing single-key dictionaries (each dict has 1 leaf)
     list_with_single_dicts = [{"value": 1}, {"value": 2}, {"value": 3}]
     _, tree_def = tree_flatten(list_with_single_dicts)
-    assert is_treedef_list(
-        tree_def
-    ), "List with single-value dict elements should be recognized as TreeDef list"
+    assert is_treedef_list(tree_def), (
+        "List with single-value dict elements should be recognized as TreeDef list"
+    )
 
     # List containing single-element tuples (each tuple has 1 leaf)
     list_with_single_tuples = [(1,), (2,), (3,)]
     _, tree_def = tree_flatten(list_with_single_tuples)
-    assert is_treedef_list(
-        tree_def
-    ), "List with single-element tuple elements should be recognized as TreeDef list"
+    assert is_treedef_list(tree_def), (
+        "List with single-element tuple elements should be recognized as TreeDef list"
+    )
 
 
 def test_is_treedef_list_edge_cases():
@@ -348,9 +348,9 @@ def test_is_treedef_list_edge_cases():
     # List with None values (JAX treats None as having 0 leaves, so not a TreeDef list)
     list_with_none = [1, None, 3]
     _, tree_def = tree_flatten(list_with_none)
-    assert not is_treedef_list(
-        tree_def
-    ), "List with None values should not be recognized as TreeDef list (None has 0 leaves)"
+    assert not is_treedef_list(tree_def), (
+        "List with None values should not be recognized as TreeDef list (None has 0 leaves)"
+    )
 
     # Empty list (no children, so all() returns True)
     empty_list = []
@@ -360,9 +360,9 @@ def test_is_treedef_list_edge_cases():
     # Deeply nested structure that's clearly not a TreeDef list
     deep_nested = {"level1": {"level2": {"level3": [1]}}}
     _, tree_def = tree_flatten(deep_nested)
-    assert not is_treedef_list(
-        tree_def
-    ), "Deeply nested structure should not be recognized as TreeDef list"
+    assert not is_treedef_list(tree_def), (
+        "Deeply nested structure should not be recognized as TreeDef list"
+    )
 
     # Normal list with simple elements (each element has exactly 1 leaf)
     # This is a basic case to confirm the function works correctly

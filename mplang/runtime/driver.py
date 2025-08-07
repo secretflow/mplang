@@ -102,10 +102,12 @@ class ExecutorDriver(InterpContext):
         spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_mask: Mask | None = None,
-        trace_ranks: list[Rank] = [],
+        trace_ranks: list[Rank] | None = None,
         max_message_length: int = 1024 * 1024 * 1024,
         **attrs,
     ):
+        if trace_ranks is None:
+            trace_ranks = []
         self.world_size = len(node_addrs)
         self.peer_addrs = node_addrs
         self.max_message_length = max_message_length
@@ -170,7 +172,7 @@ class ExecutorDriver(InterpContext):
             party_symbol_names.append(var.symbol_name.to_string())
 
         # Create variable name mapping from DAG variable names to remote symbol names
-        var_name_mapping = dict(zip(var_names, party_symbol_names))
+        var_name_mapping = dict(zip(var_names, party_symbol_names, strict=False))
 
         # Serialize the expression using mpir.proto
         writer = Writer(var_name_mapping)
@@ -216,7 +218,7 @@ class ExecutorDriver(InterpContext):
 
         # Create DriverVar objects for each output
         driver_vars = []
-        for symbol_name, mptype in zip(output_symbols, expr.mptypes):
+        for symbol_name, mptype in zip(output_symbols, expr.mptypes, strict=False):
             driver_var = DriverVar(
                 self,
                 symbol_name,

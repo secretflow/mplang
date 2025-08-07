@@ -15,7 +15,7 @@
 
 import mplang
 from mplang import random as mpr
-from mplang import simp, smpc
+from mplang import smpc
 from mplang.core import mpir
 
 

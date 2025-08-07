@@ -14,11 +14,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from jax.tree_util import tree_map
 
-from mplang.core.base import Mask, MPContext, MPObject, cur_ctx, set_ctx, with_ctx
+from mplang.core.base import Mask, MPContext, MPObject, cur_ctx, with_ctx
 from mplang.core.interp import InterpContext
 from mplang.core.trace import TraceContext, TracedFunction, trace
 

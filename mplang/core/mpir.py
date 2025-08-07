@@ -119,7 +119,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
     elif isinstance(py_value, bytes):
         attr_proto.type = mpir_pb2.AttrProto.BYTES
         attr_proto.raw_bytes = py_value
-    elif isinstance(py_value, (tuple, list)):
+    elif isinstance(py_value, tuple | list):
         if all(isinstance(item, int) for item in py_value):
             attr_proto.type = mpir_pb2.AttrProto.INTS
             attr_proto.ints.extend(list(py_value))

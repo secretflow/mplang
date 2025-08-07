@@ -43,7 +43,6 @@ from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2
 from mplang.runtime.executor.resource import (
     ExecutionName,
     MessageName,
-    ResourceParser,
     SessionName,
     SymbolName,
 )
@@ -205,7 +204,7 @@ class Execution:
             for rank, addr in enumerate(session.addrs):
                 if mask_utils.is_rank_in(rank, spu_mask):
                     ip, port = addr.split(":")
-                    new_addr = f"{ip}:{int(port)+100}"
+                    new_addr = f"{ip}:{int(port) + 100}"
                     spu_peer_addrs.append(new_addr)
             spu_rank = mask_utils.global_to_relative_rank(session.rank, self.spu_mask)
             self.spu_comm = g_link_factory.create_link(spu_rank, spu_peer_addrs)
@@ -267,7 +266,7 @@ class Execution:
 
         # Store results in symbols
         assert len(results) == len(self.output_names)
-        for name, val in zip(self.output_names, results):
+        for name, val in zip(self.output_names, results, strict=False):
             self.symbols[name] = Symbol(type="untyped", data=val)
 
         self.end_time = datetime.datetime.now()
@@ -745,7 +744,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             if self._debug_execution:
                 import traceback
 
-                execution.error = f"{str(e)}\n\nStack trace:\n{traceback.format_exc()}"
+                execution.error = f"{e!s}\n\nStack trace:\n{traceback.format_exc()}"
             else:
                 execution.error = str(e)
 
@@ -894,22 +893,22 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False):
             if worker.is_alive():
                 logging.info(f"Terminating process {worker.pid}")
                 worker.terminate()
-        
+
         # Wait a bit for graceful termination
         for worker in workers:
             worker.join(timeout=2)
-        
+
         # Force kill any remaining processes
         for worker in workers:
             if worker.is_alive():
                 logging.warning(f"Force killing process {worker.pid}")
                 worker.kill()
-        
+
         logging.info("All child processes terminated")
         sys.exit(0)
 
     # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
 
     try:
@@ -923,10 +922,10 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False):
             if worker.is_alive():
                 logging.info(f"Cleaning up process {worker.pid}")
                 worker.terminate()
-        
+
         for worker in workers:
             worker.join(timeout=2)
-        
+
         for worker in workers:
             if worker.is_alive():
                 logging.warning(f"Force killing remaining process {worker.pid}")

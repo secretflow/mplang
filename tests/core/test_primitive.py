@@ -26,10 +26,9 @@ For complex operations: define a function and trace it
 
 import numpy as np
 import pytest
-from jax.tree_util import tree_unflatten
 
 from mplang.core.base import Mask, Rank, TensorInfo, cur_ctx
-from mplang.core.dtype import FLOAT32, INT32, UINT64
+from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.primitive import (
     _switch_ctx,
     cond,
@@ -742,7 +741,7 @@ class TestConditional:
         # This should raise an error due to truly incompatible signatures
         # The error might come from the trace function itself when it tries to call else_fn_bad
         with pytest.raises((ValueError, TypeError, AssertionError)):
-            traced_fn = trace(trace_context, cond_func_bad)
+            trace(trace_context, cond_func_bad)
 
 
 class TestWhileLoop:
@@ -755,12 +754,12 @@ class TestWhileLoop:
             init_val = constant(0)
 
             def cond_fn(x):
-                five = constant(5)
+                constant(5)
                 # For testing, return a boolean constant
                 return constant(True)
 
             def body_fn(x):
-                one = constant(1)
+                constant(1)
                 # For testing, return the input
                 return x
 
@@ -1007,7 +1006,7 @@ class TestWhileLoop:
             ValueError,
             match="Body function output type .* does not match initial state type",
         ):
-            traced_fn = trace(trace_context, while_func_wrong_type)
+            trace(trace_context, while_func_wrong_type)
 
 
 class TestCompleteExample:
@@ -1020,9 +1019,9 @@ class TestCompleteExample:
         def example_computation():
             """Example multi-party computation function."""
             my_rank = prank()
-            random_data = prand((2,))
-            zero = constant(0)
-            one = constant(1)
+            prand((2,))
+            constant(0)
+            constant(1)
 
             return my_rank
 
@@ -1055,8 +1054,8 @@ class TestComplexExpressions:
 
         @primitive
         def complex_func():
-            rank_val = prank()
-            random_vals = prand((2, 2))
+            prank()
+            prand((2, 2))
             const_val = constant(42)
             return const_val
 
@@ -1093,7 +1092,7 @@ class TestComplexExpressions:
                 return constant(1)
 
             val1 = inner_func()
-            val2 = constant(2)
+            constant(2)
             return val1
 
         def func():
@@ -1189,7 +1188,7 @@ class TestSetMask:
         # The expression should contain a peval operation with the target mask
         # and the output var should have the correct pmask in the IR
         assert "pshfl" in expr_str
-        assert f"peval" in expr_str
+        assert "peval" in expr_str
         # The final output pmask should be the target_mask
         assert f": i64<{target_mask}>" in expr_str
 

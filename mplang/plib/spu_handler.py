@@ -28,7 +28,7 @@ from mplang.runtime.grpc_comm import LinkCommunicator
 
 def shape_spu_to_np(spu_shape) -> tuple[int, ...]:
     """Convert SPU shape to numpy tuple."""
-    return tuple(list(spu_shape.dims))
+    return tuple(spu_shape.dims)
 
 
 def dtype_spu_to_np(spu_dtype) -> np.dtype:
@@ -187,9 +187,9 @@ class SpuHandler(PFunctionHandler):
 
         # Generate shares
         shares = spu_io.make_shares(arg, visibility)
-        assert (
-            len(shares) == self._world_size
-        ), f"Expected {self._world_size} shares, got {len(shares)}"
+        assert len(shares) == self._world_size, (
+            f"Expected {self._world_size} shares, got {len(shares)}"
+        )
 
         # Return list of SpuValue objects (one per party)
         return [
@@ -221,9 +221,9 @@ class SpuHandler(PFunctionHandler):
             as it only requires SPU IO for reconstruction.
         """
         # Validate that we have the expected number of shares (should equal world_size)
-        assert (
-            len(args) == self._world_size
-        ), f"Expected {self._world_size} shares, got {len(args)}"
+        assert len(args) == self._world_size, (
+            f"Expected {self._world_size} shares, got {len(args)}"
+        )
 
         # Validate that all inputs are SpuValue objects
         for i, arg in enumerate(args):

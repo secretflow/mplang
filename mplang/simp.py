@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
-from functools import partial, wraps
-from typing import Callable
+from collections.abc import Callable
+from functools import partial
 
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike

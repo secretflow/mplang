@@ -201,12 +201,12 @@ def cmd_main(main_func):
     args = parser.parse_args()
 
     # Load config file
-    with open(args.config, "r") as file:
+    with open(args.config) as file:
         conf = json.load(file)
     nodes_def = conf["nodes"]
 
     devices_conf = mpd.parse_device_conf(conf["devices"])
-    all_node_ids = list(sorted(list(nodes_def.keys())))
+    all_node_ids = sorted(nodes_def.keys())
     spu_conf = [dev for dev in devices_conf.values() if dev.type == "SPU"]
     spu_mask = 0  # Default mask
     if len(spu_conf) == 1:

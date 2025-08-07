@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from mplang.core.base import Mask, Rank, TensorInfo
-from mplang.core.dtype import FLOAT32, INT32, UINT64
+from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.pfunc import PFunction
 from mplang.expr import (
     AccessExpr,
@@ -143,7 +143,6 @@ class TestPrinterExpressions:
 
     def test_eval_expr_verbose_peval_printing(self, pmask_2p):
         """Test printing of EvalExpr with verbose_peval enabled."""
-        from mplang.core.pfunc import PFunction
 
         # Create a PFunction with actual fn_text and fn_type
         pfunc_with_text = PFunction(
@@ -572,7 +571,7 @@ class TestPrinterIndentation:
         func_def = FuncDefExpr(["x"], body)
 
         # Print first expression
-        result1 = printer.print_expr(func_def)
+        printer.print_expr(func_def)
 
         # Print second expression - indentation should be reset
         simple_expr = RankExpr(pmask_2p)

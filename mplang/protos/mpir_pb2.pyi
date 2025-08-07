@@ -18,12 +18,13 @@ limitations under the License.
 
 import builtins
 import collections.abc
+import sys
+import typing
+
 import google.protobuf.descriptor
 import google.protobuf.internal.containers
 import google.protobuf.internal.enum_type_wrapper
 import google.protobuf.message
-import sys
-import typing
 
 if sys.version_info >= (3, 10):
     import typing as typing_extensions
@@ -42,7 +43,12 @@ class AttrProto(google.protobuf.message.Message):
         ValueType = typing.NewType("ValueType", builtins.int)
         V: typing_extensions.TypeAlias = ValueType
 
-    class _AttrTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[AttrProto._AttrType.ValueType], builtins.type):
+    class _AttrTypeEnumTypeWrapper(
+        google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[
+            AttrProto._AttrType.ValueType
+        ],
+        builtins.type,
+    ):
         DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
         UNDEFINED: AttrProto._AttrType.ValueType  # 0
         FLOAT: AttrProto._AttrType.ValueType  # 1
@@ -99,15 +105,23 @@ class AttrProto(google.protobuf.message.Message):
     raw_bytes: builtins.bytes
     """BYTES - for raw binary data"""
     @property
-    def floats(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.float]:
+    def floats(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[
+        builtins.float
+    ]:
         """FLOATS"""
 
     @property
-    def ints(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
+    def ints(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
         """INTS"""
 
     @property
-    def strs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+    def strs(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """STRINGS"""
 
     @property
@@ -133,8 +147,36 @@ class AttrProto(google.protobuf.message.Message):
         func: global___FuncProto | None = ...,
         graph: global___GraphProto | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["func", b"func", "graph", b"graph"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["b", b"b", "f", b"f", "floats", b"floats", "func", b"func", "graph", b"graph", "i", b"i", "ints", b"ints", "raw_bytes", b"raw_bytes", "s", b"s", "strs", b"strs", "type", b"type"]) -> None: ...
+    def HasField(
+        self, field_name: typing.Literal["func", b"func", "graph", b"graph"]
+    ) -> builtins.bool: ...
+    def ClearField(
+        self,
+        field_name: typing.Literal[
+            "b",
+            b"b",
+            "f",
+            b"f",
+            "floats",
+            b"floats",
+            "func",
+            b"func",
+            "graph",
+            b"graph",
+            "i",
+            b"i",
+            "ints",
+            b"ints",
+            "raw_bytes",
+            b"raw_bytes",
+            "s",
+            b"s",
+            "strs",
+            b"strs",
+            "type",
+            b"type",
+        ],
+    ) -> None: ...
 
 global___AttrProto = AttrProto
 
@@ -157,8 +199,12 @@ class FuncProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(
+            self, field_name: typing.Literal["value", b"value"]
+        ) -> builtins.bool: ...
+        def ClearField(
+            self, field_name: typing.Literal["key", b"key", "value", b"value"]
+        ) -> None: ...
 
     TYPE_FIELD_NUMBER: builtins.int
     NAME_FIELD_NUMBER: builtins.int
@@ -174,7 +220,11 @@ class FuncProto(google.protobuf.message.Message):
     doc_string: builtins.str
     """Documentation string"""
     @property
-    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
+    def attrs(
+        self,
+    ) -> google.protobuf.internal.containers.MessageMap[
+        builtins.str, global___AttrProto
+    ]:
         """Function attributes"""
 
     def __init__(
@@ -186,7 +236,21 @@ class FuncProto(google.protobuf.message.Message):
         doc_string: builtins.str = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "body", b"body", "doc_string", b"doc_string", "name", b"name", "type", b"type"]) -> None: ...
+    def ClearField(
+        self,
+        field_name: typing.Literal[
+            "attrs",
+            b"attrs",
+            "body",
+            b"body",
+            "doc_string",
+            b"doc_string",
+            "name",
+            b"name",
+            "type",
+            b"type",
+        ],
+    ) -> None: ...
 
 global___FuncProto = FuncProto
 
@@ -198,7 +262,12 @@ class MPTypeProto(google.protobuf.message.Message):
         ValueType = typing.NewType("ValueType", builtins.int)
         V: typing_extensions.TypeAlias = ValueType
 
-    class _DataTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[MPTypeProto._DataType.ValueType], builtins.type):
+    class _DataTypeEnumTypeWrapper(
+        google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[
+            MPTypeProto._DataType.ValueType
+        ],
+        builtins.type,
+    ):
         DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
         UNDEFINED: MPTypeProto._DataType.ValueType  # 0
         U8: MPTypeProto._DataType.ValueType  # 1
@@ -282,8 +351,12 @@ class MPTypeProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(
+            self, field_name: typing.Literal["value", b"value"]
+        ) -> builtins.bool: ...
+        def ClearField(
+            self, field_name: typing.Literal["key", b"key", "value", b"value"]
+        ) -> None: ...
 
     DTYPE_FIELD_NUMBER: builtins.int
     SHAPE_DIMS_FIELD_NUMBER: builtins.int
@@ -294,11 +367,17 @@ class MPTypeProto(google.protobuf.message.Message):
     pmask: builtins.bytes
     """party mask"""
     @property
-    def shape_dims(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
+    def shape_dims(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
         """shape"""
 
     @property
-    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
+    def attrs(
+        self,
+    ) -> google.protobuf.internal.containers.MessageMap[
+        builtins.str, global___AttrProto
+    ]:
         """attributes"""
 
     def __init__(
@@ -309,7 +388,19 @@ class MPTypeProto(google.protobuf.message.Message):
         pmask: builtins.bytes = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "dtype", b"dtype", "pmask", b"pmask", "shape_dims", b"shape_dims"]) -> None: ...
+    def ClearField(
+        self,
+        field_name: typing.Literal[
+            "attrs",
+            b"attrs",
+            "dtype",
+            b"dtype",
+            "pmask",
+            b"pmask",
+            "shape_dims",
+            b"shape_dims",
+        ],
+    ) -> None: ...
 
 global___MPTypeProto = MPTypeProto
 
@@ -332,8 +423,12 @@ class NodeProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(
+            self, field_name: typing.Literal["value", b"value"]
+        ) -> builtins.bool: ...
+        def ClearField(
+            self, field_name: typing.Literal["key", b"key", "value", b"value"]
+        ) -> None: ...
 
     OP_TYPE_FIELD_NUMBER: builtins.int
     NAME_FIELD_NUMBER: builtins.int
@@ -345,15 +440,25 @@ class NodeProto(google.protobuf.message.Message):
     name: builtins.str
     doc_string: builtins.str
     @property
-    def inputs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+    def inputs(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """{name:index}"""
 
     @property
-    def outs_info(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___MPTypeProto]:
+    def outs_info(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[
+        global___MPTypeProto
+    ]:
         """"""
 
     @property
-    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]: ...
+    def attrs(
+        self,
+    ) -> google.protobuf.internal.containers.MessageMap[
+        builtins.str, global___AttrProto
+    ]: ...
     def __init__(
         self,
         *,
@@ -364,7 +469,23 @@ class NodeProto(google.protobuf.message.Message):
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
         doc_string: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "doc_string", b"doc_string", "inputs", b"inputs", "name", b"name", "op_type", b"op_type", "outs_info", b"outs_info"]) -> None: ...
+    def ClearField(
+        self,
+        field_name: typing.Literal[
+            "attrs",
+            b"attrs",
+            "doc_string",
+            b"doc_string",
+            "inputs",
+            b"inputs",
+            "name",
+            b"name",
+            "op_type",
+            b"op_type",
+            "outs_info",
+            b"outs_info",
+        ],
+    ) -> None: ...
 
 global___NodeProto = NodeProto
 
@@ -392,7 +513,12 @@ class VersionInfo(google.protobuf.message.Message):
         patch: builtins.int = ...,
         extra: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["extra", b"extra", "major", b"major", "minor", b"minor", "patch", b"patch"]) -> None: ...
+    def ClearField(
+        self,
+        field_name: typing.Literal[
+            "extra", b"extra", "major", b"major", "minor", b"minor", "patch", b"patch"
+        ],
+    ) -> None: ...
 
 global___VersionInfo = VersionInfo
 
@@ -415,8 +541,12 @@ class GraphProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(
+            self, field_name: typing.Literal["value", b"value"]
+        ) -> builtins.bool: ...
+        def ClearField(
+            self, field_name: typing.Literal["key", b"key", "value", b"value"]
+        ) -> None: ...
 
     VERSION_FIELD_NUMBER: builtins.int
     NODES_FIELD_NUMBER: builtins.int
@@ -425,13 +555,23 @@ class GraphProto(google.protobuf.message.Message):
     @property
     def version(self) -> global___VersionInfo: ...
     @property
-    def nodes(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___NodeProto]: ...
+    def nodes(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[
+        global___NodeProto
+    ]: ...
     @property
-    def outputs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
+    def outputs(
+        self,
+    ) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """{name:index}"""
 
     @property
-    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]: ...
+    def attrs(
+        self,
+    ) -> google.protobuf.internal.containers.MessageMap[
+        builtins.str, global___AttrProto
+    ]: ...
     def __init__(
         self,
         *,
@@ -440,7 +580,21 @@ class GraphProto(google.protobuf.message.Message):
         outputs: collections.abc.Iterable[builtins.str] | None = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["version", b"version"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "nodes", b"nodes", "outputs", b"outputs", "version", b"version"]) -> None: ...
+    def HasField(
+        self, field_name: typing.Literal["version", b"version"]
+    ) -> builtins.bool: ...
+    def ClearField(
+        self,
+        field_name: typing.Literal[
+            "attrs",
+            b"attrs",
+            "nodes",
+            b"nodes",
+            "outputs",
+            b"outputs",
+            "version",
+            b"version",
+        ],
+    ) -> None: ...
 
 global___GraphProto = GraphProto

@@ -254,7 +254,7 @@ class Evaluator(ExprVisitor):
                 break
 
             # Call body function with same arguments
-            body_env = dict(zip(expr.body_fn.params, state, strict=False))
+            body_env = dict(zip(expr.body_fn.params, state, strict=True))
             body_evaluator = self.fork(body_env)
             new_state = expr.body_fn.body.accept(body_evaluator)
 

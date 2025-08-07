@@ -242,7 +242,7 @@ class Evaluator(ExprVisitor):
 
         while True:
             # Call condition function
-            cond_env = dict(zip(expr.cond_fn.params, state, strict=False))
+            cond_env = dict(zip(expr.cond_fn.params, state, strict=True))
             cond_evaluator = self.fork(cond_env)
             cond_result = expr.cond_fn.body.accept(cond_evaluator)
 

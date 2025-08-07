@@ -230,7 +230,7 @@ class Evaluator(ExprVisitor):
 
         assert isinstance(expr.fn, FuncDefExpr)
 
-        sub_env = dict(zip(expr.fn.params, args, strict=False))
+        sub_env = dict(zip(expr.fn.params, args, strict=True))
         sub_evaluator = self.fork(sub_env)
 
         return expr.fn.body.accept(sub_evaluator)

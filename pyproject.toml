@@ -22,10 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black",
-    "isort",
-    "mypy",
     "ruff",
+    "mypy",
     "pytest",
     "pytest-cov",
     "pytest-xdist",

@@ -15,10 +15,10 @@
 from __future__ import annotations
 
 import copy
-from abc import ABC, ABCMeta, abstractmethod
-from functools import wraps
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence
 from types import MappingProxyType
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from mplang.core.base import TensorInfo, TensorLike
 
@@ -77,8 +77,10 @@ class PFunction:
         fn_text: str | bytes | None,
         ins_info: Sequence[TensorInfo],
         outs_info: Sequence[TensorInfo],
-        attrs: dict[str, Any] = {},
+        attrs: dict[str, Any] | None = None,
     ):
+        if attrs is None:
+            attrs = {}
         self.fn_type = fn_type
         self.fn_name = fn_name
         self.fn_body = fn_body

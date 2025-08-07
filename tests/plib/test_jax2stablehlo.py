@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import pytest
 
 # Enable 64-bit precision in JAX for testing different dtypes
@@ -191,7 +190,6 @@ class TestJax2StableHLO:
 
     def test_partial_function_compilation(self):
         """Test compilation of partial functions."""
-        from functools import partial
 
         def multiply_add(x, y, multiplier, addend):
             return x * multiplier + y + addend

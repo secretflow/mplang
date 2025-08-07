@@ -63,10 +63,12 @@ class Simulator(InterpContext):
         spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_mask: Mask | None = None,
-        trace_ranks: list[int] = [],
+        trace_ranks: list[int] | None = None,
         **attrs,
     ):
         """Initialize a simulator with the given process size and attributes."""
+        if trace_ranks is None:
+            trace_ranks = []
         all_attrs = {
             "trace_ranks": trace_ranks,
             "spu_protocol": int(spu_protocol),
@@ -197,14 +199,14 @@ class Simulator(InterpContext):
             raise ValueError("Inconsistent number of outputs across parties")
 
         # Transpose: (n_parties, n_outputs) -> (n_outputs, n_parties)
-        output_values = list(zip(*pts_results))
+        output_values = list(zip(*pts_results, strict=False))
 
         # Get the output types from the expression
         output_types = expr.mptypes
 
         # Create SimVar objects for each output
         sim_vars = []
-        for values, mptype in zip(output_values, output_types):
+        for values, mptype in zip(output_values, output_types, strict=False):
             sim_var = SimVar(self, mptype, list(values))
             sim_vars.append(sim_var)
 

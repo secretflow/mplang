@@ -182,7 +182,7 @@ class TestUtilityFunctions:
 
     def test_dtype_to_proto_conversion(self):
         """Test dtype to protobuf conversion."""
-        from mplang.core.mpir import DTYPE_MAPPING, dtype_to_proto
+        from mplang.core.mpir import dtype_to_proto
         from mplang.protos import mpir_pb2
 
         # Test DType conversion
@@ -804,12 +804,12 @@ class TestComplexExpressionRoundtrip:
         print(f"Deserialized else_fn type: {type(result.else_fn)}")
 
         # These assertions should expose the bug
-        assert isinstance(
-            result.then_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.then_fn)}"
-        assert isinstance(
-            result.else_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.else_fn)}"
+        assert isinstance(result.then_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.then_fn)}"
+        )
+        assert isinstance(result.else_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.else_fn)}"
+        )
 
     def test_while_expr_roundtrip(self):
         """Test WhileExpr roundtrip - this should expose similar issues."""
@@ -847,12 +847,12 @@ class TestComplexExpressionRoundtrip:
         print(f"Deserialized body_fn type: {type(result.body_fn)}")
 
         # These assertions should expose the bug
-        assert isinstance(
-            result.cond_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.cond_fn)}"
-        assert isinstance(
-            result.body_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.body_fn)}"
+        assert isinstance(result.cond_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.cond_fn)}"
+        )
+        assert isinstance(result.body_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.body_fn)}"
+        )
 
     def test_call_expr_roundtrip(self):
         """Test CallExpr roundtrip - this should expose the evaluator assertion error."""
@@ -881,9 +881,9 @@ class TestComplexExpressionRoundtrip:
         print(f"Deserialized fn type: {type(result.fn)}")
 
         # This assertion should expose the bug that causes the evaluator to fail
-        assert isinstance(
-            result.fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.fn)}"
+        assert isinstance(result.fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.fn)}"
+        )
 
 
 if __name__ == "__main__":

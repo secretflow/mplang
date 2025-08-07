@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from functools import partial
-from typing import List, NamedTuple, Optional, Tuple
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -65,7 +65,7 @@ class TreeEnsemble(NamedTuple):
     """
 
     max_depth: int
-    trees: List[Tree]
+    trees: list[Tree]
     initial_prediction: float
     bins: jnp.ndarray
 
@@ -246,7 +246,7 @@ def _compute_best_split_per_node(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for a single node using a combined GH histogram.
     This version performs vectorized calculations on the stacked G and H data.
@@ -303,7 +303,7 @@ def compute_best_split(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for all nodes at the current tree level by vmapping
     over the combined GH histogram.
@@ -493,7 +493,7 @@ def predict_tree(x: jnp.ndarray, model: Tree) -> jnp.ndarray:
         def go_right(node_idx: jnp.ndarray) -> jnp.ndarray:
             return 2 * node_idx + 2
 
-        def body(state: Tuple[jnp.ndarray, Tree]) -> Tuple[jnp.ndarray, Tree]:
+        def body(state: tuple[jnp.ndarray, Tree]) -> tuple[jnp.ndarray, Tree]:
             cur_node, model = state
             feature_idx, threshold = model.feature[cur_node], model.threshold[cur_node]
             next_node = jax.lax.cond(
@@ -501,7 +501,7 @@ def predict_tree(x: jnp.ndarray, model: Tree) -> jnp.ndarray:
             )
             return (next_node, model)
 
-        def condition(state: Tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
+        def condition(state: tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
             return ~model.is_leaf[state[0]]
 
         final_node, _ = jax.lax.while_loop(condition, body, (jnp.int32(0), model))
@@ -574,7 +574,7 @@ def fit_tree_ensemble(
     )
 
     y_pred = initial_y_pred * jnp.ones(x.shape[0])
-    trees: List[Tree] = []
+    trees: list[Tree] = []
 
     # The Python for-loop is "unrolled" by JAX during JIT compilation.
     for _ in range(n_estimators):
@@ -635,7 +635,7 @@ class XGBoostJAX:
                 "Objective must be 'binary:logistic' or 'reg:squarederror'"
             )
         self.objective = objective
-        self.model: Optional[TreeEnsemble] = None
+        self.model: TreeEnsemble | None = None
 
     def fit(self, x: jnp.ndarray, y: jnp.ndarray):
         """Fits the model to the training data based on the objective."""
@@ -691,7 +691,7 @@ def pretty_print_ensemble(ensemble: TreeEnsemble):
     print("\n" + "=" * 25 + " Tree Ensemble Details " + "=" * 25)
 
     # --- 1. Print Ensemble-level information ---
-    print(f"\n[Ensemble Info]")
+    print("\n[Ensemble Info]")
     print(f"  - Max Depth: {ensemble.max_depth}")
     print(f"  - Initial Prediction: {ensemble.initial_prediction:.6f}")
     print(f"  - Number of Features: {ensemble.bins.shape[0]}")
@@ -710,11 +710,11 @@ def pretty_print_ensemble(ensemble: TreeEnsemble):
         print(f"  Max Depth: {max_depth}")
 
         # Print node-by-node details
-        print(f"\n  Node Details:")
+        print("\n  Node Details:")
         print(
             f"  {'Node':>4} {'Depth':>5} {'Type':>6} {'Feature':>7} {'Threshold':>12} {'Value':>12}"
         )
-        print(f"  {'-'*4} {'-'*5} {'-'*6} {'-'*7} {'-'*12} {'-'*12}")
+        print(f"  {'-' * 4} {'-' * 5} {'-' * 6} {'-' * 7} {'-' * 12} {'-' * 12}")
 
         for node_idx in range(n_nodes):
             # Calculate depth from node index (assuming complete binary tree indexing)
@@ -759,7 +759,7 @@ def predict_tree_leaves(x: jnp.ndarray, tree: Tree) -> jnp.ndarray:
         def go_right(node_idx: jnp.ndarray) -> jnp.ndarray:
             return 2 * node_idx + 2
 
-        def body(state: Tuple[jnp.ndarray, Tree]) -> Tuple[jnp.ndarray, Tree]:
+        def body(state: tuple[jnp.ndarray, Tree]) -> tuple[jnp.ndarray, Tree]:
             cur_node, model = state
             feature_idx, threshold = model.feature[cur_node], model.threshold[cur_node]
             next_node = jax.lax.cond(
@@ -767,7 +767,7 @@ def predict_tree_leaves(x: jnp.ndarray, tree: Tree) -> jnp.ndarray:
             )
             return (next_node, model)
 
-        def condition(state: Tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
+        def condition(state: tuple[jnp.ndarray, Tree]) -> jnp.ndarray:
             return ~tree.is_leaf[state[0]]
 
         final_node, _ = jax.lax.while_loop(condition, body, (jnp.int32(0), tree))
@@ -799,7 +799,7 @@ def predict_ensemble_leaves(x: jnp.ndarray, ensemble: TreeEnsemble) -> jnp.ndarr
 def print_leaf_predictions(
     x: jnp.ndarray,
     ensemble: TreeEnsemble,
-    y_true: Optional[jnp.ndarray] = None,
+    y_true: jnp.ndarray | None = None,
     max_samples: int = 10,
     learning_rate: float = 0.1,
     objective: str = "binary:logistic",
@@ -848,7 +848,7 @@ def print_leaf_predictions(
             else:
                 print(f"  Predicted: {pred_prob:.3f}")
 
-        print(f"  Tree → Leaf Nodes:")
+        print("  Tree → Leaf Nodes:")
         for tree_idx in range(n_trees):
             leaf_node = leaf_predictions[tree_idx, sample_idx]
             leaf_value = ensemble.trees[tree_idx].value[leaf_node]
@@ -902,7 +902,7 @@ def count_samples_per_node_ensemble(
 def print_node_sample_counts(
     x: jnp.ndarray,
     ensemble: TreeEnsemble,
-    tree_idx: Optional[int] = None,
+    tree_idx: int | None = None,
     show_only_leaves: bool = False,
 ):
     """
@@ -919,7 +919,7 @@ def print_node_sample_counts(
         # Show counts for a specific tree
         if tree_idx < 0 or tree_idx >= len(ensemble.trees):
             print(
-                f"❌ Invalid tree index: {tree_idx}. Available: 0-{len(ensemble.trees)-1}"
+                f"❌ Invalid tree index: {tree_idx}. Available: 0-{len(ensemble.trees) - 1}"
             )
             return
 
@@ -929,7 +929,7 @@ def print_node_sample_counts(
         print(f"\n📊 Sample Counts for Tree {tree_idx}:")
         print("=" * 60)
         print(f"  {'Node':>4} {'Type':>6} {'Count':>8} {'Percentage':>12}")
-        print(f"  {'-'*4} {'-'*6} {'-'*8} {'-'*12}")
+        print(f"  {'-' * 4} {'-' * 6} {'-' * 8} {'-' * 12}")
 
         total_samples = x.shape[0]
         for node_idx in range(len(tree.feature)):
@@ -945,13 +945,13 @@ def print_node_sample_counts(
         # Show counts for all trees
         counts_all = count_samples_per_node_ensemble(x, ensemble)
 
-        print(f"\n📊 Sample Counts for All Trees:")
+        print("\n📊 Sample Counts for All Trees:")
         print("=" * 80)
 
         for i, tree in enumerate(ensemble.trees):
             print(f"\nTree {i}:")
             print(f"  {'Node':>4} {'Type':>6} {'Count':>8} {'Percentage':>12}")
-            print(f"  {'-'*4} {'-'*6} {'-'*8} {'-'*12}")
+            print(f"  {'-' * 4} {'-' * 6} {'-' * 8} {'-' * 12}")
 
             total_samples = x.shape[0]
             counts = counts_all[i]

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import jax.numpy as jnp
-import numpy as np
 
 import mplang
 import mplang.random as mpr

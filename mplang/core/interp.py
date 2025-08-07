@@ -129,21 +129,22 @@ def apply(ctx: InterpContext, fn: TracedFunction, *args, **kwargs):
     if len(fn.in_vars) != len(in_args):
         raise ValueError(f"Input types mismatch: {fn.in_vars} != {in_args}")
     # check parameter type match
-    for param, arg in zip(fn.in_vars, in_args):
+    for param, arg in zip(fn.in_vars, in_args, strict=False):
         if param.mptype != arg.mptype:
             raise ValueError(
                 f"Input variable type mismatch: {param.mptype} != {arg.mptype}"
             )
 
     # Prepare for the captured variables, which should also be in the same context.
-    for captured, traced in fn.capture_map.items():
+    for captured, _traced in fn.capture_map.items():
         if not isinstance(captured, InterpVar) or captured.ctx is not ctx:
             raise ValueError(
                 f"Capture {captured} must be in this({ctx}) context, got {captured.ctx}."
             )
 
     arg_binding: dict[str, MPObject] = {
-        cast(VariableExpr, var.expr).name: obj for var, obj in zip(fn.in_vars, in_args)
+        cast(VariableExpr, var.expr).name: obj
+        for var, obj in zip(fn.in_vars, in_args, strict=False)
     }
     capture_binding = {
         cast(VariableExpr, var.expr).name: captured

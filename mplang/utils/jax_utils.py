@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import functools
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
 
 import jax
 from jax.lib import xla_extension as xla
@@ -43,9 +43,9 @@ def _argnames_partial_except(fn, static_argnames, kwargs):
     if static_argnames is None:
         return fn, kwargs
 
-    assert isinstance(
-        static_argnames, (str, Iterable)
-    ), f"type of static_argnames is {type(static_argnames)} while str or Iterable is required here."
+    assert isinstance(static_argnames, str | Iterable), (
+        f"type of static_argnames is {type(static_argnames)} while str or Iterable is required here."
+    )
     if isinstance(static_argnames, str):
         static_argnames = (static_argnames,)
 

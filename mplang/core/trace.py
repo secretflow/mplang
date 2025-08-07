@@ -56,8 +56,9 @@ compile for a multi-party setting.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from mplang.core.base import Mask, MPContext, MPObject, MPType, with_ctx
 from mplang.core.pfunc import get_fn_name
@@ -286,7 +287,7 @@ class TracedFunction:
         # Check input type match
         if len(self.in_vars) != len(other.in_vars):
             return False
-        for var, other_var in zip(self.in_vars, other.in_vars):
+        for var, other_var in zip(self.in_vars, other.in_vars, strict=False):
             if var.mptype != other_var.mptype:
                 return False
 
@@ -304,7 +305,7 @@ class TracedFunction:
         # check output type match
         if len(self.out_vars) != len(other.out_vars):
             return False
-        for var, other_var in zip(self.out_vars, other.out_vars):
+        for var, other_var in zip(self.out_vars, other.out_vars, strict=False):
             if var.mptype != other_var.mptype:
                 return False
 
@@ -348,7 +349,7 @@ def trace(
     param_names = [tracer._gen_name() for _ in range(len(in_params))]
     in_vars = [
         TraceVar(tracer, VariableExpr(name, var.mptype))
-        for name, var in zip(param_names, in_params)
+        for name, var in zip(param_names, in_params, strict=False)
     ]
 
     with with_ctx(tracer):

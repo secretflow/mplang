@@ -29,7 +29,6 @@ if TYPE_CHECKING:
         ConstExpr,
         ConvExpr,
         EvalExpr,
-        Expr,
         FuncDefExpr,
         RandExpr,
         RankExpr,

@@ -37,13 +37,11 @@ class StablehloHandler(PFunctionHandler):
     def setup(self):
         """Set up the runtime environment."""
         # StableHLO handler doesn't need special setup
-        pass
 
     # override
     def teardown(self):
         """Clean up the runtime environment."""
         # StableHLO handler doesn't need special teardown
-        pass
 
     def list_fn_names(self) -> list[str]:
         """List function names that this handler can execute."""
@@ -140,4 +138,4 @@ class StablehloHandler(PFunctionHandler):
             return output_tensors
 
         except Exception as e:
-            raise RuntimeError(f"Failed to execute compiled function: {e}")
+            raise RuntimeError(f"Failed to execute compiled function: {e}") from e

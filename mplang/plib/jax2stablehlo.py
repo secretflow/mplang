@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import PyTreeDef, tree_flatten, tree_unflatten
-
-# Enable 64-bit precision for JAX to match tensor types
-jax.config.update("jax_enable_x64", True)
+from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFunction, PFuncTypes, get_fn_name
 from mplang.utils.func_utils import normalize_fn
+
+# Enable 64-bit precision for JAX to match tensor types
+jax.config.update("jax_enable_x64", True)
 
 
 def compile(is_variable, flat_fn, *args, **kwargs) -> tuple[PFunction, list, PyTreeDef]:

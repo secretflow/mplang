@@ -21,31 +21,17 @@ and executor_client modules.
 """
 
 # Legacy compatibility imports
+import functools
+import operator
+
 from mplang.device import DeviceContext, parse_device_conf
 
 # Re-export client components
-from mplang.runtime.driver import ExecutorDriver, make_stub, new_uuid
+from mplang.runtime.driver import ExecutorDriver
 
 # Re-export path utilities for backward compatibility
-from mplang.runtime.executor.resource import (
-    EXECUTION_PATH,
-    EXECUTION_SYMBOL_PATH,
-    MESSAGE_PATH,
-    SESSION_PATH,
-    SESSION_SYMBOL_PATH,
-    SYMBOL_PATH,
-)
-
 # Re-export server components
 from mplang.runtime.executor.server import (
-    Execution,
-    ExecutorService,
-    ExecutorState,
-    GrpcCommunicator,
-    LinkCommFactory,
-    Session,
-    Symbol,
-    g_link_factory,
     serve,
     start_cluster,
 )
@@ -72,18 +58,22 @@ def cmd_main(main, nodes_def):
     spu_mask = 0  # Default mask
 
     if args.config:
-        with open(args.config, "r") as file:
+        with open(args.config) as file:
             conf = json.load(file)
         nodes_def = conf["nodes"]
-        all_node_ids = list(sorted(list(nodes_def.keys())))
+        all_node_ids = sorted(nodes_def.keys())
         devices_conf = parse_device_conf(conf["devices"])
-        device_ctx = DeviceContext(devices_conf)
+        DeviceContext(devices_conf)
         used_node_ids = list(
-            set(sum([info.node_ids for info in devices_conf.values()], []))
+            set(
+                functools.reduce(
+                    operator.iadd, [info.node_ids for info in devices_conf.values()], []
+                )
+            )
         )
-        assert all(
-            nid in nodes_def for nid in used_node_ids
-        ), "Some node ids are not defined in the config."
+        assert all(nid in nodes_def for nid in used_node_ids), (
+            "Some node ids are not defined in the config."
+        )
         spu_conf = [dev for dev in devices_conf.values() if dev.type == "SPU"]
         if len(spu_conf) == 1:
             spu_mask = 0

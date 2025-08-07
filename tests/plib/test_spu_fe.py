@@ -20,7 +20,6 @@ import spu.libspu as libspu
 from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFuncTypes
 from mplang.plib.spu_fe import SpuFE, Visibility
-from mplang.utils.func_utils import normalize_fn
 
 
 class TestSpuFECompile:
@@ -100,9 +99,9 @@ class TestSpuFECompile:
         if test_serialization:
             try:
                 # Test that we can reconstruct the executable from MLIR code and metadata
-                assert isinstance(
-                    cfunc.fn_text, str
-                ), f"Expected str, got {type(cfunc.fn_text)}"
+                assert isinstance(cfunc.fn_text, str), (
+                    f"Expected str, got {type(cfunc.fn_text)}"
+                )
 
                 reconstructed_executable = libspu.Executable(
                     name=cfunc.attrs.get("executable_name", cfunc.fn_name),

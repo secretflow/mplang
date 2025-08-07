@@ -97,7 +97,7 @@ class PathTemplate:
         position_index = 0
 
         # Compare each template part with the corresponding path part
-        for tmpl_part, path_part in zip(self.parsed_parts, path_parts):
+        for tmpl_part, path_part in zip(self.parsed_parts, path_parts, strict=False):
             if tmpl_part[0] == "literal":
                 if tmpl_part[1] != path_part:
                     return None

@@ -91,7 +91,7 @@ This will install:
 
 - The package itself in editable mode (changes to source code take effect immediately)
 - All runtime dependencies
-- Development tools: black, isort, mypy, pytest, pytest-cov, sphinx, sphinx_rtd_theme
+- Development tools: ruff, mypy, pytest, pytest-cov, sphinx, sphinx_rtd_theme
 
 ## Development
 
@@ -125,9 +125,9 @@ pytest
 ### Code Formatting and Linting
 
 ```bash
-# Format code
-black .
-isort .
+# Format and lint code (ruff replaces black, isort, and flake8)
+ruff check . --fix
+ruff format .
 
 # Type checking
 mypy mplang/

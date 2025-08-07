@@ -94,7 +94,7 @@ class Printer(ExprVisitor):
                 regions_str += f"{indent}{r_name}: "
                 body_content = ("\n" + indent).join(body_printer._output)
                 regions_str += f"{body_content}\n"
-            regions_str += f"}}"
+            regions_str += "}"
 
         type_str = ""
         if mptypes:
@@ -185,7 +185,7 @@ class Printer(ExprVisitor):
         # Directly pass FuncDefExpr objects
         return self._do_print(
             "pcond",
-            [pred_name] + arg_names,
+            [pred_name, *arg_names],
             regions={
                 "then_fn": expr.then_fn,
                 "else_fn": expr.else_fn,

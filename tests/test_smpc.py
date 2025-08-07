@@ -20,7 +20,6 @@ import mplang
 import mplang.random as mpr
 import mplang.simp as simp
 import mplang.smpc as smpc
-from mplang.expr.printer import Printer
 
 
 class TestSmpcBasics:
@@ -177,7 +176,9 @@ class TestSMPCComplexScenarios:
         assert all(c == expected_condition for c in cond_vals)
 
         # Verify result computation
-        for i, (x_val, result_val) in enumerate(zip(x_vals, result_vals)):
+        for _i, (x_val, result_val) in enumerate(
+            zip(x_vals, result_vals, strict=False)
+        ):
             if expected_condition:
                 assert result_val == x_val * 2
             else:

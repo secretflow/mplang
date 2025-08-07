@@ -23,11 +23,12 @@ transformation between devices.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial, wraps
-from typing import Any, Callable
+from typing import Any
 
-from jax.tree_util import tree_flatten, tree_map, tree_unflatten
+from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc
@@ -82,10 +83,10 @@ class DeviceContext:
         self.auto_trans = auto_trans
         # Note: ensure node_ids maintain a consistent order for deterministic behavior
         node_ids = [nid for info in dev_infos.values() for nid in info.node_ids]
-        node_ids = sorted(list(set(node_ids)))
-        assert len(node_ids) == len(
-            set(node_ids)
-        ), f"node_ids must be unique. {node_ids}"
+        node_ids = sorted(set(node_ids))
+        assert len(node_ids) == len(set(node_ids)), (
+            f"node_ids must be unique. {node_ids}"
+        )
         self.node_ids = node_ids
 
     def id2rank(self, dev_id: str) -> int:
@@ -96,7 +97,9 @@ class DeviceContext:
         return self.node_ids.index(dev_info.node_ids[0])
 
 
-def init(device_def: dict, nodes_def: dict = {}):
+def init(device_def: dict, nodes_def: dict | None = None):
+    if nodes_def is None:
+        nodes_def = {}
     device_conf = parse_device_conf(device_def)
     device_ctx = DeviceContext(device_conf)
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 import contextlib
 import copy
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -293,7 +293,7 @@ class MPType:
             return cls(DType.from_python_type(type(obj)), (), pmask, attrs)
         elif isinstance(obj, TensorLike):
             return cls(DType.from_any(obj.dtype), obj.shape, pmask, attrs)
-        elif isinstance(obj, (list, tuple)):
+        elif isinstance(obj, list | tuple):
             # Convert lists/tuples to numpy arrays for compatibility
             arr = np.array(obj)
             return cls(DType.from_any(arr.dtype), arr.shape, pmask, attrs)

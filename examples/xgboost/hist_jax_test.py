@@ -14,9 +14,9 @@
 
 import os
 import sys
-from contextlib import contextmanager
 import time
 import unittest
+from contextlib import contextmanager
 
 import jax.numpy as jnp
 import xgboost as xgb
@@ -349,12 +349,12 @@ class TestOptimizedXGBoostFunctions(unittest.TestCase):
 
         # Import the debug functions
         from hist_jax import (
-            pretty_print_ensemble,
-            predict_tree_leaves,
-            predict_ensemble_leaves,
-            print_leaf_predictions,
             count_samples_per_node,
             count_samples_per_node_ensemble,
+            predict_ensemble_leaves,
+            predict_tree_leaves,
+            pretty_print_ensemble,
+            print_leaf_predictions,
             print_node_sample_counts,
         )
 

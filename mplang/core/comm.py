@@ -173,7 +173,7 @@ class CollectiveMixin(ICommunicator, ICollective):
         cid = self.new_id()
 
         if self.rank == root:
-            for idx, arg in zip(enum_mask(pmask), args, strict=False):
+            for idx, arg in zip(enum_mask(pmask), args, strict=True):
                 self.send(idx, cid, arg)
 
         if is_rank_in(self.rank, pmask):

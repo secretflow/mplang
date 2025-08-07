@@ -22,8 +22,8 @@ a key component for secure computation, its programming model is more general.
 
 ## Coding Standards
 
-- Code formatting is enforced using `black`.
-- Import statements are sorted using `isort`.
+- Code formatting and linting is enforced using `ruff`.
+- Import statements are sorted using `ruff` (replaces isort).
 - Static type checking is performed with `mypy`.
 - Testing is done using the `pytest` framework.
 - Employ inline comments to explain the intent and rationale ('the why') behind code, not to describe its mechanics ('the how').

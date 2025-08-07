@@ -16,7 +16,6 @@ import random
 
 import mplang
 import mplang.device as mpd
-from mplang.core.base import cur_ctx
 
 device_conf = {
     "SP0": {

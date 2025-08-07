@@ -35,7 +35,7 @@ def test_hlo():
 
     mod2 = HloUtil.text_to_module(text)
 
-    text2 = HloUtil.module_to_text(mod2)
+    HloUtil.module_to_text(mod2)
 
     # print(text2)
 
@@ -100,5 +100,5 @@ def test_hlo_xla():
     text0 = HloUtil.proto_to_text(prot)
     assert text0 == text
 
-    mlir0 = HloUtil.proto_to_mlir(prot)
-    mlir = HloUtil.text_to_mlir(text)
+    HloUtil.proto_to_mlir(prot)
+    HloUtil.text_to_mlir(text)

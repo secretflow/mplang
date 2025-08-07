@@ -55,28 +55,28 @@ from mplang.expr.utils import (
 from mplang.expr.visitor import ExprVisitor
 
 __all__ = [
-    # Core expression types
-    "Expr",
-    "RankExpr",
-    "ConstExpr",
-    "RandExpr",
-    "EvalExpr",
-    "VariableExpr",
-    "TupleExpr",
-    "CondExpr",
-    "CallExpr",
-    "WhileExpr",
-    "ConvExpr",
-    "ShflSExpr",
-    "ShflExpr",
     "AccessExpr",
-    "FuncDefExpr",
-    # Visitor pattern
-    "ExprVisitor",
+    "CallExpr",
+    "CondExpr",
+    "ConstExpr",
+    "ConvExpr",
+    "EvalExpr",
     # Built-in visitors
     "Evaluator",
+    # Core expression types
+    "Expr",
     "ExprTransformer",
+    # Visitor pattern
+    "ExprVisitor",
+    "FuncDefExpr",
     "Printer",
+    "RandExpr",
+    "RankExpr",
+    "ShflExpr",
+    "ShflSExpr",
+    "TupleExpr",
+    "VariableExpr",
+    "WhileExpr",
     # Utilities
     "deduce_mask",
     "ensure_scalar",

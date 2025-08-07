@@ -20,11 +20,9 @@ from jax.example_libraries.stax import (
     Conv,
     Dense,
     Flatten,
-    LogSoftmax,
     MaxPool,
     Relu,
     Sigmoid,
-    Softmax,
 )
 
 

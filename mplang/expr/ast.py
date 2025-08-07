@@ -78,12 +78,10 @@ class Expr(ABC):
     @abstractmethod
     def _compute_mptypes(self) -> list[MPType]:
         """Computes the types of the expression's outputs."""
-        pass
 
     @abstractmethod
     def accept(self, visitor: ExprVisitor) -> Any:
         """Accept a visitor for the visitor pattern."""
-        pass
 
 
 # ============================================================================
@@ -256,7 +254,9 @@ class CondExpr(Expr):
         self.args = args
 
     def _compute_mptypes(self) -> list[MPType]:
-        for t_type, e_type in zip(self.then_fn.mptypes, self.else_fn.mptypes):
+        for t_type, e_type in zip(
+            self.then_fn.mptypes, self.else_fn.mptypes, strict=False
+        ):
             if t_type != e_type:
                 raise TypeError(
                     f"Then branch type {t_type} does not match else branch type {e_type}"

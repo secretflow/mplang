@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum
-from typing import Sequence
 
 import jax.numpy as jnp
 import spu.libspu as libspu
@@ -230,9 +230,9 @@ class SpuFE:
         executable_code = executable.code
 
         # Convert bytes to string for MLIR text
-        assert isinstance(
-            executable_code, bytes
-        ), f"Expected bytes, got {type(executable_code)}"
+        assert isinstance(executable_code, bytes), (
+            f"Expected bytes, got {type(executable_code)}"
+        )
         executable_code = executable_code.decode("utf-8")
 
         # Create metadata for SPU execution

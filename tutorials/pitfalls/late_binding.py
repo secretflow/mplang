@@ -73,7 +73,6 @@ def _run_correct_func():
 
     init = simp.constant(jnp.array(0))
     for i in range(3):
-
         # There are some tricks to avoid the issue
         def _update_offset(x, i=i):
             return x + i

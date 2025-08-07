@@ -89,7 +89,7 @@ class TestTutorialConditionalExamples:
         x_vals, z_vals = mplang.fetch(sim3, (x, z))
 
         # Verify conditional logic for each party
-        for i, (x_val, z_val) in enumerate(zip(x_vals, z_vals)):
+        for _i, (x_val, z_val) in enumerate(zip(x_vals, z_vals, strict=False)):
             if x_val <= 10:
                 assert z_val == x_val  # positive
             else:
@@ -126,11 +126,11 @@ class TestTutorialConditionalExamples:
         sum_x = sum(x_vals)
         if sum_x < 15:
             # All parties should have positive values
-            for i, (x_val, z_val) in enumerate(zip(x_vals, z_vals)):
+            for _i, (x_val, z_val) in enumerate(zip(x_vals, z_vals, strict=False)):
                 assert z_val == x_val
         else:
             # All parties should have negative values
-            for i, (x_val, z_val) in enumerate(zip(x_vals, z_vals)):
+            for _i, (x_val, z_val) in enumerate(zip(x_vals, z_vals, strict=False)):
                 assert z_val == -x_val
 
     def test_party_branch_on_cond(self):
@@ -269,7 +269,9 @@ class TestTutorialAdvancedExamples:
         y_vals = mplang.fetch(sim3, y)
 
         # Verify multiplication
-        for i, (x_val, y_val, z_val) in enumerate(zip(x_vals, y_vals, z_vals)):
+        for _i, (x_val, y_val, z_val) in enumerate(
+            zip(x_vals, y_vals, z_vals, strict=False)
+        ):
             assert z_val == x_val * y_val
 
     def test_jitted_function(self):
@@ -292,7 +294,9 @@ class TestTutorialAdvancedExamples:
         y_vals = mplang.fetch(sim3, y)
 
         # Verify jitted function works the same
-        for i, (x_val, y_val, z1_val) in enumerate(zip(x_vals, y_vals, z1_vals)):
+        for _i, (x_val, y_val, z1_val) in enumerate(
+            zip(x_vals, y_vals, z1_vals, strict=False)
+        ):
             assert z1_val == x_val * y_val
 
 

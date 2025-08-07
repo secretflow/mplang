@@ -16,7 +16,7 @@
 Utility functions for expression system.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from mplang.core.base import Mask, TensorLike
 

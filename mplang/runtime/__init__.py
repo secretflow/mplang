@@ -25,10 +25,10 @@ from mplang.runtime.executor.server import ExecutorService, serve, start_cluster
 from mplang.runtime.simulation import Simulator
 
 __all__ = [
-    "ExecutorDriver",
     "DriverVar",
-    "Simulator",
+    "ExecutorDriver",
     "ExecutorService",
+    "Simulator",
     "serve",
     "start_cluster",
 ]

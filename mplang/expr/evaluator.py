@@ -230,7 +230,7 @@ class Evaluator(ExprVisitor):
 
         assert isinstance(expr.fn, FuncDefExpr)
 
-        sub_env = dict(zip(expr.fn.params, args))
+        sub_env = dict(zip(expr.fn.params, args, strict=True))
         sub_evaluator = self.fork(sub_env)
 
         return expr.fn.body.accept(sub_evaluator)
@@ -242,19 +242,19 @@ class Evaluator(ExprVisitor):
 
         while True:
             # Call condition function
-            cond_env = dict(zip(expr.cond_fn.params, state))
+            cond_env = dict(zip(expr.cond_fn.params, state, strict=True))
             cond_evaluator = self.fork(cond_env)
             cond_result = expr.cond_fn.body.accept(cond_evaluator)
 
-            assert (
-                len(cond_result) == 1
-            ), f"Condition function must return a single value, got {cond_result}"
+            assert len(cond_result) == 1, (
+                f"Condition function must return a single value, got {cond_result}"
+            )
 
             if not cond_result[0]:
                 break
 
             # Call body function with same arguments
-            body_env = dict(zip(expr.body_fn.params, state))
+            body_env = dict(zip(expr.body_fn.params, state, strict=True))
             body_evaluator = self.fork(body_env)
             new_state = expr.body_fn.body.accept(body_evaluator)
 
@@ -295,11 +295,11 @@ class Evaluator(ExprVisitor):
         cid = self.comm.new_id()
 
         result = []
-        for src, dst in zip(src_ranks, dst_ranks):
+        for src, dst in zip(src_ranks, dst_ranks, strict=False):
             if self.comm.rank == src:
                 self.comm.send(dst, cid, value)
 
-        for src, dst in zip(src_ranks, dst_ranks):
+        for src, dst in zip(src_ranks, dst_ranks, strict=False):
             if self.comm.rank == dst:
                 result.append(self.comm.recv(src, cid))
 

@@ -16,11 +16,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import jax.numpy as jnp
 import numpy as np
-import pytest
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.base import TensorInfo, TensorLike
+from mplang.core.base import TensorInfo
 from mplang.plib.spu_fe import SpuFE
 from mplang.plib.spu_handler import SpuHandler, SpuValue
 from mplang.runtime.grpc_comm import LinkCommunicator
@@ -307,9 +306,9 @@ class TestSpuHandler:
         success_count = sum(
             1 for status in party_results.values() if status == "success"
         )
-        assert (
-            success_count == world_size
-        ), f"Only {success_count}/{world_size} parties succeeded: {party_results}"
+        assert success_count == world_size, (
+            f"Only {success_count}/{world_size} parties succeeded: {party_results}"
+        )
 
         # All parties succeeded - reconstruct the final result
         spu_io = spu_api.Io(world_size=2, config=self.spu_config)

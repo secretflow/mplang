@@ -14,12 +14,9 @@
 
 """Unit tests for the executor resource module."""
 
-import pytest
-
 from mplang.runtime.executor.resource import (
     ExecutionName,
     MessageName,
-    ResourceName,
     ResourceParser,
     SessionName,
     SymbolName,

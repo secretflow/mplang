@@ -21,6 +21,15 @@ repos:
     hooks:
       - id: pyupgrade
         args: [--py310-plus]
+        exclude: |
+          (?x)^(
+              mplang/protos/.*|
+              protos/.*|
+              .*_pb2\.py|
+              .*_pb2_grpc\.py|
+              .*_pb2\.pyi|
+              .*_pb2_grpc\.pyi
+          )$
 
   # Remove unused imports and variables (should run before formatting)
   - repo: https://github.com/PyCQA/autoflake
@@ -28,28 +37,25 @@ repos:
     hooks:
       - id: autoflake
         args: [--remove-all-unused-imports, --in-place, --ignore-init-module-imports]
+        exclude: |
+          (?x)^(
+              mplang/protos/.*|
+              protos/.*|
+              .*_pb2\.py|
+              .*_pb2_grpc\.py|
+              .*_pb2\.pyi|
+              .*_pb2_grpc\.pyi
+          )$
 
-  # Import sorting (should run before black)
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+  # Linting and formatting with ruff (replaces flake8, isort, black)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
     hooks:
-      - id: isort
-        args: [--profile=black, --line-length=88]
-
-  # Python code formatting (should run after import sorting)
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-        language_version: python3
-        args: [--line-length=88]
-
-  # Linting with flake8 including relative import checks (should run last - only checks, doesn't modify)
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
-    hooks:
-      - id: flake8
-        additional_dependencies: [flake8-absolute-import, flake8-pyproject]
+      # Run the linter
+      - id: ruff
+        args: [--fix]
+      # Run the formatter
+      - id: ruff-format
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.16.3
     hooks:

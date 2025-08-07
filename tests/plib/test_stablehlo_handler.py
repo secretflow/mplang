@@ -108,7 +108,7 @@ class TestStablehloHandler:
         expected = test_function(*inputs)
 
         # Generate tensor metadata for runtime input validation
-        inputs_info = [TensorInfo(shape=x.shape, dtype=x.dtype) for x in inputs]
+        [TensorInfo(shape=x.shape, dtype=x.dtype) for x in inputs]
 
         # Compile function to portable StableHLO MLIR representation
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
@@ -124,7 +124,7 @@ class TestStablehloHandler:
         expected_flat, _ = tree_flatten(expected)
         result_flat_from_tree, _ = tree_flatten(result)
         assert len(result_flat_from_tree) == len(expected_flat)
-        for res, exp in zip(result_flat_from_tree, expected_flat):
+        for res, exp in zip(result_flat_from_tree, expected_flat, strict=False):
             assert jnp.allclose(jnp.asarray(res), jnp.asarray(exp), rtol=1e-5)
 
     def test_invalid_format_execution(self):

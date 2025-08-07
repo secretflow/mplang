@@ -43,10 +43,15 @@ mplang = ["protos/*.proto"]
 line-length = 88
 target-version = "py310"
 
-# Exclude generated files
+# Exclude generated files and protobuf code
 exclude = [
-    "mplang/protos/*",
-    "protos/*",
+    "mplang/protos/",      # Protobuf generated Python files
+    "protos/",             # Protobuf source files
+    "**/protos/**/*.py",   # Any protobuf files in protos directories
+    "**/*_pb2.py",         # Generated protobuf message files
+    "**/*_pb2_grpc.py",    # Generated protobuf gRPC files
+    "**/*_pb2.pyi",        # Generated protobuf type stubs
+    "**/*_pb2_grpc.pyi",   # Generated protobuf gRPC type stubs
 ]
 
 [tool.ruff.lint]

@@ -25,6 +25,7 @@ dev = [
     "black",
     "isort",
     "mypy",
+    "ruff",
     "pytest",
     "pytest-cov",
     "pytest-xdist",

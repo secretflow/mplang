@@ -32,6 +32,15 @@ dev = [
     "sphinx>=7.0.0",
     "sphinx_rtd_theme>=1.2.0",
 ]
+examples = [
+    "jax[cpu]>=0.4.0",
+    "jaxlib",
+    "numpy",
+    "tensorflow-datasets",
+    "tensorflow",
+    "scikit-learn",
+    "keras",
+]
 
 [tool.setuptools.packages.find]
 include = ["mplang*"]

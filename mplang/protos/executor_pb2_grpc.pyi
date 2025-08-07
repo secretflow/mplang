@@ -18,27 +18,23 @@ limitations under the License.
 
 import abc
 import collections.abc
-import typing
-
 import executor_pb2
 import google.protobuf.empty_pb2
 import grpc
 import grpc.aio
+import typing
 
 _T = typing.TypeVar("_T")
 
-class _MaybeAsyncIterator(
-    collections.abc.AsyncIterator[_T],
-    collections.abc.Iterator[_T],
-    metaclass=abc.ABCMeta,
-): ...
+class _MaybeAsyncIterator(collections.abc.AsyncIterator[_T], collections.abc.Iterator[_T], metaclass=abc.ABCMeta): ...
+
 class _ServicerContext(grpc.ServicerContext, grpc.aio.ServicerContext):  # type: ignore[misc, type-arg]
     ...
 
 class ExecutorServiceStub:
     """Service definition for managing symbols."""
 
-    def __init__(self, channel: grpc.Channel | grpc.aio.Channel) -> None: ...
+    def __init__(self, channel: typing.Union[grpc.Channel, grpc.aio.Channel]) -> None: ...
     CreateSymbol: grpc.UnaryUnaryMultiCallable[
         executor_pb2.CreateSymbolRequest,
         executor_pb2.Symbol,
@@ -208,7 +204,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.CreateSymbolRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Symbol | collections.abc.Awaitable[executor_pb2.Symbol]:
+    ) -> typing.Union[executor_pb2.Symbol, collections.abc.Awaitable[executor_pb2.Symbol]]:
         """Creates a new symbol."""
 
     @abc.abstractmethod
@@ -216,7 +212,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.GetSymbolRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Symbol | collections.abc.Awaitable[executor_pb2.Symbol]:
+    ) -> typing.Union[executor_pb2.Symbol, collections.abc.Awaitable[executor_pb2.Symbol]]:
         """Retrieves a symbol by its resource name."""
 
     @abc.abstractmethod
@@ -224,10 +220,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.ListSymbolsRequest,
         context: _ServicerContext,
-    ) -> (
-        executor_pb2.ListSymbolsResponse
-        | collections.abc.Awaitable[executor_pb2.ListSymbolsResponse]
-    ):
+    ) -> typing.Union[executor_pb2.ListSymbolsResponse, collections.abc.Awaitable[executor_pb2.ListSymbolsResponse]]:
         """Lists symbols under a specified parent."""
 
     @abc.abstractmethod
@@ -235,7 +228,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.UpdateSymbolRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Symbol | collections.abc.Awaitable[executor_pb2.Symbol]:
+    ) -> typing.Union[executor_pb2.Symbol, collections.abc.Awaitable[executor_pb2.Symbol]]:
         """Updates an existing symbol."""
 
     @abc.abstractmethod
@@ -243,10 +236,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.DeleteSymbolRequest,
         context: _ServicerContext,
-    ) -> (
-        google.protobuf.empty_pb2.Empty
-        | collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]
-    ):
+    ) -> typing.Union[google.protobuf.empty_pb2.Empty, collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]]:
         """Deletes a symbol by its resource name."""
 
     @abc.abstractmethod
@@ -254,7 +244,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.CreateSessionRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Session | collections.abc.Awaitable[executor_pb2.Session]:
+    ) -> typing.Union[executor_pb2.Session, collections.abc.Awaitable[executor_pb2.Session]]:
         """Methods for managing Session"""
 
     @abc.abstractmethod
@@ -262,31 +252,28 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.GetSessionRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Session | collections.abc.Awaitable[executor_pb2.Session]: ...
+    ) -> typing.Union[executor_pb2.Session, collections.abc.Awaitable[executor_pb2.Session]]: ...
+
     @abc.abstractmethod
     def ListSessions(
         self,
         request: executor_pb2.ListSessionsRequest,
         context: _ServicerContext,
-    ) -> (
-        executor_pb2.ListSessionsResponse
-        | collections.abc.Awaitable[executor_pb2.ListSessionsResponse]
-    ): ...
+    ) -> typing.Union[executor_pb2.ListSessionsResponse, collections.abc.Awaitable[executor_pb2.ListSessionsResponse]]: ...
+
     @abc.abstractmethod
     def DeleteSession(
         self,
         request: executor_pb2.DeleteSessionRequest,
         context: _ServicerContext,
-    ) -> (
-        google.protobuf.empty_pb2.Empty
-        | collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]
-    ): ...
+    ) -> typing.Union[google.protobuf.empty_pb2.Empty, collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]]: ...
+
     @abc.abstractmethod
     def CreateExecution(
         self,
         request: executor_pb2.CreateExecutionRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Execution | collections.abc.Awaitable[executor_pb2.Execution]:
+    ) -> typing.Union[executor_pb2.Execution, collections.abc.Awaitable[executor_pb2.Execution]]:
         """Methods for managing Execution"""
 
     @abc.abstractmethod
@@ -294,25 +281,21 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.GetExecutionRequest,
         context: _ServicerContext,
-    ) -> executor_pb2.Execution | collections.abc.Awaitable[executor_pb2.Execution]: ...
+    ) -> typing.Union[executor_pb2.Execution, collections.abc.Awaitable[executor_pb2.Execution]]: ...
+
     @abc.abstractmethod
     def ListExecutions(
         self,
         request: executor_pb2.ListExecutionsRequest,
         context: _ServicerContext,
-    ) -> (
-        executor_pb2.ListExecutionsResponse
-        | collections.abc.Awaitable[executor_pb2.ListExecutionsResponse]
-    ): ...
+    ) -> typing.Union[executor_pb2.ListExecutionsResponse, collections.abc.Awaitable[executor_pb2.ListExecutionsResponse]]: ...
+
     @abc.abstractmethod
     def DeleteExecution(
         self,
         request: executor_pb2.DeleteExecutionRequest,
         context: _ServicerContext,
-    ) -> (
-        google.protobuf.empty_pb2.Empty
-        | collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]
-    ):
+    ) -> typing.Union[google.protobuf.empty_pb2.Empty, collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]]:
         """No UpdateExecution"""
 
     @abc.abstractmethod
@@ -320,12 +303,7 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         self,
         request: executor_pb2.CommXchgRequest,
         context: _ServicerContext,
-    ) -> (
-        google.protobuf.empty_pb2.Empty
-        | collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]
-    ):
+    ) -> typing.Union[google.protobuf.empty_pb2.Empty, collections.abc.Awaitable[google.protobuf.empty_pb2.Empty]]:
         """Methods for inter-party communication"""
 
-def add_ExecutorServiceServicer_to_server(
-    servicer: ExecutorServiceServicer, server: grpc.Server | grpc.aio.Server
-) -> None: ...
+def add_ExecutorServiceServicer_to_server(servicer: ExecutorServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...

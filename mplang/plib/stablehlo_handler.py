@@ -138,4 +138,4 @@ class StablehloHandler(PFunctionHandler):
             return output_tensors
 
         except Exception as e:
-            raise RuntimeError(f"Failed to execute compiled function: {e}")
+            raise RuntimeError(f"Failed to execute compiled function: {e}") from e

@@ -101,14 +101,14 @@ class DType:
     @classmethod
     def from_python_type(cls, py_type: type) -> DType:
         """Convert from Python builtin type to custom DType."""
-        if py_type == bool:
+        if py_type is bool:
             return cls("bool", 8, None, False, False)
-        elif py_type == int:
+        elif py_type is int:
             # Use platform-dependent int size (usually 64-bit)
             return cls("int64", 64, True, False, False)
-        elif py_type == float:
+        elif py_type is float:
             return cls("float64", 64, True, True, False)
-        elif py_type == complex:
+        elif py_type is complex:
             return cls("complex128", 128, True, True, True)
         else:
             raise ValueError(f"Unsupported Python type: {py_type}")

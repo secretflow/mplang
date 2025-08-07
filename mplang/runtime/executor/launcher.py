@@ -65,7 +65,11 @@ def cmd_main(main, nodes_def):
         devices_conf = parse_device_conf(conf["devices"])
         DeviceContext(devices_conf)
         used_node_ids = list(
-            set(functools.reduce(operator.iadd, [info.node_ids for info in devices_conf.values()], []))
+            set(
+                functools.reduce(
+                    operator.iadd, [info.node_ids for info in devices_conf.values()], []
+                )
+            )
         )
         assert all(nid in nodes_def for nid in used_node_ids), (
             "Some node ids are not defined in the config."

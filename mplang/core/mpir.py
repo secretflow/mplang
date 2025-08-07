@@ -30,7 +30,6 @@ from mplang.expr.ast import (
     ConstExpr,
     ConvExpr,
     EvalExpr,
-    FuncDefExpr,
     RandExpr,
     RankExpr,
     ShflExpr,

@@ -24,12 +24,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TypeVar
+from typing import ClassVar, TypeVar
 
 from mplang.utils.path_template import PathTemplate
 
 # Type variable for generic resource types
-T = TypeVar("T", bound="Resource")
+T = TypeVar("T", bound="ResourceName")
 
 # =============================================================================
 # Scope Definitions
@@ -376,7 +376,7 @@ class MessageName(ResourceName):
 class ResourceParser:
     """Generic resource parser that can parse any type of resource path"""
 
-    _RESOURCE_TYPES: list[type[ResourceName]] = [
+    _RESOURCE_TYPES: ClassVar[list[type[ResourceName]]] = [
         MessageName,
         SymbolName,
         ExecutionName,

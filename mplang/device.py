@@ -32,7 +32,7 @@ from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc
-from mplang.core.base import MPObject
+from mplang.core.base import MPObject, set_ctx
 from mplang.core.interp import InterpContext
 from mplang.core.primitive import primitive
 from mplang.runtime.driver import ExecutorDriver
@@ -120,7 +120,7 @@ def init(device_def: dict, nodes_def: dict | None = None):
     else:
         driver = ExecutorDriver(nodes_def, spu_mask=spu_mask, device_ctx=device_ctx)
 
-    mapi.set_ctx(driver)
+    set_ctx(driver)
 
 
 function = primitive

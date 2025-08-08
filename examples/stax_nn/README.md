@@ -7,7 +7,7 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 1. Launch SPU backend runtime
 
     ```sh
-    uv sync --extra examples
+    uv sync --group examples
 
     uv run examples/stax_nn/stax_nn.py --action up
     ```

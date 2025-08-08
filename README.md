@@ -82,10 +82,8 @@ uv pip install .
 For development, install in editable mode with all development dependencies:
 
 ```bash
-uv pip install -e ".[dev]"
+uv pip install -e .
 ```
-
-**Note for zsh users:** Use quotes around `".[dev]"` to avoid shell expansion issues.
 
 This will install:
 
@@ -114,7 +112,7 @@ This will install:
    uv venv
    source .venv/bin/activate
 
-   uv pip install -e ".[dev]"
+   uv pip install -e .
    ```
 
 3. Verify installation:
@@ -126,7 +124,7 @@ This will install:
 ### Running Tests
 
 ```bash
-uv sync --extra dev
+uv sync --group dev
 # Run tests with pytest
 uv run pytest
 ```
@@ -135,7 +133,7 @@ uv run pytest
 
 ```bash
 # install dev dependencies
-uv sync --extra dev
+uv sync --group dev
 # Format and lint code (ruff replaces black, isort, and flake8)
 uv run ruff check . --fix
 uv run ruff format .

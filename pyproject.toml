@@ -7,6 +7,9 @@ name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
 
+[tool.uv]
+default-groups = ["dev"]
+
 [project]
 name = "mplang"
 version = "0.1.0"
@@ -24,7 +27,8 @@ dependencies = [
     "protobuf>=4.21.6,<5.0",
     "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
 ]
-[project.optional-dependencies]
+
+[dependency-groups]
 dev = [
     "ruff",
     "mypy",

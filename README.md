@@ -74,7 +74,7 @@ This compiled graph can then be executed by the MPLang runtime, offering better 
 Install the package directly from source:
 
 ```bash
-pip install .
+uv pip install .
 ```
 
 ### For Developers
@@ -82,7 +82,7 @@ pip install .
 For development, install in editable mode with all development dependencies:
 
 ```bash
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 **Note for zsh users:** Use quotes around `".[dev]"` to avoid shell expansion issues.
@@ -107,37 +107,41 @@ This will install:
 2. Install development dependencies:
 
    ```bash
-   pip install -e ".[dev]"
+   # using uv (recommended)
+   # install uv if not installed
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+
+   uv venv
+   source .venv/bin/activate
+
+   uv pip install -e ".[dev]"
    ```
 
 3. Verify installation:
 
    ```bash
-   python -c "import mplang; print('Installation successful!')"
+   python -c 'import mplang; print("Installation successful!")'
    ```
 
 ### Running Tests
 
 ```bash
-pytest
+uv sync --extra dev
+# Run tests with pytest
+uv run pytest
 ```
 
 ### Code Formatting and Linting
 
 ```bash
+# install dev dependencies
+uv sync --extra dev
 # Format and lint code (ruff replaces black, isort, and flake8)
-ruff check . --fix
-ruff format .
+uv run ruff check . --fix
+uv run ruff format .
 
 # Type checking
-mypy mplang/
-```
-
-### Building Documentation
-
-```bash
-cd docs  # if docs directory exists
-sphinx-build -b html . _build/html
+uv run mypy mplang/
 ```
 
 ## Getting Started
@@ -149,13 +153,13 @@ To install `mplang` and run the tutorials:
 1. Install `mplang` in editable mode (from the root of this `mplang` repo):
 
     ```bash
-    pip install -e .
+    uv pip install -e .
     ```
 
 2. Run a specific tutorial, for example `0_basic.py`:
 
     ```bash
-    python tutorials/0_basic.py
+    uv run tutorials/0_basic.py
     ```
 
     You can replace `0_basic.py` with other tutorial files like `1_condition.py`, `2_whileloop.py`, etc.

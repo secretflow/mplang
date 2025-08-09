@@ -31,23 +31,7 @@ repos:
               .*_pb2_grpc\.pyi
           )$
 
-  # Remove unused imports and variables (should run before formatting)
-  - repo: https://github.com/PyCQA/autoflake
-    rev: v2.3.1
-    hooks:
-      - id: autoflake
-        args: [--remove-all-unused-imports, --in-place, --ignore-init-module-imports]
-        exclude: |
-          (?x)^(
-              mplang/protos/.*|
-              protos/.*|
-              .*_pb2\.py|
-              .*_pb2_grpc\.py|
-              .*_pb2\.pyi|
-              .*_pb2_grpc\.pyi
-          )$
-
-  # Linting and formatting with ruff (replaces flake8, isort, black)
+  # Linting and formatting with ruff (replaces flake8, isort, black, autoflake)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.7
     hooks:
@@ -60,7 +44,3 @@ repos:
     rev: v8.16.3
     hooks:
       - id: gitleaks
-  - repo: https://github.com/pylint-dev/pylint
-    rev: v2.17.2
-    hooks:
-      - id: pylint

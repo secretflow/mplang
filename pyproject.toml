@@ -89,7 +89,6 @@ select = [
 # Ignore some rules that cause too much noise initially
 ignore = [
     "E501",   # line-too-long (will be handled by formatter when possible)
-    "F401",   # unused-import (may be used in other contexts)
     "E731",   # lambda-assignment (can be acceptable in some cases)
     "RUF002", # ambiguous-unicode-character-docstring (may be intentional)
 ]

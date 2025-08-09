@@ -24,3 +24,17 @@ from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
 from mplang.runtime.simulation import Simulator
 
 function = prim.primitive
+
+# Public API
+__all__ = [
+    "CompileOptions",
+    "Simulator",
+    "__version__",
+    "compile",
+    "cur_ctx",
+    "eval",
+    "fetch",
+    "function",
+    "set_ctx",
+    "with_ctx",
+]

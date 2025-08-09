@@ -26,15 +26,15 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-# Enable JAX x64 mode to match type expectations
-jax.config.update("jax_enable_x64", True)
-
 from mplang.core.base import Mask, MPObject, MPType, Rank
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.primitive import cond, constant, prank, pshfl_s, run_jax, while_loop
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
+
+# Enable JAX x64 mode to match type expectations
+jax.config.update("jax_enable_x64", True)
 
 
 @pytest.fixture
@@ -266,7 +266,7 @@ class TestSimulator:
         # Try to evaluate in sim2 with variable from sim1
         bindings: dict[str, MPObject] = {"x": var_sim1}
 
-        with pytest.raises(ValueError, match="Variable .* not in this context"):
+        with pytest.raises(ValueError, match=r"Variable .* not in this context"):
             sim2.evaluate(expr, bindings)
 
     def test_empty_bindings(self, simulator, trace_context):
@@ -1097,7 +1097,7 @@ class TestWhileLoop:
 
         with pytest.raises(
             ValueError,
-            match="Body function output type .* does not match initial state type",
+            match=r"Body function output type .* does not match initial state type",
         ):
             with with_ctx(trace_context):
                 trace(trace_context, invalid_loop)

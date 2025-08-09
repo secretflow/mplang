@@ -33,7 +33,7 @@ def test_morph_struct_type():
     """Test MorphStruct type alias."""
     # Create some test data
     data = {"a": [1, 2], "b": 3}
-    flat_data, tree_def = tree_flatten(data)
+    _flat_data, tree_def = tree_flatten(data)
 
     # Create a MorphStruct
     morph_struct: MorphStruct = (tree_def, (0, 1))
@@ -54,7 +54,7 @@ def test_validate_morph_struct():
     """Test validate_morph_struct function."""
     # Test valid MorphStruct
     data = {"a": [1, 2], "b": 3}
-    flat_data, tree_def = tree_flatten(data)
+    _flat_data, tree_def = tree_flatten(data)
     valid_morph_struct: MorphStruct = (tree_def, (0, 1))
 
     # Should not raise any exception
@@ -275,9 +275,12 @@ def test_is_treedef_list_args_kwargs_structure():
 def test_is_treedef_list_non_list_containers():
     """Test that non-list containers are not recognized as TreeDef lists."""
     # Named tuple
-    from collections import namedtuple
+    from typing import NamedTuple
 
-    Point = namedtuple("Point", ["x", "y"])
+    class Point(NamedTuple):
+        x: int
+        y: int
+
     point = Point(1, 2)
     _, tree_def = tree_flatten(point)
     assert not is_treedef_list(tree_def), (

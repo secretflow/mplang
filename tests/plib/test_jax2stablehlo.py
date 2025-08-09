@@ -18,10 +18,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from mplang.plib import jax2stablehlo
+
 # Enable 64-bit precision in JAX for testing different dtypes
 jax.config.update("jax_enable_x64", True)
-
-from mplang.plib import jax2stablehlo
 
 
 class TestJax2StableHLO:
@@ -132,7 +132,7 @@ class TestJax2StableHLO:
         test_content,
     ):
         """Test compilation of various functions."""
-        cfunc, out_tree = self._compile_with_transformer(
+        cfunc, _out_tree = self._compile_with_transformer(
             test_function, *inputs, **kwargs
         )
 
@@ -179,7 +179,7 @@ class TestJax2StableHLO:
         x = jnp.ones((100, 50))
         y = jnp.ones((50, 75))
 
-        cfunc, out_tree = self._compile_with_transformer(matrix_mul, x, y)
+        cfunc, _out_tree = self._compile_with_transformer(matrix_mul, x, y)
 
         assert cfunc.ins_info[0].shape == x.shape
         assert cfunc.ins_info[1].shape == y.shape
@@ -198,7 +198,7 @@ class TestJax2StableHLO:
         x = jnp.array([1.0, 2.0])
         y = jnp.array([3.0, 4.0])
 
-        cfunc, out_tree = self._compile_with_transformer(
+        cfunc, _out_tree = self._compile_with_transformer(
             multiply_add, x, y, multiplier=2.0, addend=5.0
         )
 
@@ -218,8 +218,8 @@ class TestJax2StableHLO:
         x = jnp.array([1.0, 2.0, 3.0])
 
         # Compile the same function twice
-        cfunc1, out_tree1 = self._compile_with_transformer(simple_func, x)
-        cfunc2, out_tree2 = self._compile_with_transformer(simple_func, x)
+        cfunc1, _out_tree1 = self._compile_with_transformer(simple_func, x)
+        cfunc2, _out_tree2 = self._compile_with_transformer(simple_func, x)
 
         # Should produce identical results
         assert cfunc1.fn_type == cfunc2.fn_type
@@ -237,7 +237,7 @@ class TestJax2StableHLO:
         # 4D tensor
         x = jnp.ones((2, 3, 4, 5))
 
-        cfunc, out_tree = self._compile_with_transformer(tensor_ops, x)
+        cfunc, _out_tree = self._compile_with_transformer(tensor_ops, x)
 
         assert cfunc.ins_info[0].shape == x.shape
         assert cfunc.outs_info[0].shape == (2, 4)
@@ -252,7 +252,7 @@ class TestJax2StableHLO:
         x = jnp.array([1.0, 2.0])
         y = jnp.array([3.0, 4.0])
 
-        cfunc, out_tree = self._compile_with_transformer(multi_output, x, y)
+        cfunc, _out_tree = self._compile_with_transformer(multi_output, x, y)
 
         assert len(cfunc.ins_info) == 2
         assert len(cfunc.outs_info) == 3

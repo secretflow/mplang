@@ -20,7 +20,8 @@ from typing import final
 import numpy as np
 
 try:
-    import jax.numpy as jnp
+    # Check if JAX is available
+    import jax  # noqa: F401
 
     _JAX_AVAILABLE = True
 except ImportError:

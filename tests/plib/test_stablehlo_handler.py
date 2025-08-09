@@ -19,13 +19,13 @@ import jax.numpy as jnp
 import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
-# Enable 64-bit precision in JAX for testing different dtypes
-jax.config.update("jax_enable_x64", True)
-
 from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.plib import jax2stablehlo
 from mplang.plib.stablehlo_handler import StablehloHandler
+
+# Enable 64-bit precision in JAX for testing different dtypes
+jax.config.update("jax_enable_x64", True)
 
 
 class TestStablehloHandler:

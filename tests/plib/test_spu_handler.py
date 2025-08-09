@@ -300,7 +300,7 @@ class TestSpuHandler:
                     party_results[party_id] = "success"
                     result_shares.append(share)
                 except Exception as e:
-                    raise AssertionError(f"Party {i} failed with error: {e}")
+                    raise AssertionError(f"Party {i} failed with error: {e}") from e
 
         # Check that all parties succeeded
         success_count = sum(

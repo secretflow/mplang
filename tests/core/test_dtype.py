@@ -182,13 +182,13 @@ class TestDType:
 
     def test_to_python_type(self):
         """Test converting DType to Python type."""
-        assert BOOL.to_python_type() == bool
-        assert INT64.to_python_type() == int
-        assert FLOAT64.to_python_type() == float
-        assert COMPLEX128.to_python_type() == complex
+        assert BOOL.to_python_type() is bool
+        assert INT64.to_python_type() is int
+        assert FLOAT64.to_python_type() is float
+        assert COMPLEX128.to_python_type() is complex
 
         # Unsigned integers should map to int
-        assert UINT32.to_python_type() == int
+        assert UINT32.to_python_type() is int
 
     @pytest.mark.skipif(not JAX_AVAILABLE, reason="JAX not available")
     def test_to_jax(self):
@@ -341,7 +341,7 @@ class TestTensorInfo:
 
         # Enhanced properties
         assert dtype.to_numpy() == np.float32
-        assert dtype.to_python_type() == float
+        assert dtype.to_python_type() is float
         if JAX_AVAILABLE:
             assert dtype.to_jax() == jnp.float32
 

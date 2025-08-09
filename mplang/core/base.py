@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import copy
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -92,35 +91,6 @@ class MPContext(ABC):
     def attr(self, key: str) -> Any:
         """Return the attribute of the context by key."""
         return self.attrs()[key]
-
-
-# TODO(jint): move this to context_mgr module.
-
-# The global working context.
-_g_ctx: MPContext | None = None
-
-
-def cur_ctx() -> MPContext:
-    if _g_ctx is None:
-        raise ValueError("Interpreter not set. Please call set_interp() first.")
-    return _g_ctx
-
-
-def set_ctx(ctx: MPContext) -> None:
-    global _g_ctx
-    _g_ctx = ctx
-
-
-@contextlib.contextmanager
-def with_ctx(tmp_ctx: MPContext):
-    global _g_ctx
-    _saved = _g_ctx  # Directly save the global interpreter reference
-    try:
-        _g_ctx = tmp_ctx
-        yield tmp_ctx
-    finally:
-        # Restore the previous interpreter even if it was None
-        _g_ctx = _saved
 
 
 class MPType:

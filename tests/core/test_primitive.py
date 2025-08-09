@@ -27,7 +27,8 @@ For complex operations: define a function and trace it
 import numpy as np
 import pytest
 
-from mplang.core.base import Mask, Rank, TensorInfo, cur_ctx
+from mplang.core.base import Mask, Rank, TensorInfo
+from mplang.core.context_mgr import cur_ctx, with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.primitive import (
     _switch_ctx,
@@ -69,8 +70,6 @@ class TestPrimitiveDecorator:
         @primitive
         def simple_func():
             return constant(42)
-
-        from mplang.core.base import with_ctx
 
         with with_ctx(trace_context):
             result = simple_func()

@@ -23,12 +23,8 @@ from jax.tree_util import tree_unflatten
 import mplang.mpi as mpi
 import mplang.utils.mask_utils as mask_utils
 from mplang.core import primitive as prim
-from mplang.core.base import (
-    Mask,
-    MPObject,
-    Rank,
-    cur_ctx,  # TODO(jint): remove cur_ctx
-)
+from mplang.core.base import Mask, MPObject, Rank
+from mplang.core.context_mgr import cur_ctx
 from mplang.plib.spu_fe import SpuFE, Visibility
 
 

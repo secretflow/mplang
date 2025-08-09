@@ -37,8 +37,8 @@ from mplang.core.base import (
     Shape,
     TensorInfo,
     TensorLike,
-    cur_ctx,
 )
+from mplang.core.context_mgr import cur_ctx
 from mplang.core.dtype import UINT64
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.pfunc import PFunction

@@ -25,9 +25,217 @@ from mplang.core.dtype import DType
 
 # basic type aliases
 Rank = int
-Mask = int
 Shape = tuple[int, ...]
 ScalarType = int | float | bool | complex
+
+
+class Mask:
+    """A class representing a party mask used for multi-party operations.
+    
+    A mask is a bitmask where the i'th bit is 1 if the i'th party participates,
+    and 0 otherwise. For example, 0b1101 means parties 0, 2, and 3 participate.
+    """
+    
+    def __init__(self, value: int):
+        """Initialize a Mask from an integer value.
+        
+        Args:
+            value: The integer representation of the mask. Must be non-negative.
+            
+        Raises:
+            ValueError: If value is negative.
+        """
+        if not isinstance(value, int) or value < 0:
+            raise ValueError(f"Mask value must be a non-negative integer, got {value}")
+        self._value = value
+    
+    @property
+    def value(self) -> int:
+        """Get the integer value of the mask."""
+        return self._value
+    
+    def bit_count(self) -> int:
+        """Return the number of set bits (participating parties)."""
+        return self._value.bit_count()
+    
+    def enum(self):
+        """Enumerate all party ranks that are set in this mask."""
+        mask = self._value
+        i = 0
+        while mask != 0:
+            if mask & 1:
+                yield i
+            mask >>= 1
+            i += 1
+    
+    def contains_rank(self, rank: Rank) -> bool:
+        """Check if a rank is set in this mask."""
+        return (1 << rank) & self._value != 0
+    
+    def ensure_rank_in(self, rank: Rank) -> None:
+        """Ensure a rank is set in this mask, raise ValueError if not."""
+        if not self.contains_rank(rank):
+            raise ValueError(f"Rank {rank} is not in the party mask {self._value}")
+    
+    def is_subset_of(self, other: "Mask") -> bool:
+        """Check if this mask is a subset of another mask."""
+        other_value = other._value if isinstance(other, Mask) else other
+        return (self._value & other_value) == self._value
+    
+    def ensure_subset_of(self, other: "Mask") -> None:
+        """Ensure this mask is a subset of another mask."""
+        if not self.is_subset_of(other):
+            other_value = other._value if isinstance(other, Mask) else other
+            raise ValueError(
+                f"Expect subset mask {self._value} to be a subset of superset mask {other_value}."
+            )
+    
+    def is_disjoint_with(self, other: "Mask") -> bool:
+        """Check if this mask is disjoint with another mask."""
+        other_value = other._value if isinstance(other, Mask) else other
+        return (self._value & other_value) == 0
+    
+    def global_to_relative_rank(self, global_rank: int) -> int:
+        """Convert a global rank to relative rank within this mask."""
+        if not (global_rank >= 0 and self.contains_rank(global_rank)):
+            raise ValueError(
+                f"Invalid global_rank ({global_rank}) or bit not set in mask (0b{self._value:b})."
+            )
+        sub_mask = self._value & ((1 << (global_rank + 1)) - 1)
+        return sub_mask.bit_count() - 1
+    
+    def relative_to_global_rank(self, relative_rank: int) -> int:
+        """Convert a relative rank to global rank within this mask."""
+        if not (0 <= relative_rank < self.bit_count()):
+            raise ValueError(
+                f"Invalid relative_rank ({relative_rank}) for mask (0b{self._value:b}) "
+                f"with {self.bit_count()} set bits."
+            )
+        temp_mask = self._value
+        for _ in range(relative_rank):
+            temp_mask &= temp_mask - 1
+        return (temp_mask & -temp_mask).bit_length() - 1
+    
+    @staticmethod
+    def union(*masks: "Mask") -> "Mask":
+        """Return the union of multiple masks."""
+        if not masks:
+            raise ValueError("At least one mask is required for union.")
+        result_value = masks[0]._value if isinstance(masks[0], Mask) else masks[0]
+        for mask in masks[1:]:
+            mask_value = mask._value if isinstance(mask, Mask) else mask
+            result_value |= mask_value
+        return Mask(result_value)
+    
+    @staticmethod
+    def join(*masks: "Mask") -> "Mask":
+        """Return the intersection of multiple masks."""
+        if not masks:
+            return Mask(0)
+        result_value = masks[0]._value if isinstance(masks[0], Mask) else masks[0]
+        for mask in masks[1:]:
+            mask_value = mask._value if isinstance(mask, Mask) else mask
+            result_value &= mask_value
+        return Mask(result_value)
+    
+    @staticmethod
+    def are_disjoint(*masks: "Mask") -> bool:
+        """Check if all masks are disjoint."""
+        joint_value = 0
+        for mask in masks:
+            mask_value = mask._value if isinstance(mask, Mask) else mask
+            if joint_value & mask_value:
+                return False
+            joint_value |= mask_value
+        return True
+    
+    # Support for int-like operations
+    def __int__(self) -> int:
+        """Convert to integer for backward compatibility."""
+        return self._value
+    
+    def __index__(self) -> int:
+        """Support for use in contexts requiring an integer index."""
+        return self._value
+    
+    def __eq__(self, other) -> bool:
+        """Check equality with another Mask or int."""
+        if isinstance(other, Mask):
+            return self._value == other._value
+        elif isinstance(other, int):
+            return self._value == other
+        return False
+    
+    def __hash__(self) -> int:
+        """Hash based on the integer value."""
+        return hash(self._value)
+    
+    def __repr__(self) -> str:
+        """String representation showing both decimal and binary."""
+        return f"Mask({self._value})"
+    
+    def __str__(self) -> str:
+        """String representation."""
+        return str(self._value)
+    
+    # Bitwise operations
+    def __or__(self, other) -> "Mask":
+        """Bitwise OR operation."""
+        other_value = other._value if isinstance(other, Mask) else other
+        return Mask(self._value | other_value)
+    
+    def __and__(self, other) -> "Mask":
+        """Bitwise AND operation."""
+        other_value = other._value if isinstance(other, Mask) else other
+        return Mask(self._value & other_value)
+    
+    def __xor__(self, other) -> "Mask":
+        """Bitwise XOR operation."""
+        other_value = other._value if isinstance(other, Mask) else other
+        return Mask(self._value ^ other_value)
+    
+    def __invert__(self) -> "Mask":
+        """Bitwise NOT operation (returns large positive number)."""
+        return Mask(~self._value & ((1 << 64) - 1))  # Limit to 64 bits
+    
+    def __lshift__(self, other: int) -> "Mask":
+        """Left shift operation."""
+        return Mask(self._value << other)
+    
+    def __rshift__(self, other: int) -> "Mask":
+        """Right shift operation."""
+        return Mask(self._value >> other)
+    
+    # Reverse operations for when Mask is on the right side
+    def __ror__(self, other) -> "Mask":
+        return Mask(other | self._value)
+    
+    def __rand__(self, other) -> "Mask":
+        return Mask(other & self._value)
+    
+    def __rxor__(self, other) -> "Mask":
+        return Mask(other ^ self._value)
+    
+    # Comparison operations
+    def __lt__(self, other) -> bool:
+        other_value = other._value if isinstance(other, Mask) else other
+        return self._value < other_value
+    
+    def __le__(self, other) -> bool:
+        other_value = other._value if isinstance(other, Mask) else other
+        return self._value <= other_value
+    
+    def __gt__(self, other) -> bool:
+        other_value = other._value if isinstance(other, Mask) else other
+        return self._value > other_value
+    
+    def __ge__(self, other) -> bool:
+        other_value = other._value if isinstance(other, Mask) else other
+        return self._value >= other_value
+    
+    def __bool__(self) -> bool:
+        """Truth value testing."""
+        return self._value != 0
 
 
 @runtime_checkable
@@ -100,7 +308,7 @@ class MPType:
         self,
         dtype: DType,
         shape: Shape,
-        pmask: Mask | None = None,
+        pmask: Mask | int | None = None,
         attrs: dict[str, Any] | None = None,
     ):
         """Initialize MPType.
@@ -114,6 +322,10 @@ class MPType:
         # Convert dtype to DType if needed
         if not isinstance(dtype, DType):
             dtype = DType.from_any(dtype)
+        
+        # Convert pmask to Mask if needed
+        if pmask is not None and not isinstance(pmask, Mask):
+            pmask = Mask(pmask)
 
         self._dtype = dtype
         self._shape = shape
@@ -162,8 +374,10 @@ class MPType:
         return self._pmask
 
     @pmask.setter
-    def pmask(self, value: Mask | None) -> None:
+    def pmask(self, value: Mask | int | None) -> None:
         """Set the party mask."""
+        if value is not None and not isinstance(value, Mask):
+            value = Mask(value)
         self._pmask = value
 
     @property
@@ -255,7 +469,7 @@ class MPType:
     def from_tensor(
         cls,
         obj: TensorLike | ScalarType,
-        pmask: Mask | None = None,
+        pmask: Mask | int | None = None,
         **kwargs,
     ) -> MPType:
         attrs = copy.copy(kwargs)

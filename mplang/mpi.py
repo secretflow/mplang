@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 
 import mplang.core.primitive as prim
-import mplang.utils.mask_utils as mask_utils
 from mplang.core.base import Mask, MPObject, Rank
 
 
@@ -36,10 +35,13 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
         if arg.pmask is None:
             logging.warning(f"Scattering dynamic {arg} from static root {root}")
         else:
-            if not mask_utils.is_subset(1 << root, arg.pmask):
+            arg_pmask = arg.pmask if isinstance(arg.pmask, Mask) else Mask(arg.pmask)
+            root_mask = Mask(1 << root)
+            if not root_mask.is_subset_of(arg_pmask):
                 raise ValueError(f"Expect root {root} in {arg.pmask}, got {arg}.")
 
-    to_ranks = list(mask_utils.enum_mask(to_mask))
+    to_mask = to_mask if isinstance(to_mask, Mask) else Mask(to_mask)
+    to_ranks = list(to_mask.enum())
     if len(args) != len(to_ranks):
         raise ValueError(f"Expect {len(to_ranks)} args, got {len(args)}. ")
 
@@ -70,17 +72,20 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
     if arg.pmask is None:
         logging.warning(f"Gathering {arg} from {src_mask}, may raise RuntimeError.")
     else:
-        if not mask_utils.is_subset(src_mask, arg.pmask):
+        src_mask_obj = src_mask if isinstance(src_mask, Mask) else Mask(src_mask)
+        arg_pmask = arg.pmask if isinstance(arg.pmask, Mask) else Mask(arg.pmask)
+        if not src_mask_obj.is_subset_of(arg_pmask):
             raise ValueError(f"Expect {src_mask} in {arg.pmask}, got {arg}.")
 
     result = []
     root_mask = Mask(1 << root)
-    for src_rank in mask_utils.enum_mask(src_mask):
+    src_mask_obj = src_mask if isinstance(src_mask, Mask) else Mask(src_mask)
+    for src_rank in src_mask_obj.enum():
         # Shuffle data from src_rank to root
         gathered_data = prim.pshfl_s(arg, root_mask, [src_rank])
         result.append(gathered_data)
 
-    assert len(result) == mask_utils.bit_count(src_mask), (result, src_mask)
+    assert len(result) == src_mask_obj.bit_count(), (result, src_mask)
     return result
 
 
@@ -91,10 +96,13 @@ def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
     if obj.pmask is None:
         logging.warning(f"Broadcasting {obj} from {root}, may raise RuntimeError.")
     else:
-        if not mask_utils.is_subset(1 << root, obj.pmask):
+        root_mask = Mask(1 << root)
+        obj_pmask = obj.pmask if isinstance(obj.pmask, Mask) else Mask(obj.pmask)
+        if not root_mask.is_subset_of(obj_pmask):
             raise ValueError(f"Expect root {root} in obj mask {obj.pmask}.")
 
-    result = prim.pshfl_s(obj, pmask, [root] * mask_utils.bit_count(pmask))
+    pmask_obj = pmask if isinstance(pmask, Mask) else Mask(pmask)
+    result = prim.pshfl_s(obj, pmask, [root] * pmask_obj.bit_count())
 
     assert result.pmask == pmask, (result.pmask, pmask)
     return result
@@ -109,7 +117,9 @@ def p2p(frm: Rank, to: Rank, obj: MPObject) -> MPObject:
     if obj.pmask is None:
         logging.warning(f"P2P {obj} from {frm} to {to}, may raise RuntimeError.")
     else:
-        if not mask_utils.is_subset(1 << frm, obj.pmask):
+        frm_mask = Mask(1 << frm)
+        obj_pmask = obj.pmask if isinstance(obj.pmask, Mask) else Mask(obj.pmask)
+        if not frm_mask.is_subset_of(obj_pmask):
             raise ValueError(f"Expect {frm} in {obj.pmask}, got {obj}.")
 
     if frm == to:
@@ -126,7 +136,9 @@ def allgather_m(pmask: Mask, arg: MPObject) -> list[MPObject]:
     if arg.pmask is None:
         logging.warning(f"Allgathering {arg} from {pmask}, may raise RuntimeError.")
 
-    if not mask_utils.is_subset(pmask, arg.pmask):
+    pmask_obj = pmask if isinstance(pmask, Mask) else Mask(pmask)
+    arg_pmask = arg.pmask if isinstance(arg.pmask, Mask) else Mask(arg.pmask) if arg.pmask is not None else None
+    if arg_pmask is not None and not pmask_obj.is_subset_of(arg_pmask):
         raise ValueError(f"Expect {pmask} in {arg.pmask}, got {arg}.")
 
     # TODO(jint): implement me.

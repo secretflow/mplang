@@ -31,7 +31,6 @@ from mplang.plib.spu_handler import SpuHandler
 from mplang.plib.stablehlo_handler import StablehloHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import ThreadCommunicator
-from mplang.utils import mask_utils
 
 
 class SimVar(InterpVar):
@@ -85,7 +84,8 @@ class Simulator(InterpContext):
 
         # Prepare link context and spu handlers.
         spu_mask: Mask = self.attr("spu_mask")
-        spu_addrs = [f"P{spu_rank}" for spu_rank in mask_utils.enum_mask(spu_mask)]
+        spu_mask = spu_mask if isinstance(spu_mask, Mask) else Mask(spu_mask)
+        spu_addrs = [f"P{spu_rank}" for spu_rank in spu_mask.enum()]
         spu_comms = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
             for idx in range(spu_mask.bit_count())
@@ -100,8 +100,8 @@ class Simulator(InterpContext):
         ]
         for rank, handler in enumerate(spu_handlers):
             handler.set_link_context(
-                spu_comms[mask_utils.global_to_relative_rank(rank, spu_mask)]
-                if mask_utils.is_rank_in(rank, spu_mask)
+                spu_comms[spu_mask.global_to_relative_rank(rank)]
+                if spu_mask.contains_rank(rank)
                 else None
             )
 

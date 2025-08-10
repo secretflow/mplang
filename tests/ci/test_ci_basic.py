@@ -8,6 +8,12 @@ import os
 import sys
 from pathlib import Path
 
+# Import pytest if available for proper test discovery
+try:
+    import pytest
+except ImportError:
+    pytest = None
+
 
 def test_project_structure():
     """Test that the basic project structure exists."""
@@ -41,7 +47,10 @@ def test_can_import_basic_modules():
         import functools
         print("✓ Basic Python modules imported successfully")
     except ImportError as e:
-        pytest.fail(f"Failed to import basic Python modules: {e}")
+        if pytest:
+            pytest.fail(f"Failed to import basic Python modules: {e}")
+        else:
+            raise AssertionError(f"Failed to import basic Python modules: {e}")
 
 
 def test_pyproject_toml_valid():

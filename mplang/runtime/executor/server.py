@@ -33,7 +33,7 @@ import spu.libspu as libspu
 from google.protobuf import empty_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
-import mplang.utils.mask as mask_utils
+from mplang.utils.mask import Mask
 from mplang.core.base import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
@@ -202,11 +202,11 @@ class Execution:
         if (1 << session.rank) & self.spu_mask != 0:
             spu_peer_addrs: list[str] = []
             for rank, addr in enumerate(session.addrs):
-                if mask_utils.is_rank_in(rank, spu_mask):
+                if Mask(spu_mask).is_rank_in(rank):
                     ip, port = addr.split(":")
                     new_addr = f"{ip}:{int(port) + 100}"
                     spu_peer_addrs.append(new_addr)
-            spu_rank = mask_utils.global_to_relative_rank(session.rank, self.spu_mask)
+            spu_rank = Mask(self.spu_mask).global_to_relative_rank(session.rank)
             self.spu_comm = g_link_factory.create_link(spu_rank, spu_peer_addrs)
         else:
             self.spu_comm = None
@@ -242,7 +242,7 @@ class Execution:
         )
 
         # Setup SPU handler
-        spu_handler = SpuHandler(mask_utils.bit_count(self.spu_mask), spu_config)
+        spu_handler = SpuHandler(Mask(self.spu_mask).bit_count(), spu_config)
         if self.spu_comm is not None:
             spu_handler.set_link_context(self.spu_comm)
 

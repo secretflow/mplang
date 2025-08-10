@@ -65,7 +65,7 @@ from mplang.core.context_mgr import with_ctx
 from mplang.core.pfunc import get_fn_name
 from mplang.expr.ast import Expr, FuncDefExpr, TupleExpr, VariableExpr
 from mplang.expr.printer import Printer
-from mplang.utils import mask as mask_utils
+from mplang.utils.mask import Mask
 from mplang.utils.func_utils import MorphStruct, var_demorph, var_morph
 
 
@@ -129,7 +129,7 @@ class TraceContext(MPContext):
             mask = self._mask
         else:
             # ensure mask is subset of the current mask
-            if not mask_utils.is_subset(mask, self._mask):
+            if not Mask(mask).is_subset(self._mask):
                 raise ValueError(
                     f"New mask {mask} must be a subset of the current mask {self._mask}"
                 )

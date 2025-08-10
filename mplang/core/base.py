@@ -23,9 +23,11 @@ import numpy as np
 
 from mplang.core.dtype import DType
 
+# Import Mask class from the utils mask module
+from mplang.utils.mask import Mask
+
 # basic type aliases
 Rank = int
-Mask = int
 Shape = tuple[int, ...]
 ScalarType = int | float | bool | complex
 

@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
+import os
 
 # Direct import to avoid mplang init dependencies
 import sys
-import os
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'mplang', 'utils'))
-import mask
 
 from mask import (
     Mask,
@@ -114,11 +115,11 @@ class TestMaskClass:
     def test_mask_bitwise_operations(self):
         m1 = Mask(5)  # 0b101
         m2 = Mask(3)  # 0b011
-        
+
         assert (m1 & m2).value == 1  # 0b001
         assert (m1 | m2).value == 7  # 0b111
         assert (m1 ^ m2).value == 6  # 0b110
-        
+
         # Test with integers
         assert (m1 & 3).value == 1
         assert (m1 | 2).value == 7
@@ -132,14 +133,14 @@ class TestMaskClass:
         m1 = Mask(5)
         m2 = Mask(3)
         m3 = Mask(5)
-        
+
         assert m1 == m3
         assert m1 != m2
         assert m1 > m2
         assert m2 < m1
         assert m1 >= m3
         assert m2 <= m1
-        
+
         # Test with integers
         assert m1 == 5
         assert m1 != 3
@@ -148,10 +149,10 @@ class TestMaskClass:
         m1 = Mask(5)
         m2 = Mask(5)
         m3 = Mask(3)
-        
+
         assert hash(m1) == hash(m2)
         assert hash(m1) != hash(m3)
-        
+
         # Can be used in sets
         mask_set = {m1, m2, m3}
         assert len(mask_set) == 2
@@ -160,6 +161,61 @@ class TestMaskClass:
         m = Mask(5)
         assert repr(m) == "Mask(5)"
         assert str(m) == "5"
+
+    def test_mask_from_ranks(self):
+        m = Mask.from_ranks(0, 2, 4)
+        assert m.value == 21  # 0b10101
+        assert list(m.enum()) == [0, 2, 4]
+
+    def test_mask_from_ranks_empty(self):
+        m = Mask.from_ranks()
+        assert m.value == 0
+        assert m.is_empty() is True
+
+    def test_mask_from_ranks_invalid(self):
+        with pytest.raises(ValueError):
+            Mask.from_ranks(-1)
+
+    def test_mask_full(self):
+        m = Mask.full(3)
+        assert m.value == 7  # 0b111
+        assert m.size() == 3
+
+    def test_mask_full_invalid(self):
+        with pytest.raises(ValueError):
+            Mask.full(0)
+        with pytest.raises(ValueError):
+            Mask.full(-1)
+
+    def test_mask_empty(self):
+        m = Mask.empty()
+        assert m.value == 0
+        assert m.is_empty() is True
+
+    def test_mask_to_ranks(self):
+        m = Mask(5)  # 0b101
+        assert m.to_ranks() == [0, 2]
+
+    def test_mask_size(self):
+        assert Mask(5).size() == 2
+        assert Mask(7).size() == 3
+        assert Mask(0).size() == 0
+
+    def test_mask_is_empty(self):
+        assert Mask(0).is_empty() is True
+        assert Mask(1).is_empty() is False
+
+    def test_mask_is_single(self):
+        assert Mask(1).is_single() is True  # 0b1
+        assert Mask(4).is_single() is True  # 0b100
+        assert Mask(5).is_single() is False  # 0b101
+        assert Mask(0).is_single() is False
+
+    def test_mask_copy(self):
+        m1 = Mask(5)
+        m2 = m1.copy()
+        assert m1 == m2
+        assert m1 is not m2
 
 
 class TestBitCount:

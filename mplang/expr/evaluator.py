@@ -44,7 +44,7 @@ from mplang.expr.ast import (
     WhileExpr,
 )
 from mplang.expr.visitor import ExprVisitor
-from mplang.utils import mask_utils
+from mplang.utils import mask as mask_utils
 
 
 class Evaluator(ExprVisitor):

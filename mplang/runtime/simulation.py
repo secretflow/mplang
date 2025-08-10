@@ -31,7 +31,7 @@ from mplang.plib.spu_handler import SpuHandler
 from mplang.plib.stablehlo_handler import StablehloHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import ThreadCommunicator
-from mplang.utils import mask_utils
+from mplang.utils import mask as mask_utils
 
 
 class SimVar(InterpVar):

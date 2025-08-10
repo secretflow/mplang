@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 
 import mplang.core.primitive as prim
-import mplang.utils.mask_utils as mask_utils
+import mplang.utils.mask as mask_utils
 from mplang.core.base import Mask, MPObject, Rank
 
 

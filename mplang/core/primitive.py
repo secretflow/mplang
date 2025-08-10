@@ -56,7 +56,7 @@ from mplang.expr.ast import (
     WhileExpr,
 )
 from mplang.plib import jax2stablehlo
-from mplang.utils import mask_utils
+from mplang.utils import mask as mask_utils
 from mplang.utils.func_utils import var_demorph
 
 

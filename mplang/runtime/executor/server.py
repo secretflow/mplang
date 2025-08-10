@@ -33,7 +33,7 @@ import spu.libspu as libspu
 from google.protobuf import empty_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
-import mplang.utils.mask_utils as mask_utils
+import mplang.utils.mask as mask_utils
 from mplang.core.base import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator

@@ -21,7 +21,7 @@ from functools import wraps
 from jax.tree_util import tree_unflatten
 
 import mplang.mpi as mpi
-import mplang.utils.mask_utils as mask_utils
+import mplang.utils.mask as mask_utils
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank
 from mplang.core.context_mgr import cur_ctx

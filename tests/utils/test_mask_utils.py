@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
+# Direct import to avoid mplang init dependencies
+import sys
+
 import pytest
 
-from mplang.utils.mask_utils import (
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'mplang', 'utils'))
+
+from mask import (
     bit_count,
     ensure_rank_in,
     ensure_subset,

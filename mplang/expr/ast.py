@@ -30,7 +30,7 @@ from mplang.core.base import Mask, MPType, Rank, TensorInfo
 from mplang.core.dtype import UINT64
 from mplang.core.pfunc import PFunction
 from mplang.expr.utils import deduce_mask
-from mplang.utils import mask_utils
+from mplang.utils import mask as mask_utils
 
 if TYPE_CHECKING:
     from mplang.expr.visitor import ExprVisitor

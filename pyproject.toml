@@ -21,7 +21,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "spu==0.9.4.dev20250618", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "spu==0.9.4.dev20250312", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "grpcio==1.56.2",
     "grpcio-tools==1.56.2",
     "protobuf>=4.21.6,<5.0",

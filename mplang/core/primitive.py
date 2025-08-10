@@ -56,7 +56,7 @@ from mplang.expr.ast import (
     WhileExpr,
 )
 from mplang.plib import jax2stablehlo
-from mplang.utils import mask_utils
+from mplang.utils.mask import Mask
 from mplang.utils.func_utils import var_demorph
 
 
@@ -301,7 +301,7 @@ def peval(
     if rmask is None and len(args) == 0:
         # If no rmask is provided and no args, use full mask
         rmask = (1 << ctx.psize()) - 1
-    if rmask is not None and not mask_utils.is_subset(rmask, ctx.mask):
+    if rmask is not None and not Mask(rmask).is_subset(ctx.mask):
         raise ValueError(
             f"Specified rmask {rmask} is not a subset of deduced pmask {ctx.mask}"
         )

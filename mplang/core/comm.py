@@ -18,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from mplang.utils.mask_utils import enum_mask
+from mplang.utils.mask import enum_mask
 
 
 class ICommunicator(ABC):

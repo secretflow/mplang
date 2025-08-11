@@ -1,4 +1,4 @@
-name: Ruff Lint
+name: static type check with Mypy
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  lint:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +27,6 @@ jobs:
       run: |
         uv sync --group dev
 
-    - name: Lint with ruff
+    - name: Type check with mypy
       run: |
-        uv run ruff check .
-        uv run ruff format --check .
+        uv run mypy mplang/

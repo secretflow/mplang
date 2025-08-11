@@ -25,7 +25,11 @@ dependencies = [
     "grpcio==1.56.2",
     "grpcio-tools==1.56.2",
     "protobuf>=4.21.6,<5.0",
+    "ibis-framework",
+    # runtime only
     "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
+    "duckdb",
+    "pandas",
 ]
 
 [dependency-groups]

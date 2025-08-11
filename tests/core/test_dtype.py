@@ -27,6 +27,8 @@ from mplang.core.dtype import (
     INT16,
     INT32,
     INT64,
+    OBJECT,
+    STR,
     UINT8,
     UINT16,
     UINT32,
@@ -125,6 +127,8 @@ class TestDType:
             (np.float64, FLOAT64),
             (np.complex64, COMPLEX64),
             (np.complex128, COMPLEX128),
+            (np.str_, STR),
+            (np.object_, OBJECT),
         ]
 
         for np_dtype, expected_dtype in test_cases:
@@ -174,6 +178,8 @@ class TestDType:
             (UINT64, np.uint64),
             (FLOAT32, np.float32),
             (COMPLEX128, np.complex128),
+            (STR, np.str_),
+            (OBJECT, np.object_),
         ]
 
         for dtype, expected_np_type in test_cases:

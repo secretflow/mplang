@@ -322,7 +322,7 @@ class TestMPICommunication:
 
         # Broadcast to single party
         broadcasted = mplang.eval(single_party_sim, mpi.bcast_m, 1, 0, original_data)
-        original_data_result, broadcasted = mplang.fetch(
+        _original_data_result, broadcasted = mplang.fetch(
             single_party_sim, (original_data, broadcasted)
         )
         assert broadcasted == [42]

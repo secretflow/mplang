@@ -529,7 +529,7 @@ class TestWriterReader:
         graph = mpir_pb2.GraphProto()
         graph.outputs.append("nonexistent_node")
 
-        with pytest.raises(ValueError, match="Output .* not found"):
+        with pytest.raises(ValueError, match=r"Output .* not found"):
             reader.loads(graph)
 
     def test_reader_unsupported_node_type(self):
@@ -587,7 +587,7 @@ class TestErrorHandling:
         graph.outputs.append("%0")
 
         reader = Reader()
-        with pytest.raises(ValueError, match="Input .* not found"):
+        with pytest.raises(ValueError, match=r"Input .* not found"):
             reader.loads(graph)
 
 

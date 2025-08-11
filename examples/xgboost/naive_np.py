@@ -24,7 +24,7 @@ class DecisionTree:
         self.tree = None
 
     def _compute_best_split(self, X, g, h, lambda_, gamma, min_child_weight):
-        n_samples, n_features = X.shape
+        _n_samples, n_features = X.shape
         best_gain = -np.inf
         best_feature = -1
         best_threshold = 0.0

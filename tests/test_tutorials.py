@@ -42,14 +42,14 @@ class TestTutorialBasicExamples:
             y = simp.runAt(1, range_rand)()
 
             # both of them seal it
-            _x = smpc.sealFrom(x, 0)
-            _y = smpc.sealFrom(y, 1)
+            x_ = smpc.sealFrom(x, 0)
+            y_ = smpc.sealFrom(y, 1)
 
             # compare it securely
-            _z = smpc.srun(lambda x, y: x < y)(_x, _y)
+            z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
 
             # reveal it to all
-            z = smpc.reveal(_z)
+            z = smpc.reveal(z_)
 
             return x, y, z
 
@@ -105,12 +105,12 @@ class TestTutorialConditionalExamples:
             x = mpr.prandint(0, 10)
 
             # seal all parties private variable
-            _xs = smpc.seal(x)
+            xs_ = smpc.seal(x)
 
             # Sum it privately, and compare to 15
-            _pred = smpc.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(_xs)
+            pred_ = smpc.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
             # Reveal the comparison result
-            pred = smpc.reveal(_pred)
+            pred = smpc.reveal(pred_)
 
             # if the sum is greater than 15, return it, else return negate of it
             pos = simp.run(lambda x: x)(x)
@@ -152,7 +152,7 @@ class TestTutorialConditionalExamples:
             return x, z
 
         x, z = mplang.eval(sim3, party_branch_on_cond)
-        x_vals, z_vals = mplang.fetch(sim3, (x, z))
+        _x_vals, z_vals = mplang.fetch(sim3, (x, z))
 
         # Verify party-specific branching
         assert z_vals[0] == 15  # Party 0: 5 + 10
@@ -184,7 +184,7 @@ class TestTutorialWhileLoopExamples:
             return x, r
 
         x, r = mplang.eval(sim2, while_party_local)
-        x_vals, r_vals = mplang.fetch(sim2, (x, r))
+        _x_vals, r_vals = mplang.fetch(sim2, (x, r))
 
         # Each party should reach at least 15
         for r_val in r_vals:
@@ -201,10 +201,10 @@ class TestTutorialWhileLoopExamples:
 
             def cond(x: simp.MPObject):
                 # Seal all parties private
-                _xs = smpc.seal(x)
+                xs_ = smpc.seal(x)
                 # Sum them and reveal it
-                _pred = smpc.srun(lambda i: sum(i) < 15)(_xs)
-                return smpc.reveal(_pred)
+                pred_ = smpc.srun(lambda i: sum(i) < 15)(xs_)
+                return smpc.reveal(pred_)
 
             def body(x: simp.MPObject):
                 return simp.run(lambda x: x + 1)(x)
@@ -215,7 +215,7 @@ class TestTutorialWhileLoopExamples:
             return x, r
 
         x, r = mplang.eval(sim2, while_sum_greater)
-        x_vals, r_vals = mplang.fetch(sim2, (x, r))
+        _x_vals, r_vals = mplang.fetch(sim2, (x, r))
 
         # Sum should be at least 15
         sum_r = sum(r_vals)
@@ -314,14 +314,14 @@ class TestTutorialSimulationExamples:
             y = mpr.prandint(0, 10)
 
             # both of them seal it
-            _x = smpc.sealFrom(x, 0)
-            _y = smpc.sealFrom(y, 1)
+            x_ = smpc.sealFrom(x, 0)
+            y_ = smpc.sealFrom(y, 1)
 
             # compare it securely
-            _z = smpc.srun(lambda x, y: x < y)(_x, _y)
+            z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
 
             # reveal it to all
-            z = smpc.reveal(_z)
+            z = smpc.reveal(z_)
 
             return x, y, z
 

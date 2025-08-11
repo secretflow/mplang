@@ -40,10 +40,10 @@ def set_ctx(ctx: MPContext) -> None:
 @contextlib.contextmanager
 def with_ctx(tmp_ctx: MPContext):
     global _g_ctx
-    _saved = _g_ctx  # Directly save the global interpreter reference
+    saved = _g_ctx  # Directly save the global interpreter reference
     try:
         _g_ctx = tmp_ctx
         yield tmp_ctx
     finally:
         # Restore the previous interpreter even if it was None
-        _g_ctx = _saved
+        _g_ctx = saved

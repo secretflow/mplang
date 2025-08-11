@@ -48,13 +48,13 @@ def negate_if_shared_cond():
     x = mpr.prandint(0, 10)
 
     # seal all parties private variable.
-    _xs = smpc.seal(x)
-    # assert len(_xs) == 2  # Fixed from simp.cur_ctx().psize()
+    xs_ = smpc.seal(x)
+    # assert len(xs_) == 2  # Fixed from simp.cur_ctx().psize()
 
     # Sum it privately, and compare to 15
-    _pred = smpc.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(_xs)
+    pred_ = smpc.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
     # Reveal the comparison result.
-    pred = smpc.reveal(_pred)
+    pred = smpc.reveal(pred_)
 
     # if the sum is greater than 10, return it, else return negate of it.
     pos = simp.run(lambda x: x)(x)

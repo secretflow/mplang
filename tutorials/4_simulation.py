@@ -36,14 +36,14 @@ def millionaire():
     y = mpr.prandint(0, 10)
 
     # both of them seal it
-    _x = smpc.sealFrom(x, 0)
-    _y = smpc.sealFrom(y, 1)
+    x_ = smpc.sealFrom(x, 0)
+    y_ = smpc.sealFrom(y, 1)
 
     # compare it seally.
-    _z = smpc.srun(lambda x, y: x < y)(_x, _y)
+    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = smpc.reveal(_z)
+    z = smpc.reveal(z_)
 
     return x, y, z
 

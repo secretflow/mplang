@@ -144,24 +144,24 @@ class TestOptimizedXGBoostFunctions(unittest.TestCase):
         GH_hist = build_histogram(g, h, bt_local, bin_indices, t, k)
         self.assertEqual(GH_hist.shape, (2, 2, 2, 2))
 
-        expected_G_hist = jnp.array(
-            [[[1.0, 2.0], [3.0, 4.0]], [[2.0, 1.0], [4.0, 3.0]]]
-        )
-        expected_H_hist = jnp.array(
-            [[[0.1, 0.2], [0.3, 0.4]], [[0.2, 0.1], [0.4, 0.3]]]
-        )
+        expected_G_hist = jnp.array([
+            [[1.0, 2.0], [3.0, 4.0]],
+            [[2.0, 1.0], [4.0, 3.0]],
+        ])
+        expected_H_hist = jnp.array([
+            [[0.1, 0.2], [0.3, 0.4]],
+            [[0.2, 0.1], [0.4, 0.3]],
+        ])
 
         self.assertTrue(jnp.allclose(GH_hist[..., 0], expected_G_hist))
         self.assertTrue(jnp.allclose(GH_hist[..., 1], expected_H_hist))
 
     def test_compute_best_split_per_node_optimized(self):
         """Tests the gain calculation for a single node from a combined GH histogram."""
-        GH_node = jnp.array(
-            [
-                [[1.0, 0.5], [2.0, 1.0], [3.0, 1.5]],
-                [[4.0, 2.0], [5.0, 2.5], [6.0, 3.0]],
-            ]
-        )
+        GH_node = jnp.array([
+            [[1.0, 0.5], [2.0, 1.0], [3.0, 1.5]],
+            [[4.0, 2.0], [5.0, 2.5], [6.0, 3.0]],
+        ])
         reg_lambda, gamma, min_child_weight = 1.0, 0.0, 1.0
 
         best_gain, best_feat, best_thresh_idx = _compute_best_split_per_node(
@@ -180,12 +180,10 @@ class TestOptimizedXGBoostFunctions(unittest.TestCase):
 
     def test_compute_best_split_optimized(self):
         """Tests the vectorized best split computation over multiple nodes."""
-        GH_hist = jnp.array(
-            [
-                [[[1.0, 0.5], [2.0, 1.0], [3.0, 1.5]]],
-                [[[10.0, 5.0], [20.0, 10.0], [30.0, 15.0]]],
-            ]
-        ).transpose((1, 0, 2, 3))
+        GH_hist = jnp.array([
+            [[[1.0, 0.5], [2.0, 1.0], [3.0, 1.5]]],
+            [[[10.0, 5.0], [20.0, 10.0], [30.0, 15.0]]],
+        ]).transpose((1, 0, 2, 3))
 
         reg_lambda, gamma, min_child_weight = 1.0, 0.0, 0.0
 

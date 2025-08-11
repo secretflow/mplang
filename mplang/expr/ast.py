@@ -320,9 +320,9 @@ class ConvExpr(Expr):
             logging.warning("pconv called with None pmask.")
             dynamic_pmask = True
 
-        if not mask_utils.is_disjoint(
-            *[pmask for pmask in pmasks if pmask is not None]
-        ):
+        if not mask_utils.is_disjoint(*[
+            pmask for pmask in pmasks if pmask is not None
+        ]):
             raise ValueError(f"pconv called with non-disjoint pmasks: {pmasks}.")
 
         # deduce output pmask.
@@ -501,7 +501,9 @@ class FuncDefExpr(Expr):
         Consider a function that adds two variables:
         ```
         # Body expression tree contains free variables "x" and "y"
-        body = EvalExpr(add_pfunc, [VariableExpr("x", int_type), VariableExpr("y", int_type)])
+        body = EvalExpr(
+            add_pfunc, [VariableExpr("x", int_type), VariableExpr("y", int_type)]
+        )
 
         # Parameters define the binding order - note "y" comes before "x"
         params = ["z", "y", "x"]  # extra parameter "z", different order

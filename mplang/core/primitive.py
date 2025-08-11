@@ -616,13 +616,11 @@ def while_loop(
         secret-shared reduction).
 
         cond_fn::
-            sealed_sum = smpc.reveal(
-                smpc.srun(lambda x: jnp.sum(x))(smpc.seal(x))
-            )
+            sealed_sum = smpc.reveal(smpc.srun(lambda x: jnp.sum(x))(smpc.seal(x)))
             return sealed_sum < constant(10)
 
         body_fn::
-            return x + prank()      # every party adds its own rank
+            return x + prank()  # every party adds its own rank
 
         Iterations (rank 0 & rank 1 example):
 

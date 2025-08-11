@@ -383,19 +383,17 @@ class TestPrinterComplexExpressions:
         call_expr_first = AccessExpr(call_expr, 0)
 
         # 7. Build final comprehensive expression
-        final_expr = TupleExpr(
-            [
-                const_expr,  # ConstExpr
-                rank_expr,  # RankExpr
-                rand_expr,  # RandExpr
-                access_expr,  # AccessExpr
-                conv_expr,  # ConvExpr
-                eval_expr,  # EvalExpr
-                shfl_expr,  # ShflExpr
-                shfl_s_expr,  # ShflSExpr
-                call_expr_first,  # AccessExpr of CallExpr (includes FuncDefExpr, VariableExpr, TupleExpr)
-            ]
-        )
+        final_expr = TupleExpr([
+            const_expr,  # ConstExpr
+            rank_expr,  # RankExpr
+            rand_expr,  # RandExpr
+            access_expr,  # AccessExpr
+            conv_expr,  # ConvExpr
+            eval_expr,  # EvalExpr
+            shfl_expr,  # ShflExpr
+            shfl_s_expr,  # ShflSExpr
+            call_expr_first,  # AccessExpr of CallExpr (includes FuncDefExpr, VariableExpr, TupleExpr)
+        ])
 
         result = printer.print_expr(final_expr)
 

@@ -82,7 +82,7 @@ def millionaire_simp():
 
     # all parties seal it, result a list of sealed values
     xs_ = smpc.seal(x)
-    # assert len(_xs) == 2  # Fixed from simp.cur_ctx().psize()
+    # assert len(xs_) == 2  # Fixed from simp.cur_ctx().psize()
 
     # compare it securely.
     z_ = smpc.srun(lambda x, y: x < y)(*xs_)

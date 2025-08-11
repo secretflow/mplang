@@ -32,14 +32,14 @@ def millionaire():
     y = simp.runAt(1, range_rand)()
 
     # both of them seal it
-    _x = smpc.sealFrom(x, 0)
-    _y = smpc.sealFrom(y, 1)
+    x_ = smpc.sealFrom(x, 0)
+    y_ = smpc.sealFrom(y, 1)
 
     # compare it securely.
-    _z = smpc.srun(lambda x, y: x < y)(_x, _y)
+    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = smpc.reveal(_z)
+    z = smpc.reveal(z_)
 
     return x, y, z
 
@@ -81,14 +81,14 @@ def millionaire_simp():
     x = simp.run(range_rand)()
 
     # all parties seal it, result a list of sealed values
-    _xs = smpc.seal(x)
-    # assert len(_xs) == 2  # Fixed from simp.cur_ctx().psize()
+    xs_ = smpc.seal(x)
+    # assert len(xs_) == 2  # Fixed from simp.cur_ctx().psize()
 
     # compare it securely.
-    _z = smpc.srun(lambda x, y: x < y)(*_xs)
+    z_ = smpc.srun(lambda x, y: x < y)(*xs_)
 
     # reveal it to all.
-    z = smpc.reveal(_z)
+    z = smpc.reveal(z_)
 
     return x, z
 
@@ -161,10 +161,10 @@ def myfun(*args, **kwargs):
     a = simp.runAt(0, lambda v: v * 2)(u)
     b = simp.runAt(1, lambda v: v + 5)(v)
 
-    _x = smpc.sealFrom(x, 0)
-    _y = smpc.sealFrom(y, 1)
-    _z = smpc.srun(lambda x, y: x < y)(_x, _y)
-    c = smpc.reveal(_z)
+    x_ = smpc.sealFrom(x, 0)
+    y_ = smpc.sealFrom(y, 1)
+    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+    c = smpc.reveal(z_)
 
     # return complicated result.
     return a, [b, c2], {"c": c, "c3": c3}

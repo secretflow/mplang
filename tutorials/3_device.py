@@ -87,7 +87,7 @@ def lazy_eval():
     print("r:", r, mplang.fetch(None, r))
 
     print("-" * 10, "myfun", "-" * 10)
-    xx, [yy, c0], res_dict = myfun(x, y)
+    xx, [yy, _c0], res_dict = myfun(x, y)
     print("xx:", xx)
     print("yy:", yy)
     print("res_dict", res_dict)

@@ -218,9 +218,9 @@ class Writer(ExprVisitor):
     def _add_expr_inputs(self, op: mpir_pb2.NodeProto, *exprs: Expr) -> None:
         """Helper: Add expression inputs to NodeProto."""
         for expr in exprs:
-            op.inputs.extend(
-                [self.value_name(expr, i) for i in range(len(expr.mptypes))]
-            )
+            op.inputs.extend([
+                self.value_name(expr, i) for i in range(len(expr.mptypes))
+            ])
 
     def _add_single_expr_inputs(self, op: mpir_pb2.NodeProto, *exprs: Expr) -> None:
         """Helper: Add single-output expression inputs to NodeProto."""

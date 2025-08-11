@@ -420,8 +420,8 @@ def build_tree(
         thresholds = thresholds.at[cur_indices].set(best_thresholds)
 
         # Pre-emptive pruning: A node becomes a leaf if its best gain is <= 0 or NaN/inf.
-        _is_leaf_level = (max_gains <= 0.0) | (~jnp.isfinite(max_gains))
-        is_leaf = is_leaf.at[cur_indices].set(_is_leaf_level)
+        is_leaf_level = (max_gains <= 0.0) | (~jnp.isfinite(max_gains))
+        is_leaf = is_leaf.at[cur_indices].set(is_leaf_level)
 
         # --- Update sample-to-node mapping (`bt`) for the next level ---
         best_feature_for_each_sample = best_features[bt_local]

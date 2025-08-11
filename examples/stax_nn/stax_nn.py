@@ -60,7 +60,7 @@ def train(
     # Model Initialization
     key = jax.random.PRNGKey(42)
     input_shape = tuple(
-        [-1 if idx == 0 else i for idx, i in enumerate(list(train_x.shape))]
+        -1 if idx == 0 else i for idx, i in enumerate(list(train_x.shape))
     )
     _, params_init = init_fun(key, input_shape)
     opt_kind = args.optimizer.lower()
@@ -89,7 +89,7 @@ def train(
             return ce_loss(y, labels), y
 
         grad_fn = jax.value_and_grad(loss_func, has_aux=True)
-        (loss, y), grads = grad_fn(get_params(state))
+        (_loss, _y), grads = grad_fn(get_params(state))
         return opt_update(i, grads, state)
 
     def identity(x):

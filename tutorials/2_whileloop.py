@@ -46,10 +46,10 @@ def while_sum_greater():
 
     def cond(x: simp.MPObject):
         # Seal all parties private
-        _xs = smpc.seal(x)
+        xs_ = smpc.seal(x)
         # Sum them and reveal it.
-        _pred = smpc.srun(lambda i: sum(i) < 15)(_xs)
-        return smpc.reveal(_pred)
+        pred_ = smpc.srun(lambda i: sum(i) < 15)(xs_)
+        return smpc.reveal(pred_)
 
     def body(x: simp.MPObject):
         return simp.run(lambda x: x + 1)(x)
@@ -77,11 +77,11 @@ def while_until_ascending():
 
     def cond(x: simp.MPObject):
         # seal it, or we can not directly compare all parties numbers.
-        _xs = smpc.seal(x)
+        xs_ = smpc.seal(x)
         # check if parties' numbers are accending
-        _p = smpc.srun(not_ascending)(_xs)
+        p_ = smpc.srun(not_ascending)(xs_)
         # reveal the result, all parties agree on it.
-        return smpc.reveal(_p)
+        return smpc.reveal(p_)
 
     def body(x: simp.MPObject):
         # randomize a new number

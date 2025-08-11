@@ -511,7 +511,7 @@ class TestTrace:
         """Test that trace preserves complex input structures."""
 
         def structured_func(args_tuple, kwargs_dict):
-            x, y = args_tuple
+            x, _y = args_tuple
             kwargs_dict["key"]
             return x  # Return first argument for simplicity
 

@@ -101,17 +101,15 @@ class PFunction:
         # Custom hash implementation that handles non-hashable fields
         hashable_fn_body = id(self.fn_body) if self.fn_body is not None else None
 
-        return hash(
-            (
-                self.fn_type,
-                self.fn_name,
-                hashable_fn_body,
-                self.fn_text,
-                self.ins_info,
-                self.outs_info,
-                frozenset(self.attrs.items()),
-            )
-        )
+        return hash((
+            self.fn_type,
+            self.fn_name,
+            hashable_fn_body,
+            self.fn_text,
+            self.ins_info,
+            self.outs_info,
+            frozenset(self.attrs.items()),
+        ))
 
     def __eq__(self, other):
         """Check equality between PFunction instances."""

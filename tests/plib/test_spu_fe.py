@@ -66,7 +66,7 @@ class TestSpuFECompile:
 
         # Predicate: treat tensor-like objects as variables, others as constants
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
+        cfunc, _, _out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
 
         # Verify basic properties
         assert cfunc.fn_type == "spu.run"
@@ -171,7 +171,7 @@ class TestSpuFECompile:
         args = [TensorInfo(shape=(3,), dtype=jnp.float32)]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
+        cfunc, _, _out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
 
         # Should have expected number of outputs
         assert len(cfunc.outs_info) == expected_outputs
@@ -246,7 +246,7 @@ class TestSpuFECompile:
         # Should handle compilation errors gracefully
         try:
             is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-            cfunc, _, _ = self.spu_fe.compile_jax(is_var, invalid_fn, *args)
+            _cfunc, _, _ = self.spu_fe.compile_jax(is_var, invalid_fn, *args)
             # If it doesn't raise an error, that's also okay
             # The error handling depends on SPU frontend behavior
         except Exception:
@@ -285,8 +285,8 @@ class TestSpuFECompile:
 
         # Compile the same function twice
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc1, _, out_tree1 = self.spu_fe.compile_jax(is_var, simple_func, *args)
-        cfunc2, _, out_tree2 = self.spu_fe.compile_jax(is_var, simple_func, *args)
+        cfunc1, _, _out_tree1 = self.spu_fe.compile_jax(is_var, simple_func, *args)
+        cfunc2, _, _out_tree2 = self.spu_fe.compile_jax(is_var, simple_func, *args)
 
         # Should produce identical results
         assert cfunc1.fn_type == cfunc2.fn_type
@@ -347,7 +347,7 @@ class TestSpuFECompile:
             args = [TensorInfo(shape=input_shape, dtype=jnp.float32)]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
+        cfunc, _, _out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
 
         # Verify compilation succeeded
         assert cfunc.fn_text is not None

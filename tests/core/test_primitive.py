@@ -310,7 +310,7 @@ class TestPeval:
 
             # Use the new compilation method
             is_mpobject = lambda obj: isinstance(obj, TraceVar)
-            pfunc, in_vars, out_tree = jax2stablehlo.compile(
+            pfunc, in_vars, _out_tree = jax2stablehlo.compile(
                 is_mpobject, simple_add, x, y
             )
             results = peval(pfunc, in_vars)
@@ -342,7 +342,7 @@ class TestPeval:
 def run_jax(op_fn, *args):
     """Helper function for arithmetic operations using JAX."""
     is_mpobject = lambda obj: isinstance(obj, TraceVar)
-    pfunc, in_vars, out_tree = jax2stablehlo.compile(is_mpobject, op_fn, *args)
+    pfunc, in_vars, _out_tree = jax2stablehlo.compile(is_mpobject, op_fn, *args)
     outs = peval(pfunc, in_vars)
     return outs[0]
 
@@ -1003,7 +1003,7 @@ class TestWhileLoop:
         # This should raise a ValueError due to type mismatch
         with pytest.raises(
             ValueError,
-            match="Body function output type .* does not match initial state type",
+            match=r"Body function output type .* does not match initial state type",
         ):
             trace(trace_context, while_func_wrong_type)
 

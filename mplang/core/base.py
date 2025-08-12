@@ -161,7 +161,7 @@ class Mask:
         """Check inequality with another Mask or int."""
         return not self.__eq__(other)
     
-    def __hash__(self) -> bool:
+    def __hash__(self) -> int:
         """Hash based on the integer value."""
         return hash(self._value)
     
@@ -182,7 +182,7 @@ class Mask:
         return str(self._value)
     
     @classmethod
-    def union(*masks: Mask | int) -> Mask:
+    def union(cls, *masks: Mask | int) -> Mask:
         """Return the union of multiple masks."""
         if not masks:
             raise ValueError("At least one mask is required for union.")
@@ -192,7 +192,7 @@ class Mask:
         return result
     
     @classmethod
-    def intersection(*masks: Mask | int) -> Mask:
+    def intersection(cls, *masks: Mask | int) -> Mask:
         """Return the intersection of multiple masks.""" 
         if not masks:
             return Mask(0)
@@ -202,7 +202,7 @@ class Mask:
         return result
     
     @classmethod
-    def is_disjoint(*masks: Mask | int) -> bool:
+    def is_disjoint(cls, *masks: Mask | int) -> bool:
         """Check if all masks are disjoint (no common bits)."""
         joint_mask = 0
         for mask in masks:

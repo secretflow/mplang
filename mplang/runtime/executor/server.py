@@ -104,7 +104,7 @@ class GrpcCommunicator(CommunicatorImpl):
         ]
 
     # override
-    def send(self, to: int, key: str, data: Any):
+    def send(self, to: int, key: str, data: Any) -> None:
         if to == self.rank:
             self.onSent(self.rank, key, data)
             return
@@ -132,10 +132,10 @@ class GrpcCommunicator(CommunicatorImpl):
 class LinkCommFactory:
     """Factory for creating and caching link communicators."""
 
-    def __init__(self):
-        self._cache = {}
+    def __init__(self) -> None:
+        self._cache: dict[tuple[int, tuple[str, ...]], LinkCommunicator] = {}
 
-    def create_link(self, rank: int, addrs: list[str]):
+    def create_link(self, rank: int, addrs: list[str]) -> LinkCommunicator:
         key = (rank, tuple(addrs))
         val = self._cache.get(key, None)
         if val is not None:
@@ -179,14 +179,15 @@ class Execution:
         self.spu_mask = spu_mask
         self.spu_protocol = spu_protocol
         self.spu_field = spu_field
+        self.spu_comm: LinkCommunicator | None = None
 
         # runtime attributes.
         self.symbols: dict[str, Symbol] = {}
         self.state = executor_pb2.ExecutionState.UNSPECIFIED
         self.error: str | None = None
         self.create_time = datetime.datetime.now()
-        self.start_time = None  # type: ignore
-        self.end_time = None  # type: ignore
+        self.start_time: datetime.datetime | None = None
+        self.end_time: datetime.datetime | None = None
 
         # TODO: use per-session communicator
         session = self.db.get_session(session_id)
@@ -337,7 +338,7 @@ class Session:
 class ExecutorState:
     """State management for executor service."""
 
-    def __init__(self, party_id):
+    def __init__(self, party_id: str) -> None:
         self.party_id = party_id
 
         # Resource name to object mapping.
@@ -393,7 +394,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         self._debug_execution = debug_execution
 
     # --- Message Methods ---
-    def CommXchg(self, request, context):
+    def CommXchg(
+        self, request: executor_pb2.CommXchgRequest, context: grpc.ServicerContext
+    ) -> empty_pb2.Empty:
         logging.info(f"CommXchg: {request.name}")
 
         message_resource = MessageName.parse(request.name)
@@ -429,7 +432,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
 
     # --- Symbol Methods ---
 
-    def CreateSymbol(self, request, context):
+    def CreateSymbol(
+        self, request: executor_pb2.CreateSymbolRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.Symbol:
         if request.parent != "":
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
             context.set_details("Parent should be empty for symbols")
@@ -444,7 +449,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         self.symbols[name] = Symbol.from_proto(request.symbol)
         return self.symbols[name].to_proto(name)
 
-    def GetSymbol(self, request, context):
+    def GetSymbol(
+        self, request: executor_pb2.GetSymbolRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.Symbol:
         logging.info(f"GetSymbol: {request.name}")
 
         name = request.name
@@ -500,7 +507,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         context.set_details("Invalid symbol name format")
         return executor_pb2.Symbol()
 
-    def ListSymbols(self, request, context):
+    def ListSymbols(
+        self, request: executor_pb2.ListSymbolsRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.ListSymbolsResponse:
         parent = request.parent
         page_size = request.page_size
         page_token = request.page_token
@@ -564,7 +573,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             symbols=page_symbols, next_page_token=next_page_token
         )
 
-    def UpdateSymbol(self, request, context):
+    def UpdateSymbol(
+        self, request: executor_pb2.UpdateSymbolRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.Symbol:
         name = request.symbol.name
         logging.info(f"UpdateSymbol: {name}")
         symbol = request.symbol
@@ -587,7 +598,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
                 return executor_pb2.Symbol()
         return existing_symbol.to_proto(name)
 
-    def DeleteSymbol(self, request, context):
+    def DeleteSymbol(
+        self, request: executor_pb2.DeleteSymbolRequest, context: grpc.ServicerContext
+    ) -> empty_pb2.Empty:
         logging.info(f"DeleteSymbol: {request.name}")
         name = request.name
         if name not in self.symbols:
@@ -599,7 +612,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
 
     # --- Session Methods ---
 
-    def CreateSession(self, request, context):
+    def CreateSession(
+        self, request: executor_pb2.CreateSessionRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.Session:
         logging.info(f"CreateSession: sessions/{request.session.name}")
 
         if request.parent != "":
@@ -629,7 +644,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         self.sessions[name] = new_session
         return new_session.to_proto()
 
-    def GetSession(self, request, context):
+    def GetSession(
+        self, request: executor_pb2.GetSessionRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.Session:
         logging.info(f"GetSession: {request.name}")
         name = request.name
         if name not in self.sessions:
@@ -638,7 +655,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             return executor_pb2.Session()
         return self.sessions[name].to_proto()
 
-    def ListSessions(self, request, context):
+    def ListSessions(
+        self, request: executor_pb2.ListSessionsRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.ListSessionsResponse:
         page_size = request.page_size
         page_token = request.page_token
 
@@ -668,7 +687,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             sessions=page_sessions_proto, next_page_token=next_page_token
         )
 
-    def DeleteSession(self, request, context):
+    def DeleteSession(
+        self, request: executor_pb2.DeleteSessionRequest, context: grpc.ServicerContext
+    ) -> empty_pb2.Empty:
         name = request.name
         if name not in self.sessions:
             context.set_code(grpc.StatusCode.NOT_FOUND)
@@ -679,7 +700,11 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
 
     # --- Execution Methods ---
 
-    def CreateExecution(self, request, context):
+    def CreateExecution(
+        self,
+        request: executor_pb2.CreateExecutionRequest,
+        context: grpc.ServicerContext,
+    ) -> executor_pb2.Execution:
         logging.info(
             f"CreateExecution: {request.parent}/executions/{request.execution.name}"
         )
@@ -755,7 +780,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
 
         return execution.to_proto()
 
-    def GetExecution(self, request, context):
+    def GetExecution(
+        self, request: executor_pb2.GetExecutionRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.Execution:
         name = request.name
         if name not in self.executions:
             context.set_code(grpc.StatusCode.NOT_FOUND)
@@ -763,7 +790,9 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             return executor_pb2.Execution()
         return self.executions[name].to_proto()
 
-    def ListExecutions(self, request, context):
+    def ListExecutions(
+        self, request: executor_pb2.ListExecutionsRequest, context: grpc.ServicerContext
+    ) -> executor_pb2.ListExecutionsResponse:
         parent = request.parent
         page_size = request.page_size
         page_token = request.page_token
@@ -806,10 +835,11 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             executions=page_executions, next_page_token=next_page_token
         )
 
-    def UpdateExecution(self, request, context) -> None:
-        raise NotImplementedError("UpdateExecution not implemented")
-
-    def DeleteExecution(self, request, context):
+    def DeleteExecution(
+        self,
+        request: executor_pb2.DeleteExecutionRequest,
+        context: grpc.ServicerContext,
+    ) -> empty_pb2.Empty:
         name = request.name
         if name not in self.executions:
             context.set_code(grpc.StatusCode.NOT_FOUND)

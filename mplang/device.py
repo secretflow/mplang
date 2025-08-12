@@ -98,7 +98,7 @@ class DeviceContext:
         return self.node_ids.index(dev_info.node_ids[0])
 
 
-def init(device_def: dict, nodes_def: dict | None = None):
+def init(device_def: dict, nodes_def: dict | None = None) -> None:
     if nodes_def is None:
         nodes_def = {}
     device_conf = parse_device_conf(device_def)

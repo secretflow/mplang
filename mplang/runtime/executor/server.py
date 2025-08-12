@@ -803,7 +803,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             executions=page_executions, next_page_token=next_page_token
         )
 
-    def UpdateExecution(self, request, context):
+    def UpdateExecution(self, request, context) -> None:
         raise NotImplementedError("UpdateExecution not implemented")
 
     def DeleteExecution(self, request, context):
@@ -821,7 +821,7 @@ def serve(
     addr: str,
     max_message_length: int = 1024 * 1024 * 1024,
     debug_execution: bool = False,
-):
+) -> None:
     """Start the executor service server."""
 
     def make_stub(addr: str):
@@ -886,7 +886,7 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False):
         workers.append(worker)
         worker.start()
 
-    def signal_handler(signum, frame):
+    def signal_handler(signum, frame) -> None:
         """Handle signals and forcefully terminate all child processes."""
         logging.info(f"Received signal {signum}, terminating all child processes...")
         for worker in workers:

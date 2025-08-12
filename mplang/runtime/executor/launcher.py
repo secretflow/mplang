@@ -38,7 +38,7 @@ from mplang.runtime.executor.server import (
 from mplang.runtime.simulation import Simulator
 
 
-def cmd_main(main, nodes_def):
+def cmd_main(main, nodes_def) -> None:
     """Legacy command line interface - maintained for backward compatibility."""
     import argparse
     import json

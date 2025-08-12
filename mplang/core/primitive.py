@@ -62,7 +62,7 @@ from mplang.core.base import (
     MPObject,
     Rank,
 )
-from mplang.core.trace import TracedMPType, Tracer
+from mplang.core.trace import TraceContext, TraceVar
 from mplang.utils.func_utils import var_demorph
 
 

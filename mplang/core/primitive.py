@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial, wraps
-from typing import Any, cast
+from typing import Any, ParamSpec, TypeVar, cast
 
 from jax.tree_util import tree_map, tree_unflatten
 
@@ -91,11 +91,16 @@ def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
         raise ValueError(f"Unsupported context type: {type(ctx)}")
 
 
-def primitive(fn: Callable) -> Callable:
+# Define type variables for preserving function signatures
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def primitive(fn: Callable[P, R]) -> Callable[P, R]:
     """A decorator to make all primitive call in trace context."""
 
     @wraps(fn)
-    def wrapped(*args: Any, **kwargs: Any) -> Any:
+    def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
         current_ctx = cur_ctx()
         if isinstance(current_ctx, TraceContext):
             # If we are in a tracer context, just call the function.
@@ -107,7 +112,7 @@ def primitive(fn: Callable) -> Callable:
             # TODO(jint): should we add trace_and_apply to improve the performance?
             traced_fn = trace(trace_ctx, fn, *args, **kwargs)
             # Return back to the original context.
-            return apply(current_ctx, traced_fn, *args, **kwargs)
+            return cast(R, apply(current_ctx, traced_fn, *args, **kwargs))
         else:
             raise ValueError(f"Unsupported context type: {type(current_ctx)}")
 

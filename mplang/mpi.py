@@ -127,7 +127,8 @@ def allgather_m(pmask: Mask, arg: MPObject) -> list[MPObject]:
         logging.warning(f"Allgathering {arg} from {pmask}, may raise RuntimeError.")
     else:
         if not mask_utils.is_subset(pmask, arg.pmask):
-            raise ValueError(f"Expect {pmask} in {arg.pmask}, got {arg}.")
+    if not mask_utils.is_subset(pmask, arg.pmask):
+        raise ValueError(f"Expect {pmask} in {arg.pmask}, got {arg}.")
 
     # TODO(jint): implement me.
     raise NotImplementedError("Allgather not implemented")

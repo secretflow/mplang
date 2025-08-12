@@ -20,16 +20,14 @@ jobs:
             - v1-dependencies-{{ checksum "pyproject.toml" }}
             - v1-dependencies-
       - run:
-          name: Install uv and setup uv
+          name: Install uv
           command: |
             curl -LsSf https://astral.sh/uv/install.sh | sh
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> $BASH_ENV
-            source $BASH_ENV
-            uv venv
-            source .venv/bin/activate
+            uv --version
       - run:
           name: Install dependencies
           command: |
+            uv venv
             uv sync --group dev
       - save_cache:
           paths:

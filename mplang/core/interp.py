@@ -153,10 +153,13 @@ def apply(ctx: InterpContext, fn: TracedFunction, *args: Any, **kwargs: Any) -> 
     }
 
     if len(fn.out_vars) == 0:
-        out_vars = []
+        out_vars: list[MPObject] = []
     else:
         func_expr = fn.make_expr()
         assert func_expr is not None, "Function expression should not be None."
-        out_vars = ctx.evaluate(func_expr.body, {**arg_binding, **capture_binding})
+        out_vars = list(
+            ctx.evaluate(func_expr.body, {**arg_binding, **capture_binding})
+        )
 
+    assert isinstance(out_vars, list), f"Expected list, got {type(out_vars)}"
     return var_demorph(out_vars, fn.out_imms, fn.out_struct)

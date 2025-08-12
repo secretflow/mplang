@@ -18,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from mplang.utils.mask_utils import enum_mask
+from mplang.core.base import Mask
 
 
 class ICommunicator(ABC):
@@ -88,9 +88,10 @@ class ICollective(ABC):
         """Broadcast data from root to parties in pmask"""
 
 
-def is_rank_in(rank: int, mask: int) -> bool:
-    """Check if the given rank is in the mask"""
-    return (1 << rank) & mask != 0
+# Remove this function since we now use Mask.is_rank_in method
+# def is_rank_in(rank: int, mask: int) -> bool:
+#     """Check if the given rank is in the mask"""
+#     return (1 << rank) & mask != 0
 
 
 class CollectiveMixin(ICommunicator, ICollective):
@@ -147,13 +148,13 @@ class CollectiveMixin(ICommunicator, ICollective):
 
         cid = self.new_id()
 
-        if is_rank_in(self.rank, pmask):
+        if Mask(pmask).is_rank_in(self.rank):
             self.send(root, cid, data)
 
         if self.rank == root:
-            res = [self.recv(idx, cid) for idx in enum_mask(pmask)]
+            res = [self.recv(idx, cid) for idx in Mask(pmask).enum_mask()]
         else:
-            res = [None] * pmask.bit_count()
+            res = [None] * Mask(pmask).bit_count()
 
         return res
 
@@ -168,15 +169,15 @@ class CollectiveMixin(ICommunicator, ICollective):
             f"[{self.rank}]: scatter_m: pmask={pmask}, root={root}, args={args}"
         )
         assert 0 <= root < self.world_size
-        assert len(args) == pmask.bit_count(), f"{len(args)} != {pmask.bit_count()}"
+        assert len(args) == Mask(pmask).bit_count(), f"{len(args)} != {Mask(pmask).bit_count()}"
 
         cid = self.new_id()
 
         if self.rank == root:
-            for idx, arg in zip(enum_mask(pmask), args, strict=True):
+            for idx, arg in zip(Mask(pmask).enum_mask(), args, strict=True):
                 self.send(idx, cid, arg)
 
-        if is_rank_in(self.rank, pmask):
+        if Mask(pmask).is_rank_in(self.rank):
             data = self.recv(root, cid)
         else:
             data = None
@@ -193,13 +194,13 @@ class CollectiveMixin(ICommunicator, ICollective):
         logging.debug(f"allgather_m: pmask={pmask}, arg={arg}")
         cid = self.new_id()
 
-        if is_rank_in(self.rank, pmask):
-            for idx in enum_mask(pmask):
-                self.send(idx, cid, arg)
+        if Mask(pmask).is_rank_in(self.rank):
+            for idx in Mask(pmask).enum_mask():
+                self.send(arg, idx, cid)
 
-            res = [self.recv(idx, cid) for idx in enum_mask(pmask)]
+            res = [self.recv(idx, cid) for idx in Mask(pmask).enum_mask()]
         else:
-            res = [None] * pmask.bit_count()
+            res = [None] * Mask(pmask).bit_count()
 
         return res
 
@@ -216,10 +217,10 @@ class CollectiveMixin(ICommunicator, ICollective):
         cid = self.new_id()
 
         if self.rank == root:
-            for idx in enum_mask(pmask):
-                self.send(idx, cid, arg)
+            for idx in Mask(pmask).enum_mask():
+                self.send(arg, idx, cid)
 
-        if is_rank_in(self.rank, pmask):
+        if Mask(pmask).is_rank_in(self.rank):
             return self.recv(root, cid)
         else:
             return None

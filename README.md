@@ -3,165 +3,107 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/secretflow/mplang/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/secretflow/mplang/tree/main)
 
 
-MPLang enables writing programs for multi-device execution (PPU/SPU) with explicit security annotations.
+MPLang (Multi-Party Language) is a single-controller programming library for multi-party and multi-device workloads. It follows the SPMD (Single Program, Multiple Data) model, where one Python program orchestrates multiple parties and devices (e.g., P0/P1/SPU) with explicit security domains. Programs are compilable and auditable, and can run in local simulation or on secure-computation backends.
 
-## 1. Explicit Security with Device Annotation
+## Highlights
 
-MPLang allows you to assign computations to specific devices like "P0", "P1" (parties), and "SP0" (secure computation units).
-This approach makes the security model clear directly from the program syntax, abstracting away underlying cryptographic complexities.
+- Single-controller SPMD: one program, multiple parties in lockstep
+- Explicit devices and security domains: clear annotations for P0/P1/SPU
+- Function-level compilation (@mplang.function): narrow instruction surface, reduce RCE risk, enable graph optimizations and audit
+- Pluggable frontends and backends: not tied to specific FE/BE technologies
+    - Frontends (FE): JAX, Ibis, and other computation frameworks
+    - Backends (BE): StableHLO IR, Substrait IR, SPU PPHlo IR, and other intermediate representations
+    - Execution: in-memory simulation, gRPC-based executors, or your custom engines
 
-### Example: Millionaire's Problem (Device-Annotated)
+## Quick start
+
+Writing multi-party secure computation programs is easy:
+
+Note: The snippet below is illustrative and not directly runnable; for a complete runnable example of the device API, see `tutorials/3_device.py`.
 
 ```python
-import random
 import mplang.device as mpd
 
-# Define device configurations
-device_conf = {
-    "P0": {"type": "PPU", "node_ids": ["node:0"]},
-    "P1": {"type": "PPU", "node_ids": ["node:1"]},
-    "SP0": {"type": "SPU", "node_ids": ["node:0", "node:1"]},
-}
-# Initialize for simulation mode (no real network)
-mpd.init(device_conf, {})
-
 def millionaire():
-    # Alice's wealth, computed on P0
-    alice = mpd.device("P0")(random.randint)(0, 1000)
-    # Bob's wealth, computed on P1
-    bob = mpd.device("P1")(random.randint)(0, 1000)
-
-    # Comparison happens securely on SP0
-    who_is_richer = mpd.device("SP0")(lambda x, y: x < y)(alice, bob)
-
-    # Result can be moved to a specific party, e.g., P0
-    mpd.put("P0", who_is_richer)
-
-# To run:
-# result = millionaire()
-# print(f"Result (device-annotated): {mpd.fetch(result)}")
+    # Alice's value on P0
+    x = mpd.device("P0")(randint)(0, 1000000)
+    # Bob's value on P1
+    y = mpd.device("P1")(randint)(0, 1000000)
+    # Compare values on SPU
+    z = mpd.device("SPU")(lambda a, b: a < b)(x, y)
+    return z
 ```
 
-However, executing Python functions remotely in this manner can introduce system security vulnerabilities and RPC overhead.
-
-## 2. Compilation with `@mpd.function`
-
-To address these concerns, MPLang introduces the `@mpd.function` decorator. Inspired by TensorFlow's `@tf.function`,
-this decorator compiles a Python function containing multiple device calls into a Directed Acyclic Graph (DAG).
-
-**Benefits of Compilation:**
-
-- **Enhanced Security:** Restricts the instruction set for the backend, significantly reducing the Remote Code Execution (RCE) attack surface.
-- **Performance Optimization:** Opens up opportunities for graph analysis and transformation, leading to potential performance gains.
-
-### Example: Compiling the Millionaire's Problem
-
-The previous `millionaire` function can be compiled by simply adding the `@mpd.function` decorator. The core logic and device calls remain unchanged:
+Add one decorator to get the "compiled version":
 
 ```python
-
-@mpd.function # The key change point
+@mplang.function
 def millionaire():
-    alice = mpd.device("P0")(random.randint)(0, 1000)
-    bob = mpd.device("P1")(random.randint)(0, 1000)
-    # nothing change in the function body.
-    ...
+    x = mpd.device("P0")(randint)(0, 1000000)
+    y = mpd.device("P1")(randint)(0, 1000000)
+    z = mpd.device("SPU")(lambda a, b: a < b)(x, y)
+    return z
+
+# Run it
+sim = mplang.Simulator(2)
+result = mplang.eval(sim, millionaire)
+print("result:", mplang.fetch(sim, result))
 ```
 
-This compiled graph can then be executed by the MPLang runtime, offering better security and potential performance improvements.
 
-## Installation
+## Installation and setup
 
-### For Users
+- Install uv (if not installed):
 
-Install the package directly from source:
+    Linux/macOS:
 
-```bash
-uv pip install .
-```
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
 
-### For Developers
+    Or with pipx:
 
-For development, install in editable mode with all development dependencies:
+    ```bash
+    pipx install uv
+    ```
 
-```bash
-uv pip install -e .
-```
+- Install from source:
 
-This will install:
+    ```bash
+    uv pip install .
+    ```
 
-- The package itself in editable mode (changes to source code take effect immediately)
-- All runtime dependencies
-- Development tools: ruff, mypy, pytest, pytest-cov, sphinx, sphinx_rtd_theme
-
-## Development
-
-### Setting up Development Environment
-
-1. Clone the repository:
-
-   ```bash
-   git clone <repository-url>
-   cd mplang
-   ```
-
-2. Install development dependencies:
-
-   ```bash
-   # using uv (recommended)
-   # install uv if not installed
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-
-   uv venv
-   source .venv/bin/activate
-
-   uv pip install -e .
-   ```
-
-3. Verify installation:
-
-   ```bash
-   python -c 'import mplang; print("Installation successful!")'
-   ```
-
-### Running Tests
-
-```bash
-uv sync --group dev
-# Run tests with pytest
-uv run pytest
-```
-
-### Code Formatting and Linting
-
-```bash
-# install dev dependencies
-uv sync --group dev
-# Format and lint code (ruff replaces black, isort, and flake8)
-uv run ruff check . --fix
-uv run ruff format .
-
-# Type checking
-uv run mypy mplang/
-```
-
-## Getting Started
-
-To learn more and see practical examples, please start by exploring the [tutorials/](tutorials/) directory.
-
-To install `mplang` and run the tutorials:
-
-1. Install `mplang` in editable mode (from the root of this `mplang` repo):
+- Editable install for development:
 
     ```bash
     uv pip install -e .
     ```
 
-2. Run a specific tutorial, for example `0_basic.py`:
+- Run tutorials (complete examples and explanations):
 
     ```bash
     uv run tutorials/0_basic.py
     ```
 
-    You can replace `0_basic.py` with other tutorial files like `1_condition.py`, `2_whileloop.py`, etc.
-    (see the [tutorials/run.sh](tutorials/run.sh) script for more examples).
+See more examples in `tutorials/` (e.g., `1_condition.py`, `2_whileloop.py`).
+
+## Beyond the basics
+
+- SPMD for all-party execution: describe once, execute on all parties
+- `mplang.compile(...)`: inspect compiler IR for understanding and optimization
+- SMPC primitives: `smpc.seal`, `smpc.reveal`, `smpc.srun` to express secure operators
+
+## Contributing and development
+
+We welcome PRs and issues. Common dev commands:
+
+```bash
+uv sync --group dev
+uv run pytest
+uv run ruff check . --fix && uv run ruff format .
+uv run mypy mplang/
+```
+
+## License
+
+Apache-2.0. See `LICENSE` for details.

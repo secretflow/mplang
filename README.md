@@ -1,5 +1,8 @@
 # MPLang: Multi-Party Programming Language
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/secretflow/mplang/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/secretflow/mplang/tree/main)
+
+
 MPLang enables writing programs for multi-device execution (PPU/SPU) with explicit security annotations.
 
 ## 1. Explicit Security with Device Annotation

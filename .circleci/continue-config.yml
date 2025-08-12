@@ -1,0 +1,50 @@
+version: 2.1
+
+executors:
+  python-executor:
+    docker:
+      - image: cimg/python:3.10
+
+parameters:
+  test-changed:
+    type: boolean
+    default: false
+
+jobs:
+  test:
+    executor: python-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "pyproject.toml" }}
+            - v1-dependencies-
+      - run:
+          name: Install uv
+          command: |
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            uv --version
+      - run:
+          name: Install dependencies
+          command: |
+            uv venv
+            uv sync --group dev
+      - save_cache:
+          paths:
+            - ~/.cache/uv
+            - ~/.local
+          key: v1-dependencies-{{ checksum "pyproject.toml" }}
+      - run:
+          name: Run tests
+          command: |
+            mkdir -p test-results
+            uv run pytest tests/ -v --junitxml=test-results/results.xml
+      - store_test_results:
+          path: test-results
+
+workflows:
+  version: 2
+  test-pipeline:
+    when: << pipeline.parameters.test-changed >>
+    jobs:
+      - test

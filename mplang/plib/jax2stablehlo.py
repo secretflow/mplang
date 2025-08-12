@@ -14,6 +14,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 from jax.tree_util import PyTreeDef, tree_flatten
@@ -26,7 +29,9 @@ from mplang.utils.func_utils import normalize_fn
 jax.config.update("jax_enable_x64", True)
 
 
-def compile(is_variable, flat_fn, *args, **kwargs) -> tuple[PFunction, list, PyTreeDef]:
+def compile(
+    is_variable: Callable[[Any], bool], flat_fn: Any, *args: Any, **kwargs: Any
+) -> tuple[PFunction, list, PyTreeDef]:
     """Compile JAX function to StableHLO MLIR format for remote execution.
 
     Translates high-level JAX functions into StableHLO MLIR representations,

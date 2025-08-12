@@ -40,7 +40,7 @@ class ICommunicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def send(self, to: int, key: str, data: Any):
+    def send(self, to: int, key: str, data: Any) -> None:
         """Send data to peer with the given key"""
 
     @abstractmethod

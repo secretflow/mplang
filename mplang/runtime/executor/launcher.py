@@ -32,10 +32,7 @@ from mplang.runtime.driver import ExecutorDriver
 
 # Re-export path utilities for backward compatibility
 # Re-export server components
-from mplang.runtime.executor.server import (
-    serve,
-    start_cluster,
-)
+from mplang.runtime.executor.server import serve, start_cluster
 from mplang.runtime.simulation import Simulator
 
 
@@ -65,7 +62,7 @@ def cmd_main(main: Callable, nodes_def: dict) -> None:
         all_node_ids = sorted(nodes_def.keys())
         devices_conf = parse_device_conf(conf["devices"])
         DeviceContext(devices_conf)
-        used_node_ids = list(
+        used_node_ids: list[str] = list(
             set(
                 functools.reduce(
                     operator.iadd, [info.node_ids for info in devices_conf.values()], []

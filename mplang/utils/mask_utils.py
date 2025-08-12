@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from mplang.core.base import Mask, Rank
 
 
@@ -22,12 +24,12 @@ def _is_valid_mask(mask: Mask) -> bool:
     return isinstance(mask, int) and mask >= 0
 
 
-def bit_count(mask: Mask):
+def bit_count(mask: Mask) -> int:
     assert mask >= 0, f"Expect non-negative mask, got {mask}"
     return mask.bit_count()
 
 
-def enum_mask(mask: Mask):
+def enum_mask(mask: Mask) -> Iterator[int]:
     assert isinstance(mask, Mask) and mask >= 0, f"Expect non-negative mask, got {mask}"
     i = 0
     while mask != 0:
@@ -100,7 +102,7 @@ def is_rank_in(rank: Rank, mask: Mask) -> bool:
     return (1 << rank) & mask != 0
 
 
-def ensure_rank_in(rank: Rank, mask: Mask):
+def ensure_rank_in(rank: Rank, mask: Mask) -> None:
     if (1 << rank) & mask == 0:
         raise ValueError(f"Rank {rank} is not in the party mask {mask}")
 

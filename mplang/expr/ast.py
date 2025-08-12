@@ -53,7 +53,7 @@ class Expr(ABC):
             exactly one output, providing a useful runtime check.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._mptypes: list[MPType] | None = None
 
     @property
@@ -171,6 +171,7 @@ class EvalExpr(Expr):
         deduced_pmask = deduce_mask(*arg_pmasks)
 
         # Determine effective output pmask
+        effective_pmask: int | None
         if self.rmask is not None:
             # rmask is explicitly provided - caller has strong mask knowledge
             if deduced_pmask is not None:
@@ -329,7 +330,8 @@ class ConvExpr(Expr):
         if dynamic_pmask:
             out_pmask = None
         else:
-            out_pmask = mask_utils.union_masks(*pmasks)
+            valid_pmasks = [pmask for pmask in pmasks if pmask is not None]
+            out_pmask = mask_utils.union_masks(*valid_pmasks)
 
         return [MPType(first.dtype, first.shape, out_pmask, first.attrs)]
 

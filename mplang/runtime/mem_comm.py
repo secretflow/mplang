@@ -40,7 +40,7 @@ class CommunicatorBase(ICommunicator):
         return self._world_size
 
     # override
-    def new_id(self):
+    def new_id(self) -> str:
         res = self._counter
         self._counter += 1
         return str(res)
@@ -75,11 +75,11 @@ class ThreadCommunicator(CommunicatorBase, CollectiveMixin):
             f"ThreadCommunicator initialized with rank={self.rank}, world_size={self.world_size}"
         )
 
-    def set_peers(self, peers: list[ThreadCommunicator]):
+    def set_peers(self, peers: list[ThreadCommunicator]) -> None:
         assert self.world_size == len(peers)
         self.peers = peers
 
-    def send(self, to: int, key: str, data: Any):
+    def send(self, to: int, key: str, data: Any) -> None:
         assert 0 <= to < self.world_size
         # print(f"send {key}: {self.rank} -> {to_rank}")
         self.peers[to].onSent(self.rank, key, data)

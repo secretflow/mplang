@@ -19,6 +19,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jax.typing import ArrayLike
 
 import mplang.core.primitive as prim
 from mplang.core.base import MPObject, Shape
@@ -28,38 +29,38 @@ from mplang.core.base import MPObject, Shape
 def split(key: MPObject) -> tuple[MPObject, MPObject]:
     """Split the key into two keys."""
 
-    def kernel(key):
+    def kernel(key: jax.Array) -> tuple[jax.Array, jax.Array]:
         # TODO: since MPObject tensor does not implement slicing yet.
         # subkey, key = simp.run(jr.split)(key) does not work.
         # we workaround it by splitting inside tracer.
         subkey, key = jr.split(key)
         return subkey, key
 
-    return prim.run_jax(kernel, key)
+    return prim.run_jax(kernel, key)  # type: ignore[no-any-return]
 
 
 @prim.function
-def ukey(seed: int | jnp.ArrayLike) -> MPObject:
+def ukey(seed: int | ArrayLike) -> MPObject:
     """Party uniformly generate a random key."""
 
-    def kernel():
+    def kernel() -> jax.Array:
         key = jax.random.key(seed)
         # Note: key.dtype is jax._src.prng.KeyTy, which could not be handled by MPObject.
         return jax.random.key_data(key)
 
-    return prim.run_jax(kernel)
+    return prim.run_jax(kernel)  # type: ignore[no-any-return]
 
 
 @prim.function
 def urandint(
-    key: MPObject | jnp.ArrayLike,
+    key: MPObject | ArrayLike,
     low: int,
     high: int,
     shape: Shape = (),
 ) -> MPObject:
     """Party uniformly generate a random integer in the range [low, high) with the given shape."""
 
-    return prim.run_jax(partial(jr.randint, minval=low, maxval=high, shape=shape), key)
+    return prim.run_jax(partial(jr.randint, minval=low, maxval=high, shape=shape), key)  # type: ignore[no-any-return]
 
 
 # Private(different per-party) related functions begin.
@@ -79,7 +80,7 @@ def prandint(low: int, high: int, shape: Shape = ()) -> MPObject:
         return result
 
     rand_u64 = prim.prand(shape)
-    return prim.run_jax(kernel, rand_u64)
+    return prim.run_jax(kernel, rand_u64)  # type: ignore[no-any-return]
 
 
 @prim.function
@@ -116,4 +117,4 @@ def pperm(key: MPObject) -> MPObject:
 
     perm = prim.run_jax(kernel, key)
     rank = prim.prank()
-    return prim.run_jax(lambda perm, rank: perm[rank], perm, rank)
+    return prim.run_jax(lambda perm, rank: perm[rank], perm, rank)  # type: ignore[no-any-return]

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import final
+from typing import Any, final
 
 import numpy as np
 
@@ -39,7 +39,7 @@ class DType:
     is_floating: bool = False
     is_complex: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Validate the dtype configuration
         if self.is_complex and not self.is_floating:
             raise ValueError("Complex types must be floating point")
@@ -75,7 +75,7 @@ class DType:
         return name_map.get(self.name, self.name)
 
     @classmethod
-    def from_numpy(cls, np_dtype) -> DType:
+    def from_numpy(cls, np_dtype: Any) -> DType:
         """Convert from NumPy dtype to custom DType."""
         np_dtype = np.dtype(np_dtype)
         name = np_dtype.name
@@ -92,7 +92,7 @@ class DType:
             raise ValueError(f"Unsupported NumPy dtype kind: {np_dtype.kind}")
 
     @classmethod
-    def from_jax(cls, jax_dtype) -> DType:
+    def from_jax(cls, jax_dtype: Any) -> DType:
         """Convert from JAX dtype to custom DType."""
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
@@ -115,7 +115,7 @@ class DType:
             raise ValueError(f"Unsupported Python type: {py_type}")
 
     @classmethod
-    def from_any(cls, dtype_like) -> DType:
+    def from_any(cls, dtype_like: Any) -> DType:
         """Convert from any supported dtype representation."""
         if isinstance(dtype_like, cls):
             return dtype_like
@@ -144,7 +144,7 @@ class DType:
         """Convert custom DType to NumPy dtype."""
         return np.dtype(self.name)
 
-    def to_jax(self):
+    def to_jax(self) -> Any:
         """Convert custom DType to JAX dtype."""
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
@@ -190,7 +190,7 @@ COMPLEX128 = DType("complex128", 128, True, True, True)
 # Helper functions for easy conversion
 
 
-def from_numpy(np_dtype) -> DType:
+def from_numpy(np_dtype: Any) -> DType:
     """Convert from NumPy dtype to custom DType."""
     return DType.from_numpy(np_dtype)
 

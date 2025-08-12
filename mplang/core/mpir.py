@@ -60,7 +60,7 @@ DTYPE_MAPPING = {
 }
 
 
-def dtype_to_proto(dtype_like):
+def dtype_to_proto(dtype_like: Any) -> Any:
     """Convert dtype (DType, NumPy dtype, or type) to protobuf DataType."""
     # If it's already a DType, convert to numpy for protobuf mapping
     if isinstance(dtype_like, DType):
@@ -193,7 +193,7 @@ class Writer(ExprVisitor):
             if expr_id not in self._expr_ids:
                 expr.accept(self)
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset writer state."""
         self._counter = 0
         self._expr_ids.clear()
@@ -263,23 +263,23 @@ class Writer(ExprVisitor):
             attrs=graph_attrs,
         )
 
-    def visit_rank(self, expr) -> Any:
+    def visit_rank(self, expr: RankExpr) -> Any:
         """Visit rank expression."""
         op = self._create_node_proto(expr, "rank")
         return self._finalize_node(op, expr)
 
-    def visit_const(self, expr) -> Any:
+    def visit_const(self, expr: ConstExpr) -> Any:
         """Visit constant expression."""
         op = self._create_node_proto(expr, "const")
         self._add_attrs(op, data=expr.data_bytes)
         return self._finalize_node(op, expr)
 
-    def visit_rand(self, expr) -> Any:
+    def visit_rand(self, expr: RandExpr) -> Any:
         """Visit random expression."""
         op = self._create_node_proto(expr, "rand")
         return self._finalize_node(op, expr)
 
-    def visit_eval(self, expr) -> Any:
+    def visit_eval(self, expr: EvalExpr) -> Any:
         """Visit evaluation expression."""
         # Visit all argument expressions
         self._ensure_visited(*expr.args)
@@ -289,7 +289,7 @@ class Writer(ExprVisitor):
         self._add_attrs(op, pfunc=expr.pfunc, rmask=expr.rmask)
         return self._finalize_node(op, expr)
 
-    def visit_variable(self, expr) -> Any:
+    def visit_variable(self, expr: VariableExpr) -> Any:
         """Visit variable expression."""
         op = self._create_node_proto(expr, "variable")
         # Use mapped name if available, otherwise use original name
@@ -297,7 +297,7 @@ class Writer(ExprVisitor):
         self._add_attrs(op, name=mapped_name)
         return self._finalize_node(op, expr)
 
-    def visit_tuple(self, expr) -> Any:
+    def visit_tuple(self, expr: TupleExpr) -> Any:
         """Visit tuple expression."""
         # Visit all argument expressions
         self._ensure_visited(*expr.args)
@@ -306,7 +306,7 @@ class Writer(ExprVisitor):
         self._add_single_expr_inputs(op, *expr.args)
         return self._finalize_node(op, expr)
 
-    def visit_cond(self, expr) -> Any:
+    def visit_cond(self, expr: CondExpr) -> Any:
         """Visit conditional expression."""
         # Visit predicate and all argument expressions
         self._ensure_visited(expr.pred, *expr.args)
@@ -317,7 +317,7 @@ class Writer(ExprVisitor):
         self._add_attrs(op, then_fn=expr.then_fn, else_fn=expr.else_fn)
         return self._finalize_node(op, expr)
 
-    def visit_call(self, expr) -> Any:
+    def visit_call(self, expr: CallExpr) -> Any:
         """Visit function call expression."""
         # Visit function definition and all argument expressions
         self._ensure_visited(expr.fn, *expr.args)
@@ -327,7 +327,7 @@ class Writer(ExprVisitor):
         self._add_expr_inputs(op, *expr.args)
         return self._finalize_node(op, expr)
 
-    def visit_while(self, expr) -> Any:
+    def visit_while(self, expr: WhileExpr) -> Any:
         """Visit while loop expression."""
         # Visit all argument expressions
         self._ensure_visited(*expr.args)
@@ -337,7 +337,7 @@ class Writer(ExprVisitor):
         self._add_attrs(op, cond_fn=expr.cond_fn, body_fn=expr.body_fn)
         return self._finalize_node(op, expr)
 
-    def visit_conv(self, expr) -> Any:
+    def visit_conv(self, expr: ConvExpr) -> Any:
         """Visit convergence expression."""
         # Visit all variable expressions
         self._ensure_visited(*expr.vars)
@@ -346,7 +346,7 @@ class Writer(ExprVisitor):
         self._add_expr_inputs(op, *expr.vars)
         return self._finalize_node(op, expr)
 
-    def visit_shfl_s(self, expr) -> Any:
+    def visit_shfl_s(self, expr: ShflSExpr) -> Any:
         """Visit static shuffle expression."""
         # Visit source value expression
         self._ensure_visited(expr.src_val)
@@ -356,7 +356,7 @@ class Writer(ExprVisitor):
         self._add_attrs(op, pmask=expr.pmask, src_ranks=expr.src_ranks)
         return self._finalize_node(op, expr)
 
-    def visit_shfl(self, expr) -> Any:
+    def visit_shfl(self, expr: ShflExpr) -> Any:
         """Visit dynamic shuffle expression."""
         # Visit source and index expressions
         self._ensure_visited(expr.src, expr.index)
@@ -365,7 +365,7 @@ class Writer(ExprVisitor):
         self._add_single_expr_inputs(op, expr.src, expr.index)
         return self._finalize_node(op, expr)
 
-    def visit_access(self, expr) -> Any:
+    def visit_access(self, expr: AccessExpr) -> Any:
         """Visit access expression."""
         # Visit source expression
         self._ensure_visited(expr.src)
@@ -376,7 +376,7 @@ class Writer(ExprVisitor):
         self._add_attrs(op, index=expr.index)
         return self._finalize_node(op, expr)
 
-    def visit_func_def(self, expr) -> Any:
+    def visit_func_def(self, expr: FuncDefExpr) -> Any:
         """Visit function definition expression."""
         # Visit body expression
         self._ensure_visited(expr.body)
@@ -390,7 +390,7 @@ class Writer(ExprVisitor):
 class Reader:
     """Reader for deserializing GraphProto back to Expr-based expressions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._value_cache: dict[str, Expr] = {}
 
     def loads(self, graph_proto: mpir_pb2.GraphProto) -> Expr | None:
@@ -407,7 +407,7 @@ class Reader:
         # Process nodes in topological order
         processed_nodes = set()
 
-        def process_node(node_proto: mpir_pb2.NodeProto):
+        def process_node(node_proto: mpir_pb2.NodeProto) -> None:
             if node_proto.name in processed_nodes:
                 return
 
@@ -760,7 +760,7 @@ def get_graph_statistics(graph_proto: mpir_pb2.GraphProto) -> str:
 
     # Node breakdown by operation type
     lines.append("Node breakdown by operation type:")
-    op_counts = {}
+    op_counts: dict[str, int] = {}
     for node in graph_proto.nodes:
         op_type = node.op_type
         op_counts[op_type] = op_counts.get(op_type, 0) + 1

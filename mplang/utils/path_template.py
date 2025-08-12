@@ -73,7 +73,7 @@ class PathTemplate:
         Returns:
             True if the path matches the template, False otherwise.
         """
-        return path_template.validate(self.tmpl, path)
+        return path_template.validate(self.tmpl, path)  # type: ignore[no-any-return]
 
     def match(self, path: str) -> dict[str, str] | None:
         """Match a path against the template and extract variables.
@@ -111,7 +111,7 @@ class PathTemplate:
 
         return variables
 
-    def render(self, **vars_dict) -> str:
+    def render(self, **vars_dict: str) -> str:
         """Render the template into a path using the provided variables.
 
         Args:
@@ -142,7 +142,7 @@ class PathTemplate:
                         raise ValueError(f"Missing named variable {var_name}")
                     named_kwargs[var_name] = vars_dict[var_name]
 
-        return path_template.expand(self.tmpl, *positional_args, **named_kwargs)
+        return path_template.expand(self.tmpl, *positional_args, **named_kwargs)  # type: ignore[no-any-return]
 
     def __repr__(self) -> str:
         """Return a string representation of the PathTemplate."""

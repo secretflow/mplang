@@ -24,16 +24,17 @@ from mplang.core.pfunc import PFunction
 
 
 def prank() -> MPObject:
-    return prim.prank()  # type: ignore[no-any-return]
+    """Get the rank of current party."""
+    return prim.prank()
 
 
 def prand(shape: Shape = ()) -> MPObject:
     """Generate a random number in the range [0, psize)."""
-    return prim.prand(shape)  # type: ignore[no-any-return]
+    return prim.prand(shape)
 
 
 def constant(data: TensorLike | ScalarType) -> MPObject:
-    return prim.constant(data)  # type: ignore[no-any-return]
+    return prim.constant(data)
 
 
 def peval(
@@ -41,7 +42,7 @@ def peval(
     args: list[MPObject],
     pmask: Mask | None = None,
 ) -> list[MPObject]:
-    return prim.peval(pfunc, args, pmask)  # type: ignore[no-any-return]
+    return prim.peval(pfunc, args, pmask)
 
 
 def _run_impl(
@@ -49,9 +50,9 @@ def _run_impl(
 ) -> Any:
     if fe_type == "jax":
         if pmask is not None:
-            return prim.run_jax_s(pyfn, pmask, *args, **kwargs)  # type: ignore[no-any-return]
+            return prim.run_jax_s(pyfn, pmask, *args, **kwargs)
         else:
-            return prim.run_jax(pyfn, *args, **kwargs)  # type: ignore[no-any-return]
+            return prim.run_jax(pyfn, *args, **kwargs)
     else:
         raise ValueError(f"Unsupported fe_type: {fe_type}")
 
@@ -86,7 +87,7 @@ def cond(
     else_fn: Callable[..., MPObject],
     *args: Any,
 ) -> MPObject:
-    return prim.cond(pred, then_fn, else_fn, *args)  # type: ignore[no-any-return]
+    return prim.cond(pred, then_fn, else_fn, *args)
 
 
 # while_loop :: m a -> (m a -> m Bool) -> (m a -> m a) -> m a
@@ -95,11 +96,11 @@ def while_loop(
     body_fn: Callable[[MPObject], MPObject],
     init: MPObject,
 ) -> MPObject:
-    return prim.while_loop(cond_fn, body_fn, init)  # type: ignore[no-any-return]
+    return prim.while_loop(cond_fn, body_fn, init)
 
 
 def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
-    return prim.pshfl_s(src_val, pmask, src_ranks)  # type: ignore[no-any-return]
+    return prim.pshfl_s(src_val, pmask, src_ranks)
 
 
 def pshfl(src: MPObject, index: MPObject) -> MPObject:
@@ -108,4 +109,4 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
 
 
 def pconv(vars: list[MPObject]) -> MPObject:
-    return prim.pconv(vars)  # type: ignore[no-any-return]
+    return prim.pconv(vars)

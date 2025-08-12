@@ -39,7 +39,8 @@ jobs:
       - run:
           name: Run tests
           command: |
-            uv run pytest tests/ -v
+            mkdir -p test-results
+            uv run pytest tests/ -v --junitxml=test-results/results.xml
       - store_test_results:
           path: test-results
       - store_artifacts:

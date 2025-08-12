@@ -3,7 +3,7 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/secretflow/mplang/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/secretflow/mplang/tree/main)
 
 
-MPLang (Multi-Party Language) is a single-controller SPMD programming library for multi-party and multi-device workloads. MPLang uses the SPMD (Single Program, Multiple Data) programming model where one Python program drives multiple parties/devices (e.g., P0/P1/SPU), with explicit security domains, compilable and auditable, runnable in local simulation or on secure-computation backends.
+MPLang (Multi-Party Language) is a single-controller programming library for multi-party and multi-device workloads that follows the SPMD (Single Program, Multiple Data) model—one Python program drives multiple parties/devices (e.g., P0/P1/SPU) with explicit security domains. Programs are compilable and auditable, and can run in local simulation or on secure-computation backends.
 
 ## Highlights
 
@@ -18,6 +18,8 @@ MPLang (Multi-Party Language) is a single-controller SPMD programming library fo
 ## Quick start
 
 Writing multi-party secure computation programs is easy:
+
+Note: The snippet below is illustrative and not directly runnable; for a complete runnable example of the device API, see `tutorials/3_device.py`.
 
 ```python
 import mplang.device as mpd

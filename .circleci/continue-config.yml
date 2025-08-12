@@ -43,9 +43,6 @@ jobs:
             uv run pytest tests/ -v --junitxml=test-results/results.xml
       - store_test_results:
           path: test-results
-      - store_artifacts:
-          path: test-results
-          destination: test-results
 
 workflows:
   version: 2

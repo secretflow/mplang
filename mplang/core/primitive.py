@@ -89,7 +89,7 @@ def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
             raise ValueError(f"Import from {obj.ctx} to {ctx} not supported")
 
 
-def primitive(fn):
+def primitive(fn: Callable):
     """A decorator to make all primitive call in trace context."""
 
     @wraps(fn)

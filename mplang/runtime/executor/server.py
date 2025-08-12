@@ -25,6 +25,7 @@ import concurrent.futures
 import datetime
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 import cloudpickle as pickle
@@ -88,7 +89,7 @@ class GrpcCommunicator(CommunicatorImpl):
         execution_id: str,
         rank: int,
         peer_addrs: list[str],
-        make_stub_func,
+        make_stub_func: Callable,
     ):
         super().__init__(rank, len(peer_addrs))
 
@@ -165,7 +166,7 @@ class Execution:
         spu_mask: Mask,
         spu_protocol: libspu.ProtocolKind,
         spu_field: libspu.FieldType,
-        make_stub_func,
+        make_stub_func: Callable,
     ):
         # basic attributes.
         self.db = db
@@ -211,7 +212,7 @@ class Execution:
         else:
             self.spu_comm = None
 
-    def run(self):
+    def run(self) -> None:
         self.start_time = datetime.datetime.now()
         self.state = executor_pb2.ExecutionState.RUNNING
 
@@ -384,7 +385,9 @@ class ExecutorState:
 class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
     """gRPC service implementation for the executor."""
 
-    def __init__(self, party_id: str, make_stub_func, debug_execution: bool = False):
+    def __init__(
+        self, party_id: str, make_stub_func: Callable, debug_execution: bool = False
+    ):
         super().__init__(party_id)
         self.make_stub_func = make_stub_func
         self._debug_execution = debug_execution
@@ -859,7 +862,7 @@ def serve(
     server.wait_for_termination()
 
 
-def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False):
+def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False) -> None:
     """Start a cluster of executor services."""
     import multiprocessing as multiprocess
     import signal

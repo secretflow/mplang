@@ -23,6 +23,7 @@ and executor_client modules.
 # Legacy compatibility imports
 import functools
 import operator
+from collections.abc import Callable
 
 from mplang.device import DeviceContext, parse_device_conf
 
@@ -38,7 +39,7 @@ from mplang.runtime.executor.server import (
 from mplang.runtime.simulation import Simulator
 
 
-def cmd_main(main, nodes_def) -> None:
+def cmd_main(main: Callable, nodes_def: dict) -> None:
     """Legacy command line interface - maintained for backward compatibility."""
     import argparse
     import json

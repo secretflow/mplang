@@ -3,7 +3,7 @@ version: 2.1
 setup: true
 
 orbs:
-  path-filtering: circleci/path-filtering@1.0.0
+  path-filtering: circleci/path-filtering@1.2.0
 
 workflows:
   setup-workflow:
@@ -11,9 +11,10 @@ workflows:
       - path-filtering/filter:
           base-revision: main
           config-path: .circleci/continue-config.yml
+          tag: "3.9"
           mapping: |
-            mplang/.* test-changed true
-            tests/.* test-changed true
-            pyproject.toml test-changed true
+            mplang/.*                     test-changed true
+            tests/.*                      test-changed true
+            pyproject.toml                test-changed true
             .circleci/continue-config.yml test-changed true
-            .circleci/config.yml test-changed true
+            .circleci/config.yml          test-changed true

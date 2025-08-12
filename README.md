@@ -1,6 +1,5 @@
 # MPLang: Multi-Party Programming Language
 
-[![CI](https://github.com/secretflow/mplang/actions/workflows/ci.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/ci.yml)
 [![Lint](https://github.com/secretflow/mplang/actions/workflows/lint.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/lint.yml)
 [![MyPy](https://github.com/secretflow/mplang/actions/workflows/mypy.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/mypy.yml)
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/secretflow/mplang/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/secretflow/mplang/tree/main)

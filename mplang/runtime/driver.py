@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import base64
 import uuid
-from typing import Any, cast
+from collections.abc import Sequence
+from typing import Any
 
 import cloudpickle as pickle
 import grpc
@@ -159,7 +160,7 @@ class ExecutorDriver(InterpContext):
         return self._session_id
 
     # override
-    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> list[MPObject]:
+    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
         """Evaluate an expression using distributed execution."""
         session_id = self.get_or_create_session()
         execution_id = new_uuid()
@@ -231,7 +232,7 @@ class ExecutorDriver(InterpContext):
             )
             driver_vars.append(driver_var)
 
-        return cast(list[MPObject], driver_vars)
+        return driver_vars
 
     # override
     def fetch(self, obj: MPObject) -> list[Any]:

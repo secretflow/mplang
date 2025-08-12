@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 from abc import abstractmethod
+from collections.abc import Sequence
 from typing import Any, cast
 
 from mplang.core.base import MPContext, MPObject, MPType, TensorLike
@@ -52,7 +53,7 @@ class InterpContext(MPContext):
         return self._attrs
 
     @abstractmethod
-    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> list[MPObject]:
+    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
         """Evaluate an expression in this context.
 
         Args:

@@ -18,6 +18,7 @@ import concurrent.futures
 import faulthandler
 import sys
 import traceback
+from collections.abc import Sequence
 from typing import Any, cast
 
 import spu.libspu as libspu
@@ -148,7 +149,7 @@ class Simulator(InterpContext):
         return list(obj.values)
 
     # override
-    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> list[MPObject]:
+    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
         # sanity check for bindings.
         for name, var in bindings.items():
             if var.ctx is not self:
@@ -212,4 +213,4 @@ class Simulator(InterpContext):
             sim_var = SimVar(self, mptype, list(values))
             sim_vars.append(sim_var)
 
-        return cast(list[MPObject], sim_vars)
+        return sim_vars

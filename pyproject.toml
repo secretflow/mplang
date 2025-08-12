@@ -12,7 +12,7 @@ default-groups = ["dev"]
 
 [project]
 name = "mplang"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Multi-Party Programming Language"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -52,6 +52,9 @@ include = ["mplang*"]
 
 [tool.setuptools.package-data]
 mplang = ["protos/*.proto"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mplang.__version__"}
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting

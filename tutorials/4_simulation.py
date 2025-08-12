@@ -183,7 +183,7 @@ def main(driver):
     aot_compilation(driver)
 
 
-def cmd_main(main_func):
+def cmd_main(main_func) -> None:
     """Simple command line interface for simulation."""
     import argparse
     import json

@@ -30,7 +30,7 @@ class LinkCommunicator(ICommunicator, ICollective):
         self._rank = rank
         self._world_size = len(addrs)
 
-        desc = libspu.link.Desc()  # type: ignore , the pyi file is not correct
+        desc = libspu.link.Desc()  # type: ignore
         desc.recv_timeout_ms = 100 * 1000  # 100 seconds
         desc.http_max_payload_size = 32 * 1024 * 1024  # Default set link payload to 32M
         for rank, addr in enumerate(addrs):

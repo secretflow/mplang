@@ -857,7 +857,7 @@ def serve(
 ) -> None:
     """Start the executor service server."""
 
-    def make_stub(addr: str) -> Any:
+    def make_stub(addr: str) -> executor_pb2_grpc.ExecutorServiceStub:
         channel = grpc.insecure_channel(
             addr,
             options=[

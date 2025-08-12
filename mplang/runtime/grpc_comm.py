@@ -48,40 +48,40 @@ class LinkCommunicator(ICommunicator, ICollective):
         self._counter = 0
 
     @property
-    def rank(self):
-        return self.lctx.rank
+    def rank(self) -> int:
+        return self.lctx.rank  # type: ignore[no-any-return]
 
     @property
-    def world_size(self):
-        return self.lctx.world_size
+    def world_size(self) -> int:
+        return self.lctx.world_size  # type: ignore[no-any-return]
 
     def get_lctx(self) -> libspu.link.Context:
         """Get the link context"""
         return self.lctx
 
     # override
-    def new_id(self):
+    def new_id(self) -> str:
         res = self._counter
         self._counter += 1
         return str(res)
 
     def wrap(self, obj: Any) -> str:
         data = pickle.dumps(obj)
-        return data.hex()
+        return data.hex()  # type: ignore[no-any-return]
 
     def unwrap(self, obj: str) -> Any:
         data = bytes.fromhex(obj)
-        return pickle.loads(data)
+        return pickle.loads(data)  # type: ignore[no-any-return]
 
-    def send(self, to: int, key: str, data: Any):
+    def send(self, to: int, key: str, data: Any) -> None:
         serialized = pickle.dumps((key, data))
         self.lctx.send(to, serialized.hex())
 
-    def recv(self, frm, key):
+    def recv(self, frm: int, key: str) -> Any:
         serialized = self.lctx.recv(frm)
         rkey, data = pickle.loads(bytes.fromhex(serialized.decode()))
         assert key == rkey, f"recv key {key} != {rkey}"
-        return data
+        return data  # type: ignore[no-any-return]
 
     def p2p(self, frm: int, to: int, data: Any) -> Any:
         assert 0 <= frm < self.world_size

@@ -25,13 +25,23 @@ from mplang.core.interp import InterpContext
 from mplang.core.trace import TraceContext, TracedFunction, trace
 
 
-def eval(interp: InterpContext, mpfn, *args, **kwargs):
+def eval(interp: InterpContext, mpfn: Any, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+    """Evaluate a multi-party function with the given interpreter context.
+
+    This function accepts arbitrary types as it's designed to handle
+    any multi-party computation function and arguments.
+    """
     assert isinstance(interp, InterpContext), f"Expect InterpContext, got {interp}"
     with with_ctx(interp):
         return mpfn(*args, **kwargs)
 
 
-def fetch(interp: InterpContext | None, objs):
+def fetch(interp: InterpContext | None, objs: Any) -> Any:  # type: ignore[misc]
+    """Fetch computed results from MPObject instances in nested data structures.
+
+    This function uses tree_map to handle arbitrary nested structures,
+    so it needs to accept and return Any type.
+    """
     ctx = interp or cur_ctx()
     assert isinstance(ctx, InterpContext), f"Expect MPExecutor, got {ctx}"
 
@@ -72,6 +82,8 @@ class CompileOptions(MPContext):
         return self._attrs
 
 
-def compile(mctx: MPContext, fn: Callable, *args, **kwargs) -> TracedFunction:
+def compile(
+    mctx: MPContext, fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> TracedFunction:
     trace_ctx = TraceContext(mctx.psize(), attrs=mctx.attrs())
     return trace(trace_ctx, fn, *args, **kwargs)

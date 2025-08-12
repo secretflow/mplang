@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import base64
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import cloudpickle as pickle
 import grpc
@@ -37,7 +37,7 @@ from mplang.protos import executor_pb2, executor_pb2_grpc
 from mplang.runtime.executor.resource import SessionName, SymbolName
 
 
-def new_uuid():
+def new_uuid() -> str:
     """Generates a short UUID using URL-safe Base64 encoding."""
     u = uuid.uuid4()
     # Get the 16 bytes of the UUID
@@ -49,7 +49,9 @@ def new_uuid():
     return encoded_string
 
 
-def make_stub(addr: str, max_message_length: int = 1024 * 1024 * 1024):
+def make_stub(
+    addr: str, max_message_length: int = 1024 * 1024 * 1024
+) -> executor_pb2_grpc.ExecutorServiceStub:
     """Create a gRPC stub for the executor service."""
     channel = grpc.insecure_channel(
         addr,
@@ -104,8 +106,8 @@ class ExecutorDriver(InterpContext):
         spu_mask: Mask | None = None,
         trace_ranks: list[Rank] | None = None,
         max_message_length: int = 1024 * 1024 * 1024,
-        **attrs,
-    ):
+        **attrs: Any,
+    ) -> None:
         if trace_ranks is None:
             trace_ranks = []
         self.world_size = len(node_addrs)
@@ -114,7 +116,7 @@ class ExecutorDriver(InterpContext):
         self._stubs = [
             make_stub(addr, max_message_length) for addr in node_addrs.values()
         ]
-        self._session_id = None
+        self._session_id: str | None = None
         self._counter = 0
 
         spu_mask = spu_mask or ((1 << self.world_size) - 1)
@@ -134,7 +136,7 @@ class ExecutorDriver(InterpContext):
         self._counter += 1
         return name
 
-    def get_or_create_session(self):
+    def get_or_create_session(self) -> str:
         if self._session_id is None:
             new_session_id = new_uuid()
             metadata: dict[str, str] = {}
@@ -151,6 +153,9 @@ class ExecutorDriver(InterpContext):
 
             # Store the new session ID
             self._session_id = new_session_id
+        assert self._session_id is not None, (
+            "Session ID should not be None after get_or_create_session"
+        )
         return self._session_id
 
     # override
@@ -226,7 +231,7 @@ class ExecutorDriver(InterpContext):
             )
             driver_vars.append(driver_var)
 
-        return driver_vars
+        return cast(list[MPObject], driver_vars)
 
     # override
     def fetch(self, obj: MPObject) -> list[Any]:

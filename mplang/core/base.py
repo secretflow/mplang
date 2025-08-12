@@ -256,7 +256,7 @@ class MPType:
         cls,
         obj: TensorLike | ScalarType,
         pmask: Mask | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> MPType:
         attrs = copy.copy(kwargs)
         if isinstance(obj, ScalarType):

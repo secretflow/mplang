@@ -64,8 +64,8 @@ class Simulator(InterpContext):
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_mask: Mask | None = None,
         trace_ranks: list[int] | None = None,
-        **attrs,
-    ):
+        **attrs: Any,
+    ) -> None:
         """Initialize a simulator with the given process size and attributes."""
         if trace_ranks is None:
             trace_ranks = []
@@ -84,11 +84,13 @@ class Simulator(InterpContext):
             comm.set_peers(self._comms)
 
         # Prepare link context and spu handlers.
-        spu_mask: Mask = self.attr("spu_mask")
-        spu_addrs = [f"P{spu_rank}" for spu_rank in mask_utils.enum_mask(spu_mask)]
+        spu_mask_attr: Mask = self.attr("spu_mask")
+        if spu_mask_attr is None:
+            raise ValueError("spu_mask attribute is required")
+        spu_addrs = [f"P{spu_rank}" for spu_rank in mask_utils.enum_mask(spu_mask_attr)]
         spu_comms = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
-            for idx in range(spu_mask.bit_count())
+            for idx in range(spu_mask_attr.bit_count())
         ]
         spu_config = libspu.RuntimeConfig(
             protocol=libspu.ProtocolKind.SEMI2K,
@@ -96,12 +98,12 @@ class Simulator(InterpContext):
         )
         # Create separate SpuHandler instances for each party to avoid sharing state
         spu_handlers = [
-            SpuHandler(spu_mask.bit_count(), spu_config) for _ in range(psize)
+            SpuHandler(spu_mask_attr.bit_count(), spu_config) for _ in range(psize)
         ]
         for rank, handler in enumerate(spu_handlers):
             handler.set_link_context(
-                spu_comms[mask_utils.global_to_relative_rank(rank, spu_mask)]
-                if mask_utils.is_rank_in(rank, spu_mask)
+                spu_comms[mask_utils.global_to_relative_rank(rank, spu_mask_attr)]
+                if mask_utils.is_rank_in(rank, spu_mask_attr)
                 else None
             )
 
@@ -210,4 +212,4 @@ class Simulator(InterpContext):
             sim_var = SimVar(self, mptype, list(values))
             sim_vars.append(sim_var)
 
-        return sim_vars
+        return cast(list[MPObject], sim_vars)

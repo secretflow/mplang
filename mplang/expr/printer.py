@@ -18,6 +18,8 @@ Expression printer for debugging and visualization.
 
 from __future__ import annotations
 
+from typing import Any
+
 from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
@@ -119,7 +121,7 @@ class Printer(ExprVisitor):
         """Print an expression and return the formatted string."""
         self._output = []
         self._visited = {}
-        self._cache = {}  # Reset memorized visitor cache
+        self._cache: dict[str, Any] = {}  # Reset memorized visitor cache
         self._counter = 0
         expr.accept(self)
         return "\n".join(self._output)

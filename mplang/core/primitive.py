@@ -87,13 +87,15 @@ def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
             raise NotImplementedError("InterpContext.eval not implemented yet")
         else:
             raise ValueError(f"Import from {obj.ctx} to {ctx} not supported")
+    else:
+        raise ValueError(f"Unsupported context type: {type(ctx)}")
 
 
-def primitive(fn: Callable):
+def primitive(fn: Callable) -> Callable:
     """A decorator to make all primitive call in trace context."""
 
     @wraps(fn)
-    def wrapped(*args, **kwargs):
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
         current_ctx = cur_ctx()
         if isinstance(current_ctx, TraceContext):
             # If we are in a tracer context, just call the function.
@@ -313,19 +315,19 @@ def peval(
     return [TraceVar(ctx, res) for res in ret_exprs]
 
 
-def _run_jax(rmask: Mask | None, pyfn: Callable, *args, **kwargs):
+def _run_jax(rmask: Mask | None, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
     is_mpobject = lambda x: isinstance(x, MPObject)
     pfunc, in_vars, out_tree = jax2stablehlo.compile(is_mpobject, pyfn, *args, **kwargs)
     outs = peval(pfunc, in_vars, rmask)
     return tree_unflatten(out_tree, outs)
 
 
-def run_jax_s(pyfn: Callable, pmask: Mask, *args, **kwargs):
+def run_jax_s(pyfn: Callable, pmask: Mask, *args: Any, **kwargs: Any) -> Any:
     """Run a JAX function in the current trace context."""
     return _run_jax(pmask, pyfn, *args, **kwargs)
 
 
-def run_jax(pyfn: Callable, *args, **kwargs):
+def run_jax(pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
     """Run a JAX function in the current trace context with auto deduced pmask."""
     return _run_jax(None, pyfn, *args, **kwargs)
 
@@ -389,7 +391,7 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
         The underlying implementation uses JAX identity function with the
         specified execution mask.
     """
-    return _run_jax(mask, lambda x: x, arg)
+    return _run_jax(mask, lambda x: x, arg)  # type: ignore[no-any-return]
 
 
 @primitive
@@ -397,7 +399,7 @@ def cond(
     pred: MPObject,
     then_fn: Callable[..., MPObject],
     else_fn: Callable[..., MPObject],
-    *args,
+    *args: Any,
 ) -> MPObject:
     """Multi-party conditional execution based on a predicate.
 
@@ -547,7 +549,7 @@ def cond(
     rets_expr = [AccessExpr(fn_expr, idx) for idx in range(fn_expr.num_outputs)]
     out_vars = [TraceVar(cur_tracer, res) for res in rets_expr]
 
-    return var_demorph(out_vars, then_tfn.out_imms, then_tfn.out_struct)
+    return var_demorph(out_vars, then_tfn.out_imms, then_tfn.out_struct)  # type: ignore[no-any-return]
 
 
 @primitive

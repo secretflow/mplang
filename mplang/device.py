@@ -116,6 +116,7 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     for nid in spu_conf[0].node_ids:
         spu_mask |= 1 << node_ids.index(nid)
 
+    driver: InterpContext
     if not nodes_def:
         driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
     else:
@@ -148,7 +149,7 @@ class Utils:
         if not isinstance(obj, MPObject):
             raise TypeError("Input must be an instance of Object")
 
-        return obj.attrs[cls.DEV_ID]
+        return obj.attrs[cls.DEV_ID]  # type: ignore[no-any-return]
 
 
 def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
@@ -166,7 +167,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
 
     def deco(fn: Callable) -> Callable:
         @wraps(fn)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
             nfn, args_flat = normalize_fn(
                 fn, args, kwargs, lambda x: isinstance(x, MPObject)
             )
@@ -211,22 +212,22 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         raise NotImplementedError("Only one SPU is supported for now.")
     elif frm_to_pair == ("SPU", "PPU"):
         var = smpc.revealTo(obj, device_ctx.id2rank(to_dev_id))
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)
+        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "SPU"):
         var = smpc.sealFrom(obj, device_ctx.id2rank(frm_dev_id))
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)
+        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "PPU"):
         frm_rank = device_ctx.id2rank(frm_dev_id)
         to_rank = device_ctx.id2rank(to_dev_id)
         var = mpi.p2p(frm_rank, to_rank, obj)
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)
+        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
 
 
 def put(to_dev_id: str, obj: Any) -> MPObject:
     if not isinstance(obj, MPObject):
-        return device(to_dev_id)(lambda x: x)(obj)
+        return device(to_dev_id)(lambda x: x)(obj)  # type: ignore[no-any-return]
     assert isinstance(obj, MPObject)
     return _d2d(to_dev_id, obj)
 
@@ -248,7 +249,7 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
         raise ValueError(f"Unknown device id: {dev_id}")
 
 
-def fetch(interp: InterpContext, objs):
+def fetch(interp: InterpContext, objs: Any) -> list[Any]:
     ctx = interp or mapi.cur_ctx()
     assert isinstance(ctx, InterpContext), f"Expect InterpContext, got {ctx}"
     return list(tree_map(partial(_fetch, ctx), objs))

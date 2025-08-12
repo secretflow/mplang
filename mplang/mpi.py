@@ -50,7 +50,7 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
 
     result = prim.pconv(scattered)
     assert result.pmask == to_mask, (result.pmask, to_mask)
-    return result
+    return result  # type: ignore[no-any-return]
 
 
 # gather :: m a -> m Rank -> [m a]
@@ -97,7 +97,7 @@ def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
     result = prim.pshfl_s(obj, pmask, [root] * mask_utils.bit_count(pmask))
 
     assert result.pmask == pmask, (result.pmask, pmask)
-    return result
+    return result  # type: ignore[no-any-return]
 
 
 # p2p :: m Rank -> m Rank -> m a -> m a
@@ -115,7 +115,7 @@ def p2p(frm: Rank, to: Rank, obj: MPObject) -> MPObject:
     if frm == to:
         return obj
 
-    return prim.pshfl_s(obj, Mask(1 << to), [frm])
+    return prim.pshfl_s(obj, Mask(1 << to), [frm])  # type: ignore[no-any-return]
 
 
 # allgather :: m a -> [m a]
@@ -125,9 +125,9 @@ def allgather_m(pmask: Mask, arg: MPObject) -> list[MPObject]:
 
     if arg.pmask is None:
         logging.warning(f"Allgathering {arg} from {pmask}, may raise RuntimeError.")
-
-    if not mask_utils.is_subset(pmask, arg.pmask):
-        raise ValueError(f"Expect {pmask} in {arg.pmask}, got {arg}.")
+    else:
+        if not mask_utils.is_subset(pmask, arg.pmask):
+            raise ValueError(f"Expect {pmask} in {arg.pmask}, got {arg}.")
 
     # TODO(jint): implement me.
     raise NotImplementedError("Allgather not implemented")
@@ -136,4 +136,4 @@ def allgather_m(pmask: Mask, arg: MPObject) -> list[MPObject]:
 @prim.function
 def pshfl(val: MPObject, index: MPObject) -> MPObject:
     """Shuffle the value to the index party from the source party."""
-    return prim.pshfl(val, index)
+    return prim.pshfl(val, index)  # type: ignore[no-any-return]

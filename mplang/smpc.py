@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import Enum
 from functools import wraps
+from typing import Any
 
 from jax.tree_util import tree_unflatten
 
@@ -38,7 +39,7 @@ class SecureAPI(ABC):
     def sealFrom(self, obj: MPObject, root: Rank) -> MPObject: ...
 
     @abstractmethod
-    def seval(self, fe_type: str, pyfn: Callable, *args, **kwargs):
+    def seval(self, fe_type: str, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
         """Run a function in the secure environment."""
 
     @abstractmethod
@@ -57,7 +58,7 @@ class Delegation(SecureAPI):
     def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
         raise NotImplementedError("TODO")
 
-    def seval(self, fe_type: str, pyfn: Callable, *args, **kwargs):
+    def seval(self, fe_type: str, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("TODO")
 
     def reveal(self, obj: MPObject, to_mask: Mask) -> MPObject:
@@ -107,7 +108,7 @@ class SPU(SecureAPI):
         assert len(results) == 1, f"Expected one result, got {len(results)}"
         return results[0]
 
-    def seval(self, fe_type: str, pyfn: Callable, *args, **kwargs):
+    def seval(self, fe_type: str, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
         if fe_type != "jax":
             raise ValueError(f"Unsupported fe_type: {fe_type}")
 
@@ -137,7 +138,7 @@ class SPU(SecureAPI):
         # Reconstruct the original object from shares
         spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
         pfunc = spu.reconstruct(shares)
-        return prim.peval(pfunc, shares, to_mask)[0]
+        return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
         return self.reveal(obj, to_mask=1 << to_rank)
@@ -194,9 +195,9 @@ def revealTo(obj: MPObject, to_rank: Rank) -> MPObject:
 
 
 # srun :: (a -> a) -> s a -> s a
-def srun(pyfn: Callable, *, fe_type: str = "jax"):
+def srun(pyfn: Callable, *, fe_type: str = "jax") -> Callable:
     @wraps(pyfn)
-    def wrapped(*args, **kwargs):
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
         return _get_sapi().seval(fe_type, pyfn, *args, **kwargs)
         # if fe_type == "jax":
         #     is_mpobject = lambda x: isinstance(x, MPObject)

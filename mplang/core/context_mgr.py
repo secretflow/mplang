@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ def set_ctx(ctx: MPContext) -> None:
 
 
 @contextlib.contextmanager
-def with_ctx(tmp_ctx: MPContext):
+def with_ctx(tmp_ctx: MPContext) -> Iterator[MPContext]:
     global _g_ctx
     saved = _g_ctx  # Directly save the global interpreter reference
     try:

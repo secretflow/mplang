@@ -239,12 +239,21 @@ class SymbolName(ResourceName):
     def to_string(self) -> str:
         if self._path_cache is None:
             if self.is_execution_scoped():
+                assert self.session_id is not None, (
+                    "session_id should not be None for execution scoped symbols"
+                )
+                assert self.execution_id is not None, (
+                    "execution_id should not be None for execution scoped symbols"
+                )
                 self._path_cache = self._EXECUTION_TEMPLATE.render(
                     session_id=self.session_id,
                     execution_id=self.execution_id,
                     symbol_id=self.symbol_id,
                 )
             elif self.is_session_scoped():
+                assert self.session_id is not None, (
+                    "session_id should not be None for session scoped symbols"
+                )
                 self._path_cache = self._SESSION_TEMPLATE.render(
                     session_id=self.session_id, symbol_id=self.symbol_id
                 )
@@ -339,7 +348,7 @@ class MessageName(ResourceName):
                 session_id=self.session_id,
                 execution_id=self.execution_id,
                 msg_id=self.msg_id,
-                frm_rank=self.frm_rank,
+                frm_rank=str(self.frm_rank),
             )
         return self._path_cache
 

@@ -258,7 +258,7 @@ class TracedFunction:
 
         if len(self.out_vars) == 0:
             # No outputs - use empty tuple
-            body_expr = TupleExpr([])
+            body_expr: Expr = TupleExpr([])
             return FuncDefExpr(freevar_names, body_expr)
         elif len(self.out_vars) == 1:
             body_expr = self.out_vars[0].expr
@@ -322,8 +322,8 @@ class TracedFunction:
 def trace(
     tracer: TraceContext,
     mpfn: Callable,
-    *args,
-    **kwargs,
+    *args: Any,
+    **kwargs: Any,
 ) -> TracedFunction:
     """Trace a Python function into an expression representation.
 

@@ -79,7 +79,7 @@ class Evaluator(ExprVisitor):
         self._cache: dict[int, Any] = {}  # Cache based on expr id
 
         # setup pfunction dispatch table
-        self._dispatch_table = {}
+        self._dispatch_table: dict[str, Any] = {}
         for handler in self._pfunc_handles:
             for pfunc_name in handler.list_fn_names():
                 if pfunc_name not in self._dispatch_table:
@@ -342,16 +342,20 @@ class Evaluator(ExprVisitor):
             else:
                 indices[src_rank] = index
 
-        assert all(val.ndim == 0 for val in indices if val is not None)
-        indices = [val if val is None else int(val.item()) for val in indices]
+        assert all(
+            val is not None and val.ndim == 0 for val in indices if val is not None
+        )
+        indices_int: list[int | None] = [
+            val if val is None else int(val.item()) for val in indices
+        ]
 
         # Build source-to-destination mapping from the indices
         # indices[dst] = src means data from src should go to dst
         # So we need to reverse this to get src -> dst mapping
-        send_pairs = []  # List of (src, dst) pairs
-        for dst_rank, src_rank in enumerate(indices):
-            if src_rank is not None:
-                send_pairs.append((src_rank, dst_rank))
+        send_pairs: list[tuple[int, int]] = []  # List of (src, dst) pairs
+        for dst_idx, src_idx in enumerate(indices_int):
+            if src_idx is not None:
+                send_pairs.append((src_idx, dst_idx))
 
         # Sort pairs to ensure deterministic order across all parties
         send_pairs.sort()

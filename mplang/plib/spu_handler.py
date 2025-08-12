@@ -26,12 +26,12 @@ from mplang.core.pfunc import PFunction, PFunctionHandler, PFuncTypes
 from mplang.runtime.grpc_comm import LinkCommunicator
 
 
-def shape_spu_to_np(spu_shape) -> tuple[int, ...]:
+def shape_spu_to_np(spu_shape: Any) -> tuple[int, ...]:
     """Convert SPU shape to numpy tuple."""
     return tuple(spu_shape.dims)
 
 
-def dtype_spu_to_np(spu_dtype) -> np.dtype:
+def dtype_spu_to_np(spu_dtype: Any) -> np.dtype:
     """Convert SPU dtype to numpy dtype."""
     MAP = {
         libspu.DataType.DT_F32: np.float32,
@@ -46,7 +46,7 @@ def dtype_spu_to_np(spu_dtype) -> np.dtype:
         libspu.DataType.DT_I64: np.int64,
         libspu.DataType.DT_U64: np.uint64,
     }
-    return MAP[spu_dtype]
+    return MAP[spu_dtype]  # type: ignore[return-value]
 
 
 @dataclass
@@ -58,7 +58,7 @@ class SpuValue:
     vtype: libspu.Visibility
     share: libspu.Share
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"SpuValue({self.shape},{self.dtype},{self.vtype})"
 
 
@@ -92,7 +92,7 @@ class SpuHandler(PFunctionHandler):
         self._spu_config = spu_config
         self._link_comm = link_comm
 
-    def set_link_context(self, link_context: Any):
+    def set_link_context(self, link_context: Any) -> None:
         """Set the link communicator context for this party.
 
         This method allows flexible configuration of the link context,
@@ -106,7 +106,7 @@ class SpuHandler(PFunctionHandler):
         self._link_comm = link_context
 
     # override
-    def setup(self):
+    def setup(self) -> None:
         """Set up the SPU runtime environment.
 
         Creates the actual SPU runtime using the configuration and link context
@@ -123,7 +123,7 @@ class SpuHandler(PFunctionHandler):
             pass
 
     # override
-    def teardown(self):
+    def teardown(self) -> None:
         """Clean up the SPU runtime environment."""
 
     def list_fn_names(self) -> list[str]:
@@ -317,7 +317,7 @@ class SpuHandler(PFunctionHandler):
             raise ValueError(f"Expected str, got {type(pfunc.fn_text)}")
 
         # Extract metadata for executable reconstruction
-        attrs = pfunc.attrs or {}
+        attrs: dict[str, Any] = dict(pfunc.attrs or {})
         input_names = attrs.get("input_names", [])
         output_names = attrs.get("output_names", [])
         executable_name = attrs.get("executable_name", pfunc.fn_name)

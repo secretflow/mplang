@@ -112,7 +112,7 @@ class InterpVar(MPObject):
         return f"InterpVar(mptype={self.mptype})"
 
 
-def apply(ctx: InterpContext, fn: TracedFunction, *args, **kwargs):
+def apply(ctx: InterpContext, fn: TracedFunction, *args: Any, **kwargs: Any) -> Any:
     is_mpobj = lambda x: isinstance(x, MPObject)
     in_args, in_imms, in_struct = var_morph((args, kwargs), is_mpobj)
 

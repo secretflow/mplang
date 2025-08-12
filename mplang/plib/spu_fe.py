@@ -14,8 +14,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from enum import Enum
+from typing import Any
 
 import jax.numpy as jnp
 import spu.libspu as libspu
@@ -43,8 +44,8 @@ class SpuFE:
         self,
         world_size: int,
         enable_private: bool = False,
-        copts=None,
-    ):
+        copts: Any = None,
+    ) -> None:
         """Initialize the SPU frontend."""
         self.world_size = world_size
         self.enable_private = enable_private
@@ -134,7 +135,7 @@ class SpuFE:
         # Output will be a single plaintext tensor
         outs_info = [ins_info[0]] if ins_info else []
 
-        attrs = {}
+        attrs: dict[str, Any] = {}
 
         pfunc = PFunction(
             fn_type=PFuncTypes.SPU_RECONSTRUCT,
@@ -150,10 +151,10 @@ class SpuFE:
 
     def compile_jax(
         self,
-        is_variable,
-        jax_fn,
-        *args,
-        **kwargs,
+        is_variable: Callable[[Any], bool],
+        jax_fn: Callable,
+        *args: Any,
+        **kwargs: Any,
     ) -> tuple[PFunction, list, PyTreeDef]:
         """Compile JAX function to SPU executable format for secure execution.
 

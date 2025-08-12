@@ -857,7 +857,7 @@ def serve(
 ) -> None:
     """Start the executor service server."""
 
-    def make_stub(addr: str):
+    def make_stub(addr: str) -> Any:
         channel = grpc.insecure_channel(
             addr,
             options=[
@@ -919,7 +919,7 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False) -> 
         workers.append(worker)
         worker.start()
 
-    def signal_handler(signum, frame) -> None:
+    def signal_handler(signum: int, frame: Any) -> None:
         """Handle signals and forcefully terminate all child processes."""
         logging.info(f"Received signal {signum}, terminating all child processes...")
         for worker in workers:

@@ -94,10 +94,10 @@ class PFunction:
         else:
             self.attrs = MappingProxyType(copy.copy(attrs))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.fn_type}, {self.fn_name})"
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         # Custom hash implementation that handles non-hashable fields
         hashable_fn_body = id(self.fn_body) if self.fn_body is not None else None
 
@@ -111,7 +111,7 @@ class PFunction:
             frozenset(self.attrs.items()),
         ))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """Check equality between PFunction instances."""
         if not isinstance(other, PFunction):
             return False
@@ -127,9 +127,9 @@ class PFunction:
         )
 
 
-def get_fn_name(fn_like):
+def get_fn_name(fn_like: Any) -> str:
     if hasattr(fn_like, "__name__"):
-        return fn_like.__name__
+        return fn_like.__name__  # type: ignore[no-any-return]
     if hasattr(fn_like, "func"):
         # handle partial functions
         return get_fn_name(fn_like.func)
@@ -145,12 +145,12 @@ class PFunctionHandler(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def setup(self):
+    def setup(self) -> None:
         """Set up the runtime environment, including any necessary initializations."""
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def teardown(self):
+    def teardown(self) -> None:
         """Clean up the runtime environment, releasing any resources."""
         raise NotImplementedError("Subclasses must implement this method.")
 

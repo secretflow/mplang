@@ -85,21 +85,25 @@ def list_reconstruct(fst: list, snd: list, fst_idxs: list) -> list:
     return result
 
 
-def var_morph(values, is_variable) -> tuple[list, list, MorphStruct]:
+def var_morph(
+    values: Any, is_variable: Callable[[Any], bool]
+) -> tuple[list, list, MorphStruct]:
     """aka. flat_and_split Flat and split variable from immediates"""
     values_flat, values_tree = tree_flatten(values)
     variables, immediates, split_info = list_split(values_flat, is_variable)
     return variables, immediates, (values_tree, tuple(split_info))
 
 
-def var_demorph(variables, immediates, morph_info: MorphStruct):
+def var_demorph(variables: list, immediates: list, morph_info: MorphStruct) -> Any:
     """aka. merge_and_unflat. Merge vars and immediates, and reconstruct the tree."""
     values_tree, split_info = morph_info
     values_flat = list_reconstruct(variables, immediates, list(split_info))
     return tree_unflatten(values_tree, values_flat)
 
 
-def normalize_fn(fn: Callable, args, kwargs, is_variable) -> tuple[Callable, list]:
+def normalize_fn(
+    fn: Callable, args: Any, kwargs: Any, is_variable: Callable[[Any], bool]
+) -> tuple[Callable, list]:
     """Flatten (args, kwargs) and capture immediate.
     Returns the a function captures all immediates and a list of variables.
     """
@@ -110,7 +114,7 @@ def normalize_fn(fn: Callable, args, kwargs, is_variable) -> tuple[Callable, lis
         # aargs is short actual arguments.
         # reconstruct original paramter, replace the traced object with actual object.
         aargs, akwargs = var_demorph(rargs, immediates, morph)
-        return fn(*aargs, **akwargs)
+        return fn(*aargs, **akwargs)  # type: ignore[no-any-return]
 
     return normalized, params
 

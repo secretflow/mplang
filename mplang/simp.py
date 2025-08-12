@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
+from typing import Any
 
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike
@@ -23,16 +24,16 @@ from mplang.core.pfunc import PFunction
 
 
 def prank() -> MPObject:
-    return prim.prank()
+    return prim.prank()  # type: ignore[no-any-return]
 
 
 def prand(shape: Shape = ()) -> MPObject:
     """Generate a random number in the range [0, psize)."""
-    return prim.prand(shape)
+    return prim.prand(shape)  # type: ignore[no-any-return]
 
 
 def constant(data: TensorLike | ScalarType) -> MPObject:
-    return prim.constant(data)
+    return prim.constant(data)  # type: ignore[no-any-return]
 
 
 def peval(
@@ -40,37 +41,39 @@ def peval(
     args: list[MPObject],
     pmask: Mask | None = None,
 ) -> list[MPObject]:
-    return prim.peval(pfunc, args, pmask)
+    return prim.peval(pfunc, args, pmask)  # type: ignore[no-any-return]
 
 
-def _run_impl(pyfn: Callable, fe_type: str, pmask: Mask | None, *args, **kwargs):
+def _run_impl(
+    pyfn: Callable, fe_type: str, pmask: Mask | None, *args: Any, **kwargs: Any
+) -> Any:
     if fe_type == "jax":
         if pmask is not None:
-            return prim.run_jax_s(pyfn, pmask, *args, **kwargs)
+            return prim.run_jax_s(pyfn, pmask, *args, **kwargs)  # type: ignore[no-any-return]
         else:
-            return prim.run_jax(pyfn, *args, **kwargs)
+            return prim.run_jax(pyfn, *args, **kwargs)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"Unsupported fe_type: {fe_type}")
 
 
 # run :: (a -> a) -> m a -> m a
-def run(pyfn: Callable, *, fe_type: str = "jax"):
+def run(pyfn: Callable, *, fe_type: str = "jax") -> Callable:
     return partial(_run_impl, pyfn, fe_type, None)
 
 
 # runMask :: Mask -> (a -> a) -> m a -> m a
-def runMask(pmask: Mask, pyfn: Callable, fe_type: str = "jax"):
+def runMask(pmask: Mask, pyfn: Callable, fe_type: str = "jax") -> Callable:
     return partial(_run_impl, pyfn, fe_type, pmask)
 
 
 # runAt :: Rank -> (a -> a) -> m a -> m a
-def runAt(rank: Rank, pyfn: Callable, *, fe_type: str = "jax"):
+def runAt(rank: Rank, pyfn: Callable, *, fe_type: str = "jax") -> Callable:
     pmask = Mask(1 << rank)
     return runMask(pmask, pyfn, fe_type)
 
 
 # runExcept :: Rank -> (a -> a) -> m a -> m a
-def runExcept(rank: Rank, pyfn: Callable, *, fe_type: str = "jax"):
+def runExcept(rank: Rank, pyfn: Callable, *, fe_type: str = "jax") -> Callable:
     wsize = prim.psize()
     pmask = Mask(((1 << wsize) - 1) ^ (1 << rank))
     return runMask(pmask, pyfn, fe_type)
@@ -81,9 +84,9 @@ def cond(
     pred: MPObject,
     then_fn: Callable[..., MPObject],
     else_fn: Callable[..., MPObject],
-    *args,
+    *args: Any,
 ) -> MPObject:
-    return prim.cond(pred, then_fn, else_fn, *args)
+    return prim.cond(pred, then_fn, else_fn, *args)  # type: ignore[no-any-return]
 
 
 # while_loop :: m a -> (m a -> m Bool) -> (m a -> m a) -> m a
@@ -92,11 +95,11 @@ def while_loop(
     body_fn: Callable[[MPObject], MPObject],
     init: MPObject,
 ) -> MPObject:
-    return prim.while_loop(cond_fn, body_fn, init)
+    return prim.while_loop(cond_fn, body_fn, init)  # type: ignore[no-any-return]
 
 
 def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
-    return prim.pshfl_s(src_val, pmask, src_ranks)
+    return prim.pshfl_s(src_val, pmask, src_ranks)  # type: ignore[no-any-return]
 
 
 def pshfl(src: MPObject, index: MPObject) -> MPObject:
@@ -105,4 +108,4 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
 
 
 def pconv(vars: list[MPObject]) -> MPObject:
-    return prim.pconv(vars)
+    return prim.pconv(vars)  # type: ignore[no-any-return]

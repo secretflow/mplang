@@ -34,12 +34,12 @@ class StablehloHandler(PFunctionHandler):
     """
 
     # override
-    def setup(self):
+    def setup(self) -> None:
         """Set up the runtime environment."""
         # StableHLO handler doesn't need special setup
 
     # override
-    def teardown(self):
+    def teardown(self) -> None:
         """Clean up the runtime environment."""
         # StableHLO handler doesn't need special teardown
 
@@ -135,7 +135,7 @@ class StablehloHandler(PFunctionHandler):
                     # Multiple outputs or other cases
                     output_tensors.extend([jnp.array(arr) for arr in array_list])
 
-            return output_tensors
+            return output_tensors  # type: ignore[return-value]
 
         except Exception as e:
             raise RuntimeError(f"Failed to execute compiled function: {e}") from e

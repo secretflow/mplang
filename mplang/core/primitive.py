@@ -90,7 +90,6 @@ def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
     else:
         raise ValueError(f"Unsupported context type: {type(ctx)}")
 
-
 def primitive(fn: Callable) -> Callable:
     """A decorator to make all primitive call in trace context."""
 

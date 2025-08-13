@@ -10,7 +10,7 @@ jobs:
     docker:
       - image: cimg/base:stable
     steps:
-      - run: echo "No-op job to ensure workflow succeeds if path-filtering not matched (test not run)"
+      - run: echo "No-op job to ensure workflow succeeds if unittest not triggered by path-filtering"
 
 workflows:
   unittest-workflow:
@@ -24,5 +24,4 @@ workflows:
             tests/.*                      test-changed true
             pyproject.toml                test-changed true
             .circleci/continue-config.yml test-changed true
-            .circleci/config.yml          test-changed true
       - noop-job

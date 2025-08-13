@@ -53,7 +53,7 @@ class TestTutorialBasicExamples:
 
             return x, y, z
 
-        x, y, z = mplang.eval(sim2, millionaire)
+        x, y, z = mplang.evaluate(sim2, millionaire)
         x_val, y_val, z_val = mplang.fetch(sim2, (x, y, z))
 
         # Verify the comparison result
@@ -85,7 +85,7 @@ class TestTutorialConditionalExamples:
 
             return x, z
 
-        x, z = mplang.eval(sim3, negate_if_local_cond)
+        x, z = mplang.evaluate(sim3, negate_if_local_cond)
         x_vals, z_vals = mplang.fetch(sim3, (x, z))
 
         # Verify conditional logic for each party
@@ -119,7 +119,7 @@ class TestTutorialConditionalExamples:
             z = simp.run(jnp.where)(pred, pos, neg)
             return x, z
 
-        x, z = mplang.eval(sim3, negate_if_shared_cond)
+        x, z = mplang.evaluate(sim3, negate_if_shared_cond)
         x_vals, z_vals = mplang.fetch(sim3, (x, z))
 
         # Verify shared conditional logic
@@ -151,7 +151,7 @@ class TestTutorialConditionalExamples:
             )
             return x, z
 
-        x, z = mplang.eval(sim3, party_branch_on_cond)
+        x, z = mplang.evaluate(sim3, party_branch_on_cond)
         _x_vals, z_vals = mplang.fetch(sim3, (x, z))
 
         # Verify party-specific branching
@@ -183,7 +183,7 @@ class TestTutorialWhileLoopExamples:
 
             return x, r
 
-        x, r = mplang.eval(sim2, while_party_local)
+        x, r = mplang.evaluate(sim2, while_party_local)
         _x_vals, r_vals = mplang.fetch(sim2, (x, r))
 
         # Each party should reach at least 15
@@ -214,7 +214,7 @@ class TestTutorialWhileLoopExamples:
 
             return x, r
 
-        x, r = mplang.eval(sim2, while_sum_greater)
+        x, r = mplang.evaluate(sim2, while_sum_greater)
         _x_vals, r_vals = mplang.fetch(sim2, (x, r))
 
         # Sum should be at least 15
@@ -239,7 +239,7 @@ class TestTutorialWhileLoopExamples:
             z = simp.while_loop(cond, body, x)
             return z
 
-        z = mplang.eval(sim3, while_simple)
+        z = mplang.evaluate(sim3, while_simple)
         z_vals = mplang.fetch(sim3, z)
 
         # Each party should have value >= 2
@@ -255,14 +255,14 @@ class TestTutorialAdvancedExamples:
         sim3 = mplang.Simulator(3)
 
         # Make two variables on the simulator
-        x = mplang.eval(sim3, simp.prank)
-        y = mplang.eval(sim3, lambda: mpr.prandint(0, 100))
+        x = mplang.evaluate(sim3, simp.prank)
+        y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
 
         def pass_and_capture(x):
             # pass x as a parameter, and capture y from the outer scope
             return simp.run(jnp.multiply)(x, y)
 
-        z = mplang.eval(sim3, pass_and_capture, x)
+        z = mplang.evaluate(sim3, pass_and_capture, x)
         z_vals = mplang.fetch(sim3, z)
 
         x_vals = mplang.fetch(sim3, x)
@@ -278,8 +278,8 @@ class TestTutorialAdvancedExamples:
         """Test JIT compilation from tutorial"""
         sim3 = mplang.Simulator(3)
 
-        x = mplang.eval(sim3, simp.prank)
-        y = mplang.eval(sim3, lambda: mpr.prandint(0, 100))
+        x = mplang.evaluate(sim3, simp.prank)
+        y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
 
         def pass_and_capture(x):
             return simp.run(jnp.multiply)(x, y)
@@ -287,7 +287,7 @@ class TestTutorialAdvancedExamples:
         # JIT it
         jitted = mplang.function(pass_and_capture)
 
-        z1 = mplang.eval(sim3, jitted, x)
+        z1 = mplang.evaluate(sim3, jitted, x)
         z1_vals = mplang.fetch(sim3, z1)
 
         x_vals = mplang.fetch(sim3, x)
@@ -325,7 +325,7 @@ class TestTutorialSimulationExamples:
 
             return x, y, z
 
-        x, y, z = mplang.eval(sim2, millionaire)
+        x, y, z = mplang.evaluate(sim2, millionaire)
         x_vals, y_vals, z_vals = mplang.fetch(sim2, (x, y, z))
 
         # Verify the comparison result
@@ -349,7 +349,7 @@ class TestTutorialErrorHandling:
         with pytest.raises(
             ValueError, match="Specified rmask 32 is not a subset of deduced pmask 3"
         ):
-            mplang.eval(sim2, test_runAt_invalid_party)
+            mplang.evaluate(sim2, test_runAt_invalid_party)
 
     def test_mismatched_seal_operations(self):
         """Test error handling for mismatched seal operations"""
@@ -362,7 +362,7 @@ class TestTutorialErrorHandling:
             return smpc.sealFrom(x, 5)
 
         with pytest.raises(Exception):  # Should raise some kind of error
-            mplang.eval(sim2, mismatched_seal)
+            mplang.evaluate(sim2, mismatched_seal)
 
     def test_empty_while_loop(self):
         """Test while loop that doesn't execute"""
@@ -380,7 +380,7 @@ class TestTutorialErrorHandling:
 
             return simp.while_loop(cond, body, x)
 
-        result = mplang.eval(sim2, empty_while)
+        result = mplang.evaluate(sim2, empty_while)
         result_vals = mplang.fetch(sim2, result)
 
         # Should return original value since loop never executes
@@ -404,7 +404,7 @@ class TestTutorialDataStructures:
 
             return gathered
 
-        result = mplang.eval(sim2, simple_gather)
+        result = mplang.evaluate(sim2, simple_gather)
         result_vals = mplang.fetch(sim2, result)
 
         # Check that we got values from both parties
@@ -423,7 +423,7 @@ class TestTutorialDataStructures:
 
             return x, y
 
-        result = mplang.eval(sim2, simple_data)
+        result = mplang.evaluate(sim2, simple_data)
         x_vals, y_vals = mplang.fetch(sim2, result)
 
         # Verify values are correct

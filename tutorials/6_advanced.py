@@ -21,8 +21,8 @@ import mplang.simp as simp
 sim3 = mplang.Simulator(3)
 
 # make two variables on the simulator, one is a random integer, the other is a prank.
-x = mplang.eval(sim3, simp.prank)
-y = mplang.eval(sim3, lambda: mpr.prandint(0, 100))
+x = mplang.evaluate(sim3, simp.prank)
+y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
 print(mplang.fetch(sim3, (x, y)))
 
 
@@ -31,11 +31,11 @@ def pass_and_capture(x):
     return simp.run(jnp.multiply)(x, y)
 
 
-z = mplang.eval(sim3, pass_and_capture, x)
+z = mplang.evaluate(sim3, pass_and_capture, x)
 print(mplang.fetch(sim3, z))
 
 # jit it, still works.
 jitted = mplang.function(pass_and_capture)
 
-z1 = mplang.eval(sim3, jitted, x)
+z1 = mplang.evaluate(sim3, jitted, x)
 print(mplang.fetch(sim3, z1))

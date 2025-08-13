@@ -25,7 +25,9 @@ from mplang.core.interp import InterpContext
 from mplang.core.trace import TraceContext, TracedFunction, trace
 
 
-def eval(interp: InterpContext, mpfn: Any, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+def evaluate(
+    interp: InterpContext, mpfn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Any:  # type: ignore[misc]
     """Evaluate a multi-party function with the given interpreter context.
 
     This function accepts arbitrary types as it's designed to handle
@@ -45,7 +47,7 @@ def fetch(interp: InterpContext | None, objs: Any) -> Any:  # type: ignore[misc]
     ctx = interp or cur_ctx()
     assert isinstance(ctx, InterpContext), f"Expect MPExecutor, got {ctx}"
 
-    evaluated = eval(ctx, lambda x: x, objs)
+    evaluated = evaluate(ctx, lambda x: x, objs)
 
     def fetch_impl(arg: MPObject | Any) -> Any:
         if isinstance(arg, MPObject):

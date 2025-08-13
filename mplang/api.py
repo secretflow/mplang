@@ -25,7 +25,9 @@ from mplang.core.interp import InterpContext
 from mplang.core.trace import TraceContext, TracedFunction, trace
 
 
-def evaluate(interp: InterpContext, mpfn: Any, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+def evaluate(
+    interp: InterpContext, mpfn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Any:  # type: ignore[misc]
     """Evaluate a multi-party function with the given interpreter context.
 
     This function accepts arbitrary types as it's designed to handle

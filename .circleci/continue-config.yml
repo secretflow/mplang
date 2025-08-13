@@ -45,10 +45,10 @@ jobs:
     docker:
       - image: cimg/base:stable
     steps:
-      run:
-        name: no tests triggered
-        command: |
-          echo "No-op job to ensure workflow succeeds if unittest not triggered by path-filtering"
+      - run:
+          name: no tests triggered
+          command: |
+            echo "No-op job to ensure workflow succeeds if unittest not triggered by path-filtering"
 
 workflows:
   version: 2

@@ -5,15 +5,8 @@ setup: true
 orbs:
   path-filtering: circleci/path-filtering@1.2.0
 
-jobs:
-  noop-job:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - run: echo "No-op job to ensure workflow succeeds if unittest not triggered by path-filtering"
-
 workflows:
-  unittest-workflow:
+  setup-unittest:
     jobs:
       - path-filtering/filter:
           base-revision: main
@@ -24,4 +17,3 @@ workflows:
             tests/.*                      test-changed true
             pyproject.toml                test-changed true
             .circleci/continue-config.yml test-changed true
-      - noop-job

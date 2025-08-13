@@ -41,6 +41,14 @@ jobs:
             uv run pytest tests/ -v --junitxml=test-results/results.xml
       - store_test_results:
           path: test-results
+  noop-job:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      run:
+        name: no tests triggered
+        command: |
+          echo "No-op job to ensure workflow succeeds if unittest not triggered by path-filtering"
 
 workflows:
   version: 2
@@ -48,3 +56,8 @@ workflows:
     when: << pipeline.parameters.test-changed >>
     jobs:
       - test
+  noop-job:
+    when:
+      not: << pipeline.parameters.test-changed >>
+    jobs:
+      - noop-job

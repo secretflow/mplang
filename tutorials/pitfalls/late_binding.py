@@ -57,7 +57,7 @@ def _run_wrong_func():
 def wrong_func():
     print("======== wrong func, with late binding in mplang begin: =========\n")
     sim2 = mplang.Simulator(2)
-    values = mplang.eval(sim2, _run_wrong_func)
+    values = mplang.evaluate(sim2, _run_wrong_func)
     print("fetch results: ", mplang.fetch(sim2, values))
 
     # It's hard to distinguish the issue directly from the IR,
@@ -96,7 +96,7 @@ def _run_correct_func():
 def correct_func():
     print("======== correct func, with late binding in mplang begin: =========\n")
     sim2 = mplang.Simulator(2)
-    values = mplang.eval(sim2, _run_correct_func)
+    values = mplang.evaluate(sim2, _run_correct_func)
     print("fetch results: ", mplang.fetch(sim2, values))
     print("compiled program: ", mplang.compile(sim2, _run_correct_func).compiler_ir())
     print("======== correct func, with late binding in mplang end: =========\n")

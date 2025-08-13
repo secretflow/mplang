@@ -21,7 +21,7 @@ import mplang.random as mpr
 
 def eval_and_fetch(sim, fn, *args, **kwargs):
     """Helper function to evaluate a function and fetch results."""
-    result = mplang.eval(sim, fn, *args, **kwargs)
+    result = mplang.evaluate(sim, fn, *args, **kwargs)
     return mplang.fetch(sim, result)
 
 
@@ -59,7 +59,7 @@ def test_urandint():
     assert results[0].shape == (3, 2)
     assert np.all(results[0] >= 0) and np.all(results[0] < 1000)
 
-    key = mplang.eval(sim, mpr.ukey, 42)
+    key = mplang.evaluate(sim, mpr.ukey, 42)
     # test with shape
     results = eval_and_fetch(sim, mpr.urandint, key, 0, 1000, (3, 2))
     for i in range(1, len(results)):
@@ -115,7 +115,7 @@ def test_pperm():
     sim = mplang.Simulator(num_parties)
 
     # Generate a key with mask covering all parties
-    key = mplang.eval(sim, mpr.ukey, 42)
+    key = mplang.evaluate(sim, mpr.ukey, 42)
 
     # Test pperm with the key
     results = eval_and_fetch(sim, mpr.pperm, key)

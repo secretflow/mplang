@@ -286,3 +286,28 @@ class Mask:
     def from_json(cls, value: int) -> Mask:
         """Deserialize from JSON-compatible format."""
         return cls(value)
+
+    @classmethod
+    def from_bytes(
+        cls, data: bytes, byteorder: Literal["little", "big"] = "big"
+    ) -> Mask:
+        """
+        Create a mask from bytes for deserialization.
+
+        Args:
+            data: Bytes to convert to mask
+            byteorder: Byte order ('little' or 'big')
+
+        Returns:
+            Mask created from the bytes
+
+        Examples:
+            >>> mask = Mask.from_bytes(b"\x05", byteorder="big")
+            >>> mask.value == 5
+            True
+            >>> mask = Mask.from_bytes(b"\x05\x00", byteorder="little")
+            >>> mask.value == 5
+            True
+        """
+        value = int.from_bytes(data, byteorder=byteorder)
+        return cls(value)

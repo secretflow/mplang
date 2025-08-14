@@ -200,7 +200,7 @@ class Execution:
             make_stub_func,
         )
 
-        if (1 << session.rank) & self.spu_mask != 0:
+        if session.rank in self.spu_mask:
             spu_peer_addrs: list[str] = []
             for rank, addr in enumerate(session.addrs):
                 if rank in Mask(spu_mask):
@@ -750,7 +750,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             program=program_proto,
             input_names=list(request.execution.input_names),
             output_names=list(request.execution.output_names),
-            spu_mask=int(request.execution.attrs["spu_mask"].number_value),
+            spu_mask=Mask(request.execution.attrs["spu_mask"].number_value),
             spu_protocol=libspu.ProtocolKind(
                 int(request.execution.attrs["spu_protocol"].number_value)
             ),

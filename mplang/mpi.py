@@ -43,7 +43,7 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
         raise ValueError(f"Expect {len(to_ranks)} args, got {len(args)}. ")
 
     scattered = [
-        prim.pshfl_s(arg, 1 << to_rank, [root])
+        prim.pshfl_s(arg, Mask.from_rank(to_rank), [root])
         for to_rank, arg in zip(to_ranks, args, strict=False)
     ]
 

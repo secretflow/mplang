@@ -32,7 +32,7 @@ from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc
-from mplang.core.base import MPObject
+from mplang.core.base import Mask, MPObject
 from mplang.core.context_mgr import set_ctx
 from mplang.core.interp import InterpContext
 from mplang.core.primitive import primitive
@@ -112,9 +112,9 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     node_ids = [nid for dev_info in device_conf.values() for nid in dev_info.node_ids]
     node_ids = sorted(set(node_ids))
     world_size = len(node_ids)
-    spu_mask = 0
+    spu_mask = Mask.none()
     for nid in spu_conf[0].node_ids:
-        spu_mask |= 1 << node_ids.index(nid)
+        spu_mask |= Mask.from_rank(node_ids.index(nid))
 
     driver: InterpContext
     if not nodes_def:

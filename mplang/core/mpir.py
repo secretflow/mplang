@@ -451,11 +451,11 @@ class Reader:
         """Create an Expression from a NodeProto."""
         if node_proto.op_type == "rank":
             # Parse pmask from output info
-            pmask = 0  # Default to party 0 if no pmask
+            pmask = Mask.from_rank(0)  # Default to party 0 if no pmask
             if node_proto.outs_info:
                 pmask_bytes = node_proto.outs_info[0].pmask
                 if pmask_bytes:
-                    pmask = int.from_bytes(pmask_bytes, byteorder="big")
+                    pmask = Mask.from_bytes(pmask_bytes, byteorder="big")
             return RankExpr(pmask)
 
         elif node_proto.op_type == "const":
@@ -468,9 +468,9 @@ class Reader:
             out_info = node_proto.outs_info[0]
             dtype = proto_to_dtype(out_info.dtype)
             shape = tuple(out_info.shape_dims)
-            pmask = 0  # Default to party 0 if no pmask
+            pmask = Mask.from_rank(0)  # Default to party 0 if no pmask
             if out_info.pmask:
-                pmask = int.from_bytes(out_info.pmask, byteorder="big")
+                pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
             tensor_info = TensorInfo(dtype, shape)
             return ConstExpr(tensor_info, data_bytes, pmask)
@@ -482,9 +482,9 @@ class Reader:
             out_info = node_proto.outs_info[0]
             dtype = proto_to_dtype(out_info.dtype)
             shape = tuple(out_info.shape_dims)
-            pmask = 0  # Default to party 0 if no pmask
+            pmask = Mask.from_rank(0)  # Default to party 0 if no pmask
             if out_info.pmask:
-                pmask = int.from_bytes(out_info.pmask, byteorder="big")
+                pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
             tensor_info = TensorInfo(dtype, shape)
             return RandExpr(tensor_info, pmask)
@@ -684,7 +684,7 @@ class Reader:
         # Convert pmask
         pmask = None
         if type_proto.pmask:
-            pmask = int.from_bytes(type_proto.pmask, byteorder="big")
+            pmask = Mask.from_bytes(type_proto.pmask, byteorder="big")
 
         # Convert attributes
         attrs = {}

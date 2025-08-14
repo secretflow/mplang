@@ -120,7 +120,7 @@ class ExecutorDriver(InterpContext):
         self._session_id: str | None = None
         self._counter = 0
 
-        spu_mask = spu_mask or ((1 << self.world_size) - 1)
+        spu_mask = spu_mask or Mask.all(self.world_size)
         executor_attrs = {
             "spu_protocol": int(spu_protocol),
             "spu_field": int(spu_field),

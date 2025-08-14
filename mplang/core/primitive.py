@@ -306,7 +306,7 @@ def peval(
 
     if rmask is None and len(args) == 0:
         # If no rmask is provided and no args, use full mask
-        rmask = (1 << ctx.psize()) - 1
+        rmask = Mask.all(ctx.psize())
     if rmask is not None and not Mask(rmask).is_subset(ctx.mask):
         raise ValueError(
             f"Specified rmask {rmask} is not a subset of deduced pmask {ctx.mask}"

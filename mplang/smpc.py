@@ -135,7 +135,7 @@ class SPU(SecureAPI):
         return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
-        return self.reveal(obj, to_mask=1 << to_rank)
+        return self.reveal(obj, to_mask=Mask.from_rank(to_rank))
 
 
 class SEE(Enum):
@@ -179,7 +179,7 @@ def sealFrom(obj: MPObject, root: Rank) -> MPObject:
 # reveal :: s a -> m a
 def reveal(obj: MPObject, to_mask: Mask | None = None) -> MPObject:
     """Reveal a sealed object to pmask'ed parties."""
-    to_mask = to_mask or ((1 << prim.psize()) - 1)
+    to_mask = to_mask or Mask.all(prim.psize())
     return _get_sapi().reveal(obj, to_mask)
 
 

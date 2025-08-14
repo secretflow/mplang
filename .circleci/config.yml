@@ -6,7 +6,7 @@ orbs:
   path-filtering: circleci/path-filtering@1.2.0
 
 workflows:
-  setup-workflow:
+  setup-unittest:
     jobs:
       - path-filtering/filter:
           base-revision: main
@@ -17,4 +17,3 @@ workflows:
             tests/.*                      test-changed true
             pyproject.toml                test-changed true
             .circleci/continue-config.yml test-changed true
-            .circleci/config.yml          test-changed true

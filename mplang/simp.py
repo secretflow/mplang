@@ -69,14 +69,14 @@ def runMask(pmask: Mask, pyfn: Callable, fe_type: str = "jax") -> Callable:
 
 # runAt :: Rank -> (a -> a) -> m a -> m a
 def runAt(rank: Rank, pyfn: Callable, *, fe_type: str = "jax") -> Callable:
-    pmask = Mask(1 << rank)
+    pmask = Mask.from_rank(rank)
     return runMask(pmask, pyfn, fe_type)
 
 
 # runExcept :: Rank -> (a -> a) -> m a -> m a
 def runExcept(rank: Rank, pyfn: Callable, *, fe_type: str = "jax") -> Callable:
     wsize = prim.psize()
-    pmask = Mask(((1 << wsize) - 1) ^ (1 << rank))
+    pmask = Mask.all(wsize).difference(Mask.from_rank(rank))
     return runMask(pmask, pyfn, fe_type)
 
 

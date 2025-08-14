@@ -100,7 +100,7 @@ class SPU(SecureAPI):
         return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
 
     def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
-        results = seal(obj, frm_mask=1 << root)
+        results = seal(obj, frm_mask=Mask.from_rank(root))
         assert len(results) == 1, f"Expected one result, got {len(results)}"
         return results[0]
 

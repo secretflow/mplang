@@ -15,5 +15,7 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 2. Run `stax_nn` example
 
     ```sh
-    uv run examples/stax_nn/stax_nn.py
+    uv run examples/stax_nn/stax_nn.py -e 1 -b 1024
     ```
+
+    **Note**: We can not run this example without `-e 1 -b 1024`, since the default epoch and batch size will cause the traced AST to become too large, leading to stack overflow in subsequent expr visitor operations. To fundamentally solve this issue, we need to operate on IR level (rather than AST level).

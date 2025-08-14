@@ -18,4 +18,4 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
     uv run examples/stax_nn/stax_nn.py -e 1 -b 1024
     ```
 
-    **Note**: We cannot run this example without `-e 1 -b 1024`, since the default epoch and batch size will cause the traced AST to become too large, leading to stack overflow in subsequent expr visitor operations. To fundamentally solve this issue, we need to operate on IR level (rather than AST level).
+    **Note**: The parameters `-e 1 -b 1024` are required to run this example. Using the default epoch and batch size will cause the traced AST to become too large, leading to a stack overflow during expression visitor operations. A fundamental fix for this issue requires operating at the IR level instead of the AST level.

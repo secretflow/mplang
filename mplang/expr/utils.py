@@ -66,10 +66,10 @@ def deduce_mask(*pmasks: Mask | None) -> Mask | None:
         return None
 
     # return the joint mask of all provided pmasks.
-    result = Mask(pmasks[0])
+    result = pmasks[0]
     assert result is not None  # We already checked above
     for pmask in pmasks[1:]:
         assert pmask is not None  # We already checked above
-        result = result.intersection(pmask)
+        result &= pmask
 
     return result.value

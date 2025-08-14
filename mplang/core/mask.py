@@ -22,6 +22,7 @@ int-based mask representation with a proper type-safe abstraction.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+from typing import Literal
 
 
 class Mask:
@@ -39,7 +40,9 @@ class Mask:
         >>> mask = Mask.all(3)  # All parties 0, 1, 2
     """
 
-    def __init__(self, value: int) -> None:
+    _value: int
+
+    def __init__(self, value: Mask | int) -> None:
         """
         Create a mask from an integer value.
 
@@ -259,7 +262,9 @@ class Mask:
         """Return a copy of this mask."""
         return Mask(self._value)
 
-    def to_bytes(self, length: int = 8, byteorder: str = "big") -> bytes:
+    def to_bytes(
+        self, length: int = 8, byteorder: Literal["little", "big"] = "big"
+    ) -> bytes:
         """Convert mask to bytes for serialization."""
         return self._value.to_bytes(length, byteorder=byteorder)
 

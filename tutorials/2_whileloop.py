@@ -99,13 +99,13 @@ if __name__ == "__main__":
     sim4 = mplang.Simulator(4)
 
     print("all parties increase until 15")
-    x = mplang.eval(sim2, while_party_local)
+    x = mplang.evaluate(sim2, while_party_local)
     print("x:", mplang.fetch(sim2, x))
 
     print("all parties increase until sum >= 15")
-    y = mplang.eval(sim3, while_sum_greater)
+    y = mplang.evaluate(sim3, while_sum_greater)
     print("y:", mplang.fetch(sim3, y))
 
     print("random until all parties ascending")
-    z = mplang.eval(sim4, while_until_ascending)
+    z = mplang.evaluate(sim4, while_until_ascending)
     print("z:", mplang.fetch(sim4, z))

@@ -48,7 +48,7 @@ class TestSmpcBasics:
         # print("Compiled function IR:")
         # print(printer.print_expr(compiled.make_expr()))
 
-        data, revealed = mplang.eval(sim, test_seal_reveal)
+        data, revealed = mplang.evaluate(sim, test_seal_reveal)
         data_vals, revealed_vals = mplang.fetch(sim, (data, revealed))
 
         # The revealed sum should equal the sum of original data
@@ -72,7 +72,7 @@ class TestSmpcBasics:
             revealed_sum = smpc.reveal(sum_result)
             return data, revealed_sum
 
-        data, sum_result = mplang.eval(sim, test_srun)
+        data, sum_result = mplang.evaluate(sim, test_srun)
         data_vals, sum_vals = mplang.fetch(sim, (data, sum_result))
 
         # Verify the sum is correct
@@ -103,7 +103,7 @@ class TestSMPCComplexScenarios:
 
             return wealth, result
 
-        wealth, result = mplang.eval(sim2, millionaire)
+        wealth, result = mplang.evaluate(sim2, millionaire)
         wealth_vals, result_vals = mplang.fetch(sim2, (wealth, result))
 
         # Verify the comparison result
@@ -132,7 +132,7 @@ class TestSMPCComplexScenarios:
 
             return local_data, revealed_avg
 
-        local_data, avg_result = mplang.eval(sim3, federated_avg)
+        local_data, avg_result = mplang.evaluate(sim3, federated_avg)
         data_vals, avg_vals = mplang.fetch(sim3, (local_data, avg_result))
 
         # Verify the average is correct (with lower precision due to floating point)
@@ -167,7 +167,7 @@ class TestSMPCComplexScenarios:
 
             return x, condition, result
 
-        x, condition, result = mplang.eval(sim2, conditional_secure)
+        x, condition, result = mplang.evaluate(sim2, conditional_secure)
         x_vals, cond_vals, result_vals = mplang.fetch(sim2, (x, condition, result))
 
         # Verify conditional logic
@@ -205,7 +205,7 @@ class TestSMPCComplexScenarios:
             result = simp.while_loop(cond, body, x)
             return result
 
-        result = mplang.eval(sim2, iterative_secure)
+        result = mplang.evaluate(sim2, iterative_secure)
         result_vals = mplang.fetch(sim2, result)
 
         # Should stop when sum reaches 10 (each party has 5)

@@ -21,6 +21,7 @@ from typing import Any
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
+from mplang.plib import jax2stablehlo, stdio
 
 
 def prank() -> MPObject:
@@ -45,26 +46,106 @@ def peval(
     return prim.peval(pfunc, args, pmask)
 
 
-def _run_impl(
-    pyfn: Callable, fe_type: str, pmask: Mask | None, *args: Any, **kwargs: Any
-) -> Any:
-    if fe_type == "jax":
-        if pmask is not None:
-            return prim.run_jax_s(pyfn, pmask, *args, **kwargs)
-        else:
-            return prim.run_jax(pyfn, *args, **kwargs)
+# TODO(jint): move this to plib
+def jax_cc(
+    func: Callable, *args: Any, **kwargs: Any
+) -> tuple[PFunction, list[MPObject], Any]:
+    """
+    JAX compilation helper function.
+
+    Compiles a JAX function to StableHLO format and returns the PFunction
+    along with variable arguments for evaluation.
+
+    Args:
+        func: The JAX function to compile
+        *args: Positional arguments to the function
+        **kwargs: Keyword arguments to the function
+
+    Returns:
+        tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
+    """
+
+    def is_variable(arg: Any) -> bool:
+        return isinstance(arg, MPObject)
+
+    # Compile the function using JAX to StableHLO
+    pfunc, in_vars, out_tree = jax2stablehlo.compile(is_variable, func, *args, **kwargs)
+
+    return pfunc, in_vars, out_tree
+
+
+def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    """
+    Run a function that can be evaluated by the mplang system.
+
+    This function provides a dispatch mechanism based on the first argument
+    to route different function types to appropriate handlers.
+
+    Args:
+        pmask: The party mask of this function, None indicates auto deduce parties.
+        func: The function to be dispatched and executed
+        *args: Positional arguments to pass to the function
+        **kwargs: Keyword arguments to pass to the function
+
+    Returns:
+        The result of evaluating the function through the appropriate handler
+
+    Raises:
+        ValueError: If stdio.write is called without required arguments
+        TypeError: If the function compilation or evaluation fails
+        RuntimeError: If the underlying peval execution encounters errors
+
+    Examples:
+        Reading data from a file:
+
+        >>> tensor_info = TensorInfo(shape=(10, 10), dtype=np.float32)
+        >>> attrs = {"format": "binary"}
+        >>> result = run_impl(stdio.read, "data/input.bin", tensor_info, attrs)
+
+        Writing data to a file:
+
+        >>> run_impl(stdio.write, data, "data/output.bin")
+
+        Running a JAX function:
+
+        >>> def matrix_multiply(a, b):
+        ...     return jnp.dot(a, b)
+        >>> result = run_impl(matrix_multiply, mat_a, mat_b)
+
+        Running a custom computation function:
+
+        >>> def compute_statistics(data):
+        ...     mean = jnp.mean(data)
+        ...     std = jnp.std(data)
+        ...     return {"mean": mean, "std": std}
+        >>> stats = run_impl(compute_statistics, dataset)
+    """
+
+    # Known function list - extensible dispatch table
+    FUNC_WHITE_LIST = {
+        stdio.read,
+        stdio.write,
+    }
+
+    if func in FUNC_WHITE_LIST:
+        fe_func = func
     else:
-        raise ValueError(f"Unsupported fe_type: {fe_type}")
+        # unknown python callable, treat it as jax_cc function
+        fe_func = partial(jax_cc, func)
+
+    pfunc, eval_args, out_tree = fe_func(*args, **kwargs)
+    results = peval(pfunc, eval_args, pmask)
+    return out_tree.unflatten(results)
 
 
 # run :: (a -> a) -> m a -> m a
 def run(pyfn: Callable, *, fe_type: str = "jax") -> Callable:
-    return partial(_run_impl, pyfn, fe_type, None)
+    return partial(run_impl, None, pyfn)
 
 
 # runMask :: Mask -> (a -> a) -> m a -> m a
 def runMask(pmask: Mask, pyfn: Callable, fe_type: str = "jax") -> Callable:
-    return partial(_run_impl, pyfn, fe_type, pmask)
+    return partial(run_impl, pmask, pyfn)
 
 
 # runAt :: Rank -> (a -> a) -> m a -> m a

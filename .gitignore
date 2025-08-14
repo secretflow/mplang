@@ -212,3 +212,6 @@ app.log
 # Ignore pylint config files (we use ruff instead)
 .pylintrc
 pylintrc
+
+# Temporary files
+tmp/

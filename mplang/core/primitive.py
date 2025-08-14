@@ -26,7 +26,7 @@ from collections.abc import Callable
 from functools import partial, wraps
 from typing import Any, ParamSpec, TypeVar, cast
 
-from jax.tree_util import tree_map, tree_unflatten
+from jax.tree_util import tree_map
 
 from mplang.core.base import (
     Mask,
@@ -55,7 +55,7 @@ from mplang.expr.ast import (
     ShflSExpr,
     WhileExpr,
 )
-from mplang.plib import jax2stablehlo
+from mplang.plib import basic
 from mplang.utils import mask_utils
 from mplang.utils.func_utils import var_demorph
 
@@ -320,23 +320,6 @@ def peval(
     return [TraceVar(ctx, res) for res in ret_exprs]
 
 
-def _run_jax(rmask: Mask | None, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
-    is_mpobject = lambda x: isinstance(x, MPObject)
-    pfunc, in_vars, out_tree = jax2stablehlo.compile(is_mpobject, pyfn, *args, **kwargs)
-    outs = peval(pfunc, in_vars, rmask)
-    return tree_unflatten(out_tree, outs)
-
-
-def run_jax_s(pyfn: Callable, pmask: Mask, *args: Any, **kwargs: Any) -> Any:
-    """Run a JAX function in the current trace context."""
-    return _run_jax(pmask, pyfn, *args, **kwargs)
-
-
-def run_jax(pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
-    """Run a JAX function in the current trace context with auto deduced pmask."""
-    return _run_jax(None, pyfn, *args, **kwargs)
-
-
 def set_mask(arg: MPObject, mask: Mask) -> MPObject:
     """Set the mask of an MPObject to a new value.
 
@@ -396,7 +379,9 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
         The underlying implementation uses JAX identity function with the
         specified execution mask.
     """
-    return _run_jax(mask, lambda x: x, arg)  # type: ignore[no-any-return]
+    pfunc, eval_args, out_tree = basic.identity(arg)
+    results = peval(pfunc, eval_args, mask)
+    return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
 @primitive

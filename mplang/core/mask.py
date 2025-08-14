@@ -130,7 +130,7 @@ class Mask:
 
     def bit_count(self) -> int:
         """Count the number of parties in this mask."""
-        return bin(self._value).count("1")
+        return self._value.bit_count()
 
     def ranks(self) -> Iterator[int]:
         """Iterate over the ranks in this mask."""

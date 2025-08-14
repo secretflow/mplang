@@ -21,6 +21,7 @@ import spu.libspu as spu_api
 
 from mplang.core.base import MPType, TensorInfo
 from mplang.core.dtype import DType
+from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction
 from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (
@@ -155,6 +156,10 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
         # inferred from the input expressions during deserialization
     elif isinstance(py_value, spu_api.Visibility):
         # Handle enum types (like spu.libspu.Visibility) by storing as int
+        attr_proto.type = mpir_pb2.AttrProto.INT
+        attr_proto.i = int(py_value)
+    elif isinstance(py_value, Mask):
+        # Handle Mask objects by storing as int
         attr_proto.type = mpir_pb2.AttrProto.INT
         attr_proto.i = int(py_value)
     else:

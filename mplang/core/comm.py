@@ -18,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from mplang.utils.mask_utils import enum_mask
+from mplang.core.base import Mask
 
 
 class ICommunicator(ABC):
@@ -147,11 +147,11 @@ class CollectiveMixin(ICommunicator, ICollective):
 
         cid = self.new_id()
 
-        if is_rank_in(self.rank, pmask):
+        if self.rank in Mask(pmask):
             self.send(root, cid, data)
 
         if self.rank == root:
-            res = [self.recv(idx, cid) for idx in enum_mask(pmask)]
+            res = [self.recv(idx, cid) for idx in Mask(pmask)]
         else:
             res = [None] * pmask.bit_count()
 
@@ -173,10 +173,10 @@ class CollectiveMixin(ICommunicator, ICollective):
         cid = self.new_id()
 
         if self.rank == root:
-            for idx, arg in zip(enum_mask(pmask), args, strict=True):
+            for idx, arg in zip(Mask(pmask), args, strict=True):
                 self.send(idx, cid, arg)
 
-        if is_rank_in(self.rank, pmask):
+        if self.rank in Mask(pmask):
             data = self.recv(root, cid)
         else:
             data = None
@@ -193,11 +193,11 @@ class CollectiveMixin(ICommunicator, ICollective):
         logging.debug(f"allgather_m: pmask={pmask}, arg={arg}")
         cid = self.new_id()
 
-        if is_rank_in(self.rank, pmask):
-            for idx in enum_mask(pmask):
+        if self.rank in Mask(pmask):
+            for idx in Mask(pmask):
                 self.send(idx, cid, arg)
 
-            res = [self.recv(idx, cid) for idx in enum_mask(pmask)]
+            res = [self.recv(idx, cid) for idx in Mask(pmask)]
         else:
             res = [None] * pmask.bit_count()
 
@@ -216,10 +216,10 @@ class CollectiveMixin(ICommunicator, ICollective):
         cid = self.new_id()
 
         if self.rank == root:
-            for idx in enum_mask(pmask):
+            for idx in Mask(pmask):
                 self.send(idx, cid, arg)
 
-        if is_rank_in(self.rank, pmask):
+        if self.rank in Mask(pmask):
             return self.recv(root, cid)
         else:
             return None

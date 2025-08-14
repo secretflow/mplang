@@ -22,7 +22,6 @@ from typing import Any
 from jax.tree_util import tree_unflatten
 
 import mplang.mpi as mpi
-import mplang.utils.mask_utils as mask_utils
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank
 from mplang.core.context_mgr import cur_ctx
@@ -87,21 +86,18 @@ class SPU(SecureAPI):
             if frm_mask is None:
                 frm_mask = obj.pmask
             else:
-                if not mask_utils.is_subset(frm_mask, obj.pmask):
+                if not Mask(frm_mask).is_subset(obj.pmask):
                     raise ValueError(f"Cannot seal from {frm_mask} to {obj.pmask}, ")
 
         # Get the world_size from spu_mask (number of parties in SPU computation)
-        spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
+        spu = SpuFE(world_size=Mask(spu_mask).bit_count())
 
         # make shares on each party.
         pfunc = spu.makeshares(obj, visibility=Visibility.SECRET)
         shares = prim.peval(pfunc, [obj], frm_mask)
 
         # scatter the shares to each party.
-        return [
-            mpi.scatter_m(spu_mask, rank, shares)
-            for rank in mask_utils.enum_mask(frm_mask)
-        ]
+        return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
 
     def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
         results = seal(obj, frm_mask=1 << root)
@@ -114,7 +110,7 @@ class SPU(SecureAPI):
 
         spu_mask = cur_ctx().attr("spu_mask")
 
-        spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
+        spu = SpuFE(world_size=Mask(spu_mask).bit_count())
         is_mpobject = lambda x: isinstance(x, MPObject)
         pfunc, in_vars, out_tree = spu.compile_jax(is_mpobject, pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
@@ -129,14 +125,12 @@ class SPU(SecureAPI):
         assert obj.pmask == spu_mask, (obj.pmask, spu_mask)
 
         # (n_parties, n_shares)
-        shares = [
-            mpi.bcast_m(to_mask, rank, obj) for rank in mask_utils.enum_mask(spu_mask)
-        ]
-        assert len(shares) == mask_utils.bit_count(spu_mask), (shares, spu_mask)
+        shares = [mpi.bcast_m(to_mask, rank, obj) for rank in Mask(spu_mask)]
+        assert len(shares) == Mask(spu_mask).bit_count(), (shares, spu_mask)
         assert all(share.pmask == to_mask for share in shares)
 
         # Reconstruct the original object from shares
-        spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
+        spu = SpuFE(world_size=Mask(spu_mask).bit_count())
         pfunc = spu.reconstruct(shares)
         return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 

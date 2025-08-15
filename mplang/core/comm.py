@@ -153,14 +153,14 @@ class CollectiveMixin(ICommunicator, ICollective):
         if self.rank == root:
             res = [self.recv(idx, cid) for idx in Mask(pmask)]
         else:
-            res = [None] * pmask.num_parties()
+            res = [None] * Mask(pmask).num_parties()
 
         return res
 
     def gather(self, root: int, data: Any) -> list[Any]:
         """Gather data from all processes to root"""
-        pmask = (1 << self.world_size) - 1
-        return self.gather_m(pmask, root, data)
+        pmask = Mask.all(self.world_size)
+        return self.gather_m(pmask.value, root, data)
 
     def scatter_m(self, pmask: int, root: int, args: list[Any]) -> Any:
         """Scatter data from root to parties in pmask"""
@@ -168,15 +168,16 @@ class CollectiveMixin(ICommunicator, ICollective):
             f"[{self.rank}]: scatter_m: pmask={pmask}, root={root}, args={args}"
         )
         assert 0 <= root < self.world_size
-        assert len(args) == pmask.num_parties(), f"{len(args)} != {pmask.num_parties()}"
+        mask = Mask(pmask)
+        assert len(args) == mask.num_parties(), f"{len(args)} != {mask.num_parties()}"
 
         cid = self.new_id()
 
         if self.rank == root:
-            for idx, arg in zip(Mask(pmask), args, strict=True):
+            for idx, arg in zip(mask, args, strict=True):
                 self.send(idx, cid, arg)
 
-        if self.rank in Mask(pmask):
+        if self.rank in mask:
             data = self.recv(root, cid)
         else:
             data = None
@@ -185,8 +186,8 @@ class CollectiveMixin(ICommunicator, ICollective):
 
     def scatter(self, root: int, args: list[Any]) -> Any:
         """Scatter data from root to all processes"""
-        pmask = (1 << self.world_size) - 1
-        return self.scatter_m(pmask, root, args)
+        pmask = Mask.all(self.world_size)
+        return self.scatter_m(pmask.value, root, args)
 
     def allgather_m(self, pmask: int, arg: Any) -> list[Any]:
         """Gather data from parties in pmask to all parties"""
@@ -199,14 +200,14 @@ class CollectiveMixin(ICommunicator, ICollective):
 
             res = [self.recv(idx, cid) for idx in Mask(pmask)]
         else:
-            res = [None] * pmask.num_parties()
+            res = [None] * Mask(pmask).num_parties()
 
         return res
 
     def allgather(self, arg: Any) -> list[Any]:
         """Gather data from all processes to all processes"""
-        pmask = (1 << self.world_size) - 1
-        return self.allgather_m(pmask, arg)
+        pmask = Mask.all(self.world_size)
+        return self.allgather_m(pmask.value, arg)
 
     def bcast_m(self, pmask: int, root: int, arg: Any) -> Any:
         """Broadcast data from root to parties in pmask"""
@@ -226,5 +227,5 @@ class CollectiveMixin(ICommunicator, ICollective):
 
     def bcast(self, root: int, arg: Any) -> Any:
         """Broadcast data from root to all processes"""
-        pmask = (1 << self.world_size) - 1
-        return self.bcast_m(pmask, root, arg)
+        pmask = Mask.all(self.world_size)
+        return self.bcast_m(pmask.value, root, arg)

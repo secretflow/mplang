@@ -38,8 +38,10 @@ import mplang.utils.mask_utils as mask_utils
 from mplang.core.base import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
+from mplang.plib.basic_handler import BasicHandler
 from mplang.plib.spu_handler import SpuHandler
 from mplang.plib.stablehlo_handler import StablehloHandler
+from mplang.plib.stdio_handler import StdioHandler
 from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2
 from mplang.runtime.executor.resource import (
     ExecutionName,
@@ -254,6 +256,8 @@ class Execution:
             {},  # empty environment, bindings will be provided during evaluation
             self.comm,
             [
+                BasicHandler(),
+                StdioHandler(),
                 StablehloHandler(),
                 spu_handler,
             ],

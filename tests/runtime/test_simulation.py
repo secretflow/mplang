@@ -26,10 +26,11 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from mplang import simp
 from mplang.core.base import Mask, MPObject, MPType, Rank
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, INT32
-from mplang.core.primitive import cond, constant, prank, pshfl_s, run_jax, while_loop
+from mplang.core.primitive import cond, constant, prank, pshfl_s, while_loop
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
 
@@ -535,10 +536,10 @@ class TestComplexCond:
             square_plus_one, multiply_and_add = self.simple_arithmetic_ops()
 
             def then_fn(val):
-                return run_jax(square_plus_one, val)
+                return simp.run(square_plus_one)(val)
 
             def else_fn(val):
-                return run_jax(multiply_and_add, val)
+                return simp.run(multiply_and_add)(val)
 
             return cond(pred, then_fn, else_fn, input_data)
 
@@ -580,13 +581,13 @@ class TestComplexCond:
                 def matmul_scale(x_val, y_val, scale_val):
                     return x_val * y_val * scale_val + jnp.sum(x_val)
 
-                return run_jax(matmul_scale, a, b, s)
+                return simp.run(matmul_scale)(a, b, s)
 
             def else_fn(a, b, s):
                 def polynomial(x_val, y_val, scale_val):
                     return jnp.power(x_val, 2) + y_val / scale_val
 
-                return run_jax(polynomial, a, b, s)
+                return simp.run(polynomial)(a, b, s)
 
             return cond(pred, then_fn, else_fn, x, y, scale)
 
@@ -627,10 +628,10 @@ class TestComplexCond:
             matrix_op, element_op = self.matrix_operations()
 
             def then_fn(input_val):
-                return run_jax(matrix_op, input_val, outer_matrix)
+                return simp.run(matrix_op)(input_val, outer_matrix)
 
             def else_fn(input_val):
-                return run_jax(element_op, input_val, outer_vector)
+                return simp.run(element_op)(input_val, outer_vector)
 
             return cond(pred, then_fn, else_fn, input_data)
 
@@ -671,10 +672,10 @@ class TestComplexCond:
             forward_pass, statistical_transform = self.neural_network_ops()
 
             def then_fn(input_val):
-                return run_jax(forward_pass, input_val, weights, bias)
+                return simp.run(forward_pass)(input_val, weights, bias)
 
             def else_fn(input_val):
-                return run_jax(statistical_transform, input_val, weights)
+                return simp.run(statistical_transform)(input_val, weights)
 
             return cond(pred, then_fn, else_fn, input_data)
 
@@ -719,11 +720,11 @@ class TestComplexCond:
             adam_step, sgd_step = self.optimizer_ops()
 
             def adam_optimizer(grad, lr, mom, eps, state):
-                return run_jax(adam_step, grad, lr, mom, eps, state)
+                return simp.run(adam_step)(grad, lr, mom, eps, state)
 
             def sgd_optimizer(grad, lr, mom, eps, state):
                 # Only use first two parameters for SGD
-                return run_jax(sgd_step, grad, lr)
+                return simp.run(sgd_step)(grad, lr)
 
             return cond(
                 pred,
@@ -779,13 +780,13 @@ class TestComplexCond:
                     result_matrix = jnp.transpose(matrix) + jnp.eye(2)
                     return jnp.ravel(result_matrix)  # Flatten back to 1D
 
-                return run_jax(matrix_transform, val)
+                return simp.run(matrix_transform)(val)
 
             def element_branch(val):
                 def element_transform(x):
                     return jnp.roll(x, shift=1) * 2 + jnp.ones_like(x)
 
-                return run_jax(element_transform, val)
+                return simp.run(element_transform)(val)
 
             return cond(pred, matrix_branch, element_branch, input_data)
 
@@ -840,11 +841,11 @@ class TestWhileLoop:
 
             def cond_fn(x):
                 # Captures counter_max from outer scope
-                return run_jax(lambda a, b: a < b, x, counter_max)
+                return simp.run(lambda a, b: a < b)(x, counter_max)
 
             def body_fn(x):
                 # Captures increment from outer scope
-                return run_jax(lambda a, b: a + b, x, increment)
+                return simp.run(lambda a, b: a + b)(x, increment)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -931,14 +932,14 @@ class TestWhileLoop:
 
                     return jnp.where(r == 0, False, cnt < 1)
 
-                return run_jax(check, counter, rank)
+                return simp.run(check)(counter, rank)
 
             def body_fn(counter):
                 # Increment by 10
                 def increment(cnt):
                     return cnt + 10
 
-                return run_jax(increment, counter)
+                return simp.run(increment)(counter)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -976,11 +977,11 @@ class TestWhileLoop:
 
             def cond_fn(x):
                 # Captures counter_max from outer scope
-                return run_jax(lambda a, b: a < b, x, counter_max)
+                return simp.run(lambda a, b: a < b)(x, counter_max)
 
             def body_fn(x):
                 # Captures increment from outer scope
-                return run_jax(lambda a, b: a + b, x, increment)
+                return simp.run(lambda a, b: a + b)(x, increment)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1019,7 +1020,7 @@ class TestWhileLoop:
                 def check_sum(arr, thresh):
                     return jnp.sum(arr) < thresh
 
-                return run_jax(check_sum, state, threshold)
+                return simp.run(check_sum)(state, threshold)
 
             def body_fn(state):
                 # Add [1.0, 1.0] to current state
@@ -1028,7 +1029,7 @@ class TestWhileLoop:
                 def add_increment(arr, inc):
                     return arr + inc
 
-                return run_jax(add_increment, state, increment)
+                return simp.run(add_increment)(state, increment)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1127,7 +1128,7 @@ class TestWhileLoop:
 
                         return jnp.logical_and(val < max_val, val < thresh)
 
-                    return run_jax(check, x, max_value, threshold)
+                    return simp.run(check)(x, max_value, threshold)
 
                 return cond_fn
 
@@ -1139,7 +1140,7 @@ class TestWhileLoop:
                     def transform(val, mult, st):
                         return val * mult + st
 
-                    return run_jax(transform, x, multiplier, step)
+                    return simp.run(transform)(x, multiplier, step)
 
                 return body_fn
 
@@ -1182,14 +1183,14 @@ class TestWhileLoop:
                 def check_sum(arr, thresh):
                     return jnp.sum(arr) < thresh
 
-                return run_jax(check_sum, state, threshold)
+                return simp.run(check_sum)(state, threshold)
 
             def body_fn(state):
                 # Add squares of current state to itself
                 def accumulate_squares(arr):
                     return arr + jnp.square(arr)
 
-                return run_jax(accumulate_squares, state)
+                return simp.run(accumulate_squares)(state)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1234,7 +1235,7 @@ class TestWhileLoop:
                     limit = jnp.where(party_rank == 0, 16, 27)
                     return val < limit
 
-                return run_jax(check_limit, state, rank)
+                return simp.run(check_limit)(state, rank)
 
             def body_fn(state):
                 # Party 0: multiply by 2
@@ -1243,7 +1244,7 @@ class TestWhileLoop:
                     multiplier = jnp.where(party_rank == 0, 2, 3)
                     return val * multiplier
 
-                return run_jax(transform, state, rank)
+                return simp.run(transform)(state, rank)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1283,14 +1284,14 @@ class TestWhileLoop:
                     trace_val = jnp.trace(mat)
                     return trace_val < thresh
 
-                return run_jax(check_trace, matrix, threshold)
+                return simp.run(check_trace)(matrix, threshold)
 
             def body_fn(matrix):
                 # Transform: M' = M + 0.5 * M * M^T
                 def transform_matrix(mat):
                     return mat + 0.5 * jnp.dot(mat, mat.T)
 
-                return run_jax(transform_matrix, matrix)
+                return simp.run(transform_matrix)(matrix)
 
             return while_loop(cond_fn, body_fn, init_matrix)
 
@@ -1346,14 +1347,14 @@ class TestWhileLoop:
                     limit = jnp.where(party_rank == 0, max_iter, max_iter - 1)
                     return cnt < limit
 
-                return run_jax(should_continue, counter, max_iterations, rank)
+                return simp.run(should_continue)(counter, max_iterations, rank)
 
             def body_fn(counter):
                 # Use captured step_size
                 def increment_by_step(cnt, step):
                     return cnt + step
 
-                return run_jax(increment_by_step, counter, step_size)
+                return simp.run(increment_by_step)(counter, step_size)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1391,19 +1392,19 @@ class TestWhileLoop:
                 def check_target(val, tgt):
                     return val < tgt
 
-                return run_jax(check_target, state, target)
+                return simp.run(check_target)(state, target)
 
             def body_fn(state):
                 # Use conditional logic based on current state value
-                even_check = run_jax(lambda x: x % 2 == 0, state)
+                even_check = simp.run(lambda x: x % 2 == 0)(state)
 
                 def then_fn(val):
                     # If even: multiply by 2
-                    return run_jax(lambda x: x * 2, val)
+                    return simp.run(lambda x: x * 2)(val)
 
                 def else_fn(val):
                     # If odd: add 3
-                    return run_jax(lambda x: x + 3, val)
+                    return simp.run(lambda x: x + 3)(val)
 
                 return cond(even_check, then_fn, else_fn, state)
 
@@ -1486,7 +1487,7 @@ class TestPShflS:
         def cross_shuffle():
             # Create different data at each party based on rank
             rank_data = prank()  # Party 0 has 0, Party 1 has 1
-            multiplied_data = run_jax(lambda x: x * 10 + 100, rank_data)
+            multiplied_data = simp.run(lambda x: x * 10 + 100)(rank_data)
 
             # Cross shuffle: party 0 gets from rank 1, party 1 gets from rank 0
             pmask = Mask(3)  # 0b11 - both parties receive
@@ -1559,9 +1560,9 @@ class TestPShflS:
         def array_shuffle():
             # Create array data based on rank
             rank = prank()
-            array_data = run_jax(
-                lambda r: jnp.array([r * 10 + 1, r * 10 + 2, r * 10 + 3]), rank
-            )
+            array_data = simp.run(
+                lambda r: jnp.array([r * 10 + 1, r * 10 + 2, r * 10 + 3])
+            )(rank)
 
             # Cross shuffle
             pmask = Mask(3)  # Both parties receive
@@ -1598,7 +1599,7 @@ class TestPShflS:
         def same_source_shuffle():
             # Create unique data at each party
             rank = prank()
-            unique_data = run_jax(lambda r: (r + 1) * 100, rank)
+            unique_data = simp.run(lambda r: (r + 1) * 100)(rank)
 
             # Both parties receive from rank 0
             pmask = Mask(3)  # Both parties receive
@@ -1635,7 +1636,7 @@ class TestPShflS:
         def computation_shuffle():
             # Step 1: Initial computation
             rank = prank()
-            initial_data = run_jax(lambda r: r * 5 + 10, rank)
+            initial_data = simp.run(lambda r: r * 5 + 10)(rank)
 
             # Step 2: Shuffle the computed data
             pmask = Mask(3)
@@ -1643,7 +1644,7 @@ class TestPShflS:
             shuffled_data = pshfl_s(initial_data, pmask, src_ranks)
 
             # Step 3: Further computation on shuffled data
-            final_result = run_jax(lambda x: x * 2 + 1, shuffled_data)
+            final_result = simp.run(lambda x: x * 2 + 1)(shuffled_data)
 
             return final_result
 
@@ -1678,9 +1679,9 @@ class TestPShflS:
         def matrix_shuffle():
             # Create different matrices at each party
             rank = prank()
-            matrix_data = run_jax(
-                lambda r: jnp.array([[r + 1, r + 2], [r + 3, r + 4]]), rank
-            )
+            matrix_data = simp.run(
+                lambda r: jnp.array([[r + 1, r + 2], [r + 3, r + 4]])
+            )(rank)
 
             # Shuffle matrices
             pmask = Mask(3)
@@ -1725,14 +1726,14 @@ class TestPShflS:
         def shuffle_chain():
             # Initial data
             rank = prank()
-            initial = run_jax(lambda r: (r + 1) * 10, rank)
+            initial = simp.run(lambda r: (r + 1) * 10)(rank)
 
             # First shuffle: cross pattern
             pmask = Mask(3)
             first_shuffle = pshfl_s(initial, pmask, [Rank(1), Rank(0)])
 
             # Transform the shuffled data
-            transformed = run_jax(lambda x: x + 5, first_shuffle)
+            transformed = simp.run(lambda x: x + 5)(first_shuffle)
 
             # Second shuffle: back to original (reverse cross)
             second_shuffle = pshfl_s(transformed, pmask, [Rank(1), Rank(0)])
@@ -1771,7 +1772,7 @@ class TestPShflS:
         def conditional_shuffle():
             # Use rank as predicate for conditional
             rank = prank()
-            pred = run_jax(lambda r: r == 0, rank)
+            pred = simp.run(lambda r: r == 0)(rank)
 
             def then_fn(r):
                 return constant(100)

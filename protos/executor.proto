@@ -185,8 +185,8 @@ message Session {
   // When used in CreateSessionRequest, name is session_id.
   string name = 1 [(google.api.field_behavior) = IDENTIFIER];
 
-  // Map of peer party addresses involved in this session.
-  map<string, string> peer_addrs = 2;
+  // Map of all participant addresses involved in this session.
+  map<string, string> party_addrs = 2;
 
   // Additional metadata for the session.
   map<string, string> metadata = 3;

@@ -97,7 +97,7 @@ class Session(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing.final
-    class PeerAddrsEntry(google.protobuf.message.Message):
+    class PartyAddrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
         KEY_FIELD_NUMBER: builtins.int
@@ -129,7 +129,7 @@ class Session(google.protobuf.message.Message):
         def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     NAME_FIELD_NUMBER: builtins.int
-    PEER_ADDRS_FIELD_NUMBER: builtins.int
+    PARTY_ADDRS_FIELD_NUMBER: builtins.int
     METADATA_FIELD_NUMBER: builtins.int
     CREATE_TIME_FIELD_NUMBER: builtins.int
     UPDATE_TIME_FIELD_NUMBER: builtins.int
@@ -138,8 +138,8 @@ class Session(google.protobuf.message.Message):
     When used in CreateSessionRequest, name is session_id.
     """
     @property
-    def peer_addrs(self) -> google.protobuf.internal.containers.ScalarMap[builtins.str, builtins.str]:
-        """Map of peer party addresses involved in this session."""
+    def party_addrs(self) -> google.protobuf.internal.containers.ScalarMap[builtins.str, builtins.str]:
+        """Map of all participant addresses involved in this session."""
 
     @property
     def metadata(self) -> google.protobuf.internal.containers.ScalarMap[builtins.str, builtins.str]:
@@ -157,13 +157,13 @@ class Session(google.protobuf.message.Message):
         self,
         *,
         name: builtins.str = ...,
-        peer_addrs: collections.abc.Mapping[builtins.str, builtins.str] | None = ...,
+        party_addrs: collections.abc.Mapping[builtins.str, builtins.str] | None = ...,
         metadata: collections.abc.Mapping[builtins.str, builtins.str] | None = ...,
         create_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         update_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["create_time", b"create_time", "update_time", b"update_time"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["create_time", b"create_time", "metadata", b"metadata", "name", b"name", "peer_addrs", b"peer_addrs", "update_time", b"update_time"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["create_time", b"create_time", "metadata", b"metadata", "name", b"name", "party_addrs", b"party_addrs", "update_time", b"update_time"]) -> None: ...
 
 global___Session = Session
 

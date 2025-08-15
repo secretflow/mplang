@@ -110,7 +110,6 @@ def compile(
         fn_name=get_fn_name(flat_fn),
         fn_type=PFuncTypes.MLIR_STABLEHLO,  # Key: specify StableHLO MLIR format
         fn_text=mlir_text,  # MLIR text, serializable for transmission
-        fn_body=None,
         ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
         outs_info=tuple(out_info_flat),
         attrs={},

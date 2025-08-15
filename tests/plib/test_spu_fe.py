@@ -376,7 +376,6 @@ class TestSpuFEMakeShares:
         # Verify basic properties
         assert pfunc.fn_type == PFuncTypes.SPU_MAKESHARES
         assert pfunc.fn_name == "makeshares"
-        assert pfunc.fn_body is None  # Handled by SPU runtime
         assert pfunc.fn_text is None  # No serialized code needed
 
         # Verify input info
@@ -525,7 +524,6 @@ class TestSpuFEReconstruct:
         # Verify basic properties
         assert pfunc.fn_type == PFuncTypes.SPU_RECONSTRUCT
         assert pfunc.fn_name == "reconstruct"
-        assert pfunc.fn_body is None  # Handled by SPU runtime
         assert pfunc.fn_text is None  # No serialized code needed
 
         # Verify input info (one for each share)

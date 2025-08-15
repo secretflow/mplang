@@ -25,7 +25,6 @@ def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         fn_name="Identity",
         fn_type="Identity",
         fn_text="",
-        fn_body=None,
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),
         attrs={},

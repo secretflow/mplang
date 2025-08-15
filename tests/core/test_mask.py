@@ -60,12 +60,12 @@ class TestMask:
         mask = Mask.none()
         assert mask.value == 0
 
-    def test_bit_count(self):
-        assert Mask(0).bit_count() == 0
-        assert Mask(1).bit_count() == 1
-        assert Mask(3).bit_count() == 2  # 0b11
-        assert Mask(5).bit_count() == 2  # 0b101
-        assert Mask(7).bit_count() == 3  # 0b111
+    def test_num_parties(self):
+        assert Mask(0).num_parties() == 0
+        assert Mask(1).num_parties() == 1
+        assert Mask(3).num_parties() == 2  # 0b11
+        assert Mask(5).num_parties() == 2  # 0b101
+        assert Mask(7).num_parties() == 3  # 0b111
 
     def test_ranks_iteration(self):
         assert list(Mask(0)) == []

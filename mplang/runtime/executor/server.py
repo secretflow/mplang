@@ -243,7 +243,7 @@ class Execution:
         )
 
         # Setup SPU handler
-        spu_handler = SpuHandler(Mask(self.spu_mask).bit_count(), spu_config)
+        spu_handler = SpuHandler(Mask(self.spu_mask).num_parties(), spu_config)
         if self.spu_comm is not None:
             spu_handler.set_link_context(self.spu_comm)
 

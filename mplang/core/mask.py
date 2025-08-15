@@ -159,7 +159,7 @@ class Mask:
         """Support formatting for hexadecimal display."""
         return format(self._value, format_spec)
 
-    def bit_count(self) -> int:
+    def num_parties(self) -> int:
         """Count the number of parties in this mask."""
         return self._value.bit_count()
 
@@ -248,7 +248,7 @@ class Mask:
 
     def relative_to_global_rank(self, relative_rank: int) -> int:
         """Convert a relative rank to global rank within this mask."""
-        if relative_rank < 0 or relative_rank >= self.bit_count():
+        if relative_rank < 0 or relative_rank >= self.num_parties():
             raise ValueError(f"Relative rank {relative_rank} out of range")
 
         count = 0

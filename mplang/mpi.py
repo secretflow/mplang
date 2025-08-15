@@ -79,7 +79,7 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
         gathered_data = prim.pshfl_s(arg, root_mask, [src_rank])
         result.append(gathered_data)
 
-    assert len(result) == Mask(src_mask).bit_count(), (result, src_mask)
+    assert len(result) == Mask(src_mask).num_parties(), (result, src_mask)
     return result
 
 
@@ -93,7 +93,7 @@ def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
         if not Mask.from_ranks(root).is_subset(obj.pmask):
             raise ValueError(f"Expect root {root} in obj mask {obj.pmask}.")
 
-    result = prim.pshfl_s(obj, pmask, [root] * Mask(pmask).bit_count())
+    result = prim.pshfl_s(obj, pmask, [root] * Mask(pmask).num_parties())
 
     assert result.pmask == pmask, (result.pmask, pmask)
     return result  # type: ignore[no-any-return]

@@ -90,7 +90,7 @@ class SPU(SecureAPI):
                     raise ValueError(f"Cannot seal from {frm_mask} to {obj.pmask}, ")
 
         # Get the world_size from spu_mask (number of parties in SPU computation)
-        spu = SpuFE(world_size=Mask(spu_mask).bit_count())
+        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
 
         # make shares on each party.
         pfunc = spu.makeshares(obj, visibility=Visibility.SECRET)
@@ -110,7 +110,7 @@ class SPU(SecureAPI):
 
         spu_mask = cur_ctx().attr("spu_mask")
 
-        spu = SpuFE(world_size=Mask(spu_mask).bit_count())
+        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
         is_mpobject = lambda x: isinstance(x, MPObject)
         pfunc, in_vars, out_tree = spu.compile_jax(is_mpobject, pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
@@ -126,11 +126,11 @@ class SPU(SecureAPI):
 
         # (n_parties, n_shares)
         shares = [mpi.bcast_m(to_mask, rank, obj) for rank in Mask(spu_mask)]
-        assert len(shares) == Mask(spu_mask).bit_count(), (shares, spu_mask)
+        assert len(shares) == Mask(spu_mask).num_parties(), (shares, spu_mask)
         assert all(share.pmask == to_mask for share in shares)
 
         # Reconstruct the original object from shares
-        spu = SpuFE(world_size=Mask(spu_mask).bit_count())
+        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
         pfunc = spu.reconstruct(shares)
         return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 

@@ -153,7 +153,7 @@ class CollectiveMixin(ICommunicator, ICollective):
         if self.rank == root:
             res = [self.recv(idx, cid) for idx in Mask(pmask)]
         else:
-            res = [None] * pmask.bit_count()
+            res = [None] * pmask.num_parties()
 
         return res
 
@@ -168,7 +168,7 @@ class CollectiveMixin(ICommunicator, ICollective):
             f"[{self.rank}]: scatter_m: pmask={pmask}, root={root}, args={args}"
         )
         assert 0 <= root < self.world_size
-        assert len(args) == pmask.bit_count(), f"{len(args)} != {pmask.bit_count()}"
+        assert len(args) == pmask.num_parties(), f"{len(args)} != {pmask.num_parties()}"
 
         cid = self.new_id()
 
@@ -199,7 +199,7 @@ class CollectiveMixin(ICommunicator, ICollective):
 
             res = [self.recv(idx, cid) for idx in Mask(pmask)]
         else:
-            res = [None] * pmask.bit_count()
+            res = [None] * pmask.num_parties()
 
         return res
 

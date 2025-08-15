@@ -408,7 +408,7 @@ class ShflSExpr(Expr):
         self.src_ranks = src_ranks
 
         # Now do validation using the assigned values
-        if len(self.src_ranks) != Mask(self.pmask).bit_count():
+        if len(self.src_ranks) != Mask(self.pmask).num_parties():
             raise ValueError(
                 f"src_ranks length ({len(self.src_ranks)}) not match {self.pmask}"
             )

@@ -21,7 +21,7 @@ from mplang.core.pfunc import PFunction
 
 
 def read(
-    path: str, ty: TensorInfo, **kwargs: dict[str, Any]
+    path: str, ty: TensorInfo, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """
     Read data from a file.

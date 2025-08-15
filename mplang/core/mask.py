@@ -211,7 +211,7 @@ class Mask:
     def difference(self, other: Mask | int) -> Mask:
         """Return the difference of this mask with another."""
         other_mask_value = self._ensure_mask_value(other)
-        return Mask(self._value & ~other_mask_value)
+        return Mask(self._value & Mask._invert_mask_value(other_mask_value))
 
     def __or__(self, other: Mask | int) -> Mask:
         """Union operator (|)."""
@@ -230,12 +230,17 @@ class Mask:
         """Difference operator (-)."""
         return self.difference(other)
 
+    @staticmethod
+    def _invert_mask_value(value: int) -> int:
+        # Invert the bits of the mask value
+        # Use with caution - typically you want to limit to a specific number of parties
+        # For now, we limit to 64 bits to avoid negative values
+        return ~value & ((1 << 64) - 1)
+
     def __invert__(self) -> Mask:
         """Bitwise NOT operator (~)."""
         # Note: This creates a mask with potentially infinite bits set
-        # Use with caution - typically you want to limit to a specific number of parties
-        # For now, we limit to 64 bits to avoid negative values
-        return Mask(~self._value & ((1 << 64) - 1))
+        return Mask(Mask._invert_mask_value(self._value))
 
     def global_to_relative_rank(self, global_rank: int) -> int:
         """Convert a global rank to relative rank within this mask."""

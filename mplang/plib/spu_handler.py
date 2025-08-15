@@ -22,7 +22,7 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.core.base import TensorLike
-from mplang.core.pfunc import PFunction, PFunctionHandler, PFuncTypes
+from mplang.core.pfunc import PFunction, PFunctionHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
 
 
@@ -129,9 +129,9 @@ class SpuHandler(PFunctionHandler):
     def list_fn_names(self) -> list[str]:
         """List function names that this handler can execute."""
         return [
-            PFuncTypes.SPU_RUN,
-            PFuncTypes.SPU_MAKESHARES,
-            PFuncTypes.SPU_RECONSTRUCT,
+            "mlir.pphlo",
+            "spu.makeshares",
+            "spu.reconstruct",
         ]
 
     # override
@@ -140,11 +140,11 @@ class SpuHandler(PFunctionHandler):
         pfunc: PFunction,
         args: list[TensorLike],
     ) -> list[TensorLike]:
-        if pfunc.fn_type == PFuncTypes.SPU_RUN:
+        if pfunc.fn_type == "mlir.pphlo":
             return self.do_run(pfunc, args)
-        elif pfunc.fn_type == PFuncTypes.SPU_MAKESHARES:
+        elif pfunc.fn_type == "spu.makeshares":
             return self.do_makeshares(pfunc, args)
-        elif pfunc.fn_type == PFuncTypes.SPU_RECONSTRUCT:
+        elif pfunc.fn_type == "spu.reconstruct":
             return self.do_reconstruct(pfunc, args)
         else:
             raise ValueError(f"Unsupported function type: {pfunc.fn_type}")
@@ -282,9 +282,9 @@ class SpuHandler(PFunctionHandler):
             RuntimeError: Missing SPU runtime setup
         """
         # Validate format: only SPU protobuf supported
-        if pfunc.fn_type != PFuncTypes.SPU_RUN:
+        if pfunc.fn_type != "mlir.pphlo":
             raise ValueError(
-                f"Unsupported format: {pfunc.fn_type}. Expected '{PFuncTypes.SPU_RUN}'"
+                f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.pphlo'"
             )
 
         if self._link_comm is None:

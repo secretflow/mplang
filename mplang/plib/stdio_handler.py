@@ -91,7 +91,7 @@ class StdioHandler(PFunctionHandler):
             ValueError: If required attributes are missing or wrong number of args
             RuntimeError: If file I/O operations fail
         """
-        if pfunc.fn_type == "Read":
+        if pfunc.fn_type == "stdio.read":
             path = pfunc.attrs.get("path")
             if path is None:
                 raise ValueError("Read function requires 'path' attribute.")
@@ -105,7 +105,7 @@ class StdioHandler(PFunctionHandler):
             except Exception as e:
                 raise RuntimeError(f"Failed to read from {path}: {e}") from e
 
-        elif pfunc.fn_type == "Write":
+        elif pfunc.fn_type == "stdio.write":
             path = pfunc.attrs.get("path")
             if path is None:
                 raise ValueError("Write function requires 'path' attribute.")

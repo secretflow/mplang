@@ -23,15 +23,6 @@ from typing import Any
 from mplang.core.base import TensorInfo, TensorLike
 
 
-class PFuncTypes:
-    """Function type constants for different runtime engines."""
-
-    MLIR_STABLEHLO = "mlir[stablehlo]"
-    SPU_RUN = "spu.run"
-    SPU_MAKESHARES = "spu.makeshares"
-    SPU_RECONSTRUCT = "spu.reconstruct"
-
-
 class PFunction:
     """A Party Function is a local function that can be executed by a single party.
 

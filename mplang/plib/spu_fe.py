@@ -25,7 +25,7 @@ from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.base import TensorInfo, TensorLike
-from mplang.core.pfunc import PFunction, PFuncTypes, get_fn_name
+from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -97,7 +97,7 @@ class SpuFE:
 
         # Create the PFunction
         pfunc = PFunction(
-            fn_type=PFuncTypes.SPU_MAKESHARES,
+            fn_type="spu.makeshares",
             fn_name="makeshares",
             fn_text=None,  # No serialized code needed
             ins_info=ins_info,
@@ -137,7 +137,7 @@ class SpuFE:
         attrs: dict[str, Any] = {}
 
         pfunc = PFunction(
-            fn_type=PFuncTypes.SPU_RECONSTRUCT,
+            fn_type="spu.reconstruct",
             fn_name="reconstruct",
             fn_text=None,  # No serialized code needed
             ins_info=ins_info,
@@ -243,7 +243,7 @@ class SpuFE:
         }
 
         pfn = PFunction(
-            fn_type=PFuncTypes.SPU_RUN,
+            fn_type="mlir.pphlo",
             fn_name=get_fn_name(jax_fn),
             fn_text=executable_code,
             ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),

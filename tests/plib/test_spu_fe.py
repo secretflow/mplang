@@ -18,7 +18,6 @@ import pytest
 import spu.libspu as libspu
 
 from mplang.core.base import TensorInfo
-from mplang.core.pfunc import PFuncTypes
 from mplang.plib.spu_fe import SpuFE, Visibility
 
 
@@ -69,7 +68,7 @@ class TestSpuFECompile:
         cfunc, _, _out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
 
         # Verify basic properties
-        assert cfunc.fn_type == "spu.run"
+        assert cfunc.fn_type == "mlir.pphlo"
         assert len(cfunc.ins_info) == expected_inputs
         assert len(cfunc.outs_info) == expected_outputs
         assert isinstance(cfunc.fn_text, str)
@@ -374,7 +373,7 @@ class TestSpuFEMakeShares:
         pfunc = self.spu_fe.makeshares(data)
 
         # Verify basic properties
-        assert pfunc.fn_type == PFuncTypes.SPU_MAKESHARES
+        assert pfunc.fn_type == "spu.makeshares"
         assert pfunc.fn_name == "makeshares"
         assert pfunc.fn_text is None  # No serialized code needed
 
@@ -522,7 +521,7 @@ class TestSpuFEReconstruct:
         pfunc = self.spu_fe.reconstruct(shares)
 
         # Verify basic properties
-        assert pfunc.fn_type == PFuncTypes.SPU_RECONSTRUCT
+        assert pfunc.fn_type == "spu.reconstruct"
         assert pfunc.fn_name == "reconstruct"
         assert pfunc.fn_text is None  # No serialized code needed
 

@@ -137,7 +137,7 @@ class TestJax2StableHLO:
         )
 
         # Check basic properties
-        assert cfunc.fn_type == "mlir[stablehlo]"
+        assert cfunc.fn_type == "mlir.stablehlo"
         assert cfunc.fn_name is not None
         assert len(cfunc.ins_info) == expected_ins_count
         assert len(cfunc.outs_info) == expected_outs_count

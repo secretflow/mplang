@@ -35,8 +35,8 @@ def read(
         tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for reading, empty args list, output tree definition
     """
     pfunc = PFunction(
+        fn_type="stdio.read",
         fn_name="Read",
-        fn_type="Read",
         fn_text="",
         ins_info=(),
         outs_info=(ty,),
@@ -65,8 +65,8 @@ def write(obj: MPObject, path: str) -> tuple[PFunction, list[MPObject], PyTreeDe
 
     obj_ty = TensorInfo.from_obj(obj)
     pfunc = PFunction(
+        fn_type="stdio.write",
         fn_name="Write",
-        fn_type="Write",
         fn_text="",
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),

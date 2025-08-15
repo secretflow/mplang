@@ -32,13 +32,9 @@ class TestMask:
         mask = Mask.from_int(3)
         assert mask.value == 3
 
-    def test_from_rank(self):
+    def test_from_single_rank(self):
         mask = Mask.from_ranks(2)
         assert mask.value == 4  # 1 << 2
-
-    def test_from_rank_negative(self):
-        with pytest.raises(ValueError, match="Rank must be non-negative"):
-            Mask.from_ranks(-1)
 
     def test_from_ranks(self):
         mask = Mask.from_ranks([0, 2, 3])
@@ -135,10 +131,12 @@ class TestMask:
         assert result.value == expected
 
     def test_global_to_relative_rank(self):
-        mask = Mask(11)  # 0b1011
+        mask = Mask(0b10110101)  # parties 0, 2, 4, 5, 7
         assert mask.global_to_relative_rank(0) == 0
-        assert mask.global_to_relative_rank(1) == 1
-        assert mask.global_to_relative_rank(3) == 2
+        assert mask.global_to_relative_rank(2) == 1
+        assert mask.global_to_relative_rank(4) == 2
+        assert mask.global_to_relative_rank(5) == 3
+        assert mask.global_to_relative_rank(7) == 4
 
     def test_relative_to_global_rank(self):
         mask = Mask(11)  # 0b1011

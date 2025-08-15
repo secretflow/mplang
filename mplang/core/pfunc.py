@@ -55,7 +55,7 @@ class PFunction:
 
     fn_type: str
     fn_name: str
-    fn_text: str | bytes | None
+    fn_text: str | None
     ins_info: tuple[TensorInfo, ...]
     outs_info: tuple[TensorInfo, ...]
     attrs: MappingProxyType[str, Any]
@@ -64,7 +64,7 @@ class PFunction:
         self,
         fn_type: str,
         fn_name: str,
-        fn_text: str | bytes | None,
+        fn_text: str | None,
         ins_info: Sequence[TensorInfo],
         outs_info: Sequence[TensorInfo],
         attrs: dict[str, Any] | None = None,

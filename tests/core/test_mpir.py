@@ -134,7 +134,6 @@ class TestFunctionExpressions:
         pfunc = PFunction(
             fn_type="builtin",
             fn_name="add",
-            fn_body=None,
             fn_text=None,
             ins_info=[tensor_info, tensor_info],
             outs_info=[tensor_info],
@@ -256,7 +255,6 @@ class TestUtilityFunctions:
         pfunc = PFunction(
             fn_type="builtin",
             fn_name="add",
-            fn_body=None,
             fn_text=None,
             ins_info=[],
             outs_info=[],

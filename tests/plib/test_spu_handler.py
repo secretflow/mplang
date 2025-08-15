@@ -83,7 +83,7 @@ class TestSpuHandler:
         cfunc, _, _ = SpuFE(world_size=2).compile_jax(is_var, add_fn, *args)
 
         # Verify the compiled function format
-        assert cfunc.fn_type == "spu.run"
+        assert cfunc.fn_type == "mlir.pphlo"
         assert isinstance(cfunc.fn_text, str)
 
         # Verify runtime can parse the metadata
@@ -127,7 +127,7 @@ class TestSpuHandler:
         expected = x_data + y_data
 
         # Test compilation and metadata parsing (these work without runtime)
-        assert cfunc.fn_type == "spu.run"
+        assert cfunc.fn_type == "mlir.pphlo"
         assert isinstance(cfunc.fn_text, str)
         assert "input_visibilities" in cfunc.attrs
 

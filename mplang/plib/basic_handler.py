@@ -35,7 +35,7 @@ class BasicHandler(PFunctionHandler):
         pfunc: PFunction,
         args: list[TensorLike],
     ) -> list[TensorLike]:
-        if pfunc.fn_type == "Identity":
+        if pfunc.fn_type == "builtin.identity":
             if len(args) != 1:
                 raise ValueError("Identity expects exactly one argument.")
             return args

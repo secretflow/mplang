@@ -39,7 +39,10 @@ class StdioHandler(PFunctionHandler):
 
     def list_fn_names(self) -> list[str]:
         """List function names that this handler can execute."""
-        return ["Read", "Write"]
+        return [
+            "stdio.read",
+            "stdio.write",
+        ]
 
     def _convert_to_numpy(self, obj: TensorLike) -> np.ndarray:
         """Convert a TensorLike object to numpy array.
@@ -91,7 +94,7 @@ class StdioHandler(PFunctionHandler):
             ValueError: If required attributes are missing or wrong number of args
             RuntimeError: If file I/O operations fail
         """
-        if pfunc.fn_type == "Read":
+        if pfunc.fn_type == "stdio.read":
             path = pfunc.attrs.get("path")
             if path is None:
                 raise ValueError("Read function requires 'path' attribute.")
@@ -105,7 +108,7 @@ class StdioHandler(PFunctionHandler):
             except Exception as e:
                 raise RuntimeError(f"Failed to read from {path}: {e}") from e
 
-        elif pfunc.fn_type == "Write":
+        elif pfunc.fn_type == "stdio.write":
             path = pfunc.attrs.get("path")
             if path is None:
                 raise ValueError("Write function requires 'path' attribute.")

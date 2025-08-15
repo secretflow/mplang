@@ -151,7 +151,6 @@ def pfunc_2i1o():
     return PFunction(
         fn_type="mock",
         fn_name="mock_func",
-        fn_body=None,
         fn_text=None,
         ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
         outs_info=[TensorInfo(FLOAT32, (2, 3))],
@@ -164,7 +163,6 @@ def pfunc_1i1o():
     return PFunction(
         fn_type="mock",
         fn_name="mock_unary",
-        fn_body=None,
         fn_text=None,
         ins_info=[TensorInfo(FLOAT32, (2, 3))],
         outs_info=[TensorInfo(FLOAT32, (2, 3))],
@@ -177,7 +175,6 @@ def pfunc_2i3o():
     return PFunction(
         fn_type="mock",
         fn_name="mock_multi_out",
-        fn_body=None,
         fn_text=None,
         ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
         outs_info=[
@@ -197,7 +194,6 @@ def pfunc_factory():
         return PFunction(
             fn_type="test",
             fn_name=fn_name,
-            fn_body=None,
             fn_text=None,
             ins_info=ins_info,
             outs_info=outs_info,

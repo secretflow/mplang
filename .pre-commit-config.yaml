@@ -40,6 +40,14 @@ repos:
         args: [--fix]
       # Run the formatter
       - id: ruff-format
+
+  # Type checking with mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        args: ["mplang"]
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.16.3
     hooks:

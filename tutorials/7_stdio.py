@@ -31,7 +31,6 @@ def save_data():
     x = simp.runAt(0, stdio.write)(x, "tmp/x.npy")
     y = simp.runAt(1, stdio.write)(y, "tmp/y.npy")
 
-    # Extract the original tensors from the tuples
     return x, y
 
 

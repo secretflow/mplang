@@ -139,26 +139,26 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
 
 
 # run :: (a -> a) -> m a -> m a
-def run(pyfn: Callable, *, fe_type: str = "jax") -> Callable:
+def run(pyfn: Callable) -> Callable:
     return partial(run_impl, None, pyfn)
 
 
 # runMask :: Mask -> (a -> a) -> m a -> m a
-def runMask(pmask: Mask, pyfn: Callable, fe_type: str = "jax") -> Callable:
+def runMask(pmask: Mask, pyfn: Callable) -> Callable:
     return partial(run_impl, pmask, pyfn)
 
 
 # runAt :: Rank -> (a -> a) -> m a -> m a
-def runAt(rank: Rank, pyfn: Callable, *, fe_type: str = "jax") -> Callable:
+def runAt(rank: Rank, pyfn: Callable) -> Callable:
     pmask = Mask(1 << rank)
-    return runMask(pmask, pyfn, fe_type)
+    return runMask(pmask, pyfn)
 
 
 # runExcept :: Rank -> (a -> a) -> m a -> m a
-def runExcept(rank: Rank, pyfn: Callable, *, fe_type: str = "jax") -> Callable:
+def runExcept(rank: Rank, pyfn: Callable) -> Callable:
     wsize = prim.psize()
     pmask = Mask(((1 << wsize) - 1) ^ (1 << rank))
-    return runMask(pmask, pyfn, fe_type)
+    return runMask(pmask, pyfn)
 
 
 # cond :: m Bool -> (m a -> m b) -> (m a -> m b) -> m b

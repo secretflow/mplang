@@ -145,10 +145,11 @@ class TestDType:
         assert DType.from_python_type(int) == INT64
         assert DType.from_python_type(float) == FLOAT64
         assert DType.from_python_type(complex) == COMPLEX128
+        assert DType.from_python_type(str) == STR
 
         # Test with unsupported type
         with pytest.raises(ValueError):
-            DType.from_python_type(str)
+            DType.from_python_type(list)
 
     def test_from_any(self):
         """Test creating DType from various inputs."""

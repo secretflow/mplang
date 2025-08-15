@@ -12,20 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
 
 import ibis
 
-import mplang.plib.ibis_fe as ibis_fe
-from mplang.core import dtype
+from mplang.core import primitive as prim
+from mplang.core.base import Mask, MPObject
+from mplang.plib import ibis_fe
 
 
-def test_ibis_compile():
-    in_tbl = ibis.table(schema={"a": "int", "b": "int", "c": "float"}, name="table")
-    result_expr = in_tbl["a"] + in_tbl["b"]
-    new_table = in_tbl.mutate(d=result_expr)
-    pfn = ibis_fe.compile(new_table, in_tbl.schema())
-    assert pfn.fn_text is not None
-    assert "in_schema" in pfn.attrs
-    assert "out_schema" in pfn.attrs
-    assert pfn.ins_info[0].dtype == dtype.FLOAT64
-    assert pfn.outs_info[0].dtype == dtype.FLOAT64
+def prun_ibis(
+    out_tbl_expr: ibis.Table, in_tbl: MPObject, pmask: Mask | None = None
+) -> MPObject:
+    assert "schema" in in_tbl.attrs
+    in_schema: ibis.Schema = in_tbl.attrs["schema"]
+    pfn = ibis_fe.compile(out_tbl_expr, in_schema)
+    res = prim.peval(pfn, [in_tbl], pmask)
+    assert len(res) == 1
+    out = res[0]
+    out.attrs["schema"] = out_tbl_expr.schema()
+    return out

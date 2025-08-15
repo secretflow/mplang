@@ -117,8 +117,6 @@ class DType:
             return cls("complex128", 128, True, True, True)
         elif py_type is str:
             return cls("str", 0, False, False, False)
-        elif py_type is object:
-            return cls("object", 0, False, False, False)
         else:
             raise ValueError(f"Unsupported Python type: {py_type}")
 

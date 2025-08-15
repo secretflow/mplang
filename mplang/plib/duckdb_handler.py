@@ -19,11 +19,11 @@ from mplang.core.pfunc import PFunction, PFunctionHandler, PFuncTypes
 
 
 class DuckDBHandler(PFunctionHandler):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def setup(self): ...
-    def teardown(self): ...
+    def setup(self) -> None: ...
+    def teardown(self) -> None: ...
     def list_fn_names(self) -> list[str]:
         return [PFuncTypes.IBIS_SQL]
 
@@ -49,8 +49,8 @@ class DuckDBHandler(PFunctionHandler):
                 f"cannot find in_schema or out_schema in attrs{list(pfunc.attrs.keys())}."
             )
 
-        in_schema: list[list[str, str]] = json.loads(pfunc.attrs["in_schema"])
-        out_schema: list[list[str, str]] = json.loads(pfunc.attrs["out_schema"])
+        in_schema: list[tuple[str, str]] = json.loads(pfunc.attrs["in_schema"])
+        out_schema: list[tuple[str, str]] = json.loads(pfunc.attrs["out_schema"])
         in_columns: list[str] = [pair[0] for pair in in_schema]
 
         arg0 = args[0]

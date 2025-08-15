@@ -23,36 +23,17 @@ from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFunction, PFuncTypes
 
 
-def _deduce_dtype(dtypes: list[tuple[str, np.dtype]]) -> dtype:
-    for _, dt in dtypes:
-        if (
-            np.issubdtype(dt, np.object_)
-            or np.issubdtype(dt, np.str_)
-            or np.issubdtype(dt, np.bytes_)
-        ):
-            return dtype.OBJECT
-
-    ints = []
-    floats = []
-    for _, dt in dtypes:
-        if np.issubdtype(dt, np.bool_):
-            ints.append(np.int_)  # bool_ as int_
-        elif np.issubdtype(dt, np.integer):
-            ints.append(dt)
-        elif np.issubdtype(dt, np.floating):
-            floats.append(dt)
-
-    np_dt = np.find_common_type(ints, floats)
-    return dtype.from_numpy(np_dt)
-
-
 def compile(expr: ibis.Table, in_schema: ibis.Schema) -> PFunction:
     out_schema = expr.schema()
     np_in_schema = in_schema.to_numpy()
     np_ot_schema = out_schema.to_numpy()
+    np_in_types = [p[1] for p in np_in_schema]
+    np_ot_types = [p[1] for p in np_ot_schema]
+    ts_in_dt = dtype.from_numpy(np.result_type(*np_in_types))
+    ts_ot_dt = dtype.from_numpy(np.result_type(*np_ot_types))
 
-    ins_info = [TensorInfo(_deduce_dtype(np_in_schema), (-1, len(in_schema.fields)))]
-    ots_info = [TensorInfo(_deduce_dtype(np_ot_schema), (-1, len(out_schema.fields)))]
+    ins_info = [TensorInfo(ts_in_dt, (-1, len(in_schema.fields)))]
+    ots_info = [TensorInfo(ts_ot_dt, (-1, len(out_schema.fields)))]
 
     in_schema_attr = json.dumps([(p[0], p[1].name) for p in np_in_schema])
     ot_schema_attr = json.dumps([(p[0], p[1].name) for p in np_ot_schema])
@@ -60,7 +41,7 @@ def compile(expr: ibis.Table, in_schema: ibis.Schema) -> PFunction:
     sql = ibis.to_sql(expr)
     pfn = PFunction(
         fn_type=PFuncTypes.IBIS_SQL,
-        fn_name="",
+        fn_name="run_sql",
         fn_text=sql,
         fn_body=None,
         ins_info=tuple(ins_info),

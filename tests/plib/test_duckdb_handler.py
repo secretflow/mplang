@@ -18,7 +18,7 @@ import numpy.testing as npt
 import pytest
 
 import mplang
-from mplang import simp
+from mplang import plibs, simp
 from mplang.plib import ibis_fe
 from mplang.plib.duckdb_handler import DuckDBHandler
 
@@ -79,9 +79,9 @@ class TestDuckDBHandler:
             in_tbl = simp.constant(in_tbl_data)
             in_tbl.attrs["schema"] = ibis.schema({"a": "int", "b": "int", "c": "float"})
 
-            out_tbl = simp.prun_ibis(new_table, in_tbl)
+            out_tbl = plibs.prun_ibis(new_table, in_tbl)
             return out_tbl
 
         sim2 = mplang.Simulator(2)
-        res = mplang.eval(sim2, example)
+        res = mplang.evaluate(sim2, example)
         print(f"output table: {op}, {new_feature_name}\n", mplang.fetch(sim2, res))

@@ -30,6 +30,7 @@ class PFuncTypes:
     SPU_RUN = "spu.run"
     SPU_MAKESHARES = "spu.makeshares"
     SPU_RECONSTRUCT = "spu.reconstruct"
+    IBIS_SQL = "ibis[sql]"
 
 
 # For backward compatibility, also export constants at module level

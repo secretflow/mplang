@@ -38,6 +38,7 @@ import mplang.utils.mask_utils as mask_utils
 from mplang.core.base import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
+from mplang.plib.duckdb_handler import DuckDBHandler
 from mplang.plib.spu_handler import SpuHandler
 from mplang.plib.stablehlo_handler import StablehloHandler
 from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2
@@ -256,6 +257,7 @@ class Execution:
             [
                 StablehloHandler(),
                 spu_handler,
+                DuckDBHandler(),
             ],
         )
 

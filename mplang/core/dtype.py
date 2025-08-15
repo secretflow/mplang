@@ -88,6 +88,10 @@ class DType:
             return cls(name, np_dtype.itemsize * 8, True, True, False)
         elif np_dtype.kind == "c":  # complex
             return cls(name, np_dtype.itemsize * 8, True, True, True)
+        elif np_dtype.kind == "U":  # str
+            return cls("str", 0, False, False, False)
+        elif np_dtype.kind == "O":  # object
+            return cls(name, 0, False, False, False)
         else:
             raise ValueError(f"Unsupported NumPy dtype kind: {np_dtype.kind}")
 
@@ -111,6 +115,8 @@ class DType:
             return cls("float64", 64, True, True, False)
         elif py_type is complex:
             return cls("complex128", 128, True, True, True)
+        elif py_type is str:
+            return cls("str", 0, False, False, False)
         else:
             raise ValueError(f"Unsupported Python type: {py_type}")
 
@@ -162,6 +168,10 @@ class DType:
             return float
         elif self.name.startswith("complex"):
             return complex
+        elif self.name == "str":
+            return str
+        elif self.name == "object":
+            return object
         else:
             raise ValueError(f"Cannot convert {self.name} to Python builtin type")
 
@@ -185,6 +195,8 @@ FLOAT32 = DType("float32", 32, True, True, False)
 FLOAT64 = DType("float64", 64, True, True, False)
 COMPLEX64 = DType("complex64", 64, True, True, True)
 COMPLEX128 = DType("complex128", 128, True, True, True)
+STR = DType("str", 0, False, False, False)
+OBJECT = DType("object", 0, False, False, False)
 
 
 # Helper functions for easy conversion

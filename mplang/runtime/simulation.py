@@ -28,6 +28,7 @@ from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mpir import Reader, Writer
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
+from mplang.plib.duckdb_handler import DuckDBHandler
 from mplang.plib.spu_handler import SpuHandler
 from mplang.plib.stablehlo_handler import StablehloHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
@@ -117,6 +118,7 @@ class Simulator(InterpContext):
                 [
                     StablehloHandler(),
                     spu_handlers[rank],
+                    DuckDBHandler(),
                 ],
             )
             for rank in range(self.psize())

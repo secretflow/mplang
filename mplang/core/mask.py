@@ -65,15 +65,26 @@ class Mask:
         return cls(value)
 
     @classmethod
-    def from_rank(cls, rank: int) -> Mask:
-        """Create a mask with a single party."""
-        if rank < 0:
-            raise ValueError("Rank must be non-negative")
-        return cls(1 << rank)
+    def from_ranks(cls, ranks: int | Iterable[int]) -> Mask:
+        """
+        Create a mask from one or more ranks.
 
-    @classmethod
-    def from_ranks(cls, ranks: Iterable[int]) -> Mask:
-        """Create a mask from multiple ranks."""
+        Args:
+            ranks: Either a single integer rank or an iterable of integer ranks
+
+        Returns:
+            Mask with the specified ranks set
+
+        Examples:
+            >>> Mask.from_ranks(0)  # Single party 0
+            >>> Mask.from_ranks([0, 1, 2])  # Multiple parties
+            >>> Mask.from_ranks((1, 3))  # Tuple of parties
+        """
+        if isinstance(ranks, int):
+            if ranks < 0:
+                raise ValueError("Rank must be non-negative")
+            return cls(1 << ranks)
+
         mask_value = 0
         for rank in ranks:
             if rank < 0:

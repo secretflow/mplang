@@ -35,7 +35,7 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
         if arg.pmask is None:
             logging.warning(f"Scattering dynamic {arg} from static root {root}")
         else:
-            if not Mask.from_rank(root).is_subset(arg.pmask):
+            if not Mask.from_ranks(root).is_subset(arg.pmask):
                 raise ValueError(f"Expect root {root} in {arg.pmask}, got {arg}.")
 
     to_ranks = list(Mask(to_mask))
@@ -43,7 +43,7 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
         raise ValueError(f"Expect {len(to_ranks)} args, got {len(args)}. ")
 
     scattered = [
-        prim.pshfl_s(arg, Mask.from_rank(to_rank), [root])
+        prim.pshfl_s(arg, Mask.from_ranks(to_rank), [root])
         for to_rank, arg in zip(to_ranks, args, strict=False)
     ]
 
@@ -73,7 +73,7 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
             raise ValueError(f"Expect {src_mask} in {arg.pmask}, got {arg}.")
 
     result = []
-    root_mask = Mask.from_rank(root)
+    root_mask = Mask.from_ranks(root)
     for src_rank in Mask(src_mask):
         # Shuffle data from src_rank to root
         gathered_data = prim.pshfl_s(arg, root_mask, [src_rank])
@@ -90,7 +90,7 @@ def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
     if obj.pmask is None:
         logging.warning(f"Broadcasting {obj} from {root}, may raise RuntimeError.")
     else:
-        if not Mask.from_rank(root).is_subset(obj.pmask):
+        if not Mask.from_ranks(root).is_subset(obj.pmask):
             raise ValueError(f"Expect root {root} in obj mask {obj.pmask}.")
 
     result = prim.pshfl_s(obj, pmask, [root] * Mask(pmask).bit_count())
@@ -108,13 +108,13 @@ def p2p(frm: Rank, to: Rank, obj: MPObject) -> MPObject:
     if obj.pmask is None:
         logging.warning(f"P2P {obj} from {frm} to {to}, may raise RuntimeError.")
     else:
-        if not Mask.from_rank(frm).is_subset(obj.pmask):
+        if not Mask.from_ranks(frm).is_subset(obj.pmask):
             raise ValueError(f"Expect {frm} in {obj.pmask}, got {obj}.")
 
     if frm == to:
         return obj
 
-    return prim.pshfl_s(obj, Mask.from_rank(to), [frm])  # type: ignore[no-any-return]
+    return prim.pshfl_s(obj, Mask.from_ranks(to), [frm])  # type: ignore[no-any-return]
 
 
 # allgather :: m a -> [m a]

@@ -76,7 +76,7 @@ def cmd_main(main: Callable, nodes_def: dict) -> None:
         spu_conf = [dev for dev in devices_conf.values() if dev.type == "SPU"]
         if len(spu_conf) == 1:
             for nid in spu_conf[0].node_ids:
-                spu_mask |= Mask.from_rank(all_node_ids.index(nid))
+                spu_mask |= Mask.from_ranks(all_node_ids.index(nid))
 
     if args.command == "start":
         serve(args.node_id, nodes_def[args.node_id])

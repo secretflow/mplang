@@ -451,7 +451,7 @@ class Reader:
         """Create an Expression from a NodeProto."""
         if node_proto.op_type == "rank":
             # Parse pmask from output info
-            pmask = Mask.from_rank(0)  # Default to party 0 if no pmask
+            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
             if node_proto.outs_info:
                 pmask_bytes = node_proto.outs_info[0].pmask
                 if pmask_bytes:
@@ -468,7 +468,7 @@ class Reader:
             out_info = node_proto.outs_info[0]
             dtype = proto_to_dtype(out_info.dtype)
             shape = tuple(out_info.shape_dims)
-            pmask = Mask.from_rank(0)  # Default to party 0 if no pmask
+            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
             if out_info.pmask:
                 pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
@@ -482,7 +482,7 @@ class Reader:
             out_info = node_proto.outs_info[0]
             dtype = proto_to_dtype(out_info.dtype)
             shape = tuple(out_info.shape_dims)
-            pmask = Mask.from_rank(0)  # Default to party 0 if no pmask
+            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
             if out_info.pmask:
                 pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 

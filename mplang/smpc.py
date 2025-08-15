@@ -100,7 +100,7 @@ class SPU(SecureAPI):
         return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
 
     def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
-        results = seal(obj, frm_mask=Mask.from_rank(root))
+        results = seal(obj, frm_mask=Mask.from_ranks(root))
         assert len(results) == 1, f"Expected one result, got {len(results)}"
         return results[0]
 
@@ -135,7 +135,7 @@ class SPU(SecureAPI):
         return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
-        return self.reveal(obj, to_mask=Mask.from_rank(to_rank))
+        return self.reveal(obj, to_mask=Mask.from_ranks(to_rank))
 
 
 class SEE(Enum):

@@ -33,12 +33,12 @@ class TestMask:
         assert mask.value == 3
 
     def test_from_rank(self):
-        mask = Mask.from_rank(2)
+        mask = Mask.from_ranks(2)
         assert mask.value == 4  # 1 << 2
 
     def test_from_rank_negative(self):
         with pytest.raises(ValueError, match="Rank must be non-negative"):
-            Mask.from_rank(-1)
+            Mask.from_ranks(-1)
 
     def test_from_ranks(self):
         mask = Mask.from_ranks([0, 2, 3])

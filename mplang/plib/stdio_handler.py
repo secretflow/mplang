@@ -39,7 +39,10 @@ class StdioHandler(PFunctionHandler):
 
     def list_fn_names(self) -> list[str]:
         """List function names that this handler can execute."""
-        return ["Read", "Write"]
+        return [
+            "stdio.read",
+            "stdio.write",
+        ]
 
     def _convert_to_numpy(self, obj: TensorLike) -> np.ndarray:
         """Convert a TensorLike object to numpy array.

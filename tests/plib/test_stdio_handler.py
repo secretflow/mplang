@@ -33,8 +33,8 @@ class TestStdioHandler:
     def test_list_fn_names(self):
         """Test that handler lists correct function names."""
         fn_names = self.handler.list_fn_names()
-        assert "Read" in fn_names
-        assert "Write" in fn_names
+        assert "stdio.read" in fn_names
+        assert "stdio.write" in fn_names
         assert len(fn_names) == 2
 
     def test_write_and_read_numpy_array(self):

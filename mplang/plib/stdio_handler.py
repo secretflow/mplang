@@ -123,7 +123,9 @@ class StdioHandler(PFunctionHandler):
                 import os
 
                 # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(path), exist_ok=True)
+                dir_name = os.path.dirname(path)
+                if dir_name:
+                    os.makedirs(dir_name, exist_ok=True)
 
                 np_array = self._convert_to_numpy(obj)
                 np.save(path, np_array)

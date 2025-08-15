@@ -205,7 +205,7 @@ class ExecutorDriver(InterpContext):
 
         # Set attributes for the execution
         execution.attrs["session_id"].string_value = session_id
-        execution.attrs["spu_mask"].number_value = Mask(self.attr("spu_mask"))
+        execution.attrs["spu_mask"].number_value = Mask(self.attr("spu_mask")).value
         execution.attrs["spu_protocol"].number_value = int(self.attr("spu_protocol"))
         execution.attrs["spu_field"].number_value = int(self.attr("spu_field"))
 

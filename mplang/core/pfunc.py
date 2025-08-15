@@ -32,13 +32,6 @@ class PFuncTypes:
     SPU_RECONSTRUCT = "spu.reconstruct"
 
 
-# For backward compatibility, also export constants at module level
-MLIR_STABLEHLO = PFuncTypes.MLIR_STABLEHLO
-SPU_RUN = PFuncTypes.SPU_RUN
-SPU_MAKESHARES = PFuncTypes.SPU_MAKESHARES
-SPU_RECONSTRUCT = PFuncTypes.SPU_RECONSTRUCT
-
-
 class PFunction:
     """A Party Function is a local function that can be executed by a single party.
 

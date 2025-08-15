@@ -90,19 +90,19 @@ class GrpcCommunicator(CommunicatorImpl):
         session_id: str,
         execution_id: str,
         rank: int,
-        peer_addrs: list[str],
+        party_addrs: list[str],
         make_stub_func: Callable,
     ):
-        super().__init__(rank, len(peer_addrs))
+        super().__init__(rank, len(party_addrs))
 
         self.session_id = session_id
         self.execution_id = execution_id
-        self.peer_addrs = peer_addrs
+        self.party_addrs = party_addrs
         self.make_stub_func = make_stub_func
 
         self._stubs = [
             make_stub_func(addr) if idx != rank else None
-            for idx, addr in enumerate(peer_addrs)
+            for idx, addr in enumerate(party_addrs)
         ]
 
     # override
@@ -204,14 +204,14 @@ class Execution:
         )
 
         if (1 << session.rank) & self.spu_mask != 0:
-            spu_peer_addrs: list[str] = []
+            spu_addrs: list[str] = []
             for rank, addr in enumerate(session.addrs):
                 if mask_utils.is_rank_in(rank, spu_mask):
                     ip, port = addr.split(":")
                     new_addr = f"{ip}:{int(port) + 100}"
-                    spu_peer_addrs.append(new_addr)
+                    spu_addrs.append(new_addr)
             spu_rank = mask_utils.global_to_relative_rank(session.rank, self.spu_mask)
-            self.spu_comm = g_link_factory.create_link(spu_rank, spu_peer_addrs)
+            self.spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
         else:
             self.spu_comm = None
 
@@ -301,18 +301,18 @@ class Session:
         self,
         party_id: str,
         session_id: str,
-        peer_addrs: dict[str, str],  # (party_id, address)
+        party_addrs: dict[str, str],  # (party_id, address)
         metadata: dict[str, str],
     ):
         # basic attributes.
         self.session_id = session_id
-        self.peer_addrs = peer_addrs
+        self.party_addrs = party_addrs
         self.metadata = metadata
 
         # derived attributes.
-        sorted_parties = sorted(peer_addrs.keys())
+        sorted_parties = sorted(party_addrs.keys())
         self.rank = sorted_parties.index(party_id)
-        self.addrs = [peer_addrs[party_id] for party_id in sorted_parties]
+        self.addrs = [party_addrs[party_id] for party_id in sorted_parties]
 
         # runtime attributes.
         self.symbols: dict[str, Symbol] = {}
@@ -328,8 +328,8 @@ class Session:
         """Convert to protobuf executor_pb2.Session message"""
         proto = executor_pb2.Session()
         proto.name = self.name
-        for k, v in self.peer_addrs.items():
-            proto.peer_addrs[k] = v
+        for k, v in self.party_addrs.items():
+            proto.party_addrs[k] = v
         for k, v in self.metadata.items():
             proto.metadata[k] = v
 
@@ -633,7 +633,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             context.set_details(f"Session {session_id} already exists")
             return executor_pb2.Session()
 
-        if self.party_id not in request.session.peer_addrs:
+        if self.party_id not in request.session.party_addrs:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
             context.set_details("Peer addresses must include the party's address")
             return executor_pb2.Session()
@@ -641,7 +641,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         new_session = Session(
             party_id=self.party_id,
             session_id=session_id,
-            peer_addrs=dict(request.session.peer_addrs),
+            party_addrs=dict(request.session.party_addrs),
             metadata=dict(request.session.metadata),
         )
 
@@ -896,7 +896,7 @@ def serve(
     server.wait_for_termination()
 
 
-def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False) -> None:
+def start_cluster(party_addrs: dict[str, str], debug_execution: bool = False) -> None:
     """Start a cluster of executor services."""
     import multiprocessing as multiprocess
     import signal
@@ -916,7 +916,7 @@ def start_cluster(peer_addrs: dict[str, str], debug_execution: bool = False) -> 
 
     # Start the workers
     workers = []
-    for pid, addr in peer_addrs.items():
+    for pid, addr in party_addrs.items():
         worker = Process(
             target=serve, args=(pid, addr, 1024 * 1024 * 1024, debug_execution)
         )

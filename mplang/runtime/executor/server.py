@@ -207,7 +207,7 @@ class Execution:
                     ip, port = addr.split(":")
                     new_addr = f"{ip}:{int(port) + 100}"
                     spu_peer_addrs.append(new_addr)
-            spu_rank = Mask(self.spu_mask).global_to_relative_rank(session.rank)
+            spu_rank = self.spu_mask.global_to_relative_rank(session.rank)
             self.spu_comm = g_link_factory.create_link(spu_rank, spu_peer_addrs)
         else:
             self.spu_comm = None
@@ -243,7 +243,7 @@ class Execution:
         )
 
         # Setup SPU handler
-        spu_handler = SpuHandler(Mask(self.spu_mask).num_parties(), spu_config)
+        spu_handler = SpuHandler(self.spu_mask.num_parties(), spu_config)
         if self.spu_comm is not None:
             spu_handler.set_link_context(self.spu_comm)
 

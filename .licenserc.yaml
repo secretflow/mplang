@@ -2,7 +2,7 @@ header: # <1>
   license:
     spdx-id: Apache-2.0 # <2>
     copyright-owner: Ant Group Co., Ltd. # <3>
-    copyright-year: '2024' # <25>
+    copyright-year: '2025' # <25>
     software-name: secretflow # <4>
 
     pattern: | # <6>
@@ -47,6 +47,7 @@ header: # <1>
     - '.gitattributes'
     - '.gitignore'
     - 'pyproject.toml'
+    - '.python-version'
 
   comment: never # <9>
 

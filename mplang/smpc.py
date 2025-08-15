@@ -199,15 +199,5 @@ def srun(pyfn: Callable, *, fe_type: str = "jax") -> Callable:
     @wraps(pyfn)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
         return _get_sapi().seval(fe_type, pyfn, *args, **kwargs)
-        # if fe_type == "jax":
-        #     is_mpobject = lambda x: isinstance(x, MPObject)
-        #     # suppose the arguments is already sealed, so it's a mpobject.
-        #     flat_fn, in_vars = PyPFunction.from_jax_function(
-        #         is_mpobject, pyfn, *args, **kwargs
-        #     )
-        #     out_flat = _get_sapi().seval(flat_fn, in_vars, {})
-        #     return tree_unflatten(flat_fn.out_tree, out_flat)
-        # else:
-        #     raise ValueError("SPU only support JAX for now")
 
     return wrapped

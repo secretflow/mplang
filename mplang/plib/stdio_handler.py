@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import numpy as np
 
 from mplang.core.base import TensorLike
@@ -51,29 +53,23 @@ class StdioHandler(PFunctionHandler):
         Raises:
             Exception: If conversion fails
         """
-        # Try to convert to numpy array using different methods
+        # Already a numpy array - use asarray to avoid unnecessary copies
         if isinstance(obj, np.ndarray):
-            # Already a numpy array
             return obj
-        else:
-            # Try to use numpy() method if available (JAX/PyTorch tensors)
-            try:
-                # Use getattr to safely access numpy method
-                if hasattr(obj, "numpy"):
-                    numpy_func = getattr(obj, "numpy", None)
-                    if callable(numpy_func):
-                        result = numpy_func()
-                        if isinstance(result, np.ndarray):
-                            return result
-                        else:
-                            return np.array(result)
-                    else:
-                        return np.array(obj)
-                else:
-                    return np.array(obj)
-            except Exception:
-                # Fallback to direct numpy conversion
-                return np.array(obj)
+
+        # Try to use .numpy() method if available (e.g., for JAX/PyTorch tensors).
+        if hasattr(obj, "numpy"):
+            numpy_method = getattr(obj, "numpy", None)
+            if callable(numpy_method):
+                try:
+                    # Use asarray to avoid a copy if the result is already a numpy array.
+                    return np.asarray(numpy_method())
+                except Exception:
+                    # If .numpy() fails, fall through to the general conversion.
+                    pass
+
+        # Fallback for objects without a .numpy() method or if it fails.
+        return np.asarray(obj)
 
     # override
     def execute(
@@ -89,7 +85,7 @@ class StdioHandler(PFunctionHandler):
 
         Returns:
             list[TensorLike]: For Read - list containing loaded data;
-                             For Write - empty list
+                             For Write - list containing the original object that was written.
 
         Raises:
             ValueError: If required attributes are missing or wrong number of args
@@ -120,8 +116,6 @@ class StdioHandler(PFunctionHandler):
 
             # Convert TensorLike object to numpy array and write to file
             try:
-                import os
-
                 # Create directory if it doesn't exist
                 dir_name = os.path.dirname(path)
                 if dir_name:

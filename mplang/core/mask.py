@@ -146,7 +146,7 @@ class Mask:
 
     def __repr__(self) -> str:
         """String representation of the mask."""
-        return f"Mask({self._value})"
+        return f"Mask({bin(self._value)})"
 
     def __str__(self) -> str:
         """Human-readable string representation."""

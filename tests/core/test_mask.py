@@ -166,7 +166,7 @@ class TestMask:
     def test_str_representation(self):
         mask = Mask(5)
         assert str(mask) == "Mask([0, 2])"
-        assert repr(mask) == "Mask(5)"
+        assert repr(mask) == "Mask(0b101)"
 
     def test_is_empty(self):
         assert Mask(0).is_empty

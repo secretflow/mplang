@@ -415,9 +415,8 @@ class ShflSExpr(Expr):
         for i, rank in enumerate(self.src_ranks):
             src_pmask = self.src_val.mptype.pmask
             if src_pmask is not None and rank not in Mask(src_pmask):
-                # FIXME(tongke): use Mask string expr instead of bin(src_pmask.value)
                 raise ValueError(
-                    f"Source rank {rank} at index {i} is not present in src {bin(src_pmask.value)}"
+                    f"Source rank {rank} at index {i} is not present in src {Mask(src_pmask)}"
                 )
 
     def _compute_mptypes(self) -> list[MPType]:

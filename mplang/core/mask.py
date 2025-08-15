@@ -95,6 +95,22 @@ class Mask:
         """Create an empty mask."""
         return cls(0)
 
+    @staticmethod
+    def _ensure_mask_value(value: Mask | int) -> int:
+        """
+        Ensure a value is converted to its underlying integer mask.
+
+        Args:
+            value: Either a Mask instance or an integer
+
+        Returns:
+            The underlying integer value of the mask
+        """
+        if isinstance(value, Mask):
+            return value._value
+        else:
+            return int(value)
+
     @property
     def value(self) -> int:
         """Get the underlying integer value."""
@@ -157,51 +173,33 @@ class Mask:
 
     def is_disjoint(self, other: Mask | int) -> bool:
         """Check if this mask is disjoint with another."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return (self._value & other_mask) == 0
+        other_mask_value = self._ensure_mask_value(other)
+        return (self._value & other_mask_value) == 0
 
     def is_subset(self, other: Mask | int) -> bool:
         """Check if this mask is a subset of another."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return (self._value & other_mask) == self._value
+        other_mask_value = self._ensure_mask_value(other)
+        return (self._value & other_mask_value) == self._value
 
     def is_superset(self, other: Mask | int) -> bool:
         """Check if this mask is a superset of another."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return (other_mask & self._value) == other_mask
+        other_mask_value = self._ensure_mask_value(other)
+        return (other_mask_value & self._value) == other_mask_value
 
     def union(self, other: Mask | int) -> Mask:
         """Return the union of this mask with another."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return Mask(self._value | other_mask)
+        other_mask_value = self._ensure_mask_value(other)
+        return Mask(self._value | other_mask_value)
 
     def intersection(self, other: Mask | int) -> Mask:
         """Return the intersection of this mask with another."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return Mask(self._value & other_mask)
+        other_mask_value = self._ensure_mask_value(other)
+        return Mask(self._value & other_mask_value)
 
     def difference(self, other: Mask | int) -> Mask:
         """Return the difference of this mask with another."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return Mask(self._value & ~other_mask)
+        other_mask_value = self._ensure_mask_value(other)
+        return Mask(self._value & ~other_mask_value)
 
     def __or__(self, other: Mask | int) -> Mask:
         """Union operator (|)."""
@@ -213,11 +211,8 @@ class Mask:
 
     def __xor__(self, other: Mask | int) -> Mask:
         """Symmetric difference operator (^)."""
-        if isinstance(other, int):
-            other_mask = other
-        else:
-            other_mask = other._value
-        return Mask(self._value ^ other_mask)
+        other_mask_value = self._ensure_mask_value(other)
+        return Mask(self._value ^ other_mask_value)
 
     def __sub__(self, other: Mask | int) -> Mask:
         """Difference operator (-)."""

@@ -27,6 +27,7 @@ For complex operations: define a function and trace it
 import numpy as np
 import pytest
 
+from mplang import simp
 from mplang.core.base import Mask, Rank, TensorInfo
 from mplang.core.context_mgr import cur_ctx, with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
@@ -1331,3 +1332,41 @@ class TestSetMask:
         # The EvalExpr should have one input (the original variable)
         assert len(eval_expr.args) == 1  # Use 'args' not 'in_exprs'
         assert eval_expr.args[0] == input_var.expr
+
+    def test_set_mask_integration_with_other_primitives(self, trace_context):
+        """Test set_mask integration with other primitive operations using the new simp.run API."""
+
+        # Create a chain of operations involving set_mask
+        def test_func():
+            # Start with a rank operation
+            rank_var = prank()  # This has dynamic pmask initially
+
+            # Apply set_mask to constrain it
+            constrained_var = set_mask(rank_var, 0b10)  # Party 1 only
+
+            # Use in another operation
+            const_var = constant(1)
+
+            # Combine using the new simp.run API
+            result = simp.run(lambda x, y: x + y)(constrained_var, const_var)
+
+            return result
+
+        traced_fn = trace(trace_context, test_func)
+
+        # Should successfully trace the entire chain
+        assert len(traced_fn.out_vars) == 1
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+
+        from mplang.expr.printer import Printer
+
+        printer = Printer()
+        expr_str = printer.print_expr(func_expr)
+        print(f"set_mask integration expression:\n{expr_str}")
+
+        # The expression should contain multiple operations
+        assert "eval" in expr_str  # From set_mask and simp.run
+        assert "prank" in expr_str  # From prank()
+        assert "pconst" in expr_str  # From constant()

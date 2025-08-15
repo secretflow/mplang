@@ -27,9 +27,9 @@ def read(
     Read data from a file.
 
     Args:
-        uri: The file path to read from
+        path: The file path to read from
         ty: The tensor type information for the data
-        attrs: Additional attributes for reading
+        **kwargs: Additional attributes for reading
 
     Returns:
         tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for reading, empty args list, output tree definition
@@ -53,7 +53,7 @@ def write(obj: MPObject, path: str) -> tuple[PFunction, list[MPObject], PyTreeDe
 
     Args:
         obj: The MPObject to write
-        uri: The file path to write to
+        path: The file path to write to
 
     Returns:
         tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for writing, args list with obj, output tree definition

@@ -25,8 +25,8 @@ from mplang.plib import stdio
 @mplang.function
 def save_data():
     # Party 0 creates and saves data
-    x = simp.constant(np.array([[1, 2], [3, 4]]))
-    y = simp.constant(np.array([[5, 6], [7, 8]]))
+    x = simp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
+    y = simp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
 
     x = simp.runAt(0, stdio.write)(x, "tmp/x.npy")
     y = simp.runAt(1, stdio.write)(y, "tmp/y.npy")

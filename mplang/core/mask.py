@@ -137,7 +137,8 @@ class Mask:
             return self._value == other._value
         elif isinstance(other, int):
             return self._value == other
-        return NotImplemented
+        else:
+            raise TypeError("Invalid type for equal comparison")
 
     def __hash__(self) -> int:
         """Make Mask hashable."""

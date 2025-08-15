@@ -19,16 +19,16 @@ from mplang.core.base import MPObject, TensorInfo
 from mplang.core.pfunc import PFunction
 
 
-def identity(x: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    io_info = (TensorInfo.from_obj(x),)
+def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    obj_ty = TensorInfo.from_obj(obj)
     pfunc = PFunction(
         fn_name="Identity",
         fn_type="Identity",
         fn_text="",
         fn_body=None,
-        ins_info=io_info,
-        outs_info=io_info,
+        ins_info=(obj_ty,),
+        outs_info=(obj_ty,),
         attrs={},
     )
-    _, treedef = tree_flatten(io_info)
-    return pfunc, [x], treedef
+    _, treedef = tree_flatten(obj_ty)
+    return pfunc, [obj], treedef

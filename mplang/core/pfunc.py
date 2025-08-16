@@ -44,20 +44,26 @@ class PFunction:
         attrs: Additional attributes and metadata
     """
 
+    # required fields
     fn_type: str
-    fn_name: str
-    fn_text: str | None
     ins_info: tuple[TensorInfo, ...]
     outs_info: tuple[TensorInfo, ...]
+
+    # well-known optional fields
+    fn_name: str | None
+    fn_text: str | None
+
+    # custom fields
     attrs: MappingProxyType[str, Any]
 
     def __init__(
         self,
         fn_type: str,
-        fn_name: str,
-        fn_text: str | None,
         ins_info: Sequence[TensorInfo],
         outs_info: Sequence[TensorInfo],
+        *,
+        fn_name: str | None,
+        fn_text: str | None,
         attrs: dict[str, Any] | None = None,
     ):
         if attrs is None:

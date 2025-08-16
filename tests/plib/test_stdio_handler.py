@@ -49,10 +49,10 @@ class TestStdioHandler:
             # Test write
             write_pfunc = PFunction(
                 fn_type="stdio.write",
-                fn_name="Write",
-                fn_text="",
                 ins_info=(TensorInfo.from_obj(test_data),),
                 outs_info=(),
+                fn_name="Write",
+                fn_text="",
                 attrs={"path": tmp_path},
             )
 
@@ -62,10 +62,10 @@ class TestStdioHandler:
             # Test read
             read_pfunc = PFunction(
                 fn_type="stdio.read",
-                fn_name="Read",
-                fn_text="",
                 ins_info=(),
                 outs_info=(TensorInfo.from_obj(test_data),),
+                fn_name="Read",
+                fn_text="",
                 attrs={"path": tmp_path},
             )
 
@@ -98,10 +98,10 @@ class TestStdioHandler:
                 # Write
                 write_pfunc = PFunction(
                     fn_type="stdio.write",
-                    fn_name="Write",
-                    fn_text="",
                     ins_info=(TensorInfo.from_obj(test_data),),
                     outs_info=(),
+                    fn_name="Write",
+                    fn_text="",
                     attrs={"path": tmp_path},
                 )
                 result = self.handler.execute(write_pfunc, [test_data])
@@ -110,10 +110,10 @@ class TestStdioHandler:
                 # Read
                 read_pfunc = PFunction(
                     fn_type="stdio.read",
-                    fn_name="Read",
-                    fn_text="",
                     ins_info=(),
                     outs_info=(TensorInfo.from_obj(test_data),),
+                    fn_name="Read",
+                    fn_text="",
                     attrs={"path": tmp_path},
                 )
                 result = self.handler.execute(read_pfunc, [])
@@ -133,10 +133,10 @@ class TestStdioHandler:
         """Test read operation with missing path attribute."""
         read_pfunc = PFunction(
             fn_type="stdio.read",
-            fn_name="Read",
-            fn_text="",
             ins_info=(),
             outs_info=(),
+            fn_name="Read",
+            fn_text="",
             attrs={},  # No path
         )
 
@@ -148,10 +148,10 @@ class TestStdioHandler:
         test_data = np.array([1, 2, 3])
         write_pfunc = PFunction(
             fn_type="stdio.write",
-            fn_name="Write",
-            fn_text="",
             ins_info=(TensorInfo.from_obj(test_data),),
             outs_info=(),
+            fn_name="Write",
+            fn_text="",
             attrs={},  # No path
         )
 
@@ -164,10 +164,10 @@ class TestStdioHandler:
         """Test read operation with wrong number of arguments."""
         read_pfunc = PFunction(
             fn_type="stdio.read",
-            fn_name="Read",
-            fn_text="",
             ins_info=(),
             outs_info=(),
+            fn_name="Read",
+            fn_text="",
             attrs={"path": "dummy.npy"},
         )
 
@@ -178,10 +178,10 @@ class TestStdioHandler:
         """Test write operation with wrong number of arguments."""
         write_pfunc = PFunction(
             fn_type="stdio.write",
-            fn_name="Write",
-            fn_text="",
             ins_info=(),
             outs_info=(),
+            fn_name="Write",
+            fn_text="",
             attrs={"path": "dummy.npy"},
         )
 
@@ -195,10 +195,10 @@ class TestStdioHandler:
         """Test reading from a non-existent file."""
         read_pfunc = PFunction(
             fn_type="stdio.read",
-            fn_name="Read",
-            fn_text="",
             ins_info=(),
             outs_info=(),
+            fn_name="Read",
+            fn_text="",
             attrs={"path": "/nonexistent/path/file.npy"},
         )
 
@@ -209,10 +209,10 @@ class TestStdioHandler:
         """Test unsupported function type."""
         pfunc = PFunction(
             fn_type="Unknown",
-            fn_name="Unknown",
-            fn_text="",
             ins_info=(),
             outs_info=(),
+            fn_name="Unknown",
+            fn_text="",
             attrs={},
         )
 
@@ -230,10 +230,10 @@ class TestStdioHandler:
             # Write scalar
             write_pfunc = PFunction(
                 fn_type="stdio.write",
-                fn_name="Write",
-                fn_text="",
                 ins_info=(TensorInfo.from_obj(test_data),),
                 outs_info=(),
+                fn_name="Write",
+                fn_text="",
                 attrs={"path": tmp_path},
             )
             result = self.handler.execute(write_pfunc, [test_data])
@@ -242,10 +242,10 @@ class TestStdioHandler:
             # Read back
             read_pfunc = PFunction(
                 fn_type="stdio.read",
-                fn_name="Read",
-                fn_text="",
                 ins_info=(),
                 outs_info=(TensorInfo.from_obj(test_data),),
+                fn_name="Read",
+                fn_text="",
                 attrs={"path": tmp_path},
             )
             result = self.handler.execute(read_pfunc, [])

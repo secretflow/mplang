@@ -98,10 +98,10 @@ class SpuFE:
         # Create the PFunction
         pfunc = PFunction(
             fn_type="spu.makeshares",
-            fn_name="makeshares",
-            fn_text=None,  # No serialized code needed
             ins_info=ins_info,
             outs_info=outs_info,
+            fn_name="makeshares",
+            fn_text=None,  # No serialized code needed
             attrs=attrs,
         )
 
@@ -138,10 +138,10 @@ class SpuFE:
 
         pfunc = PFunction(
             fn_type="spu.reconstruct",
-            fn_name="reconstruct",
-            fn_text=None,  # No serialized code needed
             ins_info=ins_info,
             outs_info=outs_info,
+            fn_name="reconstruct",
+            fn_text=None,  # No serialized code needed
             attrs=attrs,
         )
 
@@ -244,10 +244,10 @@ class SpuFE:
 
         pfn = PFunction(
             fn_type="mlir.pphlo",
-            fn_name=get_fn_name(jax_fn),
-            fn_text=executable_code,
             ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
             outs_info=tuple(output_tensor_infos),
+            fn_name=get_fn_name(jax_fn),
+            fn_text=executable_code,
             attrs=spu_metadata,
         )
 

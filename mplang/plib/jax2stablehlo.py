@@ -106,11 +106,11 @@ def compile(
 
     # This format tells JaxRT how to handle the compiled result
     pfn = PFunction(
-        fn_name=get_fn_name(flat_fn),
         fn_type="mlir.stablehlo",  # Key: specify StableHLO MLIR format
-        fn_text=mlir_text,  # MLIR text, serializable for transmission
         ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
         outs_info=tuple(out_info_flat),
+        fn_name=get_fn_name(flat_fn),
+        fn_text=mlir_text,  # MLIR text, serializable for transmission
         attrs={},
     )
     return pfn, in_vars, out_tree

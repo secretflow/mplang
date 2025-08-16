@@ -518,10 +518,10 @@ class Reader:
             # Create a complete PFunction with proper type information
             complete_pfunc = PFunction(
                 fn_type=pfunc.fn_type,
-                fn_name=pfunc.fn_name,
-                fn_text=pfunc.fn_text,
                 ins_info=ins_info,
                 outs_info=outs_info,
+                fn_name=pfunc.fn_name,
+                fn_text=pfunc.fn_text,
                 attrs=pfunc.attrs,  # Restore attributes
             )
 
@@ -715,10 +715,10 @@ class Reader:
 
             return PFunction(
                 fn_type=attr_proto.func.type,
-                fn_name=attr_proto.func.name,
-                fn_text=attr_proto.func.body if attr_proto.func.body else None,
                 ins_info=[],  # Will be inferred from input expressions
                 outs_info=[],  # Will be inferred from context
+                fn_name=attr_proto.func.name,
+                fn_text=attr_proto.func.body if attr_proto.func.body else None,
                 attrs=attrs,  # Restore serialized attributes
             )
         elif attr_proto.type == mpir_pb2.AttrProto.GRAPH:

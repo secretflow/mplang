@@ -36,10 +36,10 @@ def read(
     """
     pfunc = PFunction(
         fn_type="stdio.read",
-        fn_name="Read",
-        fn_text="",
         ins_info=(),
         outs_info=(ty,),
+        fn_name="Read",
+        fn_text="",
         attrs={"path": path, **kwargs},
     )
     _, treedef = tree_flatten(ty)
@@ -66,10 +66,10 @@ def write(obj: MPObject, path: str) -> tuple[PFunction, list[MPObject], PyTreeDe
     obj_ty = TensorInfo.from_obj(obj)
     pfunc = PFunction(
         fn_type="stdio.write",
-        fn_name="Write",
-        fn_text="",
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),
+        fn_name="Write",
+        fn_text="",
         attrs={"path": path},
     )
     _, treedef = tree_flatten(obj_ty)

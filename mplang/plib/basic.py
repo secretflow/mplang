@@ -23,10 +23,10 @@ def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     obj_ty = TensorInfo.from_obj(obj)
     pfunc = PFunction(
         fn_type="builtin.identity",
-        fn_name="Identity",
-        fn_text="",
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),
+        fn_name="Identity",
+        fn_text="",
         attrs={},
     )
     _, treedef = tree_flatten(obj_ty)

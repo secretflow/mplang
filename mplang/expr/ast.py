@@ -30,7 +30,6 @@ from mplang.core.base import Mask, MPType, Rank, TensorInfo
 from mplang.core.dtype import UINT64
 from mplang.core.pfunc import PFunction
 from mplang.expr.utils import deduce_mask
-from mplang.utils import mask_utils
 
 if TYPE_CHECKING:
     from mplang.expr.visitor import ExprVisitor
@@ -171,12 +170,12 @@ class EvalExpr(Expr):
         deduced_pmask = deduce_mask(*arg_pmasks)
 
         # Determine effective output pmask
-        effective_pmask: int | None
+        effective_pmask: Mask | None
         if self.rmask is not None:
             # rmask is explicitly provided - caller has strong mask knowledge
             if deduced_pmask is not None:
                 # pmask is known at trace time - validate subset relationship
-                if not mask_utils.is_subset(self.rmask, deduced_pmask):
+                if not Mask(self.rmask).is_subset(deduced_pmask):
                     raise ValueError(
                         f"Specified rmask {self.rmask} is not a subset of deduced pmask {deduced_pmask}."
                     )
@@ -321,17 +320,25 @@ class ConvExpr(Expr):
             logging.warning("pconv called with None pmask.")
             dynamic_pmask = True
 
-        if not mask_utils.is_disjoint(*[
-            pmask for pmask in pmasks if pmask is not None
-        ]):
-            raise ValueError(f"pconv called with non-disjoint pmasks: {pmasks}.")
+        non_none_pmasks = [pmask for pmask in pmasks if pmask is not None]
+        for i, mask1 in enumerate(non_none_pmasks):
+            for mask2 in non_none_pmasks[i + 1 :]:
+                if not Mask(mask1).is_disjoint(mask2):
+                    raise ValueError(
+                        f"pconv called with non-disjoint pmasks: {pmasks}."
+                    )
 
         # deduce output pmask.
         if dynamic_pmask:
             out_pmask = None
         else:
             valid_pmasks = [pmask for pmask in pmasks if pmask is not None]
-            out_pmask = mask_utils.union_masks(*valid_pmasks)
+            if valid_pmasks:
+                out_pmask = Mask(valid_pmasks[0])
+                for mask in valid_pmasks[1:]:
+                    out_pmask = out_pmask.union(mask)
+            else:
+                out_pmask = None
 
         return [MPType(first.dtype, first.shape, out_pmask, first.attrs)]
 
@@ -401,15 +408,15 @@ class ShflSExpr(Expr):
         self.src_ranks = src_ranks
 
         # Now do validation using the assigned values
-        if len(self.src_ranks) != mask_utils.bit_count(self.pmask):
+        if len(self.src_ranks) != Mask(self.pmask).num_parties():
             raise ValueError(
                 f"src_ranks length ({len(self.src_ranks)}) not match {self.pmask}"
             )
         for i, rank in enumerate(self.src_ranks):
             src_pmask = self.src_val.mptype.pmask
-            if src_pmask is not None and not mask_utils.is_rank_in(rank, src_pmask):
+            if src_pmask is not None and rank not in Mask(src_pmask):
                 raise ValueError(
-                    f"Source rank {rank} at index {i} is not present in src {bin(src_pmask)}"
+                    f"Source rank {rank} at index {i} is not present in src {Mask(src_pmask)}"
                 )
 
     def _compute_mptypes(self) -> list[MPType]:

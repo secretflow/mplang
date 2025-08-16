@@ -71,7 +71,7 @@ class CompileOptions(MPContext):
 
     def __init__(self, psize: int, spu_mask: Mask | None = None, **attrs: Any):
         self._psize = psize
-        self.spu_mask = spu_mask or Mask((1 << psize) - 1)
+        self.spu_mask = spu_mask or Mask.all(psize)
         # Keep user-defined attributes together with the default ones.
         self._attrs: dict[str, Any] = attrs
         self._attrs.setdefault("spu_mask", self.spu_mask)

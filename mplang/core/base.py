@@ -22,10 +22,10 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 
 from mplang.core.dtype import DType
+from mplang.core.mask import Mask
 
 # basic type aliases
 Rank = int
-Mask = int
 Shape = tuple[int, ...]
 ScalarType = int | float | bool | complex
 

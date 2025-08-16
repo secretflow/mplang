@@ -16,7 +16,7 @@ interpret the standardized serialized formats.
 
 - `spu_fe.py` - SpuFrontend class with compile method for transforming JAX
   functions to SPU executables.
-- `jax2stablehlo.py` - Compiler for transforming JAX functions to StableHLO MLIR.
+- `jax_cc.py` - Compiler for transforming JAX functions to StableHLO MLIR.
 
 ### Handler Modules
 

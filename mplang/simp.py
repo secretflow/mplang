@@ -21,7 +21,7 @@ from typing import Any
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
-from mplang.plib import jax2stablehlo, stdio
+from mplang.plib import jax_cc, stdio
 
 
 def prank() -> MPObject:
@@ -44,34 +44,6 @@ def peval(
     pmask: Mask | None = None,
 ) -> list[MPObject]:
     return prim.peval(pfunc, args, pmask)
-
-
-# TODO(jint): move this to plib
-def jax_cc(
-    func: Callable, *args: Any, **kwargs: Any
-) -> tuple[PFunction, list[MPObject], Any]:
-    """
-    JAX compilation helper function.
-
-    Compiles a JAX function to StableHLO format and returns the PFunction
-    along with variable arguments for evaluation.
-
-    Args:
-        func: The JAX function to compile
-        *args: Positional arguments to the function
-        **kwargs: Keyword arguments to the function
-
-    Returns:
-        tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
-    """
-
-    def is_variable(arg: Any) -> bool:
-        return isinstance(arg, MPObject)
-
-    # Compile the function using JAX to StableHLO
-    pfunc, in_vars, out_tree = jax2stablehlo.compile(is_variable, func, *args, **kwargs)
-
-    return pfunc, in_vars, out_tree
 
 
 def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> Any:
@@ -130,8 +102,8 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
     if func in FUNC_WHITE_LIST:
         fe_func = func
     else:
-        # unknown python callable, treat it as jax_cc function
-        fe_func = partial(jax_cc, func)
+        # unknown python callable, treat it as jax function
+        fe_func = partial(jax_cc.jax_compile, func)
 
     pfunc, eval_args, out_tree = fe_func(*args, **kwargs)
     results = peval(pfunc, eval_args, pmask)

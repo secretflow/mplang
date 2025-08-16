@@ -18,7 +18,7 @@ import pytest
 import spu.libspu as libspu
 
 from mplang.core.base import TensorInfo
-from mplang.plib.spu_fe import SpuFE, Visibility
+from mplang.frontend.spu import SpuFE, Visibility
 
 
 class TestSpuFECompile:

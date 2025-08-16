@@ -18,9 +18,9 @@ import tempfile
 import numpy as np
 import pytest
 
+from mplang.backend.builtin import BuiltinHandler
 from mplang.core.base import TensorInfo
 from mplang.core.pfunc import PFunction
-from mplang.plib.builtin_handler import BuiltinHandler
 
 
 class TestBuiltinHandler:

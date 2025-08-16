@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from mplang.plib import jax_cc
+from mplang.frontend import jax_cc
 
 # Enable 64-bit precision in JAX for testing different dtypes
 jax.config.update("jax_enable_x64", True)

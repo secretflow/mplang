@@ -19,7 +19,7 @@ import mplang
 import mplang.simp as simp
 import mplang.smpc as smpc
 from mplang.core.base import TensorInfo
-from mplang.plib import builtin
+from mplang.frontend import builtin
 
 
 @mplang.function

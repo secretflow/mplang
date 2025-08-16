@@ -35,12 +35,12 @@ from google.protobuf import empty_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
 import mplang.utils.mask_utils as mask_utils
+from mplang.backend.builtin import BuiltinHandler
+from mplang.backend.spu import SpuHandler
+from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.base import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
-from mplang.plib.builtin_handler import BuiltinHandler
-from mplang.plib.spu_handler import SpuHandler
-from mplang.plib.stablehlo_handler import StablehloHandler
 from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2
 from mplang.runtime.executor.resource import (
     ExecutionName,

@@ -47,7 +47,7 @@ from mplang.core.primitive import (
 )
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.printer import Printer
-from mplang.plib import jax_cc
+from mplang.frontend import jax_cc
 
 
 @pytest.fixture

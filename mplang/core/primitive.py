@@ -55,7 +55,7 @@ from mplang.expr.ast import (
     ShflSExpr,
     WhileExpr,
 )
-from mplang.plib import builtin
+from mplang.frontend import builtin
 from mplang.utils import mask_utils
 from mplang.utils.func_utils import var_demorph
 

@@ -52,8 +52,7 @@ class TestStdioHandler:
                 ins_info=(TensorInfo.from_obj(test_data),),
                 outs_info=(),
                 fn_name="Write",
-                fn_text="",
-                attrs={"path": tmp_path},
+                path=tmp_path,
             )
 
             result = self.handler.execute(write_pfunc, [test_data])
@@ -65,8 +64,7 @@ class TestStdioHandler:
                 ins_info=(),
                 outs_info=(TensorInfo.from_obj(test_data),),
                 fn_name="Read",
-                fn_text="",
-                attrs={"path": tmp_path},
+                path=tmp_path,
             )
 
             result = self.handler.execute(read_pfunc, [])
@@ -101,8 +99,7 @@ class TestStdioHandler:
                     ins_info=(TensorInfo.from_obj(test_data),),
                     outs_info=(),
                     fn_name="Write",
-                    fn_text="",
-                    attrs={"path": tmp_path},
+                    path=tmp_path,
                 )
                 result = self.handler.execute(write_pfunc, [test_data])
                 assert result == [test_data]
@@ -113,8 +110,7 @@ class TestStdioHandler:
                     ins_info=(),
                     outs_info=(TensorInfo.from_obj(test_data),),
                     fn_name="Read",
-                    fn_text="",
-                    attrs={"path": tmp_path},
+                    path=tmp_path,
                 )
                 result = self.handler.execute(read_pfunc, [])
                 loaded_data = result[0]
@@ -136,8 +132,6 @@ class TestStdioHandler:
             ins_info=(),
             outs_info=(),
             fn_name="Read",
-            fn_text="",
-            attrs={},  # No path
         )
 
         with pytest.raises(ValueError, match="Read function requires 'path' attribute"):
@@ -151,8 +145,6 @@ class TestStdioHandler:
             ins_info=(TensorInfo.from_obj(test_data),),
             outs_info=(),
             fn_name="Write",
-            fn_text="",
-            attrs={},  # No path
         )
 
         with pytest.raises(
@@ -167,8 +159,7 @@ class TestStdioHandler:
             ins_info=(),
             outs_info=(),
             fn_name="Read",
-            fn_text="",
-            attrs={"path": "dummy.npy"},
+            path="dummy.npy",
         )
 
         with pytest.raises(ValueError, match="Read expects no arguments"):
@@ -181,8 +172,7 @@ class TestStdioHandler:
             ins_info=(),
             outs_info=(),
             fn_name="Write",
-            fn_text="",
-            attrs={"path": "dummy.npy"},
+            path="dummy.npy",
         )
 
         with pytest.raises(ValueError, match="Write expects exactly one argument"):
@@ -198,8 +188,7 @@ class TestStdioHandler:
             ins_info=(),
             outs_info=(),
             fn_name="Read",
-            fn_text="",
-            attrs={"path": "/nonexistent/path/file.npy"},
+            path="/nonexistent/path/file.npy",
         )
 
         with pytest.raises(RuntimeError, match="Failed to read from"):
@@ -212,8 +201,6 @@ class TestStdioHandler:
             ins_info=(),
             outs_info=(),
             fn_name="Unknown",
-            fn_text="",
-            attrs={},
         )
 
         with pytest.raises(ValueError, match="Unsupported function type: Unknown"):
@@ -233,8 +220,7 @@ class TestStdioHandler:
                 ins_info=(TensorInfo.from_obj(test_data),),
                 outs_info=(),
                 fn_name="Write",
-                fn_text="",
-                attrs={"path": tmp_path},
+                path=tmp_path,
             )
             result = self.handler.execute(write_pfunc, [test_data])
             assert result == [test_data]
@@ -245,8 +231,7 @@ class TestStdioHandler:
                 ins_info=(),
                 outs_info=(TensorInfo.from_obj(test_data),),
                 fn_name="Read",
-                fn_text="",
-                attrs={"path": tmp_path},
+                path=tmp_path,
             )
             result = self.handler.execute(read_pfunc, [])
             loaded_data = result[0]

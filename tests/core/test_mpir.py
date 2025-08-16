@@ -136,7 +136,6 @@ class TestFunctionExpressions:
             ins_info=[tensor_info, tensor_info],
             outs_info=[tensor_info],
             fn_name="add",
-            fn_text=None,
         )
 
         original = EvalExpr(pfunc, [const_expr, const_expr], rmask=None)
@@ -257,7 +256,6 @@ class TestUtilityFunctions:
             ins_info=[],
             outs_info=[],
             fn_name="add",
-            fn_text=None,
         )
         attr = attr_to_proto(pfunc)
         assert attr.type == mpir_pb2.AttrProto.FUNCTION

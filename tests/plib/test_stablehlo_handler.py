@@ -136,7 +136,6 @@ class TestStablehloHandler:
             outs_info=(),
             fn_name="test",
             fn_text="invalid_text",
-            attrs={},
         )
 
         # Assert runtime rejects invalid format with descriptive error

@@ -153,7 +153,6 @@ def pfunc_2i1o():
         ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
         outs_info=[TensorInfo(FLOAT32, (2, 3))],
         fn_name="mock_func",
-        fn_text=None,
     )
 
 
@@ -165,7 +164,6 @@ def pfunc_1i1o():
         ins_info=[TensorInfo(FLOAT32, (2, 3))],
         outs_info=[TensorInfo(FLOAT32, (2, 3))],
         fn_name="mock_unary",
-        fn_text=None,
     )
 
 
@@ -181,7 +179,6 @@ def pfunc_2i3o():
             TensorInfo(UINT64, (1,)),
         ],
         fn_name="mock_multi_out",
-        fn_text=None,
     )
 
 
@@ -196,7 +193,6 @@ def pfunc_factory():
             ins_info=ins_info,
             outs_info=outs_info,
             fn_name=fn_name,
-            fn_text=None,
         )
 
     return _create_pfunc

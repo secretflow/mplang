@@ -111,6 +111,5 @@ def compile(
         outs_info=tuple(out_info_flat),
         fn_name=get_fn_name(flat_fn),
         fn_text=mlir_text,  # MLIR text, serializable for transmission
-        attrs={},
     )
     return pfn, in_vars, out_tree

@@ -142,7 +142,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
     elif isinstance(py_value, PFunction):
         attr_proto.type = mpir_pb2.AttrProto.FUNCTION
         attr_proto.func.type = py_value.fn_type
-        attr_proto.func.name = py_value.fn_name
+        attr_proto.func.name = py_value.fn_name or ""
         if py_value.fn_text is not None:
             attr_proto.func.body = str(py_value.fn_text)
 
@@ -522,7 +522,7 @@ class Reader:
                 outs_info=outs_info,
                 fn_name=pfunc.fn_name,
                 fn_text=pfunc.fn_text,
-                attrs=pfunc.attrs,  # Restore attributes
+                **pfunc.attrs,  # Restore attributes
             )
 
             return EvalExpr(complete_pfunc, input_exprs, rmask)
@@ -719,7 +719,7 @@ class Reader:
                 outs_info=[],  # Will be inferred from context
                 fn_name=attr_proto.func.name,
                 fn_text=attr_proto.func.body if attr_proto.func.body else None,
-                attrs=attrs,  # Restore serialized attributes
+                **attrs,  # Restore serialized attributes
             )
         elif attr_proto.type == mpir_pb2.AttrProto.GRAPH:
             # Handle nested expressions (for control flow)

@@ -112,7 +112,7 @@ class ExecutorDriver(InterpContext):
         if trace_ranks is None:
             trace_ranks = []
         self.world_size = len(node_addrs)
-        self.peer_addrs = node_addrs
+        self.party_addrs = node_addrs
         self.max_message_length = max_message_length
         self._stubs = [
             make_stub(addr, max_message_length) for addr in node_addrs.values()
@@ -142,7 +142,7 @@ class ExecutorDriver(InterpContext):
             new_session_id = new_uuid()
             metadata: dict[str, str] = {}
             session = executor_pb2.Session(
-                name=new_session_id, peer_addrs=self.peer_addrs, metadata=metadata
+                name=new_session_id, party_addrs=self.party_addrs, metadata=metadata
             )
             request = executor_pb2.CreateSessionRequest(parent="", session=session)
             futures = []

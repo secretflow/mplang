@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.base import TensorInfo
-from mplang.core.pfunc import PFunction, PFuncTypes, get_fn_name
+from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.utils.func_utils import normalize_fn
 
 # Enable 64-bit precision for JAX to match tensor types
@@ -104,13 +104,11 @@ def compile(
     out_info_flat, out_tree = tree_flatten(lowered.out_info)
     out_info_flat = [TensorInfo.from_obj(info) for info in out_info_flat]
 
-    # Create PFunction with "mlir[stablehlo]" format marker
     # This format tells JaxRT how to handle the compiled result
     pfn = PFunction(
         fn_name=get_fn_name(flat_fn),
-        fn_type=PFuncTypes.MLIR_STABLEHLO,  # Key: specify StableHLO MLIR format
+        fn_type="mlir.stablehlo",  # Key: specify StableHLO MLIR format
         fn_text=mlir_text,  # MLIR text, serializable for transmission
-        fn_body=None,
         ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
         outs_info=tuple(out_info_flat),
         attrs={},

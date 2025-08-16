@@ -20,7 +20,7 @@ from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
 from mplang.core.base import TensorLike
-from mplang.core.pfunc import PFunction, PFunctionHandler, PFuncTypes
+from mplang.core.pfunc import PFunction, PFunctionHandler
 
 
 class StablehloHandler(PFunctionHandler):
@@ -45,7 +45,7 @@ class StablehloHandler(PFunctionHandler):
 
     def list_fn_names(self) -> list[str]:
         """List function names that this handler can execute."""
-        return [PFuncTypes.MLIR_STABLEHLO]
+        return ["mlir.stablehlo"]
 
     # override
     def execute(
@@ -80,9 +80,9 @@ class StablehloHandler(PFunctionHandler):
             RuntimeError: Compilation or execution failure
         """
         # Validate format: only StableHLO MLIR supported
-        if pfunc.fn_type != PFuncTypes.MLIR_STABLEHLO:
+        if pfunc.fn_type != "mlir.stablehlo":
             raise ValueError(
-                f"Unsupported format: {pfunc.fn_type}. Expected '{PFuncTypes.MLIR_STABLEHLO}'"
+                f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.stablehlo'"
             )
 
         # Extract MLIR text from compiled function

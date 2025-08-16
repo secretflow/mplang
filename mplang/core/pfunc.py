@@ -16,27 +16,11 @@ from __future__ import annotations
 
 import copy
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Any
 
 from mplang.core.base import TensorInfo, TensorLike
-
-
-class PFuncTypes:
-    """Function type constants for different runtime engines."""
-
-    MLIR_STABLEHLO = "mlir[stablehlo]"
-    SPU_RUN = "spu.run"
-    SPU_MAKESHARES = "spu.makeshares"
-    SPU_RECONSTRUCT = "spu.reconstruct"
-
-
-# For backward compatibility, also export constants at module level
-MLIR_STABLEHLO = PFuncTypes.MLIR_STABLEHLO
-SPU_RUN = PFuncTypes.SPU_RUN
-SPU_MAKESHARES = PFuncTypes.SPU_MAKESHARES
-SPU_RECONSTRUCT = PFuncTypes.SPU_RECONSTRUCT
 
 
 class PFunction:
@@ -54,7 +38,6 @@ class PFunction:
     Args:
         fn_type: The type/category of the function (e.g., "python[jax]", "builtin")
         fn_name: Human-readable name of the function
-        fn_body: Optional executable function body for direct evaluation
         fn_text: Optional serialized representation (e.g., MLIR, bytecode)
         ins_info: Tensor information for input parameters
         outs_info: Tensor information for output values
@@ -63,8 +46,7 @@ class PFunction:
 
     fn_type: str
     fn_name: str
-    fn_body: Callable[[list[TensorLike]], list[TensorLike]] | None
-    fn_text: str | bytes | None
+    fn_text: str | None
     ins_info: tuple[TensorInfo, ...]
     outs_info: tuple[TensorInfo, ...]
     attrs: MappingProxyType[str, Any]
@@ -73,8 +55,7 @@ class PFunction:
         self,
         fn_type: str,
         fn_name: str,
-        fn_body: Callable | None,
-        fn_text: str | bytes | None,
+        fn_text: str | None,
         ins_info: Sequence[TensorInfo],
         outs_info: Sequence[TensorInfo],
         attrs: dict[str, Any] | None = None,
@@ -83,7 +64,6 @@ class PFunction:
             attrs = {}
         self.fn_type = fn_type
         self.fn_name = fn_name
-        self.fn_body = fn_body
         self.fn_text = fn_text
         self.ins_info = tuple(ins_info)
         self.outs_info = tuple(outs_info)
@@ -98,13 +78,9 @@ class PFunction:
         return f"{self.__class__.__name__}({self.fn_type}, {self.fn_name})"
 
     def __hash__(self) -> int:
-        # Custom hash implementation that handles non-hashable fields
-        hashable_fn_body = id(self.fn_body) if self.fn_body is not None else None
-
         return hash((
             self.fn_type,
             self.fn_name,
-            hashable_fn_body,
             self.fn_text,
             self.ins_info,
             self.outs_info,
@@ -119,7 +95,6 @@ class PFunction:
         return (
             self.fn_type == other.fn_type
             and self.fn_name == other.fn_name
-            and self.fn_body == other.fn_body
             and self.fn_text == other.fn_text
             and self.ins_info == other.ins_info
             and self.outs_info == other.outs_info

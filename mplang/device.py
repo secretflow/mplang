@@ -185,7 +185,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             elif dev_info.type == "PPU":
                 rank = device_ctx.id2rank(dev_id)
-                var = simp.runAt(rank, nfn, fe_type=fe_type)(args_flat)
+                var = simp.runAt(rank, nfn)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             else:
                 raise ValueError(f"Unknown device type: {dev_info.type}")

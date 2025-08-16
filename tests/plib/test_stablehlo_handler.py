@@ -134,7 +134,6 @@ class TestStablehloHandler:
             fn_name="test",
             fn_type="invalid_format",
             fn_text="invalid_text",
-            fn_body=None,
             ins_info=(),
             outs_info=(),
             attrs={},

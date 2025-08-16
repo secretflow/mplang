@@ -148,7 +148,6 @@ class TestPrinterExpressions:
         pfunc_with_text = PFunction(
             fn_type="jax",
             fn_name="add_one",
-            fn_body=None,
             fn_text="lambda x: x + 1",
             ins_info=[TensorInfo(FLOAT32, (2, 3))],
             outs_info=[TensorInfo(FLOAT32, (2, 3))],

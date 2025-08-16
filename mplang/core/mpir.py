@@ -717,7 +717,7 @@ class Reader:
                 fn_type=attr_proto.func.type,
                 ins_info=[],  # Will be inferred from input expressions
                 outs_info=[],  # Will be inferred from context
-                fn_name=attr_proto.func.name,
+                fn_name=attr_proto.func.name or None,
                 fn_text=attr_proto.func.body if attr_proto.func.body else None,
                 **attrs,  # Restore serialized attributes
             )

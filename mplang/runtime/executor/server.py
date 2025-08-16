@@ -754,7 +754,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             program=program_proto,
             input_names=list(request.execution.input_names),
             output_names=list(request.execution.output_names),
-            spu_mask=Mask(request.execution.attrs["spu_mask"].number_value),
+            spu_mask=Mask(int(request.execution.attrs["spu_mask"].number_value)),
             spu_protocol=libspu.ProtocolKind(
                 int(request.execution.attrs["spu_protocol"].number_value)
             ),

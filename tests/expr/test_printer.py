@@ -147,10 +147,10 @@ class TestPrinterExpressions:
         # Create a PFunction with actual fn_text and fn_type
         pfunc_with_text = PFunction(
             fn_type="jax",
-            fn_name="add_one",
-            fn_text="lambda x: x + 1",
             ins_info=[TensorInfo(FLOAT32, (2, 3))],
             outs_info=[TensorInfo(FLOAT32, (2, 3))],
+            fn_name="add_one",
+            fn_text="lambda x: x + 1",
         )
 
         # Test without verbose_peval (default)

@@ -133,10 +133,9 @@ class TestFunctionExpressions:
 
         pfunc = PFunction(
             fn_type="builtin",
-            fn_name="add",
-            fn_text=None,
             ins_info=[tensor_info, tensor_info],
             outs_info=[tensor_info],
+            fn_name="add",
         )
 
         original = EvalExpr(pfunc, [const_expr, const_expr], rmask=None)
@@ -254,10 +253,9 @@ class TestUtilityFunctions:
         # Test PFunction
         pfunc = PFunction(
             fn_type="builtin",
-            fn_name="add",
-            fn_text=None,
             ins_info=[],
             outs_info=[],
+            fn_name="add",
         )
         attr = attr_to_proto(pfunc)
         assert attr.type == mpir_pb2.AttrProto.FUNCTION

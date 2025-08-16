@@ -131,12 +131,11 @@ class TestStablehloHandler:
         """Verify runtime error handling for unsupported PFunction format types."""
         # Construct malformed PFunction with unsupported format identifier
         invalid_pfunc = PFunction(
-            fn_name="test",
             fn_type="invalid_format",
-            fn_text="invalid_text",
             ins_info=(),
             outs_info=(),
-            attrs={},
+            fn_name="test",
+            fn_text="invalid_text",
         )
 
         # Assert runtime rejects invalid format with descriptive error

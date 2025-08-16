@@ -19,7 +19,7 @@ import mplang
 import mplang.simp as simp
 import mplang.smpc as smpc
 from mplang.core.base import TensorInfo
-from mplang.plib import stdio
+from mplang.plib import builtin
 
 
 @mplang.function
@@ -28,8 +28,8 @@ def save_data():
     x = simp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
     y = simp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
 
-    x = simp.runAt(0, stdio.write)(x, "tmp/x.npy")
-    y = simp.runAt(1, stdio.write)(y, "tmp/y.npy")
+    x = simp.runAt(0, builtin.write)(x, "tmp/x.npy")
+    y = simp.runAt(1, builtin.write)(y, "tmp/y.npy")
 
     return x, y
 
@@ -38,8 +38,8 @@ def save_data():
 def load_data():
     tensor_info = TensorInfo(shape=(2, 2), dtype=jnp.float32)
 
-    x = simp.runAt(0, stdio.read)("tmp/x.npy", tensor_info)
-    y = simp.runAt(1, stdio.read)("tmp/y.npy", tensor_info)
+    x = simp.runAt(0, builtin.read)("tmp/x.npy", tensor_info)
+    y = simp.runAt(1, builtin.read)("tmp/y.npy", tensor_info)
 
     x_ = smpc.sealFrom(x, 0)
     y_ = smpc.sealFrom(y, 1)

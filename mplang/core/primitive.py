@@ -55,7 +55,7 @@ from mplang.expr.ast import (
     ShflSExpr,
     WhileExpr,
 )
-from mplang.plib import basic
+from mplang.plib import builtin
 from mplang.utils import mask_utils
 from mplang.utils.func_utils import var_demorph
 
@@ -379,7 +379,7 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
         The underlying implementation uses JAX identity function with the
         specified execution mask.
     """
-    pfunc, eval_args, out_tree = basic.identity(arg)
+    pfunc, eval_args, out_tree = builtin.identity(arg)
     results = peval(pfunc, eval_args, mask)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 

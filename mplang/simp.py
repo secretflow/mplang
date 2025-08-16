@@ -21,7 +21,7 @@ from typing import Any
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
-from mplang.plib import jax_cc, stdio
+from mplang.plib import builtin, jax_cc
 
 
 def prank() -> MPObject:
@@ -63,7 +63,7 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
         The result of evaluating the function through the appropriate handler
 
     Raises:
-        ValueError: If stdio.write is called without required arguments
+        ValueError: If builtin.write is called without required arguments
         TypeError: If the function compilation or evaluation fails
         RuntimeError: If the underlying peval execution encounters errors
 
@@ -72,11 +72,11 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
 
         >>> tensor_info = TensorInfo(shape=(10, 10), dtype=np.float32)
         >>> attrs = {"format": "binary"}
-        >>> result = run_impl(stdio.read, "data/input.bin", tensor_info, attrs)
+        >>> result = run_impl(builtin.read, "data/input.bin", tensor_info, attrs)
 
         Writing data to a file:
 
-        >>> run_impl(stdio.write, data, "data/output.bin")
+        >>> run_impl(builtin.write, data, "data/output.bin")
 
         Running a JAX function:
 
@@ -95,8 +95,8 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
 
     # Known function list - extensible dispatch table
     FUNC_WHITE_LIST = {
-        stdio.read,
-        stdio.write,
+        builtin.read,
+        builtin.write,
     }
 
     if func in FUNC_WHITE_LIST:

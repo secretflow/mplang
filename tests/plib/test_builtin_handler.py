@@ -1,0 +1,268 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import os
+import tempfile
+
+import numpy as np
+import pytest
+
+from mplang.core.base import TensorInfo
+from mplang.core.pfunc import PFunction
+from mplang.plib.builtin_handler import BuiltinHandler
+
+
+class TestBuiltinHandler:
+    """Test cases for BuiltinHandler."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.handler = BuiltinHandler()
+
+    def test_list_fn_names(self):
+        """Test that handler lists correct function names."""
+        fn_names = self.handler.list_fn_names()
+        assert "builtin.identity" in fn_names
+        assert "builtin.read" in fn_names
+        assert "builtin.write" in fn_names
+        assert len(fn_names) == 3
+
+    def test_identity(self):
+        """Test identity operation."""
+        # Create test data
+        test_data = np.array([1, 2, 3], dtype=np.float32)
+
+        # Test identity
+        identity_pfunc = PFunction(
+            fn_type="builtin.identity",
+            ins_info=(TensorInfo.from_obj(test_data),),
+            outs_info=(TensorInfo.from_obj(test_data),),
+            fn_name="Identity",
+        )
+
+        result = self.handler.execute(identity_pfunc, [test_data])
+
+        assert len(result) == 1
+        assert np.array_equal(result[0], test_data)
+        assert result[0] is test_data  # Should be the same object
+
+    def test_write_and_read_numpy_array(self):
+        """Test writing and reading a numpy array."""
+        # Create test data
+        test_data = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+
+        with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        try:
+            # Test write
+            write_pfunc = PFunction(
+                fn_type="builtin.write",
+                ins_info=(TensorInfo.from_obj(test_data),),
+                outs_info=(TensorInfo.from_obj(test_data),),
+                fn_name="Write",
+                path=tmp_path,
+            )
+
+            write_result = self.handler.execute(write_pfunc, [test_data])
+            assert len(write_result) == 1
+            assert np.array_equal(write_result[0], test_data)
+
+            # Verify file was created
+            assert os.path.exists(tmp_path)
+
+            # Test read
+            read_pfunc = PFunction(
+                fn_type="builtin.read",
+                ins_info=(),
+                outs_info=(TensorInfo.from_obj(test_data),),
+                fn_name="Read",
+                path=tmp_path,
+            )
+
+            read_result = self.handler.execute(read_pfunc, [])
+            assert len(read_result) == 1
+            assert np.array_equal(read_result[0], test_data)
+            assert read_result[0].dtype == test_data.dtype
+
+        finally:
+            # Clean up
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def test_write_creates_directory(self):
+        """Test that write creates directory if it doesn't exist."""
+        test_data = np.array([1, 2, 3], dtype=np.int32)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            nested_path = os.path.join(tmp_dir, "nested", "deep", "file.npy")
+
+            write_pfunc = PFunction(
+                fn_type="builtin.write",
+                ins_info=(TensorInfo.from_obj(test_data),),
+                outs_info=(TensorInfo.from_obj(test_data),),
+                fn_name="Write",
+                path=nested_path,
+            )
+
+            result = self.handler.execute(write_pfunc, [test_data])
+            assert len(result) == 1
+            assert np.array_equal(result[0], test_data)
+            assert os.path.exists(nested_path)
+
+            # Verify the file content
+            loaded = np.load(nested_path)
+            assert np.array_equal(loaded, test_data)
+
+    def test_write_different_tensor_types(self):
+        """Test writing different types of tensor-like objects."""
+        test_cases = [
+            np.array([1, 2, 3], dtype=np.int32),
+            np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64),
+            np.array([True, False, True], dtype=bool),
+            42,  # scalar
+            np.array([1, 2, 3]),  # converted list to numpy array
+        ]
+
+        for i, test_data in enumerate(test_cases):
+            with tempfile.NamedTemporaryFile(
+                suffix=f"_{i}.npy", delete=False
+            ) as tmp_file:
+                tmp_path = tmp_file.name
+
+            try:
+                tensor_info = TensorInfo.from_obj(test_data)
+                write_pfunc = PFunction(
+                    fn_type="builtin.write",
+                    ins_info=(tensor_info,),
+                    outs_info=(tensor_info,),
+                    fn_name="Write",
+                    path=tmp_path,
+                )
+
+                result = self.handler.execute(write_pfunc, [test_data])
+                assert len(result) == 1
+
+                # Read back and verify
+                read_pfunc = PFunction(
+                    fn_type="builtin.read",
+                    ins_info=(),
+                    outs_info=(tensor_info,),
+                    fn_name="Read",
+                    path=tmp_path,
+                )
+
+                read_result = self.handler.execute(read_pfunc, [])
+                assert len(read_result) == 1
+                assert np.array_equal(read_result[0], np.array(test_data))
+
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+    def test_identity_wrong_args(self):
+        """Test identity with wrong number of arguments."""
+        identity_pfunc = PFunction(
+            fn_type="builtin.identity",
+            ins_info=(),
+            outs_info=(),
+            fn_name="Identity",
+        )
+
+        with pytest.raises(ValueError, match="Identity expects exactly one argument"):
+            self.handler.execute(identity_pfunc, [])
+
+        with pytest.raises(ValueError, match="Identity expects exactly one argument"):
+            self.handler.execute(identity_pfunc, [1, 2])
+
+    def test_read_missing_path(self):
+        """Test read operation without path attribute."""
+        read_pfunc = PFunction(
+            fn_type="builtin.read",
+            ins_info=(),
+            outs_info=(TensorInfo.from_obj(np.array([1])),),
+            fn_name="Read",
+        )
+
+        with pytest.raises(ValueError, match="Read function requires 'path' attribute"):
+            self.handler.execute(read_pfunc, [])
+
+    def test_read_wrong_args(self):
+        """Test read with wrong number of arguments."""
+        read_pfunc = PFunction(
+            fn_type="builtin.read",
+            ins_info=(),
+            outs_info=(TensorInfo.from_obj(np.array([1])),),
+            fn_name="Read",
+            path="dummy.npy",
+        )
+
+        with pytest.raises(ValueError, match="Read expects no arguments"):
+            self.handler.execute(read_pfunc, [np.array([1])])
+
+    def test_write_missing_path(self):
+        """Test write operation without path attribute."""
+        test_data = np.array([1, 2, 3])
+        write_pfunc = PFunction(
+            fn_type="builtin.write",
+            ins_info=(TensorInfo.from_obj(test_data),),
+            outs_info=(TensorInfo.from_obj(test_data),),
+            fn_name="Write",
+        )
+
+        with pytest.raises(
+            ValueError, match="Write function requires 'path' attribute"
+        ):
+            self.handler.execute(write_pfunc, [test_data])
+
+    def test_write_wrong_args(self):
+        """Test write with wrong number of arguments."""
+        write_pfunc = PFunction(
+            fn_type="builtin.write",
+            ins_info=(),
+            outs_info=(),
+            fn_name="Write",
+            path="dummy.npy",
+        )
+
+        with pytest.raises(ValueError, match="Write expects exactly one argument"):
+            self.handler.execute(write_pfunc, [])
+
+        with pytest.raises(ValueError, match="Write expects exactly one argument"):
+            self.handler.execute(write_pfunc, [1, 2])
+
+    def test_read_nonexistent_file(self):
+        """Test reading from a nonexistent file."""
+        read_pfunc = PFunction(
+            fn_type="builtin.read",
+            ins_info=(),
+            outs_info=(TensorInfo.from_obj(np.array([1])),),
+            fn_name="Read",
+            path="nonexistent_file.npy",
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to read from"):
+            self.handler.execute(read_pfunc, [])
+
+    def test_unsupported_function_type(self):
+        """Test unsupported function type."""
+        pfunc = PFunction(
+            fn_type="unsupported.operation",
+            ins_info=(),
+            outs_info=(),
+            fn_name="Unsupported",
+        )
+
+        with pytest.raises(ValueError, match="Unsupported function type"):
+            self.handler.execute(pfunc, [])

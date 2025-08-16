@@ -28,10 +28,9 @@ from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mpir import Reader, Writer
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
-from mplang.plib.basic_handler import BasicHandler
+from mplang.plib.builtin_handler import BuiltinHandler
 from mplang.plib.spu_handler import SpuHandler
 from mplang.plib.stablehlo_handler import StablehloHandler
-from mplang.plib.stdio_handler import StdioHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import ThreadCommunicator
 from mplang.utils import mask_utils
@@ -117,8 +116,7 @@ class Simulator(InterpContext):
                 {},  # the global environment for this rank
                 self._comms[rank],
                 [
-                    BasicHandler(),
-                    StdioHandler(),
+                    BuiltinHandler(),
                     StablehloHandler(),
                     spu_handlers[rank],
                 ],

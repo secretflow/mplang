@@ -26,10 +26,10 @@ from mplang.core.pfunc import PFunction, PFunctionHandler
 class StablehloHandler(PFunctionHandler):
     """StableHLO Handler for remote execution.
 
-    Runtime for loading and executing JAX functions serialized by jax2stablehlo using
+    Runtime for loading and executing JAX functions serialized by jax_cc using
     StableHLO MLIR intermediate representation.
 
-    Together with jax2stablehlo, provides complete StableHLO compilation and
+    Together with jax_cc, provides complete StableHLO compilation and
     execution solution.
     """
 

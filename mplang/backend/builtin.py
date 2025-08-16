@@ -20,13 +20,16 @@ from mplang.core.base import TensorLike
 from mplang.core.pfunc import PFunction, PFunctionHandler
 
 
-class StdioHandler(PFunctionHandler):
-    """Handler for standard I/O operations using numpy as intermediate data format.
+class BuiltinHandler(PFunctionHandler):
+    """Handler for builtin operations including identity and standard I/O operations.
 
-    This handler provides read and write operations for tensor data using
-    numpy's save/load functionality. It supports reading from and writing to
-    .npy files, with automatic conversion between different tensor formats
-    (JAX arrays, PyTorch tensors, numpy arrays) and numpy arrays.
+    This handler provides:
+    1. Identity operation for pass-through functionality
+    2. Read and write operations for tensor data using numpy as intermediate data format
+
+    The I/O operations support reading from and writing to .npy files, with automatic
+    conversion between different tensor formats (JAX arrays, PyTorch tensors, numpy arrays)
+    and numpy arrays.
     """
 
     # override
@@ -40,8 +43,9 @@ class StdioHandler(PFunctionHandler):
     def list_fn_names(self) -> list[str]:
         """List function names that this handler can execute."""
         return [
-            "stdio.read",
-            "stdio.write",
+            "builtin.identity",
+            "builtin.read",
+            "builtin.write",
         ]
 
     def _convert_to_numpy(self, obj: TensorLike) -> np.ndarray:
@@ -80,21 +84,28 @@ class StdioHandler(PFunctionHandler):
         pfunc: PFunction,
         args: list[TensorLike],
     ) -> list[TensorLike]:
-        """Execute read or write operations.
+        """Execute builtin operations.
 
         Args:
             pfunc: PFunction containing operation type and attributes
-            args: Input arguments - empty for Read, single tensor for Write
+            args: Input arguments - varies by operation type
 
         Returns:
-            list[TensorLike]: For Read - list containing loaded data;
-                             For Write - list containing the original object that was written.
+            list[TensorLike]: Results based on operation type:
+                             - Identity: the input argument
+                             - Read: list containing loaded data
+                             - Write: list containing the original object that was written
 
         Raises:
             ValueError: If required attributes are missing or wrong number of args
             RuntimeError: If file I/O operations fail
         """
-        if pfunc.fn_type == "stdio.read":
+        if pfunc.fn_type == "builtin.identity":
+            if len(args) != 1:
+                raise ValueError("Identity expects exactly one argument.")
+            return args
+
+        elif pfunc.fn_type == "builtin.read":
             path = pfunc.attrs.get("path")
             if path is None:
                 raise ValueError("Read function requires 'path' attribute.")
@@ -108,7 +119,7 @@ class StdioHandler(PFunctionHandler):
             except Exception as e:
                 raise RuntimeError(f"Failed to read from {path}: {e}") from e
 
-        elif pfunc.fn_type == "stdio.write":
+        elif pfunc.fn_type == "builtin.write":
             path = pfunc.attrs.get("path")
             if path is None:
                 raise ValueError("Write function requires 'path' attribute.")

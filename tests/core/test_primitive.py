@@ -47,7 +47,7 @@ from mplang.core.primitive import (
 )
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.printer import Printer
-from mplang.plib import jax2stablehlo
+from mplang.frontend import jax_cc
 
 
 @pytest.fixture
@@ -301,7 +301,7 @@ class TestPeval:
     def test_peval_simple(self, trace_context):
         """Test peval with a simple function."""
 
-        # Create a simple function for testing using the new jax2stablehlo.compile method
+        # Create a simple function for testing using the new jax_cc.compile method
         def simple_add(x, y):
             return x + y
 
@@ -311,7 +311,7 @@ class TestPeval:
 
             # Use the new compilation method
             is_mpobject = lambda obj: isinstance(obj, TraceVar)
-            pfunc, in_vars, _out_tree = jax2stablehlo.compile(
+            pfunc, in_vars, _out_tree = jax_cc.jax2stablehlo(
                 is_mpobject, simple_add, x, y
             )
             results = peval(pfunc, in_vars)
@@ -343,7 +343,7 @@ class TestPeval:
 def run_jax(op_fn, *args):
     """Helper function for arithmetic operations using JAX."""
     is_mpobject = lambda obj: isinstance(obj, TraceVar)
-    pfunc, in_vars, _out_tree = jax2stablehlo.compile(is_mpobject, op_fn, *args)
+    pfunc, in_vars, _out_tree = jax_cc.jax2stablehlo(is_mpobject, op_fn, *args)
     outs = peval(pfunc, in_vars)
     return outs[0]
 

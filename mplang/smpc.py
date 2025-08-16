@@ -26,7 +26,7 @@ import mplang.utils.mask_utils as mask_utils
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank
 from mplang.core.context_mgr import cur_ctx
-from mplang.plib.spu_fe import SpuFE, Visibility
+from mplang.frontend.spu import SpuFE, Visibility
 
 
 class SecureAPI(ABC):

@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from mplang.plib import jax2stablehlo
+from mplang.frontend import jax_cc
 
 # Enable 64-bit precision in JAX for testing different dtypes
 jax.config.update("jax_enable_x64", True)
@@ -39,7 +39,7 @@ class TestJax2StableHLO:
         """
         # Predicate: treat tensor-like objects as variables, others as constants
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        pfunc, _, out_tree = jax2stablehlo.compile(is_var, fn, *args, **kwargs)
+        pfunc, _, out_tree = jax_cc.jax2stablehlo(is_var, fn, *args, **kwargs)
         return pfunc, out_tree
 
     @pytest.mark.parametrize(

@@ -20,6 +20,26 @@ from mplang.core.base import MPObject, TensorInfo
 from mplang.core.pfunc import PFunction
 
 
+def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Create an identity operation for an MPObject.
+
+    Args:
+        obj: The MPObject to create identity operation for
+
+    Returns:
+        tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for identity, args list with obj, output tree definition
+    """
+    obj_ty = TensorInfo.from_obj(obj)
+    pfunc = PFunction(
+        fn_type="builtin.identity",
+        ins_info=(obj_ty,),
+        outs_info=(obj_ty,),
+        fn_name="Identity",
+    )
+    _, treedef = tree_flatten(obj_ty)
+    return pfunc, [obj], treedef
+
+
 def read(
     path: str, ty: TensorInfo, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -35,7 +55,7 @@ def read(
         tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for reading, empty args list, output tree definition
     """
     pfunc = PFunction(
-        fn_type="stdio.read",
+        fn_type="builtin.read",
         ins_info=(),
         outs_info=(ty,),
         fn_name="Read",
@@ -61,11 +81,11 @@ def write(obj: MPObject, path: str) -> tuple[PFunction, list[MPObject], PyTreeDe
         ValueError: If obj is not provided
     """
     if obj is None:
-        raise ValueError("stdio.write requires an object to write")
+        raise ValueError("builtin.write requires an object to write")
 
     obj_ty = TensorInfo.from_obj(obj)
     pfunc = PFunction(
-        fn_type="stdio.write",
+        fn_type="builtin.write",
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),
         fn_name="Write",

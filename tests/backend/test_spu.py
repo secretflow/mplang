@@ -19,9 +19,9 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
+from mplang.backend.spu import SpuHandler, SpuValue
 from mplang.core.base import TensorInfo
-from mplang.plib.spu_fe import SpuFE
-from mplang.plib.spu_handler import SpuHandler, SpuValue
+from mplang.frontend.spu import SpuFE
 from mplang.runtime.grpc_comm import LinkCommunicator
 
 

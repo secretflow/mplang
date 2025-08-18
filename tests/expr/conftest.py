@@ -150,10 +150,9 @@ def pfunc_2i1o():
     """Create a mock PFunction for testing."""
     return PFunction(
         fn_type="mock",
-        fn_name="mock_func",
-        fn_text=None,
         ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
         outs_info=[TensorInfo(FLOAT32, (2, 3))],
+        fn_name="mock_func",
     )
 
 
@@ -162,10 +161,9 @@ def pfunc_1i1o():
     """Create a mock unary PFunction (single input, single output)."""
     return PFunction(
         fn_type="mock",
-        fn_name="mock_unary",
-        fn_text=None,
         ins_info=[TensorInfo(FLOAT32, (2, 3))],
         outs_info=[TensorInfo(FLOAT32, (2, 3))],
+        fn_name="mock_unary",
     )
 
 
@@ -174,14 +172,13 @@ def pfunc_2i3o():
     """Create a mock PFunction with multiple outputs."""
     return PFunction(
         fn_type="mock",
-        fn_name="mock_multi_out",
-        fn_text=None,
         ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
         outs_info=[
             TensorInfo(FLOAT32, (2, 3)),
             TensorInfo(INT32, ()),
             TensorInfo(UINT64, (1,)),
         ],
+        fn_name="mock_multi_out",
     )
 
 
@@ -193,10 +190,9 @@ def pfunc_factory():
         """Create a PFunction with specified input/output info."""
         return PFunction(
             fn_type="test",
-            fn_name=fn_name,
-            fn_text=None,
             ins_info=ins_info,
             outs_info=outs_info,
+            fn_name=fn_name,
         )
 
     return _create_pfunc

@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.base import TensorInfo
+from mplang.core.base import MPObject, TensorInfo
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.utils.func_utils import normalize_fn
 
@@ -29,7 +29,7 @@ from mplang.utils.func_utils import normalize_fn
 jax.config.update("jax_enable_x64", True)
 
 
-def compile(
+def jax2stablehlo(
     is_variable: Callable[[Any], bool], flat_fn: Any, *args: Any, **kwargs: Any
 ) -> tuple[PFunction, list, PyTreeDef]:
     """Compile JAX function to StableHLO MLIR format for remote execution.
@@ -106,11 +106,36 @@ def compile(
 
     # This format tells JaxRT how to handle the compiled result
     pfn = PFunction(
-        fn_name=get_fn_name(flat_fn),
         fn_type="mlir.stablehlo",  # Key: specify StableHLO MLIR format
-        fn_text=mlir_text,  # MLIR text, serializable for transmission
         ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
         outs_info=tuple(out_info_flat),
-        attrs={},
+        fn_name=get_fn_name(flat_fn),
+        fn_text=mlir_text,  # MLIR text, serializable for transmission
     )
     return pfn, in_vars, out_tree
+
+
+def jax_compile(
+    func: Callable, *args: Any, **kwargs: Any
+) -> tuple[PFunction, list[MPObject], Any]:
+    """
+    JAX compilation helper function.
+
+    Compiles a JAX function to StableHLO format and returns the PFunction
+    along with variable arguments for evaluation.
+
+    Args:
+        func: The JAX function to compile
+        *args: Positional arguments to the function
+        **kwargs: Keyword arguments to the function
+
+    Returns:
+        tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
+    """
+
+    def is_variable(arg: Any) -> bool:
+        return isinstance(arg, MPObject)
+
+    pfunc, in_vars, out_tree = jax2stablehlo(is_variable, func, *args, **kwargs)
+
+    return pfunc, in_vars, out_tree

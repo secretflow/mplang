@@ -12,22 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Backend module for mplang.
 
-from jax.tree_util import PyTreeDef, tree_flatten
-
-from mplang.core.base import MPObject, TensorInfo
-from mplang.core.pfunc import PFunction
-
-
-def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    obj_ty = TensorInfo.from_obj(obj)
-    pfunc = PFunction(
-        fn_type="builtin.identity",
-        fn_name="Identity",
-        fn_text="",
-        ins_info=(obj_ty,),
-        outs_info=(obj_ty,),
-        attrs={},
-    )
-    _, treedef = tree_flatten(obj_ty)
-    return pfunc, [obj], treedef
+This module contains handlers that execute serialized functions on individual
+parties in a multi-party computation system.
+"""

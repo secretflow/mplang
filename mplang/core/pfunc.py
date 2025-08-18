@@ -24,44 +24,58 @@ from mplang.core.base import TensorInfo, TensorLike
 
 
 class PFunction:
-    """A Party Function is a local function that can be executed by a single party.
+    """A Party Function represents a computation unit that can be executed by a single party.
 
-    PFunction represents a computation unit that:
-    1. Can be expressed and defined in the mplang frontend
-    2. Can be serialized for transmission between components
-    3. Can be interpreted and executed by backend runtime engines
+    PFunction serves as a unified interface for describing single-party computations
+    in multi-party computing scenarios. It can represent both:
+    1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
+    2. User-defined programmable functions with custom code
 
-    It provides a unified interface for describing single-party computations
-    in multi-party computing scenarios, accepting a list of TensorLike inputs
-    and producing a list of TensorLike outputs.
+    The PFunction accepts a list of TensorLike inputs and produces TensorLike outputs,
+    and can be:
+    - Expressed and defined in the mplang frontend
+    - Serialized for transmission between components
+    - Interpreted and executed by backend runtime engines
 
     Args:
-        fn_type: The type/category of the function (e.g., "python[jax]", "builtin")
-        fn_name: Human-readable name of the function
-        fn_text: Optional serialized representation (e.g., MLIR, bytecode)
-        ins_info: Tensor information for input parameters
-        outs_info: Tensor information for output values
-        attrs: Additional attributes and metadata
+        fn_type: The type/category identifier of this PFunction, indicating which
+            backend or handler should process it (e.g., "spu.makeshares", "builtin.read",
+            "mlir.stablehlo"). This serves as a routing mechanism for execution.
+        ins_info: Tensor type information for input parameters
+        outs_info: Tensor type information for output values
+        fn_name: Optional name of the function. For programmable functions, this is
+            the user-defined function name. For built-in operations, this may be
+            None or a descriptive identifier.
+        fn_text: Optional serialized function body. For programmable functions, this
+            contains the actual code (e.g., MLIR, bytecode, source code). For built-in
+            operations, this is typically None.
+        **kwargs: Additional attributes and metadata specific to the function type.
+            These are used to pass execution parameters, configuration, and context
+            information to the backend handlers.
     """
 
-    fn_type: str
-    fn_name: str
-    fn_text: str | None
+    # Required fields - these define the core execution context
+    fn_type: str  # Unique identifier for backend routing
     ins_info: tuple[TensorInfo, ...]
     outs_info: tuple[TensorInfo, ...]
-    attrs: MappingProxyType[str, Any]
+
+    # Optional fields for programmable functions
+    fn_name: str | None  # Function name (for programmable functions)
+    fn_text: str | None  # Function body/code (for programmable functions)
+
+    # Custom attributes and metadata
+    attrs: MappingProxyType[str, Any]  # Execution parameters and metadata
 
     def __init__(
         self,
         fn_type: str,
-        fn_name: str,
-        fn_text: str | None,
         ins_info: Sequence[TensorInfo],
         outs_info: Sequence[TensorInfo],
-        attrs: dict[str, Any] | None = None,
+        *,
+        fn_name: str | None = None,
+        fn_text: str | None = None,
+        **kwargs: Any,
     ):
-        if attrs is None:
-            attrs = {}
         self.fn_type = fn_type
         self.fn_name = fn_name
         self.fn_text = fn_text
@@ -69,10 +83,7 @@ class PFunction:
         self.outs_info = tuple(outs_info)
         # Make attrs immutable to ensure PFunction immutability
         # Create a copy first, then wrap it in MappingProxyType
-        if isinstance(attrs, MappingProxyType):
-            self.attrs = attrs
-        else:
-            self.attrs = MappingProxyType(copy.copy(attrs))
+        self.attrs = MappingProxyType(copy.copy(kwargs))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.fn_type}, {self.fn_name})"

@@ -87,22 +87,16 @@ class SpuFE:
         # Create one output tensor info for each party's share
         outs_info = [ins_info[0] for _ in range(self.world_size)]
 
-        # Create metadata for the share generation
-        attrs = {
-            "visibility": visibility.value,  # Use the libspu enum value
-            "owner_rank": owner_rank,
-            "operation": "makeshares",
-            "world_size": self.world_size,  # Add world_size to metadata
-        }
-
         # Create the PFunction
         pfunc = PFunction(
             fn_type="spu.makeshares",
-            fn_name="makeshares",
-            fn_text=None,  # No serialized code needed
             ins_info=ins_info,
             outs_info=outs_info,
-            attrs=attrs,
+            fn_name="makeshares",
+            visibility=visibility.value,  # Use the libspu enum value
+            owner_rank=owner_rank,
+            operation="makeshares",
+            world_size=self.world_size,  # Add world_size to metadata
         )
 
         return pfunc
@@ -134,15 +128,11 @@ class SpuFE:
         # Output will be a single plaintext tensor
         outs_info = [ins_info[0]] if ins_info else []
 
-        attrs: dict[str, Any] = {}
-
         pfunc = PFunction(
             fn_type="spu.reconstruct",
-            fn_name="reconstruct",
-            fn_text=None,  # No serialized code needed
             ins_info=ins_info,
             outs_info=outs_info,
-            attrs=attrs,
+            fn_name="reconstruct",
         )
 
         return pfunc
@@ -234,21 +224,16 @@ class SpuFE:
         )
         executable_code = executable_code.decode("utf-8")
 
-        # Create metadata for SPU execution
-        spu_metadata = {
-            "input_visibilities": in_vis,
-            "input_names": list(executable.input_names),
-            "output_names": list(executable.output_names),
-            "executable_name": executable.name,
-        }
-
         pfn = PFunction(
             fn_type="mlir.pphlo",
-            fn_name=get_fn_name(jax_fn),
-            fn_text=executable_code,
             ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
             outs_info=tuple(output_tensor_infos),
-            attrs=spu_metadata,
+            fn_name=get_fn_name(jax_fn),
+            fn_text=executable_code,
+            input_visibilities=in_vis,
+            input_names=list(executable.input_names),
+            output_names=list(executable.output_names),
+            executable_name=executable.name,
         )
 
         return pfn, in_vars, out_tree

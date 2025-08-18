@@ -122,14 +122,14 @@ def runMask(pmask: Mask, pyfn: Callable) -> Callable:
 
 # runAt :: Rank -> (a -> a) -> m a -> m a
 def runAt(rank: Rank, pyfn: Callable) -> Callable:
-    pmask = Mask(1 << rank)
+    pmask = Mask.from_ranks(rank)
     return runMask(pmask, pyfn)
 
 
 # runExcept :: Rank -> (a -> a) -> m a -> m a
 def runExcept(rank: Rank, pyfn: Callable) -> Callable:
     wsize = prim.psize()
-    pmask = Mask(((1 << wsize) - 1) ^ (1 << rank))
+    pmask = Mask.all(wsize).difference(Mask.from_ranks(rank))
     return runMask(pmask, pyfn)
 
 

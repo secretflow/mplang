@@ -33,7 +33,6 @@ from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import ThreadCommunicator
-from mplang.utils import mask_utils
 
 
 class SimVar(InterpVar):
@@ -89,10 +88,10 @@ class Simulator(InterpContext):
         spu_mask_attr: Mask = self.attr("spu_mask")
         if spu_mask_attr is None:
             raise ValueError("spu_mask attribute is required")
-        spu_addrs = [f"P{spu_rank}" for spu_rank in mask_utils.enum_mask(spu_mask_attr)]
+        spu_addrs = [f"P{spu_rank}" for spu_rank in Mask(spu_mask_attr)]
         spu_comms = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
-            for idx in range(spu_mask_attr.bit_count())
+            for idx in range(spu_mask_attr.num_parties())
         ]
         spu_config = libspu.RuntimeConfig(
             protocol=libspu.ProtocolKind.SEMI2K,
@@ -100,12 +99,12 @@ class Simulator(InterpContext):
         )
         # Create separate SpuHandler instances for each party to avoid sharing state
         spu_handlers = [
-            SpuHandler(spu_mask_attr.bit_count(), spu_config) for _ in range(psize)
+            SpuHandler(spu_mask_attr.num_parties(), spu_config) for _ in range(psize)
         ]
         for rank, handler in enumerate(spu_handlers):
             handler.set_link_context(
-                spu_comms[mask_utils.global_to_relative_rank(rank, spu_mask_attr)]
-                if mask_utils.is_rank_in(rank, spu_mask_attr)
+                spu_comms[Mask(spu_mask_attr).global_to_relative_rank(rank)]
+                if rank in Mask(spu_mask_attr)
                 else None
             )
 

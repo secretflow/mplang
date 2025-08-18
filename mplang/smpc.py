@@ -22,7 +22,6 @@ from typing import Any
 from jax.tree_util import tree_unflatten
 
 import mplang.mpi as mpi
-import mplang.utils.mask_utils as mask_utils
 from mplang.core import primitive as prim
 from mplang.core.base import Mask, MPObject, Rank
 from mplang.core.context_mgr import cur_ctx
@@ -87,24 +86,21 @@ class SPU(SecureAPI):
             if frm_mask is None:
                 frm_mask = obj.pmask
             else:
-                if not mask_utils.is_subset(frm_mask, obj.pmask):
+                if not Mask(frm_mask).is_subset(obj.pmask):
                     raise ValueError(f"Cannot seal from {frm_mask} to {obj.pmask}, ")
 
         # Get the world_size from spu_mask (number of parties in SPU computation)
-        spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
+        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
 
         # make shares on each party.
         pfunc = spu.makeshares(obj, visibility=Visibility.SECRET)
         shares = prim.peval(pfunc, [obj], frm_mask)
 
         # scatter the shares to each party.
-        return [
-            mpi.scatter_m(spu_mask, rank, shares)
-            for rank in mask_utils.enum_mask(frm_mask)
-        ]
+        return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
 
     def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
-        results = seal(obj, frm_mask=1 << root)
+        results = seal(obj, frm_mask=Mask.from_ranks(root))
         assert len(results) == 1, f"Expected one result, got {len(results)}"
         return results[0]
 
@@ -114,7 +110,7 @@ class SPU(SecureAPI):
 
         spu_mask = cur_ctx().attr("spu_mask")
 
-        spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
+        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
         is_mpobject = lambda x: isinstance(x, MPObject)
         pfunc, in_vars, out_tree = spu.compile_jax(is_mpobject, pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
@@ -129,19 +125,17 @@ class SPU(SecureAPI):
         assert obj.pmask == spu_mask, (obj.pmask, spu_mask)
 
         # (n_parties, n_shares)
-        shares = [
-            mpi.bcast_m(to_mask, rank, obj) for rank in mask_utils.enum_mask(spu_mask)
-        ]
-        assert len(shares) == mask_utils.bit_count(spu_mask), (shares, spu_mask)
+        shares = [mpi.bcast_m(to_mask, rank, obj) for rank in Mask(spu_mask)]
+        assert len(shares) == Mask(spu_mask).num_parties(), (shares, spu_mask)
         assert all(share.pmask == to_mask for share in shares)
 
         # Reconstruct the original object from shares
-        spu = SpuFE(world_size=mask_utils.bit_count(spu_mask))
+        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
         pfunc = spu.reconstruct(shares)
         return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
-        return self.reveal(obj, to_mask=1 << to_rank)
+        return self.reveal(obj, to_mask=Mask.from_ranks(to_rank))
 
 
 class SEE(Enum):
@@ -185,7 +179,7 @@ def sealFrom(obj: MPObject, root: Rank) -> MPObject:
 # reveal :: s a -> m a
 def reveal(obj: MPObject, to_mask: Mask | None = None) -> MPObject:
     """Reveal a sealed object to pmask'ed parties."""
-    to_mask = to_mask or ((1 << prim.psize()) - 1)
+    to_mask = to_mask or Mask.all(prim.psize())
     return _get_sapi().reveal(obj, to_mask)
 
 

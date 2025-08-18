@@ -34,7 +34,6 @@ import spu.libspu as libspu
 from google.protobuf import empty_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
-import mplang.utils.mask_utils as mask_utils
 from mplang.backend.builtin import BuiltinHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.stablehlo import StablehloHandler
@@ -202,14 +201,14 @@ class Execution:
             make_stub_func,
         )
 
-        if (1 << session.rank) & self.spu_mask != 0:
+        if session.rank in self.spu_mask:
             spu_addrs: list[str] = []
             for rank, addr in enumerate(session.addrs):
-                if mask_utils.is_rank_in(rank, spu_mask):
+                if rank in Mask(spu_mask):
                     ip, port = addr.split(":")
                     new_addr = f"{ip}:{int(port) + 100}"
                     spu_addrs.append(new_addr)
-            spu_rank = mask_utils.global_to_relative_rank(session.rank, self.spu_mask)
+            spu_rank = self.spu_mask.global_to_relative_rank(session.rank)
             self.spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
         else:
             self.spu_comm = None
@@ -245,7 +244,7 @@ class Execution:
         )
 
         # Setup SPU handler
-        spu_handler = SpuHandler(mask_utils.bit_count(self.spu_mask), spu_config)
+        spu_handler = SpuHandler(self.spu_mask.num_parties(), spu_config)
         if self.spu_comm is not None:
             spu_handler.set_link_context(self.spu_comm)
 
@@ -753,7 +752,7 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
             program=program_proto,
             input_names=list(request.execution.input_names),
             output_names=list(request.execution.output_names),
-            spu_mask=int(request.execution.attrs["spu_mask"].number_value),
+            spu_mask=Mask(int(request.execution.attrs["spu_mask"].number_value)),
             spu_protocol=libspu.ProtocolKind(
                 int(request.execution.attrs["spu_protocol"].number_value)
             ),

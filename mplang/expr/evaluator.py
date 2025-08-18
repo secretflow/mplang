@@ -44,7 +44,6 @@ from mplang.expr.ast import (
     WhileExpr,
 )
 from mplang.expr.visitor import ExprVisitor
-from mplang.utils import mask_utils
 
 
 class Evaluator(ExprVisitor):
@@ -176,7 +175,7 @@ class Evaluator(ExprVisitor):
         rmask: Mask | None = expr.rmask
         if rmask is not None:
             # if rmask is provided, we check if the current rank is in the mask.
-            should_run = mask_utils.is_rank_in(self.comm.rank, rmask)
+            should_run = self.comm.rank in Mask(rmask)
         else:
             # deduce from runtime arguments.
             should_run = all(arg is not None for arg in args)
@@ -288,7 +287,7 @@ class Evaluator(ExprVisitor):
         src_ranks = expr.src_ranks
         value = self._value(expr.src_val)
 
-        dst_ranks = list(mask_utils.enum_mask(pmask))
+        dst_ranks = list(Mask(pmask))
         assert len(src_ranks) == len(dst_ranks)
 
         # do the shuffle.

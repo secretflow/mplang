@@ -25,6 +25,7 @@ import functools
 import operator
 from collections.abc import Callable
 
+from mplang.core.base import Mask
 from mplang.device import DeviceContext, parse_device_conf
 
 # Re-export client components
@@ -53,7 +54,7 @@ def cmd_main(main: Callable, nodes_def: dict) -> None:
     subparsers.add_parser("sim", help="simulate the test code")
     args = parser.parse_args()
 
-    spu_mask = 0  # Default mask
+    spu_mask = Mask.none()  # Default mask
 
     if args.config:
         with open(args.config) as file:
@@ -74,9 +75,8 @@ def cmd_main(main: Callable, nodes_def: dict) -> None:
         )
         spu_conf = [dev for dev in devices_conf.values() if dev.type == "SPU"]
         if len(spu_conf) == 1:
-            spu_mask = 0
             for nid in spu_conf[0].node_ids:
-                spu_mask |= 1 << all_node_ids.index(nid)
+                spu_mask |= Mask.from_ranks(all_node_ids.index(nid))
 
     if args.command == "start":
         serve(args.node_id, nodes_def[args.node_id])

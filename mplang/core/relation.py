@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 
 from mplang.core.dtype import DType
 
@@ -33,10 +34,11 @@ class RelationSchema:
         ...     "id": DType.i64(),
         ...     "name": DType.string(),
         ... })
-        >>> schema = RelationSchema((("id", DType.i64()), ("name", DType.string())))
+        >>> schema = RelationSchema(((\"id\", DType.i64()), (\"name\", DType.string())))
     """
 
     columns: tuple[tuple[str, DType], ...]
+    _column_map: dict[str, DType] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Validate the relational schema."""
@@ -54,6 +56,9 @@ class RelationSchema:
                 raise ValueError("Column names must be non-empty strings")
             if not isinstance(dtype, DType):
                 raise ValueError(f"Column type must be DType, got {type(dtype)}")
+
+        # Create column name to type mapping for O(1) lookups
+        object.__setattr__(self, "_column_map", dict(self.columns))
 
     @classmethod
     def from_dict(cls, schema_dict: dict[str, DType]) -> RelationSchema:
@@ -99,10 +104,10 @@ class RelationSchema:
         Raises:
             KeyError: If column name does not exist
         """
-        for col_name, col_type in self.columns:
-            if col_name == name:
-                return col_type
-        raise KeyError(f"Column '{name}' not found in schema")
+        try:
+            return self._column_map[name]
+        except KeyError:
+            raise KeyError(f"Column '{name}' not found in schema") from None
 
     def has_column(self, name: str) -> bool:
         """Check if contains specified column name.
@@ -132,7 +137,7 @@ class RelationSchema:
         """Get number of columns."""
         return len(self.columns)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[tuple[str, DType]]:
         """Support iteration."""
         return iter(self.columns)
 

@@ -89,6 +89,13 @@ class MPKind(Enum):
 class MPType:
     """A type that describes the type information of an MPObject."""
 
+    _kind: MPKind
+    _dtype: DType | None
+    _shape: Shape | None
+    _schema: RelationSchema | None
+    _pmask: Mask | None
+    _attrs: dict[str, Any]
+
     def __init__(
         self,
         *,

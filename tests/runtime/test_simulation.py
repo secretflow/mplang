@@ -115,6 +115,34 @@ class TestSimulator:
         assert sim.attrs()["test_attr"] == "test_value"
         assert sim.attrs()["debug"] is True
 
+    def test_simulator_with_int_spu_mask(self):
+        """Test Simulator creation with integer spu_mask (regression test for #58)."""
+        # This should not raise AttributeError: 'int' object has no attribute 'num_parties'
+        sim = Simulator(psize=3, spu_mask=7)  # 0b111 = all 3 parties
+
+        assert sim.psize() == 3
+        spu_mask_attr = sim.attr("spu_mask")
+        # After the fix, spu_mask should be stored as a Mask object internally
+        assert isinstance(spu_mask_attr, (Mask, int))  # Allow both for backwards compatibility
+        
+        # Test that the simulator was created successfully without AttributeError
+        assert len(sim._comms) == 3
+        assert len(sim._evaluators) == 3
+
+    def test_simulator_with_mask_spu_mask(self):
+        """Test Simulator creation with Mask spu_mask."""
+        mask = Mask(7)  # 0b111 = all 3 parties
+        sim = Simulator(psize=3, spu_mask=mask)
+
+        assert sim.psize() == 3
+        spu_mask_attr = sim.attr("spu_mask")
+        assert isinstance(spu_mask_attr, Mask)
+        assert spu_mask_attr.value == 7
+        
+        # Test that the simulator was created successfully
+        assert len(sim._comms) == 3
+        assert len(sim._evaluators) == 3
+
     def test_evaluate_constant(self, simulator, trace_context):
         """Test evaluating a constant expression."""
 

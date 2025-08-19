@@ -85,10 +85,13 @@ class Simulator(InterpContext):
             comm.set_peers(self._comms)
 
         # Prepare link context and spu handlers.
-        spu_mask_attr: Mask = self.attr("spu_mask")
+        spu_mask_attr = self.attr("spu_mask")
         if spu_mask_attr is None:
             raise ValueError("spu_mask attribute is required")
-        spu_addrs = [f"P{spu_rank}" for spu_rank in Mask(spu_mask_attr)]
+        # Ensure spu_mask_attr is a Mask object
+        if not isinstance(spu_mask_attr, Mask):
+            spu_mask_attr = Mask(spu_mask_attr)
+        spu_addrs = [f"P{spu_rank}" for spu_rank in spu_mask_attr]
         spu_comms = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
             for idx in range(spu_mask_attr.num_parties())
@@ -103,8 +106,8 @@ class Simulator(InterpContext):
         ]
         for rank, handler in enumerate(spu_handlers):
             handler.set_link_context(
-                spu_comms[Mask(spu_mask_attr).global_to_relative_rank(rank)]
-                if rank in Mask(spu_mask_attr)
+                spu_comms[spu_mask_attr.global_to_relative_rank(rank)]
+                if rank in spu_mask_attr
                 else None
             )
 

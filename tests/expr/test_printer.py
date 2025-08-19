@@ -21,7 +21,7 @@ import pytest
 
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import Rank, TensorInfo
+from mplang.core.mptype import Rank, TensorType
 from mplang.core.pfunc import PFunction
 from mplang.expr import (
     AccessExpr,
@@ -87,7 +87,7 @@ class TestPrinterExpressions:
     def test_const_expr_printing(self, pmask_2p):
         """Test printing of ConstExpr."""
         printer = Printer()
-        tensor_info = TensorInfo(FLOAT32, (2, 2))
+        tensor_info = TensorType(FLOAT32, (2, 2))
         data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         expr = ConstExpr(tensor_info, data.tobytes(), pmask_2p)
 
@@ -97,7 +97,7 @@ class TestPrinterExpressions:
     def test_rand_expr_printing(self, pmask_2p):
         """Test printing of RandExpr."""
         printer = Printer()
-        tensor_info = TensorInfo(UINT64, (3, 3))
+        tensor_info = TensorType(UINT64, (3, 3))
         expr = RandExpr(tensor_info, pmask_2p)
 
         result = printer.print_expr(expr)
@@ -148,8 +148,8 @@ class TestPrinterExpressions:
         # Create a PFunction with actual fn_text and fn_type
         pfunc_with_text = PFunction(
             fn_type="jax",
-            ins_info=[TensorInfo(FLOAT32, (2, 3))],
-            outs_info=[TensorInfo(FLOAT32, (2, 3))],
+            ins_info=[TensorType(FLOAT32, (2, 3))],
+            outs_info=[TensorType(FLOAT32, (2, 3))],
             fn_name="add_one",
             fn_text="lambda x: x + 1",
         )
@@ -348,12 +348,12 @@ class TestPrinterComplexExpressions:
 
         # 1. Basic primitive expressions
         const_expr = ConstExpr(
-            TensorInfo(FLOAT32, (2,)),
+            TensorType(FLOAT32, (2,)),
             np.array([1.0, 2.0], dtype=np.float32).tobytes(),
             pmask_2p,
         )
         rank_expr = RankExpr(pmask_2p)
-        rand_expr = RandExpr(TensorInfo(UINT64, (2,)), pmask_2p)
+        rand_expr = RandExpr(TensorType(UINT64, (2,)), pmask_2p)
 
         # 2. Access expression
         access_expr = AccessExpr(const_expr, 0)

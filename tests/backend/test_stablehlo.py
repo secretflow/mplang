@@ -20,7 +20,7 @@ import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
 from mplang.backend.stablehlo import StablehloHandler
-from mplang.core.mptype import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
 from mplang.frontend import jax_cc
 
@@ -108,7 +108,7 @@ class TestStablehloHandler:
         expected = test_function(*inputs)
 
         # Generate tensor metadata for runtime input validation
-        [TensorInfo(shape=x.shape, dtype=x.dtype) for x in inputs]
+        [TensorType(shape=x.shape, dtype=x.dtype) for x in inputs]
 
         # Compile function to portable StableHLO MLIR representation
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")

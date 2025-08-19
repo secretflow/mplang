@@ -15,15 +15,15 @@
 import pytest
 
 from mplang.core.dtype import DATE, FLOAT32, INT32, INT64, JSON, STRING
-from mplang.core.relation import RelationSchema
+from mplang.core.relation import RelationType
 
 
-class TestRelationSchema:
-    """Test RelationSchema functionality."""
+class TestRelationType:
+    """Test RelationType functionality."""
 
     def test_creation_from_dict(self):
-        """Test creating RelationSchema from dictionary."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
+        """Test creating RelationType from dictionary."""
+        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
 
         assert len(schema) == 3
         assert schema.num_columns() == 3
@@ -31,16 +31,16 @@ class TestRelationSchema:
         assert schema.column_types() == (INT64, FLOAT32, INT32)
 
     def test_creation_from_pairs(self):
-        """Test creating RelationSchema from pairs."""
+        """Test creating RelationType from pairs."""
         pairs = [("id", INT64), ("name", STRING)]
-        schema = RelationSchema.from_pairs(pairs)
+        schema = RelationType.from_pairs(pairs)
 
         assert len(schema) == 2
         assert schema.column_names() == ("id", "name")
 
     def test_column_access(self):
         """Test column access methods."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
+        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
 
         # Test has_column
         assert schema.has_column("id") is True
@@ -55,7 +55,7 @@ class TestRelationSchema:
 
     def test_indexing(self):
         """Test indexing functionality."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
+        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
 
         # Test integer indexing
         assert schema[0] == ("id", INT64)
@@ -70,7 +70,7 @@ class TestRelationSchema:
 
     def test_iteration(self):
         """Test iteration over schema."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
+        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
 
         columns = list(schema)
         assert len(columns) == 2
@@ -80,23 +80,23 @@ class TestRelationSchema:
     def test_to_dict(self):
         """Test conversion back to dictionary."""
         original_dict = {"id": INT64, "value": FLOAT32}
-        schema = RelationSchema.from_dict(original_dict)
+        schema = RelationType.from_dict(original_dict)
         result_dict = schema.to_dict()
 
         assert result_dict == original_dict
 
     def test_string_representation(self):
         """Test string representation."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
+        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
 
         repr_str = repr(schema)
-        assert "RelationSchema<" in repr_str
+        assert "RelationType<" in repr_str
         assert "id:i64" in repr_str
         assert "value:f32" in repr_str
 
     def test_relation_only_types(self):
         """Test schemas with relation-only data types."""
-        schema = RelationSchema.from_dict({
+        schema = RelationType.from_dict({
             "name": STRING,
             "birth_date": DATE,
             "metadata": JSON,
@@ -109,29 +109,29 @@ class TestRelationSchema:
     def test_validation(self):
         """Test schema validation."""
         # Test empty schema
-        with pytest.raises(ValueError, match="RelationSchema cannot be empty"):
-            RelationSchema(())
+        with pytest.raises(ValueError, match="RelationType cannot be empty"):
+            RelationType(())
 
         # Test duplicate column names
         with pytest.raises(ValueError, match="Column names must be unique"):
-            RelationSchema((("id", INT64), ("id", FLOAT32)))
+            RelationType((("id", INT64), ("id", FLOAT32)))
 
         # Test invalid column names
         with pytest.raises(ValueError, match="Column names must be non-empty strings"):
-            RelationSchema((("", INT64),))
+            RelationType((("", INT64),))
 
         # Invalid type should be caught by validation
         with pytest.raises(ValueError, match="Column names must be non-empty strings"):
             # This will be caught by __post_init__ validation
-            schema = RelationSchema.__new__(RelationSchema)
+            schema = RelationType.__new__(RelationType)
             object.__setattr__(schema, "columns", ((None, INT64),))
             schema.__post_init__()
 
     def test_equality(self):
         """Test schema equality."""
-        schema1 = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
-        schema2 = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
-        schema3 = RelationSchema.from_dict({"id": INT32, "value": FLOAT32})
+        schema1 = RelationType.from_dict({"id": INT64, "value": FLOAT32})
+        schema2 = RelationType.from_dict({"id": INT64, "value": FLOAT32})
+        schema3 = RelationType.from_dict({"id": INT32, "value": FLOAT32})
 
         assert schema1 == schema2
         assert schema1 != schema3

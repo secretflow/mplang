@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from mplang.core.dtype import UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank, TensorInfo
+from mplang.core.mptype import MPType, Rank, TensorType
 from mplang.core.pfunc import PFunction
 from mplang.expr.utils import deduce_mask
 
@@ -106,7 +106,7 @@ class RankExpr(Expr):
 class ConstExpr(Expr):
     """Expression for constant tensor creation."""
 
-    def __init__(self, typ: TensorInfo, data_bytes: bytes, pmask: Mask):
+    def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask):
         super().__init__()
         self.typ = typ
         self.data_bytes = data_bytes
@@ -123,7 +123,7 @@ class ConstExpr(Expr):
 class RandExpr(Expr):
     """Expression for private random tensor generation."""
 
-    def __init__(self, typ: TensorInfo, pmask: Mask):
+    def __init__(self, typ: TensorType, pmask: Mask):
         super().__init__()
         if typ.dtype != UINT64:
             # TODO: Only U64 is supported for now.

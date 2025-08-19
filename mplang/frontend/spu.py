@@ -24,7 +24,7 @@ import spu.utils.frontend as spu_fe
 from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.mptype import TensorInfo, TensorLike
+from mplang.core.mptype import TensorLike, TensorType
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.utils.func_utils import normalize_fn
 
@@ -81,7 +81,7 @@ class SpuFE:
             >>> # This PFunction can be executed by SPU runtime to create shares
         """
         # Create input info for the data
-        ins_info = [TensorInfo.from_obj(data)]
+        ins_info = [TensorType.from_obj(data)]
 
         # For makeshares, the output will be SPU shares - one for each party
         # Create one output tensor info for each party's share
@@ -123,7 +123,7 @@ class SpuFE:
             >>> # This PFunction can be executed by SPU runtime to get plaintext
         """
         # Create input info for the shares
-        ins_info = [TensorInfo.from_obj(share) for share in shares]
+        ins_info = [TensorType.from_obj(share) for share in shares]
 
         # Output will be a single plaintext tensor
         outs_info = [ins_info[0]] if ins_info else []
@@ -182,7 +182,7 @@ class SpuFE:
         # Flatten (args, kwargs) and capture immediates using normalize_fn
         normalized_fn, in_vars = normalize_fn(jax_fn, args, kwargs, is_variable)
 
-        # Convert TensorInfo in_vars to ShapeDtypeStruct for JAX tracing
+        # Convert TensorType in_vars to ShapeDtypeStruct for JAX tracing
         jax_params = [
             ShapeDtypeStruct(arg.shape, jnp.dtype(arg.dtype.name)) for arg in in_vars
         ]
@@ -212,7 +212,7 @@ class SpuFE:
 
         # Extract output information
         out_info_flat, out_tree = tree_flatten(out_info)
-        output_tensor_infos = [TensorInfo.from_obj(out) for out in out_info_flat]
+        output_tensor_infos = [TensorType.from_obj(out) for out in out_info_flat]
 
         # Use MLIR code directly instead of protobuf serialization
         # This is more readable, compact, and closer to SPU's native representation
@@ -226,7 +226,7 @@ class SpuFE:
 
         pfn = PFunction(
             fn_type="mlir.pphlo",
-            ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
+            ins_info=tuple(TensorType.from_obj(x) for x in in_vars),
             outs_info=tuple(output_tensor_infos),
             fn_name=get_fn_name(jax_fn),
             fn_text=executable_code,

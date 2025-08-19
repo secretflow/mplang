@@ -72,7 +72,7 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
     Examples:
         Reading data from a file:
 
-        >>> tensor_info = TensorInfo(shape=(10, 10), dtype=np.float32)
+        >>> tensor_info = TensorType(shape=(10, 10), dtype=np.float32)
         >>> attrs = {"format": "binary"}
         >>> result = run_impl(builtin.read, "data/input.bin", tensor_info, attrs)
 

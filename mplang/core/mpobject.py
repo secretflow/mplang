@@ -34,9 +34,9 @@ class MPContext(ABC):
     def attrs(self) -> dict[str, Any]:
         """Return the attributes of the context."""
 
-    def attr(self, key: str) -> Any:
+    def attr(self, key: str, default: Any = None) -> Any:
         """Return the attribute of the context by key."""
-        return self.attrs()[key]
+        return self.attrs().get(key, default)
 
 
 class MPObject(ABC):

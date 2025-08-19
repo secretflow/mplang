@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 from mplang.core.dtype import STRING, DType
 from mplang.core.mask import Mask
-from mplang.core.relation import RelationSchema
+from mplang.core.relation import RelationType
 
 # basic type aliases
 Rank = int
@@ -48,7 +48,7 @@ class TensorLike(Protocol):
 
 
 @dataclass(frozen=True)
-class TensorInfo:
+class TensorType:
     """A data class that describes the type information of a tensor."""
 
     dtype: DType
@@ -62,7 +62,7 @@ class TensorInfo:
         object.__setattr__(self, "shape", shape)
 
     @classmethod
-    def from_obj(cls, obj: TensorLike | ScalarType) -> TensorInfo:
+    def from_obj(cls, obj: TensorLike | ScalarType) -> TensorType:
         if isinstance(obj, ScalarType):
             return cls(DType.from_python_type(type(obj)), ())
         elif isinstance(obj, TensorLike):
@@ -83,20 +83,20 @@ class TensorInfo:
 class MPType:
     """A type that describes the type information of an MPObject."""
 
-    _type: TensorInfo | RelationSchema
+    _type: TensorType | RelationType
     _pmask: Mask | None
     _attrs: dict[str, Any]
 
     def __init__(
         self,
-        type_info: TensorInfo | RelationSchema,
+        type_info: TensorType | RelationType,
         pmask: Mask | None = None,
         attrs: dict[str, Any] | None = None,
     ):
         """Initialize MPType.
 
         Args:
-            type_info: The type information (TensorInfo for tensors, RelationSchema for relations).
+            type_info: The type information (TensorType for tensors, RelationType for relations).
             pmask: The party mask, used for compile/trace time determine which party holds the object.
             attrs: Attributes are key-value pairs that can be used to store additional information about the object.
         """
@@ -139,13 +139,13 @@ class MPType:
                 f"non-numeric data types."
             )
 
-        tensor_info = TensorInfo(dtype, shape)
+        tensor_info = TensorType(dtype, shape)
         return cls(tensor_info, pmask, attrs)
 
     @classmethod
     def relation(
         cls,
-        schema: RelationSchema | dict[str, DType],
+        schema: RelationType | dict[str, DType],
         pmask: Mask | None = None,
         **attrs: Any,
     ) -> MPType:
@@ -160,18 +160,18 @@ class MPType:
             MPType instance for relation.
         """
         if isinstance(schema, dict):
-            schema = RelationSchema.from_dict(schema)
+            schema = RelationType.from_dict(schema)
         return cls(schema, pmask, attrs)
 
     @property
     def is_tensor(self) -> bool:
         """Check if this is a tensor type."""
-        return isinstance(self._type, TensorInfo)
+        return isinstance(self._type, TensorType)
 
     @property
     def is_relation(self) -> bool:
         """Check if this is a relation type."""
-        return isinstance(self._type, RelationSchema)
+        return isinstance(self._type, RelationType)
 
     @property
     def dtype(self) -> DType:
@@ -182,7 +182,7 @@ class MPType:
 
         Only available for tensor types.
         """
-        if not isinstance(self._type, TensorInfo):
+        if not isinstance(self._type, TensorType):
             raise AttributeError("dtype is only available for tensor types")
         return self._type.dtype
 
@@ -198,17 +198,17 @@ class MPType:
 
         Only available for tensor types.
         """
-        if not isinstance(self._type, TensorInfo):
+        if not isinstance(self._type, TensorType):
             raise AttributeError("shape is only available for tensor types")
         return self._type.shape
 
     @property
-    def schema(self) -> RelationSchema:
+    def schema(self) -> RelationType:
         """The relational schema.
 
         Only available for relation types.
         """
-        if not isinstance(self._type, RelationSchema):
+        if not isinstance(self._type, RelationType):
             raise AttributeError("schema is only available for relation types")
         return self._type
 
@@ -230,11 +230,6 @@ class MPType:
         runtime-dependent.
         """
         return self._pmask
-
-    @pmask.setter
-    def pmask(self, value: Mask | None) -> None:
-        """Set the party mask."""
-        self._pmask = value
 
     @property
     def attrs(self) -> dict[str, Any]:
@@ -264,7 +259,7 @@ class MPType:
         - u32[5, 5]<F>{device="P0"} # uint32 matrix with pmask=15 and device attr
         - Rel(id:i64, name:str)      # relation with id and name columns
         """
-        if isinstance(self._type, TensorInfo):
+        if isinstance(self._type, TensorType):
             # Start with short dtype name
             ret = self._type.dtype.short_name()
 
@@ -272,7 +267,7 @@ class MPType:
             if self._type.shape:
                 shape_str = ", ".join(str(d) for d in self._type.shape)
                 ret += f"[{shape_str}]"
-        else:  # RelationSchema
+        else:  # RelationType
             cols = ", ".join(
                 f"{name}:{dtype.short_name()}" for name, dtype in self._type.columns
             )
@@ -344,21 +339,21 @@ class MPType:
 
         Only available for tensor types.
         """
-        if not isinstance(self._type, TensorInfo):
+        if not isinstance(self._type, TensorType):
             raise AttributeError("to_numpy is only available for tensor types")
         return self._type.to_numpy()
 
     @staticmethod
-    def _create_tensor_info(obj: TensorLike | ScalarType) -> TensorInfo:
-        """Helper method to create TensorInfo from tensor-like objects."""
+    def _create_tensor_info(obj: TensorLike | ScalarType) -> TensorType:
+        """Helper method to create TensorType from tensor-like objects."""
         if isinstance(obj, ScalarType):
-            return TensorInfo(DType.from_python_type(type(obj)), ())
+            return TensorType(DType.from_python_type(type(obj)), ())
         elif isinstance(obj, TensorLike):
-            return TensorInfo(DType.from_any(obj.dtype), obj.shape)
+            return TensorType(DType.from_any(obj.dtype), obj.shape)
         elif isinstance(obj, list | tuple):
             # Convert lists/tuples to numpy arrays for compatibility
             arr = np.array(obj)
-            return TensorInfo(DType.from_any(arr.dtype), arr.shape)
+            return TensorType(DType.from_any(arr.dtype), arr.shape)
         else:
             raise TypeError(f"Unsupported type: {type(obj)}.")
 
@@ -438,7 +433,7 @@ class MPType:
                             )
                         else:
                             schema_dict[col_name] = DType.from_numpy(pandas_dtype)
-                    schema = RelationSchema.from_dict(schema_dict)
+                    schema = RelationType.from_dict(schema_dict)
                     return cls(schema, pmask, attrs)
             except ImportError:
                 pass

@@ -23,7 +23,7 @@ import pytest
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import MPType, TensorInfo
+from mplang.core.mptype import MPType, TensorType
 from mplang.core.trace import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 from mplang.expr.ast import VariableExpr
 
@@ -56,13 +56,13 @@ class MockMPObject(MPObject):
 @pytest.fixture
 def tensor_info_float():
     """Float tensor info for testing."""
-    return TensorInfo(FLOAT32, (2, 3))
+    return TensorType(FLOAT32, (2, 3))
 
 
 @pytest.fixture
 def tensor_info_int():
     """Int tensor info for testing."""
-    return TensorInfo(INT32, (4,))
+    return TensorType(INT32, (4,))
 
 
 @pytest.fixture

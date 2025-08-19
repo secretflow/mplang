@@ -18,7 +18,7 @@ import pytest
 from mplang.core.dtype import DATE, FLOAT32, FLOAT64, INT32, INT64, JSON, STRING
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType
-from mplang.core.relation import RelationSchema
+from mplang.core.relation import RelationType
 
 
 class TestMPType:
@@ -34,7 +34,7 @@ class TestMPType:
 
     def test_relation_creation(self):
         """Test relation MPType creation."""
-        schema = RelationSchema.from_dict({
+        schema = RelationType.from_dict({
             "user_id": INT64,
             "score": FLOAT64,
             "rank": INT32,
@@ -69,7 +69,7 @@ class TestMPType:
 
     def test_relation_attribute_access(self):
         """Test relation attribute access."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
+        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
         relation_type = MPType.relation(schema)
 
         # Should work
@@ -107,7 +107,7 @@ class TestMPType:
             MPType.tensor(JSON, (3,))
 
         # But should work in relations
-        schema = RelationSchema.from_dict({
+        schema = RelationType.from_dict({
             "name": STRING,
             "birth_date": DATE,
             "metadata": JSON,
@@ -127,7 +127,7 @@ class TestMPType:
         assert tensor_type.attrs["precision"] == "high"
 
         # Test relation with pmask and attrs
-        schema = RelationSchema.from_dict({"col1": FLOAT32, "col2": INT64})
+        schema = RelationType.from_dict({"col1": FLOAT32, "col2": INT64})
         relation_type = MPType.relation(
             schema, pmask=Mask.from_int(0b11), storage="distributed", format="parquet"
         )
@@ -149,9 +149,9 @@ class TestMPType:
         assert hash(t1) != hash(t3)
 
         # Test relation equality
-        schema1 = RelationSchema.from_dict({"a": INT32, "b": FLOAT32})
-        schema2 = RelationSchema.from_dict({"a": INT32, "b": FLOAT32})
-        schema3 = RelationSchema.from_dict({"a": INT64, "b": FLOAT32})
+        schema1 = RelationType.from_dict({"a": INT32, "b": FLOAT32})
+        schema2 = RelationType.from_dict({"a": INT32, "b": FLOAT32})
+        schema3 = RelationType.from_dict({"a": INT64, "b": FLOAT32})
 
         r1 = MPType.relation(schema1)
         r2 = MPType.relation(schema2)
@@ -173,7 +173,7 @@ class TestMPType:
         assert "f32[3, 4]" == tensor_str
 
         # Test relation representation
-        schema = RelationSchema.from_dict({"id": INT64, "name": STRING})
+        schema = RelationType.from_dict({"id": INT64, "name": STRING})
         relation_type = MPType.relation(schema)
         relation_str = str(relation_type)
         assert "Rel(id:i64, name:str)" == relation_str
@@ -193,7 +193,7 @@ class TestMPType:
         assert str(numpy_dtype) == "float32"
 
         # Should fail for relations
-        schema = RelationSchema.from_dict({"id": INT64})
+        schema = RelationType.from_dict({"id": INT64})
         relation_type = MPType.relation(schema)
         with pytest.raises(
             AttributeError, match="to_numpy is only available for tensor types"

@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 import spu.libspu as libspu
 
-from mplang.core.mptype import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.frontend.spu import SpuFE, Visibility
 
 
@@ -61,7 +61,7 @@ class TestSpuFECompile:
     ):
         """Test compilation of basic functions and optional serialization."""
 
-        args = [TensorInfo(shape=shape, dtype=jnp.float32) for shape in input_shapes]
+        args = [TensorType(shape=shape, dtype=jnp.float32) for shape in input_shapes]
 
         # Predicate: treat tensor-like objects as variables, others as constants
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
@@ -131,7 +131,7 @@ class TestSpuFECompile:
                 result = result + args[i]
             return result
 
-        args = [TensorInfo(shape=(2,), dtype=jnp.float32) for _ in range(num_inputs)]
+        args = [TensorType(shape=(2,), dtype=jnp.float32) for _ in range(num_inputs)]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
         cfunc, _, _ = self.spu_fe.compile_jax(is_var, multi_input_fn, *args)
@@ -167,7 +167,7 @@ class TestSpuFECompile:
     ):
         """Test compilation of functions with different numbers of outputs."""
 
-        args = [TensorInfo(shape=(3,), dtype=jnp.float32)]
+        args = [TensorType(shape=(3,), dtype=jnp.float32)]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
         cfunc, _, _out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)
@@ -195,8 +195,8 @@ class TestSpuFECompile:
             return x + y
 
         args = [
-            TensorInfo(shape=(2,), dtype=dtype1),
-            TensorInfo(shape=(2,), dtype=dtype2),
+            TensorType(shape=(2,), dtype=dtype1),
+            TensorType(shape=(2,), dtype=dtype2),
         ]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
@@ -213,9 +213,9 @@ class TestSpuFECompile:
             return jnp.sum(result, axis=0)
 
         args = [
-            TensorInfo(shape=(3, 4), dtype=jnp.float32),
-            TensorInfo(shape=(3, 4), dtype=jnp.float32),
-            TensorInfo(shape=(3, 4), dtype=jnp.float32),
+            TensorType(shape=(3, 4), dtype=jnp.float32),
+            TensorType(shape=(3, 4), dtype=jnp.float32),
+            TensorType(shape=(3, 4), dtype=jnp.float32),
         ]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
@@ -240,7 +240,7 @@ class TestSpuFECompile:
             os.system("invalid_command")  # This shouldn't work in SPU
             return x
 
-        args = [TensorInfo(shape=(2,), dtype=jnp.float32)]
+        args = [TensorType(shape=(2,), dtype=jnp.float32)]
 
         # Should handle compilation errors gracefully
         try:
@@ -256,14 +256,14 @@ class TestSpuFECompile:
         """Test compatibility with normalize_fn."""
 
         def is_tensor_info(obj):
-            return isinstance(obj, TensorInfo)
+            return isinstance(obj, TensorType)
 
         def test_fn(x, y, constant=1.0):
             return x + y + constant
 
         args = [
-            TensorInfo(shape=(2,), dtype=jnp.float32),
-            TensorInfo(shape=(2,), dtype=jnp.float32),
+            TensorType(shape=(2,), dtype=jnp.float32),
+            TensorType(shape=(2,), dtype=jnp.float32),
         ]
         kwargs = {"constant": 2.0}
 
@@ -280,7 +280,7 @@ class TestSpuFECompile:
         def simple_func(x):
             return x * 2 + 1
 
-        args = [TensorInfo(shape=(3,), dtype=jnp.float32)]
+        args = [TensorType(shape=(3,), dtype=jnp.float32)]
 
         # Compile the same function twice
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
@@ -340,10 +340,10 @@ class TestSpuFECompile:
 
         if isinstance(input_shape[0], tuple):
             # Multiple inputs case (like matrix multiplication)
-            args = [TensorInfo(shape=shape, dtype=jnp.float32) for shape in input_shape]
+            args = [TensorType(shape=shape, dtype=jnp.float32) for shape in input_shape]
         else:
             # Single input case
-            args = [TensorInfo(shape=input_shape, dtype=jnp.float32)]
+            args = [TensorType(shape=input_shape, dtype=jnp.float32)]
 
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
         cfunc, _, _out_tree = self.spu_fe.compile_jax(is_var, func_def, *args)

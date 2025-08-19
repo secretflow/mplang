@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Any
 
-from mplang.core.mptype import TensorInfo, TensorLike
+from mplang.core.mptype import TensorLike, TensorType
 
 
 class PFunction:
@@ -56,8 +56,8 @@ class PFunction:
 
     # Required fields - these define the core execution context
     fn_type: str  # Unique identifier for backend routing
-    ins_info: tuple[TensorInfo, ...]
-    outs_info: tuple[TensorInfo, ...]
+    ins_info: tuple[TensorType, ...]
+    outs_info: tuple[TensorType, ...]
 
     # Optional fields for programmable functions
     fn_name: str | None  # Function name (for programmable functions)
@@ -69,8 +69,8 @@ class PFunction:
     def __init__(
         self,
         fn_type: str,
-        ins_info: Sequence[TensorInfo],
-        outs_info: Sequence[TensorInfo],
+        ins_info: Sequence[TensorType],
+        outs_info: Sequence[TensorType],
         *,
         fn_name: str | None = None,
         fn_text: str | None = None,

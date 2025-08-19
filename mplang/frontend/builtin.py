@@ -17,7 +17,7 @@ from typing import Any
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.mpobject import MPObject
-from mplang.core.mptype import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
 
 
@@ -30,7 +30,7 @@ def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     Returns:
         tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for identity, args list with obj, output tree definition
     """
-    obj_ty = TensorInfo.from_obj(obj)
+    obj_ty = TensorType.from_obj(obj)
     pfunc = PFunction(
         fn_type="builtin.identity",
         ins_info=(obj_ty,),
@@ -42,7 +42,7 @@ def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
 
 
 def read(
-    path: str, ty: TensorInfo, **kwargs: Any
+    path: str, ty: TensorType, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """
     Read data from a file.
@@ -84,7 +84,7 @@ def write(obj: MPObject, path: str) -> tuple[PFunction, list[MPObject], PyTreeDe
     if obj is None:
         raise ValueError("builtin.write requires an object to write")
 
-    obj_ty = TensorInfo.from_obj(obj)
+    obj_ty = TensorType.from_obj(obj)
     pfunc = PFunction(
         fn_type="builtin.write",
         ins_info=(obj_ty,),

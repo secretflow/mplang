@@ -20,7 +20,7 @@ import pytest
 
 from mplang.core.dtype import FLOAT32, INT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
 
 
@@ -87,47 +87,47 @@ def pmask_factory():
 @pytest.fixture
 def tensor_info_scalar():
     """Create scalar tensor info."""
-    return TensorInfo(FLOAT32, ())
+    return TensorType(FLOAT32, ())
 
 
 @pytest.fixture
 def tensor_info_1d():
     """Create 1D tensor info."""
-    return TensorInfo(FLOAT32, (5,))
+    return TensorType(FLOAT32, (5,))
 
 
 @pytest.fixture
 def tensor_info_2d():
     """Create 2D tensor info."""
-    return TensorInfo(FLOAT32, (2, 3))
+    return TensorType(FLOAT32, (2, 3))
 
 
 @pytest.fixture
 def tensor_info_3d():
     """Create 3D tensor info."""
-    return TensorInfo(FLOAT32, (2, 3, 4))
+    return TensorType(FLOAT32, (2, 3, 4))
 
 
 @pytest.fixture
 def tensor_info_int32():
     """Create INT32 tensor info."""
-    return TensorInfo(INT32, (2, 3))
+    return TensorType(INT32, (2, 3))
 
 
 @pytest.fixture
 def tensor_info_uint64():
     """Create UINT64 tensor info."""
-    return TensorInfo(UINT64, (2, 3))
+    return TensorType(UINT64, (2, 3))
 
 
 @pytest.fixture(
     params=[
-        TensorInfo(FLOAT32, ()),  # scalar
-        TensorInfo(FLOAT32, (5,)),  # 1D
-        TensorInfo(FLOAT32, (2, 3)),  # 2D
-        TensorInfo(FLOAT32, (2, 3, 4)),  # 3D
-        TensorInfo(INT32, (2, 3)),  # different dtype
-        TensorInfo(UINT64, (2, 3)),  # different dtype
+        TensorType(FLOAT32, ()),  # scalar
+        TensorType(FLOAT32, (5,)),  # 1D
+        TensorType(FLOAT32, (2, 3)),  # 2D
+        TensorType(FLOAT32, (2, 3, 4)),  # 3D
+        TensorType(INT32, (2, 3)),  # different dtype
+        TensorType(UINT64, (2, 3)),  # different dtype
     ]
 )
 def tensor_info_various(request):
@@ -141,7 +141,7 @@ def tensor_info_factory():
 
     def _create_tensor_info(dtype=FLOAT32, shape=(2, 3)):
         """Create tensor info with specified dtype and shape."""
-        return TensorInfo(dtype, shape)
+        return TensorType(dtype, shape)
 
     return _create_tensor_info
 
@@ -151,8 +151,8 @@ def pfunc_2i1o():
     """Create a mock PFunction for testing."""
     return PFunction(
         fn_type="mock",
-        ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
-        outs_info=[TensorInfo(FLOAT32, (2, 3))],
+        ins_info=[TensorType(FLOAT32, (2, 3)), TensorType(INT32, ())],
+        outs_info=[TensorType(FLOAT32, (2, 3))],
         fn_name="mock_func",
     )
 
@@ -162,8 +162,8 @@ def pfunc_1i1o():
     """Create a mock unary PFunction (single input, single output)."""
     return PFunction(
         fn_type="mock",
-        ins_info=[TensorInfo(FLOAT32, (2, 3))],
-        outs_info=[TensorInfo(FLOAT32, (2, 3))],
+        ins_info=[TensorType(FLOAT32, (2, 3))],
+        outs_info=[TensorType(FLOAT32, (2, 3))],
         fn_name="mock_unary",
     )
 
@@ -173,11 +173,11 @@ def pfunc_2i3o():
     """Create a mock PFunction with multiple outputs."""
     return PFunction(
         fn_type="mock",
-        ins_info=[TensorInfo(FLOAT32, (2, 3)), TensorInfo(INT32, ())],
+        ins_info=[TensorType(FLOAT32, (2, 3)), TensorType(INT32, ())],
         outs_info=[
-            TensorInfo(FLOAT32, (2, 3)),
-            TensorInfo(INT32, ()),
-            TensorInfo(UINT64, (1,)),
+            TensorType(FLOAT32, (2, 3)),
+            TensorType(INT32, ()),
+            TensorType(UINT64, (1,)),
         ],
         fn_name="mock_multi_out",
     )
@@ -219,7 +219,7 @@ def test_data_generator():
 
         return {
             "pmask": Mask(pmask_value),
-            "tensor_info": TensorInfo(dtype, shape),
+            "tensor_info": TensorType(dtype, shape),
             "data": data,
             "parties": [i for i in range(64) if pmask_value & (1 << i)],
         }

@@ -21,7 +21,7 @@ import spu.libspu as spu_api
 
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, TensorInfo
+from mplang.core.mptype import MPType, TensorType
 from mplang.core.pfunc import PFunction
 from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (
@@ -472,7 +472,7 @@ class Reader:
             if out_info.pmask:
                 pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
-            tensor_info = TensorInfo(dtype, shape)
+            tensor_info = TensorType(dtype, shape)
             return ConstExpr(tensor_info, data_bytes, pmask)
 
         elif node_proto.op_type == "rand":
@@ -486,7 +486,7 @@ class Reader:
             if out_info.pmask:
                 pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
-            tensor_info = TensorInfo(dtype, shape)
+            tensor_info = TensorType(dtype, shape)
             return RandExpr(tensor_info, pmask)
 
         elif node_proto.op_type == "eval":
@@ -511,14 +511,14 @@ class Reader:
             for input_expr in input_exprs:
                 # Use mptype directly for single MPType
                 mptype = input_expr.mptype
-                ins_info.append(TensorInfo(mptype.dtype, mptype.shape))
+                ins_info.append(TensorType(mptype.dtype, mptype.shape))
 
             # outs_info from NodeProto.outs_info
             outs_info = []
             for out_proto in node_proto.outs_info:
                 dtype = proto_to_dtype(out_proto.dtype)
                 shape = tuple(out_proto.shape_dims)
-                outs_info.append(TensorInfo(dtype, shape))
+                outs_info.append(TensorType(dtype, shape))
 
             # Create a complete PFunction with proper type information
             complete_pfunc = PFunction(

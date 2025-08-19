@@ -33,7 +33,7 @@ from mplang.core.dtype import UINT64
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import Rank, ScalarType, Shape, TensorInfo, TensorLike
+from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike, TensorType
 from mplang.core.pfunc import PFunction
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
@@ -199,7 +199,7 @@ def prand(shape: Shape = ()) -> MPObject:
         not shared or revealed to other parties.
     """
     ctx = _tracer()
-    typ = TensorInfo(UINT64, shape)
+    typ = TensorType(UINT64, shape)
     return TraceVar(ctx, RandExpr(typ, ctx.mask))
 
 
@@ -229,20 +229,20 @@ def constant(data: TensorLike | ScalarType) -> MPObject:
     """
     import numpy as np
 
-    # Convert data to TensorInfo + bytes for cacheable pconst
+    # Convert data to TensorType + bytes for cacheable pconst
     if isinstance(data, ScalarType):
-        tensor_info = TensorInfo.from_obj(data)
+        tensor_info = TensorType.from_obj(data)
         # For scalars, convert to numpy array then to bytes
         np_data = np.array(data)
         data_bytes = np_data.tobytes()
     elif hasattr(data, "tobytes"):
         # For numpy arrays and other TensorLike objects with tobytes method
-        tensor_info = TensorInfo.from_obj(data)
+        tensor_info = TensorType.from_obj(data)
         data_bytes = data.tobytes()  # type: ignore
     else:
         # For other TensorLike objects, convert to numpy first
         np_data = np.array(data)
-        tensor_info = TensorInfo.from_obj(np_data)
+        tensor_info = TensorType.from_obj(np_data)
         data_bytes = np_data.tobytes()
 
     ctx = _tracer()

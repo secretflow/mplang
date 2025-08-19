@@ -19,22 +19,22 @@ from dataclasses import dataclass, field
 
 from mplang.core.dtype import DType
 
-__all__ = ["RelationSchema"]
+__all__ = ["RelationType"]
 
 
 @dataclass(frozen=True)
-class RelationSchema:
+class RelationType:
     """Relational schema: ordered list of column name-type pairs.
 
     Represents table structure in relational algebra, containing column names
     and their corresponding data types.
 
     Examples:
-        >>> schema = RelationSchema.from_dict({
+        >>> schema = RelationType.from_dict({
         ...     "id": DType.i64(),
         ...     "name": DType.string(),
         ... })
-        >>> schema = RelationSchema(((\"id\", DType.i64()), (\"name\", DType.string())))
+        >>> schema = RelationType(((\"id\", DType.i64()), (\"name\", DType.string())))
     """
 
     columns: tuple[tuple[str, DType], ...]
@@ -43,7 +43,7 @@ class RelationSchema:
     def __post_init__(self) -> None:
         """Validate the relational schema."""
         if not self.columns:
-            raise ValueError("RelationSchema cannot be empty")
+            raise ValueError("RelationType cannot be empty")
 
         # Validate column name uniqueness
         names = [name for name, _ in self.columns]
@@ -61,26 +61,26 @@ class RelationSchema:
         object.__setattr__(self, "_column_map", dict(self.columns))
 
     @classmethod
-    def from_dict(cls, schema_dict: dict[str, DType]) -> RelationSchema:
+    def from_dict(cls, schema_dict: dict[str, DType]) -> RelationType:
         """Create relational schema from dictionary.
 
         Args:
             schema_dict: Mapping from column names to data types
 
         Returns:
-            RelationSchema instance
+            RelationType instance
         """
         return cls(tuple(schema_dict.items()))
 
     @classmethod
-    def from_pairs(cls, pairs: list[tuple[str, DType]]) -> RelationSchema:
+    def from_pairs(cls, pairs: list[tuple[str, DType]]) -> RelationType:
         """Create relational schema from list of name-type pairs.
 
         Args:
             pairs: List of tuples containing column name and data type
 
         Returns:
-            RelationSchema instance
+            RelationType instance
         """
         return cls(tuple(pairs))
 
@@ -131,7 +131,7 @@ class RelationSchema:
     def __repr__(self) -> str:
         """String representation."""
         cols = ", ".join(f"{name}:{dtype.short_name()}" for name, dtype in self.columns)
-        return f"RelationSchema<{cols}>"
+        return f"RelationType<{cols}>"
 
     def __len__(self) -> int:
         """Get number of columns."""

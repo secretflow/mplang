@@ -34,7 +34,7 @@ from mplang.core.dtype import (
 )
 from mplang.core.mask import Mask
 from mplang.core.mpir import dtype_to_proto
-from mplang.core.mptype import MPType, TensorInfo
+from mplang.core.mptype import MPType, TensorType
 
 try:
     import jax.numpy as jnp
@@ -255,8 +255,8 @@ class TestDType:
 
     def test_mpir_dtype_to_proto_compatibility(self):
         """Test that mpir.dtype_to_proto works with new DType objects."""
-        # Create TensorInfo with DType
-        tensor_info = TensorInfo(FLOAT32, (2, 2))
+        # Create TensorType with DType
+        tensor_info = TensorType(FLOAT32, (2, 2))
 
         # dtype_to_proto should work with DType objects
         proto_result = dtype_to_proto(tensor_info.dtype)
@@ -267,13 +267,13 @@ class TestDType:
 
 
 class TestTensorInfo:
-    """Test cases for the TensorInfo class."""
+    """Test cases for the TensorType class."""
 
     def test_tensor_info_creation(self):
-        """Test TensorInfo compatibility with custom dtypes."""
+        """Test TensorType compatibility with custom dtypes."""
         # Test with NumPy array
         arr = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        tensor_info = TensorInfo.from_obj(arr)
+        tensor_info = TensorType.from_obj(arr)
 
         # dtype should now return DType, not numpy dtype
         assert isinstance(tensor_info.dtype, DType)
@@ -284,37 +284,37 @@ class TestTensorInfo:
         assert tensor_info.to_numpy() == np.dtype("float32")
 
         # Test with scalar
-        scalar_info = TensorInfo.from_obj(42)
+        scalar_info = TensorType.from_obj(42)
         assert isinstance(scalar_info.dtype, DType)
         assert scalar_info.dtype == INT64
         assert scalar_info.shape == ()
         assert scalar_info.to_numpy() == np.dtype("int64")
 
         # Test with float scalar
-        float_scalar_info = TensorInfo.from_obj(3.14)
+        float_scalar_info = TensorType.from_obj(3.14)
         assert isinstance(float_scalar_info.dtype, DType)
         assert float_scalar_info.dtype == FLOAT64
         assert float_scalar_info.shape == ()
         assert float_scalar_info.to_numpy() == np.dtype("float64")
 
     def test_tensor_info_constructor_with_dtype(self):
-        """Test TensorInfo constructor with various dtype inputs."""
-        # Test constructing TensorInfo with custom DType
-        tensor_info = TensorInfo(FLOAT32, (2, 3))
+        """Test TensorType constructor with various dtype inputs."""
+        # Test constructing TensorType with custom DType
+        tensor_info = TensorType(FLOAT32, (2, 3))
         assert isinstance(tensor_info.dtype, DType)
         assert tensor_info.dtype == FLOAT32
         assert tensor_info.to_numpy() == np.dtype("float32")
 
         # Test constructing with numpy dtype (should be converted)
-        tensor_info_np = TensorInfo(np.dtype("int32"), (5,))
+        tensor_info_np = TensorType(np.dtype("int32"), (5,))
         assert isinstance(tensor_info_np.dtype, DType)
         assert tensor_info_np.dtype == INT32
         assert tensor_info_np.to_numpy() == np.dtype("int32")
 
     def test_tensor_info_unified_api(self):
-        """Test the unified dtype API for TensorInfo."""
-        # Test TensorInfo
-        tensor_info = TensorInfo(np.float32, (3, 4))
+        """Test the unified dtype API for TensorType."""
+        # Test TensorType
+        tensor_info = TensorType(np.float32, (3, 4))
 
         # dtype should return DType
         assert isinstance(tensor_info.dtype, DType)
@@ -326,18 +326,18 @@ class TestTensorInfo:
     def test_dtype_consistency(self):
         """Test that dtype and to_numpy() are consistent."""
         # Create from DType
-        tensor_info = TensorInfo(FLOAT32, (2, 2))
+        tensor_info = TensorType(FLOAT32, (2, 2))
 
         # The numpy dtype should match what dtype can produce
         assert tensor_info.to_numpy() == tensor_info.dtype.to_numpy()
 
         # Create from numpy dtype
-        tensor_info2 = TensorInfo(np.int16, (3, 3))
+        tensor_info2 = TensorType(np.int16, (3, 3))
         assert tensor_info2.dtype == INT16
 
     def test_dtype_enhanced_functionality(self):
         """Test that dtype provides enhanced functionality."""
-        tensor_info = TensorInfo(np.float32, (2, 2))
+        tensor_info = TensorType(np.float32, (2, 2))
         dtype = tensor_info.dtype
 
         # Enhanced properties
@@ -354,7 +354,7 @@ class TestTensorInfo:
     def test_edge_cases(self):
         """Test edge cases and error conditions."""
         # Test with unusual numpy dtypes
-        tensor_info = TensorInfo(np.dtype("<f4"), (2, 2))  # Little-endian float32
+        tensor_info = TensorType(np.dtype("<f4"), (2, 2))  # Little-endian float32
         assert tensor_info.dtype == FLOAT32
 
         # Test hash consistency
@@ -428,7 +428,7 @@ class TestMPType:
         """Test typical array creation and manipulation workflow."""
         # Create tensor info from numpy array
         arr = np.random.random((3, 4)).astype(np.float32)
-        tensor_info = TensorInfo.from_obj(arr)
+        tensor_info = TensorType.from_obj(arr)
 
         # Verify dtype information
         assert tensor_info.dtype == FLOAT32

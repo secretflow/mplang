@@ -31,7 +31,7 @@ from mplang import simp
 from mplang.core.context_mgr import cur_ctx, with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import Rank, TensorInfo
+from mplang.core.mptype import Rank, TensorType
 from mplang.core.primitive import (
     _switch_ctx,
     cond,
@@ -261,12 +261,12 @@ class TestBasicPrimitives:
             # Create constants with different pmasks manually
             # Party 0 has value 42
             data1 = np.array(42, dtype=np.int64).tobytes()
-            const1_expr = ConstExpr(TensorInfo(INT64, ()), data1, Mask(1))  # 0b01
+            const1_expr = ConstExpr(TensorType(INT64, ()), data1, Mask(1))  # 0b01
             var1 = TraceVar(ctx, const1_expr)
 
             # Party 1 has value 24
             data2 = np.array(24, dtype=np.int64).tobytes()
-            const2_expr = ConstExpr(TensorInfo(INT64, ()), data2, Mask(2))  # 0b10
+            const2_expr = ConstExpr(TensorType(INT64, ()), data2, Mask(2))  # 0b10
             var2 = TraceVar(ctx, const2_expr)
 
             return pconv([var1, var2])

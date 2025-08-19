@@ -108,7 +108,7 @@ class TestBasicExpressions:
 
     def test_variable_expr_roundtrip(self):
         """Test VariableExpr roundtrip."""
-        mptype = MPType(DType.from_numpy(np.float32), (3,), pmask=7)
+        mptype = MPType.tensor(DType.from_numpy(np.float32), (3,), pmask=7)
         original = VariableExpr("test_var", mptype)
 
         writer = Writer()
@@ -359,8 +359,10 @@ class TestComplexExpressions:
 
     def test_conv_expr_serialization(self):
         """Test ConvExpr serialization (write only)."""
-        mptype1 = MPType(DType.from_numpy(np.float32), (2,), pmask=3)  # Party 0 and 1
-        mptype2 = MPType(DType.from_numpy(np.float32), (2,), pmask=4)  # Party 2
+        mptype1 = MPType.tensor(
+            DType.from_numpy(np.float32), (2,), pmask=3
+        )  # Party 0 and 1
+        mptype2 = MPType.tensor(DType.from_numpy(np.float32), (2,), pmask=4)  # Party 2
         var1 = VariableExpr("x", mptype1)
         var2 = VariableExpr("y", mptype2)
 

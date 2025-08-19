@@ -324,17 +324,11 @@ class MPType:
 
         # Check if the object's type matches this type
         obj_type = obj.mptype
-        if (isinstance(self._type, TensorInfo)) != (
-            isinstance(obj_type._type, TensorInfo)
-        ):
+        if type(self._type) is not type(obj_type._type):
             return False
 
-        if isinstance(self._type, TensorInfo):
-            if self._type != obj_type._type:
-                return False
-        elif isinstance(self._type, RelationSchema):
-            if self._type != obj_type._type:
-                return False
+        if self._type != obj_type._type:
+            return False
 
         # Check attributes
         if self._attrs:
@@ -354,6 +348,20 @@ class MPType:
             raise AttributeError("to_numpy is only available for tensor types")
         return self._type.to_numpy()
 
+    @staticmethod
+    def _create_tensor_info(obj: TensorLike | ScalarType) -> TensorInfo:
+        """Helper method to create TensorInfo from tensor-like objects."""
+        if isinstance(obj, ScalarType):
+            return TensorInfo(DType.from_python_type(type(obj)), ())
+        elif isinstance(obj, TensorLike):
+            return TensorInfo(DType.from_any(obj.dtype), obj.shape)
+        elif isinstance(obj, list | tuple):
+            # Convert lists/tuples to numpy arrays for compatibility
+            arr = np.array(obj)
+            return TensorInfo(DType.from_any(arr.dtype), arr.shape)
+        else:
+            raise TypeError(f"Unsupported type: {type(obj)}.")
+
     @classmethod
     def from_tensor(
         cls,
@@ -372,19 +380,8 @@ class MPType:
             MPType instance for tensor.
         """
         attrs = copy.copy(kwargs)
-        if isinstance(obj, ScalarType):
-            tensor_info = TensorInfo(DType.from_python_type(type(obj)), ())
-            return cls(tensor_info, pmask, attrs)
-        elif isinstance(obj, TensorLike):
-            tensor_info = TensorInfo(DType.from_any(obj.dtype), obj.shape)
-            return cls(tensor_info, pmask, attrs)
-        elif isinstance(obj, list | tuple):
-            # Convert lists/tuples to numpy arrays for compatibility
-            arr = np.array(obj)
-            tensor_info = TensorInfo(DType.from_any(arr.dtype), arr.shape)
-            return cls(tensor_info, pmask, attrs)
-        else:
-            raise TypeError(f"Unsupported type: {type(obj)}.")
+        tensor_info = cls._create_tensor_info(obj)
+        return cls(tensor_info, pmask, attrs)
 
     @classmethod
     def from_mpobj(cls, obj: MPObject) -> MPType:
@@ -398,10 +395,7 @@ class MPType:
         """
         # assume obj is MPObject-like
         obj_type = obj.mptype
-        if isinstance(obj_type._type, TensorInfo):
-            return cls(obj_type._type, obj.pmask, copy.copy(obj.attrs))
-        else:  # RelationSchema
-            return cls(obj_type._type, obj.pmask, copy.copy(obj.attrs))
+        return cls(obj_type._type, obj.pmask, copy.copy(obj.attrs))
 
     @classmethod
     def from_obj(cls, obj: Any, pmask: Mask | None = None, **attrs: Any) -> MPType:

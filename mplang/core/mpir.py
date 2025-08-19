@@ -19,9 +19,9 @@ from typing import Any
 import numpy as np
 import spu.libspu as spu_api
 
-from mplang.core.base import MPType, TensorInfo
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
+from mplang.core.mptype import MPType, TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (

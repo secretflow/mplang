@@ -19,7 +19,7 @@ import jax.numpy as jnp
 from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
-from mplang.core.base import TensorLike
+from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction, PFunctionHandler
 
 

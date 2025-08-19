@@ -30,9 +30,11 @@ import cloudpickle as pickle
 import grpc
 import spu.libspu as libspu
 
-from mplang.core.base import Mask, MPObject, MPType, Rank
 from mplang.core.interp import InterpContext, InterpVar
+from mplang.core.mask import Mask
 from mplang.core.mpir import Writer
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import MPType, Rank
 from mplang.expr.ast import Expr
 from mplang.protos import executor_pb2, executor_pb2_grpc
 from mplang.runtime.executor.resource import SessionName, SymbolName

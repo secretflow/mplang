@@ -15,7 +15,6 @@
 import numpy as np
 import pytest
 
-from mplang.core.base import MPType, TensorInfo
 from mplang.core.dtype import (
     BOOL,
     COMPLEX64,
@@ -35,6 +34,7 @@ from mplang.core.dtype import (
 )
 from mplang.core.mask import Mask
 from mplang.core.mpir import dtype_to_proto
+from mplang.core.mptype import MPType, TensorInfo
 
 try:
     import jax.numpy as jnp

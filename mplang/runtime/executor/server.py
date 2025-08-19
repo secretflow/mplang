@@ -37,7 +37,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from mplang.backend.builtin import BuiltinHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.stablehlo import StablehloHandler
-from mplang.core.base import Mask
+from mplang.core.mask import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
 from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2

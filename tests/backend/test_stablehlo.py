@@ -20,7 +20,7 @@ import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
 from mplang.backend.stablehlo import StablehloHandler
-from mplang.core.base import TensorInfo
+from mplang.core.mptype import TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.frontend import jax_cc
 

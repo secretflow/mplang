@@ -16,7 +16,7 @@ import os
 
 import numpy as np
 
-from mplang.core.base import TensorLike
+from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction, PFunctionHandler
 
 

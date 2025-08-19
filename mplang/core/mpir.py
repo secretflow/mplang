@@ -509,18 +509,25 @@ class Reader:
             if not node_proto.outs_info:
                 raise ValueError("Const node missing output info")
             out_info = node_proto.outs_info[0]
+            # pmask is now int64, -1 means dynamic mask (None)
+            pmask_int = out_info.pmask
+            const_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
 
             # Check if it's tensor type
             if out_info.HasField("tensor_type"):
                 tensor_type_proto = out_info.tensor_type
                 dtype = proto_to_dtype(tensor_type_proto.dtype)
                 shape = tuple(tensor_type_proto.shape_dims)
-                # pmask is now int64, -1 means dynamic mask (None)
-                pmask_int = out_info.pmask
-                const_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
 
                 tensor_info = TensorType(dtype, shape)
                 return ConstExpr(tensor_info, data_bytes, const_pmask)
+            elif out_info.HasField("table_type"):
+                columns = [
+                    (col.name, proto_to_dtype(col.dtype))
+                    for col in out_info.table_type.columns
+                ]
+                table_info = TableType.from_pairs(columns)
+                return ConstExpr(table_info, data_bytes, const_pmask)
             else:
                 raise ValueError("Const node currently only supports tensor types")
 
@@ -562,20 +569,31 @@ class Reader:
 
             # Fill in ins_info and outs_info for PFunction
             # ins_info from input expressions (use mptype for single type per value)
-            ins_info = []
+            ins_info: list[TensorType | TableType] = []
             for input_expr in input_exprs:
                 # Use mptype directly for single MPType
                 mptype = input_expr.mptype
-                ins_info.append(TensorType(mptype.dtype, mptype.shape))
+                if mptype.is_tensor:
+                    ins_info.append(TensorType(mptype.dtype, mptype.shape))
+                elif mptype.is_table:
+                    ins_info.append(mptype.schema)
+                else:
+                    raise ValueError(f"unsupported type: {mptype}")
 
             # outs_info from NodeProto.outs_info
-            outs_info = []
+            outs_info: list[TensorType | TableType] = []
             for out_proto in node_proto.outs_info:
                 if out_proto.HasField("tensor_type"):
                     tensor_type_proto = out_proto.tensor_type
                     dtype = proto_to_dtype(tensor_type_proto.dtype)
                     shape = tuple(tensor_type_proto.shape_dims)
                     outs_info.append(TensorType(dtype, shape))
+                elif out_proto.HasField("table_type"):
+                    columns = [
+                        (col.name, proto_to_dtype(col.dtype))
+                        for col in out_proto.table_type.columns
+                    ]
+                    outs_info.append(TableType.from_pairs(columns))
                 else:
                     raise ValueError("Eval node currently only supports tensor types")
 

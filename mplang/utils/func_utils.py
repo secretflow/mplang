@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import functools
+import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -99,6 +100,33 @@ def var_demorph(variables: list, immediates: list, morph_info: MorphStruct) -> A
     values_tree, split_info = morph_info
     values_flat = list_reconstruct(variables, immediates, list(split_info))
     return tree_unflatten(values_tree, values_flat)
+
+
+def normalize_args(fn: Callable, args: Any, kwargs: Any) -> list:
+    """convert *args and **kwargs to list of args"""
+
+    signature = inspect.signature(fn)
+    parameters = list(signature.parameters.keys())
+    final_args = list(args)
+
+    for param in parameters[len(args) :]:
+        if param in kwargs:
+            final_args.append(kwargs[param])
+            del kwargs[param]
+        elif (
+            param in signature.parameters
+            and signature.parameters[param].default is not inspect.Parameter.empty
+        ):
+            final_args.append(signature.parameters[param].default)
+        else:
+            raise TypeError(
+                f"Missing required argument: {fn.__name__},{param}, {args}, {kwargs}"
+            )
+
+    if kwargs:
+        raise TypeError(f"Unexpected keyword arguments: {kwargs}")
+
+    return final_args
 
 
 def normalize_fn(

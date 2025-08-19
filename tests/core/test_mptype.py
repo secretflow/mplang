@@ -17,7 +17,7 @@ import pytest
 
 from mplang.core.dtype import DATE, FLOAT32, FLOAT64, INT32, INT64, JSON, STRING
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPKind, MPType
+from mplang.core.mptype import MPType
 from mplang.core.relation import RelationSchema
 
 
@@ -28,7 +28,7 @@ class TestMPType:
         """Test tensor MPType creation."""
         tensor_type = MPType.tensor(FLOAT32, (3, 4))
 
-        assert tensor_type.kind == MPKind.TENSOR
+        assert tensor_type.is_tensor
         assert tensor_type.dtype == FLOAT32
         assert tensor_type.shape == (3, 4)
 
@@ -42,7 +42,7 @@ class TestMPType:
 
         relation_type = MPType.relation(schema)
 
-        assert relation_type.kind == MPKind.RELATION
+        assert relation_type.is_relation
         assert relation_type.schema == schema
 
     def test_relation_creation_from_dict(self):
@@ -50,7 +50,7 @@ class TestMPType:
         schema_dict = {"id": INT64, "value": FLOAT32}
         relation_type = MPType.relation(schema_dict)
 
-        assert relation_type.kind == MPKind.RELATION
+        assert relation_type.is_relation
         assert relation_type.schema.column_names() == ("id", "value")
 
     def test_tensor_attribute_access(self):
@@ -113,7 +113,7 @@ class TestMPType:
             "metadata": JSON,
         })
         relation_type = MPType.relation(schema)
-        assert relation_type.kind == MPKind.RELATION
+        assert relation_type.is_relation
 
     def test_mptype_with_pmask_and_attrs(self):
         """Test MPType with pmask and attributes."""
@@ -204,18 +204,18 @@ class TestMPType:
         """Test from_tensor factory method."""
         # Test with scalar
         scalar_type = MPType.from_tensor(42)
-        assert scalar_type.kind == MPKind.TENSOR
+        assert scalar_type.is_tensor
         assert scalar_type.shape == ()
 
         # Test with numpy array
         arr = np.array([[1, 2], [3, 4]], dtype=np.float32)
         array_type = MPType.from_tensor(arr)
-        assert array_type.kind == MPKind.TENSOR
+        assert array_type.is_tensor
         assert array_type.dtype == FLOAT32
         assert array_type.shape == (2, 2)
 
         # Test with list converted to numpy array
         list_arr = np.array([1, 2, 3])
         list_type = MPType.from_tensor(list_arr)
-        assert list_type.kind == MPKind.TENSOR
+        assert list_type.is_tensor
         assert list_type.shape == (3,)

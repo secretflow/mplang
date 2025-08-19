@@ -72,7 +72,7 @@ class DType:
             "float64": "f64",
             "complex64": "c64",
             "complex128": "c128",
-            # Relation-only types (aligned with ibis)
+            # Relation-only types
             "string": "str",
             "date": "date",
             "time": "time",
@@ -82,7 +82,6 @@ class DType:
             "json": "json",
             "uuid": "uuid",
             "interval": "interval",
-            "inet": "inet",
         }
         return name_map.get(self.name, self.name)
 
@@ -203,23 +202,18 @@ FLOAT64 = DType("float64", 64, True, True, False)
 COMPLEX64 = DType("complex64", 64, True, True, True)
 COMPLEX128 = DType("complex128", 128, True, True, True)
 
-# Relation-only types (marked with is_relation_only=True) - aligned with ibis
-STRING = DType(
-    "string", 0, None, False, False, True
-)  # Variable length string, like ibis
-DATE = DType("date", 32, None, False, False, True)  # Date only, like ibis
-TIME = DType("time", 32, None, False, False, True)  # Time only, like ibis
-TIMESTAMP = DType("timestamp", 64, None, False, False, True)  # Timestamp like ibis
-DECIMAL = DType(
-    "decimal", 128, True, False, False, True
-)  # Arbitrary precision decimal, like ibis
-BINARY = DType("binary", 0, None, False, False, True)  # Binary data, like ibis
-JSON = DType("json", 0, None, False, False, True)  # JSON data, like ibis
-UUID = DType("uuid", 128, None, False, False, True)  # UUID type, like ibis
+# Relation-only types (marked with is_relation_only=True)
+STRING = DType("string", 0, None, False, False, True)  # Variable length string
+DATE = DType("date", 32, None, False, False, True)  # Date only
+TIME = DType("time", 32, None, False, False, True)  # Time only
+TIMESTAMP = DType("timestamp", 64, None, False, False, True)  # Timestamp
+DECIMAL = DType("decimal", 128, True, False, False, True)  # Arbitrary precision decimal
+BINARY = DType("binary", 0, None, False, False, True)  # Binary data
+JSON = DType("json", 0, None, False, False, True)  # JSON data
+UUID = DType("uuid", 128, None, False, False, True)  # UUID type
 
 # Additional types commonly used in relational databases but keep minimal
-INTERVAL = DType("interval", 64, None, False, False, True)  # Time interval, like ibis
-INET = DType("inet", 128, None, False, False, True)  # IP address, like ibis
+INTERVAL = DType("interval", 64, None, False, False, True)  # Time interval
 
 
 # Helper functions for easy conversion
@@ -246,7 +240,6 @@ __all__ = [
     "FLOAT16",
     "FLOAT32",
     "FLOAT64",
-    "INET",
     "INT8",
     "INT16",
     "INT32",

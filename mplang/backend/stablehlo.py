@@ -20,10 +20,10 @@ from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
 from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import PFunction, PFunctionHandler
+from mplang.core.pfunc import PFunction, TensorHandler
 
 
-class StablehloHandler(PFunctionHandler):
+class StablehloHandler(TensorHandler):
     """StableHLO Handler for remote execution.
 
     Runtime for loading and executing JAX functions serialized by jax_cc using

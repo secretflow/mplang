@@ -16,10 +16,25 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 from mplang.core.dtype import DType
 
-__all__ = ["RelationType"]
+__all__ = ["RelationLike", "RelationType"]
+
+
+@runtime_checkable
+class RelationLike(Protocol):
+    """
+    Protocol for objects structurally resembling relations from common libraries
+    (pandas DataFrame, pyarrow Table, etc.), focusing on dtypes and columns attributes.
+    """
+
+    @property
+    def dtypes(self) -> Any: ...
+
+    @property
+    def columns(self) -> Any: ...
 
 
 @dataclass(frozen=True)

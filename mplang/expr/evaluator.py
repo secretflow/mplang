@@ -23,8 +23,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.core.base import Mask
 from mplang.core.comm import ICommunicator
+from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction, PFunctionHandler
 from mplang.expr.ast import (
     AccessExpr,

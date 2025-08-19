@@ -15,8 +15,9 @@
 import numpy as np
 import pytest
 
-from mplang.core.base import Mask, MPType, Rank, TensorInfo
 from mplang.core.dtype import FLOAT32, INT32, UINT64
+from mplang.core.mask import Mask
+from mplang.core.mptype import MPType, Rank, TensorInfo
 from mplang.expr import (
     AccessExpr,
     CallExpr,

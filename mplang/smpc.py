@@ -23,8 +23,10 @@ from jax.tree_util import tree_unflatten
 
 import mplang.mpi as mpi
 from mplang.core import primitive as prim
-from mplang.core.base import Mask, MPObject, Rank
 from mplang.core.context_mgr import cur_ctx
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import Rank
 from mplang.frontend.spu import SpuFE, Visibility
 
 

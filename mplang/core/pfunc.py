@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Any
 
-from mplang.core.base import TensorInfo, TensorLike
+from mplang.core.mptype import TensorInfo, TensorLike
 
 
 class PFunction:

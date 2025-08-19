@@ -17,7 +17,9 @@ from __future__ import annotations
 import logging
 
 import mplang.core.primitive as prim
-from mplang.core.base import Mask, MPObject, Rank
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import Rank
 
 
 # scatter :: [m a] -> m Rank -> m a

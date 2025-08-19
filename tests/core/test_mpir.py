@@ -16,9 +16,9 @@
 import numpy as np
 import pytest
 
-from mplang.core.base import MPType, TensorInfo
 from mplang.core.dtype import DType
 from mplang.core.mpir import Reader, Writer
+from mplang.core.mptype import MPType, TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.expr import Expr
 from mplang.expr.ast import (

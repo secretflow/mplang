@@ -26,8 +26,9 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from mplang.core.base import Mask, MPType, Rank, TensorInfo
 from mplang.core.dtype import UINT64
+from mplang.core.mask import Mask
+from mplang.core.mptype import MPType, Rank, TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.expr.utils import deduce_mask
 

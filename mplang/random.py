@@ -23,7 +23,8 @@ from jax.typing import ArrayLike
 
 import mplang.core.primitive as prim
 from mplang import simp
-from mplang.core.base import MPObject, Shape
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import Shape
 
 
 @prim.function

@@ -18,7 +18,8 @@ Utility functions for expression system.
 
 from collections.abc import Sequence
 
-from mplang.core.base import Mask, TensorLike
+from mplang.core.mask import Mask
+from mplang.core.mptype import TensorLike
 
 
 def type_equal(*args: TensorLike) -> bool:

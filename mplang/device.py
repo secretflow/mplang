@@ -32,9 +32,10 @@ from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc
-from mplang.core.base import Mask, MPObject
 from mplang.core.context_mgr import set_ctx
 from mplang.core.interp import InterpContext
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPObject
 from mplang.core.primitive import primitive
 from mplang.runtime.driver import ExecutorDriver
 from mplang.runtime.simulation import Simulator

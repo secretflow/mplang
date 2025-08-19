@@ -22,7 +22,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from mplang.core.dtype import DType
+from mplang.core.dtype import STRING, DType
 from mplang.core.mask import Mask
 from mplang.core.relation import RelationSchema
 
@@ -447,9 +447,37 @@ class MPType:
             NotImplementedError: For relation objects (not yet implemented).
         """
         # Check if it's a relation-like object (e.g., pandas DataFrame, pyarrow Table)
-        if hasattr(obj, "schema") and hasattr(obj, "columns"):
-            # This would need specific implementation for different relation types
-            raise NotImplementedError("Relation object detection not implemented yet")
+        if hasattr(obj, "dtypes") and hasattr(obj, "columns"):
+            # Basic pandas DataFrame support
+            try:
+                import pandas as pd
+
+                if isinstance(obj, pd.DataFrame):
+                    from mplang.core.dtype import DType
+
+                    schema_dict = {}
+                    for col_name in obj.columns:
+                        pandas_dtype = obj[col_name].dtype
+                        # Convert pandas dtype to DType
+                        if pandas_dtype.kind in (
+                            "O",
+                            "U",
+                            "S",
+                        ):  # object, unicode, string
+                            schema_dict[col_name] = (
+                                DType.from_numpy(pandas_dtype)
+                                if pandas_dtype.kind != "O"
+                                else STRING
+                            )
+                        else:
+                            schema_dict[col_name] = DType.from_numpy(pandas_dtype)
+                    return cls.relation(schema_dict, pmask, **attrs)
+            except ImportError:
+                pass
+            # For other relation-like objects without pandas
+            raise NotImplementedError(
+                "Relation object detection not fully implemented yet"
+            )
 
         # Otherwise treat as tensor-like
         return cls.from_tensor(obj, pmask, **attrs)

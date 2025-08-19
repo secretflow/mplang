@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import pytest
 
 from mplang.core.base import MPKind, MPType
@@ -201,8 +202,6 @@ class TestMPType:
 
     def test_from_tensor_factory_method(self):
         """Test from_tensor factory method."""
-        import numpy as np
-
         # Test with scalar
         scalar_type = MPType.from_tensor(42)
         assert scalar_type.kind == MPKind.TENSOR
@@ -216,8 +215,6 @@ class TestMPType:
         assert array_type.shape == (2, 2)
 
         # Test with list converted to numpy array
-        import numpy as np
-
         list_arr = np.array([1, 2, 3])
         list_type = MPType.from_tensor(list_arr)
         assert list_type.kind == MPKind.TENSOR

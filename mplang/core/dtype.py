@@ -27,6 +27,35 @@ try:
 except ImportError:
     _JAX_AVAILABLE = False
 
+__all__ = [
+    "BINARY",
+    "BOOL",
+    "COMPLEX64",
+    "COMPLEX128",
+    "DATE",
+    "DECIMAL",
+    "FLOAT16",
+    "FLOAT32",
+    "FLOAT64",
+    "INT8",
+    "INT16",
+    "INT32",
+    "INT64",
+    "INTERVAL",
+    "JSON",
+    "STRING",
+    "TIME",
+    "TIMESTAMP",
+    "UINT8",
+    "UINT16",
+    "UINT32",
+    "UINT64",
+    "UUID",
+    "DType",
+    "from_numpy",
+    "to_numpy",
+]
+
 
 @final
 @dataclass(frozen=True)
@@ -227,34 +256,3 @@ def from_numpy(np_dtype: Any) -> DType:
 def to_numpy(dtype: DType) -> np.dtype:
     """Convert custom DType to NumPy dtype."""
     return dtype.to_numpy()
-
-
-# Export all public types and constants
-__all__ = [
-    "BINARY",
-    "BOOL",
-    "COMPLEX64",
-    "COMPLEX128",
-    "DATE",
-    "DECIMAL",
-    "FLOAT16",
-    "FLOAT32",
-    "FLOAT64",
-    "INT8",
-    "INT16",
-    "INT32",
-    "INT64",
-    "INTERVAL",
-    "JSON",
-    "STRING",
-    "TIME",
-    "TIMESTAMP",
-    "UINT8",
-    "UINT16",
-    "UINT32",
-    "UINT64",
-    "UUID",
-    "DType",
-    "from_numpy",
-    "to_numpy",
-]

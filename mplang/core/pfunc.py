@@ -23,6 +23,15 @@ from typing import Any, Generic, TypeVar
 from mplang.core.mptype import TensorLike, TensorType
 from mplang.core.relation import RelationLike, RelationType
 
+__all__ = [
+    "HybridHandler",
+    "PFunction",
+    "PFunctionHandler",
+    "RelationHandler",
+    "TensorHandler",
+    "get_fn_name",
+]
+
 # Define type variables
 InputType = TypeVar("InputType", bound=TensorLike | RelationLike)
 OutputType = TypeVar("OutputType", bound=TensorLike | RelationLike)
@@ -175,14 +184,3 @@ class HybridHandler(
     PFunctionHandler[TensorLike | RelationLike, TensorLike | RelationLike]
 ):
     """Handler base class that can process mixed types."""
-
-
-# Exported public API
-__all__ = [
-    "HybridHandler",
-    "PFunction",
-    "PFunctionHandler",
-    "RelationHandler",
-    "TensorHandler",
-    "get_fn_name",
-]

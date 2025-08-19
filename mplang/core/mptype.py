@@ -360,8 +360,7 @@ class MPType:
     def isInstance(self, obj: MPObject) -> bool:
         """Check if the given object is an instance of this MPType."""
         # Import here to avoid circular import
-    def isInstance(self, obj: "MPObject") -> bool:
-        """Check if the given object is an instance of this MPType."""
+        from mplang.core.mpobject import MPObject
 
         if not isinstance(obj, MPObject):
             return False

@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import Any
 
 from mplang.core.mptype import TensorLike, TensorType
+from mplang.core.relation import RelationLike, RelationType
 
 
 class PFunction:
@@ -31,8 +32,8 @@ class PFunction:
     1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
     2. User-defined programmable functions with custom code
 
-    The PFunction accepts a list of TensorLike inputs and produces TensorLike outputs,
-    and can be:
+    The PFunction accepts a list of TensorLike or RelationLike inputs and produces
+    TensorLike or RelationLike outputs, and can be:
     - Expressed and defined in the mplang frontend
     - Serialized for transmission between components
     - Interpreted and executed by backend runtime engines
@@ -41,8 +42,8 @@ class PFunction:
         fn_type: The type/category identifier of this PFunction, indicating which
             backend or handler should process it (e.g., "spu.makeshares", "builtin.read",
             "mlir.stablehlo"). This serves as a routing mechanism for execution.
-        ins_info: Tensor type information for input parameters
-        outs_info: Tensor type information for output values
+        ins_info: Type information for input parameters (TensorType or RelationType)
+        outs_info: Type information for output values (TensorType or RelationType)
         fn_name: Optional name of the function. For programmable functions, this is
             the user-defined function name. For built-in operations, this may be
             None or a descriptive identifier.
@@ -56,8 +57,8 @@ class PFunction:
 
     # Required fields - these define the core execution context
     fn_type: str  # Unique identifier for backend routing
-    ins_info: tuple[TensorType, ...]
-    outs_info: tuple[TensorType, ...]
+    ins_info: tuple[TensorType | RelationType, ...]
+    outs_info: tuple[TensorType | RelationType, ...]
 
     # Optional fields for programmable functions
     fn_name: str | None  # Function name (for programmable functions)
@@ -69,8 +70,8 @@ class PFunction:
     def __init__(
         self,
         fn_type: str,
-        ins_info: Sequence[TensorType],
-        outs_info: Sequence[TensorType],
+        ins_info: Sequence[TensorType | RelationType],
+        outs_info: Sequence[TensorType | RelationType],
         *,
         fn_name: str | None = None,
         fn_text: str | None = None,
@@ -141,6 +142,21 @@ class PFunctionHandler(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def execute(self, pfunc: PFunction, args: list[TensorLike]) -> list[TensorLike]:
-        """Execute the provided PFunction with the given arguments."""
+    def execute(
+        self, pfunc: PFunction, args: list[TensorLike | RelationLike]
+    ) -> list[TensorLike | RelationLike]:
+        """Execute the provided PFunction with the given arguments.
+
+        Args:
+            pfunc: The PFunction to execute.
+            args: Arguments for the function, can be either TensorLike or RelationLike objects.
+
+        Returns:
+            List of results, can be either TensorLike or RelationLike objects.
+
+        Note:
+            Subclasses may override this method to support only specific types
+            (e.g., only TensorLike or only RelationLike) by providing more specific
+            type annotations in their implementation.
+        """
         raise NotImplementedError("Subclasses must implement this method.")

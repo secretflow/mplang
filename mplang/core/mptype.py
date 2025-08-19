@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 from mplang.core.dtype import STRING, DType
 from mplang.core.mask import Mask
-from mplang.core.relation import RelationType
+from mplang.core.relation import RelationLike, RelationType
 
 # basic type aliases
 Rank = int
@@ -408,7 +408,41 @@ class MPType:
             TypeError: If object type cannot be inferred.
             NotImplementedError: For relation objects (not yet implemented).
         """
-        # Check if it's a relation-like object (e.g., pandas DataFrame, pyarrow Table)
+        # Check if it's a relation-like object using the RelationLike protocol
+        if isinstance(obj, RelationLike):
+            # For RelationLike objects, try to extract schema information
+            try:
+                import pandas as pd
+
+                if isinstance(obj, pd.DataFrame):
+                    from mplang.core.dtype import DType
+
+                    schema_dict = {}
+                    for col_name in obj.columns:
+                        pandas_dtype = obj[col_name].dtype
+                        # Convert pandas dtype to DType
+                        if pandas_dtype.kind in (
+                            "O",
+                            "U",
+                            "S",
+                        ):  # object, unicode, string
+                            schema_dict[col_name] = (
+                                DType.from_numpy(pandas_dtype)
+                                if pandas_dtype.kind != "O"
+                                else STRING
+                            )
+                        else:
+                            schema_dict[col_name] = DType.from_numpy(pandas_dtype)
+                    schema = RelationType.from_dict(schema_dict)
+                    return cls(schema, pmask, attrs)
+            except ImportError:
+                pass
+            # For other relation-like objects without pandas
+            raise NotImplementedError(
+                "Relation object detection for non-pandas objects not fully implemented yet"
+            )
+
+        # Check if it's a relation-like object (legacy check for backward compatibility)
         if hasattr(obj, "dtypes") and hasattr(obj, "columns"):
             # Basic pandas DataFrame support
             try:

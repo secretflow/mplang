@@ -78,7 +78,7 @@ def trace_context(mask_2p):
 @pytest.fixture
 def mock_mpobject(tensor_info_float, mask_2p):
     """Create a mock MPObject for testing."""
-    mptype = MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p)
+    mptype = MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p)
     return MockMPObject(mptype, "test_obj")
 
 
@@ -151,10 +151,11 @@ class TestTraceContext:
     ):
         """Test capturing different MPObjects."""
         obj1 = MockMPObject(
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p), "obj1"
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            "obj1",
         )
         obj2 = MockMPObject(
-            MPType(tensor_info_int.dtype, tensor_info_int.shape, mask_2p), "obj2"
+            MPType.tensor(tensor_info_int.dtype, tensor_info_int.shape, mask_2p), "obj2"
         )
 
         captured1 = trace_context.capture(obj1)
@@ -187,7 +188,7 @@ class TestTraceVar:
         """Test TraceVar initialization with single-output expression."""
         expr = VariableExpr(
             "test_var",
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
         )
         trace_var = TraceVar(trace_context, expr)
 
@@ -204,8 +205,8 @@ class TestTraceVar:
         # Create a mock expression with multiple outputs
         expr = Mock()
         expr.mptypes = [
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
         ]
 
         with pytest.raises(
@@ -217,7 +218,7 @@ class TestTraceVar:
         """Test TraceVar string representation."""
         expr = VariableExpr(
             "test_var",
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
         )
         trace_var = TraceVar(trace_context, expr)
 
@@ -452,10 +453,12 @@ class TestTrace:
         """Test tracing a function with multiple MPObject outputs."""
         # Create multiple mock objects
         obj1 = MockMPObject(
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p), "obj1"
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            "obj1",
         )
         obj2 = MockMPObject(
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p), "obj2"
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            "obj2",
         )
 
         def multi_output_func(x, y):
@@ -488,7 +491,7 @@ class TestTrace:
         """Test tracing a function that captures external variables."""
         # Create an external variable
         external_obj = MockMPObject(
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
             "external",
         )
 
@@ -499,7 +502,8 @@ class TestTrace:
             return captured
 
         input_obj = MockMPObject(
-            MPType(tensor_info_float.dtype, tensor_info_float.shape, mask_2p), "input"
+            MPType.tensor(tensor_info_float.dtype, tensor_info_float.shape, mask_2p),
+            "input",
         )
         traced_fn = trace(trace_context, capturing_func, input_obj)
 

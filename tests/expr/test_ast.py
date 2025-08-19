@@ -159,7 +159,7 @@ class TestVariableExpr:
 
     def test_type_computation(self, pmask_2p):
         """Test that variable expression returns the provided type."""
-        mptype = MPType(FLOAT32, (2, 3), pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         expr = VariableExpr("param1", mptype)
 
         # VariableExpr should now return the provided type
@@ -169,7 +169,7 @@ class TestVariableExpr:
 
     def test_parameter_name(self, pmask_2p):
         """Test that parameter name is stored correctly."""
-        mptype = MPType(UINT64, (), pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
         expr = VariableExpr("test_param", mptype)
         assert expr.name == "test_param"
 
@@ -248,7 +248,7 @@ class TestFuncDefExpr:
     def test_identity_function(self, pmask_2p):
         """Test function definition expression with identity function."""
         # Create a variable expression for the function body
-        mptype = MPType(FLOAT32, (2, 3), pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         root = VariableExpr("x", mptype)
 
         # Create function definition with string parameter
@@ -270,7 +270,7 @@ class TestCallExpr:
     def test_function_call(self, pmask_2p, tensor_info_2d):
         """Test function call expression."""
         # Create a function definition
-        mptype = MPType(FLOAT32, (2, 3), pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         x_var = VariableExpr("x", mptype)
         func = FuncDefExpr(["x"], x_var)  # Identity function
 
@@ -299,7 +299,7 @@ class TestCondExpr:
         pred = ConstExpr(TensorInfo(INT32, ()), b"", pmask_2p)
 
         # Create then and else functions
-        mptype = MPType(FLOAT32, (2, 3), pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         x_var = VariableExpr("x", mptype)
         then_fn = FuncDefExpr(["x"], x_var)  # Identity
         else_fn = FuncDefExpr(["x"], x_var)  # Identity
@@ -326,7 +326,7 @@ class TestWhileExpr:
     def test_while_loop(self, pmask_2p, tensor_info_2d):
         """Test while loop expression."""
         # Create condition and body functions
-        mptype = MPType(FLOAT32, (2, 3), pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         x_var = VariableExpr("x", mptype)
         cond_fn = FuncDefExpr(["x"], ConstExpr(TensorInfo(INT32, ()), b"", pmask_2p))
         body_fn = FuncDefExpr(["x"], x_var)  # Identity

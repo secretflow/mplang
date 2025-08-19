@@ -107,7 +107,7 @@ class TestPrinterExpressions:
         printer = Printer(compact_format=False)
         from mplang.core.base import MPType
 
-        mptype = MPType(FLOAT32, (2, 2), pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 2), pmask_2p)
         expr = VariableExpr("test_var", mptype)
 
         result = printer.print_expr(expr)
@@ -269,8 +269,8 @@ class TestPrinterExpressions:
         # Create a function body that actually uses the parameters
         from mplang.core.base import MPType
 
-        x_mptype = MPType(FLOAT32, (1,), pmask_2p)
-        y_mptype = MPType(FLOAT32, (1,), pmask_2p)
+        x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
+        y_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
 
         x_var = VariableExpr("x", x_mptype)
         y_var = VariableExpr("y", y_mptype)
@@ -307,7 +307,7 @@ class TestPrinterComplexExpressions:
         # Create then function that actually uses the parameter 'x'
         from mplang.core.base import MPType
 
-        x_mptype = MPType(FLOAT32, (1,), pmask_2p)
+        x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         x_var = VariableExpr("x", x_mptype)  # Reference the parameter
         then_fn = FuncDefExpr(["x"], x_var)
 
@@ -372,7 +372,7 @@ class TestPrinterComplexExpressions:
         )
 
         # 6. Function definition and call
-        param_type = MPType(FLOAT32, (2,), pmask_2p)
+        param_type = MPType.tensor(FLOAT32, (2,), pmask_2p)
         var_expr = VariableExpr("input_data", param_type)
         func_body = TupleExpr([var_expr, access_expr])
         func_def = FuncDefExpr(["input_data"], func_body)
@@ -457,7 +457,7 @@ class TestPrinterComplexExpressions:
         # Create condition function that uses the 'state' parameter
         from mplang.core.base import MPType
 
-        state_mptype = MPType(FLOAT32, (1,), pmask_2p)
+        state_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         state_var = VariableExpr("state", state_mptype)
         # Access the first element of state to check if we should continue
         cond_body = AccessExpr(state_var, 0)
@@ -500,8 +500,8 @@ class TestPrinterComplexExpressions:
         # Create function body that actually uses the parameters
         from mplang.core.base import MPType
 
-        x_mptype = MPType(FLOAT32, (1,), pmask_2p)
-        y_mptype = MPType(FLOAT32, (1,), pmask_2p)
+        x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
+        y_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
 
         x_var = VariableExpr("x", x_mptype)
         y_var = VariableExpr("y", y_mptype)
@@ -643,8 +643,8 @@ class TestPrinterEdgeCases:
         # Create nested function definitions with meaningful parameter usage
         from mplang.core.base import MPType
 
-        inner_param_type = MPType(FLOAT32, (1,), pmask_2p)
-        middle_param_type = MPType(FLOAT32, (1,), pmask_2p)
+        inner_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
+        middle_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
 
         # Inner function: takes parameter and accesses its first element
         inner_param = VariableExpr("inner_param", inner_param_type)
@@ -761,7 +761,7 @@ class TestPrinterMeaningfulParameterUsage:
         from mplang.core.base import MPType
 
         # Scenario 1: Parameter used in conditional predicate
-        param_type = MPType(FLOAT32, (2,), pmask_2p)
+        param_type = MPType.tensor(FLOAT32, (2,), pmask_2p)
         param_var = VariableExpr("data", param_type)
 
         # Use parameter in both branches - return the same parameter
@@ -800,7 +800,7 @@ class TestPrinterMeaningfulParameterUsage:
         from mplang.core.base import MPType
 
         # Create a function that uses the same parameter multiple times
-        param_type = MPType(FLOAT32, (1,), pmask_2p)
+        param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
         x_var = VariableExpr("x", param_type)
 
         # Use x multiple times: tuple x with itself
@@ -826,7 +826,7 @@ class TestPrinterMeaningfulParameterUsage:
         from mplang.core.base import MPType
 
         # Create a while loop that actually processes the state
-        state_type = MPType(FLOAT32, (3,), pmask_2p)
+        state_type = MPType.tensor(FLOAT32, (3,), pmask_2p)
         state_var = VariableExpr("state", state_type)
 
         # Condition: check if state[0] is non-zero (simplified)

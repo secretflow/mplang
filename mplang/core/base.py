@@ -281,14 +281,14 @@ class MPType:
 
         Schema:
         - For tensor: dtype[shape]<pmask>{other_attrs}
-        - For relation: Relation<col1:type1, col2:type2><pmask>{other_attrs}
+        - For relation: Rel(col1:type1, col2:type2)<pmask>{other_attrs}
 
         Examples:
         - u64                        # scalar uint64
         - f32[3, 2]                 # 3x2 float32 tensor
         - f16[3]<3>                 # float16 vector with pmask=3
         - u32[5, 5]<F>{device="P0"} # uint32 matrix with pmask=15 and device attr
-        - Relation<id:i64, name:str> # relation with id and name columns
+        - Rel(id:i64, name:str)      # relation with id and name columns
         """
         if self._kind == MPKind.TENSOR:
             # Start with short dtype name
@@ -304,7 +304,7 @@ class MPType:
             cols = ", ".join(
                 f"{name}:{dtype.short_name()}" for name, dtype in self._schema.columns
             )
-            ret = f"Relation<{cols}>"
+            ret = f"Rel({cols})"
 
         # Add pmask in angle brackets if present
         if self._pmask is not None:

@@ -176,7 +176,7 @@ class TestMPType:
         schema = RelationSchema.from_dict({"id": INT64, "name": STRING})
         relation_type = MPType.relation(schema)
         relation_str = str(relation_type)
-        assert "Relation<id:i64, name:str>" == relation_str
+        assert "Rel(id:i64, name:str)" == relation_str
 
         # Test with pmask and attributes
         tensor_with_attrs = MPType.tensor(

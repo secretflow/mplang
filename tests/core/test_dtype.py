@@ -33,6 +33,7 @@ from mplang.core.dtype import (
     UINT64,
     DType,
 )
+from mplang.core.mask import Mask
 from mplang.core.mpir import dtype_to_proto
 
 try:
@@ -368,39 +369,43 @@ class TestMPType:
         """Test MPType compatibility with custom dtypes."""
         # Test with tensor
         arr = np.array([1, 2, 3, 4], dtype=np.int64)
-        mp_type = MPType.from_tensor(arr, pmask=0b111)
+        mp_type = MPType.from_tensor(arr, pmask=Mask.from_int(0b111))
 
         # dtype should now return DType, not numpy dtype
         assert isinstance(mp_type.dtype, DType)
         assert mp_type.dtype == INT64
         assert mp_type.shape == (4,)
-        assert mp_type.pmask == 0b111
+        assert mp_type.pmask == Mask.from_int(0b111)
 
         # Use to_numpy() for compatibility
         assert mp_type.to_numpy() == np.dtype("int64")
 
         # Test with scalar
-        scalar_mp_type = MPType.from_tensor(42.0, pmask=0b101)
+        scalar_mp_type = MPType.from_tensor(42.0, pmask=Mask.from_int(0b101))
         assert isinstance(scalar_mp_type.dtype, DType)
         assert scalar_mp_type.dtype == FLOAT64
         assert scalar_mp_type.shape == ()
-        assert scalar_mp_type.pmask == 0b101
+        assert scalar_mp_type.pmask == Mask.from_int(0b101)
         assert scalar_mp_type.to_numpy() == np.dtype("float64")
 
         # Test with custom attributes
-        attr_mp_type = MPType.from_tensor(arr, pmask=0b111, encrypted=True)
+        attr_mp_type = MPType.from_tensor(
+            arr, pmask=Mask.from_int(0b111), encrypted=True
+        )
         assert attr_mp_type.attrs == {"encrypted": True}
 
     def test_mp_type_constructor_with_dtype(self):
         """Test MPType constructor with various dtype inputs."""
         # Test constructing MPType with custom DType
-        mp_type = MPType(FLOAT32, (2, 3), 0b111, {})
+        mp_type = MPType.tensor(FLOAT32, (2, 3), Mask.from_int(0b111))
         assert isinstance(mp_type.dtype, DType)
         assert mp_type.dtype == FLOAT32
         assert mp_type.to_numpy() == np.dtype("float32")
 
         # Test constructing with numpy dtype (should be converted)
-        mp_type_np = MPType(np.dtype("int32"), (5,), 0b101, {})
+        mp_type_np = MPType.tensor(
+            DType.from_numpy(np.dtype("int32")), (5,), Mask.from_int(0b101)
+        )
         assert isinstance(mp_type_np.dtype, DType)
         assert mp_type_np.dtype == INT32
         assert mp_type_np.to_numpy() == np.dtype("int32")
@@ -408,7 +413,9 @@ class TestMPType:
     def test_mp_type_unified_api(self):
         """Test the unified dtype API for MPType."""
         # Test MPType
-        mp_type = MPType(np.int64, (2, 2), 0b111, {})
+        mp_type = MPType.tensor(
+            DType.from_numpy(np.int64), (2, 2), Mask.from_int(0b111)
+        )
 
         # dtype should return DType
         assert isinstance(mp_type.dtype, DType)
@@ -433,5 +440,5 @@ class TestMPType:
         assert new_arr.dtype == np.float32
 
         # Create MPType with same dtype
-        mp_type = MPType(tensor_info.dtype, (5, 5), 0b111, {})
+        mp_type = MPType.tensor(tensor_info.dtype, (5, 5), Mask.from_int(0b111))
         assert mp_type.dtype == tensor_info.dtype

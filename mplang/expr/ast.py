@@ -96,7 +96,7 @@ class RankExpr(Expr):
         self.pmask = pmask
 
     def _compute_mptypes(self) -> list[MPType]:
-        return [MPType(UINT64, (), self.pmask)]
+        return [MPType.tensor(UINT64, (), self.pmask)]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_rank(self)
@@ -113,7 +113,7 @@ class ConstExpr(Expr):
 
     def _compute_mptypes(self) -> list[MPType]:
         # Constants are public and available to all parties.
-        return [MPType(self.typ.dtype, self.typ.shape, self.pmask)]
+        return [MPType.tensor(self.typ.dtype, self.typ.shape, self.pmask)]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_const(self)
@@ -131,7 +131,7 @@ class RandExpr(Expr):
         self.pmask = pmask
 
     def _compute_mptypes(self) -> list[MPType]:
-        return [MPType(self.typ.dtype, self.typ.shape, self.pmask)]
+        return [MPType.tensor(self.typ.dtype, self.typ.shape, self.pmask)]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_rand(self)
@@ -189,7 +189,7 @@ class EvalExpr(Expr):
 
         # Create result MPTypes based on PFunction output info
         result_types = [
-            MPType(out_info.dtype, out_info.shape, effective_pmask)
+            MPType.tensor(out_info.dtype, out_info.shape, effective_pmask)
             for out_info in self.pfunc.outs_info
         ]
         return result_types
@@ -340,7 +340,7 @@ class ConvExpr(Expr):
             else:
                 out_pmask = None
 
-        return [MPType(first.dtype, first.shape, out_pmask, first.attrs)]
+        return [MPType.tensor(first.dtype, first.shape, out_pmask, **first.attrs)]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_conv(self)
@@ -422,7 +422,9 @@ class ShflSExpr(Expr):
     def _compute_mptypes(self) -> list[MPType]:
         # The types are the same as the source value, but with a new pmask.
         src_type = self.src_val.mptype
-        return [MPType(src_type.dtype, src_type.shape, self.pmask, src_type.attrs)]
+        return [
+            MPType.tensor(src_type.dtype, src_type.shape, self.pmask, **src_type.attrs)
+        ]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_shfl_s(self)
@@ -444,7 +446,7 @@ class ShflExpr(Expr):
         result_types = []
         for src_type in src_types:
             result_types.append(
-                MPType(src_type.dtype, src_type.shape, None, src_type.attrs)
+                MPType.tensor(src_type.dtype, src_type.shape, None, **src_type.attrs)
             )
         return result_types
 

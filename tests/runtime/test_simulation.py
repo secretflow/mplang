@@ -62,7 +62,7 @@ class TestSimVar:
     def test_simvar_creation(self, simulator):
         """Test SimVar creation and properties."""
         # Create a simple MPType
-        mptype = MPType(dtype=INT32, shape=(2, 3), pmask=Mask(3))
+        mptype = MPType.tensor(dtype=INT32, shape=(2, 3), pmask=Mask(3))
 
         # Create values for both parties
         values = [
@@ -80,7 +80,7 @@ class TestSimVar:
 
     def test_simvar_repr(self, simulator):
         """Test SimVar string representation."""
-        mptype = MPType(dtype=FLOAT32, shape=(2,), pmask=Mask(3))
+        mptype = MPType.tensor(FLOAT32, (2,), Mask(3))
         values = [np.array([1.0, 2.0]), np.array([3.0, 4.0])]
 
         simvar = SimVar(simulator, mptype, values)
@@ -175,7 +175,7 @@ class TestSimulator:
             return x
 
         # Create input variable
-        mptype = MPType(dtype=INT32, shape=(2,), pmask=Mask(3))
+        mptype = MPType.tensor(INT32, (2,), Mask(3))
         input_values = [
             np.array([1, 2], dtype=np.int32),
             np.array([3, 4], dtype=np.int32),
@@ -251,7 +251,7 @@ class TestSimulator:
         sim2 = Simulator(psize=2)
 
         # Create a variable in sim1
-        mptype = MPType(dtype=INT32, shape=(1,), pmask=Mask(3))
+        mptype = MPType.tensor(INT32, (1,), Mask(3))
         var_sim1 = SimVar(sim1, mptype, [np.array([1]), np.array([2])])
 
         # Create a simple expression

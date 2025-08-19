@@ -690,7 +690,7 @@ class Reader:
         for attr_name, attr_proto in type_proto.attrs.items():
             attrs[attr_name] = self._proto_to_attr(attr_proto)
 
-        return MPType(dtype, shape, pmask, attrs)
+        return MPType.tensor(dtype, shape, pmask, **attrs)
 
     def _proto_to_attr(self, attr_proto: mpir_pb2.AttrProto) -> Any:
         """Convert AttrProto to Python value."""

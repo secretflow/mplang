@@ -27,9 +27,11 @@ import numpy as np
 import pytest
 
 from mplang import simp
-from mplang.core.base import Mask, MPObject, MPType, Rank
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import MPType, Rank
 from mplang.core.primitive import cond, constant, prank, pshfl_s, while_loop
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar

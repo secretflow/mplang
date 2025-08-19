@@ -28,19 +28,12 @@ from typing import Any, ParamSpec, TypeVar, cast
 
 from jax.tree_util import tree_map
 
-from mplang.core.base import (
-    Mask,
-    MPContext,
-    MPObject,
-    Rank,
-    ScalarType,
-    Shape,
-    TensorInfo,
-    TensorLike,
-)
 from mplang.core.context_mgr import cur_ctx
 from mplang.core.dtype import UINT64
 from mplang.core.interp import InterpContext, InterpVar, apply
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPContext, MPObject
+from mplang.core.mptype import Rank, ScalarType, Shape, TensorInfo, TensorLike
 from mplang.core.pfunc import PFunction
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (

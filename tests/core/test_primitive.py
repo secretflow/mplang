@@ -28,9 +28,10 @@ import numpy as np
 import pytest
 
 from mplang import simp
-from mplang.core.base import Mask, Rank, TensorInfo
 from mplang.core.context_mgr import cur_ctx, with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.mask import Mask
+from mplang.core.mptype import Rank, TensorInfo
 from mplang.core.primitive import (
     _switch_ctx,
     cond,

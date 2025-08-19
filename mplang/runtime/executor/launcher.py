@@ -25,7 +25,7 @@ import functools
 import operator
 from collections.abc import Callable
 
-from mplang.core.base import Mask
+from mplang.core.mask import Mask
 from mplang.device import DeviceContext, parse_device_conf
 
 # Re-export client components

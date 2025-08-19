@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     # Imported only for typing to avoid import cycles at runtime.
-    from mplang.core.base import MPContext
+    from mplang.core.mpobject import MPContext
 
 # The global working context.
 _g_ctx: MPContext | None = None

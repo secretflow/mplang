@@ -15,12 +15,14 @@
 from __future__ import annotations
 
 import copy
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from mplang.core.mpobject import MPObject
 
 from mplang.core.dtype import STRING, DType
 from mplang.core.mask import Mask
@@ -357,6 +359,9 @@ class MPType:
 
     def isInstance(self, obj: MPObject) -> bool:
         """Check if the given object is an instance of this MPType."""
+        # Import here to avoid circular import
+        from mplang.core.mpobject import MPObject
+
         if not isinstance(obj, MPObject):
             return False
 
@@ -488,70 +493,3 @@ class MPType:
 
         # Otherwise treat as tensor-like
         return cls.from_tensor(obj, pmask, **attrs)
-
-
-class MPContext(ABC):
-    """The context of an MPObject."""
-
-    @abstractmethod
-    def psize(self) -> int:
-        """Return the world size."""
-
-    @abstractmethod
-    def attrs(self) -> dict[str, Any]:
-        """Return the attributes of the context."""
-
-    def attr(self, key: str) -> Any:
-        """Return the attribute of the context by key."""
-        return self.attrs()[key]
-
-
-class MPObject(ABC):
-    """The base class for all objects in mp-system."""
-
-    @property
-    @abstractmethod
-    def mptype(self) -> MPType:
-        """The type information of the object.
-
-        This property is readonly (mandatory) and will be used for JAX compilation
-        to determine the appropriate data type during trace and compilation phases.
-        MPType can be passed between different MPObjects as a value.
-        """
-
-    @property
-    def dtype(self) -> DType:
-        return self.mptype.dtype
-
-    @property
-    def shape(self) -> Shape:
-        return self.mptype.shape
-
-    @property
-    def schema(self) -> RelationSchema:
-        """The relational schema of the object.
-
-        Only available for relation types.
-        """
-        return self.mptype.schema
-
-    @property
-    def pmask(self) -> Mask | None:
-        return self.mptype.pmask
-
-    @property
-    def attrs(self) -> dict[str, Any]:
-        return self.mptype.attrs
-
-    @property
-    @abstractmethod
-    def ctx(self) -> MPContext:
-        """Return the context of the object."""
-
-
-# Forward docstrings from MPType to MPObject
-MPObject.dtype.__doc__ = MPType.dtype.__doc__
-MPObject.shape.__doc__ = MPType.shape.__doc__
-MPObject.schema.__doc__ = MPType.schema.__doc__
-MPObject.pmask.__doc__ = MPType.pmask.__doc__
-MPObject.attrs.__doc__ = MPType.attrs.__doc__

@@ -21,7 +21,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.base import TensorLike
+from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction, PFunctionHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
 

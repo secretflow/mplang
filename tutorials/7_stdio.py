@@ -18,7 +18,7 @@ import numpy as np
 import mplang
 import mplang.simp as simp
 import mplang.smpc as smpc
-from mplang.core.base import TensorInfo
+from mplang.core.mptype import TensorInfo
 from mplang.frontend import builtin
 
 

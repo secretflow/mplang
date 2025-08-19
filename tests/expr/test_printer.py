@@ -19,8 +19,9 @@ Tests for expression printer module.
 import numpy as np
 import pytest
 
-from mplang.core.base import Mask, Rank, TensorInfo
 from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.mask import Mask
+from mplang.core.mptype import Rank, TensorInfo
 from mplang.core.pfunc import PFunction
 from mplang.expr import (
     AccessExpr,
@@ -105,7 +106,7 @@ class TestPrinterExpressions:
     def test_variable_expr_printing(self, pmask_2p):
         """Test printing of VariableExpr."""
         printer = Printer(compact_format=False)
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         mptype = MPType.tensor(FLOAT32, (2, 2), pmask_2p)
         expr = VariableExpr("test_var", mptype)
@@ -267,7 +268,7 @@ class TestPrinterExpressions:
         printer = Printer(compact_format=False)
 
         # Create a function body that actually uses the parameters
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         y_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -305,7 +306,7 @@ class TestPrinterComplexExpressions:
         pred = RankExpr(pmask_2p)
 
         # Create then function that actually uses the parameter 'x'
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         x_var = VariableExpr("x", x_mptype)  # Reference the parameter
@@ -343,7 +344,7 @@ class TestPrinterComplexExpressions:
     def test_all_expr_types_printing(self, pmask_2p, pfunc_1i1o):
         """Test printing of a complex expression involving all Expr types with meaningful parameter usage."""
         printer = Printer(compact_format=False)
-        from mplang.core.base import MPType, Rank
+        from mplang.core.mptype import MPType, Rank
 
         # 1. Basic primitive expressions
         const_expr = ConstExpr(
@@ -455,7 +456,7 @@ class TestPrinterComplexExpressions:
         printer = Printer(compact_format=False)
 
         # Create condition function that uses the 'state' parameter
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         state_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         state_var = VariableExpr("state", state_mptype)
@@ -498,7 +499,7 @@ class TestPrinterComplexExpressions:
         printer = Printer(compact_format=False)
 
         # Create function body that actually uses the parameters
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         y_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -641,7 +642,7 @@ class TestPrinterEdgeCases:
         printer = Printer(compact_format=False)
 
         # Create nested function definitions with meaningful parameter usage
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         inner_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
         middle_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -758,7 +759,7 @@ class TestPrinterMeaningfulParameterUsage:
     def test_meaningful_parameter_usage_scenarios(self, pmask_2p):
         """Test various scenarios where function parameters are meaningfully used."""
         printer = Printer(compact_format=False)
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         # Scenario 1: Parameter used in conditional predicate
         param_type = MPType.tensor(FLOAT32, (2,), pmask_2p)
@@ -797,7 +798,7 @@ class TestPrinterMeaningfulParameterUsage:
     def test_parameter_reuse_in_complex_expressions(self, pmask_2p):
         """Test parameter being used multiple times in the same function."""
         printer = Printer(compact_format=False)
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         # Create a function that uses the same parameter multiple times
         param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -823,7 +824,7 @@ class TestPrinterMeaningfulParameterUsage:
     def test_while_loop_with_meaningful_state_usage(self, pmask_2p):
         """Test while loop where state parameter is meaningfully used."""
         printer = Printer(compact_format=False)
-        from mplang.core.base import MPType
+        from mplang.core.mptype import MPType
 
         # Create a while loop that actually processes the state
         state_type = MPType.tensor(FLOAT32, (3,), pmask_2p)

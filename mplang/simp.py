@@ -19,7 +19,9 @@ from functools import partial
 from typing import Any
 
 from mplang.core import primitive as prim
-from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
 from mplang.frontend import builtin, jax_cc
 

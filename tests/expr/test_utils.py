@@ -14,8 +14,8 @@
 
 import pytest
 
-from mplang.core.base import Mask
 from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.mask import Mask
 from mplang.expr import deduce_mask, ensure_scalar, ensure_tensorlist_equal, type_equal
 
 

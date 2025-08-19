@@ -20,8 +20,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from mplang.core.base import Mask, MPContext, MPObject, MPType, TensorInfo
 from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPContext, MPObject
+from mplang.core.mptype import MPType, TensorInfo
 from mplang.core.trace import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 from mplang.expr.ast import VariableExpr
 

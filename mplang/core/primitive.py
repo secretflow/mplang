@@ -240,23 +240,23 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
     if isinstance(data, TableLike):
         try:
             import pandas as pd
-
-            if isinstance(data, pd.DataFrame):
-                # Convert DataFrame using helper function
-                # NOTE: constant primitive is not designed for large tables - use dedicated
-                # table loading mechanisms for substantial datasets
-                table_type, json_bytes = dataframe_to_table_constant(data)
-                ctx = _tracer()
-
-                # Reuse ConstExpr with table type and JSON serialized data
-                return TraceVar(ctx, ConstExpr(table_type, json_bytes, ctx.mask))
-
         except ImportError:
-            raise ImportError(
-                "pandas is required for DataFrame constant support"
+            # pandas is not available, so this must be a non-pandas table-like object
+            raise NotImplementedError(
+                "Table constant support only implemented for pandas DataFrame"
             ) from None
 
-        # For other table-like objects
+        if isinstance(data, pd.DataFrame):
+            # Convert DataFrame using helper function
+            # NOTE: constant primitive is not designed for large tables - use dedicated
+            # table loading mechanisms for substantial datasets
+            table_type, json_bytes = dataframe_to_table_constant(data)
+            ctx = _tracer()
+
+            # Reuse ConstExpr with table type and JSON serialized data
+            return TraceVar(ctx, ConstExpr(table_type, json_bytes, ctx.mask))
+
+        # For other table-like objects (even when pandas is available)
         raise NotImplementedError(
             "Table constant support only implemented for pandas DataFrame"
         )

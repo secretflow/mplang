@@ -23,7 +23,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
-from mplang.frontend import builtin, jax_cc
+from mplang.frontend import builtin, ibis_cc, jax_cc
 
 
 def prank() -> MPObject:
@@ -104,8 +104,11 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
     if func in FUNC_WHITE_LIST:
         fe_func = func
     else:
-        # unknown python callable, treat it as jax function
-        fe_func = partial(jax_cc.jax_compile, func)
+        if ibis_cc.is_ibis_function(func):
+            fe_func = partial(ibis_cc.ibis_compile, func)
+        else:
+            # unknown python callable, treat it as jax function
+            fe_func = partial(jax_cc.jax_compile, func)
 
     pfunc, eval_args, out_tree = fe_func(*args, **kwargs)
     results = peval(pfunc, eval_args, pmask)

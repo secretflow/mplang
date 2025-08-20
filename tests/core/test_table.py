@@ -328,3 +328,84 @@ class TestTableLike:
         # However, accessing them as attributes will return method objects
         assert callable(table.dtypes)
         assert callable(table.columns)
+
+
+class TestDataFrameToTableConstant:
+    """Test the dataframe_to_table_constant helper function."""
+
+    def test_dataframe_to_table_constant(self):
+        """Test the dataframe_to_table_constant helper function."""
+        pytest.importorskip("pandas")
+        import json
+
+        import pandas as pd
+
+        from mplang.core.table import dataframe_to_table_constant
+
+        # Create a test DataFrame
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "name": ["Alice", "Bob", "Charlie"],
+            "score": [95.5, 87.2, 92.8],
+            "active": [True, False, True],
+        })
+
+        # Test the helper function
+        table_type, json_bytes = dataframe_to_table_constant(df)
+
+        # Verify the table type
+        assert isinstance(table_type, TableType)
+        assert table_type.num_columns() == 4
+        assert table_type.has_column("id")
+        assert table_type.has_column("name")
+        assert table_type.has_column("score")
+        assert table_type.has_column("active")
+
+        # Verify the JSON serialization
+        assert isinstance(json_bytes, bytes)
+        json_data = json.loads(json_bytes.decode("utf-8"))
+        assert len(json_data) == 3
+        assert json_data[0]["id"] == 1
+        assert json_data[0]["name"] == "Alice"
+        assert json_data[0]["score"] == 95.5
+        assert json_data[0]["active"] is True
+
+    def test_dataframe_to_table_constant_empty(self):
+        """Test the helper function with empty DataFrame."""
+        pytest.importorskip("pandas")
+        import json
+
+        import pandas as pd
+
+        from mplang.core.table import dataframe_to_table_constant
+
+        # Create an empty DataFrame with schema
+        df = pd.DataFrame(columns=["user_id", "username"])
+        df = df.astype({"user_id": "int64", "username": "string"})
+
+        table_type, json_bytes = dataframe_to_table_constant(df)
+
+        # Verify the table type
+        assert isinstance(table_type, TableType)
+        assert table_type.num_columns() == 2
+        assert table_type.has_column("user_id")
+        assert table_type.has_column("username")
+
+        # Verify empty serialization
+        json_data = json.loads(json_bytes.decode("utf-8"))
+        assert json_data == []
+
+    def test_dataframe_to_table_constant_wrong_type(self):
+        """Test that the helper function raises TypeError for non-DataFrame."""
+        pytest.importorskip("pandas")
+
+        from mplang.core.table import dataframe_to_table_constant
+
+        with pytest.raises(TypeError, match="Expected pandas DataFrame"):
+            dataframe_to_table_constant([1, 2, 3])
+
+        with pytest.raises(TypeError, match="Expected pandas DataFrame"):
+            dataframe_to_table_constant("not a dataframe")
+
+        with pytest.raises(TypeError, match="Expected pandas DataFrame"):
+            dataframe_to_table_constant(None)

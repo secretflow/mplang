@@ -15,17 +15,18 @@ name = "mplang"
 dynamic = ["version"]
 description = "Multi-Party Programming Language"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 authors = [
-    {name = "SecretFlow Team", email = "secretflow-contact@service.alipay.com"}
+    { name = "SecretFlow Team", email = "secretflow-contact@service.alipay.com" },
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "spu==0.9.4.dev20250618", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "spu==0.9.4.dev20250618",  # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "grpcio==1.56.2",
     "grpcio-tools==1.56.2",
     "protobuf>=4.21.6,<5.0",
     "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
+    "pandas>=2.0.0",
 ]
 
 [dependency-groups]
@@ -55,7 +56,7 @@ include = ["mplang*"]
 mplang = ["protos/*.proto"]
 
 [tool.setuptools.dynamic]
-version = {attr = "mplang.__version__"}
+version = { attr = "mplang.__version__" }
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting
@@ -66,13 +67,13 @@ preview = true
 
 # Exclude generated files and protobuf code
 exclude = [
-    "mplang/protos/",      # Protobuf generated Python files
-    "protos/",             # Protobuf source files
-    "**/protos/**/*.py",   # Any protobuf files in protos directories
-    "**/*_pb2.py",         # Generated protobuf message files
-    "**/*_pb2_grpc.py",    # Generated protobuf gRPC files
-    "**/*_pb2.pyi",        # Generated protobuf type stubs
-    "**/*_pb2_grpc.pyi",   # Generated protobuf gRPC type stubs
+    "mplang/protos/",    # Protobuf generated Python files
+    "protos/",           # Protobuf source files
+    "**/protos/**/*.py", # Any protobuf files in protos directories
+    "**/*_pb2.py",       # Generated protobuf message files
+    "**/*_pb2_grpc.py",  # Generated protobuf gRPC files
+    "**/*_pb2.pyi",      # Generated protobuf type stubs
+    "**/*_pb2_grpc.pyi", # Generated protobuf gRPC type stubs
 ]
 
 [tool.ruff.lint]
@@ -101,10 +102,16 @@ ignore = [
 
 # Per-file ignores for specific cases
 [tool.ruff.lint.per-file-ignores]
-"examples/**/*.py" = ["B023"]  # Allow intentional loop variable binding in examples
-"tutorials/**/*.py" = ["B023"]  # Allow intentional loop variable binding in tutorials
-"tutorials/pitfalls/*.py" = ["B023"]  # These files intentionally demonstrate pitfalls
-"tests/**/*.py" = ["B017"]  # Allow generic exception catching in tests
+"examples/**/*.py" = [
+    "B023",
+] # Allow intentional loop variable binding in examples
+"tutorials/**/*.py" = [
+    "B023",
+] # Allow intentional loop variable binding in tutorials
+"tutorials/pitfalls/*.py" = [
+    "B023",
+] # These files intentionally demonstrate pitfalls
+"tests/**/*.py" = ["B017"] # Allow generic exception catching in tests
 
 [tool.ruff.format]
 # Use black-compatible formatting
@@ -112,8 +119,8 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
-docstring-code-format = true  # Format code in docstrings
-docstring-code-line-length = "dynamic"  # Use same line length for docstring code
+docstring-code-format = true           # Format code in docstrings
+docstring-code-line-length = "dynamic" # Use same line length for docstring code
 
 [tool.mypy]
 python_version = "3.10"
@@ -124,9 +131,7 @@ disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
 # ignore errors in all files in `mplang/protos`
-module = [
-    "mplang.protos.*",
-]
+module = ["mplang.protos.*"]
 ignore_errors = true
 
 [tool.pytest.ini_options]

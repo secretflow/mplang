@@ -202,6 +202,9 @@ def dataframe_to_table_constant(data) -> tuple[TableType, bytes]:
     if not isinstance(data, pd.DataFrame):
         raise TypeError(f"Expected pandas DataFrame, got {type(data)}")
 
+    if len(data.columns) == 0:
+        raise ValueError("Cannot create a table constant from a DataFrame with no columns.")
+
     # Convert DataFrame to JSON for serialization
     json_str = data.to_json(orient="records")
     json_bytes = json_str.encode("utf-8")

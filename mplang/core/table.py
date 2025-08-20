@@ -20,13 +20,13 @@ from typing import Any, Protocol, runtime_checkable
 
 from mplang.core.dtype import DType
 
-__all__ = ["RelationLike", "RelationType"]
+__all__ = ["TableLike", "TableType"]
 
 
 @runtime_checkable
-class RelationLike(Protocol):
+class TableLike(Protocol):
     """
-    Protocol for objects structurally resembling relations from common libraries
+    Protocol for objects structurally resembling tables from common libraries
     (pandas DataFrame, pyarrow Table, etc.), focusing on dtypes and columns attributes.
     """
 
@@ -38,27 +38,27 @@ class RelationLike(Protocol):
 
 
 @dataclass(frozen=True)
-class RelationType:
-    """Relational schema: ordered list of column name-type pairs.
+class TableType:
+    """Table schema: ordered list of column name-type pairs.
 
     Represents table structure in relational algebra, containing column names
     and their corresponding data types.
 
     Examples:
-        >>> schema = RelationType.from_dict({
+        >>> schema = TableType.from_dict({
         ...     "id": DType.i64(),
         ...     "name": DType.string(),
         ... })
-        >>> schema = RelationType(((\"id\", DType.i64()), (\"name\", DType.string())))
+        >>> schema = TableType((("id", DType.i64()), ("name", DType.string())))
     """
 
     columns: tuple[tuple[str, DType], ...]
     _column_map: dict[str, DType] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        """Validate the relational schema."""
+        """Validate the table schema."""
         if not self.columns:
-            raise ValueError("RelationType cannot be empty")
+            raise ValueError("TableType cannot be empty")
 
         # Validate column name uniqueness
         names = [name for name, _ in self.columns]
@@ -76,26 +76,26 @@ class RelationType:
         object.__setattr__(self, "_column_map", dict(self.columns))
 
     @classmethod
-    def from_dict(cls, schema_dict: dict[str, DType]) -> RelationType:
-        """Create relational schema from dictionary.
+    def from_dict(cls, schema_dict: dict[str, DType]) -> TableType:
+        """Create table schema from dictionary.
 
         Args:
             schema_dict: Mapping from column names to data types
 
         Returns:
-            RelationType instance
+            TableType instance
         """
         return cls(tuple(schema_dict.items()))
 
     @classmethod
-    def from_pairs(cls, pairs: list[tuple[str, DType]]) -> RelationType:
-        """Create relational schema from list of name-type pairs.
+    def from_pairs(cls, pairs: list[tuple[str, DType]]) -> TableType:
+        """Create table schema from list of name-type pairs.
 
         Args:
             pairs: List of tuples containing column name and data type
 
         Returns:
-            RelationType instance
+            TableType instance
         """
         return cls(tuple(pairs))
 
@@ -146,7 +146,7 @@ class RelationType:
     def __repr__(self) -> str:
         """String representation."""
         cols = ", ".join(f"{name}:{dtype.short_name()}" for name, dtype in self.columns)
-        return f"RelationType<{cols}>"
+        return f"TableType<{cols}>"
 
     def __len__(self) -> int:
         """Get number of columns."""

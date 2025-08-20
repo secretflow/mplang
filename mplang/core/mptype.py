@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 from mplang.core.dtype import STRING, DType
 from mplang.core.mask import Mask
-from mplang.core.relation import RelationLike, RelationType
+from mplang.core.table import TableLike, TableType
 
 # basic type aliases
 Rank = int
@@ -83,20 +83,20 @@ class TensorType:
 class MPType:
     """A type that describes the type information of an MPObject."""
 
-    _type: TensorType | RelationType
+    _type: TensorType | TableType
     _pmask: Mask | None
     _attrs: dict[str, Any]
 
     def __init__(
         self,
-        type_info: TensorType | RelationType,
+        type_info: TensorType | TableType,
         pmask: Mask | None = None,
         attrs: dict[str, Any] | None = None,
     ):
         """Initialize MPType.
 
         Args:
-            type_info: The type information (TensorType for tensors, RelationType for relations).
+            type_info: The type information (TensorType for tensors, TableType for tables).
             pmask: The party mask, used for compile/trace time determine which party holds the object.
             attrs: Attributes are key-value pairs that can be used to store additional information about the object.
         """
@@ -125,17 +125,17 @@ class MPType:
             MPType instance for tensor.
 
         Raises:
-            ValueError: If dtype is relation-only.
+            ValueError: If dtype is table-only.
         """
         # Convert dtype to DType if needed and validate
         if not isinstance(dtype, DType):
             dtype = DType.from_any(dtype)
 
-        # Ensure tensor types don't use relation-only dtypes
-        if dtype.is_relation_only:
+        # Ensure tensor types don't use table-only dtypes
+        if dtype.is_table_only:
             raise ValueError(
-                f"Data type '{dtype.name}' is only supported in relations, "
-                f"not in tensors. Use relation types for string, date, and other "
+                f"Data type '{dtype.name}' is only supported in tables, "
+                f"not in tensors. Use table types for string, date, and other "
                 f"non-numeric data types."
             )
 
@@ -143,24 +143,24 @@ class MPType:
         return cls(tensor_info, pmask, attrs)
 
     @classmethod
-    def relation(
+    def table(
         cls,
-        schema: RelationType | dict[str, DType],
+        schema: TableType | dict[str, DType],
         pmask: Mask | None = None,
         **attrs: Any,
     ) -> MPType:
-        """Create a relation type.
+        """Create a table type.
 
         Args:
-            schema: The relational schema or dict mapping column names to types.
+            schema: The table schema or dict mapping column names to types.
             pmask: The party mask.
             **attrs: Additional attributes.
 
         Returns:
-            MPType instance for relation.
+            MPType instance for table.
         """
         if isinstance(schema, dict):
-            schema = RelationType.from_dict(schema)
+            schema = TableType.from_dict(schema)
         return cls(schema, pmask, attrs)
 
     @property
@@ -169,9 +169,9 @@ class MPType:
         return isinstance(self._type, TensorType)
 
     @property
-    def is_relation(self) -> bool:
-        """Check if this is a relation type."""
-        return isinstance(self._type, RelationType)
+    def is_table(self) -> bool:
+        """Check if this is a table type."""
+        return isinstance(self._type, TableType)
 
     @property
     def dtype(self) -> DType:
@@ -203,13 +203,13 @@ class MPType:
         return self._type.shape
 
     @property
-    def schema(self) -> RelationType:
-        """The relational schema.
+    def schema(self) -> TableType:
+        """The table schema.
 
-        Only available for relation types.
+        Only available for table types.
         """
-        if not isinstance(self._type, RelationType):
-            raise AttributeError("schema is only available for relation types")
+        if not isinstance(self._type, TableType):
+            raise AttributeError("schema is only available for table types")
         return self._type
 
     @property
@@ -250,14 +250,14 @@ class MPType:
 
         Schema:
         - For tensor: dtype[shape]<pmask>{other_attrs}
-        - For relation: Rel(col1:type1, col2:type2)<pmask>{other_attrs}
+        - For table: Tbl(col1:type1, col2:type2)<pmask>{other_attrs}
 
         Examples:
         - u64                        # scalar uint64
         - f32[3, 2]                 # 3x2 float32 tensor
         - f16[3]<3>                 # float16 vector with pmask=3
         - u32[5, 5]<F>{device="P0"} # uint32 matrix with pmask=15 and device attr
-        - Rel(id:i64, name:str)      # relation with id and name columns
+        - Tbl(id:i64, name:str)      # table with id and name columns
         """
         if isinstance(self._type, TensorType):
             # Start with short dtype name
@@ -267,11 +267,11 @@ class MPType:
             if self._type.shape:
                 shape_str = ", ".join(str(d) for d in self._type.shape)
                 ret += f"[{shape_str}]"
-        else:  # RelationType
+        else:  # TableType
             cols = ", ".join(
                 f"{name}:{dtype.short_name()}" for name, dtype in self._type.columns
             )
-            ret = f"Rel({cols})"
+            ret = f"Tbl({cols})"
 
         # Add pmask in angle brackets if present
         if self._pmask is not None:
@@ -406,11 +406,11 @@ class MPType:
 
         Raises:
             TypeError: If object type cannot be inferred.
-            NotImplementedError: For relation objects (not yet implemented).
+            NotImplementedError: For table objects (not yet implemented).
         """
-        # Check if it's a relation-like object using the RelationLike protocol
-        if isinstance(obj, RelationLike):
-            # For RelationLike objects, try to extract schema information
+        # Check if it's a table-like object using the TableLike protocol
+        if isinstance(obj, TableLike):
+            # For TableLike objects, try to extract schema information
             try:
                 import pandas as pd
 
@@ -433,16 +433,16 @@ class MPType:
                             )
                         else:
                             schema_dict[col_name] = DType.from_numpy(pandas_dtype)
-                    schema = RelationType.from_dict(schema_dict)
+                    schema = TableType.from_dict(schema_dict)
                     return cls(schema, pmask, attrs)
             except ImportError:
                 pass
-            # For other relation-like objects without pandas
+            # For other table-like objects without pandas
             raise NotImplementedError(
-                "Relation object detection for non-pandas objects not fully implemented yet"
+                "Table object detection for non-pandas objects not fully implemented yet"
             )
 
-        # Check if it's a relation-like object (legacy check for backward compatibility)
+        # Check if it's a table-like object (legacy check for backward compatibility)
         if hasattr(obj, "dtypes") and hasattr(obj, "columns"):
             # Basic pandas DataFrame support
             try:
@@ -467,13 +467,13 @@ class MPType:
                             )
                         else:
                             schema_dict[col_name] = DType.from_numpy(pandas_dtype)
-                    schema = RelationType.from_dict(schema_dict)
+                    schema = TableType.from_dict(schema_dict)
                     return cls(schema, pmask, attrs)
             except ImportError:
                 pass
-            # For other relation-like objects without pandas
+            # For other table-like objects without pandas
             raise NotImplementedError(
-                "Relation object detection not fully implemented yet"
+                "Table object detection not fully implemented yet"
             )
 
         # Otherwise treat as tensor-like

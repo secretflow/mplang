@@ -21,20 +21,20 @@ from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
 from mplang.core.mptype import TensorLike, TensorType
-from mplang.core.relation import RelationLike, RelationType
+from mplang.core.table import TableLike, TableType
 
 __all__ = [
     "HybridHandler",
     "PFunction",
     "PFunctionHandler",
-    "RelationHandler",
+    "TableHandler",
     "TensorHandler",
     "get_fn_name",
 ]
 
 # Define type variables
-InputType = TypeVar("InputType", bound=TensorLike | RelationLike)
-OutputType = TypeVar("OutputType", bound=TensorLike | RelationLike)
+InputType = TypeVar("InputType", bound=TensorLike | TableLike)
+OutputType = TypeVar("OutputType", bound=TensorLike | TableLike)
 
 
 class PFunction:
@@ -45,8 +45,8 @@ class PFunction:
     1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
     2. User-defined programmable functions with custom code
 
-    The PFunction accepts a list of TensorLike or RelationLike inputs and produces
-    TensorLike or RelationLike outputs, and can be:
+    The PFunction accepts a list of TensorLike or TableLike inputs and produces
+    TensorLike or TableLike outputs, and can be:
     - Expressed and defined in the mplang frontend
     - Serialized for transmission between components
     - Interpreted and executed by backend runtime engines
@@ -55,8 +55,8 @@ class PFunction:
         fn_type: The type/category identifier of this PFunction, indicating which
             backend or handler should process it (e.g., "spu.makeshares", "builtin.read",
             "mlir.stablehlo"). This serves as a routing mechanism for execution.
-        ins_info: Type information for input parameters (TensorType or RelationType)
-        outs_info: Type information for output values (TensorType or RelationType)
+        ins_info: Type information for input parameters (TensorType or TableType)
+        outs_info: Type information for output values (TensorType or TableType)
         fn_name: Optional name of the function. For programmable functions, this is
             the user-defined function name. For built-in operations, this may be
             None or a descriptive identifier.
@@ -70,8 +70,8 @@ class PFunction:
 
     # Required fields - these define the core execution context
     fn_type: str  # Unique identifier for backend routing
-    ins_info: tuple[TensorType | RelationType, ...]
-    outs_info: tuple[TensorType | RelationType, ...]
+    ins_info: tuple[TensorType | TableType, ...]
+    outs_info: tuple[TensorType | TableType, ...]
 
     # Optional fields for programmable functions
     fn_name: str | None  # Function name (for programmable functions)
@@ -83,8 +83,8 @@ class PFunction:
     def __init__(
         self,
         fn_type: str,
-        ins_info: Sequence[TensorType | RelationType],
-        outs_info: Sequence[TensorType | RelationType],
+        ins_info: Sequence[TensorType | TableType],
+        outs_info: Sequence[TensorType | TableType],
         *,
         fn_name: str | None = None,
         fn_text: str | None = None,
@@ -176,11 +176,9 @@ class TensorHandler(PFunctionHandler[TensorLike, TensorLike]):
     """Handler base class specialized for tensor processing."""
 
 
-class RelationHandler(PFunctionHandler[RelationLike, RelationLike]):
-    """Handler base class specialized for relation processing."""
+class TableHandler(PFunctionHandler[TableLike, TableLike]):
+    """Handler base class specialized for table processing."""
 
 
-class HybridHandler(
-    PFunctionHandler[TensorLike | RelationLike, TensorLike | RelationLike]
-):
+class HybridHandler(PFunctionHandler[TensorLike | TableLike, TensorLike | TableLike]):
     """Handler base class that can process mixed types."""

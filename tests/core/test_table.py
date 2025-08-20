@@ -15,15 +15,15 @@
 import pytest
 
 from mplang.core.dtype import DATE, FLOAT32, INT32, INT64, JSON, STRING
-from mplang.core.relation import RelationLike, RelationType
+from mplang.core.table import TableLike, TableType
 
 
-class TestRelationType:
-    """Test RelationType functionality."""
+class TestTableType:
+    """Test TableType functionality."""
 
     def test_creation_from_dict(self):
-        """Test creating RelationType from dictionary."""
-        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
+        """Test creating TableType from dictionary."""
+        schema = TableType.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
 
         assert len(schema) == 3
         assert schema.num_columns() == 3
@@ -31,16 +31,16 @@ class TestRelationType:
         assert schema.column_types() == (INT64, FLOAT32, INT32)
 
     def test_creation_from_pairs(self):
-        """Test creating RelationType from pairs."""
+        """Test creating TableType from pairs."""
         pairs = [("id", INT64), ("name", STRING)]
-        schema = RelationType.from_pairs(pairs)
+        schema = TableType.from_pairs(pairs)
 
         assert len(schema) == 2
         assert schema.column_names() == ("id", "name")
 
     def test_column_access(self):
         """Test column access methods."""
-        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
+        schema = TableType.from_dict({"id": INT64, "value": FLOAT32, "age": INT32})
 
         # Test has_column
         assert schema.has_column("id") is True
@@ -55,7 +55,7 @@ class TestRelationType:
 
     def test_indexing(self):
         """Test indexing functionality."""
-        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
+        schema = TableType.from_dict({"id": INT64, "value": FLOAT32})
 
         # Test integer indexing
         assert schema[0] == ("id", INT64)
@@ -70,7 +70,7 @@ class TestRelationType:
 
     def test_iteration(self):
         """Test iteration over schema."""
-        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
+        schema = TableType.from_dict({"id": INT64, "value": FLOAT32})
 
         columns = list(schema)
         assert len(columns) == 2
@@ -80,23 +80,23 @@ class TestRelationType:
     def test_to_dict(self):
         """Test conversion back to dictionary."""
         original_dict = {"id": INT64, "value": FLOAT32}
-        schema = RelationType.from_dict(original_dict)
+        schema = TableType.from_dict(original_dict)
         result_dict = schema.to_dict()
 
         assert result_dict == original_dict
 
     def test_string_representation(self):
         """Test string representation."""
-        schema = RelationType.from_dict({"id": INT64, "value": FLOAT32})
+        schema = TableType.from_dict({"id": INT64, "value": FLOAT32})
 
         repr_str = repr(schema)
-        assert "RelationType<" in repr_str
+        assert "TableType<" in repr_str
         assert "id:i64" in repr_str
         assert "value:f32" in repr_str
 
-    def test_relation_only_types(self):
-        """Test schemas with relation-only data types."""
-        schema = RelationType.from_dict({
+    def test_table_only_types(self):
+        """Test schemas with table-only data types."""
+        schema = TableType.from_dict({
             "name": STRING,
             "birth_date": DATE,
             "metadata": JSON,
@@ -109,29 +109,29 @@ class TestRelationType:
     def test_validation(self):
         """Test schema validation."""
         # Test empty schema
-        with pytest.raises(ValueError, match="RelationType cannot be empty"):
-            RelationType(())
+        with pytest.raises(ValueError, match="TableType cannot be empty"):
+            TableType(())
 
         # Test duplicate column names
         with pytest.raises(ValueError, match="Column names must be unique"):
-            RelationType((("id", INT64), ("id", FLOAT32)))
+            TableType((("id", INT64), ("id", FLOAT32)))
 
         # Test invalid column names
         with pytest.raises(ValueError, match="Column names must be non-empty strings"):
-            RelationType((("", INT64),))
+            TableType((("", INT64),))
 
         # Invalid type should be caught by validation
         with pytest.raises(ValueError, match="Column names must be non-empty strings"):
             # This will be caught by __post_init__ validation
-            schema = RelationType.__new__(RelationType)
+            schema = TableType.__new__(TableType)
             object.__setattr__(schema, "columns", ((None, INT64),))
             schema.__post_init__()
 
     def test_equality(self):
         """Test schema equality."""
-        schema1 = RelationType.from_dict({"id": INT64, "value": FLOAT32})
-        schema2 = RelationType.from_dict({"id": INT64, "value": FLOAT32})
-        schema3 = RelationType.from_dict({"id": INT32, "value": FLOAT32})
+        schema1 = TableType.from_dict({"id": INT64, "value": FLOAT32})
+        schema2 = TableType.from_dict({"id": INT64, "value": FLOAT32})
+        schema3 = TableType.from_dict({"id": INT32, "value": FLOAT32})
 
         assert schema1 == schema2
         assert schema1 != schema3
@@ -139,11 +139,11 @@ class TestRelationType:
         assert hash(schema1) != hash(schema3)
 
 
-class TestRelationLike:
-    """Test RelationLike protocol functionality."""
+class TestTableLike:
+    """Test TableLike protocol functionality."""
 
     def test_mock_dataframe_satisfies_protocol(self):
-        """Test that a mock DataFrame object satisfies RelationLike protocol."""
+        """Test that a mock DataFrame object satisfies TableLike protocol."""
 
         class MockDataFrame:
             """Mock DataFrame-like object with dtypes and columns."""
@@ -155,7 +155,7 @@ class TestRelationLike:
         mock_df = MockDataFrame()
 
         # Test protocol satisfaction
-        assert isinstance(mock_df, RelationLike)
+        assert isinstance(mock_df, TableLike)
 
         # Test attribute access
         assert hasattr(mock_df, "dtypes")
@@ -177,7 +177,7 @@ class TestRelationLike:
             })
 
             # Test protocol satisfaction
-            assert isinstance(df, RelationLike)
+            assert isinstance(df, TableLike)
 
             # Test attribute access
             assert hasattr(df, "dtypes")
@@ -193,8 +193,8 @@ class TestRelationLike:
         except ImportError:
             pytest.skip("pandas not available")
 
-    def test_protocol_with_custom_relation_object(self):
-        """Test protocol with a custom relation-like object."""
+    def test_protocol_with_custom_table_object(self):
+        """Test protocol with a custom table-like object."""
 
         class CustomTable:
             """Custom table implementation."""
@@ -210,14 +210,14 @@ class TestRelationLike:
         table = CustomTable()
 
         # Test protocol satisfaction
-        assert isinstance(table, RelationLike)
+        assert isinstance(table, TableLike)
 
         # Test property access
         assert table.dtypes == {"col1": "int32", "col2": "string"}
         assert table.columns == ["col1", "col2"]
 
-    def test_protocol_rejection_of_non_relation_objects(self):
-        """Test that non-relation objects are correctly rejected."""
+    def test_protocol_rejection_of_non_table_objects(self):
+        """Test that non-table objects are correctly rejected."""
 
         # Test objects without required attributes
         class NoAttributes:
@@ -236,29 +236,29 @@ class TestRelationLike:
                 self.columns = []
 
         # Test regular objects
-        assert not isinstance(42, RelationLike)
-        assert not isinstance("string", RelationLike)
-        assert not isinstance([], RelationLike)
-        assert not isinstance({}, RelationLike)
+        assert not isinstance(42, TableLike)
+        assert not isinstance("string", TableLike)
+        assert not isinstance([], TableLike)
+        assert not isinstance({}, TableLike)
 
         # Test objects with partial implementation
-        assert not isinstance(NoAttributes(), RelationLike)
-        assert not isinstance(OnlyDtypes(), RelationLike)
-        assert not isinstance(OnlyColumns(), RelationLike)
+        assert not isinstance(NoAttributes(), TableLike)
+        assert not isinstance(OnlyDtypes(), TableLike)
+        assert not isinstance(OnlyColumns(), TableLike)
 
     def test_protocol_with_minimal_implementation(self):
         """Test protocol with minimal required implementation."""
 
-        class MinimalRelation:
+        class MinimalTable:
             """Minimal implementation with just required attributes."""
 
             dtypes = None
             columns = None
 
-        minimal = MinimalRelation()
+        minimal = MinimalTable()
 
         # Even with None values, protocol should be satisfied
-        assert isinstance(minimal, RelationLike)
+        assert isinstance(minimal, TableLike)
         assert hasattr(minimal, "dtypes")
         assert hasattr(minimal, "columns")
 
@@ -271,14 +271,14 @@ class TestRelationLike:
         table = DynamicTable()
 
         # Initially should not satisfy protocol
-        assert not isinstance(table, RelationLike)
+        assert not isinstance(table, TableLike)
 
         # Add required attributes dynamically
         table.dtypes = {"col": "int"}
         table.columns = ["col"]
 
         # Now should satisfy protocol
-        assert isinstance(table, RelationLike)
+        assert isinstance(table, TableLike)
 
     def test_protocol_with_property_implementation(self):
         """Test protocol with property-based implementation."""
@@ -301,7 +301,7 @@ class TestRelationLike:
         table = PropertyTable()
 
         # Test protocol satisfaction
-        assert isinstance(table, RelationLike)
+        assert isinstance(table, PropertyTable)
 
         # Test that properties work correctly
         assert table.dtypes == {"a": "float", "b": "int"}
@@ -323,7 +323,7 @@ class TestRelationLike:
 
         # This SHOULD satisfy the protocol since Python protocol checking
         # only looks for attribute existence, not whether they're properties vs methods
-        assert isinstance(table, RelationLike)
+        assert isinstance(table, TableLike)
 
         # However, accessing them as attributes will return method objects
         assert callable(table.dtypes)

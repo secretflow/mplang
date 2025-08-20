@@ -23,7 +23,7 @@ from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType, TensorType
 from mplang.core.pfunc import PFunction
-from mplang.core.relation import RelationType
+from mplang.core.table import TableType
 from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (
     AccessExpr,
@@ -61,7 +61,7 @@ DTYPE_MAPPING = {
     np.complex128: mpir_pb2.DataType.COMPLEX128,
 }
 
-# Additional mapping for relation-only DType constants
+# Additional mapping for table-only DType constants
 DTYPE_TO_PROTO_MAPPING = {
     # Map DType constants to protobuf enums
     STRING: mpir_pb2.DataType.STRING,
@@ -76,7 +76,7 @@ def dtype_to_proto(dtype_like: Any) -> Any:
     """Convert dtype (DType, NumPy dtype, or type) to protobuf DataType."""
     # If it's already a DType, check for direct mapping first
     if isinstance(dtype_like, DType):
-        # Check for relation-only types first
+        # Check for table-only types first
         if dtype_like in DTYPE_TO_PROTO_MAPPING:
             return DTYPE_TO_PROTO_MAPPING[dtype_like]
 
@@ -85,9 +85,9 @@ def dtype_to_proto(dtype_like: Any) -> Any:
             numpy_dtype = dtype_like.to_numpy()
             key_type = numpy_dtype.type
         except ValueError:
-            # Handle relation-only types that can't be converted to numpy
+            # Handle table-only types that can't be converted to numpy
             raise ValueError(
-                f"Unsupported dtype for proto conversion: {dtype_like}. This is likely a relation-only type that cannot be converted to a numpy dtype. Please ensure the dtype is supported for proto conversion."
+                f"Unsupported dtype for proto conversion: {dtype_like}. This is likely a table-only type that cannot be converted to a numpy dtype. Please ensure the dtype is supported for proto conversion."
             ) from None
     else:
         # Handle NumPy dtypes and other types
@@ -109,7 +109,7 @@ def dtype_to_proto(dtype_like: Any) -> Any:
 
 def proto_to_dtype(dtype_enum: int) -> DType:
     """Convert protobuf DataType enum to DType."""
-    # Check for relation-only types first
+    # Check for table-only types first
     for dtype_obj, proto_enum in DTYPE_TO_PROTO_MAPPING.items():
         if proto_enum == dtype_enum:
             return dtype_obj
@@ -122,7 +122,7 @@ def proto_to_dtype(dtype_enum: int) -> DType:
 
             # Special handling for string types since DType.from_numpy doesn't support them
             if np_dtype.kind == "U":  # Unicode string
-                # Return the STRING constant for relation-only string types
+                # Return the STRING constant for table-only string types
                 return STRING
             else:
                 return DType.from_numpy(np_dtype)
@@ -248,7 +248,7 @@ class Writer(ExprVisitor):
                 tensor_type = out_proto.tensor_type
                 tensor_type.dtype = dtype_to_proto(out_info.dtype)
                 tensor_type.shape_dims.extend(list(out_info.shape))
-            elif out_info.is_relation:
+            elif out_info.is_table:
                 # Handle table type
                 table_type = out_proto.table_type
                 for col_name, col_dtype in out_info.schema.columns:
@@ -759,8 +759,8 @@ class Reader:
                 col_dtype = proto_to_dtype(column_proto.dtype)
                 columns.append((col_name, col_dtype))
 
-            relation_type = RelationType(tuple(columns))
-            return MPType(relation_type, pmask, attrs)
+            table_type = TableType(tuple(columns))
+            return MPType(table_type, pmask, attrs)
 
         else:
             raise ValueError(

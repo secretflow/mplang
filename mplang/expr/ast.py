@@ -30,7 +30,7 @@ from mplang.core.dtype import UINT64
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType, Rank, TensorType
 from mplang.core.pfunc import PFunction
-from mplang.core.relation import RelationType
+from mplang.core.table import TableType
 from mplang.expr.utils import deduce_mask
 
 if TYPE_CHECKING:
@@ -232,9 +232,9 @@ class EvalExpr(Expr):
                 result_types.append(
                     MPType.tensor(out_info.dtype, out_info.shape, effective_pmask)
                 )
-            elif isinstance(out_info, RelationType):
-                # Relation type
-                result_types.append(MPType.relation(out_info, effective_pmask))
+            elif isinstance(out_info, TableType):
+                # Table type
+                result_types.append(MPType.table(out_info, effective_pmask))
             else:
                 raise TypeError(f"Unsupported output type: {type(out_info)}")
         return result_types

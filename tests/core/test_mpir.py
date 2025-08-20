@@ -719,16 +719,16 @@ class TestEdgeCases:
         """Test MPTypeProto serialization/deserialization with dynamic pmask (None)."""
         from mplang.core.dtype import INT64, STRING
         from mplang.core.mpir import Reader, Writer
-        from mplang.core.relation import RelationType
+        from mplang.core.table import TableType
         from mplang.expr.ast import VariableExpr
 
-        # Create relation type with dynamic pmask (None)
-        schema = RelationType.from_dict({
+        # Create table type with dynamic pmask (None)
+        schema = TableType.from_dict({
             "id": INT64,
             "name": STRING,
         })
 
-        original_mptype = MPType.relation(schema, pmask=None)  # Dynamic pmask
+        original_mptype = MPType.table(schema, pmask=None)  # Dynamic pmask
         var_expr = VariableExpr("test_dynamic", original_mptype)
 
         # Serialize and deserialize
@@ -744,7 +744,7 @@ class TestEdgeCases:
 
         # Check that the dynamic pmask is preserved
         recovered_mptype = deserialized_expr.mptype
-        assert recovered_mptype.is_relation
+        assert recovered_mptype.is_table
         assert recovered_mptype.pmask is None  # Should be None for dynamic mask
         assert recovered_mptype.schema.num_columns() == 2
 
@@ -1093,21 +1093,21 @@ class TestRelationTypeSupport:
     def test_mptype_with_table_type(self):
         """Test MPType integration with RelationType (table type in proto)."""
         from mplang.core.dtype import DATE, INT64, STRING
-        from mplang.core.relation import RelationType
+        from mplang.core.table import TableType
 
-        # Create relation type
-        schema = RelationType.from_dict({
+        # Create table type
+        schema = TableType.from_dict({
             "user_id": INT64,
             "username": STRING,
             "signup_date": DATE,
         })
 
-        # Create MPType with relation
+        # Create MPType with table
         pmask = Mask(0b1101)  # parties 0, 2, 3
-        mptype = MPType.relation(schema, pmask)
+        mptype = MPType.table(schema, pmask)
 
         # Verify properties
-        assert mptype.is_relation
+        assert mptype.is_table
         assert not mptype.is_tensor
         assert mptype.schema == schema
         assert mptype.pmask == pmask
@@ -1125,11 +1125,11 @@ class TestRelationTypeSupport:
         """Test full round-trip conversion between MPType and MPTypeProto."""
         from mplang.core.dtype import INT64, JSON, STRING, TIMESTAMP
         from mplang.core.mpir import Reader, Writer
-        from mplang.core.relation import RelationType
+        from mplang.core.table import TableType
         from mplang.expr.ast import VariableExpr
 
-        # Create complex relation type
-        schema = RelationType.from_dict({
+        # Create complex table type
+        schema = TableType.from_dict({
             "id": INT64,
             "name": STRING,
             "created_at": TIMESTAMP,
@@ -1137,10 +1137,10 @@ class TestRelationTypeSupport:
         })
 
         pmask = Mask(0b11110000)  # parties 4, 5, 6, 7
-        original_mptype = MPType.relation(schema, pmask)
+        original_mptype = MPType.table(schema, pmask)
 
-        # Create a simple expression with relation type
-        var_expr = VariableExpr("test_relation", original_mptype)
+        # Create a simple expression with table type
+        var_expr = VariableExpr("test_table", original_mptype)
 
         # Serialize and deserialize
         writer = Writer()
@@ -1151,12 +1151,12 @@ class TestRelationTypeSupport:
 
         # Verify - the deserialized expression should be a VariableExpr
         assert isinstance(deserialized_expr, VariableExpr)
-        assert deserialized_expr.name == "test_relation"
+        assert deserialized_expr.name == "test_table"
 
         # Check the type
         recovered_mptype = deserialized_expr.mptype
 
-        assert recovered_mptype.is_relation
+        assert recovered_mptype.is_table
         assert recovered_mptype.pmask == pmask
         assert recovered_mptype.schema.num_columns() == 4
 

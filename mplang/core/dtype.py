@@ -67,7 +67,7 @@ class DType:
     is_signed: bool | None = None  # None for non-numeric types
     is_floating: bool = False
     is_complex: bool = False
-    is_relation_only: bool = False  # True for types only supported in relations
+    is_table_only: bool = False  # True for types only supported in tables
 
     def __post_init__(self) -> None:
         # Validate the dtype configuration
@@ -101,7 +101,7 @@ class DType:
             "float64": "f64",
             "complex64": "c64",
             "complex128": "c128",
-            # Relation-only types
+            # Table-only types
             "string": "str",
             "date": "date",
             "time": "time",
@@ -130,9 +130,7 @@ class DType:
             return cls(name, np_dtype.itemsize * 8, True, True, True)
         elif np_dtype.kind in ("U", "S"):  # unicode or byte string
             # For string types, bitwidth represents the maximum number of bytes per element (i.e., np_dtype.itemsize)
-            return cls(
-                name, np_dtype.itemsize, None, False, False, True
-            )  # relation-only
+            return cls(name, np_dtype.itemsize, None, False, False, True)  # table-only
         else:
             raise ValueError(f"Unsupported NumPy dtype kind: {np_dtype.kind}")
 
@@ -231,7 +229,7 @@ FLOAT64 = DType("float64", 64, True, True, False)
 COMPLEX64 = DType("complex64", 64, True, True, True)
 COMPLEX128 = DType("complex128", 128, True, True, True)
 
-# Relation-only types (marked with is_relation_only=True)
+# Table-only types (marked with is_table_only=True)
 STRING = DType("string", 0, None, False, False, True)  # Variable length string
 DATE = DType("date", 32, None, False, False, True)  # Date only
 TIME = DType("time", 32, None, False, False, True)  # Time only

@@ -106,7 +106,21 @@ class RankExpr(Expr):
 
 class ConstExpr(Expr):
     """Expression for constant tensor creation."""
+    """
+    Expression for constant tensor creation.
 
+    Parameters
+    ----------
+    typ : TensorType
+        The type of the tensor to create.
+    data_bytes : bytes
+        The raw bytes representing the tensor data.
+    pmask : Mask or None
+        The party mask indicating which parties can access the constant.
+        If None, a dynamic party mask is used, meaning the set of parties
+        with access is determined at runtime. This can affect visibility
+        and security properties of the constant tensor.
+    """
     def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask | None):
         super().__init__()
         self.typ = typ

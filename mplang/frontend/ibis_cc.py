@@ -81,7 +81,7 @@ def ibis_compile(
 
     normalized_fn, in_vars = normalize_fn(func, args, kwargs, is_variable)
 
-    in_args, in_schemas, in_names = [], [], [], []
+    in_args, in_schemas, in_names = [], [], []
     idx = 0
     for arg in in_vars:
         columns = [(p[0], p[1].to_numpy()) for p in arg.schema.columns]

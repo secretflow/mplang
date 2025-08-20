@@ -106,6 +106,7 @@ class RankExpr(Expr):
 
 class ConstExpr(Expr):
     """Expression for constant tensor creation."""
+
     """
     Expression for constant tensor creation.
 
@@ -121,6 +122,7 @@ class ConstExpr(Expr):
         with access is determined at runtime. This can affect visibility
         and security properties of the constant tensor.
     """
+
     def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask | None):
         super().__init__()
         self.typ = typ
@@ -137,6 +139,7 @@ class ConstExpr(Expr):
 
 class RandExpr(Expr):
     """Expression for private random tensor generation."""
+
     """
     Expression for private random tensor generation.
 
@@ -155,6 +158,7 @@ class RandExpr(Expr):
     The use of `None` for `pmask` is intended for cases where the set of parties is not
     known statically. Callers should ensure that this is appropriate for their use case.
     """
+
     def __init__(self, typ: TensorType, pmask: Mask | None):
         super().__init__()
         if typ.dtype != UINT64:

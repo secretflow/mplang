@@ -107,7 +107,7 @@ class RankExpr(Expr):
 class ConstExpr(Expr):
     """Expression for constant tensor creation."""
 
-    def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask):
+    def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask | None):
         super().__init__()
         self.typ = typ
         self.data_bytes = data_bytes
@@ -124,7 +124,7 @@ class ConstExpr(Expr):
 class RandExpr(Expr):
     """Expression for private random tensor generation."""
 
-    def __init__(self, typ: TensorType, pmask: Mask):
+    def __init__(self, typ: TensorType, pmask: Mask | None):
         super().__init__()
         if typ.dtype != UINT64:
             # TODO: Only U64 is supported for now.

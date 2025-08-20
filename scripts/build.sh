@@ -24,6 +24,8 @@ mkdir -p "${OUTPUT_DIR}"
 
 # FIXME(jint): I can not pass build without manually setting the site-packages path
 SITE_PACKAGES_PATH=$(python -c "import site; print(site.getsitepackages()[0])")
+
+# Generate executor.proto with proper Python package path
 python -m grpc_tools.protoc -I"${PROTO_DIR}" \
   -I"${SITE_PACKAGES_PATH}" \
   --python_out="${OUTPUT_DIR}"  \
@@ -32,8 +34,15 @@ python -m grpc_tools.protoc -I"${PROTO_DIR}" \
   --mypy_grpc_out="${OUTPUT_DIR}" \
   "${PROTO_DIR}"/executor.proto
 
+# Generate mpir.proto with proper Python package path
 python -m grpc_tools.protoc -I"${PROTO_DIR}" \
   -I"${SITE_PACKAGES_PATH}" \
   --python_out="${OUTPUT_DIR}"  \
   --mypy_out="${OUTPUT_DIR}" \
   "${PROTO_DIR}"/mpir.proto
+
+# Fix the import issue in generated grpc files
+# Replace absolute imports with relative imports
+if [ -f "${OUTPUT_DIR}/executor_pb2_grpc.py" ]; then
+    sed -i 's/import executor_pb2 as executor__pb2/from . import executor_pb2 as executor__pb2/g' "${OUTPUT_DIR}/executor_pb2_grpc.py"
+fi

@@ -18,7 +18,7 @@ limitations under the License.
 
 import abc
 import collections.abc
-from . import executor_pb2
+import executor_pb2
 import google.protobuf.empty_pb2
 import grpc
 import grpc.aio

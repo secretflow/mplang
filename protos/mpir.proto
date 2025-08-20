@@ -54,30 +54,52 @@ message FuncProto {
   map<string, AttrProto> attrs = 5; // Function attributes
 }
 
-message MPTypeProto {
-  enum DataType {
-    UNDEFINED = 0;
-    U8 = 1;          // uint8_t
-    I8 = 2;          // int8_t
-    U16 = 3;         // uint16_t
-    I16 = 4;         // int16_t
-    U32 = 5;         // uint32_t
-    I32 = 6;         // int32_t
-    U64 = 7;         // uint64_t
-    I64 = 8;         // int64_t
-    F16 = 9;         // float16
-    F32 = 10;        // float32
-    F64 = 11;        // double
-    STRING = 12;     // string
-    BOOL = 13;       // bool
-    COMPLEX64 = 14;  // complex with float32 real and imaginary components
-    COMPLEX128 = 15; // complex with float64 real and imaginary components
-    BFLOAT16 = 16;
+// Data type enumeration
+enum DataType {
+  UNDEFINED = 0;
+  U8 = 1;          // uint8_t
+  I8 = 2;          // int8_t
+  U16 = 3;         // uint16_t
+  I16 = 4;         // int16_t
+  U32 = 5;         // uint32_t
+  I32 = 6;         // int32_t
+  U64 = 7;         // uint64_t
+  I64 = 8;         // int64_t
+  F16 = 9;         // float16
+  F32 = 10;        // float32
+  F64 = 11;        // double
+  STRING = 12;     // string (table only)
+  BOOL = 13;       // bool
+  COMPLEX64 = 14;  // complex with float32 real and imaginary components
+  COMPLEX128 = 15; // complex with float64 real and imaginary components
+  BFLOAT16 = 16;   // bfloat16
+  DATE = 17;       // date (table only)
+  TIME = 18;       // time (table only)
+  TIMESTAMP = 19;  // timestamp (table only)
+  JSON = 20;       // json (table only)
+}
+
+message TensorTypeProto {
+  DataType dtype = 1;
+  repeated int64 shape_dims = 2;
+}
+
+message TableTypeProto {
+  message Column {
+    string name = 1;
+    DataType dtype = 2;
   }
 
-  DataType dtype = 1;               // data type
-  repeated int64 shape_dims = 2;    // shape
-  bytes pmask = 3;                  // party mask
+  repeated Column columns = 1;
+}
+
+message MPTypeProto {
+  oneof type_spec {
+    TensorTypeProto tensor_type = 1;
+    TableTypeProto table_type = 2;
+  }
+
+  int64 pmask = 3; // party mask (-1 for dynamic mask, >=0 for static mask)
   map<string, AttrProto> attrs = 4; // attributes
 }
 

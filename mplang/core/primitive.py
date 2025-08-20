@@ -35,7 +35,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike, TensorType
 from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, TableType
+from mplang.core.table import TableLike, dataframe_to_table_constant
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
     AccessExpr,
@@ -242,29 +242,10 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
             import pandas as pd
 
             if isinstance(data, pd.DataFrame):
-                # Convert DataFrame to JSON for serialization
+                # Convert DataFrame using helper function
                 # NOTE: constant primitive is not designed for large tables - use dedicated
                 # table loading mechanisms for substantial datasets
-                json_str = data.to_json(orient="records")
-                json_bytes = json_str.encode("utf-8")
-
-                # Create table type from DataFrame schema
-                from mplang.core.dtype import STRING, DType
-
-                schema_dict = {}
-                for col_name in data.columns:
-                    pandas_dtype = data[col_name].dtype
-                    # Convert pandas dtype to DType
-                    if pandas_dtype.kind in ("O", "U", "S"):  # object, unicode, string
-                        schema_dict[col_name] = (
-                            DType.from_numpy(pandas_dtype)
-                            if pandas_dtype.kind != "O"
-                            else STRING
-                        )
-                    else:
-                        schema_dict[col_name] = DType.from_numpy(pandas_dtype)
-
-                table_type = TableType.from_dict(schema_dict)
+                table_type, json_bytes = dataframe_to_table_constant(data)
                 ctx = _tracer()
 
                 # Reuse ConstExpr with table type and JSON serialized data

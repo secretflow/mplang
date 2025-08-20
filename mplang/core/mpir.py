@@ -493,7 +493,7 @@ class Reader:
         """Create an Expression from a NodeProto."""
         if node_proto.op_type == "rank":
             # Parse pmask from output info
-            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
+            pmask: Mask = Mask.from_ranks(0)  # Default to party 0 if no pmask
             if node_proto.outs_info:
                 pmask_int = node_proto.outs_info[0].pmask
                 if pmask_int >= 0:
@@ -517,10 +517,10 @@ class Reader:
                 shape = tuple(tensor_type_proto.shape_dims)
                 # pmask is now int64, -1 means dynamic mask (None)
                 pmask_int = out_info.pmask
-                pmask = None if pmask_int == -1 else Mask(pmask_int)
+                const_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
 
                 tensor_info = TensorType(dtype, shape)
-                return ConstExpr(tensor_info, data_bytes, pmask)
+                return ConstExpr(tensor_info, data_bytes, const_pmask)
             else:
                 raise ValueError("Const node currently only supports tensor types")
 
@@ -537,10 +537,10 @@ class Reader:
                 shape = tuple(tensor_type_proto.shape_dims)
                 # pmask is now int64, -1 means dynamic mask (None)
                 pmask_int = out_info.pmask
-                pmask = None if pmask_int == -1 else Mask(pmask_int)
+                rand_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
 
                 tensor_info = TensorType(dtype, shape)
-                return RandExpr(tensor_info, pmask)
+                return RandExpr(tensor_info, rand_pmask)
             else:
                 raise ValueError("Rand node currently only supports tensor types")
 

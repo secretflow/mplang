@@ -46,3 +46,6 @@ python -m grpc_tools.protoc -I"${PROTO_DIR}" \
 if [ -f "${OUTPUT_DIR}/executor_pb2_grpc.py" ]; then
     sed -i 's/import executor_pb2 as executor__pb2/from . import executor_pb2 as executor__pb2/g' "${OUTPUT_DIR}/executor_pb2_grpc.py"
 fi
+if [ -f "${OUTPUT_DIR}/executor_pb2_grpc.pyi" ]; then
+    sed -i 's/^import executor_pb2/from . import executor_pb2/' "${OUTPUT_DIR}/executor_pb2_grpc.pyi"
+fi

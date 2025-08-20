@@ -174,7 +174,7 @@ class TableType:
             raise TypeError(f"Index must be int or str, got {type(index)}")
 
 
-def dataframe_to_table_constant(data) -> tuple[TableType, bytes]:
+def dataframe_to_table_constant(data: Any) -> tuple[TableType, bytes]:
     """Convert pandas DataFrame to TableType and JSON serialized bytes.
 
     This helper function converts a pandas DataFrame to the format needed for

@@ -87,7 +87,7 @@ def dtype_to_proto(dtype_like: Any) -> Any:
         except ValueError:
             # Handle relation-only types that can't be converted to numpy
             raise ValueError(
-                f"Unsupported dtype for proto conversion: {dtype_like}"
+                f"Unsupported dtype for proto conversion: {dtype_like}. This is likely a relation-only type that cannot be converted to a numpy dtype. Please ensure the dtype is supported for proto conversion."
             ) from None
     else:
         # Handle NumPy dtypes and other types

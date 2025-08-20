@@ -105,25 +105,34 @@ class RankExpr(Expr):
 
 
 class ConstExpr(Expr):
-    """Expression for constant tensor creation."""
+    """Expression for constant tensor or table creation."""
 
     """
-    Expression for constant tensor creation.
+    Expression for constant tensor or table creation.
 
     Parameters
     ----------
-    typ : TensorType
-        The type of the tensor to create.
+    typ : TensorType or TableType
+        The type of the constant data to create.
     data_bytes : bytes
-        The raw bytes representing the tensor data.
+        The raw bytes representing the serialized data.
+        For tensors: binary tensor data.
+        For tables: JSON-serialized table data as UTF-8 bytes.
     pmask : Mask or None
         The party mask indicating which parties can access the constant.
         If None, a dynamic party mask is used, meaning the set of parties
         with access is determined at runtime. This can affect visibility
-        and security properties of the constant tensor.
+        and security properties of the constant data.
+
+    Note:
+        For table constants, JSON serialization is used. The constant primitive
+        is not designed to carry large tables efficiently - use dedicated table
+        loading mechanisms for substantial datasets.
     """
 
-    def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask | None):
+    def __init__(
+        self, typ: TensorType | TableType, data_bytes: bytes, pmask: Mask | None
+    ):
         super().__init__()
         self.typ = typ
         self.data_bytes = data_bytes
@@ -131,7 +140,12 @@ class ConstExpr(Expr):
 
     def _compute_mptypes(self) -> list[MPType]:
         # Constants are public and available to all parties.
-        return [MPType.tensor(self.typ.dtype, self.typ.shape, self.pmask)]
+        if isinstance(self.typ, TensorType):
+            return [MPType.tensor(self.typ.dtype, self.typ.shape, self.pmask)]
+        elif isinstance(self.typ, TableType):
+            return [MPType.table(self.typ, self.pmask)]
+        else:
+            raise TypeError(f"Unsupported type for ConstExpr: {type(self.typ)}")
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_const(self)

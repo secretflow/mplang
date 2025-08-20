@@ -35,6 +35,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike, TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.table import TableLike, TableType
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
     AccessExpr,
@@ -204,10 +205,10 @@ def prand(shape: Shape = ()) -> MPObject:
 
 
 @primitive
-def constant(data: TensorLike | ScalarType) -> MPObject:
-    """Create a constant tensor from tensor data or scalar value.
+def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
+    """Create a constant tensor or table from data.
 
-    This function creates a constant tensor that can be used in multi-party
+    This function creates a constant that can be used in multi-party
     computations. The constant value is embedded directly into the computation
     graph and is available to all parties in the current party mask.
 
@@ -215,19 +216,69 @@ def constant(data: TensorLike | ScalarType) -> MPObject:
         data: The constant data to embed. Can be:
               - A scalar value (int, float, bool)
               - A numpy array or other tensor-like object
+              - A pandas DataFrame or other table-like object
               - Any object that can be converted to tensor
 
     Returns:
-        MPObject: A variable representing the constant tensor with:
+        MPObject: A variable representing the constant tensor or table with:
                   - dtype: Inferred from the input data
-                  - shape: Inferred from the input data
+                  - shape: Inferred from the input data (for tensors)
+                  - schema: Inferred from the input data (for tables)
                   - data: The embedded constant values
 
     Note:
         The constant data is embedded at graph construction time and is available
         to all parties during execution. Large constants may impact graph size.
+
+        For table-like objects (e.g., pandas DataFrame), JSON serialization is used.
+        Note that the constant primitive is not designed to carry large tables efficiently -
+        consider using dedicated table loading mechanisms for substantial datasets.
     """
     import numpy as np
+
+    # Check if it's a table-like object first
+    if isinstance(data, TableLike):
+        try:
+            import pandas as pd
+
+            if isinstance(data, pd.DataFrame):
+                # Convert DataFrame to JSON for serialization
+                # NOTE: constant primitive is not designed for large tables - use dedicated
+                # table loading mechanisms for substantial datasets
+                json_str = data.to_json(orient="records")
+                json_bytes = json_str.encode("utf-8")
+
+                # Create table type from DataFrame schema
+                from mplang.core.dtype import STRING, DType
+
+                schema_dict = {}
+                for col_name in data.columns:
+                    pandas_dtype = data[col_name].dtype
+                    # Convert pandas dtype to DType
+                    if pandas_dtype.kind in ("O", "U", "S"):  # object, unicode, string
+                        schema_dict[col_name] = (
+                            DType.from_numpy(pandas_dtype)
+                            if pandas_dtype.kind != "O"
+                            else STRING
+                        )
+                    else:
+                        schema_dict[col_name] = DType.from_numpy(pandas_dtype)
+
+                table_type = TableType.from_dict(schema_dict)
+                ctx = _tracer()
+
+                # Reuse ConstExpr with table type and JSON serialized data
+                return TraceVar(ctx, ConstExpr(table_type, json_bytes, ctx.mask))
+
+        except ImportError:
+            raise ImportError(
+                "pandas is required for DataFrame constant support"
+            ) from None
+
+        # For other table-like objects
+        raise NotImplementedError(
+            "Table constant support only implemented for pandas DataFrame"
+        )
 
     # Convert data to TensorType + bytes for cacheable pconst
     if isinstance(data, ScalarType):

@@ -180,6 +180,111 @@ class TestBasicPrimitives:
         assert result.mptype.shape == (3,)
         assert result.mptype.dtype == FLOAT32
 
+    def test_constant_dataframe(self, trace_context):
+        """Test constant primitive with pandas DataFrame."""
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        # Create a simple DataFrame for testing
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "name": ["Alice", "Bob", "Charlie"],
+            "score": [95.5, 87.2, 92.8],
+        })
+
+        func = lambda: constant(df)
+        traced_fn = trace(trace_context, func)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+
+        # Check that we get a TraceVar with table type
+        assert len(traced_fn.out_vars) == 1
+        result = traced_fn.out_vars[0]
+        assert isinstance(result, TraceVar)
+
+        # Verify it's a table type
+        from mplang.core.table import TableType
+
+        assert isinstance(result.mptype._type, TableType)
+
+        # Verify the schema is correct
+        table_type = result.mptype._type
+        assert table_type.has_column("id")
+        assert table_type.has_column("name")
+        assert table_type.has_column("score")
+        assert table_type.num_columns() == 3
+
+        # Check expression type
+        from mplang.expr.ast import ConstExpr
+
+        assert isinstance(result.expr, ConstExpr)
+        assert isinstance(result.expr.typ, TableType)
+
+        # Verify JSON serialization was used (data should be bytes)
+        assert isinstance(result.expr.data_bytes, bytes)
+        assert len(result.expr.data_bytes) > 0
+
+    def test_constant_dataframe_empty(self, trace_context):
+        """Test constant primitive with empty pandas DataFrame."""
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        # Create an empty DataFrame with schema
+        df = pd.DataFrame(columns=["id", "name"], dtype=object)
+        df = df.astype({"id": "int64", "name": "string"})
+
+        func = lambda: constant(df)
+        traced_fn = trace(trace_context, func)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+
+        assert len(traced_fn.out_vars) == 1
+        result = traced_fn.out_vars[0]
+        assert isinstance(result, TraceVar)
+
+        # Verify it's a table type with correct schema
+        from mplang.core.table import TableType
+
+        assert isinstance(result.mptype._type, TableType)
+        table_type = result.mptype._type
+        assert table_type.has_column("id")
+        assert table_type.has_column("name")
+        assert table_type.num_columns() == 2
+
+        # Verify JSON serialization
+        assert isinstance(result.expr.data_bytes, bytes)
+        assert len(result.expr.data_bytes) > 0
+
+    def test_constant_dataframe_no_pandas(self, trace_context):
+        """Test that non-pandas TableLike objects raise NotImplementedError."""
+
+        # Create a mock table-like object
+        class MockTable:
+            @property
+            def dtypes(self):
+                return None
+
+            @property
+            def columns(self):
+                return ["col1", "col2"]
+
+        mock_table = MockTable()
+
+        # Verify it's detected as TableLike
+        from mplang.core.table import TableLike
+
+        assert isinstance(mock_table, TableLike)
+
+        func = lambda: constant(mock_table)
+
+        with pytest.raises(
+            NotImplementedError,
+            match="Table constant support only implemented for pandas DataFrame",
+        ):
+            trace(trace_context, func)
+
     def test_pshfl(self, trace_context):
         """Test pshfl primitive."""
 

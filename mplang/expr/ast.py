@@ -123,7 +123,24 @@ class ConstExpr(Expr):
 
 class RandExpr(Expr):
     """Expression for private random tensor generation."""
+    """
+    Expression for private random tensor generation.
 
+    Parameters
+    ----------
+    typ : TensorType
+        The type (shape and dtype) of the tensor to generate.
+    pmask : Mask or None
+        The party mask indicating which parties the random tensor is private to.
+        If `pmask` is `None`, a dynamic party mask will be used, which may be determined
+        at runtime. Using `None` allows for flexibility in specifying the parties involved,
+        but may have implications for security or performance depending on the backend.
+
+    Notes
+    -----
+    The use of `None` for `pmask` is intended for cases where the set of parties is not
+    known statically. Callers should ensure that this is appropriate for their use case.
+    """
     def __init__(self, typ: TensorType, pmask: Mask | None):
         super().__init__()
         if typ.dtype != UINT64:

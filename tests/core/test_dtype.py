@@ -34,7 +34,8 @@ from mplang.core.dtype import (
 )
 from mplang.core.mask import Mask
 from mplang.core.mpir import dtype_to_proto
-from mplang.core.mptype import MPType, TensorType
+from mplang.core.mptype import MPType
+from mplang.core.tensor import TensorType
 
 try:
     import jax.numpy as jnp

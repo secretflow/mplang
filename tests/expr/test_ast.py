@@ -17,7 +17,8 @@ import pytest
 
 from mplang.core.dtype import FLOAT32, INT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank, TensorType
+from mplang.core.mptype import MPType, Rank
+from mplang.core.tensor import TensorType
 from mplang.expr import (
     AccessExpr,
     CallExpr,

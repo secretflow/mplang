@@ -25,7 +25,7 @@ from mplang.core import dtype
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
-from mplang.utils.func_utils import normalize_args
+from mplang.utils.func_utils import normalize_fn
 
 
 def ibis2sql(
@@ -76,14 +76,14 @@ def ibis_compile(
     The func signature must like def foo(t0:ibis.Table, t1:ibis.Table)->ibis.Table
     """
 
-    normal_args = normalize_args(func, args, kwargs)
-    in_args, in_schemas, in_names, in_vars = [], [], [], []
+    def is_variable(arg: Any) -> bool:
+        return isinstance(arg, MPObject)
+
+    normalized_fn, in_vars = normalize_fn(func, args, kwargs, is_variable)
+
+    in_args, in_schemas, in_names = [], [], [], []
     idx = 0
-    for arg in normal_args:
-        if not isinstance(arg, MPObject):
-            in_args.append(arg)
-            continue
-        assert arg.schema
+    for arg in in_vars:
         columns = [(p[0], p[1].to_numpy()) for p in arg.schema.columns]
         schema = ibis.schema(columns)
         name = f"table{idx}"
@@ -91,10 +91,9 @@ def ibis_compile(
         in_args.append(table)
         in_schemas.append(schema)
         in_names.append(name)
-        in_vars.append(arg)
         idx += 1
 
-    result = func(*in_args)
+    result = normalized_fn(*in_args)
     assert isinstance(result, ibis.Table)
     pfunc = ibis2sql(result, in_schemas, in_names, func.__name__)
     _, treedef = jax.tree.flatten(result)

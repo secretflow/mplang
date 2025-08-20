@@ -19,10 +19,11 @@ from typing import Any
 import numpy as np
 import spu.libspu as spu_api
 
-from mplang.core.dtype import DType
+from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType, TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.relation import RelationType
 from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (
     AccessExpr,
@@ -43,30 +44,51 @@ from mplang.protos import mpir_pb2
 
 # Single mapping table for dtype conversion
 DTYPE_MAPPING = {
-    np.float32: mpir_pb2.MPTypeProto.DataType.F32,
-    np.uint8: mpir_pb2.MPTypeProto.DataType.U8,
-    np.int8: mpir_pb2.MPTypeProto.DataType.I8,
-    np.uint16: mpir_pb2.MPTypeProto.DataType.U16,
-    np.int16: mpir_pb2.MPTypeProto.DataType.I16,
-    np.int32: mpir_pb2.MPTypeProto.DataType.I32,
-    np.int64: mpir_pb2.MPTypeProto.DataType.I64,
-    np.str_: mpir_pb2.MPTypeProto.DataType.STRING,
-    np.bool_: mpir_pb2.MPTypeProto.DataType.BOOL,
-    np.float16: mpir_pb2.MPTypeProto.DataType.F16,
-    np.float64: mpir_pb2.MPTypeProto.DataType.F64,
-    np.uint32: mpir_pb2.MPTypeProto.DataType.U32,
-    np.uint64: mpir_pb2.MPTypeProto.DataType.U64,
-    np.complex64: mpir_pb2.MPTypeProto.DataType.COMPLEX64,
-    np.complex128: mpir_pb2.MPTypeProto.DataType.COMPLEX128,
+    np.float32: mpir_pb2.DataType.F32,
+    np.uint8: mpir_pb2.DataType.U8,
+    np.int8: mpir_pb2.DataType.I8,
+    np.uint16: mpir_pb2.DataType.U16,
+    np.int16: mpir_pb2.DataType.I16,
+    np.int32: mpir_pb2.DataType.I32,
+    np.int64: mpir_pb2.DataType.I64,
+    np.str_: mpir_pb2.DataType.STRING,
+    np.bool_: mpir_pb2.DataType.BOOL,
+    np.float16: mpir_pb2.DataType.F16,
+    np.float64: mpir_pb2.DataType.F64,
+    np.uint32: mpir_pb2.DataType.U32,
+    np.uint64: mpir_pb2.DataType.U64,
+    np.complex64: mpir_pb2.DataType.COMPLEX64,
+    np.complex128: mpir_pb2.DataType.COMPLEX128,
+}
+
+# Additional mapping for relation-only DType constants
+DTYPE_TO_PROTO_MAPPING = {
+    # Map DType constants to protobuf enums
+    STRING: mpir_pb2.DataType.STRING,
+    DATE: mpir_pb2.DataType.DATE,
+    TIME: mpir_pb2.DataType.TIME,
+    TIMESTAMP: mpir_pb2.DataType.TIMESTAMP,
+    JSON: mpir_pb2.DataType.JSON,
 }
 
 
 def dtype_to_proto(dtype_like: Any) -> Any:
     """Convert dtype (DType, NumPy dtype, or type) to protobuf DataType."""
-    # If it's already a DType, convert to numpy for protobuf mapping
+    # If it's already a DType, check for direct mapping first
     if isinstance(dtype_like, DType):
-        numpy_dtype = dtype_like.to_numpy()
-        key_type = numpy_dtype.type
+        # Check for relation-only types first
+        if dtype_like in DTYPE_TO_PROTO_MAPPING:
+            return DTYPE_TO_PROTO_MAPPING[dtype_like]
+
+        # For regular types, convert to numpy for protobuf mapping
+        try:
+            numpy_dtype = dtype_like.to_numpy()
+            key_type = numpy_dtype.type
+        except ValueError:
+            # Handle relation-only types that can't be converted to numpy
+            raise ValueError(
+                f"Unsupported dtype for proto conversion: {dtype_like}. This is likely a relation-only type that cannot be converted to a numpy dtype. Please ensure the dtype is supported for proto conversion."
+            ) from None
     else:
         # Handle NumPy dtypes and other types
         try:
@@ -87,6 +109,11 @@ def dtype_to_proto(dtype_like: Any) -> Any:
 
 def proto_to_dtype(dtype_enum: int) -> DType:
     """Convert protobuf DataType enum to DType."""
+    # Check for relation-only types first
+    for dtype_obj, proto_enum in DTYPE_TO_PROTO_MAPPING.items():
+        if proto_enum == dtype_enum:
+            return dtype_obj
+
     # Find the numpy type for the given enum by searching the mapping
     for numpy_type, proto_enum in DTYPE_MAPPING.items():
         if proto_enum == dtype_enum:
@@ -95,8 +122,8 @@ def proto_to_dtype(dtype_enum: int) -> DType:
 
             # Special handling for string types since DType.from_numpy doesn't support them
             if np_dtype.kind == "U":  # Unicode string
-                # Create a string DType manually
-                return DType("str", 0, False, False, False)
+                # Return the STRING constant for relation-only string types
+                return STRING
             else:
                 return DType.from_numpy(np_dtype)
 
@@ -215,10 +242,25 @@ class Writer(ExprVisitor):
         """Helper: Add output type information to a NodeProto."""
         for out_info in expr.mptypes:
             out_proto = op.outs_info.add()
-            out_proto.dtype = dtype_to_proto(out_info.dtype)
-            out_proto.shape_dims.extend(list(out_info.shape))
+
+            if out_info.is_tensor:
+                # Handle tensor type
+                tensor_type = out_proto.tensor_type
+                tensor_type.dtype = dtype_to_proto(out_info.dtype)
+                tensor_type.shape_dims.extend(list(out_info.shape))
+            elif out_info.is_relation:
+                # Handle table type
+                table_type = out_proto.table_type
+                for col_name, col_dtype in out_info.schema.columns:
+                    column = table_type.columns.add()
+                    column.name = col_name
+                    column.dtype = dtype_to_proto(col_dtype)
+
+            # Set pmask (now int64, -1 for dynamic mask)
             if out_info.pmask is not None:
-                out_proto.pmask = out_info.pmask.to_bytes(8, byteorder="big")
+                out_proto.pmask = int(out_info.pmask)
+            else:
+                out_proto.pmask = -1  # Dynamic mask
 
     def _add_expr_inputs(self, op: mpir_pb2.NodeProto, *exprs: Expr) -> None:
         """Helper: Add expression inputs to NodeProto."""
@@ -451,11 +493,12 @@ class Reader:
         """Create an Expression from a NodeProto."""
         if node_proto.op_type == "rank":
             # Parse pmask from output info
-            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
+            pmask: Mask = Mask.from_ranks(0)  # Default to party 0 if no pmask
             if node_proto.outs_info:
-                pmask_bytes = node_proto.outs_info[0].pmask
-                if pmask_bytes:
-                    pmask = Mask.from_bytes(pmask_bytes, byteorder="big")
+                pmask_int = node_proto.outs_info[0].pmask
+                if pmask_int >= 0:
+                    pmask = Mask(pmask_int)
+                # If pmask_int == -1, keep default (this should not happen for rank)
             return RankExpr(pmask)
 
         elif node_proto.op_type == "const":
@@ -466,28 +509,40 @@ class Reader:
             if not node_proto.outs_info:
                 raise ValueError("Const node missing output info")
             out_info = node_proto.outs_info[0]
-            dtype = proto_to_dtype(out_info.dtype)
-            shape = tuple(out_info.shape_dims)
-            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
-            if out_info.pmask:
-                pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
-            tensor_info = TensorType(dtype, shape)
-            return ConstExpr(tensor_info, data_bytes, pmask)
+            # Check if it's tensor type
+            if out_info.HasField("tensor_type"):
+                tensor_type_proto = out_info.tensor_type
+                dtype = proto_to_dtype(tensor_type_proto.dtype)
+                shape = tuple(tensor_type_proto.shape_dims)
+                # pmask is now int64, -1 means dynamic mask (None)
+                pmask_int = out_info.pmask
+                const_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
+
+                tensor_info = TensorType(dtype, shape)
+                return ConstExpr(tensor_info, data_bytes, const_pmask)
+            else:
+                raise ValueError("Const node currently only supports tensor types")
 
         elif node_proto.op_type == "rand":
             # Parse type info from output info
             if not node_proto.outs_info:
                 raise ValueError("Rand node missing output info")
             out_info = node_proto.outs_info[0]
-            dtype = proto_to_dtype(out_info.dtype)
-            shape = tuple(out_info.shape_dims)
-            pmask = Mask.from_ranks(0)  # Default to party 0 if no pmask
-            if out_info.pmask:
-                pmask = Mask.from_bytes(out_info.pmask, byteorder="big")
 
-            tensor_info = TensorType(dtype, shape)
-            return RandExpr(tensor_info, pmask)
+            # Check if it's tensor type
+            if out_info.HasField("tensor_type"):
+                tensor_type_proto = out_info.tensor_type
+                dtype = proto_to_dtype(tensor_type_proto.dtype)
+                shape = tuple(tensor_type_proto.shape_dims)
+                # pmask is now int64, -1 means dynamic mask (None)
+                pmask_int = out_info.pmask
+                rand_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
+
+                tensor_info = TensorType(dtype, shape)
+                return RandExpr(tensor_info, rand_pmask)
+            else:
+                raise ValueError("Rand node currently only supports tensor types")
 
         elif node_proto.op_type == "eval":
             # Parse inputs
@@ -516,9 +571,13 @@ class Reader:
             # outs_info from NodeProto.outs_info
             outs_info = []
             for out_proto in node_proto.outs_info:
-                dtype = proto_to_dtype(out_proto.dtype)
-                shape = tuple(out_proto.shape_dims)
-                outs_info.append(TensorType(dtype, shape))
+                if out_proto.HasField("tensor_type"):
+                    tensor_type_proto = out_proto.tensor_type
+                    dtype = proto_to_dtype(tensor_type_proto.dtype)
+                    shape = tuple(tensor_type_proto.shape_dims)
+                    outs_info.append(TensorType(dtype, shape))
+                else:
+                    raise ValueError("Eval node currently only supports tensor types")
 
             # Create a complete PFunction with proper type information
             complete_pfunc = PFunction(
@@ -674,23 +733,39 @@ class Reader:
 
     def _proto_to_mptype(self, type_proto: mpir_pb2.MPTypeProto) -> MPType:
         """Convert MPTypeProto to MPType."""
-        # Convert datatype
-        dtype = proto_to_dtype(type_proto.dtype)
-
-        # Convert shape
-        shape = tuple(type_proto.shape_dims)
-
-        # Convert pmask
-        pmask = None
-        if type_proto.pmask:
-            pmask = Mask.from_bytes(type_proto.pmask, byteorder="big")
+        # Convert pmask (now int64, -1 means dynamic mask (None))
+        pmask_int = type_proto.pmask
+        pmask = None if pmask_int == -1 else Mask(pmask_int)
 
         # Convert attributes
         attrs = {}
         for attr_name, attr_proto in type_proto.attrs.items():
             attrs[attr_name] = self._proto_to_attr(attr_proto)
 
-        return MPType.tensor(dtype, shape, pmask, **attrs)
+        # Handle tensor type
+        if type_proto.HasField("tensor_type"):
+            tensor_type_proto = type_proto.tensor_type
+            dtype = proto_to_dtype(tensor_type_proto.dtype)
+            shape = tuple(tensor_type_proto.shape_dims)
+            tensor_type = TensorType(dtype, shape)
+            return MPType(tensor_type, pmask, attrs)
+
+        # Handle table type
+        elif type_proto.HasField("table_type"):
+            table_type_proto = type_proto.table_type
+            columns = []
+            for column_proto in table_type_proto.columns:
+                col_name = column_proto.name
+                col_dtype = proto_to_dtype(column_proto.dtype)
+                columns.append((col_name, col_dtype))
+
+            relation_type = RelationType(tuple(columns))
+            return MPType(relation_type, pmask, attrs)
+
+        else:
+            raise ValueError(
+                "MPTypeProto must specify either tensor_type or table_type"
+            )
 
     def _proto_to_attr(self, attr_proto: mpir_pb2.AttrProto) -> Any:
         """Convert AttrProto to Python value."""

@@ -107,7 +107,23 @@ class RankExpr(Expr):
 class ConstExpr(Expr):
     """Expression for constant tensor creation."""
 
-    def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask):
+    """
+    Expression for constant tensor creation.
+
+    Parameters
+    ----------
+    typ : TensorType
+        The type of the tensor to create.
+    data_bytes : bytes
+        The raw bytes representing the tensor data.
+    pmask : Mask or None
+        The party mask indicating which parties can access the constant.
+        If None, a dynamic party mask is used, meaning the set of parties
+        with access is determined at runtime. This can affect visibility
+        and security properties of the constant tensor.
+    """
+
+    def __init__(self, typ: TensorType, data_bytes: bytes, pmask: Mask | None):
         super().__init__()
         self.typ = typ
         self.data_bytes = data_bytes
@@ -124,7 +140,26 @@ class ConstExpr(Expr):
 class RandExpr(Expr):
     """Expression for private random tensor generation."""
 
-    def __init__(self, typ: TensorType, pmask: Mask):
+    """
+    Expression for private random tensor generation.
+
+    Parameters
+    ----------
+    typ : TensorType
+        The type (shape and dtype) of the tensor to generate.
+    pmask : Mask or None
+        The party mask indicating which parties the random tensor is private to.
+        If `pmask` is `None`, a dynamic party mask will be used, which may be determined
+        at runtime. Using `None` allows for flexibility in specifying the parties involved,
+        but may have implications for security or performance depending on the backend.
+
+    Notes
+    -----
+    The use of `None` for `pmask` is intended for cases where the set of parties is not
+    known statically. Callers should ensure that this is appropriate for their use case.
+    """
+
+    def __init__(self, typ: TensorType, pmask: Mask | None):
         super().__init__()
         if typ.dtype != UINT64:
             # TODO: Only U64 is supported for now.

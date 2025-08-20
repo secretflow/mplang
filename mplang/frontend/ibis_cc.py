@@ -93,7 +93,7 @@ def ibis_compile(
         in_names.append(name)
         idx += 1
 
-    result = normalized_fn(*in_args)
+    result = normalized_fn(in_args)
     assert isinstance(result, ibis.Table)
     pfunc = ibis2sql(result, in_schemas, in_names, func.__name__)
     _, treedef = jax.tree.flatten(result)

@@ -19,9 +19,10 @@ from typing import Any
 
 from jax.tree_util import tree_map
 
-from mplang.core.base import Mask, MPContext, MPObject
 from mplang.core.context_mgr import cur_ctx, with_ctx
 from mplang.core.interp import InterpContext
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.trace import TraceContext, TracedFunction, trace
 
 

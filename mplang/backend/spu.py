@@ -21,8 +21,8 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.base import TensorLike
-from mplang.core.pfunc import PFunction, PFunctionHandler
+from mplang.core.mptype import TensorLike
+from mplang.core.pfunc import PFunction, TensorHandler
 from mplang.runtime.grpc_comm import LinkCommunicator
 
 
@@ -62,7 +62,7 @@ class SpuValue:
         return f"SpuValue({self.shape},{self.dtype},{self.vtype})"
 
 
-class SpuHandler(PFunctionHandler):
+class SpuHandler(TensorHandler):
     """SPU (Secure Processing Unit) Handler for secure computation.
 
     Handler for loading and executing SPU functions compiled by SpuFrontend for

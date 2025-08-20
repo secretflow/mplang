@@ -20,7 +20,7 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.backend.spu import SpuHandler, SpuValue
-from mplang.core.base import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.frontend.spu import SpuFE
 from mplang.runtime.grpc_comm import LinkCommunicator
 
@@ -74,8 +74,8 @@ class TestSpuHandler:
             return x + y
 
         args = [
-            TensorInfo(shape=(3,), dtype=jnp.float32),
-            TensorInfo(shape=(3,), dtype=jnp.float32),
+            TensorType(shape=(3,), dtype=jnp.float32),
+            TensorType(shape=(3,), dtype=jnp.float32),
         ]
 
         # Compile the function
@@ -113,8 +113,8 @@ class TestSpuHandler:
             return x + y
 
         args = [
-            TensorInfo(shape=(3,), dtype=jnp.float32),
-            TensorInfo(shape=(3,), dtype=jnp.float32),
+            TensorType(shape=(3,), dtype=jnp.float32),
+            TensorType(shape=(3,), dtype=jnp.float32),
         ]
 
         # Compile the function (this should always work)
@@ -225,8 +225,8 @@ class TestSpuHandler:
             return x + y
 
         args = [
-            TensorInfo(shape=(3,), dtype=jnp.float32),
-            TensorInfo(shape=(3,), dtype=jnp.float32),
+            TensorType(shape=(3,), dtype=jnp.float32),
+            TensorType(shape=(3,), dtype=jnp.float32),
         ]
 
         # Compile the function

@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from mplang.backend.builtin import BuiltinHandler
-from mplang.core.base import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
 
 
@@ -46,8 +46,8 @@ class TestBuiltinHandler:
         # Test identity
         identity_pfunc = PFunction(
             fn_type="builtin.identity",
-            ins_info=(TensorInfo.from_obj(test_data),),
-            outs_info=(TensorInfo.from_obj(test_data),),
+            ins_info=(TensorType.from_obj(test_data),),
+            outs_info=(TensorType.from_obj(test_data),),
             fn_name="Identity",
         )
 
@@ -69,8 +69,8 @@ class TestBuiltinHandler:
             # Test write
             write_pfunc = PFunction(
                 fn_type="builtin.write",
-                ins_info=(TensorInfo.from_obj(test_data),),
-                outs_info=(TensorInfo.from_obj(test_data),),
+                ins_info=(TensorType.from_obj(test_data),),
+                outs_info=(TensorType.from_obj(test_data),),
                 fn_name="Write",
                 path=tmp_path,
             )
@@ -86,7 +86,7 @@ class TestBuiltinHandler:
             read_pfunc = PFunction(
                 fn_type="builtin.read",
                 ins_info=(),
-                outs_info=(TensorInfo.from_obj(test_data),),
+                outs_info=(TensorType.from_obj(test_data),),
                 fn_name="Read",
                 path=tmp_path,
             )
@@ -110,8 +110,8 @@ class TestBuiltinHandler:
 
             write_pfunc = PFunction(
                 fn_type="builtin.write",
-                ins_info=(TensorInfo.from_obj(test_data),),
-                outs_info=(TensorInfo.from_obj(test_data),),
+                ins_info=(TensorType.from_obj(test_data),),
+                outs_info=(TensorType.from_obj(test_data),),
                 fn_name="Write",
                 path=nested_path,
             )
@@ -142,7 +142,7 @@ class TestBuiltinHandler:
                 tmp_path = tmp_file.name
 
             try:
-                tensor_info = TensorInfo.from_obj(test_data)
+                tensor_info = TensorType.from_obj(test_data)
                 write_pfunc = PFunction(
                     fn_type="builtin.write",
                     ins_info=(tensor_info,),
@@ -191,7 +191,7 @@ class TestBuiltinHandler:
         read_pfunc = PFunction(
             fn_type="builtin.read",
             ins_info=(),
-            outs_info=(TensorInfo.from_obj(np.array([1])),),
+            outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
         )
 
@@ -203,7 +203,7 @@ class TestBuiltinHandler:
         read_pfunc = PFunction(
             fn_type="builtin.read",
             ins_info=(),
-            outs_info=(TensorInfo.from_obj(np.array([1])),),
+            outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
             path="dummy.npy",
         )
@@ -216,8 +216,8 @@ class TestBuiltinHandler:
         test_data = np.array([1, 2, 3])
         write_pfunc = PFunction(
             fn_type="builtin.write",
-            ins_info=(TensorInfo.from_obj(test_data),),
-            outs_info=(TensorInfo.from_obj(test_data),),
+            ins_info=(TensorType.from_obj(test_data),),
+            outs_info=(TensorType.from_obj(test_data),),
             fn_name="Write",
         )
 
@@ -247,7 +247,7 @@ class TestBuiltinHandler:
         read_pfunc = PFunction(
             fn_type="builtin.read",
             ins_info=(),
-            outs_info=(TensorInfo.from_obj(np.array([1])),),
+            outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
             path="nonexistent_file.npy",
         )

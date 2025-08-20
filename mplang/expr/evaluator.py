@@ -23,8 +23,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.core.base import Mask
 from mplang.core.comm import ICommunicator
+from mplang.core.mask import Mask
+from mplang.core.mptype import TableType
 from mplang.core.pfunc import PFunction, PFunctionHandler
 from mplang.expr.ast import (
     AccessExpr,
@@ -132,16 +133,25 @@ class Evaluator(ExprVisitor):
         """Evaluate constant expression."""
         import numpy as np
 
-        # Reconstruct the constant value from bytes
-        shape, dtype = expr.typ.shape, expr.typ.dtype.numpy_dtype()
-        if shape == ():
-            # Scalar
-            data = np.frombuffer(expr.data_bytes, dtype=dtype)
-            return [data[0]]  # Return numpy scalar, not Python scalar
+        # Handle different constant types
+        if isinstance(expr.typ, TableType):
+            # For table constants, parse JSON data
+            import json
+
+            table_data = json.loads(expr.data_bytes.decode("utf-8"))
+            return [table_data]
         else:
-            # Tensor
-            data = np.frombuffer(expr.data_bytes, dtype=dtype).reshape(shape)
-            return [data]
+            # Handle tensor constants
+            # Reconstruct the constant value from bytes
+            shape, dtype = expr.typ.shape, expr.typ.dtype.numpy_dtype()
+            if shape == ():
+                # Scalar
+                data = np.frombuffer(expr.data_bytes, dtype=dtype)
+                return [data[0]]  # Return numpy scalar, not Python scalar
+            else:
+                # Tensor
+                data = np.frombuffer(expr.data_bytes, dtype=dtype).reshape(shape)
+                return [data]
 
     def visit_rand(self, expr: RandExpr) -> Any:
         """Evaluate random expression."""

@@ -61,12 +61,9 @@ __all__ = [
     "ConstExpr",
     "ConvExpr",
     "EvalExpr",
-    # Built-in visitors
     "Evaluator",
-    # Core expression types
     "Expr",
     "ExprTransformer",
-    # Visitor pattern
     "ExprVisitor",
     "FuncDefExpr",
     "Printer",
@@ -77,7 +74,6 @@ __all__ = [
     "TupleExpr",
     "VariableExpr",
     "WhileExpr",
-    # Utilities
     "deduce_mask",
     "ensure_scalar",
     "ensure_tensorlist_equal",

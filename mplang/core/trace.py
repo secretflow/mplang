@@ -60,8 +60,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
-from mplang.core.base import Mask, MPContext, MPObject, MPType
 from mplang.core.context_mgr import with_ctx
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPContext, MPObject
+from mplang.core.mptype import MPType
 from mplang.core.pfunc import get_fn_name
 from mplang.expr.ast import Expr, FuncDefExpr, TupleExpr, VariableExpr
 from mplang.expr.printer import Printer

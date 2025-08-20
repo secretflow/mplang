@@ -19,7 +19,9 @@ from functools import partial
 from typing import Any
 
 from mplang.core import primitive as prim
-from mplang.core.base import Mask, MPObject, Rank, ScalarType, Shape, TensorLike
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPObject
+from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
 from mplang.frontend import builtin, jax_cc
 
@@ -70,7 +72,7 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
     Examples:
         Reading data from a file:
 
-        >>> tensor_info = TensorInfo(shape=(10, 10), dtype=np.float32)
+        >>> tensor_info = TensorType(shape=(10, 10), dtype=np.float32)
         >>> attrs = {"format": "binary"}
         >>> result = run_impl(builtin.read, "data/input.bin", tensor_info, attrs)
 

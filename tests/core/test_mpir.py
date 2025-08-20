@@ -16,9 +16,10 @@
 import numpy as np
 import pytest
 
-from mplang.core.base import MPType, TensorInfo
 from mplang.core.dtype import DType
+from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
+from mplang.core.mptype import MPType, TensorType
 from mplang.core.pfunc import PFunction
 from mplang.expr import Expr
 from mplang.expr.ast import (
@@ -44,7 +45,7 @@ class TestBasicExpressions:
 
     def test_rank_expr_roundtrip(self):
         """Test RankExpr roundtrip."""
-        original = RankExpr(pmask=7)
+        original = RankExpr(pmask=Mask(7))
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -57,9 +58,9 @@ class TestBasicExpressions:
 
     def test_const_expr_roundtrip(self):
         """Test ConstExpr roundtrip."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (3,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (3,))
         data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        original = ConstExpr(tensor_info, data.tobytes(), pmask=7)
+        original = ConstExpr(tensor_info, data.tobytes(), pmask=Mask(7))
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -73,9 +74,11 @@ class TestBasicExpressions:
 
     def test_tuple_expr_roundtrip(self):
         """Test TupleExpr roundtrip."""
-        rank_expr = RankExpr(pmask=7)
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        const_expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        rank_expr = RankExpr(pmask=Mask(7))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        const_expr = ConstExpr(
+            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        )
 
         original = TupleExpr([rank_expr, const_expr])
 
@@ -90,9 +93,9 @@ class TestBasicExpressions:
 
     def test_access_expr_roundtrip(self):
         """Test AccessExpr roundtrip."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        elem1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        elem2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        elem1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        elem2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
         tuple_expr = TupleExpr([elem1, elem2])
 
         original = AccessExpr(tuple_expr, 1)
@@ -108,7 +111,7 @@ class TestBasicExpressions:
 
     def test_variable_expr_roundtrip(self):
         """Test VariableExpr roundtrip."""
-        mptype = MPType.tensor(DType.from_numpy(np.float32), (3,), pmask=7)
+        mptype = MPType.tensor(DType.from_numpy(np.float32), (3,), pmask=Mask(7))
         original = VariableExpr("test_var", mptype)
 
         writer = Writer()
@@ -126,9 +129,9 @@ class TestFunctionExpressions:
 
     def test_eval_expr_serialization(self):
         """Test EvalExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (3,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (3,))
         const_expr = ConstExpr(
-            tensor_info, np.array([1.0, 2.0, 3.0]).tobytes(), pmask=7
+            tensor_info, np.array([1.0, 2.0, 3.0]).tobytes(), pmask=Mask(7)
         )
 
         pfunc = PFunction(
@@ -155,8 +158,8 @@ class TestFunctionExpressions:
 
     def test_func_def_expr_serialization(self):
         """Test FuncDefExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
 
         params = ["x", "y"]
         original = FuncDefExpr(params, body)
@@ -186,11 +189,11 @@ class TestUtilityFunctions:
         # Test DType conversion
         dtype = DType.from_numpy(np.float32)
         result = dtype_to_proto(dtype)
-        assert result == mpir_pb2.MPTypeProto.DataType.F32
+        assert result == mpir_pb2.DataType.F32
 
         # Test numpy dtype conversion
         result = dtype_to_proto(np.float32)
-        assert result == mpir_pb2.MPTypeProto.DataType.F32
+        assert result == mpir_pb2.DataType.F32
 
         # Test unsupported dtype
         with pytest.raises(ValueError, match="Invalid dtype"):
@@ -202,7 +205,7 @@ class TestUtilityFunctions:
         from mplang.protos import mpir_pb2
 
         # Test basic conversion
-        result = proto_to_dtype(mpir_pb2.MPTypeProto.DataType.F32)
+        result = proto_to_dtype(mpir_pb2.DataType.F32)
         assert result.name == "float32"
 
         # Test unsupported enum
@@ -274,8 +277,8 @@ class TestComplexExpressions:
         """Test RandExpr roundtrip."""
         from mplang.core.dtype import UINT64
 
-        tensor_info = TensorInfo(UINT64, (3, 3))
-        original = RandExpr(tensor_info, pmask=7)
+        tensor_info = TensorType(UINT64, (3, 3))
+        original = RandExpr(tensor_info, pmask=Mask(7))
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -290,22 +293,26 @@ class TestComplexExpressions:
 
     def test_cond_expr_serialization(self):
         """Test CondExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
         pred = ConstExpr(
-            TensorInfo(DType.from_numpy(np.bool_), ()),
+            TensorType(DType.from_numpy(np.bool_), ()),
             np.array(True).tobytes(),
-            pmask=7,
+            pmask=Mask(7),
         )
 
         # Create simple function bodies for then/else branches
-        then_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        else_body = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        then_body = ConstExpr(
+            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        )
+        else_body = ConstExpr(
+            tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7)
+        )
 
         then_fn = FuncDefExpr([], then_body)
         else_fn = FuncDefExpr([], else_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
         ]
         original = CondExpr(pred, then_fn, else_fn, args)
 
@@ -325,21 +332,23 @@ class TestComplexExpressions:
 
     def test_while_expr_serialization(self):
         """Test WhileExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create simple function bodies for condition and loop body
         cond_body = ConstExpr(
-            TensorInfo(DType.from_numpy(np.bool_), ()),
+            TensorType(DType.from_numpy(np.bool_), ()),
             np.array(True).tobytes(),
-            pmask=7,
+            pmask=Mask(7),
         )
-        loop_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        loop_body = ConstExpr(
+            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        )
 
         cond_fn = FuncDefExpr(["x"], cond_body)
         body_fn = FuncDefExpr(["x"], loop_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
         ]
         original = WhileExpr(cond_fn, body_fn, args)
 
@@ -360,9 +369,11 @@ class TestComplexExpressions:
     def test_conv_expr_serialization(self):
         """Test ConvExpr serialization (write only)."""
         mptype1 = MPType.tensor(
-            DType.from_numpy(np.float32), (2,), pmask=3
+            DType.from_numpy(np.float32), (2,), pmask=Mask(3)
         )  # Party 0 and 1
-        mptype2 = MPType.tensor(DType.from_numpy(np.float32), (2,), pmask=4)  # Party 2
+        mptype2 = MPType.tensor(
+            DType.from_numpy(np.float32), (2,), pmask=Mask(4)
+        )  # Party 2
         var1 = VariableExpr("x", mptype1)
         var2 = VariableExpr("y", mptype2)
 
@@ -382,10 +393,10 @@ class TestComplexExpressions:
 
     def test_shfl_s_expr_serialization(self):
         """Test ShflSExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        src_val = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        src_val = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
 
-        original = ShflSExpr(src_val, pmask=3, src_ranks=[0, 1])
+        original = ShflSExpr(src_val, pmask=Mask(3), src_ranks=[0, 1])
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -403,10 +414,12 @@ class TestComplexExpressions:
 
     def test_shfl_expr_serialization(self):
         """Test ShflExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        src = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        src = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
         index = ConstExpr(
-            TensorInfo(DType.from_numpy(np.int32), ()), np.array(1).tobytes(), pmask=7
+            TensorType(DType.from_numpy(np.int32), ()),
+            np.array(1).tobytes(),
+            pmask=Mask(7),
         )
 
         original = ShflExpr(src, index)
@@ -425,14 +438,14 @@ class TestComplexExpressions:
 
     def test_call_expr_serialization(self):
         """Test CallExpr serialization (write only)."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create function definition
-        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
         fn = FuncDefExpr(["x"], body)
 
         # Create arguments
-        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
 
         original = CallExpr(fn, [arg])
 
@@ -457,8 +470,8 @@ class TestWriterReader:
         writer = Writer()
 
         # Create some expression
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
 
         # Process expression
         writer.dumps(expr)
@@ -475,9 +488,9 @@ class TestWriterReader:
         """Test Writer expression naming."""
         writer = Writer()
 
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
 
         name1 = writer.expr_name(expr1)
         name2 = writer.expr_name(expr2)
@@ -494,9 +507,9 @@ class TestWriterReader:
         """Test Writer value naming for multi-output expressions."""
         writer = Writer()
 
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
         tuple_expr = TupleExpr([expr1, expr2])
 
         # Single output should not have index
@@ -609,12 +622,12 @@ class TestEdgeCases:
 
     def test_complex_nested_structure(self):
         """Test complex nested expression structure."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create nested structure: tuple(const, access(tuple(const, const), 1))
-        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
-        const3 = ConstExpr(tensor_info, np.array([5.0, 6.0]).tobytes(), pmask=7)
+        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
+        const3 = ConstExpr(tensor_info, np.array([5.0, 6.0]).tobytes(), pmask=Mask(7))
 
         inner_tuple = TupleExpr([const2, const3])
         access_expr = AccessExpr(inner_tuple, 1)
@@ -634,9 +647,9 @@ class TestEdgeCases:
         """Test expression naming with multiple outputs."""
         writer = Writer()
 
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
         tuple_expr = TupleExpr([const1, const2])
 
         # Multiple outputs should have different names
@@ -650,8 +663,10 @@ class TestEdgeCases:
         """Test that Writer properly handles duplicate expression references."""
         writer = Writer()
 
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        shared_const = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        shared_const = ConstExpr(
+            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        )
 
         # Create multiple references to the same expression
         tuple1 = TupleExpr([shared_const])
@@ -672,10 +687,10 @@ class TestEdgeCases:
     def test_large_shape_tensor(self):
         """Test handling of tensors with large shapes."""
         large_shape = (100, 200, 50)
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), large_shape)
+        tensor_info = TensorType(DType.from_numpy(np.float32), large_shape)
         large_data = np.ones(large_shape, dtype=np.float32)
 
-        original = ConstExpr(tensor_info, large_data.tobytes(), pmask=1)
+        original = ConstExpr(tensor_info, large_data.tobytes(), pmask=Mask(1))
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -688,8 +703,8 @@ class TestEdgeCases:
 
     def test_zero_pmask(self):
         """Test expressions with pmask = 0."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
-        original = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=0)
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        original = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(0))
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -698,7 +713,86 @@ class TestEdgeCases:
         result = reader.loads(proto)
 
         assert isinstance(result, ConstExpr)
-        assert result.pmask == 0
+        assert result.pmask == Mask(0)
+
+    def test_dynamic_pmask(self):
+        """Test MPTypeProto serialization/deserialization with dynamic pmask (None)."""
+        from mplang.core.dtype import INT64, STRING
+        from mplang.core.mpir import Reader, Writer
+        from mplang.core.table import TableType
+        from mplang.expr.ast import VariableExpr
+
+        # Create table type with dynamic pmask (None)
+        schema = TableType.from_dict({
+            "id": INT64,
+            "name": STRING,
+        })
+
+        original_mptype = MPType.table(schema, pmask=None)  # Dynamic pmask
+        var_expr = VariableExpr("test_dynamic", original_mptype)
+
+        # Serialize and deserialize
+        writer = Writer()
+        proto = writer.dumps(var_expr)
+
+        reader = Reader()
+        deserialized_expr = reader.loads(proto)
+
+        # Verify
+        assert isinstance(deserialized_expr, VariableExpr)
+        assert deserialized_expr.name == "test_dynamic"
+
+        # Check that the dynamic pmask is preserved
+        recovered_mptype = deserialized_expr.mptype
+        assert recovered_mptype.is_table
+        assert recovered_mptype.pmask is None  # Should be None for dynamic mask
+        assert recovered_mptype.schema.num_columns() == 2
+
+    def test_pmask_proto_encoding(self):
+        """Test that pmask values are correctly encoded in protobuf."""
+        from mplang.protos import mpir_pb2
+
+        # Test static pmask values
+        proto = mpir_pb2.MPTypeProto()
+        proto.pmask = 0  # Mask 0
+        assert proto.pmask == 0
+
+        proto.pmask = 1  # Mask 1 (party 0)
+        assert proto.pmask == 1
+
+        proto.pmask = 0b1101  # Mask for parties 0, 2, 3
+        assert proto.pmask == 13
+
+        # Test dynamic pmask
+        proto.pmask = -1  # Dynamic mask
+        assert proto.pmask == -1
+
+        # Test large mask values
+        proto.pmask = 0xFFFFFFFFFFFFFFFF >> 1  # Max positive int64
+        assert proto.pmask == 0x7FFFFFFFFFFFFFFF
+
+    def test_expression_dynamic_pmask(self):
+        """Test that Expression-level objects can handle dynamic pmask correctly."""
+        from mplang.core.mpir import Reader, Writer
+
+        # Test ConstExpr with dynamic pmask
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
+        const_expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=None)
+
+        # Verify the expression was created correctly
+        assert const_expr.pmask is None
+        assert const_expr.mptype.pmask is None  # Should propagate to MPType
+
+        # Test serialization/deserialization
+        writer = Writer()
+        proto = writer.dumps(const_expr)
+
+        reader = Reader()
+        result = reader.loads(proto)
+
+        assert isinstance(result, ConstExpr)
+        assert result.pmask is None  # Dynamic pmask should be preserved
+        assert result.mptype.pmask is None
 
     def test_reader_proto_to_attr_edge_cases(self):
         """Test Reader._proto_to_attr with edge cases."""
@@ -737,13 +831,13 @@ class TestEdgeCases:
         """Test that writer can handle many expressions."""
         writer = Writer()
 
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (1,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (1,))
 
         # Create many expressions to test counter behavior
         expressions = []
         for i in range(100):
             data = np.array([float(i)], dtype=np.float32)
-            expr = ConstExpr(tensor_info, data.tobytes(), pmask=7)
+            expr = ConstExpr(tensor_info, data.tobytes(), pmask=Mask(7))
             expressions.append(expr)
 
         # Create a tuple with all expressions
@@ -764,22 +858,26 @@ class TestComplexExpressionRoundtrip:
 
     def test_cond_expr_roundtrip(self):
         """Test CondExpr roundtrip - this should expose the CallExpr fn type issue."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
         pred = ConstExpr(
-            TensorInfo(DType.from_numpy(np.bool_), ()),
+            TensorType(DType.from_numpy(np.bool_), ()),
             np.array(True).tobytes(),
-            pmask=7,
+            pmask=Mask(7),
         )
 
         # Create simple function bodies for then/else branches
-        then_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
-        else_body = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        then_body = ConstExpr(
+            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        )
+        else_body = ConstExpr(
+            tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7)
+        )
 
         then_fn = FuncDefExpr([], then_body)
         else_fn = FuncDefExpr([], else_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
         ]
         original = CondExpr(pred, then_fn, else_fn, args)
 
@@ -811,21 +909,23 @@ class TestComplexExpressionRoundtrip:
 
     def test_while_expr_roundtrip(self):
         """Test WhileExpr roundtrip - this should expose similar issues."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create simple function bodies for condition and loop body
         cond_body = ConstExpr(
-            TensorInfo(DType.from_numpy(np.bool_), ()),
+            TensorType(DType.from_numpy(np.bool_), ()),
             np.array(True).tobytes(),
-            pmask=7,
+            pmask=Mask(7),
         )
-        loop_body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        loop_body = ConstExpr(
+            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        )
 
         cond_fn = FuncDefExpr(["x"], cond_body)
         body_fn = FuncDefExpr(["x"], loop_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=7)
+            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
         ]
         original = WhileExpr(cond_fn, body_fn, args)
 
@@ -854,14 +954,14 @@ class TestComplexExpressionRoundtrip:
 
     def test_call_expr_roundtrip(self):
         """Test CallExpr roundtrip - this should expose the evaluator assertion error."""
-        tensor_info = TensorInfo(DType.from_numpy(np.float32), (2,))
+        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create function definition
-        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=7)
+        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
         fn = FuncDefExpr(["x"], body)
 
         # Create arguments
-        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=7)
+        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
 
         original = CallExpr(fn, [arg])
 
@@ -882,6 +982,190 @@ class TestComplexExpressionRoundtrip:
         assert isinstance(result.fn, FuncDefExpr), (
             f"Expected FuncDefExpr, got {type(result.fn)}"
         )
+
+
+class TestRelationTypeSupport:
+    """Test RelationType support in mpir serialization/deserialization."""
+
+    def test_relation_dtype_conversion(self):
+        """Test dtype conversion for relation-only types."""
+        from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP
+        from mplang.core.mpir import dtype_to_proto, proto_to_dtype
+        from mplang.protos import mpir_pb2
+
+        # Test relation-only dtypes to proto
+        test_cases = [
+            (STRING, mpir_pb2.DataType.STRING),
+            (DATE, mpir_pb2.DataType.DATE),
+            (TIME, mpir_pb2.DataType.TIME),
+            (TIMESTAMP, mpir_pb2.DataType.TIMESTAMP),
+            (JSON, mpir_pb2.DataType.JSON),
+        ]
+
+        for dtype, expected_proto in test_cases:
+            # Test dtype_to_proto
+            proto_result = dtype_to_proto(dtype)
+            assert proto_result == expected_proto, f"Failed for {dtype.name}"
+
+            # Test proto_to_dtype
+            dtype_result = proto_to_dtype(expected_proto)
+            assert dtype_result == dtype, f"Failed round-trip for {dtype.name}"
+
+    def test_mptype_proto_tensor_type(self):
+        """Test MPTypeProto with tensor type."""
+        from mplang.protos import mpir_pb2
+
+        # Create tensor type proto
+        mp_proto = mpir_pb2.MPTypeProto()
+        mp_proto.tensor_type.dtype = mpir_pb2.DataType.F32
+        mp_proto.tensor_type.shape_dims.extend([3, 4, 5])
+        mp_proto.pmask = 123
+
+        # Verify structure
+        assert mp_proto.HasField("tensor_type")
+        assert not mp_proto.HasField("table_type")
+        assert mp_proto.tensor_type.dtype == mpir_pb2.DataType.F32
+        assert list(mp_proto.tensor_type.shape_dims) == [3, 4, 5]
+        assert mp_proto.pmask == 123
+
+    def test_mptype_proto_table_type(self):
+        """Test MPTypeProto with table type."""
+        from mplang.protos import mpir_pb2
+
+        # Create table type proto
+        mp_proto = mpir_pb2.MPTypeProto()
+
+        # Add columns
+        col1 = mp_proto.table_type.columns.add()
+        col1.name = "id"
+        col1.dtype = mpir_pb2.DataType.I64
+
+        col2 = mp_proto.table_type.columns.add()
+        col2.name = "name"
+        col2.dtype = mpir_pb2.DataType.STRING
+
+        col3 = mp_proto.table_type.columns.add()
+        col3.name = "created_at"
+        col3.dtype = mpir_pb2.DataType.DATE
+
+        mp_proto.pmask = 456
+
+        # Verify structure
+        assert not mp_proto.HasField("tensor_type")
+        assert mp_proto.HasField("table_type")
+        assert len(mp_proto.table_type.columns) == 3
+        assert mp_proto.pmask == 456
+
+        # Verify columns
+        columns = mp_proto.table_type.columns
+        assert columns[0].name == "id"
+        assert columns[0].dtype == mpir_pb2.DataType.I64
+        assert columns[1].name == "name"
+        assert columns[1].dtype == mpir_pb2.DataType.STRING
+        assert columns[2].name == "created_at"
+        assert columns[2].dtype == mpir_pb2.DataType.DATE
+
+    def test_mptype_proto_serialization(self):
+        """Test MPTypeProto serialization/deserialization."""
+        from mplang.protos import mpir_pb2
+
+        # Create and serialize table type
+        mp_proto = mpir_pb2.MPTypeProto()
+        col = mp_proto.table_type.columns.add()
+        col.name = "test_col"
+        col.dtype = mpir_pb2.DataType.JSON
+        mp_proto.pmask = 789
+
+        # Serialize
+        serialized = mp_proto.SerializeToString()
+
+        # Deserialize
+        mp_proto2 = mpir_pb2.MPTypeProto()
+        mp_proto2.ParseFromString(serialized)
+
+        # Verify
+        assert mp_proto2.HasField("table_type")
+        assert len(mp_proto2.table_type.columns) == 1
+        assert mp_proto2.table_type.columns[0].name == "test_col"
+        assert mp_proto2.table_type.columns[0].dtype == mpir_pb2.DataType.JSON
+        assert mp_proto2.pmask == 789
+
+    def test_mptype_with_table_type(self):
+        """Test MPType integration with RelationType (table type in proto)."""
+        from mplang.core.dtype import DATE, INT64, STRING
+        from mplang.core.table import TableType
+
+        # Create table type
+        schema = TableType.from_dict({
+            "user_id": INT64,
+            "username": STRING,
+            "signup_date": DATE,
+        })
+
+        # Create MPType with table
+        pmask = Mask(0b1101)  # parties 0, 2, 3
+        mptype = MPType.table(schema, pmask)
+
+        # Verify properties
+        assert mptype.is_table
+        assert not mptype.is_tensor
+        assert mptype.schema == schema
+        assert mptype.pmask == pmask
+
+        # Verify schema access
+        assert mptype.schema.num_columns() == 3
+        assert mptype.schema.has_column("user_id")
+        assert mptype.schema.has_column("username")
+        assert mptype.schema.has_column("signup_date")
+        assert mptype.schema.get_column_type("user_id") == INT64
+        assert mptype.schema.get_column_type("username") == STRING
+        assert mptype.schema.get_column_type("signup_date") == DATE
+
+    def test_mptype_proto_conversion_round_trip(self):
+        """Test full round-trip conversion between MPType and MPTypeProto."""
+        from mplang.core.dtype import INT64, JSON, STRING, TIMESTAMP
+        from mplang.core.mpir import Reader, Writer
+        from mplang.core.table import TableType
+        from mplang.expr.ast import VariableExpr
+
+        # Create complex table type
+        schema = TableType.from_dict({
+            "id": INT64,
+            "name": STRING,
+            "created_at": TIMESTAMP,
+            "metadata": JSON,
+        })
+
+        pmask = Mask(0b11110000)  # parties 4, 5, 6, 7
+        original_mptype = MPType.table(schema, pmask)
+
+        # Create a simple expression with table type
+        var_expr = VariableExpr("test_table", original_mptype)
+
+        # Serialize and deserialize
+        writer = Writer()
+        proto = writer.dumps(var_expr)
+
+        reader = Reader()
+        deserialized_expr = reader.loads(proto)
+
+        # Verify - the deserialized expression should be a VariableExpr
+        assert isinstance(deserialized_expr, VariableExpr)
+        assert deserialized_expr.name == "test_table"
+
+        # Check the type
+        recovered_mptype = deserialized_expr.mptype
+
+        assert recovered_mptype.is_table
+        assert recovered_mptype.pmask == pmask
+        assert recovered_mptype.schema.num_columns() == 4
+
+        # Verify all columns
+        for (orig_name, orig_dtype), (rec_name, rec_dtype) in zip(
+            original_mptype.schema.columns, recovered_mptype.schema.columns, strict=True
+        ):
+            assert orig_name == rec_name
+            assert orig_dtype == rec_dtype
 
 
 if __name__ == "__main__":

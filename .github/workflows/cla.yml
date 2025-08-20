@@ -9,5 +9,11 @@ permissions:
   pull-requests: write
 jobs:
   CLAssistant:
+    if: >
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      github.actor != 'pre-commit-ci[bot]' &&
+      github.actor != 'github-actions[bot]' &&
+      github.actor != 'snyk-bot'
     uses: secretflow/.github/.github/workflows/cla.yml@main
     secrets: inherit

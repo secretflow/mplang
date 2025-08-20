@@ -301,7 +301,7 @@ class TestTableLike:
         table = PropertyTable()
 
         # Test protocol satisfaction
-        assert isinstance(table, PropertyTable)
+        assert isinstance(table, TableLike)
 
         # Test that properties work correctly
         assert table.dtypes == {"a": "float", "b": "int"}

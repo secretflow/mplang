@@ -17,10 +17,10 @@ import os
 import numpy as np
 
 from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import PFunction, PFunctionHandler
+from mplang.core.pfunc import PFunction, TensorHandler
 
 
-class BuiltinHandler(PFunctionHandler):
+class BuiltinHandler(TensorHandler):
     """Handler for builtin operations including identity and standard I/O operations.
 
     This handler provides:

@@ -33,8 +33,9 @@ from mplang.core.dtype import UINT64
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import Rank, ScalarType, Shape, TensorInfo, TensorLike
+from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike, TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.table import TableLike, dataframe_to_table_constant
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
     AccessExpr,
@@ -199,15 +200,15 @@ def prand(shape: Shape = ()) -> MPObject:
         not shared or revealed to other parties.
     """
     ctx = _tracer()
-    typ = TensorInfo(UINT64, shape)
+    typ = TensorType(UINT64, shape)
     return TraceVar(ctx, RandExpr(typ, ctx.mask))
 
 
 @primitive
-def constant(data: TensorLike | ScalarType) -> MPObject:
-    """Create a constant tensor from tensor data or scalar value.
+def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
+    """Create a constant tensor or table from data.
 
-    This function creates a constant tensor that can be used in multi-party
+    This function creates a constant that can be used in multi-party
     computations. The constant value is embedded directly into the computation
     graph and is available to all parties in the current party mask.
 
@@ -215,34 +216,65 @@ def constant(data: TensorLike | ScalarType) -> MPObject:
         data: The constant data to embed. Can be:
               - A scalar value (int, float, bool)
               - A numpy array or other tensor-like object
+              - A pandas DataFrame or other table-like object
               - Any object that can be converted to tensor
 
     Returns:
-        MPObject: A variable representing the constant tensor with:
+        MPObject: A variable representing the constant tensor or table with:
                   - dtype: Inferred from the input data
-                  - shape: Inferred from the input data
+                  - shape: Inferred from the input data (for tensors)
+                  - schema: Inferred from the input data (for tables)
                   - data: The embedded constant values
 
     Note:
         The constant data is embedded at graph construction time and is available
         to all parties during execution. Large constants may impact graph size.
+
+        For table-like objects (e.g., pandas DataFrame), JSON serialization is used.
+        Note that the constant primitive is not designed to carry large tables efficiently -
+        consider using dedicated table loading mechanisms for substantial datasets.
     """
     import numpy as np
 
-    # Convert data to TensorInfo + bytes for cacheable pconst
+    # Check if it's a table-like object first
+    if isinstance(data, TableLike):
+        try:
+            import pandas as pd
+        except ImportError:
+            # pandas is not available, so this must be a non-pandas table-like object
+            raise NotImplementedError(
+                "Table constant support only implemented for pandas DataFrame"
+            ) from None
+
+        if isinstance(data, pd.DataFrame):
+            # Convert DataFrame using helper function
+            # NOTE: constant primitive is not designed for large tables - use dedicated
+            # table loading mechanisms for substantial datasets
+            table_type, json_bytes = dataframe_to_table_constant(data)
+            ctx = _tracer()
+
+            # Reuse ConstExpr with table type and JSON serialized data
+            return TraceVar(ctx, ConstExpr(table_type, json_bytes, ctx.mask))
+
+        # For other table-like objects (even when pandas is available)
+        raise NotImplementedError(
+            "Table constant support only implemented for pandas DataFrame"
+        )
+
+    # Convert data to TensorType + bytes for cacheable pconst
     if isinstance(data, ScalarType):
-        tensor_info = TensorInfo.from_obj(data)
+        tensor_info = TensorType.from_obj(data)
         # For scalars, convert to numpy array then to bytes
         np_data = np.array(data)
         data_bytes = np_data.tobytes()
     elif hasattr(data, "tobytes"):
         # For numpy arrays and other TensorLike objects with tobytes method
-        tensor_info = TensorInfo.from_obj(data)
+        tensor_info = TensorType.from_obj(data)
         data_bytes = data.tobytes()  # type: ignore
     else:
         # For other TensorLike objects, convert to numpy first
         np_data = np.array(data)
-        tensor_info = TensorInfo.from_obj(np_data)
+        tensor_info = TensorType.from_obj(np_data)
         data_bytes = np_data.tobytes()
 
     ctx = _tracer()

@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.mpobject import MPObject
-from mplang.core.mptype import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.utils.func_utils import normalize_fn
 
@@ -85,7 +85,7 @@ def jax2stablehlo(
     # Flatten (args, kwargs) and capture immediates using the moved logic from primitive.py
     normalized_fn, in_vars = normalize_fn(flat_fn, args, kwargs, is_variable)
 
-    # Convert TensorInfo in_vars to ShapeDtypeStruct for JAX tracing
+    # Convert TensorType in_vars to ShapeDtypeStruct for JAX tracing
     jax_params = [
         jax.ShapeDtypeStruct(arg.shape, jnp.dtype(arg.dtype.name)) for arg in in_vars
     ]
@@ -103,12 +103,12 @@ def jax2stablehlo(
 
     # Get output info and tree structure for result reconstruction after remote execution
     out_info_flat, out_tree = tree_flatten(lowered.out_info)
-    out_info_flat = [TensorInfo.from_obj(info) for info in out_info_flat]
+    out_info_flat = [TensorType.from_obj(info) for info in out_info_flat]
 
     # This format tells JaxRT how to handle the compiled result
     pfn = PFunction(
         fn_type="mlir.stablehlo",  # Key: specify StableHLO MLIR format
-        ins_info=tuple(TensorInfo.from_obj(x) for x in in_vars),
+        ins_info=tuple(TensorType.from_obj(x) for x in in_vars),
         outs_info=tuple(out_info_flat),
         fn_name=get_fn_name(flat_fn),
         fn_text=mlir_text,  # MLIR text, serializable for transmission

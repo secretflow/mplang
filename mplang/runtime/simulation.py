@@ -25,6 +25,7 @@ import spu.libspu as libspu
 
 from mplang.backend.builtin import BuiltinHandler
 from mplang.backend.spu import SpuHandler
+from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
@@ -123,6 +124,7 @@ class Simulator(InterpContext):
                     BuiltinHandler(),
                     StablehloHandler(),
                     spu_handlers[rank],
+                    DuckDBHandler(),
                 ],
             )
             for rank in range(self.psize())

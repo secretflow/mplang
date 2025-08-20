@@ -36,6 +36,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from mplang.backend.builtin import BuiltinHandler
 from mplang.backend.spu import SpuHandler
+from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader
@@ -257,6 +258,7 @@ class Execution:
                 BuiltinHandler(),
                 StablehloHandler(),
                 spu_handler,
+                DuckDBHandler(),
             ],
         )
 

@@ -16,34 +16,49 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 from mplang.core.dtype import DType
 
-__all__ = ["RelationSchema"]
+__all__ = ["TableLike", "TableType", "dataframe_to_table_constant"]
+
+
+@runtime_checkable
+class TableLike(Protocol):
+    """
+    Protocol for objects structurally resembling tables from common libraries
+    (pandas DataFrame, pyarrow Table, etc.), focusing on dtypes and columns attributes.
+    """
+
+    @property
+    def dtypes(self) -> Any: ...
+
+    @property
+    def columns(self) -> Any: ...
 
 
 @dataclass(frozen=True)
-class RelationSchema:
-    """Relational schema: ordered list of column name-type pairs.
+class TableType:
+    """Table schema: ordered list of column name-type pairs.
 
     Represents table structure in relational algebra, containing column names
     and their corresponding data types.
 
     Examples:
-        >>> schema = RelationSchema.from_dict({
+        >>> schema = TableType.from_dict({
         ...     "id": DType.i64(),
         ...     "name": DType.string(),
         ... })
-        >>> schema = RelationSchema(((\"id\", DType.i64()), (\"name\", DType.string())))
+        >>> schema = TableType((("id", DType.i64()), ("name", DType.string())))
     """
 
     columns: tuple[tuple[str, DType], ...]
     _column_map: dict[str, DType] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        """Validate the relational schema."""
+        """Validate the table schema."""
         if not self.columns:
-            raise ValueError("RelationSchema cannot be empty")
+            raise ValueError("TableType cannot be empty")
 
         # Validate column name uniqueness
         names = [name for name, _ in self.columns]
@@ -61,26 +76,26 @@ class RelationSchema:
         object.__setattr__(self, "_column_map", dict(self.columns))
 
     @classmethod
-    def from_dict(cls, schema_dict: dict[str, DType]) -> RelationSchema:
-        """Create relational schema from dictionary.
+    def from_dict(cls, schema_dict: dict[str, DType]) -> TableType:
+        """Create table schema from dictionary.
 
         Args:
             schema_dict: Mapping from column names to data types
 
         Returns:
-            RelationSchema instance
+            TableType instance
         """
         return cls(tuple(schema_dict.items()))
 
     @classmethod
-    def from_pairs(cls, pairs: list[tuple[str, DType]]) -> RelationSchema:
-        """Create relational schema from list of name-type pairs.
+    def from_pairs(cls, pairs: list[tuple[str, DType]]) -> TableType:
+        """Create table schema from list of name-type pairs.
 
         Args:
             pairs: List of tuples containing column name and data type
 
         Returns:
-            RelationSchema instance
+            TableType instance
         """
         return cls(tuple(pairs))
 
@@ -131,7 +146,7 @@ class RelationSchema:
     def __repr__(self) -> str:
         """String representation."""
         cols = ", ".join(f"{name}:{dtype.short_name()}" for name, dtype in self.columns)
-        return f"RelationSchema<{cols}>"
+        return f"TableType<{cols}>"
 
     def __len__(self) -> int:
         """Get number of columns."""
@@ -157,3 +172,58 @@ class RelationSchema:
             return self.get_column_type(index)
         else:
             raise TypeError(f"Index must be int or str, got {type(index)}")
+
+
+def dataframe_to_table_constant(data: Any) -> tuple[TableType, bytes]:
+    """Convert pandas DataFrame to TableType and JSON serialized bytes.
+
+    This helper function converts a pandas DataFrame to the format needed for
+    table constants in multi-party computations.
+
+    Args:
+        data: pandas DataFrame to convert
+
+    Returns:
+        tuple: (TableType schema, JSON serialized bytes)
+
+    Raises:
+        ImportError: If pandas is not available
+        TypeError: If data is not a pandas DataFrame
+
+    Note:
+        This function uses JSON serialization which is not designed for large tables.
+        Consider using dedicated table loading mechanisms for substantial datasets.
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("pandas is required for DataFrame constant support") from None
+
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError(f"Expected pandas DataFrame, got {type(data)}")
+
+    if len(data.columns) == 0:
+        raise ValueError(
+            "Cannot create a table constant from a DataFrame with no columns."
+        )
+
+    # Convert DataFrame to JSON for serialization
+    json_str = data.to_json(orient="records")
+    json_bytes = json_str.encode("utf-8")
+
+    # Create table type from DataFrame schema
+    from mplang.core.dtype import STRING, DType
+
+    schema_dict = {}
+    for col_name in data.columns:
+        pandas_dtype = data[col_name].dtype
+        # Convert pandas dtype to DType
+        if pandas_dtype.kind in ("O", "U", "S"):  # object, unicode, string
+            schema_dict[col_name] = (
+                DType.from_numpy(pandas_dtype) if pandas_dtype.kind != "O" else STRING
+            )
+        else:
+            schema_dict[col_name] = DType.from_numpy(pandas_dtype)
+
+    table_type = TableType.from_dict(schema_dict)
+    return table_type, json_bytes

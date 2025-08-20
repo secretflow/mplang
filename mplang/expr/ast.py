@@ -28,8 +28,9 @@ from typing import TYPE_CHECKING, Any
 
 from mplang.core.dtype import UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank, TensorInfo
+from mplang.core.mptype import MPType, Rank, TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.table import TableType
 from mplang.expr.utils import deduce_mask
 
 if TYPE_CHECKING:
@@ -104,9 +105,34 @@ class RankExpr(Expr):
 
 
 class ConstExpr(Expr):
-    """Expression for constant tensor creation."""
+    """Expression for constant tensor or table creation."""
 
-    def __init__(self, typ: TensorInfo, data_bytes: bytes, pmask: Mask):
+    """
+    Expression for constant tensor or table creation.
+
+    Parameters
+    ----------
+    typ : TensorType or TableType
+        The type of the constant data to create.
+    data_bytes : bytes
+        The raw bytes representing the serialized data.
+        For tensors: binary tensor data.
+        For tables: JSON-serialized table data as UTF-8 bytes.
+    pmask : Mask or None
+        The party mask indicating which parties can access the constant.
+        If None, a dynamic party mask is used, meaning the set of parties
+        with access is determined at runtime. This can affect visibility
+        and security properties of the constant data.
+
+    Note:
+        For table constants, JSON serialization is used. The constant primitive
+        is not designed to carry large tables efficiently - use dedicated table
+        loading mechanisms for substantial datasets.
+    """
+
+    def __init__(
+        self, typ: TensorType | TableType, data_bytes: bytes, pmask: Mask | None
+    ):
         super().__init__()
         self.typ = typ
         self.data_bytes = data_bytes
@@ -114,7 +140,12 @@ class ConstExpr(Expr):
 
     def _compute_mptypes(self) -> list[MPType]:
         # Constants are public and available to all parties.
-        return [MPType.tensor(self.typ.dtype, self.typ.shape, self.pmask)]
+        if isinstance(self.typ, TensorType):
+            return [MPType.tensor(self.typ.dtype, self.typ.shape, self.pmask)]
+        elif isinstance(self.typ, TableType):
+            return [MPType.table(self.typ, self.pmask)]
+        else:
+            raise TypeError(f"Unsupported type for ConstExpr: {type(self.typ)}")
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_const(self)
@@ -123,7 +154,26 @@ class ConstExpr(Expr):
 class RandExpr(Expr):
     """Expression for private random tensor generation."""
 
-    def __init__(self, typ: TensorInfo, pmask: Mask):
+    """
+    Expression for private random tensor generation.
+
+    Parameters
+    ----------
+    typ : TensorType
+        The type (shape and dtype) of the tensor to generate.
+    pmask : Mask or None
+        The party mask indicating which parties the random tensor is private to.
+        If `pmask` is `None`, a dynamic party mask will be used, which may be determined
+        at runtime. Using `None` allows for flexibility in specifying the parties involved,
+        but may have implications for security or performance depending on the backend.
+
+    Notes
+    -----
+    The use of `None` for `pmask` is intended for cases where the set of parties is not
+    known statically. Callers should ensure that this is appropriate for their use case.
+    """
+
+    def __init__(self, typ: TensorType, pmask: Mask | None):
         super().__init__()
         if typ.dtype != UINT64:
             # TODO: Only U64 is supported for now.
@@ -189,10 +239,18 @@ class EvalExpr(Expr):
             effective_pmask = deduced_pmask
 
         # Create result MPTypes based on PFunction output info
-        result_types = [
-            MPType.tensor(out_info.dtype, out_info.shape, effective_pmask)
-            for out_info in self.pfunc.outs_info
-        ]
+        result_types = []
+        for out_info in self.pfunc.outs_info:
+            if isinstance(out_info, TensorType):
+                # Tensor type
+                result_types.append(
+                    MPType.tensor(out_info.dtype, out_info.shape, effective_pmask)
+                )
+            elif isinstance(out_info, TableType):
+                # Table type
+                result_types.append(MPType.table(out_info, effective_pmask))
+            else:
+                raise TypeError(f"Unsupported output type: {type(out_info)}")
         return result_types
 
     def accept(self, visitor: ExprVisitor) -> Any:

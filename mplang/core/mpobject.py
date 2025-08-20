@@ -20,7 +20,7 @@ from typing import Any
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType, Shape
-from mplang.core.relation import RelationSchema
+from mplang.core.table import TableType
 
 
 class MPContext(ABC):
@@ -61,10 +61,10 @@ class MPObject(ABC):
         return self.mptype.shape
 
     @property
-    def schema(self) -> RelationSchema:
-        """The relational schema of the object.
+    def schema(self) -> TableType:
+        """The table schema of the object.
 
-        Only available for relation types.
+        Only available for table types.
         """
         return self.mptype.schema
 

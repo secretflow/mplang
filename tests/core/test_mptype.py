@@ -17,41 +17,41 @@ import pytest
 
 from mplang.core.dtype import DATE, FLOAT32, FLOAT64, INT32, INT64, JSON, STRING
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPKind, MPType
-from mplang.core.relation import RelationSchema
+from mplang.core.mptype import MPType
+from mplang.core.table import TableType
 
 
 class TestMPType:
-    """Test MPType functionality with tensor and relation support."""
+    """Test MPType functionality with tensor and table support."""
 
     def test_tensor_creation(self):
         """Test tensor MPType creation."""
         tensor_type = MPType.tensor(FLOAT32, (3, 4))
 
-        assert tensor_type.kind == MPKind.TENSOR
+        assert tensor_type.is_tensor
         assert tensor_type.dtype == FLOAT32
         assert tensor_type.shape == (3, 4)
 
-    def test_relation_creation(self):
-        """Test relation MPType creation."""
-        schema = RelationSchema.from_dict({
+    def test_table_creation(self):
+        """Test table MPType creation."""
+        schema = TableType.from_dict({
             "user_id": INT64,
             "score": FLOAT64,
             "rank": INT32,
         })
 
-        relation_type = MPType.relation(schema)
+        table_type = MPType.table(schema)
 
-        assert relation_type.kind == MPKind.RELATION
-        assert relation_type.schema == schema
+        assert table_type.is_table
+        assert table_type.schema == schema
 
-    def test_relation_creation_from_dict(self):
-        """Test relation MPType creation from dict."""
+    def test_table_creation_from_dict(self):
+        """Test table MPType creation from dict."""
         schema_dict = {"id": INT64, "value": FLOAT32}
-        relation_type = MPType.relation(schema_dict)
+        table_type = MPType.table(schema_dict)
 
-        assert relation_type.kind == MPKind.RELATION
-        assert relation_type.schema.column_names() == ("id", "value")
+        assert table_type.is_table
+        assert table_type.schema.column_names() == ("id", "value")
 
     def test_tensor_attribute_access(self):
         """Test tensor attribute access."""
@@ -63,57 +63,57 @@ class TestMPType:
 
         # Should fail
         with pytest.raises(
-            AttributeError, match="schema is only available for relation types"
+            AttributeError, match="schema is only available for table types"
         ):
             _ = tensor_type.schema
 
-    def test_relation_attribute_access(self):
-        """Test relation attribute access."""
-        schema = RelationSchema.from_dict({"id": INT64, "value": FLOAT32})
-        relation_type = MPType.relation(schema)
+    def test_table_attribute_access(self):
+        """Test table attribute access."""
+        schema = TableType.from_dict({"id": INT64, "value": FLOAT32})
+        table_type = MPType.table(schema)
 
         # Should work
-        assert relation_type.schema == schema
+        assert table_type.schema == schema
 
         # Should fail
         with pytest.raises(
             AttributeError, match="dtype is only available for tensor types"
         ):
-            _ = relation_type.dtype
+            _ = table_type.dtype
 
         with pytest.raises(
             AttributeError, match="shape is only available for tensor types"
         ):
-            _ = relation_type.shape
+            _ = table_type.shape
 
-    def test_relation_only_dtype_validation(self):
-        """Test that relation-only dtypes cannot be used in tensors."""
+    def test_table_only_dtype_validation(self):
+        """Test that table-only dtypes cannot be used in tensors."""
         # STRING type should fail in tensor
         with pytest.raises(
-            ValueError, match="Data type 'string' is only supported in relations"
+            ValueError, match="Data type 'string' is only supported in tables"
         ):
             MPType.tensor(STRING, (10,))
 
         # DATE type should fail in tensor
         with pytest.raises(
-            ValueError, match="Data type 'date' is only supported in relations"
+            ValueError, match="Data type 'date' is only supported in tables"
         ):
             MPType.tensor(DATE, (5, 5))
 
         # JSON type should fail in tensor
         with pytest.raises(
-            ValueError, match="Data type 'json' is only supported in relations"
+            ValueError, match="Data type 'json' is only supported in tables"
         ):
             MPType.tensor(JSON, (3,))
 
-        # But should work in relations
-        schema = RelationSchema.from_dict({
+        # But should work in tables
+        schema = TableType.from_dict({
             "name": STRING,
             "birth_date": DATE,
             "metadata": JSON,
         })
-        relation_type = MPType.relation(schema)
-        assert relation_type.kind == MPKind.RELATION
+        table_type = MPType.table(schema)
+        assert table_type.is_table
 
     def test_mptype_with_pmask_and_attrs(self):
         """Test MPType with pmask and attributes."""
@@ -126,15 +126,15 @@ class TestMPType:
         assert tensor_type.attrs["device"] == "GPU"
         assert tensor_type.attrs["precision"] == "high"
 
-        # Test relation with pmask and attrs
-        schema = RelationSchema.from_dict({"col1": FLOAT32, "col2": INT64})
-        relation_type = MPType.relation(
+        # Test table with pmask and attrs
+        schema = TableType.from_dict({"col1": FLOAT32, "col2": INT64})
+        table_type = MPType.table(
             schema, pmask=Mask.from_int(0b11), storage="distributed", format="parquet"
         )
 
-        assert relation_type.pmask == Mask.from_int(0b11)
-        assert relation_type.attrs["storage"] == "distributed"
-        assert relation_type.attrs["format"] == "parquet"
+        assert table_type.pmask == Mask.from_int(0b11)
+        assert table_type.attrs["storage"] == "distributed"
+        assert table_type.attrs["format"] == "parquet"
 
     def test_equality_and_hashing(self):
         """Test equality and hashing."""
@@ -148,21 +148,21 @@ class TestMPType:
         assert hash(t1) == hash(t2)
         assert hash(t1) != hash(t3)
 
-        # Test relation equality
-        schema1 = RelationSchema.from_dict({"a": INT32, "b": FLOAT32})
-        schema2 = RelationSchema.from_dict({"a": INT32, "b": FLOAT32})
-        schema3 = RelationSchema.from_dict({"a": INT64, "b": FLOAT32})
+        # Test table equality
+        schema1 = TableType.from_dict({"a": INT32, "b": FLOAT32})
+        schema2 = TableType.from_dict({"a": INT32, "b": FLOAT32})
+        schema3 = TableType.from_dict({"a": INT64, "b": FLOAT32})
 
-        r1 = MPType.relation(schema1)
-        r2 = MPType.relation(schema2)
-        r3 = MPType.relation(schema3)
+        r1 = MPType.table(schema1)
+        r2 = MPType.table(schema2)
+        r3 = MPType.table(schema3)
 
         assert r1 == r2
         assert r1 != r3
         assert hash(r1) == hash(r2)
         assert hash(r1) != hash(r3)
 
-        # Test tensor vs relation inequality
+        # Test tensor vs table inequality
         assert t1 != r1
 
     def test_string_representation(self):
@@ -172,11 +172,11 @@ class TestMPType:
         tensor_str = str(tensor_type)
         assert "f32[3, 4]" == tensor_str
 
-        # Test relation representation
-        schema = RelationSchema.from_dict({"id": INT64, "name": STRING})
-        relation_type = MPType.relation(schema)
-        relation_str = str(relation_type)
-        assert "Rel(id:i64, name:str)" == relation_str
+        # Test table representation
+        schema = TableType.from_dict({"id": INT64, "name": STRING})
+        table_type = MPType.table(schema)
+        table_str = str(table_type)
+        assert "Tbl(id:i64, name:str)" == table_str
 
         # Test with pmask and attributes
         tensor_with_attrs = MPType.tensor(
@@ -192,30 +192,30 @@ class TestMPType:
         numpy_dtype = tensor_type.to_numpy()
         assert str(numpy_dtype) == "float32"
 
-        # Should fail for relations
-        schema = RelationSchema.from_dict({"id": INT64})
-        relation_type = MPType.relation(schema)
+        # Should fail for tables
+        schema = TableType.from_dict({"id": INT64})
+        table_type = MPType.table(schema)
         with pytest.raises(
             AttributeError, match="to_numpy is only available for tensor types"
         ):
-            relation_type.to_numpy()
+            table_type.to_numpy()
 
     def test_from_tensor_factory_method(self):
         """Test from_tensor factory method."""
         # Test with scalar
         scalar_type = MPType.from_tensor(42)
-        assert scalar_type.kind == MPKind.TENSOR
+        assert scalar_type.is_tensor
         assert scalar_type.shape == ()
 
         # Test with numpy array
         arr = np.array([[1, 2], [3, 4]], dtype=np.float32)
         array_type = MPType.from_tensor(arr)
-        assert array_type.kind == MPKind.TENSOR
+        assert array_type.is_tensor
         assert array_type.dtype == FLOAT32
         assert array_type.shape == (2, 2)
 
         # Test with list converted to numpy array
         list_arr = np.array([1, 2, 3])
         list_type = MPType.from_tensor(list_arr)
-        assert list_type.kind == MPKind.TENSOR
+        assert list_type.is_tensor
         assert list_type.shape == (3,)

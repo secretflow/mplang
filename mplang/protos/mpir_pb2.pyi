@@ -32,6 +32,100 @@ else:
 
 DESCRIPTOR: google.protobuf.descriptor.FileDescriptor
 
+class _DataType:
+    ValueType = typing.NewType("ValueType", builtins.int)
+    V: typing_extensions.TypeAlias = ValueType
+
+class _DataTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_DataType.ValueType], builtins.type):
+    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+    UNDEFINED: _DataType.ValueType  # 0
+    U8: _DataType.ValueType  # 1
+    """uint8_t"""
+    I8: _DataType.ValueType  # 2
+    """int8_t"""
+    U16: _DataType.ValueType  # 3
+    """uint16_t"""
+    I16: _DataType.ValueType  # 4
+    """int16_t"""
+    U32: _DataType.ValueType  # 5
+    """uint32_t"""
+    I32: _DataType.ValueType  # 6
+    """int32_t"""
+    U64: _DataType.ValueType  # 7
+    """uint64_t"""
+    I64: _DataType.ValueType  # 8
+    """int64_t"""
+    F16: _DataType.ValueType  # 9
+    """float16"""
+    F32: _DataType.ValueType  # 10
+    """float32"""
+    F64: _DataType.ValueType  # 11
+    """double"""
+    STRING: _DataType.ValueType  # 12
+    """string (table only)"""
+    BOOL: _DataType.ValueType  # 13
+    """bool"""
+    COMPLEX64: _DataType.ValueType  # 14
+    """complex with float32 real and imaginary components"""
+    COMPLEX128: _DataType.ValueType  # 15
+    """complex with float64 real and imaginary components"""
+    BFLOAT16: _DataType.ValueType  # 16
+    """bfloat16"""
+    DATE: _DataType.ValueType  # 17
+    """date (table only)"""
+    TIME: _DataType.ValueType  # 18
+    """time (table only)"""
+    TIMESTAMP: _DataType.ValueType  # 19
+    """timestamp (table only)"""
+    JSON: _DataType.ValueType  # 20
+    """json (table only)"""
+
+class DataType(_DataType, metaclass=_DataTypeEnumTypeWrapper):
+    """Data type enumeration"""
+
+UNDEFINED: DataType.ValueType  # 0
+U8: DataType.ValueType  # 1
+"""uint8_t"""
+I8: DataType.ValueType  # 2
+"""int8_t"""
+U16: DataType.ValueType  # 3
+"""uint16_t"""
+I16: DataType.ValueType  # 4
+"""int16_t"""
+U32: DataType.ValueType  # 5
+"""uint32_t"""
+I32: DataType.ValueType  # 6
+"""int32_t"""
+U64: DataType.ValueType  # 7
+"""uint64_t"""
+I64: DataType.ValueType  # 8
+"""int64_t"""
+F16: DataType.ValueType  # 9
+"""float16"""
+F32: DataType.ValueType  # 10
+"""float32"""
+F64: DataType.ValueType  # 11
+"""double"""
+STRING: DataType.ValueType  # 12
+"""string (table only)"""
+BOOL: DataType.ValueType  # 13
+"""bool"""
+COMPLEX64: DataType.ValueType  # 14
+"""complex with float32 real and imaginary components"""
+COMPLEX128: DataType.ValueType  # 15
+"""complex with float64 real and imaginary components"""
+BFLOAT16: DataType.ValueType  # 16
+"""bfloat16"""
+DATE: DataType.ValueType  # 17
+"""date (table only)"""
+TIME: DataType.ValueType  # 18
+"""time (table only)"""
+TIMESTAMP: DataType.ValueType  # 19
+"""timestamp (table only)"""
+JSON: DataType.ValueType  # 20
+"""json (table only)"""
+global___DataType = DataType
+
 @typing.final
 class AttrProto(google.protobuf.message.Message):
     """Custom attribute message (without name field since it's the map key)"""
@@ -191,81 +285,59 @@ class FuncProto(google.protobuf.message.Message):
 global___FuncProto = FuncProto
 
 @typing.final
-class MPTypeProto(google.protobuf.message.Message):
+class TensorTypeProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    class _DataType:
-        ValueType = typing.NewType("ValueType", builtins.int)
-        V: typing_extensions.TypeAlias = ValueType
+    DTYPE_FIELD_NUMBER: builtins.int
+    SHAPE_DIMS_FIELD_NUMBER: builtins.int
+    dtype: global___DataType.ValueType
+    @property
+    def shape_dims(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]: ...
+    def __init__(
+        self,
+        *,
+        dtype: global___DataType.ValueType = ...,
+        shape_dims: collections.abc.Iterable[builtins.int] | None = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["dtype", b"dtype", "shape_dims", b"shape_dims"]) -> None: ...
 
-    class _DataTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[MPTypeProto._DataType.ValueType], builtins.type):
-        DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
-        UNDEFINED: MPTypeProto._DataType.ValueType  # 0
-        U8: MPTypeProto._DataType.ValueType  # 1
-        """uint8_t"""
-        I8: MPTypeProto._DataType.ValueType  # 2
-        """int8_t"""
-        U16: MPTypeProto._DataType.ValueType  # 3
-        """uint16_t"""
-        I16: MPTypeProto._DataType.ValueType  # 4
-        """int16_t"""
-        U32: MPTypeProto._DataType.ValueType  # 5
-        """uint32_t"""
-        I32: MPTypeProto._DataType.ValueType  # 6
-        """int32_t"""
-        U64: MPTypeProto._DataType.ValueType  # 7
-        """uint64_t"""
-        I64: MPTypeProto._DataType.ValueType  # 8
-        """int64_t"""
-        F16: MPTypeProto._DataType.ValueType  # 9
-        """float16"""
-        F32: MPTypeProto._DataType.ValueType  # 10
-        """float32"""
-        F64: MPTypeProto._DataType.ValueType  # 11
-        """double"""
-        STRING: MPTypeProto._DataType.ValueType  # 12
-        """string"""
-        BOOL: MPTypeProto._DataType.ValueType  # 13
-        """bool"""
-        COMPLEX64: MPTypeProto._DataType.ValueType  # 14
-        """complex with float32 real and imaginary components"""
-        COMPLEX128: MPTypeProto._DataType.ValueType  # 15
-        """complex with float64 real and imaginary components"""
-        BFLOAT16: MPTypeProto._DataType.ValueType  # 16
+global___TensorTypeProto = TensorTypeProto
 
-    class DataType(_DataType, metaclass=_DataTypeEnumTypeWrapper): ...
-    UNDEFINED: MPTypeProto.DataType.ValueType  # 0
-    U8: MPTypeProto.DataType.ValueType  # 1
-    """uint8_t"""
-    I8: MPTypeProto.DataType.ValueType  # 2
-    """int8_t"""
-    U16: MPTypeProto.DataType.ValueType  # 3
-    """uint16_t"""
-    I16: MPTypeProto.DataType.ValueType  # 4
-    """int16_t"""
-    U32: MPTypeProto.DataType.ValueType  # 5
-    """uint32_t"""
-    I32: MPTypeProto.DataType.ValueType  # 6
-    """int32_t"""
-    U64: MPTypeProto.DataType.ValueType  # 7
-    """uint64_t"""
-    I64: MPTypeProto.DataType.ValueType  # 8
-    """int64_t"""
-    F16: MPTypeProto.DataType.ValueType  # 9
-    """float16"""
-    F32: MPTypeProto.DataType.ValueType  # 10
-    """float32"""
-    F64: MPTypeProto.DataType.ValueType  # 11
-    """double"""
-    STRING: MPTypeProto.DataType.ValueType  # 12
-    """string"""
-    BOOL: MPTypeProto.DataType.ValueType  # 13
-    """bool"""
-    COMPLEX64: MPTypeProto.DataType.ValueType  # 14
-    """complex with float32 real and imaginary components"""
-    COMPLEX128: MPTypeProto.DataType.ValueType  # 15
-    """complex with float64 real and imaginary components"""
-    BFLOAT16: MPTypeProto.DataType.ValueType  # 16
+@typing.final
+class TableTypeProto(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    @typing.final
+    class Column(google.protobuf.message.Message):
+        DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+        NAME_FIELD_NUMBER: builtins.int
+        DTYPE_FIELD_NUMBER: builtins.int
+        name: builtins.str
+        dtype: global___DataType.ValueType
+        def __init__(
+            self,
+            *,
+            name: builtins.str = ...,
+            dtype: global___DataType.ValueType = ...,
+        ) -> None: ...
+        def ClearField(self, field_name: typing.Literal["dtype", b"dtype", "name", b"name"]) -> None: ...
+
+    COLUMNS_FIELD_NUMBER: builtins.int
+    @property
+    def columns(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___TableTypeProto.Column]: ...
+    def __init__(
+        self,
+        *,
+        columns: collections.abc.Iterable[global___TableTypeProto.Column] | None = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["columns", b"columns"]) -> None: ...
+
+global___TableTypeProto = TableTypeProto
+
+@typing.final
+class MPTypeProto(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing.final
     class AttrsEntry(google.protobuf.message.Message):
@@ -285,18 +357,16 @@ class MPTypeProto(google.protobuf.message.Message):
         def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
         def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
 
-    DTYPE_FIELD_NUMBER: builtins.int
-    SHAPE_DIMS_FIELD_NUMBER: builtins.int
+    TENSOR_TYPE_FIELD_NUMBER: builtins.int
+    TABLE_TYPE_FIELD_NUMBER: builtins.int
     PMASK_FIELD_NUMBER: builtins.int
     ATTRS_FIELD_NUMBER: builtins.int
-    dtype: global___MPTypeProto.DataType.ValueType
-    """data type"""
-    pmask: builtins.bytes
-    """party mask"""
+    pmask: builtins.int
+    """party mask (-1 for dynamic mask, >=0 for static mask)"""
     @property
-    def shape_dims(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
-        """shape"""
-
+    def tensor_type(self) -> global___TensorTypeProto: ...
+    @property
+    def table_type(self) -> global___TableTypeProto: ...
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
         """attributes"""
@@ -304,12 +374,14 @@ class MPTypeProto(google.protobuf.message.Message):
     def __init__(
         self,
         *,
-        dtype: global___MPTypeProto.DataType.ValueType = ...,
-        shape_dims: collections.abc.Iterable[builtins.int] | None = ...,
-        pmask: builtins.bytes = ...,
+        tensor_type: global___TensorTypeProto | None = ...,
+        table_type: global___TableTypeProto | None = ...,
+        pmask: builtins.int = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "dtype", b"dtype", "pmask", b"pmask", "shape_dims", b"shape_dims"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["table_type", b"table_type", "tensor_type", b"tensor_type", "type_spec", b"type_spec"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "pmask", b"pmask", "table_type", b"table_type", "tensor_type", b"tensor_type", "type_spec", b"type_spec"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing.Literal["type_spec", b"type_spec"]) -> typing.Literal["tensor_type", "table_type"] | None: ...
 
 global___MPTypeProto = MPTypeProto
 

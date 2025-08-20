@@ -16,7 +16,7 @@ import pytest
 
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.mask import Mask
-from mplang.core.mptype import TensorInfo
+from mplang.core.mptype import TensorType
 from mplang.expr import ConstExpr, Expr, ExprTransformer, Printer
 from mplang.expr.ast import RankExpr
 
@@ -37,10 +37,10 @@ class TestPrinter:
 
         # Create proper data bytes for a 2x3 float32 array
         data1 = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32).tobytes()
-        const1 = ConstExpr(TensorInfo(FLOAT32, (2, 3)), data1, pmask_2p)
+        const1 = ConstExpr(TensorType(FLOAT32, (2, 3)), data1, pmask_2p)
         # Create proper data bytes for a scalar int32
         data2 = np.array(42, dtype=np.int32).tobytes()
-        const2 = ConstExpr(TensorInfo(INT32, ()), data2, pmask_2p)
+        const2 = ConstExpr(TensorType(INT32, ()), data2, pmask_2p)
         from mplang.expr.ast import AccessExpr, TupleExpr
 
         tuple_expr = TupleExpr([const1, const2])
@@ -60,7 +60,7 @@ class TestPrinter:
 
         # Create proper data bytes for a 2x3 float32 array
         data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32).tobytes()
-        const = ConstExpr(TensorInfo(FLOAT32, (2, 3)), data, pmask_2p)
+        const = ConstExpr(TensorType(FLOAT32, (2, 3)), data, pmask_2p)
 
         printer = Printer()
         output = printer.print_expr(const)
@@ -79,7 +79,7 @@ class TestExprTransformer:
         import numpy as np
 
         data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32).tobytes()
-        const = ConstExpr(TensorInfo(FLOAT32, (2, 3)), data, pmask_2p)
+        const = ConstExpr(TensorType(FLOAT32, (2, 3)), data, pmask_2p)
         original_length = len(const.data_bytes)
 
         # Create a transformer that doubles constants
@@ -102,7 +102,7 @@ class TestExprTransformer:
         import numpy as np
 
         data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32).tobytes()
-        const = ConstExpr(TensorInfo(FLOAT32, (2, 3)), data, pmask_2p)
+        const = ConstExpr(TensorType(FLOAT32, (2, 3)), data, pmask_2p)
 
         # Identity transformer - returns expression unchanged
         transformer = ExprTransformer({})
@@ -127,7 +127,7 @@ class TestExprTransformer:
         import numpy as np
 
         data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32).tobytes()
-        const = ConstExpr(TensorInfo(FLOAT32, (2, 3)), data, pmask_2p)
+        const = ConstExpr(TensorType(FLOAT32, (2, 3)), data, pmask_2p)
         rank = RankExpr(pmask_2p)
 
         expressions = {"const": const, "rank": rank}

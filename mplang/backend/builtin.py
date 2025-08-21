@@ -195,7 +195,7 @@ class BuiltinHandler(TensorHandler):
 
             shape = pfunc.attrs.get("shape", ())
             # Generate random values with the specified shape
-            dtype = np.uint64
+            dtype = np.dtype(np.uint64)
 
             rng = np.random.default_rng()
             info = np.iinfo(dtype)

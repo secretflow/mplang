@@ -16,7 +16,7 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import FLOAT32, DType
+from mplang.core.dtype import FLOAT32, INT32, DType
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
 from mplang.core.mptype import MPType
@@ -351,9 +351,7 @@ class TestComplexExpressions:
     def test_shfl_expr_serialization(self):
         """Test ShflExpr serialization (write only)."""
         src = VariableExpr("src", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
-        index = VariableExpr(
-            "index", MPType.tensor(DType.from_numpy(np.int32), (), pmask=Mask(7))
-        )
+        index = VariableExpr("index", MPType.tensor(INT32, (), pmask=Mask(7)))
 
         original = ShflExpr(src, index)
 

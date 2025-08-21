@@ -33,10 +33,10 @@ from mplang.core.dtype import UINT64
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import Rank, ScalarType
+from mplang.core.mptype import Rank
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, dataframe_to_table_constant
-from mplang.core.tensor import Shape, TensorLike, TensorType
+from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
     AccessExpr,

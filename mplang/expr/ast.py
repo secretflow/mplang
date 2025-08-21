@@ -28,9 +28,10 @@ from typing import TYPE_CHECKING, Any
 
 from mplang.core.dtype import UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank, TensorType
+from mplang.core.mptype import MPType, Rank
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.expr.utils import deduce_mask
 
 if TYPE_CHECKING:

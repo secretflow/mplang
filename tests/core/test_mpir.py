@@ -19,8 +19,9 @@ import pytest
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
-from mplang.core.mptype import MPType, TensorType
+from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.expr import Expr
 from mplang.expr.ast import (
     AccessExpr,

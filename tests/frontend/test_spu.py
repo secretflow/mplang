@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 import spu.libspu as libspu
 
-from mplang.core.mptype import TensorType
+from mplang.core.tensor import TensorType
 from mplang.frontend.spu import SpuFE, Visibility
 
 

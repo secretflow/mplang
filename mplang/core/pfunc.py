@@ -20,8 +20,8 @@ from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
-from mplang.core.mptype import TensorLike, TensorType
 from mplang.core.table import TableLike, TableType
+from mplang.core.tensor import TensorLike, TensorType
 
 __all__ = [
     "HybridHandler",

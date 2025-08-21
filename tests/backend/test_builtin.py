@@ -19,8 +19,8 @@ import numpy as np
 import pytest
 
 from mplang.backend.builtin import BuiltinHandler
-from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 
 
 class TestBuiltinHandler:

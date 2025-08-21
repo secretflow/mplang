@@ -31,7 +31,7 @@ from mplang import simp
 from mplang.core.context_mgr import cur_ctx, with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import Rank, TensorType
+from mplang.core.mptype import Rank
 from mplang.core.primitive import (
     _switch_ctx,
     cond,
@@ -46,6 +46,7 @@ from mplang.core.primitive import (
     set_mask,
     while_loop,
 )
+from mplang.core.tensor import TensorType
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.printer import Printer
 from mplang.frontend import jax_cc

@@ -21,9 +21,10 @@ import spu.libspu as spu_api
 
 from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, TensorType
+from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.expr import Expr, ExprVisitor, FuncDefExpr
 from mplang.expr.ast import (
     AccessExpr,

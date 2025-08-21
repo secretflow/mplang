@@ -20,7 +20,7 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.backend.spu import SpuHandler, SpuValue
-from mplang.core.mptype import TensorType
+from mplang.core.tensor import TensorType
 from mplang.frontend.spu import SpuFE
 from mplang.runtime.grpc_comm import LinkCommunicator
 

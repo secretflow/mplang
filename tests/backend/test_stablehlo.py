@@ -20,8 +20,8 @@ import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
 from mplang.backend.stablehlo import StablehloHandler
-from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.frontend import jax_cc
 
 # Enable 64-bit precision in JAX for testing different dtypes

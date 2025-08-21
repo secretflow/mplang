@@ -20,17 +20,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from mplang.core.dtype import DType
+from mplang.core.mptype import MPType
+from mplang.core.pfunc import PFunction
+from mplang.core.tensor import Shape, TensorType
 from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
     Expr,
     FuncDefExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -126,15 +127,11 @@ class Printer(ExprVisitor):
         expr.accept(self)
         return "\n".join(self._output)
 
-    def visit_rank(self, expr: RankExpr) -> str:
-        return self._do_print("prank", [], mptypes=expr.mptypes)
-
-    def _get_const_data(self, expr: ConstExpr) -> str:
+    def _get_const_data(self, dtype: DType, shape: Shape, data_bytes: bytes) -> str:
         # Get dtype and shape from output info (following party.py implementation)
-        shape, dtype = expr.mptype.shape, expr.mptype.dtype.numpy_dtype()
         import numpy as np
 
-        np_array = np.frombuffer(expr.data_bytes, dtype=dtype).reshape(shape)
+        np_array = np.frombuffer(data_bytes, dtype=dtype.to_numpy()).reshape(shape)
 
         # Format the display based on array size
         if np_array.size <= 10:
@@ -149,22 +146,37 @@ class Printer(ExprVisitor):
             value_str = str(np_array)
         return value_str
 
-    def visit_const(self, expr: ConstExpr) -> str:
-        attrs = {"data": self._get_const_data(expr)}
-        return self._do_print("pconst", [], attrs=attrs, mptypes=expr.mptypes)
-
-    def visit_rand(self, expr: RandExpr) -> str:
-        return self._do_print("prand", [], attrs={}, mptypes=expr.mptypes)
+    def _print_const(self, pfunc: PFunction, mptypes: list[MPType]) -> str:
+        assert len(pfunc.outs_info) == 1
+        out_type = pfunc.outs_info[0]
+        assert isinstance(out_type, TensorType)
+        attrs = {
+            "data": self._get_const_data(
+                out_type.dtype, out_type.shape, pfunc.attrs["data_bytes"]
+            )
+        }
+        return self._do_print("pconst", [], attrs=attrs, mptypes=mptypes)
 
     def visit_eval(self, expr: EvalExpr) -> str:
         arg_names = [self._var_name(arg) for arg in expr.args]
-        attrs = {"fn_name": f'"{expr.pfunc.fn_name}"'}
+        fn_type = expr.pfunc.fn_type
+
+        # for well known builtin functions
+        if fn_type == "builtin.constant":
+            return self._print_const(expr.pfunc, expr.mptypes)
+        elif fn_type == "builtin.rank":
+            return self._do_print("prank", [], mptypes=expr.mptypes)
+        elif fn_type == "builtin.prand":
+            return self._do_print("prand", [], mptypes=expr.mptypes)
+
+        attrs = {"fn_type": fn_type}
+        if expr.pfunc.fn_name:
+            attrs["fn_name"] = str(expr.pfunc.fn_name)
         if self.verbose_peval:
             attrs["fn_text"] = str(expr.pfunc.fn_text)
-            attrs["fn_type"] = str(expr.pfunc.fn_type)
 
         if expr.rmask is not None:
-            attrs["rmask"] = str(expr.rmask)
+            attrs["rmask"] = f"0x{expr.rmask.value:x}"
         return self._do_print("peval", arg_names, attrs=attrs, mptypes=expr.mptypes)
 
     def visit_variable(self, expr: VariableExpr) -> str:

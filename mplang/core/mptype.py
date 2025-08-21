@@ -61,7 +61,7 @@ class MPType:
         cls,
         dtype: DType | Any,
         shape: Shape,
-        pmask: Mask | None = None,
+        pmask: int | Mask | None = None,
         **attrs: Any,
     ) -> MPType:
         """Create a tensor type.
@@ -90,6 +90,9 @@ class MPType:
                 f"non-numeric data types."
             )
 
+        if isinstance(pmask, int):
+            pmask = Mask.from_int(pmask)
+
         tensor_info = TensorType(dtype, shape)
         return cls(tensor_info, pmask, attrs)
 
@@ -97,7 +100,7 @@ class MPType:
     def table(
         cls,
         schema: TableType | dict[str, DType],
-        pmask: Mask | None = None,
+        pmask: int | Mask | None = None,
         **attrs: Any,
     ) -> MPType:
         """Create a table type.
@@ -112,6 +115,10 @@ class MPType:
         """
         if isinstance(schema, dict):
             schema = TableType.from_dict(schema)
+
+        if isinstance(pmask, int):
+            pmask = Mask.from_int(pmask)
+
         return cls(schema, pmask, attrs)
 
     @property

@@ -22,13 +22,10 @@ from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
     Expr,
     FuncDefExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -43,21 +40,6 @@ class ExprTransformer(ExprVisitor):
 
     def __init__(self, trans_rules: dict[str, Callable[[Expr], Expr]] | None = None):
         self.trans_rules = trans_rules or {}
-
-    def visit_rank(self, expr: RankExpr) -> Expr:
-        if "rank" in self.trans_rules:
-            return self.trans_rules["rank"](expr)
-        return expr
-
-    def visit_const(self, expr: ConstExpr) -> Expr:
-        if "const" in self.trans_rules:
-            return self.trans_rules["const"](expr)
-        return expr
-
-    def visit_rand(self, expr: RandExpr) -> Expr:
-        if "rand" in self.trans_rules:
-            return self.trans_rules["rand"](expr)
-        return expr
 
     def visit_eval(self, expr: EvalExpr) -> Expr:
         # Transform child expressions first

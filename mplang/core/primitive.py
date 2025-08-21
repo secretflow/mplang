@@ -29,23 +29,19 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.dtype import UINT64
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import Rank
 from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, dataframe_to_table_constant
-from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
+from mplang.core.table import TableLike
+from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.trace import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
     AccessExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     WhileExpr,
@@ -173,8 +169,9 @@ def prank() -> MPObject:
     Note:
         Each party in the current party mask independently produces its own rank value.
     """
-    ctx = _tracer()
-    return TraceVar(ctx, RankExpr(ctx.mask))
+    pfunc, eval_args, out_tree = builtin.rank()
+    results = peval(pfunc, eval_args)
+    return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
 @primitive
@@ -200,9 +197,9 @@ def prand(shape: Shape = ()) -> MPObject:
         private random values. The randomness is local to each party and is
         not shared or revealed to other parties.
     """
-    ctx = _tracer()
-    typ = TensorType(UINT64, shape)
-    return TraceVar(ctx, RandExpr(typ, ctx.mask))
+    pfunc, eval_args, out_tree = builtin.prand(shape)
+    results = peval(pfunc, eval_args)
+    return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
 @primitive
@@ -235,51 +232,9 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
         Note that the constant primitive is not designed to carry large tables efficiently -
         consider using dedicated table loading mechanisms for substantial datasets.
     """
-    import numpy as np
-
-    # Check if it's a table-like object first
-    if isinstance(data, TableLike):
-        try:
-            import pandas as pd
-        except ImportError:
-            # pandas is not available, so this must be a non-pandas table-like object
-            raise NotImplementedError(
-                "Table constant support only implemented for pandas DataFrame"
-            ) from None
-
-        if isinstance(data, pd.DataFrame):
-            # Convert DataFrame using helper function
-            # NOTE: constant primitive is not designed for large tables - use dedicated
-            # table loading mechanisms for substantial datasets
-            table_type, json_bytes = dataframe_to_table_constant(data)
-            ctx = _tracer()
-
-            # Reuse ConstExpr with table type and JSON serialized data
-            return TraceVar(ctx, ConstExpr(table_type, json_bytes, ctx.mask))
-
-        # For other table-like objects (even when pandas is available)
-        raise NotImplementedError(
-            "Table constant support only implemented for pandas DataFrame"
-        )
-
-    # Convert data to TensorType + bytes for cacheable pconst
-    if isinstance(data, ScalarType):
-        tensor_info = TensorType.from_obj(data)
-        # For scalars, convert to numpy array then to bytes
-        np_data = np.array(data)
-        data_bytes = np_data.tobytes()
-    elif hasattr(data, "tobytes"):
-        # For numpy arrays and other TensorLike objects with tobytes method
-        tensor_info = TensorType.from_obj(data)
-        data_bytes = data.tobytes()  # type: ignore
-    else:
-        # For other TensorLike objects, convert to numpy first
-        np_data = np.array(data)
-        tensor_info = TensorType.from_obj(np_data)
-        data_bytes = np_data.tobytes()
-
-    ctx = _tracer()
-    return TraceVar(ctx, ConstExpr(tensor_info, data_bytes, ctx.mask))
+    pfunc, eval_args, out_tree = builtin.constant(data)
+    results = peval(pfunc, eval_args)
+    return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
 @primitive
@@ -785,13 +740,11 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
         -----------------------------------------------------------
             Result:  RuntimeError
     """
-    ctx = _tracer()
-
     src_expr = cast(TraceVar, src).expr
     index_expr = cast(TraceVar, index).expr
 
     shfl_expr = ShflExpr(src_expr, index_expr)
-    return TraceVar(ctx, shfl_expr)
+    return TraceVar(_tracer(), shfl_expr)
 
 
 @primitive
@@ -848,12 +801,9 @@ def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
         -----------------------------------------------------------
             Output:  x2   x0   x1
     """
-    ctx = _tracer()
-
     src_expr = cast(TraceVar, src_val).expr
-
     shfl_s_expr = ShflSExpr(src_expr, pmask, src_ranks)
-    return TraceVar(ctx, shfl_s_expr)
+    return TraceVar(_tracer(), shfl_s_expr)
 
 
 @primitive
@@ -913,9 +863,6 @@ def pconv(vars: list[MPObject]) -> MPObject:
         typically for unifying data held by different parties. The resulting variable
         has a pmask that is the union of all input pmasks.
     """
-    ctx = _tracer()
-
     var_exprs = [cast(TraceVar, var).expr for var in vars]
-
     conv_expr = ConvExpr(var_exprs)
-    return TraceVar(ctx, conv_expr)
+    return TraceVar(_tracer(), conv_expr)

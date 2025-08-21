@@ -16,9 +16,11 @@ from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
+from mplang.core.dtype import UINT64
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
-from mplang.core.tensor import TensorType
+from mplang.core.table import TableLike, dataframe_to_table_constant
+from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
 
 
 def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -35,7 +37,6 @@ def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         fn_type="builtin.identity",
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),
-        fn_name="Identity",
     )
     _, treedef = tree_flatten(obj_ty)
     return pfunc, [obj], treedef
@@ -59,7 +60,6 @@ def read(
         fn_type="builtin.read",
         ins_info=(),
         outs_info=(ty,),
-        fn_name="Read",
         path=path,
         **kwargs,
     )
@@ -89,8 +89,120 @@ def write(obj: MPObject, path: str) -> tuple[PFunction, list[MPObject], PyTreeDe
         fn_type="builtin.write",
         ins_info=(obj_ty,),
         outs_info=(obj_ty,),
-        fn_name="Write",
         path=path,
     )
     _, treedef = tree_flatten(obj_ty)
     return pfunc, [obj], treedef
+
+
+def constant(
+    data: TensorLike | ScalarType | TableLike,
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Create a constant tensor or table from data.
+
+    Args:
+        data: The constant data to embed. Can be:
+              - A scalar value (int, float, bool)
+              - A numpy array or other tensor-like object
+              - A pandas DataFrame or other table-like object
+              - Any object that can be converted to tensor
+
+    Returns:
+        tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for constant, empty args list, output tree definition
+    """
+    import numpy as np
+
+    # Check if it's a table-like object first
+    if isinstance(data, TableLike):
+        try:
+            import pandas as pd
+        except ImportError:
+            # pandas is not available, so this must be a non-pandas table-like object
+            raise NotImplementedError(
+                "Table constant support only implemented for pandas DataFrame"
+            ) from None
+
+        if isinstance(data, pd.DataFrame):
+            # Convert DataFrame using helper function
+            table_type, json_bytes = dataframe_to_table_constant(data)
+
+            pfunc = PFunction(
+                fn_type="builtin.constant",
+                ins_info=(),
+                outs_info=(table_type,),
+                data_bytes=json_bytes,
+            )
+            _, treedef = tree_flatten(table_type)
+            return pfunc, [], treedef
+
+        # For other table-like objects (even when pandas is available)
+        raise NotImplementedError(
+            "Table constant support only implemented for pandas DataFrame"
+        )
+
+    # Convert data to TensorType + bytes for cacheable constant
+    if isinstance(data, ScalarType):
+        tensor_info = TensorType.from_obj(data)
+        # For scalars, convert to numpy array then to bytes
+        np_data = np.array(data)
+        data_bytes = np_data.tobytes()
+    elif hasattr(data, "tobytes"):
+        # For numpy arrays and other TensorLike objects with tobytes method
+        tensor_info = TensorType.from_obj(data)
+        data_bytes = data.tobytes()  # type: ignore
+    else:
+        # For other TensorLike objects, convert to numpy first
+        np_data = np.array(data)
+        tensor_info = TensorType.from_obj(np_data)
+        data_bytes = np_data.tobytes()
+
+    # Store tensor metadata as simple attributes
+    pfunc = PFunction(
+        fn_type="builtin.constant",
+        ins_info=(),
+        outs_info=(tensor_info,),
+        data_bytes=data_bytes,
+    )
+    _, treedef = tree_flatten(tensor_info)
+    return pfunc, [], treedef
+
+
+def rank() -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Multi-party get the rank (party identifier) of each party.
+
+    Returns:
+        tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for rank, empty args list, output tree definition
+    """
+    # Return a scalar UINT64 tensor for rank
+    tensor_type = TensorType(UINT64, ())
+
+    pfunc = PFunction(
+        fn_type="builtin.rank",
+        ins_info=(),
+        outs_info=(tensor_type,),
+    )
+    _, treedef = tree_flatten(tensor_type)
+    return pfunc, [], treedef
+
+
+def prand(shape: Shape = ()) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Multi-party generate a private random (uint64) tensor with the given shape.
+
+    Args:
+        shape: The shape of the random tensor to generate.
+               Must be a tuple of positive integers. Defaults to () for scalar.
+
+    Returns:
+        tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for prand, empty args list, output tree definition
+    """
+    # For now, only UINT64 is supported
+    tensor_type = TensorType(UINT64, shape)
+
+    pfunc = PFunction(
+        fn_type="builtin.prand",
+        ins_info=(),
+        outs_info=(tensor_type,),
+        shape=shape,
+    )
+    _, treedef = tree_flatten(tensor_type)
+    return pfunc, [], treedef

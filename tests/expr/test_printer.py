@@ -16,24 +16,20 @@
 Tests for expression printer module.
 """
 
-import numpy as np
 import pytest
 
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import Rank
+from mplang.core.mptype import MPType, Rank
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.expr import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
     FuncDefExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -77,38 +73,9 @@ class TestPrinter:
 class TestPrinterExpressions:
     """Test printer for different expression types."""
 
-    def test_rank_expr_printing(self, pmask_2p):
-        """Test printing of RankExpr."""
-        printer = Printer()
-        expr = RankExpr(pmask_2p)
-
-        result = printer.print_expr(expr)
-        assert "%0 = prank()" in result
-
-    def test_const_expr_printing(self, pmask_2p):
-        """Test printing of ConstExpr."""
-        printer = Printer()
-        tensor_info = TensorType(FLOAT32, (2, 2))
-        data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
-        expr = ConstExpr(tensor_info, data.tobytes(), pmask_2p)
-
-        result = printer.print_expr(expr)
-        assert "%0 = pconst() {data=[[1.0, 2.0], [3.0, 4.0]]} : f32[2, 2]<3>" in result
-
-    def test_rand_expr_printing(self, pmask_2p):
-        """Test printing of RandExpr."""
-        printer = Printer()
-        tensor_info = TensorType(UINT64, (3, 3))
-        expr = RandExpr(tensor_info, pmask_2p)
-
-        result = printer.print_expr(expr)
-        assert "%0 = prand() : u64[3, 3]<3>" in result
-
     def test_variable_expr_printing(self, pmask_2p):
         """Test printing of VariableExpr."""
         printer = Printer(compact_format=False)
-        from mplang.core.mptype import MPType
-
         mptype = MPType.tensor(FLOAT32, (2, 2), pmask_2p)
         expr = VariableExpr("test_var", mptype)
 
@@ -122,21 +89,23 @@ class TestPrinterExpressions:
     def test_eval_expr_printing(self, pmask_2p, pfunc_1i1o):
         """Test printing of EvalExpr."""
         printer = Printer()
-        arg1 = RankExpr(pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        arg1 = VariableExpr("input", mptype)
         expr = EvalExpr(pfunc_1i1o, [arg1])
 
         result = printer.print_expr(expr)
         lines = result.split("\n")
 
-        # Should contain the arguments first
-        assert any("prank()" in line for line in lines)
-        # Should contain the eval expression
+        # Should contain the eval expression (in compact mode, no pname for variables)
         assert any("peval(" in line for line in lines)
+        # Should contain fn_name since verbose=false still shows it
+        assert any("fn_name=" in line for line in lines)
 
     def test_eval_expr_with_rmask_printing(self, pmask_2p, pfunc_1i1o):
         """Test printing of EvalExpr with rmask."""
         printer = Printer()
-        arg = RankExpr(pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        arg = VariableExpr("input", mptype)
         rmask = Mask(3)  # 0b11
         expr = EvalExpr(pfunc_1i1o, [arg], rmask=rmask)
 
@@ -157,53 +126,59 @@ class TestPrinterExpressions:
 
         # Test without verbose_peval (default)
         printer_normal = Printer()
-        arg = RankExpr(pmask_2p)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        arg = VariableExpr("input", mptype)
         expr = EvalExpr(pfunc_with_text, [arg])
 
         result_normal = printer_normal.print_expr(expr)
-        assert 'fn_name="add_one"' in result_normal
+        assert "fn_type=jax" in result_normal
         assert "fn_text=" not in result_normal
-        assert "fn_type=" not in result_normal
+        assert "fn_name=add_one" in result_normal
 
         # Test with verbose_peval enabled
         printer_verbose = Printer(verbose_peval=True)
         result_verbose = printer_verbose.print_expr(expr)
-        assert 'fn_name="add_one"' in result_verbose
+        assert "fn_name=add_one" in result_verbose
         assert "fn_text=lambda x: x + 1" in result_verbose
         assert "fn_type=jax" in result_verbose
 
     def test_tuple_expr_printing(self, pmask_2p):
         """Test printing of TupleExpr."""
         printer = Printer()
-        arg1 = RankExpr(pmask_2p)
-        arg2 = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        arg1 = VariableExpr("x", mptype)
+        arg2 = VariableExpr("y", mptype)
         expr = TupleExpr([arg1, arg2])
 
         result = printer.print_expr(expr)
         lines = result.split("\n")
 
-        # Should contain tuple expression
-        assert any("tuple(%0, %1)" in line for line in lines)
+        # Should contain tuple expression (in compact mode, uses variable names)
+        assert any("tuple(x, y)" in line for line in lines)
 
-    def test_conv_expr_printing(self, pmask_2p):
+    def test_conv_expr_printing(self):
         """Test printing of ConvExpr."""
         printer = Printer()
         # Use disjoint pmasks: party 0 and party 1
-        var1 = RankExpr(Mask(1))  # 0b01 - party 0
-        var2 = RankExpr(Mask(2))  # 0b10 - party 1
+        mptype1 = MPType.tensor(UINT64, (), Mask(1))  # 0b01 - party 0
+        mptype2 = MPType.tensor(UINT64, (), Mask(2))  # 0b10 - party 1
+        var1 = VariableExpr("p0_var", mptype1)
+        var2 = VariableExpr("p1_var", mptype2)
         expr = ConvExpr([var1, var2])
 
         result = printer.print_expr(expr)
         lines = result.split("\n")
 
-        # Should contain conv expression
-        assert any("pconv(%0, %1)" in line for line in lines)
+        # Should contain conv expression (in compact mode, uses variable names)
+        assert any("pconv(p0_var, p1_var)" in line for line in lines)
 
     def test_multiple_expressions_same_name(self, pmask_2p):
         """Test that multiple expressions of the same type get different names."""
-        printer = Printer()
-        expr1 = RankExpr(pmask_2p)
-        expr2 = RankExpr(pmask_2p)
+        printer = Printer(compact_format=False)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        # Two different expression instances with the same name
+        expr1 = VariableExpr("x", mptype)
+        expr2 = VariableExpr("x", mptype)
 
         # Create a tuple expression with both
         tuple_expr = TupleExpr([expr1, expr2])
@@ -211,18 +186,20 @@ class TestPrinterExpressions:
         result = printer.print_expr(tuple_expr)
 
         # Expected output format with exact literal comparison
+        # The printer should assign different SSA names (%0, %1) to the two different expressions.
         expected = """
-%0 = prank() : u64<3>
-%1 = prank() : u64<3>
+%0 = pname("x") : u64<3>
+%1 = pname("x") : u64<3>
 %2 = tuple(%0, %1) : (u64<3>, u64<3>)
-"""
+""".strip()
 
-        assert result == expected.strip()
+        assert result == expected
 
     def test_shfl_s_expr_printing(self, pmask_2p):
         """Test printing of ShflSExpr."""
         printer = Printer()
-        src_val = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        src_val = VariableExpr("src", mptype)
         # Use a larger target pmask that requires 3 src_ranks
         target_pmask = Mask(7)  # 0b111 for 3 parties
         # Need 3 src_ranks since target_pmask has 3 bits set
@@ -241,8 +218,9 @@ class TestPrinterExpressions:
     def test_shfl_expr_printing(self, pmask_2p):
         """Test printing of ShflExpr."""
         printer = Printer()
-        src = RankExpr(pmask_2p)
-        index = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        src = VariableExpr("src", mptype)
+        index = VariableExpr("idx", mptype)
         expr = ShflExpr(src, index)
 
         result = printer.print_expr(expr)
@@ -254,7 +232,8 @@ class TestPrinterExpressions:
     def test_access_expr_printing(self, pmask_2p):
         """Test printing of AccessExpr."""
         printer = Printer(compact_format=False)
-        base_expr = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        base_expr = VariableExpr("base", mptype)
         expr = AccessExpr(base_expr, 0)
 
         result = printer.print_expr(expr)
@@ -269,8 +248,6 @@ class TestPrinterExpressions:
         printer = Printer(compact_format=False)
 
         # Create a function body that actually uses the parameters
-        from mplang.core.mptype import MPType
-
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         y_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
 
@@ -299,16 +276,15 @@ class TestPrinterExpressions:
 class TestPrinterComplexExpressions:
     """Test printer for complex nested expressions."""
 
-    def test_cond_expr_printing(self, pmask_2p, pfunc_1i1o):
+    def test_cond_expr_printing(self, pmask_2p):
         """Test printing of CondExpr with nested functions that actually use their parameters."""
         printer = Printer(compact_format=False)
 
         # Create predicate
-        pred = RankExpr(pmask_2p)
+        pred_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        pred = VariableExpr("pred", pred_mptype)
 
         # Create then function that actually uses the parameter 'x'
-        from mplang.core.mptype import MPType
-
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         x_var = VariableExpr("x", x_mptype)  # Reference the parameter
         then_fn = FuncDefExpr(["x"], x_var)
@@ -317,7 +293,8 @@ class TestPrinterComplexExpressions:
         else_fn = FuncDefExpr(["x"], x_var)
 
         # Create arguments
-        arg = RankExpr(pmask_2p)
+        arg_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
+        arg = VariableExpr("arg", arg_mptype)
 
         # Create conditional expression
         expr = CondExpr(pred, then_fn, else_fn, [arg])
@@ -326,8 +303,8 @@ class TestPrinterComplexExpressions:
 
         # Expected output format with exact literal comparison
         expected = """
-%0 = prank() : u64<3>
-%1 = prank() : u64<3>
+%0 = pname("pred") : u64<3>
+%1 = pname("arg") : f32[1]<3>
 %2 = pcond(%0, %1) {
   then_fn: (x) {
     %0 = pname("x") : f32[1]<3>
@@ -345,30 +322,32 @@ class TestPrinterComplexExpressions:
     def test_all_expr_types_printing(self, pmask_2p, pfunc_1i1o):
         """Test printing of a complex expression involving all Expr types with meaningful parameter usage."""
         printer = Printer(compact_format=False)
-        from mplang.core.mptype import MPType, Rank
 
-        # 1. Basic primitive expressions
-        const_expr = ConstExpr(
-            TensorType(FLOAT32, (2,)),
-            np.array([1.0, 2.0], dtype=np.float32).tobytes(),
-            pmask_2p,
-        )
-        rank_expr = RankExpr(pmask_2p)
-        rand_expr = RandExpr(TensorType(UINT64, (2,)), pmask_2p)
+        # 1. Variable expressions
+        var1_mptype = MPType.tensor(FLOAT32, (2,), pmask_2p)
+        var1 = VariableExpr("var1", var1_mptype)
+
+        var2_mptype = MPType.tensor(UINT64, (2,), pmask_2p)
+        var2 = VariableExpr("var2", var2_mptype)
+
+        var3_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        var3 = VariableExpr("var3", var3_mptype)
 
         # 2. Access expression
-        access_expr = AccessExpr(const_expr, 0)
+        access_expr = AccessExpr(var1, 0)
 
         # 3. Conv expression (requires disjoint masks)
-        conv_expr = ConvExpr([RankExpr(Mask(1)), RankExpr(Mask(2))])
+        var_p0 = VariableExpr("p0", MPType.tensor(UINT64, (), Mask(1)))
+        var_p1 = VariableExpr("p1", MPType.tensor(UINT64, (), Mask(2)))
+        conv_expr = ConvExpr([var_p0, var_p1])
 
         # 4. Eval expression
-        eval_expr = EvalExpr(pfunc_1i1o, [const_expr])
+        eval_expr = EvalExpr(pfunc_1i1o, [var1])
 
         # 5. Shuffle expressions
-        shfl_expr = ShflExpr(rank_expr, rank_expr)
+        shfl_expr = ShflExpr(var3, var3)
         shfl_s_expr = ShflSExpr(
-            rank_expr,
+            var3,
             Mask(7),  # target 3 parties
             [Rank(0), Rank(1), Rank(0)],  # src ranks for each target party
         )
@@ -378,16 +357,16 @@ class TestPrinterComplexExpressions:
         var_expr = VariableExpr("input_data", param_type)
         func_body = TupleExpr([var_expr, access_expr])
         func_def = FuncDefExpr(["input_data"], func_body)
-        call_expr = CallExpr(func_def, [const_expr])
+        call_expr = CallExpr(func_def, [var1])
 
         # Access the first output of the call expression to get a single-output expr
         call_expr_first = AccessExpr(call_expr, 0)
 
         # 7. Build final comprehensive expression
         final_expr = TupleExpr([
-            const_expr,  # ConstExpr
-            rank_expr,  # RankExpr
-            rand_expr,  # RandExpr
+            var1,  # VariableExpr
+            var2,  # VariableExpr
+            var3,  # VariableExpr
             access_expr,  # AccessExpr
             conv_expr,  # ConvExpr
             eval_expr,  # EvalExpr
@@ -400,27 +379,27 @@ class TestPrinterComplexExpressions:
 
         # Expected output with exact format (SSA semantics - no duplicate definitions)
         expected = """
-%0 = pconst() {data=[1.0, 2.0]} : f32[2]<3>
-%1 = prank() : u64<3>
-%2 = prand() : u64[2]<3>
+%0 = pname("var1") : f32[2]<3>
+%1 = pname("var2") : u64[2]<3>
+%2 = pname("var3") : u64<3>
 %3 = access(%0) {index=0} : f32[2]<3>
-%4 = prank() : u64<1>
-%5 = prank() : u64<2>
+%4 = pname("p0") : u64<1>
+%5 = pname("p1") : u64<2>
 %6 = pconv(%4, %5) : u64<3>
-%7 = peval(%0) {fn_name="mock_unary"} : f32[2, 3]<3>
-%8 = pshfl(%1, %1) : u64
-%9 = pshfl_s(%1) {pmask=7, src_ranks=[0, 1, 0]} : u64<7>
+%7 = peval(%0) {fn_type=mock, fn_name=mock_unary} : f32[2, 3]<3>
+%8 = pshfl(%2, %2) : u64
+%9 = pshfl_s(%2) {pmask=7, src_ranks=[0, 1, 0]} : u64<7>
 %10 = pcall(%0) {
   fn: (input_data) {
     %0 = pname("input_data") : f32[2]<3>
-    %1 = pconst() {data=[1.0, 2.0]} : f32[2]<3>
+    %1 = pname("var1") : f32[2]<3>
     %2 = access(%1) {index=0} : f32[2]<3>
     %3 = tuple(%0, %2) : (f32[2]<3>, f32[2]<3>)
     return %3
   }
 } : (f32[2]<3>, f32[2]<3>)
 %11 = access(%10) {index=0} : f32[2]<3>
-%12 = tuple(%0, %1, %2, %3, %6, %7, %8, %9, %11) : (f32[2]<3>, u64<3>, u64[2]<3>, f32[2]<3>, u64<3>, f32[2, 3]<3>, u64, u64<7>, f32[2]<3>)
+%12 = tuple(%0, %1, %2, %3, %6, %7, %8, %9, %11) : (f32[2]<3>, u64[2]<3>, u64<3>, f32[2]<3>, u64<3>, f32[2, 3]<3>, u64, u64<7>, f32[2]<3>)
 """
 
         assert result == expected.strip()
@@ -429,25 +408,19 @@ class TestPrinterComplexExpressions:
         printer_optimized = Printer(compact_format=True)
         result_optimized = printer_optimized.print_expr(final_expr)
 
-        # Expected output with variable optimization (SSA semantics - no duplicate definitions)
+        # Expected output with variable optimization (compact mode uses variable names directly)
         expected_optimized = """
-%0 = pconst() {data=[1.0, 2.0]} : f32[2]<3>
-%1 = prank() : u64<3>
-%2 = prand() : u64[2]<3>
-%3 = prank() : u64<1>
-%4 = prank() : u64<2>
-%5 = pconv(%3, %4) : u64<3>
-%6 = peval(%0) {fn_name="mock_unary"} : f32[2, 3]<3>
-%7 = pshfl(%1, %1) : u64
-%8 = pshfl_s(%1) {pmask=7, src_ranks=[0, 1, 0]} : u64<7>
-%9 = pcall(%0) {
+%0 = pconv(p0, p1) : u64<3>
+%1 = peval(var1) {fn_type=mock, fn_name=mock_unary} : f32[2, 3]<3>
+%2 = pshfl(var3, var3) : u64
+%3 = pshfl_s(var3) {pmask=7, src_ranks=[0, 1, 0]} : u64<7>
+%4 = pcall(var1) {
   fn: (input_data) {
-    %0 = pconst() {data=[1.0, 2.0]} : f32[2]<3>
-    %1 = tuple(input_data, %0) : (f32[2]<3>, f32[2]<3>)
-    return %1
+    %0 = tuple(input_data, var1) : (f32[2]<3>, f32[2]<3>)
+    return %0
   }
 } : (f32[2]<3>, f32[2]<3>)
-%10 = tuple(%0, %1, %2, %0, %5, %6, %7, %8, %9:0) : (f32[2]<3>, u64<3>, u64[2]<3>, f32[2]<3>, u64<3>, f32[2, 3]<3>, u64, u64<7>, f32[2]<3>)
+%5 = tuple(var1, var2, var3, var1, %0, %1, %2, %3, %4:0) : (f32[2]<3>, u64[2]<3>, u64<3>, f32[2]<3>, u64<3>, f32[2, 3]<3>, u64, u64<7>, f32[2]<3>)
 """
 
         assert result_optimized == expected_optimized.strip()
@@ -457,8 +430,6 @@ class TestPrinterComplexExpressions:
         printer = Printer(compact_format=False)
 
         # Create condition function that uses the 'state' parameter
-        from mplang.core.mptype import MPType
-
         state_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         state_var = VariableExpr("state", state_mptype)
         # Access the first element of state to check if we should continue
@@ -470,7 +441,8 @@ class TestPrinterComplexExpressions:
         body_fn = FuncDefExpr(["state"], state_var)
 
         # Create initial value
-        init = RankExpr(pmask_2p)
+        init_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        init = VariableExpr("init", init_mptype)
 
         # Create while expression
         expr = WhileExpr(cond_fn, body_fn, [init])
@@ -479,7 +451,7 @@ class TestPrinterComplexExpressions:
 
         # Expected output format with exact literal comparison
         expected = """
-%0 = prank() : u64<3>
+%0 = pname("init") : u64<3>
 %1 = pwhile(%0) {
   cond_fn: (state) {
     %0 = pname("state") : f32[1]<3>
@@ -500,8 +472,6 @@ class TestPrinterComplexExpressions:
         printer = Printer(compact_format=False)
 
         # Create function body that actually uses the parameters
-        from mplang.core.mptype import MPType
-
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
         y_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
 
@@ -513,8 +483,10 @@ class TestPrinterComplexExpressions:
         fn = FuncDefExpr(["x", "y"], fn_body)
 
         # Create arguments
-        arg1 = RankExpr(pmask_2p)
-        arg2 = RankExpr(pmask_2p)
+        arg1_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        arg2_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        arg1 = VariableExpr("arg1", arg1_mptype)
+        arg2 = VariableExpr("arg2", arg2_mptype)
 
         # Create call expression
         expr = CallExpr(fn, [arg1, arg2])
@@ -523,8 +495,8 @@ class TestPrinterComplexExpressions:
 
         # Expected output format with exact literal comparison
         expected = """
-%0 = prank() : u64<3>
-%1 = prank() : u64<3>
+%0 = pname("arg1") : u64<3>
+%1 = pname("arg2") : u64<3>
 %2 = pcall(%0, %1) {
   fn: (x, y) {
     %0 = pname("x") : f32[1]<3>
@@ -542,7 +514,8 @@ class TestPrinterComplexExpressions:
         printer = Printer(compact_format=False)
 
         # Create a complex nested structure
-        inner = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        inner = VariableExpr("inner", mptype)
         access1 = AccessExpr(inner, 0)
         access2 = AccessExpr(access1, 0)
 
@@ -550,7 +523,7 @@ class TestPrinterComplexExpressions:
 
         # Expected output format with exact literal comparison
         expected = """
-%0 = prank() : u64<3>
+%0 = pname("inner") : u64<3>
 %1 = access(%0) {index=0} : u64<3>
 %2 = access(%1) {index=0} : u64<3>
 """
@@ -563,52 +536,55 @@ class TestPrinterIndentation:
 
     def test_indentation_reset_between_prints(self, pmask_2p):
         """Test that indentation is reset between print calls."""
-        printer = Printer()
+        printer = Printer(compact_format=False)  # Use non-compact to see pname output
 
         # Create a complex expression that modifies indentation
-        body = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        body = VariableExpr("x", mptype)
         func_def = FuncDefExpr(["x"], body)
 
         # Print first expression
         printer.print_expr(func_def)
 
         # Print second expression - indentation should be reset
-        simple_expr = RankExpr(pmask_2p)
+        simple_expr = VariableExpr("y", mptype)
         result2 = printer.print_expr(simple_expr)
 
         # Second result should not have indentation from first
-        assert result2.strip() == "%0 = prank() : u64<3>"
+        assert result2.strip() == '%0 = pname("y") : u64<3>'
 
     def test_counter_reset_between_prints(self, pmask_2p):
         """Test that expression counter is reset between print calls."""
-        printer = Printer()
+        printer = Printer(compact_format=False)  # Use non-compact to see pname output
 
         # Print first expression
-        expr1 = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        expr1 = VariableExpr("x", mptype)
         result1 = printer.print_expr(expr1)
-        assert "%0 = prank()" in result1
+        assert '%0 = pname("x")' in result1
 
         # Print second expression - counter should reset
-        expr2 = RankExpr(pmask_2p)
+        expr2 = VariableExpr("y", mptype)
         result2 = printer.print_expr(expr2)
-        assert "%0 = prank()" in result2
+        assert '%0 = pname("y")' in result2
 
     def test_expression_names_reset_between_prints(self, pmask_2p):
         """Test that expression names are reset between print calls."""
-        printer = Printer()
+        printer = Printer(compact_format=False)  # Use non-compact to see pname output
 
         # Print first expression
-        expr1 = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        expr1 = VariableExpr("x", mptype)
         result1 = printer.print_expr(expr1)
         # After print_expr, _visited is reset so we can't check it
         # But we can verify the output shows %0
-        assert "%0 = prank()" in result1
+        assert '%0 = pname("x")' in result1
 
         # Print second expression - names should reset
-        expr2 = RankExpr(pmask_2p)
+        expr2 = VariableExpr("y", mptype)
         result2 = printer.print_expr(expr2)
         # Both should start with %0 because counter resets
-        assert "%0 = prank()" in result2
+        assert '%0 = pname("y")' in result2
 
 
 class TestPrinterEdgeCases:
@@ -624,27 +600,26 @@ class TestPrinterEdgeCases:
 
     def test_printer_output_format(self, pmask_2p):
         """Test that printer output format is consistent."""
-        printer = Printer()
+        printer = Printer(compact_format=False)  # Use non-compact to see pname output
 
         # Test multiple expressions to verify format consistency
-        expr1 = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        expr1 = VariableExpr("x", mptype)
         result1 = printer.print_expr(expr1)
 
         # Should start with %0 and be properly formatted
-        assert result1.strip() == "%0 = prank() : u64<3>"
+        assert result1.strip() == '%0 = pname("x") : u64<3>'
 
         # Test that each new print starts fresh
-        expr2 = RankExpr(pmask_2p)
+        expr2 = VariableExpr("y", mptype)
         result2 = printer.print_expr(expr2)
-        assert result2.strip() == "%0 = prank() : u64<3>"
+        assert result2.strip() == '%0 = pname("y") : u64<3>'
 
     def test_deep_nesting_indentation(self, pmask_2p):
         """Test printer with deeply nested expressions that use parameters meaningfully."""
         printer = Printer(compact_format=False)
 
         # Create nested function definitions with meaningful parameter usage
-        from mplang.core.mptype import MPType
-
         inner_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
         middle_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
 
@@ -658,8 +633,9 @@ class TestPrinterEdgeCases:
         middle_body = CallExpr(inner_fn, [middle_param])
         middle_fn = FuncDefExpr(["middle_param"], middle_body)
 
-        # Outer expression: call middle function with a rank expression
-        arg = RankExpr(pmask_2p)
+        # Outer expression: call middle function with a variable expression
+        arg_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        arg = VariableExpr("arg", arg_mptype)
         outer_expr = CallExpr(middle_fn, [arg])
 
         result = printer.print_expr(outer_expr)
@@ -667,7 +643,7 @@ class TestPrinterEdgeCases:
         # Expected output format with exact literal comparison
         # This shows the deep nesting with proper indentation and meaningful parameter usage
         expected = """
-%0 = prank() : u64<3>
+%0 = pname("arg") : u64<3>
 %1 = pcall(%0) {
   fn: (middle_param) {
     %0 = pname("middle_param") : f32[1]<3>
@@ -690,7 +666,8 @@ class TestPrinterEdgeCases:
         printer = Printer(compact_format=False)
 
         # Test with multiple parameters
-        body = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        body = VariableExpr("param1", mptype)
         func_def = FuncDefExpr(["param1", "param2", "param3"], body)
 
         result = printer.print_expr(func_def)
@@ -704,9 +681,10 @@ class TestPrinterEdgeCases:
         """Test AccessExpr with various index values."""
         printer = Printer(compact_format=False)
 
-        base_expr = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        base_expr = VariableExpr("base", mptype)
 
-        # Test index 0 (the only valid index for RankExpr)
+        # Test index 0 (the only valid index for single output expressions)
         access_expr = AccessExpr(base_expr, 0)
         result = printer.print_expr(access_expr)
         assert "index=0" in result
@@ -717,8 +695,9 @@ class TestPrinterEdgeCases:
         printer = Printer(compact_format=False)
 
         # Create a complex expression tree
-        expr1 = RankExpr(pmask_2p)
-        expr2 = RankExpr(pmask_2p)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        expr1 = VariableExpr("x", mptype)
+        expr2 = VariableExpr("y", mptype)
         tuple_expr = TupleExpr([expr1, expr2])
         access_expr = AccessExpr(tuple_expr, 0)
 
@@ -727,7 +706,7 @@ class TestPrinterEdgeCases:
 
         # Should show the dependency chain clearly
         assert len(lines) >= 3
-        assert any("prank()" in line for line in lines)
+        assert any("pname(" in line for line in lines)
         assert any("tuple(%0, %1)" in line for line in lines)
         assert any("access(" in line and "index=0" in line for line in lines)
 
@@ -760,7 +739,6 @@ class TestPrinterMeaningfulParameterUsage:
     def test_meaningful_parameter_usage_scenarios(self, pmask_2p):
         """Test various scenarios where function parameters are meaningfully used."""
         printer = Printer(compact_format=False)
-        from mplang.core.mptype import MPType
 
         # Scenario 1: Parameter used in conditional predicate
         param_type = MPType.tensor(FLOAT32, (2,), pmask_2p)
@@ -770,18 +748,20 @@ class TestPrinterMeaningfulParameterUsage:
         then_body = param_var  # Return parameter directly
         else_body = param_var  # Return parameter directly
 
-        pred = RankExpr(pmask_2p)
+        pred_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        pred = VariableExpr("pred", pred_mptype)
         then_fn = FuncDefExpr(["data"], then_body)
         else_fn = FuncDefExpr(["data"], else_body)
 
-        arg = RankExpr(pmask_2p)
+        arg_mptype = MPType.tensor(FLOAT32, (2,), pmask_2p)
+        arg = VariableExpr("arg", arg_mptype)
         cond_expr = CondExpr(pred, then_fn, else_fn, [arg])
 
         result = printer.print_expr(cond_expr)
 
         expected = """
-%0 = prank() : u64<3>
-%1 = prank() : u64<3>
+%0 = pname("pred") : u64<3>
+%1 = pname("arg") : f32[2]<3>
 %2 = pcond(%0, %1) {
   then_fn: (data) {
     %0 = pname("data") : f32[2]<3>
@@ -799,7 +779,6 @@ class TestPrinterMeaningfulParameterUsage:
     def test_parameter_reuse_in_complex_expressions(self, pmask_2p):
         """Test parameter being used multiple times in the same function."""
         printer = Printer(compact_format=False)
-        from mplang.core.mptype import MPType
 
         # Create a function that uses the same parameter multiple times
         param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -825,7 +804,6 @@ class TestPrinterMeaningfulParameterUsage:
     def test_while_loop_with_meaningful_state_usage(self, pmask_2p):
         """Test while loop where state parameter is meaningfully used."""
         printer = Printer(compact_format=False)
-        from mplang.core.mptype import MPType
 
         # Create a while loop that actually processes the state
         state_type = MPType.tensor(FLOAT32, (3,), pmask_2p)
@@ -840,13 +818,14 @@ class TestPrinterMeaningfulParameterUsage:
         body_fn = FuncDefExpr(["state"], body_body)
 
         # Initial state
-        init = RankExpr(pmask_2p)
+        init_mptype = MPType.tensor(UINT64, (), pmask_2p)
+        init = VariableExpr("init", init_mptype)
 
         while_expr = WhileExpr(cond_fn, body_fn, [init])
         result = printer.print_expr(while_expr)
 
         expected = """
-%0 = prank() : u64<3>
+%0 = pname("init") : u64<3>
 %1 = pwhile(%0) {
   cond_fn: (state) {
     %0 = pname("state") : f32[3]<3>

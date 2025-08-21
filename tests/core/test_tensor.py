@@ -21,7 +21,7 @@ from mplang.core.mptype import MPType
 
 
 class TestTensor:
-    """Test tensor-related functionality of MPType."""
+    """Test tensor-related functionality."""
 
     def test_tensor_creation(self):
         """Test tensor creation."""

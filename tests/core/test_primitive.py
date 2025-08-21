@@ -370,9 +370,9 @@ class TestBasicPrimitives:
         expected = """
 () {
   %0 = pconst() {data=42} : i64<3>
-  %1 = peval(%0) {fn_type=builtin.identity, fn_name=None, rmask=Mask([0])} : i64<1>
+  %1 = peval(%0) {fn_type=builtin.identity, rmask=0x1} : i64<1>
   %2 = pconst() {data=24} : i64<3>
-  %3 = peval(%2) {fn_type=builtin.identity, fn_name=None, rmask=Mask([1])} : i64<2>
+  %3 = peval(%2) {fn_type=builtin.identity, rmask=0x2} : i64<2>
   %4 = pconv(%1, %3) : i64<3>
   return %4
 }

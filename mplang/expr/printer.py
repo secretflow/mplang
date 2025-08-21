@@ -169,12 +169,14 @@ class Printer(ExprVisitor):
         elif fn_type == "builtin.prand":
             return self._do_print("prand", [], mptypes=expr.mptypes)
 
-        attrs = {"fn_type": fn_type, "fn_name": str(expr.pfunc.fn_name)}
+        attrs = {"fn_type": fn_type}
+        if expr.pfunc.fn_name:
+            attrs["fn_name"] = str(expr.pfunc.fn_name)
         if self.verbose_peval:
             attrs["fn_text"] = str(expr.pfunc.fn_text)
 
         if expr.rmask is not None:
-            attrs["rmask"] = str(expr.rmask)
+            attrs["rmask"] = f"0x{expr.rmask.value:x}"
         return self._do_print("peval", arg_names, attrs=attrs, mptypes=expr.mptypes)
 
     def visit_variable(self, expr: VariableExpr) -> str:

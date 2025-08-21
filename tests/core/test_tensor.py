@@ -24,7 +24,7 @@ class TestTensor:
     """Test tensor-related functionality of MPType."""
 
     def test_tensor_creation(self):
-        """Test tensor MPType creation."""
+        """Test tensor creation."""
         tensor_type = MPType.tensor(FLOAT32, (3, 4))
 
         assert tensor_type.is_tensor

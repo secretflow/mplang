@@ -740,13 +740,11 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
         -----------------------------------------------------------
             Result:  RuntimeError
     """
-    ctx = _tracer()
-
     src_expr = cast(TraceVar, src).expr
     index_expr = cast(TraceVar, index).expr
 
     shfl_expr = ShflExpr(src_expr, index_expr)
-    return TraceVar(ctx, shfl_expr)
+    return TraceVar(_tracer(), shfl_expr)
 
 
 @primitive
@@ -803,12 +801,9 @@ def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
         -----------------------------------------------------------
             Output:  x2   x0   x1
     """
-    ctx = _tracer()
-
     src_expr = cast(TraceVar, src_val).expr
-
     shfl_s_expr = ShflSExpr(src_expr, pmask, src_ranks)
-    return TraceVar(ctx, shfl_s_expr)
+    return TraceVar(_tracer(), shfl_s_expr)
 
 
 @primitive
@@ -868,9 +863,6 @@ def pconv(vars: list[MPObject]) -> MPObject:
         typically for unifying data held by different parties. The resulting variable
         has a pmask that is the union of all input pmasks.
     """
-    ctx = _tracer()
-
     var_exprs = [cast(TraceVar, var).expr for var in vars]
-
     conv_expr = ConvExpr(var_exprs)
-    return TraceVar(ctx, conv_expr)
+    return TraceVar(_tracer(), conv_expr)

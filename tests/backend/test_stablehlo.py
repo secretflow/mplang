@@ -35,7 +35,7 @@ class TestStablehloHandler:
     def setup_and_teardown(self):
         """Initialize and cleanup StableHLO runtime for each test case."""
         self.runtime = StablehloHandler()
-        self.runtime.setup()
+        self.runtime.setup(0)  # Use rank 0 for test
         yield
         self.runtime.teardown()
 

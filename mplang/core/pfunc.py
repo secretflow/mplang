@@ -145,8 +145,12 @@ class PFunctionHandler(ABC, Generic[InputType, OutputType]):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def setup(self) -> None:
-        """Set up runtime environment, including any necessary initialization."""
+    def setup(self, rank: int) -> None:
+        """Set up runtime environment, including any necessary initialization.
+
+        Args:
+            rank: The rank/ID of the current party.
+        """
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod

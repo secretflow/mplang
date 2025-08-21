@@ -30,11 +30,8 @@ from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -311,22 +308,6 @@ class Writer(ExprVisitor):
             attrs=graph_attrs,
         )
 
-    def visit_rank(self, expr: RankExpr) -> Any:
-        """Visit rank expression."""
-        op = self._create_node_proto(expr, "rank")
-        return self._finalize_node(op, expr)
-
-    def visit_const(self, expr: ConstExpr) -> Any:
-        """Visit constant expression."""
-        op = self._create_node_proto(expr, "const")
-        self._add_attrs(op, data=expr.data_bytes)
-        return self._finalize_node(op, expr)
-
-    def visit_rand(self, expr: RandExpr) -> Any:
-        """Visit random expression."""
-        op = self._create_node_proto(expr, "rand")
-        return self._finalize_node(op, expr)
-
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Visit evaluation expression."""
         # Visit all argument expressions
@@ -492,67 +473,7 @@ class Reader:
 
     def _create_expr_from_proto(self, node_proto: mpir_pb2.NodeProto) -> Expr:
         """Create an Expression from a NodeProto."""
-        if node_proto.op_type == "rank":
-            # Parse pmask from output info
-            pmask: Mask = Mask.from_ranks(0)  # Default to party 0 if no pmask
-            if node_proto.outs_info:
-                pmask_int = node_proto.outs_info[0].pmask
-                if pmask_int >= 0:
-                    pmask = Mask(pmask_int)
-                # If pmask_int == -1, keep default (this should not happen for rank)
-            return RankExpr(pmask)
-
-        elif node_proto.op_type == "const":
-            # Parse constant data
-            data_bytes = self._proto_to_attr(node_proto.attrs["data"])
-
-            # Parse type info from output info
-            if not node_proto.outs_info:
-                raise ValueError("Const node missing output info")
-            out_info = node_proto.outs_info[0]
-            # pmask is now int64, -1 means dynamic mask (None)
-            pmask_int = out_info.pmask
-            const_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
-
-            # Check if it's tensor type
-            if out_info.HasField("tensor_type"):
-                tensor_type_proto = out_info.tensor_type
-                dtype = proto_to_dtype(tensor_type_proto.dtype)
-                shape = tuple(tensor_type_proto.shape_dims)
-
-                tensor_info = TensorType(dtype, shape)
-                return ConstExpr(tensor_info, data_bytes, const_pmask)
-            elif out_info.HasField("table_type"):
-                columns = [
-                    (col.name, proto_to_dtype(col.dtype))
-                    for col in out_info.table_type.columns
-                ]
-                table_info = TableType.from_pairs(columns)
-                return ConstExpr(table_info, data_bytes, const_pmask)
-            else:
-                raise ValueError("Const node currently only supports tensor types")
-
-        elif node_proto.op_type == "rand":
-            # Parse type info from output info
-            if not node_proto.outs_info:
-                raise ValueError("Rand node missing output info")
-            out_info = node_proto.outs_info[0]
-
-            # Check if it's tensor type
-            if out_info.HasField("tensor_type"):
-                tensor_type_proto = out_info.tensor_type
-                dtype = proto_to_dtype(tensor_type_proto.dtype)
-                shape = tuple(tensor_type_proto.shape_dims)
-                # pmask is now int64, -1 means dynamic mask (None)
-                pmask_int = out_info.pmask
-                rand_pmask: Mask | None = None if pmask_int == -1 else Mask(pmask_int)
-
-                tensor_info = TensorType(dtype, shape)
-                return RandExpr(tensor_info, rand_pmask)
-            else:
-                raise ValueError("Rand node currently only supports tensor types")
-
-        elif node_proto.op_type == "eval":
+        if node_proto.op_type == "eval":
             # Parse inputs
             input_exprs = []
             for input_name in node_proto.inputs:

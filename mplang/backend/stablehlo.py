@@ -34,7 +34,7 @@ class StablehloHandler(TensorHandler):
     """
 
     # override
-    def setup(self) -> None:
+    def setup(self, rank: int) -> None:
         """Set up the runtime environment."""
         # StableHLO handler doesn't need special setup
 

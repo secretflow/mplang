@@ -18,6 +18,7 @@ import numpy as np
 
 from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction, TensorHandler
+from mplang.core.table import TableType
 
 
 class BuiltinHandler(TensorHandler):
@@ -33,8 +34,9 @@ class BuiltinHandler(TensorHandler):
     """
 
     # override
-    def setup(self) -> None:
+    def setup(self, rank: int) -> None:
         """Set up the runtime environment."""
+        self._rank = rank
 
     # override
     def teardown(self) -> None:
@@ -46,6 +48,9 @@ class BuiltinHandler(TensorHandler):
             "builtin.identity",
             "builtin.read",
             "builtin.write",
+            "builtin.constant",
+            "builtin.rank",
+            "builtin.prand",
         ]
 
     def _convert_to_numpy(self, obj: TensorLike) -> np.ndarray:
@@ -95,6 +100,9 @@ class BuiltinHandler(TensorHandler):
                              - Identity: the input argument
                              - Read: list containing loaded data
                              - Write: list containing the original object that was written
+                             - Constant: list containing the constant data
+                             - Rank: list containing the rank value
+                             - Prand: list containing random data
 
         Raises:
             ValueError: If required attributes are missing or wrong number of args
@@ -140,6 +148,65 @@ class BuiltinHandler(TensorHandler):
                 return [obj]  # Return the original object
             except Exception as e:
                 raise RuntimeError(f"Failed to write to {path}: {e}") from e
+
+        elif pfunc.fn_type == "builtin.constant":
+            if len(args) != 0:
+                raise ValueError("Constant expects no arguments.")
+
+            data_bytes = pfunc.attrs.get("data_bytes")
+
+            if data_bytes is None:
+                raise ValueError("Constant function requires 'data_bytes' attribute.")
+
+            output_type = pfunc.outs_info[0]
+
+            if isinstance(output_type, TableType):
+                # For table constants, parse JSON data
+                import json
+
+                table_data = json.loads(data_bytes.decode("utf-8"))
+                return [table_data]
+            else:
+                # Handle tensor constants - get info from output_type
+                shape = output_type.shape
+                dtype = output_type.dtype.numpy_dtype()
+
+                if shape == ():
+                    # Scalar
+                    data = np.frombuffer(data_bytes, dtype=dtype)
+                    return [data[0]]  # Return numpy scalar
+                else:
+                    # Tensor
+                    data = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
+                    return [data]
+
+        elif pfunc.fn_type == "builtin.rank":
+            if len(args) != 0:
+                raise ValueError("Rank expects no arguments.")
+
+            # Get the rank from the execution context (this should be set during setup)
+            # For now, we'll use a simple approach - the rank should be available in the handler
+            rank = getattr(self, "_rank", 0)  # Default to 0 if not set
+            return [np.array(rank, dtype=np.uint64)]
+
+        elif pfunc.fn_type == "builtin.prand":
+            if len(args) != 0:
+                raise ValueError("Prand expects no arguments.")
+
+            shape = pfunc.attrs.get("shape", ())
+            # Generate random values with the specified shape
+            dtype = np.uint64
+
+            rng = np.random.default_rng()
+            info = np.iinfo(dtype)
+            data = rng.integers(
+                low=info.min,
+                high=info.max,
+                size=shape,
+                dtype=dtype,
+                endpoint=True,  # includes the high value in the possible results
+            )
+            return [data]
 
         else:
             raise ValueError(f"Unsupported function type: {pfunc.fn_type}")

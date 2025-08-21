@@ -36,7 +36,7 @@ class TestBuiltinHandler:
         assert "builtin.identity" in fn_names
         assert "builtin.read" in fn_names
         assert "builtin.write" in fn_names
-        assert len(fn_names) == 3
+        assert len(fn_names) == 6
 
     def test_identity(self):
         """Test identity operation."""

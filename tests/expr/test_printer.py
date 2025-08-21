@@ -172,22 +172,28 @@ class TestPrinterExpressions:
         # Should contain conv expression (in compact mode, uses variable names)
         assert any("pconv(p0_var, p1_var)" in line for line in lines)
 
-        def test_multiple_expressions_same_name(self, pmask_2p):
-            """Test that multiple expressions of the same type get different names."""
-            printer = Printer()  # Uses compact format by default
-            mptype = MPType.tensor(UINT64, (), pmask_2p)
-            expr1 = VariableExpr("x", mptype)
-            expr2 = VariableExpr("y", mptype)
+    def test_multiple_expressions_same_name(self, pmask_2p):
+        """Test that multiple expressions of the same type get different names."""
+        printer = Printer(compact_format=False)
+        mptype = MPType.tensor(UINT64, (), pmask_2p)
+        # Two different expression instances with the same name
+        expr1 = VariableExpr("x", mptype)
+        expr2 = VariableExpr("x", mptype)
 
-            # Create a tuple expression with both
-            tuple_expr = TupleExpr([expr1, expr2])
+        # Create a tuple expression with both
+        tuple_expr = TupleExpr([expr1, expr2])
 
-            result = printer.print_expr(tuple_expr)
+        result = printer.print_expr(tuple_expr)
 
-            # Expected output format in compact mode (variable names directly used)
-            expected = "%0 = tuple(x, y) : (u64<3>, u64<3>)"
+        # Expected output format with exact literal comparison
+        # The printer should assign different SSA names (%0, %1) to the two different expressions.
+        expected = """
+%0 = pname("x") : u64<3>
+%1 = pname("x") : u64<3>
+%2 = tuple(%0, %1) : (u64<3>, u64<3>)
+""".strip()
 
-            assert result == expected.strip()
+        assert result == expected
 
     def test_shfl_s_expr_printing(self, pmask_2p):
         """Test printing of ShflSExpr."""

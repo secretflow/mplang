@@ -23,7 +23,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike
 from mplang.core.pfunc import PFunction
-from mplang.frontend import builtin, ibis_cc, jax_cc
+from mplang.frontend import builtin, ibis_cc, jax_cc, phe
 
 
 def prank() -> MPObject:
@@ -95,10 +95,15 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
         >>> stats = run_impl(compute_statistics, dataset)
     """
 
-    # Known function list - extensible dispatch table
+    # TODO(jint): figure out a better way to manage function dispatch
     FUNC_WHITE_LIST = {
+        builtin.identity,
         builtin.read,
         builtin.write,
+        phe.keygen,
+        phe.encrypt,
+        phe.decrypt,
+        phe.add,
     }
 
     if func in FUNC_WHITE_LIST:

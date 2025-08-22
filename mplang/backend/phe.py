@@ -50,8 +50,7 @@ class PublicKey:
 class PrivateKey:
     """PHE Private Key that implements TensorLike protocol."""
 
-    def __init__(self, pk_data: Any, sk_data: Any, scheme: str, key_size: int):
-        self.sk_data = pk_data  # Store private key data
+    def __init__(self, sk_data: Any, pk_data: Any, scheme: str, key_size: int):
         self.sk_data = sk_data  # Store private key data
         self.pk_data = pk_data  # Store public key data as well
         self.scheme = scheme
@@ -172,18 +171,20 @@ class PHEHandler(TensorHandler):
                 precision=PRECISION,
             )
 
-            pk_data = phe.cs.keys["public_key"]
-            sk_data = phe.cs.keys["private_key"]
+            pk_data_raw = phe.cs.keys["public_key"]
+            sk_data_raw = phe.cs.keys["private_key"]
 
-            pk_data = PublicKey(key_data=pk_data, scheme=scheme, key_size=key_size)
-            sk_data = PrivateKey(
-                pk_data=sk_data,
-                sk_data=pk_data.key_data,
+            public_key = PublicKey(
+                key_data=pk_data_raw, scheme=scheme, key_size=key_size
+            )
+            private_key = PrivateKey(
+                sk_data=sk_data_raw,
+                pk_data=public_key.key_data,
                 scheme=scheme,
                 key_size=key_size,
             )
 
-            return [pk_data, sk_data]
+            return [public_key, private_key]
 
         except Exception as e:
             raise RuntimeError(f"Failed to generate PHE keys: {e}") from e

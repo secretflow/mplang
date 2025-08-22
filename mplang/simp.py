@@ -97,8 +97,6 @@ def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> A
 
     # TODO(jint): figure out a better way to manage function dispatch
     FUNC_WHITE_LIST = {
-        builtin.read,
-        builtin.write,
         builtin.identity,
         builtin.read,
         builtin.write,

@@ -109,6 +109,7 @@ def run_impl(
         phe.encrypt,
         phe.decrypt,
         phe.add,
+        phe.mul,
     }
 
     if func in FUNC_WHITE_LIST:

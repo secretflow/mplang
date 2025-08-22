@@ -125,6 +125,39 @@ def add(
     return pfunc, [operand1, operand2], treedef
 
 
+def mul(
+    ciphertext: MPObject, plaintext: MPObject, **kwargs: Any
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Multiply a PHE ciphertext with a plaintext value.
+
+    This operation supports multiplication of a ciphertext with a plaintext
+    in Paillier encryption scheme, which is homomorphic for multiplication
+    with plaintext values.
+
+    Args:
+        ciphertext: The ciphertext to multiply
+        plaintext: The plaintext multiplier
+        **kwargs: Additional operation parameters
+
+    Returns:
+        tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for multiplication, args list, output tree definition
+    """
+    ct_ty = TensorType.from_obj(ciphertext)
+    pt_ty = TensorType.from_obj(plaintext)
+
+    # Result has the same semantic type as the ciphertext
+    result_ty = ct_ty
+
+    pfunc = PFunction(
+        fn_type="phe.mul",
+        ins_info=(ct_ty, pt_ty),
+        outs_info=(result_ty,),
+        **kwargs,
+    )
+    _, treedef = tree_flatten(result_ty)
+    return pfunc, [ciphertext, plaintext], treedef
+
+
 def decrypt(
     ciphertext: MPObject, private_key: MPObject, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:

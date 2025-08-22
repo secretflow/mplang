@@ -112,6 +112,7 @@ class PHEHandler(TensorHandler):
             "phe.keygen",
             "phe.encrypt",
             "phe.add",
+            "phe.mul",
             "phe.decrypt",
         ]
 
@@ -127,6 +128,8 @@ class PHEHandler(TensorHandler):
             return self._execute_encrypt(pfunc, args)
         elif pfunc.fn_type == "phe.add":
             return self._execute_add(pfunc, args)
+        elif pfunc.fn_type == "phe.mul":
+            return self._execute_mul(pfunc, args)
         elif pfunc.fn_type == "phe.decrypt":
             return self._execute_decrypt(pfunc, args)
         else:
@@ -250,6 +253,84 @@ class PHEHandler(TensorHandler):
 
         except Exception as e:
             raise RuntimeError(f"Failed to encrypt data: {e}") from e
+
+    def _execute_mul(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute homomorphic multiplication of ciphertext with plaintext.
+
+        Args:
+            pfunc: PFunction for multiplication
+            args: Two operands - ciphertext and plaintext
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText
+        """
+        if len(args) != 2:
+            raise ValueError("Multiplication expects exactly two arguments")
+
+        ciphertext, plaintext = args
+
+        # Validate that first argument is a CipherText
+        if not isinstance(ciphertext, CipherText):
+            raise ValueError("First argument must be a CipherText instance")
+
+        try:
+            # Convert plaintext to numpy
+            plaintext_np = self._convert_to_numpy(plaintext)
+
+            # Validate shape compatibility
+            if plaintext_np.shape != ciphertext.semantic_shape:
+                raise ValueError(
+                    f"operands must have same shape: CipherText shape {ciphertext.semantic_shape} "
+                    f"vs plaintext shape {plaintext_np.shape}"
+                )
+
+            # Create lightPHE instance
+            phe = LightPHE(
+                algorithm_name=ciphertext.scheme,
+                key_size=ciphertext.key_size,
+                precision=PRECISION,
+            )
+            phe.cs.keys["public_key"] = ciphertext.pk_data
+
+            # Flatten the plaintext data
+            target_dtype = ciphertext.semantic_dtype.to_numpy()
+            flat_data = plaintext_np.flatten()
+
+            # For multiplication, we need to convert the plaintext to a scalar or list of scalars
+            if target_dtype.kind == "f":  # float types
+                if len(flat_data) == 1:
+                    multiplier = float(flat_data[0])
+                else:
+                    multiplier = [float(x) for x in flat_data]
+            else:  # integer types
+                if len(flat_data) == 1:
+                    multiplier = int(flat_data[0])
+                else:
+                    multiplier = [int(x) for x in flat_data]
+
+            # Perform homomorphic multiplication
+            # In Paillier, ciphertext * plaintext is supported
+            result_ciphertext = ciphertext.ct_data * multiplier
+
+            # Create result CipherText
+            return [
+                CipherText(
+                    ct_data=result_ciphertext,
+                    semantic_dtype=ciphertext.semantic_dtype,
+                    semantic_shape=ciphertext.semantic_shape,
+                    scheme=ciphertext.scheme,
+                    key_size=ciphertext.key_size,
+                    pk_data=ciphertext.pk_data,
+                )
+            ]
+
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform multiplication: {e}") from e
 
     def _execute_add(
         self, pfunc: PFunction, args: list[TensorLike]

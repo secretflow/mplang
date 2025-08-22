@@ -50,6 +50,7 @@ class TestPHEHandler:
             "phe.keygen",
             "phe.encrypt",
             "phe.add",
+            "phe.mul",
             "phe.decrypt",
         ]
 
@@ -601,6 +602,194 @@ class TestPHEHandler:
 
         with pytest.raises(ValueError, match="Unsupported PHE function type"):
             self.handler.execute(pfunc, [])
+
+    def test_mul_ciphertext_plaintext_int32(self):
+        """Test CipherText * plaintext multiplication with int32."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt int32 scalar
+        ciphertext_val = np.array(5, dtype=np.int32)
+        plaintext_multiplier = np.array(3, dtype=np.int32)
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply ciphertext * plaintext
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_multiplier),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_multiplier])[
+            0
+        ]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert decrypted.item() == 15  # 5 * 3
+
+    def test_mul_ciphertext_plaintext_float64(self):
+        """Test CipherText * plaintext multiplication with float64."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt float64 scalar
+        ciphertext_val = np.array(2.5, dtype=np.float64)
+        plaintext_multiplier = np.array(4.0, dtype=np.float64)
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply ciphertext * plaintext
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_multiplier),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_multiplier])[
+            0
+        ]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert abs(decrypted.item() - 10.0) < 1e-10  # 2.5 * 4.0
+
+    def test_mul_ciphertext_plaintext_array_int16(self):
+        """Test CipherText * plaintext multiplication with int16 array."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt int16 array
+        ciphertext_val = np.array([2, 4, 6], dtype=np.int16)
+        plaintext_multiplier = np.array([3, 2, 1], dtype=np.int16)
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply ciphertext * plaintext
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_multiplier),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_multiplier])[
+            0
+        ]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT16
+        assert result_ct.semantic_shape == (3,)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([6, 8, 6], dtype=np.int16)  # [2*3, 4*2, 6*1]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_mul_invalid_args(self):
+        """Test multiplication with invalid arguments."""
+        pk, _ = self._generate_keypair()
+
+        # Encrypt a value
+        plaintext = np.array(5, dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [plaintext, pk])[0]
+
+        # Test with wrong number of arguments
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(TensorType.from_obj(plaintext),),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        with pytest.raises(
+            ValueError, match="Multiplication expects exactly two arguments"
+        ):
+            self.handler.execute(mul_pfunc, [ciphertext])
+
+        # Test with plaintext as first argument
+        plaintext_val = np.array(3, dtype=np.int32)
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(plaintext_val),
+                TensorType.from_obj(plaintext_val),
+            ),
+            outs_info=(TensorType.from_obj(plaintext_val),),
+        )
+        with pytest.raises(
+            ValueError, match="First argument must be a CipherText instance"
+        ):
+            self.handler.execute(mul_pfunc, [plaintext_val, plaintext_val])
+
+    def test_mul_shape_mismatch(self):
+        """Test multiplication with shape mismatch."""
+        pk, _ = self._generate_keypair()
+
+        # Encrypt scalar
+        ciphertext_val = np.array(5, dtype=np.int32)
+        plaintext_val = np.array([1, 2], dtype=np.int32)  # Different shape
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Try to multiply - should fail
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_val),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        with pytest.raises(ValueError, match="operands must have same shape"):
+            self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])
 
     def test_various_numeric_types(self):
         """Test encryption/decryption with various numeric types."""

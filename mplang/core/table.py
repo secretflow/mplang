@@ -111,7 +111,7 @@ class TableType:
         """
         columns = [
             (name, DType.from_any(dtype))
-            for name, dtype in zip(table.columns, table.dtypes, strict=False)
+            for name, dtype in zip(table.columns, table.dtypes, strict=True)
         ]
         return cls(tuple(columns))
 

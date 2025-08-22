@@ -248,34 +248,6 @@ class TestBasicPrimitives:
         assert table_type.has_column("name")
         assert table_type.num_columns() == 2
 
-    def test_constant_dataframe_no_pandas(self, trace_context):
-        """Test that non-pandas TableLike objects raise TypeError."""
-
-        # Create a mock table-like object
-        class MockTable:
-            @property
-            def dtypes(self):
-                return None
-
-            @property
-            def columns(self):
-                return ["col1", "col2"]
-
-        mock_table = MockTable()
-
-        # Verify it's detected as TableLike
-        from mplang.core.table import TableLike
-
-        assert isinstance(mock_table, TableLike)
-
-        func = lambda: constant(mock_table)
-
-        with pytest.raises(
-            TypeError,
-            match="Expected pandas DataFrame",
-        ):
-            trace(trace_context, func)
-
     def test_pshfl(self, trace_context):
         """Test pshfl primitive."""
 

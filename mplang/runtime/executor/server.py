@@ -35,6 +35,7 @@ from google.protobuf import empty_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from mplang.backend.builtin import BuiltinHandler
+from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
@@ -259,6 +260,7 @@ class Execution:
                 StablehloHandler(),
                 spu_handler,
                 DuckDBHandler(),
+                PHEHandler(),
             ],
         )
 

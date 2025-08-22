@@ -18,7 +18,7 @@ from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import BINARY
+from mplang.core.dtype import COMPLEX128
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
@@ -40,9 +40,10 @@ def keygen(
         tuple[PFunction, list[MPObject], PyTreeDef]:
         Returns (public_key, private_key) as two separate outputs.
     """
-    # The (dtype, shape) is not important for 'semantic type', the backend will handle it.
-    public_key_ty = TensorType(BINARY, ())
-    private_key_ty = TensorType(BINARY, ())
+    # For keys, dtype is meaningless as they shouldn't be used for computation,
+    # so we choose a relatively uncommon dtype to satisfy the type system
+    public_key_ty = TensorType(COMPLEX128, (1,))
+    private_key_ty = TensorType(COMPLEX128, (1,))
 
     pfunc = PFunction(
         fn_type="phe.keygen",

@@ -230,18 +230,11 @@ class PHEHandler(TensorHandler):
             flat_data = plaintext_np.flatten()
 
             if semantic_dtype.to_numpy().kind == "f":  # float types
-                # For floats, always use list encryption (handles negative numbers)
                 data_list = [float(x) for x in flat_data]
-                lightphe_ciphertext = phe.encrypt(data_list)
-            else:
-                # For integers, decide based on size and values
+            else:  # integer types
                 data_list = [int(x) for x in flat_data]
-                if len(data_list) == 1 and data_list[0] >= 0:
-                    # Single non-negative integer - can use single value encryption
-                    lightphe_ciphertext = phe.encrypt(data_list[0])
-                else:
-                    # Multiple values or negative - use list encryption
-                    lightphe_ciphertext = phe.encrypt(data_list)
+
+            lightphe_ciphertext = phe.encrypt(data_list)
 
             # Create CipherText object
             ciphertext = CipherText(
@@ -372,30 +365,11 @@ class PHEHandler(TensorHandler):
         flat_data = plaintext_np.flatten()
 
         if target_dtype.kind == "f":  # float types
-            # Always use list encryption for floats
             data_list = [float(x) for x in flat_data]
-            encrypted_plaintext = phe.encrypt(data_list)
-        else:
-            # For integers
+        else:  # integer types
             data_list = [int(x) for x in flat_data]
-            if (
-                len(data_list) == 1
-                and data_list[0] >= 0
-                and len(ciphertext.semantic_shape) == 0
-            ):
-                # Single non-negative integer scalar - match original encryption method
-                # Check if original was encrypted as single value by trying to add
-                try:
-                    # Try single value encryption to match original
-                    encrypted_plaintext = phe.encrypt(data_list[0])
-                    # Test if addition works
-                    _ = ciphertext.ct_data + encrypted_plaintext
-                except Exception:
-                    # If it fails, use list encryption
-                    encrypted_plaintext = phe.encrypt(data_list)
-            else:
-                # Use list encryption
-                encrypted_plaintext = phe.encrypt(data_list)
+
+        encrypted_plaintext = phe.encrypt(data_list)
 
         # Perform addition
         result_ciphertext = ciphertext.ct_data + encrypted_plaintext
@@ -459,54 +433,54 @@ class PHEHandler(TensorHandler):
             target_dtype = ciphertext.semantic_dtype.to_numpy()
             decrypted_raw = phe.decrypt(ciphertext.ct_data)
 
-            # Handle the decrypted result
-            if isinstance(decrypted_raw, list):
-                # List result
-                if len(ciphertext.semantic_shape) == 0:
-                    # Scalar case with list result
-                    if len(decrypted_raw) == 1:
-                        decrypted_value = decrypted_raw[0]
-                    else:
-                        raise RuntimeError(
-                            f"Expected single value for scalar, got {len(decrypted_raw)} values"
-                        )
+            # Since we always use list encryption, decrypted_raw is always a list
+            if not isinstance(decrypted_raw, list):
+                raise RuntimeError(
+                    f"Expected list from decryption, got {type(decrypted_raw)}"
+                )
+
+            if len(ciphertext.semantic_shape) == 0:
+                # Scalar case - extract single value from list
+                if len(decrypted_raw) == 1:
+                    decrypted_value = decrypted_raw[0]
+                    assert isinstance(decrypted_value, (int, float)), (
+                        f"Expected scalar, got {type(decrypted_value)}"
+                    )
                 else:
-                    # Array case
-                    decrypted_value = decrypted_raw
+                    raise RuntimeError(
+                        f"Expected single value for scalar, got {len(decrypted_raw)} values"
+                    )
             else:
-                # Single value result
-                if len(ciphertext.semantic_shape) == 0:
-                    # Scalar case
-                    decrypted_value = decrypted_raw
-                else:
-                    # Array case with single result - wrap in list
-                    decrypted_value = [decrypted_raw]
+                # Array case - use list directly
+                decrypted_value = decrypted_raw
+                assert isinstance(decrypted_value, list), (
+                    f"Expected list, got {type(decrypted_value)}"
+                )
 
             # Convert to target numpy array
             if len(ciphertext.semantic_shape) == 0:
-                # Scalar case
-                if isinstance(decrypted_value, (int, float)):
-                    # Handle overflow for smaller integer types
-                    if target_dtype.kind in "iu":  # integer types
-                        info = np.iinfo(target_dtype)
-                        if decrypted_value < info.min or decrypted_value > info.max:
-                            decrypted_value = max(
-                                info.min, min(info.max, decrypted_value)
-                            )
-                    plaintext_np = np.array(decrypted_value, dtype=target_dtype)
-                else:
-                    plaintext_np = np.array(decrypted_value, dtype=target_dtype)
-            else:
-                # Array case
-                if target_dtype.kind in "iu" and isinstance(
-                    decrypted_value, list
-                ):  # integer types
+                # Scalar case - decrypted_value is a single number
+                from typing import cast
+
+                scalar_value = cast(float, decrypted_value)
+                # Handle overflow for smaller integer types
+                if target_dtype.kind in "iu":  # integer types
                     info = np.iinfo(target_dtype)
-                    decrypted_value = [
-                        max(info.min, min(info.max, val)) for val in decrypted_value
+                    if scalar_value < info.min or scalar_value > info.max:
+                        scalar_value = max(info.min, min(info.max, scalar_value))
+                plaintext_np = np.array(scalar_value, dtype=target_dtype)
+            else:
+                # Array case - decrypted_value is a list
+                from typing import cast
+
+                array_values = cast(list, decrypted_value)
+                if target_dtype.kind in "iu":  # integer types
+                    info = np.iinfo(target_dtype)
+                    array_values = [
+                        max(info.min, min(info.max, val)) for val in array_values
                     ]
 
-                plaintext_np = np.array(decrypted_value, dtype=target_dtype).reshape(
+                plaintext_np = np.array(array_values, dtype=target_dtype).reshape(
                     ciphertext.semantic_shape
                 )
 

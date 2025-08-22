@@ -102,7 +102,7 @@ class CipherText:
 class PHEHandler(TensorHandler):
     """Handler for PHE operations using lightPHE library."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     def setup(self, rank: int) -> None: ...

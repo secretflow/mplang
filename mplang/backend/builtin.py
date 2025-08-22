@@ -19,6 +19,7 @@ import numpy as np
 from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import HybridHandler, PFunction
 from mplang.core.table import TableLike, TableType
+from mplang.utils import table_utils
 
 
 class BuiltinHandler(HybridHandler):
@@ -102,16 +103,28 @@ class BuiltinHandler(HybridHandler):
         self, pfunc: PFunction, args: list[TensorLike | TableLike]
     ) -> list[TensorLike | TableLike]:
         """Execute builtin.read operation."""
+        from mplang.core.table import TableType
+        from mplang.utils import table_utils
+
         path = pfunc.attrs.get("path")
         if path is None:
             raise ValueError("Read function requires 'path' attribute.")
         if len(args) != 0:
             raise ValueError("Read expects no arguments.")
 
-        # Read numpy array from file
+        output_type = pfunc.outs_info[0]
+
         try:
-            data = np.load(path)
-            return [data]
+            if isinstance(output_type, TableType):
+                # Read table data from CSV file
+                with open(path, "rb") as f:
+                    csv_bytes = f.read()
+                df = table_utils.csv_to_dataframe(csv_bytes)
+                return [df]
+            else:
+                # Read tensor data from numpy file
+                data = np.load(path)
+                return [data]
         except Exception as e:
             raise RuntimeError(f"Failed to read from {path}: {e}") from e
 
@@ -119,6 +132,9 @@ class BuiltinHandler(HybridHandler):
         self, pfunc: PFunction, args: list[TensorLike | TableLike]
     ) -> list[TensorLike | TableLike]:
         """Execute builtin.write operation."""
+        from mplang.core.table import TableLike
+        from mplang.utils import table_utils
+
         path = pfunc.attrs.get("path")
         if path is None:
             raise ValueError("Write function requires 'path' attribute.")
@@ -127,16 +143,21 @@ class BuiltinHandler(HybridHandler):
 
         obj = args[0]
 
-        if not hasattr(obj, "shape") or not hasattr(obj, "dtype"):
-            raise ValueError("Write operation only supports TensorLike objects")
-
         try:
             dir_name = os.path.dirname(path)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)
 
-            np_array = self._convert_to_numpy(obj)  # type: ignore
-            np.save(path, np_array)
+            if isinstance(obj, TableLike):
+                # Handle table-like objects using CSV serialization
+                csv_bytes = table_utils.dataframe_to_csv(obj)
+                with open(path, "wb") as f:
+                    f.write(csv_bytes)
+            else:
+                # Handle tensor-like objects using numpy serialization
+                np_array = self._convert_to_numpy(obj)  # type: ignore
+                np.save(path, np_array)
+
             return [obj]  # Return the original object
         except Exception as e:
             raise RuntimeError(f"Failed to write to {path}: {e}") from e
@@ -156,14 +177,12 @@ class BuiltinHandler(HybridHandler):
             raise ValueError("Constant function requires 'data_bytes' attribute.")
 
         output_type = pfunc.outs_info[0]
+        data_format = pfunc.attrs.get("data_format")
 
         if isinstance(output_type, TableType):
-            import json
-
-            import pandas as pd
-
-            table_data = json.loads(data_bytes.decode("utf-8"))
-            df = pd.DataFrame(table_data)
+            if data_format != "bytes[csv]":
+                raise ValueError(f"Only 'bytes[csv]' is supported, got {data_format}")
+            df = table_utils.csv_to_dataframe(data_bytes)
             return [df]
         else:
             # Handle tensor constants - get info from output_type

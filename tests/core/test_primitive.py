@@ -249,7 +249,7 @@ class TestBasicPrimitives:
         assert table_type.num_columns() == 2
 
     def test_constant_dataframe_no_pandas(self, trace_context):
-        """Test that non-pandas TableLike objects raise NotImplementedError."""
+        """Test that non-pandas TableLike objects raise TypeError."""
 
         # Create a mock table-like object
         class MockTable:
@@ -271,8 +271,8 @@ class TestBasicPrimitives:
         func = lambda: constant(mock_table)
 
         with pytest.raises(
-            NotImplementedError,
-            match="Table constant support only implemented for pandas DataFrame",
+            TypeError,
+            match="Expected pandas DataFrame",
         ):
             trace(trace_context, func)
 

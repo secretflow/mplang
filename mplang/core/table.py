@@ -99,6 +99,22 @@ class TableType:
         """
         return cls(tuple(pairs))
 
+    @classmethod
+    def from_tablelike(cls, table: TableLike) -> TableType:
+        """Create table schema from a table-like object.
+
+        Args:
+            table: A table-like object (e.g., pandas DataFrame)
+
+        Returns:
+            TableType instance
+        """
+        columns = [
+            (name, DType.from_any(dtype))
+            for name, dtype in zip(table.columns, table.dtypes, strict=False)
+        ]
+        return cls(tuple(columns))
+
     def column_names(self) -> tuple[str, ...]:
         """Get all column names."""
         return tuple(name for name, _ in self.columns)

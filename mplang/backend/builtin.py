@@ -103,9 +103,6 @@ class BuiltinHandler(HybridHandler):
         self, pfunc: PFunction, args: list[TensorLike | TableLike]
     ) -> list[TensorLike | TableLike]:
         """Execute builtin.read operation."""
-        from mplang.core.table import TableType
-        from mplang.utils import table_utils
-
         path = pfunc.attrs.get("path")
         if path is None:
             raise ValueError("Read function requires 'path' attribute.")
@@ -132,9 +129,6 @@ class BuiltinHandler(HybridHandler):
         self, pfunc: PFunction, args: list[TensorLike | TableLike]
     ) -> list[TensorLike | TableLike]:
         """Execute builtin.write operation."""
-        from mplang.core.table import TableLike
-        from mplang.utils import table_utils
-
         path = pfunc.attrs.get("path")
         if path is None:
             raise ValueError("Write function requires 'path' attribute.")

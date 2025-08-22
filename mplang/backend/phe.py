@@ -439,50 +439,30 @@ class PHEHandler(TensorHandler):
                     f"Expected list from decryption, got {type(decrypted_raw)}"
                 )
 
-            if len(ciphertext.semantic_shape) == 0:
-                # Scalar case - extract single value from list
-                if len(decrypted_raw) == 1:
-                    decrypted_value = decrypted_raw[0]
-                    assert isinstance(decrypted_value, (int, float)), (
-                        f"Expected scalar, got {type(decrypted_value)}"
-                    )
-                else:
-                    raise RuntimeError(
-                        f"Expected single value for scalar, got {len(decrypted_raw)} values"
-                    )
-            else:
-                # Array case - use list directly
-                decrypted_value = decrypted_raw
-                assert isinstance(decrypted_value, list), (
-                    f"Expected list, got {type(decrypted_value)}"
+            # Validate expected number of elements
+            expected_size = (
+                int(np.prod(ciphertext.semantic_shape))
+                if ciphertext.semantic_shape
+                else 1
+            )
+            if len(decrypted_raw) != expected_size:
+                raise RuntimeError(
+                    f"Expected {expected_size} values, got {len(decrypted_raw)} values"
                 )
 
-            # Convert to target numpy array
-            if len(ciphertext.semantic_shape) == 0:
-                # Scalar case - decrypted_value is a single number
-                from typing import cast
-
-                scalar_value = cast(float, decrypted_value)
-                # Handle overflow for smaller integer types
-                if target_dtype.kind in "iu":  # integer types
-                    info = np.iinfo(target_dtype)
-                    if scalar_value < info.min or scalar_value > info.max:
-                        scalar_value = max(info.min, min(info.max, scalar_value))
-                plaintext_np = np.array(scalar_value, dtype=target_dtype)
+            # Handle overflow for smaller integer types
+            if target_dtype.kind in "iu":  # integer types
+                info = np.iinfo(target_dtype)
+                processed_data = [
+                    max(info.min, min(info.max, val)) for val in decrypted_raw
+                ]
             else:
-                # Array case - decrypted_value is a list
-                from typing import cast
+                processed_data = decrypted_raw
 
-                array_values = cast(list, decrypted_value)
-                if target_dtype.kind in "iu":  # integer types
-                    info = np.iinfo(target_dtype)
-                    array_values = [
-                        max(info.min, min(info.max, val)) for val in array_values
-                    ]
-
-                plaintext_np = np.array(array_values, dtype=target_dtype).reshape(
-                    ciphertext.semantic_shape
-                )
+            # Unified approach: create array from list, then reshape to target shape
+            plaintext_np = np.array(processed_data, dtype=target_dtype).reshape(
+                ciphertext.semantic_shape
+            )
 
             return [plaintext_np]
 

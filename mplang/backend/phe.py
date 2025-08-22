@@ -306,6 +306,9 @@ class PHEHandler(TensorHandler):
         if ct1.scheme != ct2.scheme or ct1.key_size != ct2.key_size:
             raise ValueError("CipherText operands must use same scheme and key size")
 
+        if ct1.pk_data != ct2.pk_data:
+            raise ValueError("CipherText operands must be encrypted with same key")
+
         if ct1.semantic_shape != ct2.semantic_shape:
             raise ValueError("CipherText operands must have same shape")
 

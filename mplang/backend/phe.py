@@ -52,7 +52,8 @@ class PrivateKey:
 
     def __init__(self, pk_data: Any, sk_data: Any, scheme: str, key_size: int):
         self.sk_data = pk_data  # Store private key data
-        self.pk_data = sk_data  # Store public key data as well
+        self.sk_data = sk_data  # Store private key data
+        self.pk_data = pk_data  # Store public key data as well
         self.scheme = scheme
         self.key_size = key_size
 

@@ -171,15 +171,13 @@ class PHEHandler(TensorHandler):
                 precision=PRECISION,
             )
 
-            pk_data_raw = phe.cs.keys["public_key"]
-            sk_data_raw = phe.cs.keys["private_key"]
+            pk_data = phe.cs.keys["public_key"]
+            sk_data = phe.cs.keys["private_key"]
 
-            public_key = PublicKey(
-                key_data=pk_data_raw, scheme=scheme, key_size=key_size
-            )
+            public_key = PublicKey(key_data=pk_data, scheme=scheme, key_size=key_size)
             private_key = PrivateKey(
-                sk_data=sk_data_raw,
-                pk_data=public_key.key_data,
+                sk_data=sk_data,
+                pk_data=pk_data,
                 scheme=scheme,
                 key_size=key_size,
             )

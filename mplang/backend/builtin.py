@@ -178,19 +178,13 @@ class BuiltinHandler(HybridHandler):
                 raise ValueError(f"Only 'bytes[csv]' is supported, got {data_format}")
             df = table_utils.csv_to_dataframe(data_bytes)
             return [df]
-        else:
-            # Handle tensor constants - get info from output_type
+        elif isinstance(output_type, TensorLike):
             shape = output_type.shape
             dtype = output_type.dtype.numpy_dtype()
-
-            if shape == ():
-                # Scalar
-                data = np.frombuffer(data_bytes, dtype=dtype)
-                return [data[0]]  # Return numpy scalar
-            else:
-                # Tensor
-                data = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
-                return [data]
+            data = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
+            return [data]
+        else:
+            raise ValueError(f"Unsupported output type: {output_type}")
 
     def _rank(
         self, pfunc: PFunction, args: list[TensorLike | TableLike]

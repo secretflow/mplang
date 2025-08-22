@@ -19,8 +19,9 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.dtype import UINT64
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, dataframe_to_table_constant
+from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
+from mplang.utils import table_utils
 
 
 def identity(obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -112,58 +113,40 @@ def constant(
     """
     import numpy as np
 
-    # Check if it's a table-like object first
+    data_bytes: bytes
+    out_type: TableType | TensorType
+
     if isinstance(data, TableLike):
-        try:
-            import pandas as pd
-        except ImportError:
-            # pandas is not available, so this must be a non-pandas table-like object
-            raise NotImplementedError(
-                "Table constant support only implemented for pandas DataFrame"
-            ) from None
-
-        if isinstance(data, pd.DataFrame):
-            # Convert DataFrame using helper function
-            table_type, json_bytes = dataframe_to_table_constant(data)
-
-            pfunc = PFunction(
-                fn_type="builtin.constant",
-                ins_info=(),
-                outs_info=(table_type,),
-                data_bytes=json_bytes,
-            )
-            _, treedef = tree_flatten(table_type)
-            return pfunc, [], treedef
-
-        # For other table-like objects (even when pandas is available)
-        raise NotImplementedError(
-            "Table constant support only implemented for pandas DataFrame"
-        )
-
-    # Convert data to TensorType + bytes for cacheable constant
-    if isinstance(data, ScalarType):
-        tensor_info = TensorType.from_obj(data)
+        data_bytes = table_utils.dataframe_to_csv(data)
+        data_format = "bytes[csv]"
+        out_type = TableType.from_tablelike(data)
+    elif isinstance(data, ScalarType):
+        out_type = TensorType.from_obj(data)
         # For scalars, convert to numpy array then to bytes
         np_data = np.array(data)
         data_bytes = np_data.tobytes()
-    elif hasattr(data, "tobytes"):
-        # For numpy arrays and other TensorLike objects with tobytes method
-        tensor_info = TensorType.from_obj(data)
-        data_bytes = data.tobytes()  # type: ignore
+        data_format = "bytes[numpy]"
     else:
-        # For other TensorLike objects, convert to numpy first
-        np_data = np.array(data)
-        tensor_info = TensorType.from_obj(np_data)
-        data_bytes = np_data.tobytes()
+        if hasattr(data, "tobytes"):
+            # For numpy arrays and other TensorLike objects with tobytes method
+            out_type = TensorType.from_obj(data)
+            data_bytes = data.tobytes()  # type: ignore
+        else:
+            # For other TensorLike objects, convert to numpy first
+            np_data = np.array(data)
+            out_type = TensorType.from_obj(np_data)
+            data_bytes = np_data.tobytes()
+        data_format = "bytes[numpy]"
 
     # Store tensor metadata as simple attributes
     pfunc = PFunction(
         fn_type="builtin.constant",
         ins_info=(),
-        outs_info=(tensor_info,),
+        outs_info=(out_type,),
         data_bytes=data_bytes,
+        data_format=data_format,
     )
-    _, treedef = tree_flatten(tensor_info)
+    _, treedef = tree_flatten(out_type)
     return pfunc, [], treedef
 
 

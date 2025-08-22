@@ -128,9 +128,10 @@ class DType:
             return cls(name, np_dtype.itemsize * 8, True, True, False)
         elif np_dtype.kind == "c":  # complex
             return cls(name, np_dtype.itemsize * 8, True, True, True)
-        elif np_dtype.kind in ("U", "S"):  # unicode or byte string
+        elif np_dtype.kind in ("U", "S", "O"):  # unicode, byte string, or object
             # For string types, bitwidth represents the maximum number of bytes per element (i.e., np_dtype.itemsize)
-            return cls(name, np_dtype.itemsize, None, False, False, True)  # table-only
+            # Object is often used for strings.
+            return STRING
         else:
             raise ValueError(f"Unsupported NumPy dtype kind: {np_dtype.kind}")
 
@@ -162,7 +163,16 @@ class DType:
         """Convert from any supported dtype representation."""
         if isinstance(dtype_like, cls):
             return dtype_like
-        elif isinstance(dtype_like, type) and dtype_like in (bool, int, float, complex):
+
+        # Try pandas specific dtype conversion first
+        try:
+            return cls._from_pandas_dtype(dtype_like)
+        except (ImportError, TypeError):
+            # ImportError if pandas is not installed
+            # TypeError if it's not a pandas dtype we can handle
+            pass
+
+        if isinstance(dtype_like, type) and dtype_like in (bool, int, float, complex):
             return cls.from_python_type(dtype_like)
         elif hasattr(dtype_like, "dtype") and not isinstance(dtype_like, type):
             # Objects with dtype attribute (arrays, etc.) but not dtype types themselves
@@ -182,6 +192,33 @@ class DType:
                     pass
 
             raise ValueError(f"Cannot convert {type(dtype_like)} to DType")
+
+    @classmethod
+    def _from_pandas_dtype(cls, dtype_like: Any) -> DType:
+        """Convert pandas-specific dtypes to DType."""
+        # Check if pandas is available
+        try:
+            import pandas as pd
+            from pandas.api.types import is_any_real_numeric_dtype, is_bool_dtype
+        except ImportError:
+            raise ImportError("pandas not available") from None
+
+        if not hasattr(dtype_like, "__module__") or "pandas" not in str(
+            dtype_like.__module__
+        ):
+            # If it's not a pandas dtype, don't handle it here
+            raise TypeError("Not a pandas dtype")
+
+        if isinstance(dtype_like, pd.StringDtype):
+            return STRING
+        elif is_bool_dtype(dtype_like):
+            # Catches pd.BooleanDtype() and 'bool'
+            return BOOL
+        elif is_any_real_numeric_dtype(dtype_like):
+            # Catches Int64Dtype, Float64Dtype, etc.
+            return cls.from_numpy(dtype_like.numpy_dtype)
+
+        raise TypeError(f"Unsupported pandas dtype: {dtype_like}")
 
     def to_numpy(self) -> np.dtype:
         """Convert custom DType to NumPy dtype."""

@@ -232,7 +232,7 @@ class PHEHandler(TensorHandler):
             # Always use list encryption for consistent behavior and to handle negative numbers
             flat_data = plaintext_np.flatten()
 
-            if semantic_dtype.to_numpy().kind == "f":  # float types
+            if semantic_dtype.is_floating:
                 data_list = [float(x) for x in flat_data]
             else:  # integer types
                 data_list = [int(x) for x in flat_data]
@@ -295,20 +295,13 @@ class PHEHandler(TensorHandler):
             phe.cs.keys["public_key"] = ciphertext.pk_data
 
             # Flatten the plaintext data
-            target_dtype = ciphertext.semantic_dtype.to_numpy()
+            target_dtype = ciphertext.semantic_dtype
             flat_data = plaintext_np.flatten()
 
-            # For multiplication, we need to convert the plaintext to a scalar or list of scalars
-            if target_dtype.kind == "f":  # float types
-                if len(flat_data) == 1:
-                    multiplier = float(flat_data[0])
-                else:
-                    multiplier = [float(x) for x in flat_data]
+            if target_dtype.is_floating:
+                multiplier = [float(x) for x in flat_data]
             else:  # integer types
-                if len(flat_data) == 1:
-                    multiplier = int(flat_data[0])
-                else:
-                    multiplier = [int(x) for x in flat_data]
+                multiplier = [int(x) for x in flat_data]
 
             # Perform homomorphic multiplication
             # In Paillier, ciphertext * plaintext is supported
@@ -445,10 +438,10 @@ class PHEHandler(TensorHandler):
         phe.cs.keys["public_key"] = ciphertext.pk_data
 
         # Encrypt the plaintext using same method as original encryption
-        target_dtype = ciphertext.semantic_dtype.to_numpy()
+        target_dtype = ciphertext.semantic_dtype
         flat_data = plaintext_np.flatten()
 
-        if target_dtype.kind == "f":  # float types
+        if target_dtype.is_floating:
             data_list = [float(x) for x in flat_data]
         else:  # integer types
             data_list = [int(x) for x in flat_data]

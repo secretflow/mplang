@@ -47,8 +47,9 @@ class PublicKey:
 class PrivateKey:
     """PHE Private Key that implements TensorLike protocol."""
 
-    def __init__(self, key_data: Any, scheme: str, key_size: int):
+    def __init__(self, key_data: Any, public_key_data: Any, scheme: str, key_size: int):
         self.key_data = key_data
+        self.public_key_data = public_key_data  # Store public key data as well
         self.scheme = scheme
         self.key_size = key_size
 
@@ -74,12 +75,14 @@ class CipherText:
         semantic_shape: tuple[int, ...],
         scheme: str,
         key_size: int,
+        public_key_data: Any = None,  # Store public key for operations
     ):
         self.ct_data = ct_data
         self.semantic_dtype = semantic_dtype
         self.semantic_shape = semantic_shape
         self.scheme = scheme
         self.key_size = key_size
+        self.public_key_data = public_key_data
 
     @property
     def dtype(self) -> Any:
@@ -164,7 +167,7 @@ class PHEHandler(TensorHandler):
             sk_data = phe.cs.keys["private_key"]
 
             pk_data = PublicKey(key_data=pk_data, scheme=scheme, key_size=key_size)
-            sk_data = PrivateKey(key_data=sk_data, scheme=scheme, key_size=key_size)
+            sk_data = PrivateKey(key_data=sk_data, public_key_data=pk_data.key_data, scheme=scheme, key_size=key_size)
 
             return [pk_data, sk_data]
 
@@ -225,6 +228,7 @@ class PHEHandler(TensorHandler):
                 semantic_shape=semantic_shape,
                 scheme=public_key.scheme,
                 key_size=public_key.key_size,
+                public_key_data=public_key.key_data,  # Store public key for later operations
             )
 
             return [ciphertext]
@@ -306,6 +310,7 @@ class PHEHandler(TensorHandler):
             semantic_shape=ct1.semantic_shape,
             scheme=ct1.scheme,
             key_size=ct1.key_size,
+            public_key_data=ct1.public_key_data,
         )
 
     def _execute_add_ct2pt(
@@ -330,17 +335,32 @@ class PHEHandler(TensorHandler):
                 f"vs plaintext shape {plaintext_np.shape}"
             )
 
-        # Perform homomorphic addition with plaintext
+        # For ciphertext + plaintext addition, we encrypt the plaintext first
+        # and then do ciphertext + ciphertext addition
+        if ciphertext.public_key_data is None:
+            raise ValueError("CipherText must contain public key data for plaintext addition")
+        
+        # Create lightPHE instance to encrypt the plaintext
+        phe = LightPHE(algorithm_name=ciphertext.scheme, key_size=ciphertext.key_size)
+        phe.cs.keys["public_key"] = ciphertext.public_key_data
+        
+        # Encrypt the plaintext
         if len(ciphertext.semantic_shape) == 0:
             # Scalar case
             plaintext_value = plaintext_np.item()
-            result_ciphertext = ciphertext.ct_data + plaintext_value
+            encrypted_plaintext = phe.encrypt(plaintext_value)
+            
+            # Add the two ciphertexts
+            result_ciphertext = ciphertext.ct_data + encrypted_plaintext
         else:
             # Array case
-            ct_list = ciphertext.ct_data
             pt_flat = plaintext_np.flatten()
+            encrypted_data = [phe.encrypt(float(pt)) for pt in pt_flat]
+            
+            # Add element-wise
+            ct_list = ciphertext.ct_data
             result_ciphertext = [
-                ct + float(pt) for ct, pt in zip(ct_list, pt_flat, strict=True)
+                ct + pt_ct for ct, pt_ct in zip(ct_list, encrypted_data, strict=True)
             ]
 
         # Create result CipherText
@@ -350,6 +370,7 @@ class PHEHandler(TensorHandler):
             semantic_shape=ciphertext.semantic_shape,
             scheme=ciphertext.scheme,
             key_size=ciphertext.key_size,
+            public_key_data=ciphertext.public_key_data,
         )
 
     def _execute_decrypt(
@@ -391,22 +412,41 @@ class PHEHandler(TensorHandler):
             phe = LightPHE(
                 algorithm_name=private_key.scheme, key_size=private_key.key_size
             )
-            # Set the private key
+            # Set both public and private keys (lightPHE needs both for proper decryption)
             phe.cs.keys["private_key"] = private_key.key_data
+            phe.cs.keys["public_key"] = private_key.public_key_data
 
             # Decrypt the data
             if len(ciphertext.semantic_shape) == 0:
                 # Scalar case
                 decrypted = phe.decrypt(ciphertext.ct_data)
-                plaintext_np = np.array(
-                    decrypted, dtype=ciphertext.semantic_dtype.to_numpy()
-                )
+                # Convert to target dtype with proper handling of large integers
+                target_dtype = ciphertext.semantic_dtype.to_numpy()
+                
+                # Handle overflow for smaller integer types
+                if target_dtype.kind in 'iu':  # integer types
+                    # Check if the value fits in the target type
+                    info = np.iinfo(target_dtype)
+                    if decrypted < info.min or decrypted > info.max:
+                        # Clamp to valid range for the target type
+                        decrypted = max(info.min, min(info.max, decrypted))
+                
+                plaintext_np = np.array(decrypted, dtype=target_dtype)
             else:
                 # Array case
                 encrypted_data = ciphertext.ct_data
                 decrypted_data = [phe.decrypt(ct) for ct in encrypted_data]
+                target_dtype = ciphertext.semantic_dtype.to_numpy()
+                
+                # Handle overflow for arrays
+                if target_dtype.kind in 'iu':  # integer types
+                    info = np.iinfo(target_dtype)
+                    decrypted_data = [
+                        max(info.min, min(info.max, val)) for val in decrypted_data
+                    ]
+                
                 plaintext_np = np.array(
-                    decrypted_data, dtype=ciphertext.semantic_dtype.to_numpy()
+                    decrypted_data, dtype=target_dtype
                 ).reshape(ciphertext.semantic_shape)
 
             return [plaintext_np]

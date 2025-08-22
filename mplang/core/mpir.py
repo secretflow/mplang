@@ -12,6 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""MPIR (Multi-Party Intermediate Representation) serialization module.
+
+This module provides functionality for serializing and deserializing
+expression-based computation graphs to and from protobuf representations.
+It serves as the bridge between in-memory expression trees and their
+serialized form for storage or transmission.
+
+Key components:
+- Writer: Serializes Expr objects to GraphProto
+- Reader: Deserializes GraphProto back to Expr objects
+- Conversion functions: Handle mapping between Python types and protobuf types
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -71,7 +84,17 @@ DTYPE_TO_PROTO_MAPPING = {
 
 
 def dtype_to_proto(dtype_like: Any) -> Any:
-    """Convert dtype (DType, NumPy dtype, or type) to protobuf DataType."""
+    """Convert dtype (DType, NumPy dtype, or type) to protobuf DataType.
+
+    Args:
+        dtype_like: A DType, NumPy dtype, or Python type to convert.
+
+    Returns:
+        The corresponding protobuf DataType enum value.
+
+    Raises:
+        ValueError: If the dtype is not supported for conversion.
+    """
     # If it's already a DType, check for direct mapping first
     if isinstance(dtype_like, DType):
         # Check for table-only types first
@@ -82,11 +105,11 @@ def dtype_to_proto(dtype_like: Any) -> Any:
         try:
             numpy_dtype = dtype_like.to_numpy()
             key_type = numpy_dtype.type
-        except ValueError:
+        except ValueError as e:
             # Handle table-only types that can't be converted to numpy
             raise ValueError(
                 f"Unsupported dtype for proto conversion: {dtype_like}. This is likely a table-only type that cannot be converted to a numpy dtype. Please ensure the dtype is supported for proto conversion."
-            ) from None
+            ) from e
     else:
         # Handle NumPy dtypes and other types
         try:
@@ -106,7 +129,17 @@ def dtype_to_proto(dtype_like: Any) -> Any:
 
 
 def proto_to_dtype(dtype_enum: int) -> DType:
-    """Convert protobuf DataType enum to DType."""
+    """Convert protobuf DataType enum to DType.
+
+    Args:
+        dtype_enum: The protobuf DataType enum value to convert.
+
+    Returns:
+        The corresponding DType object.
+
+    Raises:
+        ValueError: If the enum value is not supported.
+    """
     # Check for table-only types first
     for dtype_obj, proto_enum in DTYPE_TO_PROTO_MAPPING.items():
         if proto_enum == dtype_enum:
@@ -116,14 +149,22 @@ def proto_to_dtype(dtype_enum: int) -> DType:
     for numpy_type, proto_enum in DTYPE_MAPPING.items():
         if proto_enum == dtype_enum:
             # Convert numpy type to dtype
-            np_dtype = np.dtype(numpy_type)
+            try:
+                np_dtype = np.dtype(numpy_type)
+            except TypeError as e:
+                raise ValueError(f"Cannot create numpy dtype from {numpy_type}") from e
 
             # Special handling for string types since DType.from_numpy doesn't support them
             if np_dtype.kind == "U":  # Unicode string
                 # Return the STRING constant for table-only string types
                 return STRING
             else:
-                return DType.from_numpy(np_dtype)
+                try:
+                    return DType.from_numpy(np_dtype)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Cannot convert numpy dtype {np_dtype} to DType"
+                    ) from e
 
     # If we get here, the enum was not found
     raise ValueError(f"Unsupported dtype enum: {dtype_enum}")
@@ -193,16 +234,34 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
 
 
 class Writer(ExprVisitor):
-    """Writer for serializing Expr-based expressions to GraphProto."""
+    """Writer for serializing Expr-based expressions to GraphProto.
+
+    This class traverses an expression tree and converts it into a serialized
+    GraphProto representation. It handles various expression types and ensures
+    that all dependencies are properly serialized before the expressions that
+    depend on them.
+    """
 
     def __init__(self, var_name_mapping: dict[str, str] | None = None):
+        """Initialize the Writer.
+
+        Args:
+            var_name_mapping: Optional mapping of variable names to replace during serialization.
+        """
         self._counter = 0
         self._expr_ids: dict[int, str] = {}  # Use expr id instead of Node
         self._nodes: list[mpir_pb2.NodeProto] = []
         self._var_name_mapping = var_name_mapping or {}
 
     def expr_name(self, expr: Expr) -> str:
-        """Get or create a name for an expression."""
+        """Get or create a name for an expression.
+
+        Args:
+            expr: The expression to name.
+
+        Returns:
+            A unique name for the expression.
+        """
         expr_id = id(expr)
         if expr_id not in self._expr_ids:
             self._expr_ids[expr_id] = f"%{self._counter}"
@@ -210,34 +269,69 @@ class Writer(ExprVisitor):
         return self._expr_ids[expr_id]
 
     def value_name(self, expr: Expr, out_idx: int = 0) -> str:
-        """Get value name for expression output."""
+        """Get value name for expression output.
+
+        Args:
+            expr: The expression.
+            out_idx: The output index for multi-output expressions.
+
+        Returns:
+            A name for the specific output of the expression.
+        """
         if len(expr.mptypes) == 1:
             return self.expr_name(expr)
         else:
             return f"{self.expr_name(expr)}:{out_idx}"
 
     def _ensure_visited(self, *exprs: Expr) -> None:
-        """Ensure expressions are visited."""
+        """Ensure expressions are visited.
+
+        This method ensures that all provided expressions have been processed
+        and added to the serialization graph.
+
+        Args:
+            exprs: Expressions to ensure are visited.
+        """
         for expr in exprs:
             expr_id = id(expr)
             if expr_id not in self._expr_ids:
                 expr.accept(self)
 
     def reset(self) -> None:
-        """Reset writer state."""
+        """Reset writer state.
+
+        Clears all internal state, allowing the writer to be reused for
+        serializing a new expression tree.
+        """
         self._counter = 0
         self._expr_ids.clear()
         self._nodes.clear()
 
     def _create_node_proto(self, expr: Expr, op_type: str) -> mpir_pb2.NodeProto:
-        """Helper: Create a basic NodeProto with common fields set."""
+        """Helper: Create a basic NodeProto with common fields set.
+
+        Args:
+            expr: The expression this node represents.
+            op_type: The operation type for this node.
+
+        Returns:
+            A new NodeProto with basic fields set.
+        """
         op = mpir_pb2.NodeProto()
         op.op_type = op_type
         op.name = self.expr_name(expr)
         return op
 
     def _add_output_info(self, op: mpir_pb2.NodeProto, expr: Expr) -> None:
-        """Helper: Add output type information to a NodeProto."""
+        """Helper: Add output type information to a NodeProto.
+
+        This method populates the output type information for a node based
+        on the expression's mptypes.
+
+        Args:
+            op: The NodeProto to populate.
+            expr: The expression providing the type information.
+        """
         for out_info in expr.mptypes:
             out_proto = op.outs_info.add()
 
@@ -261,25 +355,56 @@ class Writer(ExprVisitor):
                 out_proto.pmask = -1  # Dynamic mask
 
     def _add_expr_inputs(self, op: mpir_pb2.NodeProto, *exprs: Expr) -> None:
-        """Helper: Add expression inputs to NodeProto."""
+        """Helper: Add expression inputs to NodeProto.
+
+        For multi-output expressions, this adds all outputs as inputs.
+
+        Args:
+            op: The NodeProto to add inputs to.
+            exprs: The expressions to add as inputs.
+        """
         for expr in exprs:
             op.inputs.extend([
                 self.value_name(expr, i) for i in range(len(expr.mptypes))
             ])
 
     def _add_single_expr_inputs(self, op: mpir_pb2.NodeProto, *exprs: Expr) -> None:
-        """Helper: Add single-output expression inputs to NodeProto."""
+        """Helper: Add single-output expression inputs to NodeProto.
+
+        For expressions, this adds only the first (primary) output as input.
+
+        Args:
+            op: The NodeProto to add inputs to.
+            exprs: The expressions to add as inputs.
+        """
         for expr in exprs:
             op.inputs.append(self.value_name(expr, 0))
 
     def _add_attrs(self, op: mpir_pb2.NodeProto, **attrs: Any) -> None:
-        """Helper: Add attributes to NodeProto."""
+        """Helper: Add attributes to NodeProto.
+
+        Args:
+            op: The NodeProto to add attributes to.
+            **attrs: The attributes to add (key-value pairs).
+        """
         for key, value in attrs.items():
             if value is not None:  # Skip None values
                 op.attrs[key].CopyFrom(attr_to_proto(value))
 
     def _finalize_node(self, op: mpir_pb2.NodeProto, expr: Expr) -> str:
-        """Helper: Add output info, append to nodes, and return expr name."""
+        """Helper: Add output info, append to nodes, and return expr name.
+
+        This method completes the node creation process by adding output
+        information, appending the node to the list of nodes, and returning
+        the expression name.
+
+        Args:
+            op: The completed NodeProto.
+            expr: The expression the node represents.
+
+        Returns:
+            The name of the expression.
+        """
         self._add_output_info(op, expr)
         self._nodes.append(op)
         return self.expr_name(expr)
@@ -417,7 +542,13 @@ class Writer(ExprVisitor):
 
 
 class Reader:
-    """Reader for deserializing GraphProto back to Expr-based expressions."""
+    """Reader for deserializing GraphProto back to Expr-based expressions.
+
+    This class is responsible for converting serialized GraphProto representations
+    back into executable expression trees. It handles the deserialization of
+    various node types and manages dependencies between nodes to ensure proper
+    reconstruction of the expression graph.
+    """
 
     def __init__(self) -> None:
         self._value_cache: dict[str, Expr] = {}
@@ -433,29 +564,34 @@ class Reader:
         """
         self._value_cache.clear()
 
+        # Create a mapping for faster node lookup
+        node_map = {node.name: node for node in graph_proto.nodes}
+
         # Process nodes in topological order
         processed_nodes = set()
 
         def process_node(node_proto: mpir_pb2.NodeProto) -> None:
+            """Process a single node and its dependencies."""
             if node_proto.name in processed_nodes:
                 return
 
             # First process all dependencies
             for input_name in node_proto.inputs:
                 dep_node_name = input_name.split(":")[0]
-                for dep_proto in graph_proto.nodes:
-                    if (
-                        dep_proto.name == dep_node_name
-                        and dep_proto.name not in processed_nodes
-                    ):
-                        process_node(dep_proto)
+                if dep_node_name in node_map and dep_node_name not in processed_nodes:
+                    process_node(node_map[dep_node_name])
 
             # Now process this node
-            expr = self._create_expr_from_proto(node_proto)
-            processed_nodes.add(node_proto.name)
-
-            # Cache the expression
-            self._value_cache[node_proto.name] = expr
+            try:
+                expr = self._create_expr_from_proto(node_proto)
+                processed_nodes.add(node_proto.name)
+                # Cache the expression
+                self._value_cache[node_proto.name] = expr
+            except Exception as e:
+                raise ValueError(
+                    f"Error processing node '{node_proto.name}' "
+                    f"of type '{node_proto.op_type}': {e!s}"
+                ) from e
 
         # Process all nodes
         for node_proto in graph_proto.nodes:
@@ -472,204 +608,233 @@ class Reader:
         return None
 
     def _create_expr_from_proto(self, node_proto: mpir_pb2.NodeProto) -> Expr:
-        """Create an Expression from a NodeProto."""
-        if node_proto.op_type == "eval":
-            # Parse inputs
-            input_exprs = []
-            for input_name in node_proto.inputs:
-                dep_name = input_name.split(":")[0]
-                if dep_name in self._value_cache:
-                    input_exprs.append(self._value_cache[dep_name])
-                else:
-                    raise ValueError(f"Input {input_name} not found")
+        """Create an Expression from a NodeProto.
 
-            # Parse function
-            pfunc = self._proto_to_attr(node_proto.attrs["pfunc"])
-            rmask = None
-            if "rmask" in node_proto.attrs:
-                rmask = self._proto_to_attr(node_proto.attrs["rmask"])
+        This method delegates to specific creation methods based on the node type.
+        """
+        # Dispatch to appropriate creation method based on op_type
+        creation_methods = {
+            "eval": self._create_eval_expr,
+            "variable": self._create_variable_expr,
+            "tuple": self._create_tuple_expr,
+            "cond": self._create_cond_expr,
+            "while": self._create_while_expr,
+            "access": self._create_access_expr,
+            "func_def": self._create_func_def_expr,
+            "shfl_s": self._create_shfl_s_expr,
+            "shfl": self._create_shfl_expr,
+            "conv": self._create_conv_expr,
+            "call": self._create_call_expr,
+        }
 
-            # Fill in ins_info and outs_info for PFunction
-            # ins_info from input expressions (use mptype for single type per value)
-            ins_info: list[TensorType | TableType] = []
-            for input_expr in input_exprs:
-                # Use mptype directly for single MPType
-                mptype = input_expr.mptype
-                if mptype.is_tensor:
-                    ins_info.append(TensorType(mptype.dtype, mptype.shape))
-                elif mptype.is_table:
-                    ins_info.append(mptype.schema)
-                else:
-                    raise ValueError(f"unsupported type: {mptype}")
-
-            # outs_info from NodeProto.outs_info
-            outs_info: list[TensorType | TableType] = []
-            for out_proto in node_proto.outs_info:
-                if out_proto.HasField("tensor_type"):
-                    tensor_type_proto = out_proto.tensor_type
-                    dtype = proto_to_dtype(tensor_type_proto.dtype)
-                    shape = tuple(tensor_type_proto.shape_dims)
-                    outs_info.append(TensorType(dtype, shape))
-                elif out_proto.HasField("table_type"):
-                    columns = [
-                        (col.name, proto_to_dtype(col.dtype))
-                        for col in out_proto.table_type.columns
-                    ]
-                    outs_info.append(TableType.from_pairs(columns))
-                else:
-                    raise ValueError("Eval node currently only supports tensor types")
-
-            # Create a complete PFunction with proper type information
-            complete_pfunc = PFunction(
-                fn_type=pfunc.fn_type,
-                ins_info=ins_info,
-                outs_info=outs_info,
-                fn_name=pfunc.fn_name,
-                fn_text=pfunc.fn_text,
-                **pfunc.attrs,  # Restore attributes
-            )
-
-            return EvalExpr(complete_pfunc, input_exprs, rmask)
-
-        elif node_proto.op_type == "variable":
-            # Parse variable name
-            name = self._proto_to_attr(node_proto.attrs["name"])
-
-            # Parse type info from output info (VariableExpr needs a single MPType)
-            if not node_proto.outs_info:
-                raise ValueError("Variable node missing output info")
-
-            mptype = self._proto_to_mptype(node_proto.outs_info[0])
-            return VariableExpr(name, mptype)
-
-        elif node_proto.op_type == "tuple":
-            # Parse inputs
-            input_exprs = []
-            for input_name in node_proto.inputs:
-                dep_name = input_name.split(":")[0]
-                if dep_name in self._value_cache:
-                    input_exprs.append(self._value_cache[dep_name])
-                else:
-                    raise ValueError(f"Input {input_name} not found")
-
-            return TupleExpr(input_exprs)
-
-        elif node_proto.op_type == "cond":
-            # Parse predicate and arguments
-            pred_name = node_proto.inputs[0].split(":")[0]
-            pred_expr = self._value_cache[pred_name]
-
-            arg_exprs = []
-            for input_name in node_proto.inputs[1:]:
-                dep_name = input_name.split(":")[0]
-                if dep_name in self._value_cache:
-                    arg_exprs.append(self._value_cache[dep_name])
-                else:
-                    raise ValueError(f"Input {input_name} not found")
-
-            # Parse functions
-            then_fn = self._proto_to_attr(node_proto.attrs["then_fn"])
-            else_fn = self._proto_to_attr(node_proto.attrs["else_fn"])
-
-            return CondExpr(pred_expr, then_fn, else_fn, arg_exprs)
-
-        elif node_proto.op_type == "while":
-            # Parse arguments
-            arg_exprs = []
-            for input_name in node_proto.inputs:
-                dep_name = input_name.split(":")[0]
-                if dep_name in self._value_cache:
-                    arg_exprs.append(self._value_cache[dep_name])
-                else:
-                    raise ValueError(f"Input {input_name} not found")
-
-            # Parse functions
-            cond_fn = self._proto_to_attr(node_proto.attrs["cond_fn"])
-            body_fn = self._proto_to_attr(node_proto.attrs["body_fn"])
-
-            return WhileExpr(cond_fn, body_fn, arg_exprs)
-
-        elif node_proto.op_type == "access":
-            # Parse source expression
-            input_name = node_proto.inputs[0]
-            dep_name = input_name.split(":")[0]
-            src_expr = self._value_cache[dep_name]
-
-            # Parse index
-            index = self._proto_to_attr(node_proto.attrs["index"])
-
-            return AccessExpr(src_expr, index)
-
-        elif node_proto.op_type == "func_def":
-            # Parse body expression
-            input_names = node_proto.inputs
-            if not input_names:
-                raise ValueError("FuncDef node missing body input")
-
-            body_name = input_names[0].split(":")[0]
-            body_expr = self._value_cache[body_name]
-
-            # Parse parameters
-            params = self._proto_to_attr(node_proto.attrs["params"])
-
-            return FuncDefExpr(params, body_expr)
-
-        elif node_proto.op_type == "shfl_s":
-            # Parse source expression
-            input_name = node_proto.inputs[0]
-            dep_name = input_name.split(":")[0]
-            src_val = self._value_cache[dep_name]
-
-            # Parse attributes
-            pmask = self._proto_to_attr(node_proto.attrs["pmask"])
-            src_ranks = self._proto_to_attr(node_proto.attrs["src_ranks"])
-
-            return ShflSExpr(src_val, pmask, src_ranks)
-
-        elif node_proto.op_type == "shfl":
-            # Parse source and index expressions
-            src_name = node_proto.inputs[0].split(":")[0]
-            index_name = node_proto.inputs[1].split(":")[0]
-            src_expr = self._value_cache[src_name]
-            index_expr = self._value_cache[index_name]
-
-            return ShflExpr(src_expr, index_expr)
-
-        elif node_proto.op_type == "conv":
-            # Parse variable expressions
-            var_exprs = []
-            for input_name in node_proto.inputs:
-                dep_name = input_name.split(":")[0]
-                if dep_name in self._value_cache:
-                    var_exprs.append(self._value_cache[dep_name])
-                else:
-                    raise ValueError(f"Input {input_name} not found")
-
-            return ConvExpr(var_exprs)
-
-        elif node_proto.op_type == "call":
-            # Parse function and arguments
-            fn_name = node_proto.inputs[0].split(":")[0]
-            fn_expr = self._value_cache[fn_name]
-
-            # Ensure function is FuncDefExpr
-            if not isinstance(fn_expr, FuncDefExpr):
-                raise ValueError(
-                    f"Call function must be FuncDefExpr, got {type(fn_expr)}"
-                )
-
-            arg_exprs = []
-            for input_name in node_proto.inputs[1:]:
-                dep_name = input_name.split(":")[0]
-                if dep_name in self._value_cache:
-                    arg_exprs.append(self._value_cache[dep_name])
-                else:
-                    raise ValueError(f"Input {input_name} not found")
-
-            return CallExpr(fn_expr, arg_exprs)
-
+        if node_proto.op_type in creation_methods:
+            return creation_methods[node_proto.op_type](node_proto)
         else:
             raise ValueError(f"Unsupported node type: {node_proto.op_type}")
+
+    def _create_eval_expr(self, node_proto: mpir_pb2.NodeProto) -> EvalExpr:
+        """Create an EvalExpr from a NodeProto."""
+        # Parse inputs
+        input_exprs = []
+        for input_name in node_proto.inputs:
+            dep_name = input_name.split(":")[0]
+            if dep_name in self._value_cache:
+                input_exprs.append(self._value_cache[dep_name])
+            else:
+                raise ValueError(f"Input {input_name} not found for eval node")
+
+        # Parse function
+        pfunc = self._proto_to_attr(node_proto.attrs["pfunc"])
+        rmask = None
+        if "rmask" in node_proto.attrs:
+            rmask = self._proto_to_attr(node_proto.attrs["rmask"])
+
+        # Fill in ins_info and outs_info for PFunction
+        # ins_info from input expressions (use mptype for single type per value)
+        ins_info: list[TensorType | TableType] = []
+        for input_expr in input_exprs:
+            # Use mptype directly for single MPType
+            mptype = input_expr.mptype
+            if mptype.is_tensor:
+                ins_info.append(TensorType(mptype.dtype, mptype.shape))
+            elif mptype.is_table:
+                ins_info.append(mptype.schema)
+            else:
+                raise ValueError(f"unsupported type: {mptype}")
+
+        # outs_info from NodeProto.outs_info
+        outs_info: list[TensorType | TableType] = []
+        for out_proto in node_proto.outs_info:
+            if out_proto.HasField("tensor_type"):
+                tensor_type_proto = out_proto.tensor_type
+                dtype = proto_to_dtype(tensor_type_proto.dtype)
+                shape = tuple(tensor_type_proto.shape_dims)
+                outs_info.append(TensorType(dtype, shape))
+            elif out_proto.HasField("table_type"):
+                columns = [
+                    (col.name, proto_to_dtype(col.dtype))
+                    for col in out_proto.table_type.columns
+                ]
+                outs_info.append(TableType.from_pairs(columns))
+            else:
+                raise ValueError("Eval node currently only supports tensor types")
+
+        # Create a complete PFunction with proper type information
+        complete_pfunc = PFunction(
+            fn_type=pfunc.fn_type,
+            ins_info=ins_info,
+            outs_info=outs_info,
+            fn_name=pfunc.fn_name,
+            fn_text=pfunc.fn_text,
+            **pfunc.attrs,  # Restore attributes
+        )
+
+        return EvalExpr(complete_pfunc, input_exprs, rmask)
+
+    def _create_variable_expr(self, node_proto: mpir_pb2.NodeProto) -> VariableExpr:
+        """Create a VariableExpr from a NodeProto."""
+        # Parse variable name
+        name = self._proto_to_attr(node_proto.attrs["name"])
+
+        # Parse type info from output info (VariableExpr needs a single MPType)
+        if not node_proto.outs_info:
+            raise ValueError("Variable node missing output info")
+
+        mptype = self._proto_to_mptype(node_proto.outs_info[0])
+        return VariableExpr(name, mptype)
+
+    def _create_tuple_expr(self, node_proto: mpir_pb2.NodeProto) -> TupleExpr:
+        """Create a TupleExpr from a NodeProto."""
+        # Parse inputs
+        input_exprs = []
+        for input_name in node_proto.inputs:
+            dep_name = input_name.split(":")[0]
+            if dep_name in self._value_cache:
+                input_exprs.append(self._value_cache[dep_name])
+            else:
+                raise ValueError(f"Input {input_name} not found for tuple node")
+
+        return TupleExpr(input_exprs)
+
+    def _create_cond_expr(self, node_proto: mpir_pb2.NodeProto) -> CondExpr:
+        """Create a CondExpr from a NodeProto."""
+        # Parse predicate and arguments
+        pred_name = node_proto.inputs[0].split(":")[0]
+        pred_expr = self._value_cache[pred_name]
+
+        arg_exprs = []
+        for input_name in node_proto.inputs[1:]:
+            dep_name = input_name.split(":")[0]
+            if dep_name in self._value_cache:
+                arg_exprs.append(self._value_cache[dep_name])
+            else:
+                raise ValueError(f"Input {input_name} not found for cond node")
+
+        # Parse functions
+        then_fn = self._proto_to_attr(node_proto.attrs["then_fn"])
+        else_fn = self._proto_to_attr(node_proto.attrs["else_fn"])
+
+        return CondExpr(pred_expr, then_fn, else_fn, arg_exprs)
+
+    def _create_while_expr(self, node_proto: mpir_pb2.NodeProto) -> WhileExpr:
+        """Create a WhileExpr from a NodeProto."""
+        # Parse arguments
+        arg_exprs = []
+        for input_name in node_proto.inputs:
+            dep_name = input_name.split(":")[0]
+            if dep_name in self._value_cache:
+                arg_exprs.append(self._value_cache[dep_name])
+            else:
+                raise ValueError(f"Input {input_name} not found for while node")
+
+        # Parse functions
+        cond_fn = self._proto_to_attr(node_proto.attrs["cond_fn"])
+        body_fn = self._proto_to_attr(node_proto.attrs["body_fn"])
+
+        return WhileExpr(cond_fn, body_fn, arg_exprs)
+
+    def _create_access_expr(self, node_proto: mpir_pb2.NodeProto) -> AccessExpr:
+        """Create an AccessExpr from a NodeProto."""
+        # Parse source expression
+        input_name = node_proto.inputs[0]
+        dep_name = input_name.split(":")[0]
+        src_expr = self._value_cache[dep_name]
+
+        # Parse index
+        index = self._proto_to_attr(node_proto.attrs["index"])
+
+        return AccessExpr(src_expr, index)
+
+    def _create_func_def_expr(self, node_proto: mpir_pb2.NodeProto) -> FuncDefExpr:
+        """Create a FuncDefExpr from a NodeProto."""
+        # Parse body expression
+        input_names = node_proto.inputs
+        if not input_names:
+            raise ValueError("FuncDef node missing body input")
+
+        body_name = input_names[0].split(":")[0]
+        body_expr = self._value_cache[body_name]
+
+        # Parse parameters
+        params = self._proto_to_attr(node_proto.attrs["params"])
+
+        return FuncDefExpr(params, body_expr)
+
+    def _create_shfl_s_expr(self, node_proto: mpir_pb2.NodeProto) -> ShflSExpr:
+        """Create a ShflSExpr from a NodeProto."""
+        # Parse source expression
+        input_name = node_proto.inputs[0]
+        dep_name = input_name.split(":")[0]
+        src_val = self._value_cache[dep_name]
+
+        # Parse attributes
+        pmask = self._proto_to_attr(node_proto.attrs["pmask"])
+        src_ranks = self._proto_to_attr(node_proto.attrs["src_ranks"])
+
+        return ShflSExpr(src_val, pmask, src_ranks)
+
+    def _create_shfl_expr(self, node_proto: mpir_pb2.NodeProto) -> ShflExpr:
+        """Create a ShflExpr from a NodeProto."""
+        # Parse source and index expressions
+        src_name = node_proto.inputs[0].split(":")[0]
+        index_name = node_proto.inputs[1].split(":")[0]
+        src_expr = self._value_cache[src_name]
+        index_expr = self._value_cache[index_name]
+
+        return ShflExpr(src_expr, index_expr)
+
+    def _create_conv_expr(self, node_proto: mpir_pb2.NodeProto) -> ConvExpr:
+        """Create a ConvExpr from a NodeProto."""
+        # Parse variable expressions
+        var_exprs = []
+        for input_name in node_proto.inputs:
+            dep_name = input_name.split(":")[0]
+            if dep_name in self._value_cache:
+                var_exprs.append(self._value_cache[dep_name])
+            else:
+                raise ValueError(f"Input {input_name} not found for conv node")
+
+        return ConvExpr(var_exprs)
+
+    def _create_call_expr(self, node_proto: mpir_pb2.NodeProto) -> CallExpr:
+        """Create a CallExpr from a NodeProto."""
+        # Parse function and arguments
+        fn_name = node_proto.inputs[0].split(":")[0]
+        fn_expr = self._value_cache[fn_name]
+
+        # Ensure function is FuncDefExpr
+        if not isinstance(fn_expr, FuncDefExpr):
+            raise ValueError(f"Call function must be FuncDefExpr, got {type(fn_expr)}")
+
+        arg_exprs = []
+        for input_name in node_proto.inputs[1:]:
+            dep_name = input_name.split(":")[0]
+            if dep_name in self._value_cache:
+                arg_exprs.append(self._value_cache[dep_name])
+            else:
+                raise ValueError(f"Input {input_name} not found for call node")
+
+        return CallExpr(fn_expr, arg_exprs)
 
     def _proto_to_mptype(self, type_proto: mpir_pb2.MPTypeProto) -> MPType:
         """Convert MPTypeProto to MPType."""
@@ -766,9 +931,18 @@ def get_graph_statistics(graph_proto: mpir_pb2.GraphProto) -> str:
     lines = []
     lines.append("GraphProto structure analysis:")
 
-    # Version information
-    version = graph_proto.version
-    lines.append(f"- Version: {version.major}.{version.minor}.{version.patch}")
+    # Version information with compatibility check
+    try:
+        version = graph_proto.version
+        version_str = f"{version.major}.{version.minor}.{version.patch}"
+        lines.append(f"- Version: {version_str}")
+
+        # Version compatibility check
+        if version.major != 1:
+            lines.append(f"  WARNING: Expected major version 1, got {version.major}")
+    except AttributeError:
+        lines.append("- Version: Unknown (missing version info)")
+        version_str = "unknown"
 
     # Node and output counts
     lines.append(f"- Number of nodes: {len(graph_proto.nodes)}")

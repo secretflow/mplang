@@ -14,7 +14,10 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from typing import Any
+
+import pandas as pd
 
 __all__ = ["csv_to_dataframe", "dataframe_to_csv"]
 
@@ -23,21 +26,15 @@ def dataframe_to_csv(df: Any) -> bytes:
     """Convert DataFrame to CSV format as bytes.
 
     Args:
-        df: DataFrame to convert (typically pandas DataFrame)
+        df: DataFrame to convert (pandas DataFrame)
 
     Returns:
         CSV formatted data as bytes
 
     Raises:
-        ImportError: If pandas is not available
         TypeError: If df is not a pandas DataFrame
         ValueError: If DataFrame is empty or has no columns
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("pandas is required for DataFrame CSV conversion") from None
-
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"Expected pandas DataFrame, got {type(df)}")
 
@@ -59,17 +56,9 @@ def csv_to_dataframe(content: bytes) -> Any:
         pandas DataFrame
 
     Raises:
-        ImportError: If pandas is not available
         TypeError: If content is not bytes
         ValueError: If content cannot be parsed as CSV
     """
-    try:
-        from io import StringIO
-
-        import pandas as pd
-    except ImportError:
-        raise ImportError("pandas is required for CSV DataFrame conversion") from None
-
     if not isinstance(content, bytes):
         raise TypeError(f"Expected bytes, got {type(content)}")
 

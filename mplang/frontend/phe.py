@@ -134,6 +134,10 @@ def mul(
     in Paillier encryption scheme, which is homomorphic for multiplication
     with plaintext values.
 
+    Note: This operation does not support floating-point numbers due to
+    limitations in the underlying Paillier implementation. For floating-point
+    operations, consider using other encryption schemes or fixed-point arithmetic.
+
     Args:
         ciphertext: The ciphertext to multiply
         plaintext: The plaintext multiplier
@@ -141,9 +145,20 @@ def mul(
 
     Returns:
         tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for multiplication, args list, output tree definition
+
+    Raises:
+        ValueError: If attempting to multiply with floating-point numbers
     """
     ct_ty = TensorType.from_obj(ciphertext)
     pt_ty = TensorType.from_obj(plaintext)
+
+    # Check if we're dealing with floating-point numbers
+    # Paillier multiplication with floats is not properly supported in lightPHE
+    if ct_ty.dtype.is_floating or pt_ty.dtype.is_floating:
+        raise ValueError(
+            "PHE multiplication does not support floating-point numbers. "
+            "Consider using integer types or fixed-point arithmetic instead."
+        )
 
     # Result has the same semantic type as the ciphertext
     result_ty = ct_ty

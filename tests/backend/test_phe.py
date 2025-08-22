@@ -791,6 +791,39 @@ class TestPHEHandler:
         with pytest.raises(ValueError, match="operands must have same shape"):
             self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])
 
+    def test_mul_float_not_supported(self):
+        """Test that multiplication with floats raises an error in frontend."""
+        import jax.numpy as jnp
+
+        from mplang.frontend import phe
+
+        # Test with float ciphertext
+        float_ct = jnp.array(5.5, dtype=jnp.float32)
+        int_pt = jnp.array(3, dtype=jnp.int32)
+
+        with pytest.raises(
+            ValueError,
+            match="PHE multiplication does not support floating-point numbers",
+        ):
+            phe.mul(float_ct, int_pt)
+
+        # Test with float plaintext
+        int_ct = jnp.array(5, dtype=jnp.int32)
+        float_pt = jnp.array(3.2, dtype=jnp.float32)
+
+        with pytest.raises(
+            ValueError,
+            match="PHE multiplication does not support floating-point numbers",
+        ):
+            phe.mul(int_ct, float_pt)
+
+        # Test with both floats
+        with pytest.raises(
+            ValueError,
+            match="PHE multiplication does not support floating-point numbers",
+        ):
+            phe.mul(float_ct, float_pt)
+
     def test_various_numeric_types(self):
         """Test encryption/decryption with various numeric types."""
         pk, sk = self._generate_keypair()

@@ -48,7 +48,12 @@ def peval(
     return prim.peval(pfunc, args, pmask)
 
 
-def run_impl(pmask: Mask | None, func: Callable, *args: Any, **kwargs: Any) -> Any:
+def run_impl(
+    pmask: Mask | None,
+    func: Callable,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
     """
     Run a function that can be evaluated by the mplang system.
 
@@ -125,22 +130,10 @@ def run(pyfn: Callable) -> Callable:
     return partial(run_impl, None, pyfn)
 
 
-# runMask :: Mask -> (a -> a) -> m a -> m a
-def runMask(pmask: Mask, pyfn: Callable) -> Callable:
-    return partial(run_impl, pmask, pyfn)
-
-
 # runAt :: Rank -> (a -> a) -> m a -> m a
 def runAt(rank: Rank, pyfn: Callable) -> Callable:
     pmask = Mask.from_ranks(rank)
-    return runMask(pmask, pyfn)
-
-
-# runExcept :: Rank -> (a -> a) -> m a -> m a
-def runExcept(rank: Rank, pyfn: Callable) -> Callable:
-    wsize = prim.psize()
-    pmask = Mask.all(wsize).difference(Mask.from_ranks(rank))
-    return runMask(pmask, pyfn)
+    return partial(run_impl, pmask, pyfn)
 
 
 # cond :: m Bool -> (m a -> m b) -> (m a -> m b) -> m b

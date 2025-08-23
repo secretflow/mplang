@@ -564,8 +564,14 @@ class Reader:
         """
         self._value_cache.clear()
 
-        # Create a mapping for faster node lookup
-        node_map = {node.name: node for node in graph_proto.nodes}
+        # Create a mapping for faster node lookup, checking for duplicate node names
+        node_map = {}
+        for node in graph_proto.nodes:
+            if node.name in node_map:
+                raise ValueError(
+                    f"Duplicate node name detected in graph: '{node.name}'"
+                )
+            node_map[node.name] = node
 
         # Process nodes in topological order
         processed_nodes = set()

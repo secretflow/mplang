@@ -286,14 +286,6 @@ class PHEHandler(TensorHandler):
                     f"vs plaintext shape {plaintext_np.shape}"
                 )
 
-            # Create lightPHE instance
-            phe = LightPHE(
-                algorithm_name=ciphertext.scheme,
-                key_size=ciphertext.key_size,
-                precision=PRECISION,
-            )
-            phe.cs.keys["public_key"] = ciphertext.pk_data
-
             # Flatten the plaintext data
             target_dtype = ciphertext.semantic_dtype
             flat_data = plaintext_np.flatten()

@@ -105,12 +105,10 @@ def run_impl(
         pfunc, eval_args, out_tree = func(*args, **kwargs)
     else:
         if ibis_cc.is_ibis_function(func):
-            fe_func = partial(ibis_cc.ibis_compile, func)
-            pfunc, eval_args, out_tree = fe_func(*args, **kwargs)
+            pfunc, eval_args, out_tree = ibis_cc.ibis_compile(func, *args, **kwargs)
         else:
             # unknown python callable, treat it as jax function
-            fe_func = partial(jax_cc.jax_compile, func)
-            pfunc, eval_args, out_tree = fe_func(*args, **kwargs)
+            pfunc, eval_args, out_tree = jax_cc.jax_compile(func, *args, **kwargs)
     results = peval(pfunc, eval_args, pmask)
     return out_tree.unflatten(results)
 

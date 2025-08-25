@@ -96,9 +96,9 @@ ipython_config.py
 
 # UV
 #   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+#   This is especially recommended for binary packages to ensure reproducibility, and is more commonly ignored for libraries.
+# TODO: ignore uv.lock since it's too large for now.
+uv.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.

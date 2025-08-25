@@ -18,3 +18,9 @@ Frontend module for mplang.
 This module contains compilers that transform high-level functions into
 portable, serializable intermediate representations.
 """
+
+from mplang.frontend import builtin as builtin
+from mplang.frontend import ibis_cc as ibis_cc
+from mplang.frontend import jax_cc as jax_cc
+from mplang.frontend import phe as phe
+from mplang.frontend.base import FEOp as FEOp

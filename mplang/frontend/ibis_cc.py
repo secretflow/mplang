@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import Any
 
 import ibis
-import jax
+from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core import dtype
 from mplang.core.mpobject import MPObject
@@ -128,7 +128,7 @@ class IbisCompiler(FEOp):
         result = normalized_fn(in_args)
         assert isinstance(result, ibis.Table)
         pfunc = ibis2sql(result, in_schemas, in_names, func.__name__)
-        _, treedef = jax.tree.flatten(result)
+        _, treedef = tree_flatten(result)
         return pfunc, in_vars, treedef
 
 

@@ -19,10 +19,10 @@ This module contains compilers that transform high-level functions into
 portable, serializable intermediate representations.
 """
 
-from mplang.frontend import builtin
-from mplang.frontend import ibis_cc
-from mplang.frontend import jax_cc
-from mplang.frontend import phe
-from mplang.frontend.base import FEOp
-from mplang.frontend.ibis_cc import ibis_compile
-from mplang.frontend.jax_cc import jax_compile
+from mplang.frontend import builtin as builtin
+from mplang.frontend import ibis_cc as ibis_cc
+from mplang.frontend import jax_cc as jax_cc
+from mplang.frontend import phe as phe
+from mplang.frontend.base import FEOp as FEOp
+from mplang.frontend.ibis_cc import ibis_compile as ibis_compile
+from mplang.frontend.jax_cc import jax_compile as jax_compile

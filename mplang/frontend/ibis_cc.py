@@ -19,12 +19,13 @@ from collections.abc import Callable
 from typing import Any
 
 import ibis
-import jax
+from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core import dtype
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
+from mplang.frontend.base import FEOp
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -68,38 +69,6 @@ def ibis2sql(
     return pfn
 
 
-def ibis_compile(
-    func: Callable, *args: Any, **kwargs: Any
-) -> tuple[PFunction, list[MPObject], Any]:
-    """
-    IBIS compilation helper function.
-    The func signature must like def foo(t0:ibis.Table, t1:ibis.Table)->ibis.Table
-    """
-
-    def is_variable(arg: Any) -> bool:
-        return isinstance(arg, MPObject)
-
-    normalized_fn, in_vars = normalize_fn(func, args, kwargs, is_variable)
-
-    in_args, in_schemas, in_names = [], [], []
-    idx = 0
-    for arg in in_vars:
-        columns = [(p[0], p[1].to_numpy()) for p in arg.schema.columns]
-        schema = ibis.schema(columns)
-        name = f"table{idx}"
-        table = ibis.table(schema=schema, name=name)
-        in_args.append(table)
-        in_schemas.append(schema)
-        in_names.append(name)
-        idx += 1
-
-    result = normalized_fn(in_args)
-    assert isinstance(result, ibis.Table)
-    pfunc = ibis2sql(result, in_schemas, in_names, func.__name__)
-    _, treedef = jax.tree.flatten(result)
-    return pfunc, in_vars, treedef
-
-
 def is_ibis_function(func: Callable) -> bool:
     """
     Verify whether a function is an ibis function.
@@ -120,3 +89,47 @@ def is_ibis_function(func: Callable) -> bool:
             return True
 
     return False
+
+
+class IbisCompiler(FEOp):
+    """Ibis compiler frontend operation."""
+
+    def __call__(
+        self, func: Callable, *args: Any, **kwargs: Any
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        """Compile an Ibis function to SQL format.
+
+        Args:
+            func: The Ibis function to compile
+            *args: Positional arguments to the function
+            **kwargs: Keyword arguments to the function
+
+        Returns:
+            tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
+        """
+
+        def is_variable(arg: Any) -> bool:
+            return isinstance(arg, MPObject)
+
+        normalized_fn, in_vars = normalize_fn(func, args, kwargs, is_variable)
+
+        in_args, in_schemas, in_names = [], [], []
+        idx = 0
+        for arg in in_vars:
+            columns = [(p[0], p[1].to_numpy()) for p in arg.schema.columns]
+            schema = ibis.schema(columns)
+            name = f"table{idx}"
+            table = ibis.table(schema=schema, name=name)
+            in_args.append(table)
+            in_schemas.append(schema)
+            in_names.append(name)
+            idx += 1
+
+        result = normalized_fn(in_args)
+        assert isinstance(result, ibis.Table)
+        pfunc = ibis2sql(result, in_schemas, in_names, func.__name__)
+        _, treedef = tree_flatten(result)
+        return pfunc, in_vars, treedef
+
+
+ibis_compile = IbisCompiler()

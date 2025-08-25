@@ -24,6 +24,7 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.core.tensor import TensorType
+from mplang.frontend.base import FEOp
 from mplang.utils.func_utils import normalize_fn
 
 # Enable 64-bit precision for JAX to match tensor types
@@ -116,27 +117,33 @@ def jax2stablehlo(
     return pfn, in_vars, out_tree
 
 
-def jax_compile(
-    func: Callable, *args: Any, **kwargs: Any
-) -> tuple[PFunction, list[MPObject], Any]:
-    """
-    JAX compilation helper function.
+class JaxCompiler(FEOp):
+    """JAX compiler frontend operation."""
 
-    Compiles a JAX function to StableHLO format and returns the PFunction
-    along with variable arguments for evaluation.
+    def __call__(
+        self, func: Callable, *args: Any, **kwargs: Any
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        """
+        JAX compilation helper function.
 
-    Args:
-        func: The JAX function to compile
-        *args: Positional arguments to the function
-        **kwargs: Keyword arguments to the function
+        Compiles a JAX function to StableHLO format and returns the PFunction
+        along with variable arguments for evaluation.
 
-    Returns:
-        tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
-    """
+        Args:
+            func: The JAX function to compile
+            *args: Positional arguments to the function
+            **kwargs: Keyword arguments to the function
 
-    def is_variable(arg: Any) -> bool:
-        return isinstance(arg, MPObject)
+        Returns:
+            tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
+        """
 
-    pfunc, in_vars, out_tree = jax2stablehlo(is_variable, func, *args, **kwargs)
+        def is_variable(arg: Any) -> bool:
+            return isinstance(arg, MPObject)
 
-    return pfunc, in_vars, out_tree
+        pfunc, in_vars, out_tree = jax2stablehlo(is_variable, func, *args, **kwargs)
+
+        return pfunc, in_vars, out_tree
+
+
+jax_compile = JaxCompiler()

@@ -20,33 +20,40 @@ import pytest
 from mplang.frontend import phe
 
 
-def test_mul_float_not_supported():
-    """Test that multiplication with floats raises an error in frontend."""
-    # Test with float ciphertext
-    # TODO(jint): this assumption is wrong, Additive PHE can not handle trunction, so
-    # it can not support flp x flp, but it can support flp x int
+def test_mul_validation():
+    """Test PHE multiplication validation logic."""
+
+    # Test that float x float is blocked (requires truncation)
     float_ct = jnp.array(5.5, dtype=jnp.float32)
-    int_pt = jnp.array(3, dtype=jnp.int32)
-
-    with pytest.raises(
-        ValueError,
-        match="PHE multiplication does not support floating-point numbers",
-    ):
-        phe.mul(float_ct, int_pt)
-
-    # Test with float plaintext
-    int_ct = jnp.array(5, dtype=jnp.int32)
     float_pt = jnp.array(3.2, dtype=jnp.float32)
 
     with pytest.raises(
         ValueError,
-        match="PHE multiplication does not support floating-point numbers",
-    ):
-        phe.mul(int_ct, float_pt)
-
-    # Test with both floats
-    with pytest.raises(
-        ValueError,
-        match="PHE multiplication does not support floating-point numbers",
+        match="PHE multiplication does not support float x float operations",
     ):
         phe.mul(float_ct, float_pt)
+
+    # Test that float x int is allowed (no truncation required)
+    int_pt = jnp.array(3, dtype=jnp.int32)
+
+    # This should not raise a validation error (may fail for other reasons like missing keys)
+    try:
+        phe.mul(float_ct, int_pt)
+    except ValueError as e:
+        # Should not be the float x float validation error
+        assert "float x float operations" not in str(e)
+    except Exception:
+        # Other exceptions are acceptable for this validation test
+        pass
+
+    # Test that int x float is allowed (no truncation required)
+    int_ct = jnp.array(5, dtype=jnp.int32)
+
+    try:
+        phe.mul(int_ct, float_pt)
+    except ValueError as e:
+        # Should not be the float x float validation error
+        assert "float x float operations" not in str(e)
+    except Exception:
+        # Other exceptions are acceptable for this validation test
+        pass

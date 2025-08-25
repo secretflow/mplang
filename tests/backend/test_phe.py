@@ -791,38 +791,41 @@ class TestPHEHandler:
         with pytest.raises(ValueError, match="operands must have same shape"):
             self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])
 
-    def test_mul_float_not_supported(self):
-        """Test that multiplication with floats raises an error in frontend."""
+    def test_mul_float_x_float_not_supported(self):
+        """Test that float x float multiplication raises an error in frontend."""
         import jax.numpy as jnp
 
         from mplang.frontend import phe
 
-        # Test with float ciphertext
+        # Test that float x float is blocked
         float_ct = jnp.array(5.5, dtype=jnp.float32)
-        int_pt = jnp.array(3, dtype=jnp.int32)
-
-        with pytest.raises(
-            ValueError,
-            match="PHE multiplication does not support floating-point numbers",
-        ):
-            phe.mul(float_ct, int_pt)
-
-        # Test with float plaintext
-        int_ct = jnp.array(5, dtype=jnp.int32)
         float_pt = jnp.array(3.2, dtype=jnp.float32)
 
         with pytest.raises(
             ValueError,
-            match="PHE multiplication does not support floating-point numbers",
-        ):
-            phe.mul(int_ct, float_pt)
-
-        # Test with both floats
-        with pytest.raises(
-            ValueError,
-            match="PHE multiplication does not support floating-point numbers",
+            match="PHE multiplication does not support float x float operations",
         ):
             phe.mul(float_ct, float_pt)
+
+        # Test that float x int is allowed (should not raise validation error)
+        int_pt = jnp.array(3, dtype=jnp.int32)
+        try:
+            phe.mul(float_ct, int_pt)  # Should not raise float x float error
+        except ValueError as e:
+            if "float x float operations" in str(e):
+                pytest.fail("float x int should be allowed")
+        except Exception:
+            pass  # Other exceptions are acceptable
+
+        # Test that int x float is allowed (should not raise validation error)
+        int_ct = jnp.array(5, dtype=jnp.int32)
+        try:
+            phe.mul(int_ct, float_pt)  # Should not raise float x float error
+        except ValueError as e:
+            if "float x float operations" in str(e):
+                pytest.fail("int x float should be allowed")
+        except Exception:
+            pass  # Other exceptions are acceptable
 
     def test_various_numeric_types(self):
         """Test encryption/decryption with various numeric types."""

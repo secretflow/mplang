@@ -122,7 +122,7 @@ class JaxCompiler(FEOp):
 
     def __call__(
         self, func: Callable, *args: Any, **kwargs: Any
-    ) -> tuple[PFunction, list[MPObject], Any]:
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """
         JAX compilation helper function.
 

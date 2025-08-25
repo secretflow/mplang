@@ -96,7 +96,7 @@ class IbisCompiler(FEOp):
 
     def __call__(
         self, func: Callable, *args: Any, **kwargs: Any
-    ) -> tuple[PFunction, list[MPObject], Any]:
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """Compile an Ibis function to SQL format.
 
         Args:

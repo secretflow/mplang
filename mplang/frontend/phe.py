@@ -125,6 +125,55 @@ def add(
     return pfunc, [operand1, operand2], treedef
 
 
+def mul(
+    ciphertext: MPObject, plaintext: MPObject, **kwargs: Any
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Multiply a PHE ciphertext with a plaintext value.
+
+    This operation supports multiplication of a ciphertext with a plaintext
+    in Paillier encryption scheme, which is homomorphic for multiplication
+    with plaintext values.
+
+    Note: This operation does not support floating-point x floating-point multiplication
+    due to truncation requirements in the underlying Paillier implementation. However,
+    it does support mixed-type operations like floating-point x integer.
+
+    Args:
+        ciphertext: The ciphertext to multiply
+        plaintext: The plaintext multiplier
+        **kwargs: Additional operation parameters
+
+    Returns:
+        tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for multiplication, args list, output tree definition
+
+    Raises:
+        ValueError: If attempting to multiply two floating-point numbers
+    """
+    ct_ty = TensorType.from_obj(ciphertext)
+    pt_ty = TensorType.from_obj(plaintext)
+
+    # Check if both operands are floating-point numbers
+    # PHE multiplication cannot handle float x float due to truncation requirements
+    # but can handle float x int or int x float
+    if ct_ty.dtype.is_floating and pt_ty.dtype.is_floating:
+        raise ValueError(
+            "PHE multiplication does not support float x float operations due to truncation requirements. "
+            "Consider using mixed types (float x int) or integer types instead."
+        )
+
+    # Result has the same semantic type as the ciphertext
+    result_ty = ct_ty
+
+    pfunc = PFunction(
+        fn_type="phe.mul",
+        ins_info=(ct_ty, pt_ty),
+        outs_info=(result_ty,),
+        **kwargs,
+    )
+    _, treedef = tree_flatten(result_ty)
+    return pfunc, [ciphertext, plaintext], treedef
+
+
 def decrypt(
     ciphertext: MPObject, private_key: MPObject, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:

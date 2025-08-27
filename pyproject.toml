@@ -59,9 +59,7 @@ examples = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
-
-[tool.hatch.build.targets.wheel.shared-data]
-"protos" = "share/mplang/protos"
+force-include = { "protos" = "mplang/protos" }
 
 [tool.hatch.build.targets.sdist]
 include = [

@@ -16,22 +16,20 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import DType
+from mplang.core.dtype import FLOAT32, INT32, DType
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
-from mplang.core.mptype import MPType, TensorType
+from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.expr import Expr
 from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
     FuncDefExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -43,44 +41,13 @@ from mplang.expr.ast import (
 class TestBasicExpressions:
     """Test basic expression serialization/deserialization."""
 
-    def test_rank_expr_roundtrip(self):
-        """Test RankExpr roundtrip."""
-        original = RankExpr(pmask=Mask(7))
-
-        writer = Writer()
-        proto = writer.dumps(original)
-
-        reader = Reader()
-        result = reader.loads(proto)
-
-        assert isinstance(result, RankExpr)
-        assert result.pmask == 7
-
-    def test_const_expr_roundtrip(self):
-        """Test ConstExpr roundtrip."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (3,))
-        data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        original = ConstExpr(tensor_info, data.tobytes(), pmask=Mask(7))
-
-        writer = Writer()
-        proto = writer.dumps(original)
-
-        reader = Reader()
-        result = reader.loads(proto)
-
-        assert isinstance(result, ConstExpr)
-        assert result.pmask == 7
-        assert result.data_bytes == data.tobytes()
-
     def test_tuple_expr_roundtrip(self):
         """Test TupleExpr roundtrip."""
-        rank_expr = RankExpr(pmask=Mask(7))
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        const_expr = ConstExpr(
-            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
-        )
+        # Use VariableExpr instead of removed expressions
+        var1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        var2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
-        original = TupleExpr([rank_expr, const_expr])
+        original = TupleExpr([var1, var2])
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -93,10 +60,9 @@ class TestBasicExpressions:
 
     def test_access_expr_roundtrip(self):
         """Test AccessExpr roundtrip."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        elem1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
-        elem2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
-        tuple_expr = TupleExpr([elem1, elem2])
+        var1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        var2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        tuple_expr = TupleExpr([var1, var2])
 
         original = AccessExpr(tuple_expr, 1)
 
@@ -111,7 +77,7 @@ class TestBasicExpressions:
 
     def test_variable_expr_roundtrip(self):
         """Test VariableExpr roundtrip."""
-        mptype = MPType.tensor(DType.from_numpy(np.float32), (3,), pmask=Mask(7))
+        mptype = MPType.tensor(FLOAT32, (3,), pmask=Mask(7))
         original = VariableExpr("test_var", mptype)
 
         writer = Writer()
@@ -129,19 +95,16 @@ class TestFunctionExpressions:
 
     def test_eval_expr_serialization(self):
         """Test EvalExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (3,))
-        const_expr = ConstExpr(
-            tensor_info, np.array([1.0, 2.0, 3.0]).tobytes(), pmask=Mask(7)
-        )
+        var_expr = VariableExpr("x", MPType.tensor(FLOAT32, (3,), pmask=Mask(7)))
 
         pfunc = PFunction(
             fn_type="builtin",
-            ins_info=[tensor_info, tensor_info],
-            outs_info=[tensor_info],
+            ins_info=[TensorType(FLOAT32, (3,)), TensorType(FLOAT32, (3,))],
+            outs_info=[TensorType(FLOAT32, (3,))],
             fn_name="add",
         )
 
-        original = EvalExpr(pfunc, [const_expr, const_expr], rmask=None)
+        original = EvalExpr(pfunc, [var_expr, var_expr], rmask=None)
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -158,8 +121,7 @@ class TestFunctionExpressions:
 
     def test_func_def_expr_serialization(self):
         """Test FuncDefExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        body = VariableExpr("result", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
         params = ["x", "y"]
         original = FuncDefExpr(params, body)
@@ -273,46 +235,25 @@ class TestUtilityFunctions:
 class TestComplexExpressions:
     """Test complex expression serialization/deserialization."""
 
-    def test_rand_expr_roundtrip(self):
-        """Test RandExpr roundtrip."""
-        from mplang.core.dtype import UINT64
-
-        tensor_info = TensorType(UINT64, (3, 3))
-        original = RandExpr(tensor_info, pmask=Mask(7))
-
-        writer = Writer()
-        proto = writer.dumps(original)
-
-        reader = Reader()
-        result = reader.loads(proto)
-
-        assert isinstance(result, RandExpr)
-        assert result.pmask == 7
-        assert result.typ.dtype.name == "uint64"
-        assert result.typ.shape == (3, 3)
-
     def test_cond_expr_serialization(self):
         """Test CondExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        pred = ConstExpr(
-            TensorType(DType.from_numpy(np.bool_), ()),
-            np.array(True).tobytes(),
-            pmask=Mask(7),
+        pred = VariableExpr(
+            "pred", MPType.tensor(DType.from_numpy(np.bool_), (), pmask=Mask(7))
         )
 
         # Create simple function bodies for then/else branches
-        then_body = ConstExpr(
-            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        then_body = VariableExpr(
+            "then_result", MPType.tensor(FLOAT32, (2,), pmask=Mask(7))
         )
-        else_body = ConstExpr(
-            tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7)
+        else_body = VariableExpr(
+            "else_result", MPType.tensor(FLOAT32, (2,), pmask=Mask(7))
         )
 
         then_fn = FuncDefExpr([], then_body)
         else_fn = FuncDefExpr([], else_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
+            VariableExpr("arg", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         ]
         original = CondExpr(pred, then_fn, else_fn, args)
 
@@ -332,23 +273,19 @@ class TestComplexExpressions:
 
     def test_while_expr_serialization(self):
         """Test WhileExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-
-        # Create simple function bodies for condition and loop body
-        cond_body = ConstExpr(
-            TensorType(DType.from_numpy(np.bool_), ()),
-            np.array(True).tobytes(),
-            pmask=Mask(7),
+        # Create simple function bodies for condition and loop body using VariableExpr
+        cond_body = VariableExpr(
+            "cond_result", MPType.tensor(DType.from_numpy(np.bool_), (), pmask=Mask(7))
         )
-        loop_body = ConstExpr(
-            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        loop_body = VariableExpr(
+            "loop_result", MPType.tensor(FLOAT32, (2,), pmask=Mask(7))
         )
 
         cond_fn = FuncDefExpr(["x"], cond_body)
         body_fn = FuncDefExpr(["x"], loop_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
+            VariableExpr("init_arg", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         ]
         original = WhileExpr(cond_fn, body_fn, args)
 
@@ -393,8 +330,7 @@ class TestComplexExpressions:
 
     def test_shfl_s_expr_serialization(self):
         """Test ShflSExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        src_val = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        src_val = VariableExpr("src", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
         original = ShflSExpr(src_val, pmask=Mask(3), src_ranks=[0, 1])
 
@@ -414,13 +350,8 @@ class TestComplexExpressions:
 
     def test_shfl_expr_serialization(self):
         """Test ShflExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        src = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
-        index = ConstExpr(
-            TensorType(DType.from_numpy(np.int32), ()),
-            np.array(1).tobytes(),
-            pmask=Mask(7),
-        )
+        src = VariableExpr("src", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        index = VariableExpr("index", MPType.tensor(INT32, (), pmask=Mask(7)))
 
         original = ShflExpr(src, index)
 
@@ -438,14 +369,12 @@ class TestComplexExpressions:
 
     def test_call_expr_serialization(self):
         """Test CallExpr serialization (write only)."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-
-        # Create function definition
-        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        # Create function definition using VariableExpr
+        body = VariableExpr("result", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         fn = FuncDefExpr(["x"], body)
 
-        # Create arguments
-        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
+        # Create arguments using VariableExpr
+        arg = VariableExpr("input", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
         original = CallExpr(fn, [arg])
 
@@ -469,9 +398,9 @@ class TestWriterReader:
         """Test Writer reset functionality."""
         writer = Writer()
 
-        # Create some expression
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        # Create some expression using VariableExpr
+
+        expr = VariableExpr("test", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
         # Process expression
         writer.dumps(expr)
@@ -488,9 +417,8 @@ class TestWriterReader:
         """Test Writer expression naming."""
         writer = Writer()
 
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
-        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
+        expr1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        expr2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
         name1 = writer.expr_name(expr1)
         name2 = writer.expr_name(expr2)
@@ -507,9 +435,8 @@ class TestWriterReader:
         """Test Writer value naming for multi-output expressions."""
         writer = Writer()
 
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        expr1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
-        expr2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
+        expr1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        expr2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         tuple_expr = TupleExpr([expr1, expr2])
 
         # Single output should not have index
@@ -622,16 +549,15 @@ class TestEdgeCases:
 
     def test_complex_nested_structure(self):
         """Test complex nested expression structure."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
-        # Create nested structure: tuple(const, access(tuple(const, const), 1))
-        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
-        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
-        const3 = ConstExpr(tensor_info, np.array([5.0, 6.0]).tobytes(), pmask=Mask(7))
+        # Create nested structure: tuple(var, access(tuple(var, var), 1))
+        var1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        var2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        var3 = VariableExpr("z", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
-        inner_tuple = TupleExpr([const2, const3])
+        inner_tuple = TupleExpr([var2, var3])
         access_expr = AccessExpr(inner_tuple, 1)
-        outer_tuple = TupleExpr([const1, access_expr])
+        outer_tuple = TupleExpr([var1, access_expr])
 
         writer = Writer()
         proto = writer.dumps(outer_tuple)
@@ -647,10 +573,9 @@ class TestEdgeCases:
         """Test expression naming with multiple outputs."""
         writer = Writer()
 
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        const1 = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
-        const2 = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
-        tuple_expr = TupleExpr([const1, const2])
+        var1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        var2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
+        tuple_expr = TupleExpr([var1, var2])
 
         # Multiple outputs should have different names
         names = [
@@ -663,22 +588,19 @@ class TestEdgeCases:
         """Test that Writer properly handles duplicate expression references."""
         writer = Writer()
 
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        shared_const = ConstExpr(
-            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
-        )
+        shared_var = VariableExpr("shared", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
         # Create multiple references to the same expression
-        tuple1 = TupleExpr([shared_const])
-        tuple2 = TupleExpr([shared_const])
+        tuple1 = TupleExpr([shared_var])
+        tuple2 = TupleExpr([shared_var])
         final_tuple = TupleExpr([tuple1, tuple2])
 
         proto = writer.dumps(final_tuple)
 
         # Note: The current implementation creates separate nodes for each
         # expression instance, not sharing them. This test verifies current behavior.
-        const_nodes = [node for node in proto.nodes if node.op_type == "const"]
-        assert len(const_nodes) >= 1  # At least one const node exists
+        var_nodes = [node for node in proto.nodes if node.op_type == "variable"]
+        assert len(var_nodes) >= 1  # At least one var node exists
 
         # Verify the structure is correct
         tuple_nodes = [node for node in proto.nodes if node.op_type == "tuple"]
@@ -687,33 +609,35 @@ class TestEdgeCases:
     def test_large_shape_tensor(self):
         """Test handling of tensors with large shapes."""
         large_shape = (100, 200, 50)
-        tensor_info = TensorType(DType.from_numpy(np.float32), large_shape)
-        large_data = np.ones(large_shape, dtype=np.float32)
-
-        original = ConstExpr(tensor_info, large_data.tobytes(), pmask=Mask(1))
+        # Use VariableExpr to represent a tensor with the given shape and pmask
+        original = VariableExpr(
+            "large_tensor",
+            MPType.tensor(FLOAT32, large_shape, pmask=Mask(1)),
+        )
 
         writer = Writer()
         proto = writer.dumps(original)
 
         reader = Reader()
         result = reader.loads(proto)
-
-        assert isinstance(result, ConstExpr)
+        assert isinstance(result, VariableExpr)
         assert result.mptypes[0].shape == large_shape
 
     def test_zero_pmask(self):
         """Test expressions with pmask = 0."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        original = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(0))
+
+        original = VariableExpr(
+            "zero_pmask",
+            MPType.tensor(FLOAT32, (2,), pmask=Mask(0)),
+        )
 
         writer = Writer()
         proto = writer.dumps(original)
 
         reader = Reader()
         result = reader.loads(proto)
-
-        assert isinstance(result, ConstExpr)
-        assert result.pmask == Mask(0)
+        assert isinstance(result, VariableExpr)
+        assert result.mptype.pmask == Mask(0)
 
     def test_dynamic_pmask(self):
         """Test MPTypeProto serialization/deserialization with dynamic pmask (None)."""
@@ -775,13 +699,14 @@ class TestEdgeCases:
         """Test that Expression-level objects can handle dynamic pmask correctly."""
         from mplang.core.mpir import Reader, Writer
 
-        # Test ConstExpr with dynamic pmask
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        const_expr = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=None)
+        # Test VariableExpr with dynamic pmask
+        const_expr = VariableExpr(
+            "dyn_pmask",
+            MPType.tensor(FLOAT32, (2,), pmask=None),
+        )
 
         # Verify the expression was created correctly
-        assert const_expr.pmask is None
-        assert const_expr.mptype.pmask is None  # Should propagate to MPType
+        assert const_expr.mptype.pmask is None  # Dynamic pmask is allowed
 
         # Test serialization/deserialization
         writer = Writer()
@@ -789,10 +714,8 @@ class TestEdgeCases:
 
         reader = Reader()
         result = reader.loads(proto)
-
-        assert isinstance(result, ConstExpr)
-        assert result.pmask is None  # Dynamic pmask should be preserved
-        assert result.mptype.pmask is None
+        assert isinstance(result, VariableExpr)
+        assert result.mptype.pmask is None  # Dynamic pmask should be preserved
 
     def test_reader_proto_to_attr_edge_cases(self):
         """Test Reader._proto_to_attr with edge cases."""
@@ -831,21 +754,20 @@ class TestEdgeCases:
         """Test that writer can handle many expressions."""
         writer = Writer()
 
-        tensor_info = TensorType(DType.from_numpy(np.float32), (1,))
-
         # Create many expressions to test counter behavior
         expressions = []
         for i in range(100):
-            data = np.array([float(i)], dtype=np.float32)
-            expr = ConstExpr(tensor_info, data.tobytes(), pmask=Mask(7))
+            expr = VariableExpr(
+                f"v{i}",
+                MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
+            )
             expressions.append(expr)
 
         # Create a tuple with all expressions
         big_tuple = TupleExpr(expressions)
 
         proto = writer.dumps(big_tuple)
-
-        # Should have 101 nodes (100 consts + 1 tuple)
+        # Should have 101 nodes (100 variables + 1 tuple)
         assert len(proto.nodes) == 101
 
         # All names should be unique
@@ -858,26 +780,30 @@ class TestComplexExpressionRoundtrip:
 
     def test_cond_expr_roundtrip(self):
         """Test CondExpr roundtrip - this should expose the CallExpr fn type issue."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
-        pred = ConstExpr(
-            TensorType(DType.from_numpy(np.bool_), ()),
-            np.array(True).tobytes(),
-            pmask=Mask(7),
+
+        pred = VariableExpr(
+            "pred",
+            MPType.tensor(DType.from_numpy(np.bool_), (), pmask=Mask(7)),
         )
 
         # Create simple function bodies for then/else branches
-        then_body = ConstExpr(
-            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        then_body = VariableExpr(
+            "then_result",
+            MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
         )
-        else_body = ConstExpr(
-            tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7)
+        else_body = VariableExpr(
+            "else_result",
+            MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
         )
 
         then_fn = FuncDefExpr([], then_body)
         else_fn = FuncDefExpr([], else_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
+            VariableExpr(
+                "arg",
+                MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
+            )
         ]
         original = CondExpr(pred, then_fn, else_fn, args)
 
@@ -890,16 +816,16 @@ class TestComplexExpressionRoundtrip:
 
         # Verify basic properties
         assert isinstance(result, CondExpr)
-        assert isinstance(result.pred, ConstExpr)
+        assert isinstance(result.pred, VariableExpr)
 
         # This is where we expect to find the issue:
         # The then_fn and else_fn should be FuncDefExpr but might be something else
         print(f"Original then_fn type: {type(original.then_fn)}")
         print(f"Deserialized then_fn type: {type(result.then_fn)}")
         print(f"Original else_fn type: {type(original.else_fn)}")
-        print(f"Deserialized else_fn type: {type(result.else_fn)}")
-
-        # These assertions should expose the bug
+        print(
+            f"Deserialized else_fn type: {type(result.else_fn)}"
+        )  # These assertions should expose the bug
         assert isinstance(result.then_fn, FuncDefExpr), (
             f"Expected FuncDefExpr, got {type(result.then_fn)}"
         )
@@ -909,23 +835,25 @@ class TestComplexExpressionRoundtrip:
 
     def test_while_expr_roundtrip(self):
         """Test WhileExpr roundtrip - this should expose similar issues."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create simple function bodies for condition and loop body
-        cond_body = ConstExpr(
-            TensorType(DType.from_numpy(np.bool_), ()),
-            np.array(True).tobytes(),
-            pmask=Mask(7),
+        cond_body = VariableExpr(
+            "cond_result",
+            MPType.tensor(DType.from_numpy(np.bool_), (), pmask=Mask(7)),
         )
-        loop_body = ConstExpr(
-            tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7)
+        loop_body = VariableExpr(
+            "loop_result",
+            MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
         )
 
         cond_fn = FuncDefExpr(["x"], cond_body)
         body_fn = FuncDefExpr(["x"], loop_body)
 
         args: list[Expr] = [
-            ConstExpr(tensor_info, np.array([0.0, 0.0]).tobytes(), pmask=Mask(7))
+            VariableExpr(
+                "init_arg",
+                MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
+            )
         ]
         original = WhileExpr(cond_fn, body_fn, args)
 
@@ -954,14 +882,19 @@ class TestComplexExpressionRoundtrip:
 
     def test_call_expr_roundtrip(self):
         """Test CallExpr roundtrip - this should expose the evaluator assertion error."""
-        tensor_info = TensorType(DType.from_numpy(np.float32), (2,))
 
         # Create function definition
-        body = ConstExpr(tensor_info, np.array([1.0, 2.0]).tobytes(), pmask=Mask(7))
+        body = VariableExpr(
+            "result",
+            MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
+        )
         fn = FuncDefExpr(["x"], body)
 
         # Create arguments
-        arg = ConstExpr(tensor_info, np.array([3.0, 4.0]).tobytes(), pmask=Mask(7))
+        arg = VariableExpr(
+            "input",
+            MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
+        )
 
         original = CallExpr(fn, [arg])
 

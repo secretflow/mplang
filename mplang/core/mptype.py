@@ -15,8 +15,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -26,58 +25,10 @@ if TYPE_CHECKING:
 from mplang.core.dtype import STRING, DType
 from mplang.core.mask import Mask
 from mplang.core.table import TableLike, TableType
+from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
 
 # basic type aliases
 Rank = int
-Shape = tuple[int, ...]
-ScalarType = int | float | bool | complex
-
-
-@runtime_checkable
-class TensorLike(Protocol):
-    """
-    Protocol for objects structurally resembling tensors from common libraries
-    (NumPy, PyTorch, JAX), focusing on dtype and shape attributes.
-    """
-
-    @property
-    def dtype(self) -> Any: ...
-
-    @property
-    def shape(self) -> Shape: ...
-
-
-@dataclass(frozen=True)
-class TensorType:
-    """A data class that describes the type information of a tensor."""
-
-    dtype: DType
-    shape: Shape
-
-    def __init__(self, dtype: DType | Any, shape: Shape):
-        # Convert dtype to DType if needed
-        if not isinstance(dtype, DType):
-            dtype = DType.from_any(dtype)
-        object.__setattr__(self, "dtype", dtype)
-        object.__setattr__(self, "shape", shape)
-
-    @classmethod
-    def from_obj(cls, obj: TensorLike | ScalarType) -> TensorType:
-        if isinstance(obj, ScalarType):
-            return cls(DType.from_python_type(type(obj)), ())
-        elif isinstance(obj, TensorLike):
-            return cls(DType.from_any(obj.dtype), obj.shape)
-        else:
-            raise TypeError(f"Unsupported type: {type(obj)}.")
-
-    def to_numpy(self) -> np.dtype:
-        """Convert to NumPy dtype for compatibility."""
-        return self.dtype.to_numpy()
-
-    def __repr__(self) -> str:
-        shape_str = "x".join(str(d) for d in self.shape)
-        dtype_name = str(self.dtype)
-        return f"Tensor<{shape_str}x{dtype_name}>" if shape_str else f"{dtype_name}"
 
 
 class MPType:
@@ -110,7 +61,7 @@ class MPType:
         cls,
         dtype: DType | Any,
         shape: Shape,
-        pmask: Mask | None = None,
+        pmask: int | Mask | None = None,
         **attrs: Any,
     ) -> MPType:
         """Create a tensor type.
@@ -139,6 +90,9 @@ class MPType:
                 f"non-numeric data types."
             )
 
+        if isinstance(pmask, int):
+            pmask = Mask.from_int(pmask)
+
         tensor_info = TensorType(dtype, shape)
         return cls(tensor_info, pmask, attrs)
 
@@ -146,7 +100,7 @@ class MPType:
     def table(
         cls,
         schema: TableType | dict[str, DType],
-        pmask: Mask | None = None,
+        pmask: int | Mask | None = None,
         **attrs: Any,
     ) -> MPType:
         """Create a table type.
@@ -161,6 +115,10 @@ class MPType:
         """
         if isinstance(schema, dict):
             schema = TableType.from_dict(schema)
+
+        if isinstance(pmask, int):
+            pmask = Mask.from_int(pmask)
+
         return cls(schema, pmask, attrs)
 
     @property

@@ -20,8 +20,8 @@ from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
-from mplang.core.mptype import TensorLike, TensorType
 from mplang.core.table import TableLike, TableType
+from mplang.core.tensor import TensorLike, TensorType
 
 __all__ = [
     "HybridHandler",
@@ -145,8 +145,12 @@ class PFunctionHandler(ABC, Generic[InputType, OutputType]):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    def setup(self) -> None:
-        """Set up runtime environment, including any necessary initialization."""
+    def setup(self, rank: int) -> None:
+        """Set up runtime environment, including any necessary initialization.
+
+        Args:
+            rank: The rank/ID of the current party.
+        """
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod

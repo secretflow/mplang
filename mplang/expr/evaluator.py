@@ -25,19 +25,15 @@ from typing import Any
 
 from mplang.core.comm import ICommunicator
 from mplang.core.mask import Mask
-from mplang.core.mptype import TableType
 from mplang.core.pfunc import PFunction, PFunctionHandler
 from mplang.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
     Expr,
     FuncDefExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -92,7 +88,7 @@ class Evaluator(ExprVisitor):
 
         # setup handlers for PFunction execution
         for handler in self._pfunc_handles:
-            handler.setup()
+            handler.setup(self.rank)
 
     def _get_var(self, name: str) -> Any:
         """Get variable from environment."""
@@ -123,57 +119,6 @@ class Evaluator(ExprVisitor):
         """Create a forked evaluator with additional variables."""
         forked = Evaluator(self.rank, sub_bindings, self.comm, self._pfunc_handles)
         return forked
-
-    def visit_rank(self, expr: RankExpr) -> Any:
-        """Evaluate rank expression."""
-        # Return the current party's rank
-        return [self.rank]
-
-    def visit_const(self, expr: ConstExpr) -> Any:
-        """Evaluate constant expression."""
-        import numpy as np
-
-        # Handle different constant types
-        if isinstance(expr.typ, TableType):
-            # For table constants, parse JSON data
-            import json
-
-            table_data = json.loads(expr.data_bytes.decode("utf-8"))
-            return [table_data]
-        else:
-            # Handle tensor constants
-            # Reconstruct the constant value from bytes
-            shape, dtype = expr.typ.shape, expr.typ.dtype.numpy_dtype()
-            if shape == ():
-                # Scalar
-                data = np.frombuffer(expr.data_bytes, dtype=dtype)
-                return [data[0]]  # Return numpy scalar, not Python scalar
-            else:
-                # Tensor
-                data = np.frombuffer(expr.data_bytes, dtype=dtype).reshape(shape)
-                return [data]
-
-    def visit_rand(self, expr: RandExpr) -> Any:
-        """Evaluate random expression."""
-        import numpy as np
-
-        # Generate random values with the specified shape
-        shape = expr.typ.shape
-        dtype = expr.typ.dtype.numpy_dtype()
-
-        rng = np.random.default_rng()
-        if dtype == np.uint64:
-            info = np.iinfo(np.uint64)
-            data = rng.integers(
-                low=info.min,
-                high=info.max,
-                size=shape,
-                dtype=np.uint64,
-                endpoint=True,  # includes the high value in the possible results
-            )
-        else:
-            data = rng.random(size=shape).astype(dtype)
-        return [data]
 
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Evaluate function call expression."""

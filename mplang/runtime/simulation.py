@@ -24,6 +24,7 @@ from typing import Any, cast
 import spu.libspu as libspu
 
 from mplang.backend.builtin import BuiltinHandler
+from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
@@ -125,6 +126,7 @@ class Simulator(InterpContext):
                     StablehloHandler(),
                     spu_handlers[rank],
                     DuckDBHandler(),
+                    PHEHandler(),
                 ],
             )
             for rank in range(self.psize())

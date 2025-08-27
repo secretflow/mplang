@@ -106,11 +106,14 @@ class SpuHandler(TensorHandler):
         self._link_comm = link_context
 
     # override
-    def setup(self) -> None:
+    def setup(self, rank: int) -> None:
         """Set up the SPU runtime environment.
 
         Creates the actual SPU runtime using the configuration and link context
         provided during initialization.
+
+        Args:
+            rank: The rank/ID of the current party.
 
         Raises:
             RuntimeError: If SPU runtime creation fails

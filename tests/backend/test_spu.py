@@ -20,7 +20,7 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.backend.spu import SpuHandler, SpuValue
-from mplang.core.mptype import TensorType
+from mplang.core.tensor import TensorType
 from mplang.frontend.spu import SpuFE
 from mplang.runtime.grpc_comm import LinkCommunicator
 
@@ -190,7 +190,7 @@ class TestSpuHandler:
         runtime.set_link_context(link_contexts[0])
 
         # Runtime setup with REF2K should work without synchronization issues
-        runtime.setup()
+        runtime.setup(0)  # rank 0 for single party
 
         # Execute the compiled function
         results = runtime.execute(cfunc, spu_args)  # type: ignore[arg-type]
@@ -270,7 +270,7 @@ class TestSpuHandler:
             # Create runtime for this party using shared link contexts
             runtime = SpuHandler(world_size, self.spu_config)
             runtime.set_link_context(link_contexts[party_id])
-            runtime.setup()
+            runtime.setup(party_id)
 
             # Execute the compiled function
             results = runtime.execute(cfunc, spu_args)  # type: ignore[arg-type]

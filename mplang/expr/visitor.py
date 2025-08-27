@@ -26,12 +26,9 @@ if TYPE_CHECKING:
         AccessExpr,
         CallExpr,
         CondExpr,
-        ConstExpr,
         ConvExpr,
         EvalExpr,
         FuncDefExpr,
-        RandExpr,
-        RankExpr,
         ShflExpr,
         ShflSExpr,
         TupleExpr,
@@ -42,18 +39,6 @@ if TYPE_CHECKING:
 
 class ExprVisitor(ABC):
     """Base visitor interface for expression types."""
-
-    @abstractmethod
-    def visit_rank(self, expr: RankExpr) -> Any:
-        pass
-
-    @abstractmethod
-    def visit_const(self, expr: ConstExpr) -> Any:
-        pass
-
-    @abstractmethod
-    def visit_rand(self, expr: RandExpr) -> Any:
-        pass
 
     @abstractmethod
     def visit_eval(self, expr: EvalExpr) -> Any:

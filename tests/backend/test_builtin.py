@@ -19,8 +19,8 @@ import numpy as np
 import pytest
 
 from mplang.backend.builtin import BuiltinHandler
-from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 
 
 class TestBuiltinHandler:
@@ -33,10 +33,18 @@ class TestBuiltinHandler:
     def test_list_fn_names(self):
         """Test that handler lists correct function names."""
         fn_names = self.handler.list_fn_names()
-        assert "builtin.identity" in fn_names
-        assert "builtin.read" in fn_names
-        assert "builtin.write" in fn_names
-        assert len(fn_names) == 3
+        expected_functions = [
+            "builtin.identity",
+            "builtin.read",
+            "builtin.write",
+            "builtin.constant",
+            "builtin.rank",
+            "builtin.prand",
+        ]
+
+        for expected_fn in expected_functions:
+            assert expected_fn in fn_names
+        assert len(fn_names) == len(expected_functions)
 
     def test_identity(self):
         """Test identity operation."""

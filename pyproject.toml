@@ -21,12 +21,13 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "spu==0.9.4.dev20250618", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "spu==0.9.4.dev20250618",  # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "grpcio==1.56.2",
     "grpcio-tools==1.56.2",
     "protobuf>=4.21.6,<5.0",
     "ibis-framework==10.8.0",
-    "sqlglot==27.7.0",        # for ibis parse_sql
+    "sqlglot==27.7.0",         # for ibis parse_sql
+    "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
     # runtime only
     "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
     "pandas>=2.0.0",

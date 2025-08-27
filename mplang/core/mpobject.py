@@ -19,8 +19,9 @@ from typing import Any
 
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Shape
+from mplang.core.mptype import MPType
 from mplang.core.table import TableType
+from mplang.core.tensor import Shape
 
 
 class MPContext(ABC):

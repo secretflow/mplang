@@ -12,22 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
 import pytest
 
 from mplang.core.dtype import FLOAT32, INT32, UINT64
 from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank, TensorType
+from mplang.core.mptype import MPType, Rank
 from mplang.expr import (
     AccessExpr,
     CallExpr,
     CondExpr,
-    ConstExpr,
     ConvExpr,
     EvalExpr,
     FuncDefExpr,
-    RandExpr,
-    RankExpr,
     ShflExpr,
     ShflSExpr,
     TupleExpr,
@@ -36,70 +32,15 @@ from mplang.expr import (
 )
 
 
-class TestRankExpr:
-    """Test RankExpr expression type."""
-
-    def test_type_computation(self, pmask_2p):
-        """Test rank expression type computation."""
-        expr = RankExpr(pmask_2p)
-
-        assert len(expr.mptypes) == 1
-        assert expr.mptypes[0].dtype == UINT64
-        assert expr.mptypes[0].shape == ()
-        assert expr.mptypes[0].pmask == pmask_2p
-
-    def test_mptype_property(self, pmask_2p):
-        """Test rank expression mptype property."""
-        expr = RankExpr(pmask_2p)
-        assert expr.mptype.dtype == UINT64
-
-
-class TestConstExpr:
-    """Test ConstExpr expression type."""
-
-    def test_type_computation(self, pmask_2p, tensor_info_2d):
-        """Test constant expression type computation."""
-        data = np.zeros((2, 3), dtype=np.float32).tobytes()
-        expr = ConstExpr(tensor_info_2d, data, pmask_2p)
-
-        assert len(expr.mptypes) == 1
-        assert expr.mptypes[0].dtype == FLOAT32
-        assert expr.mptypes[0].shape == (2, 3)
-        assert expr.mptypes[0].pmask == pmask_2p
-
-    def test_data_storage(self, pmask_2p, tensor_info_2d):
-        """Test that constant expression stores data correctly."""
-        data = b"test_data"
-        expr = ConstExpr(tensor_info_2d, data, pmask_2p)
-        assert expr.data_bytes == data
-
-
-class TestRandExpr:
-    """Test RandExpr expression type."""
-
-    def test_type_computation(self, pmask_2p):
-        """Test random expression type computation with UINT64."""
-        tensor_info = TensorType(UINT64, (2, 3))
-        expr = RandExpr(tensor_info, pmask_2p)
-
-        assert len(expr.mptypes) == 1
-        assert expr.mptypes[0].dtype == UINT64
-        assert expr.mptypes[0].shape == (2, 3)
-        assert expr.mptypes[0].pmask == pmask_2p
-
-    def test_unsupported_dtype(self, pmask_2p, tensor_info_2d):
-        """Test that RandExpr raises TypeError for unsupported dtypes."""
-        with pytest.raises(TypeError):
-            RandExpr(tensor_info_2d, pmask_2p)  # tensor_info uses FLOAT32
-
-
 class TestEvalExpr:
     """Test EvalExpr expression type."""
 
     def test_basic_evaluation(self, pmask_2p, tensor_info_2d, pfunc_2i1o):
         """Test basic eval expression with valid arguments."""
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask_2p)
-        arg2 = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        mptype2 = MPType.tensor(INT32, (), pmask_2p)
+        arg1 = VariableExpr("x", mptype1)
+        arg2 = VariableExpr("y", mptype2)
 
         expr = EvalExpr(pfunc_2i1o, [arg1, arg2])
 
@@ -110,7 +51,8 @@ class TestEvalExpr:
 
     def test_wrong_argument_count(self, pfunc_2i1o, pmask_2p, tensor_info_2d):
         """Test that EvalExpr raises ValueError with wrong number of arguments."""
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask_2p)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        arg1 = VariableExpr("x", mptype1)
 
         with pytest.raises(ValueError):
             EvalExpr(pfunc_2i1o, [arg1])  # Missing second argument
@@ -121,8 +63,10 @@ class TestEvalExpr:
         pmask1 = Mask(7)  # 0b111 (parties 0, 1, 2)
         pmask2 = Mask(3)  # 0b011 (parties 0, 1)
 
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask1)
-        arg2 = ConstExpr(TensorType(INT32, ()), b"", pmask2)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask1)
+        mptype2 = MPType.tensor(INT32, (), pmask2)
+        arg1 = VariableExpr("x", mptype1)
+        arg2 = VariableExpr("y", mptype2)
 
         # Test case 1: No rmask provided - should use deduced pmask (intersection)
         expr_no_rmask = EvalExpr(pfunc_2i1o, [arg1, arg2])
@@ -141,8 +85,10 @@ class TestEvalExpr:
             _ = expr_invalid.mptypes  # Exception happens when accessing mptypes
 
         # Test case 4: Create expressions with None pmask using ShflExpr
-        shuffle_src = ConstExpr(tensor_info_2d, b"", Mask(3))
-        shuffle_index = ConstExpr(TensorType(INT32, ()), b"", Mask(3))
+        shuffle_src_type = MPType.tensor(FLOAT32, (2, 3), Mask(3))
+        shuffle_index_type = MPType.tensor(INT32, (), Mask(3))
+        shuffle_src = VariableExpr("shuffle_src", shuffle_src_type)
+        shuffle_index = VariableExpr("shuffle_index", shuffle_index_type)
         shuffle_expr = ShflExpr(shuffle_src, shuffle_index)  # This will have None pmask
 
         # When one arg has None pmask, rmask should be used if provided
@@ -180,8 +126,10 @@ class TestTupleExpr:
 
     def test_type_computation(self, pmask_2p, tensor_info_2d):
         """Test tuple expression type computation."""
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask_2p)
-        arg2 = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        mptype2 = MPType.tensor(INT32, (), pmask_2p)
+        arg1 = VariableExpr("x", mptype1)
+        arg2 = VariableExpr("y", mptype2)
 
         expr = TupleExpr([arg1, arg2])
 
@@ -199,8 +147,10 @@ class TestTupleExpr:
     def test_multi_output_argument_rejection(self, pmask_2p, tensor_info_2d):
         """Test that TupleExpr rejects multi-output arguments."""
         # Create a multi-output expression by using another TupleExpr
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask_2p)
-        arg2 = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        mptype2 = MPType.tensor(INT32, (), pmask_2p)
+        arg1 = VariableExpr("x", mptype1)
+        arg2 = VariableExpr("y", mptype2)
 
         # First create a valid TupleExpr with 2 outputs
         multi_output_expr = TupleExpr([arg1, arg2])
@@ -216,8 +166,10 @@ class TestAccessExpr:
 
     def test_valid_access(self, pmask_2p, tensor_info_2d):
         """Test valid element access."""
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask_2p)
-        arg2 = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        mptype2 = MPType.tensor(INT32, (), pmask_2p)
+        arg1 = VariableExpr("x", mptype1)
+        arg2 = VariableExpr("y", mptype2)
         tuple_expr = TupleExpr([arg1, arg2])
 
         # Test access to first element
@@ -234,8 +186,10 @@ class TestAccessExpr:
 
     def test_out_of_bounds_access(self, pmask_2p, tensor_info_2d):
         """Test that out of bounds access raises IndexError."""
-        arg1 = ConstExpr(tensor_info_2d, b"", pmask_2p)
-        arg2 = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        mptype2 = MPType.tensor(INT32, (), pmask_2p)
+        arg1 = VariableExpr("x", mptype1)
+        arg2 = VariableExpr("y", mptype2)
         tuple_expr = TupleExpr([arg1, arg2])
 
         expr_out_of_bounds = AccessExpr(tuple_expr, 2)
@@ -276,7 +230,8 @@ class TestCallExpr:
         func = FuncDefExpr(["x"], x_var)  # Identity function
 
         # Create an argument
-        arg = ConstExpr(tensor_info_2d, b"", pmask_2p)
+        arg_mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        arg = VariableExpr("arg", arg_mptype)
 
         expr = CallExpr(func, [arg])
 
@@ -284,7 +239,7 @@ class TestCallExpr:
         assert isinstance(expr.fn, FuncDefExpr)
         assert expr.fn.params == ["x"]
         assert len(expr.args) == 1
-        assert isinstance(expr.args[0], ConstExpr)
+        assert isinstance(expr.args[0], VariableExpr)
 
         # mptypes should now work since VariableExpr has explicit type
         assert len(expr.mptypes) == 1
@@ -297,7 +252,8 @@ class TestCondExpr:
     def test_conditional_expression(self, pmask_2p, tensor_info_2d):
         """Test conditional expression."""
         # Create predicate (boolean scalar)
-        pred = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        pred_mptype = MPType.tensor(INT32, (), pmask_2p)
+        pred = VariableExpr("pred", pred_mptype)
 
         # Create then and else functions
         mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
@@ -306,12 +262,13 @@ class TestCondExpr:
         else_fn = FuncDefExpr(["x"], x_var)  # Identity
 
         # Create arguments
-        arg = ConstExpr(tensor_info_2d, b"", pmask_2p)
+        arg_mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        arg = VariableExpr("arg", arg_mptype)
 
         expr = CondExpr(pred, then_fn, else_fn, [arg])
 
         # Check structure
-        assert isinstance(expr.pred, ConstExpr)
+        assert isinstance(expr.pred, VariableExpr)
         assert isinstance(expr.then_fn, FuncDefExpr)
         assert isinstance(expr.else_fn, FuncDefExpr)
         assert len(expr.args) == 1
@@ -329,18 +286,23 @@ class TestWhileExpr:
         # Create condition and body functions
         mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         x_var = VariableExpr("x", mptype)
-        cond_fn = FuncDefExpr(["x"], ConstExpr(TensorType(INT32, ()), b"", pmask_2p))
+
+        # Create condition function returning boolean
+        bool_mptype = MPType.tensor(INT32, (), pmask_2p)
+        bool_var = VariableExpr("bool_result", bool_mptype)
+        cond_fn = FuncDefExpr(["x"], bool_var)
         body_fn = FuncDefExpr(["x"], x_var)  # Identity
 
         # Create initial state
-        init = ConstExpr(tensor_info_2d, b"", pmask_2p)
+        init_mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        init = VariableExpr("init", init_mptype)
 
         expr = WhileExpr(cond_fn, body_fn, [init])
 
         # Check structure
         assert isinstance(expr.cond_fn, FuncDefExpr)
         assert isinstance(expr.body_fn, FuncDefExpr)
-        assert isinstance(expr.args[0], ConstExpr)  # First arg is the init value
+        assert isinstance(expr.args[0], VariableExpr)  # First arg is the init value
         assert len(expr.args) == 1
         assert expr.args[0] is init
 
@@ -360,8 +322,10 @@ class TestConvExpr:
         pmask_party0 = pmask_1p  # Mask(1) = party 0
         pmask_party1 = Mask(2)  # party 1 only
 
-        var1 = ConstExpr(tensor_info_2d, b"", pmask_party0)
-        var2 = ConstExpr(tensor_info_2d, b"", pmask_party1)
+        mptype1 = MPType.tensor(FLOAT32, (2, 3), pmask_party0)
+        mptype2 = MPType.tensor(FLOAT32, (2, 3), pmask_party1)
+        var1 = VariableExpr("var1", mptype1)
+        var2 = VariableExpr("var2", mptype2)
 
         expr = ConvExpr([var1, var2])
 
@@ -378,7 +342,8 @@ class TestShflSExpr:
     def test_static_shuffle(self, tensor_info_2d):
         """Test static shuffle expression."""
         pmask = Mask(3)  # 0b11 (parties 0 and 1)
-        src_val = ConstExpr(tensor_info_2d, b"", pmask)
+        mptype = MPType.tensor(FLOAT32, (2, 3), pmask)
+        src_val = VariableExpr("src", mptype)
         new_pmask = Mask(7)  # 0b111 (parties 0, 1, and 2)
         # new_pmask has 3 bits set, so we need 3 src_ranks
         # These should correspond to which source parties provide data for each destination party
@@ -397,8 +362,10 @@ class TestShflExpr:
 
     def test_dynamic_shuffle(self, pmask_2p, tensor_info_2d):
         """Test dynamic shuffle expression."""
-        src = ConstExpr(tensor_info_2d, b"", pmask_2p)
-        index = ConstExpr(TensorType(INT32, ()), b"", pmask_2p)
+        src_mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
+        index_mptype = MPType.tensor(INT32, (), pmask_2p)
+        src = VariableExpr("src", src_mptype)
+        index = VariableExpr("index", index_mptype)
 
         expr = ShflExpr(src, index)
 

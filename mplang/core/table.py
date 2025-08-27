@@ -20,7 +20,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from mplang.core.dtype import DType
 
-__all__ = ["TableLike", "TableType", "dataframe_to_table_constant"]
+__all__ = ["TableLike", "TableType"]
 
 
 @runtime_checkable
@@ -99,6 +99,22 @@ class TableType:
         """
         return cls(tuple(pairs))
 
+    @classmethod
+    def from_tablelike(cls, table: TableLike) -> TableType:
+        """Create table schema from a table-like object.
+
+        Args:
+            table: A table-like object (e.g., pandas DataFrame)
+
+        Returns:
+            TableType instance
+        """
+        columns = [
+            (name, DType.from_any(dtype))
+            for name, dtype in zip(table.columns, table.dtypes, strict=True)
+        ]
+        return cls(tuple(columns))
+
     def column_names(self) -> tuple[str, ...]:
         """Get all column names."""
         return tuple(name for name, _ in self.columns)
@@ -172,58 +188,3 @@ class TableType:
             return self.get_column_type(index)
         else:
             raise TypeError(f"Index must be int or str, got {type(index)}")
-
-
-def dataframe_to_table_constant(data: Any) -> tuple[TableType, bytes]:
-    """Convert pandas DataFrame to TableType and JSON serialized bytes.
-
-    This helper function converts a pandas DataFrame to the format needed for
-    table constants in multi-party computations.
-
-    Args:
-        data: pandas DataFrame to convert
-
-    Returns:
-        tuple: (TableType schema, JSON serialized bytes)
-
-    Raises:
-        ImportError: If pandas is not available
-        TypeError: If data is not a pandas DataFrame
-
-    Note:
-        This function uses JSON serialization which is not designed for large tables.
-        Consider using dedicated table loading mechanisms for substantial datasets.
-    """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("pandas is required for DataFrame constant support") from None
-
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError(f"Expected pandas DataFrame, got {type(data)}")
-
-    if len(data.columns) == 0:
-        raise ValueError(
-            "Cannot create a table constant from a DataFrame with no columns."
-        )
-
-    # Convert DataFrame to JSON for serialization
-    json_str = data.to_json(orient="records")
-    json_bytes = json_str.encode("utf-8")
-
-    # Create table type from DataFrame schema
-    from mplang.core.dtype import STRING, DType
-
-    schema_dict = {}
-    for col_name in data.columns:
-        pandas_dtype = data[col_name].dtype
-        # Convert pandas dtype to DType
-        if pandas_dtype.kind in ("O", "U", "S"):  # object, unicode, string
-            schema_dict[col_name] = (
-                DType.from_numpy(pandas_dtype) if pandas_dtype.kind != "O" else STRING
-            )
-        else:
-            schema_dict[col_name] = DType.from_numpy(pandas_dtype)
-
-    table_type = TableType.from_dict(schema_dict)
-    return table_type, json_bytes

@@ -20,8 +20,8 @@ import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
 from mplang.backend.stablehlo import StablehloHandler
-from mplang.core.mptype import TensorType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.frontend import jax_cc
 
 # Enable 64-bit precision in JAX for testing different dtypes
@@ -35,7 +35,7 @@ class TestStablehloHandler:
     def setup_and_teardown(self):
         """Initialize and cleanup StableHLO runtime for each test case."""
         self.runtime = StablehloHandler()
-        self.runtime.setup()
+        self.runtime.setup(0)  # Use rank 0 for test
         yield
         self.runtime.teardown()
 

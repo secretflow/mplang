@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel", "grpcio-tools==1.56.2"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [[tool.uv.index]]
 name = "aliyun"
@@ -57,14 +57,27 @@ examples = [
     "keras==3.11.1",
 ]
 
-[tool.setuptools.packages.find]
-include = ["mplang*"]
+[tool.hatch.build.targets.wheel]
+packages = ["mplang"]
 
-[tool.setuptools.package-data]
-mplang = ["protos/*.proto"]
+[tool.hatch.build.targets.wheel.shared-data]
+"protos" = "share/mplang/protos"
 
-[tool.setuptools.dynamic]
-version = { attr = "mplang.__version__" }
+[tool.hatch.build.targets.sdist]
+include = [
+    "/mplang",
+    "/protos",
+    "/scripts", 
+    "/examples",
+    "/tests",
+    "/tutorials",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+
+[tool.hatch.version]
+path = "mplang/__init__.py"
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting

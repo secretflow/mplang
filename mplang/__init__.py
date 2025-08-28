@@ -16,17 +16,12 @@
 
 # Version is managed by hatch-vcs and available after package installation
 try:
-    from importlib.metadata import version
+    from importlib.metadata import PackageNotFoundError, version
 
     __version__ = version("mplang")
-except ImportError:
-    # Python < 3.8
-    from importlib_metadata import version
-
-    __version__ = version("mplang")
-except Exception:
-    # Fallback for development/editable installs
-    __version__ = "unknown"
+except PackageNotFoundError:
+    # Fallback for development/editable installs when package is not installed
+    __version__ = "0.0.0-dev"
 
 # Core API functions
 from mplang.api import CompileOptions, compile, evaluate, fetch

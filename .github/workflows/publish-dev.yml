@@ -36,7 +36,6 @@ jobs:
 
       - name: Publish to TestPyPI
         run: hatch publish -r testpypi
-        continue-on-error: true
         env:
           HATCH_INDEX_USER: __token__
           HATCH_INDEX_AUTH: ${{ secrets.TEST_PYPI_API_TOKEN }}

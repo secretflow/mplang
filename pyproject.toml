@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [[tool.uv.index]]
@@ -75,10 +75,7 @@ include = [
 ]
 
 [tool.hatch.version]
-# Default: read from __init__.py for normal builds
-# CI override: HATCH_VERSION environment variable takes precedence when set
-source = "code"
-path = "mplang/__init__.py"
+source = "vcs"
 
 [tool.hatch.publish.repos.testpypi]
 url = "https://test.pypi.org/legacy/"

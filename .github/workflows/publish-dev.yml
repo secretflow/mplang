@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # For TestPyPI Trusted Publishing if available
 
     steps:
       - name: Checkout repository
@@ -33,8 +34,32 @@ jobs:
       - name: Build package
         run: hatch build
 
+      - name: Check if TestPyPI token is available
+        id: check-token
+        run: |
+          if [ -n "${{ secrets.TEST_PYPI_API_TOKEN }}" ]; then
+            echo "token-available=true" >> $GITHUB_OUTPUT
+            echo "✅ TestPyPI token is configured"
+          else
+            echo "token-available=false" >> $GITHUB_OUTPUT
+            echo "⚠️  TEST_PYPI_API_TOKEN secret is not configured"
+            echo "   To enable TestPyPI publishing, add your TestPyPI API token to repository secrets"
+            echo "   You can create a token at: https://test.pypi.org/manage/account/token/"
+            echo "   Then add it as TEST_PYPI_API_TOKEN in repository settings > Secrets and variables > Actions"
+          fi
+
       - name: Publish package to TestPyPI
+        if: steps.check-token.outputs.token-available == 'true'
         run: hatch publish -r testpypi
         env:
           HATCH_INDEX_USER: __token__
           HATCH_INDEX_AUTH: ${{ secrets.TEST_PYPI_API_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "📦 Package built successfully: mplang-$(hatch version)"
+          if [ "${{ steps.check-token.outputs.token-available }}" == "true" ]; then
+            echo "🚀 Package published to TestPyPI"
+          else
+            echo "⏭️  Package not published (TEST_PYPI_API_TOKEN not configured)"
+          fi

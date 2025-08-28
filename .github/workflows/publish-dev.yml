@@ -54,7 +54,7 @@ jobs:
           DEV_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
 
           # Update __init__.py with dev version for this build
-          sed -i "s/__version__ = .*/__version__ = \"${DEV_VERSION}\"/" mplang/__init__.py
+          python -c "import re; p = 'mplang/__init__.py'; d = open(p).read(); d = re.sub(r'(__version__\s*=\s*[\"\\\']).*?([\"\\\'])', r'\1${DEV_VERSION}\2', d); open(p, 'w').write(d)"
 
           echo "Base version: ${BASE_VERSION}"
           echo "Development version: ${DEV_VERSION}"

@@ -106,6 +106,20 @@ uv run ruff check . --fix && uv run ruff format .
 uv run mypy mplang/
 ```
 
+### Publishing Setup (for maintainers)
+
+The project uses GitHub Actions to automatically publish packages:
+
+- **Development builds**: Automatically published to TestPyPI on every push to `main`
+- **Release builds**: Published to PyPI when a version tag is pushed (e.g., `v1.0.0`)
+
+To enable TestPyPI publishing, configure the `TEST_PYPI_API_TOKEN` repository secret:
+
+1. Create a TestPyPI API token at https://test.pypi.org/manage/account/token/
+2. Add it as `TEST_PYPI_API_TOKEN` in repository settings > Secrets and variables > Actions
+
+For PyPI releases, the workflow uses trusted publishing (no additional setup required for the main repository).
+
 ## License
 
 Apache-2.0. See `LICENSE` for details.

@@ -1,0 +1,59 @@
+name: Publish Release to PyPI
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*' # e.g. v0.1.0, v1.2.3, v1.2.3-alpha.1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # For PyPI Trusted Publishing
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Hatch
+        run: pip install hatch
+
+      - name: Extract and validate version from tag
+        run: |
+          # Extract version from Git tag (remove 'v' prefix)
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Read version from __init__.py
+          CODE_VERSION=$(python -c "
+          import re
+          with open('mplang/__init__.py') as f:
+              content = f.read()
+              match = re.search(r'__version__.*=.*[\\\"\\\']([^\\\"\\\']*?)[\\\"\\\']', content)
+              if match:
+                  print(match.group(1))
+              else:
+                  exit(1)
+          ")
+
+          # Validate that tag matches code version
+          if [ "$TAG_VERSION" != "$CODE_VERSION" ]; then
+            echo "Error: Git tag version ($TAG_VERSION) does not match __init__.py version ($CODE_VERSION)"
+            exit 1
+          fi
+
+          echo "Validated version: ${TAG_VERSION}"
+
+      - name: Build package
+        run: hatch build
+
+      - name: Publish package to PyPI
+        run: hatch publish
+        env:
+          HATCH_INDEX_USER: __token__
+          HATCH_INDEX_AUTH: ${{ secrets.PYPI_API_TOKEN }}

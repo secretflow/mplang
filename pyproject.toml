@@ -76,7 +76,7 @@ include = [
 
 [tool.hatch.version]
 # For normal builds, read from __init__.py
-# For CI builds, environment variable MPLANG_VERSION takes precedence
+# For CI builds, the HATCH_VERSION environment variable takes precedence
 source = "code"
 path = "mplang/__init__.py"
 

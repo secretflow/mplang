@@ -31,14 +31,21 @@ jobs:
 
           # Read version from __init__.py
           CODE_VERSION=$(python -c "
-          import re
-          with open('mplang/__init__.py') as f:
-              content = f.read()
-              match = re.search(r'__version__.*=.*[\\\"\\\']([^\\\"\\\']*?)[\\\"\\\']', content)
-              if match:
-                  print(match.group(1))
-              else:
-                  exit(1)
+          import ast
+          with open('mplang/__init__.py', 'r') as f:
+              tree = ast.parse(f.read(), filename='mplang/__init__.py')
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id == '__version__':
+                          value = node.value
+                          if isinstance(value, ast.Str):  # Python <3.8
+                              print(value.s)
+                              exit(0)
+                          elif isinstance(value, ast.Constant):  # Python 3.8+
+                              print(value.value)
+                              exit(0)
+          exit(1)
           ")
 
           # Validate that tag matches code version

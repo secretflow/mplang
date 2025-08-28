@@ -21,7 +21,7 @@ from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x65xecutor.proto\x12\nsecretflow\x1a\x1cgoogle/api/annotations.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x19google/protobuf/any.proto\"7\n\x0f\x43ommXchgRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x42\x03\xe0\x41\x02\"\x84\x03\n\x07Session\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x08\x12\x38\n\x0bparty_addrs\x18\x02 \x03(\x0b\x32#.secretflow.Session.PartyAddrsEntry\x12\x33\n\x08metadata\x18\x03 \x03(\x0b\x32!.secretflow.Session.MetadataEntry\x12\x34\n\x0b\x63reate_time\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x12\x34\n\x0bupdate_time\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x1a\x31\n\x0fPartyAddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01:\'\xea\x41$\n\x0emplang/Session\x12\x12sessions/{session}\"\x9e\x04\n\tExecution\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x08\x12\x0f\n\x07program\x18\x02 \x01(\x0c\x12\x13\n\x0binput_names\x18\x03 \x03(\t\x12\x14\n\x0coutput_names\x18\x04 \x03(\t\x12\'\n\trt_config\x18\x05 \x01(\x0b\x32\x14.google.protobuf.Any\x12/\n\x05\x61ttrs\x18\x06 \x03(\x0b\x32 .secretflow.Execution.AttrsEntry\x12.\n\x05state\x18\x07 \x01(\x0e\x32\x1a.secretflow.ExecutionStateB\x03\xe0\x41\x03\x12\x12\n\x05\x65rror\x18\x08 \x01(\tB\x03\xe0\x41\x03\x12\x34\n\x0b\x63reate_time\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x12\x33\n\nstart_time\x18\n \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x12\x31\n\x08\x65nd_time\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x1a\x44\n\nAttrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12%\n\x05value\x18\x02 \x01(\x0b\x32\x16.google.protobuf.Value:\x02\x38\x01:@\xea\x41=\n\x10mplang/Execution\x12)sessions/{session}/executions/{execution}\"\xaa\x01\n\x06Symbol\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x08\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x12\x0c\n\x04type\x18\x03 \x01(\t:q\xea\x41n\n\rmplang/Symbol\x12\x10symbols/{symbol}\x12:sessions/{session}/executions/{execution}/symbols/{symbol}*\x07symbols2\x06symbol\"N\n\x13\x43reateSymbolRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12\'\n\x06symbol\x18\x02 \x01(\x0b\x32\x12.secretflow.SymbolB\x03\xe0\x41\x02\"%\n\x10GetSymbolRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"K\n\x12ListSymbolsRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x12\n\npage_token\x18\x03 \x01(\t\"S\n\x13ListSymbolsResponse\x12#\n\x07symbols\x18\x01 \x03(\x0b\x32\x12.secretflow.Symbol\x12\x17\n\x0fnext_page_token\x18\x02 \x01(\t\"t\n\x13UpdateSymbolRequest\x12\'\n\x06symbol\x18\x01 \x01(\x0b\x32\x12.secretflow.SymbolB\x03\xe0\x41\x02\x12\x34\n\x0bupdate_mask\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.FieldMaskB\x03\xe0\x41\x02\"(\n\x13\x44\x65leteSymbolRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"Q\n\x14\x43reateSessionRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12)\n\x07session\x18\x02 \x01(\x0b\x32\x13.secretflow.SessionB\x03\xe0\x41\x02\"&\n\x11GetSessionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"<\n\x13ListSessionsRequest\x12\x11\n\tpage_size\x18\x01 \x01(\x05\x12\x12\n\npage_token\x18\x02 \x01(\t\"V\n\x14ListSessionsResponse\x12%\n\x08sessions\x18\x01 \x03(\x0b\x32\x13.secretflow.Session\x12\x17\n\x0fnext_page_token\x18\x02 \x01(\t\")\n\x14\x44\x65leteSessionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"W\n\x16\x43reateExecutionRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12-\n\texecution\x18\x02 \x01(\x0b\x32\x15.secretflow.ExecutionB\x03\xe0\x41\x02\"(\n\x13GetExecutionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"N\n\x15ListExecutionsRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x12\n\npage_token\x18\x03 \x01(\t\"\\\n\x16ListExecutionsResponse\x12)\n\nexecutions\x18\x01 \x03(\x0b\x32\x15.secretflow.Execution\x12\x17\n\x0fnext_page_token\x18\x02 \x01(\t\"+\n\x16\x44\x65leteExecutionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02*X\n\x0e\x45xecutionState\x12\x0f\n\x0bUNSPECIFIED\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\r\n\tSUCCEEDED\x10\x02\x12\n\n\x06\x46\x41ILED\x10\x03\x12\r\n\tCANCELLED\x10\x04\x32\x94\x0f\n\x0f\x45xecutorService\x12`\n\x0c\x43reateSymbol\x12\x1f.secretflow.CreateSymbolRequest\x1a\x12.secretflow.Symbol\"\x1b\x82\xd3\xe4\x93\x02\x15\"\x0b/v1/symbols:\x06symbol\x12\xae\x01\n\tGetSymbol\x12\x1c.secretflow.GetSymbolRequest\x1a\x12.secretflow.Symbol\"o\x82\xd3\xe4\x93\x02i\x12\x14/v1/{name=symbols/*}Z!\x12\x1f/v1/{name=sessions/*/symbols/*}Z.\x12,/v1/{name=sessions/*/executions/*/symbols/*}\x12\xb6\x01\n\x0bListSymbols\x12\x1e.secretflow.ListSymbolsRequest\x1a\x1f.secretflow.ListSymbolsResponse\"f\x82\xd3\xe4\x93\x02`\x12\x0b/v1/symbolsZ!\x12\x1f/v1/{parent=sessions/*}/symbolsZ.\x12,/v1/{parent=sessions/*/executions/*}/symbols\x12\xe3\x01\n\x0cUpdateSymbol\x12\x1f.secretflow.UpdateSymbolRequest\x1a\x12.secretflow.Symbol\"\x9d\x01\x82\xd3\xe4\x93\x02\x96\x01\x32\x1b/v1/{symbol.name=symbols/*}:\x06symbolZ02&/v1/{symbol.name=sessions/*/symbols/*}:\x06symbolZ=23/v1/{symbol.name=sessions/*/executions/*/symbols/*}:\x06symbol\x12\xb8\x01\n\x0c\x44\x65leteSymbol\x12\x1f.secretflow.DeleteSymbolRequest\x1a\x16.google.protobuf.Empty\"o\x82\xd3\xe4\x93\x02i*\x14/v1/{name=symbols/*}Z!*\x1f/v1/{name=sessions/*/symbols/*}Z.*,/v1/{name=sessions/*/executions/*/symbols/*}\x12\x65\n\rCreateSession\x12 .secretflow.CreateSessionRequest\x1a\x13.secretflow.Session\"\x1d\x82\xd3\xe4\x93\x02\x17\"\x0c/v1/sessions:\x07session\x12_\n\nGetSession\x12\x1d.secretflow.GetSessionRequest\x1a\x13.secretflow.Session\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/{name=sessions/*}\x12g\n\x0cListSessions\x12\x1f.secretflow.ListSessionsRequest\x1a .secretflow.ListSessionsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\x0c/v1/sessions\x12h\n\rDeleteSession\x12 .secretflow.DeleteSessionRequest\x1a\x16.google.protobuf.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/{name=sessions/*}\x12\x83\x01\n\x0f\x43reateExecution\x12\".secretflow.CreateExecutionRequest\x1a\x15.secretflow.Execution\"5\x82\xd3\xe4\x93\x02/\"\"/v1/{parent=sessions/*}/executions:\texecution\x12r\n\x0cGetExecution\x12\x1f.secretflow.GetExecutionRequest\x1a\x15.secretflow.Execution\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/{name=sessions/*/executions/*}\x12\x83\x01\n\x0eListExecutions\x12!.secretflow.ListExecutionsRequest\x1a\".secretflow.ListExecutionsResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/{parent=sessions/*}/executions\x12y\n\x0f\x44\x65leteExecution\x12\".secretflow.DeleteExecutionRequest\x1a\x16.google.protobuf.Empty\"*\x82\xd3\xe4\x93\x02$*\"/v1/{name=sessions/*/executions/*}\x12~\n\x08\x43ommXchg\x12\x1b.secretflow.CommXchgRequest\x1a\x16.google.protobuf.Empty\"=\x82\xd3\xe4\x93\x02\x37\"//v1/{name=sessions/*/executions/*/msgs/*/frm/*}:\x04\x64\x61tab\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x65xecutor.proto\x12\nsecretflow\x1a\x1cgoogle/api/annotations.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x19google/protobuf/any.proto\"M\n\x13GetTEEReportRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\x12#\n\x16generation_params_json\x18\x02 \x01(\tB\x03\xe0\x41\x02\"d\n\x14GetTEEReportResponse\x12\x1b\n\x0epem_public_key\x18\x01 \x01(\tB\x03\xe0\x41\x01\x12\x15\n\x08tee_mode\x18\x02 \x01(\tB\x03\xe0\x41\x02\x12\x18\n\x0breport_json\x18\x03 \x01(\tB\x03\xe0\x41\x02\"7\n\x0f\x43ommXchgRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\x12\x11\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x42\x03\xe0\x41\x02\"\x84\x03\n\x07Session\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x08\x12\x38\n\x0bparty_addrs\x18\x02 \x03(\x0b\x32#.secretflow.Session.PartyAddrsEntry\x12\x33\n\x08metadata\x18\x03 \x03(\x0b\x32!.secretflow.Session.MetadataEntry\x12\x34\n\x0b\x63reate_time\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x12\x34\n\x0bupdate_time\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x1a\x31\n\x0fPartyAddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01:\'\xea\x41$\n\x0emplang/Session\x12\x12sessions/{session}\"\x9e\x04\n\tExecution\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x08\x12\x0f\n\x07program\x18\x02 \x01(\x0c\x12\x13\n\x0binput_names\x18\x03 \x03(\t\x12\x14\n\x0coutput_names\x18\x04 \x03(\t\x12\'\n\trt_config\x18\x05 \x01(\x0b\x32\x14.google.protobuf.Any\x12/\n\x05\x61ttrs\x18\x06 \x03(\x0b\x32 .secretflow.Execution.AttrsEntry\x12.\n\x05state\x18\x07 \x01(\x0e\x32\x1a.secretflow.ExecutionStateB\x03\xe0\x41\x03\x12\x12\n\x05\x65rror\x18\x08 \x01(\tB\x03\xe0\x41\x03\x12\x34\n\x0b\x63reate_time\x18\t \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x12\x33\n\nstart_time\x18\n \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x12\x31\n\x08\x65nd_time\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x03\xe0\x41\x03\x1a\x44\n\nAttrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12%\n\x05value\x18\x02 \x01(\x0b\x32\x16.google.protobuf.Value:\x02\x38\x01:@\xea\x41=\n\x10mplang/Execution\x12)sessions/{session}/executions/{execution}\"\xaa\x01\n\x06Symbol\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x08\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x12\x0c\n\x04type\x18\x03 \x01(\t:q\xea\x41n\n\rmplang/Symbol\x12\x10symbols/{symbol}\x12:sessions/{session}/executions/{execution}/symbols/{symbol}*\x07symbols2\x06symbol\"N\n\x13\x43reateSymbolRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12\'\n\x06symbol\x18\x02 \x01(\x0b\x32\x12.secretflow.SymbolB\x03\xe0\x41\x02\"%\n\x10GetSymbolRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"K\n\x12ListSymbolsRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x12\n\npage_token\x18\x03 \x01(\t\"S\n\x13ListSymbolsResponse\x12#\n\x07symbols\x18\x01 \x03(\x0b\x32\x12.secretflow.Symbol\x12\x17\n\x0fnext_page_token\x18\x02 \x01(\t\"t\n\x13UpdateSymbolRequest\x12\'\n\x06symbol\x18\x01 \x01(\x0b\x32\x12.secretflow.SymbolB\x03\xe0\x41\x02\x12\x34\n\x0bupdate_mask\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.FieldMaskB\x03\xe0\x41\x02\"(\n\x13\x44\x65leteSymbolRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"Q\n\x14\x43reateSessionRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12)\n\x07session\x18\x02 \x01(\x0b\x32\x13.secretflow.SessionB\x03\xe0\x41\x02\"&\n\x11GetSessionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"<\n\x13ListSessionsRequest\x12\x11\n\tpage_size\x18\x01 \x01(\x05\x12\x12\n\npage_token\x18\x02 \x01(\t\"V\n\x14ListSessionsResponse\x12%\n\x08sessions\x18\x01 \x03(\x0b\x32\x13.secretflow.Session\x12\x17\n\x0fnext_page_token\x18\x02 \x01(\t\")\n\x14\x44\x65leteSessionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"W\n\x16\x43reateExecutionRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12-\n\texecution\x18\x02 \x01(\x0b\x32\x15.secretflow.ExecutionB\x03\xe0\x41\x02\"(\n\x13GetExecutionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02\"N\n\x15ListExecutionsRequest\x12\x0e\n\x06parent\x18\x01 \x01(\t\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x12\n\npage_token\x18\x03 \x01(\t\"\\\n\x16ListExecutionsResponse\x12)\n\nexecutions\x18\x01 \x03(\x0b\x32\x15.secretflow.Execution\x12\x17\n\x0fnext_page_token\x18\x02 \x01(\t\"+\n\x16\x44\x65leteExecutionRequest\x12\x11\n\x04name\x18\x01 \x01(\tB\x03\xe0\x41\x02*X\n\x0e\x45xecutionState\x12\x0f\n\x0bUNSPECIFIED\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\r\n\tSUCCEEDED\x10\x02\x12\n\n\x06\x46\x41ILED\x10\x03\x12\r\n\tCANCELLED\x10\x04\x32\x94\x0f\n\x0f\x45xecutorService\x12`\n\x0c\x43reateSymbol\x12\x1f.secretflow.CreateSymbolRequest\x1a\x12.secretflow.Symbol\"\x1b\x82\xd3\xe4\x93\x02\x15\"\x0b/v1/symbols:\x06symbol\x12\xae\x01\n\tGetSymbol\x12\x1c.secretflow.GetSymbolRequest\x1a\x12.secretflow.Symbol\"o\x82\xd3\xe4\x93\x02i\x12\x14/v1/{name=symbols/*}Z!\x12\x1f/v1/{name=sessions/*/symbols/*}Z.\x12,/v1/{name=sessions/*/executions/*/symbols/*}\x12\xb6\x01\n\x0bListSymbols\x12\x1e.secretflow.ListSymbolsRequest\x1a\x1f.secretflow.ListSymbolsResponse\"f\x82\xd3\xe4\x93\x02`\x12\x0b/v1/symbolsZ!\x12\x1f/v1/{parent=sessions/*}/symbolsZ.\x12,/v1/{parent=sessions/*/executions/*}/symbols\x12\xe3\x01\n\x0cUpdateSymbol\x12\x1f.secretflow.UpdateSymbolRequest\x1a\x12.secretflow.Symbol\"\x9d\x01\x82\xd3\xe4\x93\x02\x96\x01\x32\x1b/v1/{symbol.name=symbols/*}:\x06symbolZ02&/v1/{symbol.name=sessions/*/symbols/*}:\x06symbolZ=23/v1/{symbol.name=sessions/*/executions/*/symbols/*}:\x06symbol\x12\xb8\x01\n\x0c\x44\x65leteSymbol\x12\x1f.secretflow.DeleteSymbolRequest\x1a\x16.google.protobuf.Empty\"o\x82\xd3\xe4\x93\x02i*\x14/v1/{name=symbols/*}Z!*\x1f/v1/{name=sessions/*/symbols/*}Z.*,/v1/{name=sessions/*/executions/*/symbols/*}\x12\x65\n\rCreateSession\x12 .secretflow.CreateSessionRequest\x1a\x13.secretflow.Session\"\x1d\x82\xd3\xe4\x93\x02\x17\"\x0c/v1/sessions:\x07session\x12_\n\nGetSession\x12\x1d.secretflow.GetSessionRequest\x1a\x13.secretflow.Session\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/{name=sessions/*}\x12g\n\x0cListSessions\x12\x1f.secretflow.ListSessionsRequest\x1a .secretflow.ListSessionsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\x0c/v1/sessions\x12h\n\rDeleteSession\x12 .secretflow.DeleteSessionRequest\x1a\x16.google.protobuf.Empty\"\x1d\x82\xd3\xe4\x93\x02\x17*\x15/v1/{name=sessions/*}\x12\x83\x01\n\x0f\x43reateExecution\x12\".secretflow.CreateExecutionRequest\x1a\x15.secretflow.Execution\"5\x82\xd3\xe4\x93\x02/\"\"/v1/{parent=sessions/*}/executions:\texecution\x12r\n\x0cGetExecution\x12\x1f.secretflow.GetExecutionRequest\x1a\x15.secretflow.Execution\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/{name=sessions/*/executions/*}\x12\x83\x01\n\x0eListExecutions\x12!.secretflow.ListExecutionsRequest\x1a\".secretflow.ListExecutionsResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/{parent=sessions/*}/executions\x12y\n\x0f\x44\x65leteExecution\x12\".secretflow.DeleteExecutionRequest\x1a\x16.google.protobuf.Empty\"*\x82\xd3\xe4\x93\x02$*\"/v1/{name=sessions/*/executions/*}\x12~\n\x08\x43ommXchg\x12\x1b.secretflow.CommXchgRequest\x1a\x16.google.protobuf.Empty\"=\x82\xd3\xe4\x93\x02\x37\"//v1/{name=sessions/*/executions/*/msgs/*/frm/*}:\x04\x64\x61ta2\x94\x01\n\x15TEEAttestationService\x12{\n\x0cGetTEEReport\x12\x1f.secretflow.GetTEEReportRequest\x1a .secretflow.GetTEEReportResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/{name=sessions/*}/tee_reportb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -29,6 +29,16 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'executor_pb2', _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
+  _GETTEEREPORTREQUEST.fields_by_name['name']._options = None
+  _GETTEEREPORTREQUEST.fields_by_name['name']._serialized_options = b'\340A\002'
+  _GETTEEREPORTREQUEST.fields_by_name['generation_params_json']._options = None
+  _GETTEEREPORTREQUEST.fields_by_name['generation_params_json']._serialized_options = b'\340A\002'
+  _GETTEEREPORTRESPONSE.fields_by_name['pem_public_key']._options = None
+  _GETTEEREPORTRESPONSE.fields_by_name['pem_public_key']._serialized_options = b'\340A\001'
+  _GETTEEREPORTRESPONSE.fields_by_name['tee_mode']._options = None
+  _GETTEEREPORTRESPONSE.fields_by_name['tee_mode']._serialized_options = b'\340A\002'
+  _GETTEEREPORTRESPONSE.fields_by_name['report_json']._options = None
+  _GETTEEREPORTRESPONSE.fields_by_name['report_json']._serialized_options = b'\340A\002'
   _COMMXCHGREQUEST.fields_by_name['name']._options = None
   _COMMXCHGREQUEST.fields_by_name['name']._serialized_options = b'\340A\002'
   _COMMXCHGREQUEST.fields_by_name['data']._options = None
@@ -115,54 +125,62 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _EXECUTORSERVICE.methods_by_name['DeleteExecution']._serialized_options = b'\202\323\344\223\002$*\"/v1/{name=sessions/*/executions/*}'
   _EXECUTORSERVICE.methods_by_name['CommXchg']._options = None
   _EXECUTORSERVICE.methods_by_name['CommXchg']._serialized_options = b'\202\323\344\223\0027\"//v1/{name=sessions/*/executions/*/msgs/*/frm/*}:\004data'
-  _globals['_EXECUTIONSTATE']._serialized_start=2546
-  _globals['_EXECUTIONSTATE']._serialized_end=2634
-  _globals['_COMMXCHGREQUEST']._serialized_start=273
-  _globals['_COMMXCHGREQUEST']._serialized_end=328
-  _globals['_SESSION']._serialized_start=331
-  _globals['_SESSION']._serialized_end=719
-  _globals['_SESSION_PARTYADDRSENTRY']._serialized_start=580
-  _globals['_SESSION_PARTYADDRSENTRY']._serialized_end=629
-  _globals['_SESSION_METADATAENTRY']._serialized_start=631
-  _globals['_SESSION_METADATAENTRY']._serialized_end=678
-  _globals['_EXECUTION']._serialized_start=722
-  _globals['_EXECUTION']._serialized_end=1264
-  _globals['_EXECUTION_ATTRSENTRY']._serialized_start=1130
-  _globals['_EXECUTION_ATTRSENTRY']._serialized_end=1198
-  _globals['_SYMBOL']._serialized_start=1267
-  _globals['_SYMBOL']._serialized_end=1437
-  _globals['_CREATESYMBOLREQUEST']._serialized_start=1439
-  _globals['_CREATESYMBOLREQUEST']._serialized_end=1517
-  _globals['_GETSYMBOLREQUEST']._serialized_start=1519
-  _globals['_GETSYMBOLREQUEST']._serialized_end=1556
-  _globals['_LISTSYMBOLSREQUEST']._serialized_start=1558
-  _globals['_LISTSYMBOLSREQUEST']._serialized_end=1633
-  _globals['_LISTSYMBOLSRESPONSE']._serialized_start=1635
-  _globals['_LISTSYMBOLSRESPONSE']._serialized_end=1718
-  _globals['_UPDATESYMBOLREQUEST']._serialized_start=1720
-  _globals['_UPDATESYMBOLREQUEST']._serialized_end=1836
-  _globals['_DELETESYMBOLREQUEST']._serialized_start=1838
-  _globals['_DELETESYMBOLREQUEST']._serialized_end=1878
-  _globals['_CREATESESSIONREQUEST']._serialized_start=1880
-  _globals['_CREATESESSIONREQUEST']._serialized_end=1961
-  _globals['_GETSESSIONREQUEST']._serialized_start=1963
-  _globals['_GETSESSIONREQUEST']._serialized_end=2001
-  _globals['_LISTSESSIONSREQUEST']._serialized_start=2003
-  _globals['_LISTSESSIONSREQUEST']._serialized_end=2063
-  _globals['_LISTSESSIONSRESPONSE']._serialized_start=2065
-  _globals['_LISTSESSIONSRESPONSE']._serialized_end=2151
-  _globals['_DELETESESSIONREQUEST']._serialized_start=2153
-  _globals['_DELETESESSIONREQUEST']._serialized_end=2194
-  _globals['_CREATEEXECUTIONREQUEST']._serialized_start=2196
-  _globals['_CREATEEXECUTIONREQUEST']._serialized_end=2283
-  _globals['_GETEXECUTIONREQUEST']._serialized_start=2285
-  _globals['_GETEXECUTIONREQUEST']._serialized_end=2325
-  _globals['_LISTEXECUTIONSREQUEST']._serialized_start=2327
-  _globals['_LISTEXECUTIONSREQUEST']._serialized_end=2405
-  _globals['_LISTEXECUTIONSRESPONSE']._serialized_start=2407
-  _globals['_LISTEXECUTIONSRESPONSE']._serialized_end=2499
-  _globals['_DELETEEXECUTIONREQUEST']._serialized_start=2501
-  _globals['_DELETEEXECUTIONREQUEST']._serialized_end=2544
-  _globals['_EXECUTORSERVICE']._serialized_start=2637
-  _globals['_EXECUTORSERVICE']._serialized_end=4577
+  _TEEATTESTATIONSERVICE.methods_by_name['GetTEEReport']._options = None
+  _TEEATTESTATIONSERVICE.methods_by_name['GetTEEReport']._serialized_options = b'\202\323\344\223\002\"\022 /v1/{name=sessions/*}/tee_report'
+  _globals['_EXECUTIONSTATE']._serialized_start=2727
+  _globals['_EXECUTIONSTATE']._serialized_end=2815
+  _globals['_GETTEEREPORTREQUEST']._serialized_start=273
+  _globals['_GETTEEREPORTREQUEST']._serialized_end=350
+  _globals['_GETTEEREPORTRESPONSE']._serialized_start=352
+  _globals['_GETTEEREPORTRESPONSE']._serialized_end=452
+  _globals['_COMMXCHGREQUEST']._serialized_start=454
+  _globals['_COMMXCHGREQUEST']._serialized_end=509
+  _globals['_SESSION']._serialized_start=512
+  _globals['_SESSION']._serialized_end=900
+  _globals['_SESSION_PARTYADDRSENTRY']._serialized_start=761
+  _globals['_SESSION_PARTYADDRSENTRY']._serialized_end=810
+  _globals['_SESSION_METADATAENTRY']._serialized_start=812
+  _globals['_SESSION_METADATAENTRY']._serialized_end=859
+  _globals['_EXECUTION']._serialized_start=903
+  _globals['_EXECUTION']._serialized_end=1445
+  _globals['_EXECUTION_ATTRSENTRY']._serialized_start=1311
+  _globals['_EXECUTION_ATTRSENTRY']._serialized_end=1379
+  _globals['_SYMBOL']._serialized_start=1448
+  _globals['_SYMBOL']._serialized_end=1618
+  _globals['_CREATESYMBOLREQUEST']._serialized_start=1620
+  _globals['_CREATESYMBOLREQUEST']._serialized_end=1698
+  _globals['_GETSYMBOLREQUEST']._serialized_start=1700
+  _globals['_GETSYMBOLREQUEST']._serialized_end=1737
+  _globals['_LISTSYMBOLSREQUEST']._serialized_start=1739
+  _globals['_LISTSYMBOLSREQUEST']._serialized_end=1814
+  _globals['_LISTSYMBOLSRESPONSE']._serialized_start=1816
+  _globals['_LISTSYMBOLSRESPONSE']._serialized_end=1899
+  _globals['_UPDATESYMBOLREQUEST']._serialized_start=1901
+  _globals['_UPDATESYMBOLREQUEST']._serialized_end=2017
+  _globals['_DELETESYMBOLREQUEST']._serialized_start=2019
+  _globals['_DELETESYMBOLREQUEST']._serialized_end=2059
+  _globals['_CREATESESSIONREQUEST']._serialized_start=2061
+  _globals['_CREATESESSIONREQUEST']._serialized_end=2142
+  _globals['_GETSESSIONREQUEST']._serialized_start=2144
+  _globals['_GETSESSIONREQUEST']._serialized_end=2182
+  _globals['_LISTSESSIONSREQUEST']._serialized_start=2184
+  _globals['_LISTSESSIONSREQUEST']._serialized_end=2244
+  _globals['_LISTSESSIONSRESPONSE']._serialized_start=2246
+  _globals['_LISTSESSIONSRESPONSE']._serialized_end=2332
+  _globals['_DELETESESSIONREQUEST']._serialized_start=2334
+  _globals['_DELETESESSIONREQUEST']._serialized_end=2375
+  _globals['_CREATEEXECUTIONREQUEST']._serialized_start=2377
+  _globals['_CREATEEXECUTIONREQUEST']._serialized_end=2464
+  _globals['_GETEXECUTIONREQUEST']._serialized_start=2466
+  _globals['_GETEXECUTIONREQUEST']._serialized_end=2506
+  _globals['_LISTEXECUTIONSREQUEST']._serialized_start=2508
+  _globals['_LISTEXECUTIONSREQUEST']._serialized_end=2586
+  _globals['_LISTEXECUTIONSRESPONSE']._serialized_start=2588
+  _globals['_LISTEXECUTIONSRESPONSE']._serialized_end=2680
+  _globals['_DELETEEXECUTIONREQUEST']._serialized_start=2682
+  _globals['_DELETEEXECUTIONREQUEST']._serialized_end=2725
+  _globals['_EXECUTORSERVICE']._serialized_start=2818
+  _globals['_EXECUTORSERVICE']._serialized_end=4758
+  _globals['_TEEATTESTATIONSERVICE']._serialized_start=4761
+  _globals['_TEEATTESTATIONSERVICE']._serialized_end=4909
 # @@protoc_insertion_point(module_scope)

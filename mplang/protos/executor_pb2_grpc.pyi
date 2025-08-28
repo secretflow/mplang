@@ -307,3 +307,35 @@ class ExecutorServiceServicer(metaclass=abc.ABCMeta):
         """Methods for inter-party communication"""
 
 def add_ExecutorServiceServicer_to_server(servicer: ExecutorServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...
+
+class TEEAttestationServiceStub:
+    """Service definition for TEE attestation"""
+
+    def __init__(self, channel: typing.Union[grpc.Channel, grpc.aio.Channel]) -> None: ...
+    GetTEEReport: grpc.UnaryUnaryMultiCallable[
+        executor_pb2.GetTEEReportRequest,
+        executor_pb2.GetTEEReportResponse,
+    ]
+    """Get TEE attestation report"""
+
+class TEEAttestationServiceAsyncStub:
+    """Service definition for TEE attestation"""
+
+    GetTEEReport: grpc.aio.UnaryUnaryMultiCallable[
+        executor_pb2.GetTEEReportRequest,
+        executor_pb2.GetTEEReportResponse,
+    ]
+    """Get TEE attestation report"""
+
+class TEEAttestationServiceServicer(metaclass=abc.ABCMeta):
+    """Service definition for TEE attestation"""
+
+    @abc.abstractmethod
+    def GetTEEReport(
+        self,
+        request: executor_pb2.GetTEEReportRequest,
+        context: _ServicerContext,
+    ) -> typing.Union[executor_pb2.GetTEEReportResponse, collections.abc.Awaitable[executor_pb2.GetTEEReportResponse]]:
+        """Get TEE attestation report"""
+
+def add_TEEAttestationServiceServicer_to_server(servicer: TEEAttestationServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...

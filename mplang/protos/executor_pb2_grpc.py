@@ -507,3 +507,68 @@ class ExecutorService(object):
             google_dot_protobuf_dot_empty__pb2.Empty.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+
+class TEEAttestationServiceStub(object):
+    """Service definition for TEE attestation
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetTEEReport = channel.unary_unary(
+                '/secretflow.TEEAttestationService/GetTEEReport',
+                request_serializer=executor__pb2.GetTEEReportRequest.SerializeToString,
+                response_deserializer=executor__pb2.GetTEEReportResponse.FromString,
+                )
+
+
+class TEEAttestationServiceServicer(object):
+    """Service definition for TEE attestation
+    """
+
+    def GetTEEReport(self, request, context):
+        """Get TEE attestation report
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TEEAttestationServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetTEEReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTEEReport,
+                    request_deserializer=executor__pb2.GetTEEReportRequest.FromString,
+                    response_serializer=executor__pb2.GetTEEReportResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'secretflow.TEEAttestationService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TEEAttestationService(object):
+    """Service definition for TEE attestation
+    """
+
+    @staticmethod
+    def GetTEEReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/secretflow.TEEAttestationService/GetTEEReport',
+            executor__pb2.GetTEEReportRequest.SerializeToString,
+            executor__pb2.GetTEEReportResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

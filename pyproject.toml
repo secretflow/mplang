@@ -28,6 +28,9 @@ dependencies = [
     "ibis-framework==10.8.0",
     "sqlglot==27.7.0",         # for ibis parse_sql
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
+    "trustflow-tdx-generation>=0.3.0.dev20250409", # for TEE attestation report generation
+    "trustflow-verification>=0.3.0.dev20250409", # for TEE attestation verification
+    "sdc-apis>=0.3.0.dev20241202", # for UnifiedAttestationReport and related proto definitions
     # runtime only
     "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
     "pandas>=2.0.0",

@@ -34,22 +34,27 @@ jobs:
 
           # Read base version from __init__.py
           BASE_VERSION=$(python -c "
-          import re
-          with open('mplang/__init__.py') as f:
-              content = f.read()
-              match = re.search(r'__version__.*=.*[\\\"\\\']([^\\\"\\\']*?)[\\\"\\\']', content)
-              if match:
-                  print(match.group(1))
-              else:
-                  print('0.1.0')
+          import ast
+          with open('mplang/__init__.py', 'r') as f:
+              tree = ast.parse(f.read(), filename='mplang/__init__.py')
+          version = '0.1.0'
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id == '__version__':
+                          if isinstance(node.value, ast.Str):
+                              version = node.value.s
+                          elif hasattr(ast, 'Constant') and isinstance(node.value, ast.Constant):
+                              version = node.value.value
+          print(version)
           ")
 
           # Generate timestamp-based dev version
           TIMESTAMP=$(date +%Y%m%d.%H%M)
           DEV_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
 
-          # Update __init__.py with dev version for this build
-          sed -i "s/__version__ = .*/__version__ = \"${DEV_VERSION}\"/" mplang/__init__.py
+          # Set HATCH_VERSION environment variable for this build
+          echo "HATCH_VERSION=${DEV_VERSION}" >> $GITHUB_ENV
 
           echo "Base version: ${BASE_VERSION}"
           echo "Development version: ${DEV_VERSION}"

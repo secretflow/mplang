@@ -75,13 +75,16 @@ include = [
 ]
 
 [tool.hatch.version]
-# For normal builds, read from __init__.py
-# For CI builds, the HATCH_VERSION environment variable takes precedence
+# Default: read from __init__.py for normal builds
+# CI override: HATCH_VERSION environment variable takes precedence when set
 source = "code"
 path = "mplang/__init__.py"
 
 [tool.hatch.publish.repos.testpypi]
 url = "https://test.pypi.org/legacy/"
+
+[tool.hatch.publish.repos.pypi]
+url = "https://upload.pypi.org/legacy/"
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting

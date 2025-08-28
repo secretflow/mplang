@@ -1,0 +1,40 @@
+name: Publish Dev Build to TestPyPI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Hatch and hatch-vcs
+        run: pip install hatch hatch-vcs
+
+      - name: Show automatically generated version
+        run: |
+          echo "Development version will be: $(hatch version)"
+
+      - name: Build package
+        run: hatch build
+
+      - name: Publish package to TestPyPI
+        run: hatch publish -r testpypi
+        env:
+          HATCH_INDEX_USER: __token__
+          HATCH_INDEX_AUTH: ${{ secrets.TEST_PYPI_API_TOKEN }}

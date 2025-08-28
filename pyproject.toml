@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [[tool.uv.index]]
@@ -65,7 +65,7 @@ force-include = { "protos" = "mplang/protos" }
 include = [
     "/mplang",
     "/protos",
-    "/scripts", 
+    "/scripts",
     "/examples",
     "/tests",
     "/tutorials",
@@ -75,7 +75,13 @@ include = [
 ]
 
 [tool.hatch.version]
-path = "mplang/__init__.py"
+source = "vcs"
+
+[tool.hatch.publish.repos.testpypi]
+url = "https://test.pypi.org/legacy/"
+
+[tool.hatch.publish.repos.pypi]
+url = "https://upload.pypi.org/legacy/"
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting

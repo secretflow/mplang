@@ -14,8 +14,14 @@
 
 """Multi-Party Programming Language for Secure Computation."""
 
-# Version of the mplang package
-__version__ = "0.1.0"
+# Version is managed by hatch-vcs and available after package installation
+try:
+    from importlib.metadata import PackageNotFoundError, version
+
+    __version__ = version("mplang")
+except PackageNotFoundError:
+    # Fallback for development/editable installs when package is not installed
+    __version__ = "0.0.0-dev"
 
 # Core API functions
 from mplang.api import CompileOptions, compile, evaluate, fetch

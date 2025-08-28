@@ -1,0 +1,35 @@
+name: Publish Release to PyPI
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*' # e.g. v0.1.0, v1.2.3, v1.2.3-alpha.1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # For PyPI Trusted Publishing
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Hatch and hatch-vcs
+        run: pip install hatch hatch-vcs
+
+      - name: Show version from tag
+        run: |
+          echo "Release version will be: $(hatch version)"
+
+      - name: Build package
+        run: hatch build
+
+      - name: Publish package to PyPI
+        run: hatch publish -r pypi

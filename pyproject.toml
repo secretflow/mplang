@@ -25,6 +25,7 @@ dependencies = [
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
     "protobuf>=5.0,<6.0",
+    "typing_extensions",
     "ibis-framework==10.8.0",
     "sqlglot==27.7.0",         # for ibis parse_sql
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation

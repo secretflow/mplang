@@ -219,8 +219,8 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
                 var = simp.runAt(rank, nfn)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             elif dev_info.type == "TEEU":
-                # TEEU device - similar to SPU but with TEE-specific handling
-                var = smpc.srun(nfn, fe_type=fe_type)(args_flat)
+                rank = device_ctx.id2rank(dev_id)
+                var = simp.runAt(rank, nfn)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             else:
                 raise ValueError(f"Unknown device type: {dev_info.type}")
@@ -265,7 +265,8 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
     elif frm_to_pair == ("PPU", "TEEU"):
         frm_rank = device_ctx.id2rank(frm_dev_id)
         to_rank = device_ctx.id2rank(to_dev_id)
-        var = teeu.sealTo(obj, frm_rank, to_rank, to_rank)
+        encrypted_var = teeu.sealTo(obj, frm_rank, to_rank, to_rank)
+        var = teeu.reveal(encrypted_var, to_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEEU", "SPU"):
         raise NotImplementedError("TEEU to SPU transfer not yet implemented.")

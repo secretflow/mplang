@@ -20,72 +20,72 @@ class ExecutorServiceStub(object):
                 '/mplang.v1.ExecutorService/CreateSymbol',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.CreateSymbolRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Symbol.FromString,
-                )
+                _registered_method=True)
         self.GetSymbol = channel.unary_unary(
                 '/mplang.v1.ExecutorService/GetSymbol',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.GetSymbolRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Symbol.FromString,
-                )
+                _registered_method=True)
         self.ListSymbols = channel.unary_unary(
                 '/mplang.v1.ExecutorService/ListSymbols',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.ListSymbolsRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.ListSymbolsResponse.FromString,
-                )
+                _registered_method=True)
         self.UpdateSymbol = channel.unary_unary(
                 '/mplang.v1.ExecutorService/UpdateSymbol',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.UpdateSymbolRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Symbol.FromString,
-                )
+                _registered_method=True)
         self.DeleteSymbol = channel.unary_unary(
                 '/mplang.v1.ExecutorService/DeleteSymbol',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.DeleteSymbolRequest.SerializeToString,
                 response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-                )
+                _registered_method=True)
         self.CreateSession = channel.unary_unary(
                 '/mplang.v1.ExecutorService/CreateSession',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.CreateSessionRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Session.FromString,
-                )
+                _registered_method=True)
         self.GetSession = channel.unary_unary(
                 '/mplang.v1.ExecutorService/GetSession',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.GetSessionRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Session.FromString,
-                )
+                _registered_method=True)
         self.ListSessions = channel.unary_unary(
                 '/mplang.v1.ExecutorService/ListSessions',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.ListSessionsRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.ListSessionsResponse.FromString,
-                )
+                _registered_method=True)
         self.DeleteSession = channel.unary_unary(
                 '/mplang.v1.ExecutorService/DeleteSession',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.DeleteSessionRequest.SerializeToString,
                 response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-                )
+                _registered_method=True)
         self.CreateExecution = channel.unary_unary(
                 '/mplang.v1.ExecutorService/CreateExecution',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.CreateExecutionRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Execution.FromString,
-                )
+                _registered_method=True)
         self.GetExecution = channel.unary_unary(
                 '/mplang.v1.ExecutorService/GetExecution',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.GetExecutionRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.Execution.FromString,
-                )
+                _registered_method=True)
         self.ListExecutions = channel.unary_unary(
                 '/mplang.v1.ExecutorService/ListExecutions',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.ListExecutionsRequest.SerializeToString,
                 response_deserializer=mplang_dot_v1_dot_executor__pb2.ListExecutionsResponse.FromString,
-                )
+                _registered_method=True)
         self.DeleteExecution = channel.unary_unary(
                 '/mplang.v1.ExecutorService/DeleteExecution',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.DeleteExecutionRequest.SerializeToString,
                 response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-                )
+                _registered_method=True)
         self.CommXchg = channel.unary_unary(
                 '/mplang.v1.ExecutorService/CommXchg',
                 request_serializer=mplang_dot_v1_dot_executor__pb2.CommXchgRequest.SerializeToString,
                 response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-                )
+                _registered_method=True)
 
 
 class ExecutorServiceServicer(object):
@@ -263,6 +263,7 @@ def add_ExecutorServiceServicer_to_server(servicer, server):
     generic_handler = grpc.method_handlers_generic_handler(
             'mplang.v1.ExecutorService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('mplang.v1.ExecutorService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -281,11 +282,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/CreateSymbol',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/CreateSymbol',
             mplang_dot_v1_dot_executor__pb2.CreateSymbolRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Symbol.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def GetSymbol(request,
@@ -298,11 +309,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/GetSymbol',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/GetSymbol',
             mplang_dot_v1_dot_executor__pb2.GetSymbolRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Symbol.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def ListSymbols(request,
@@ -315,11 +336,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/ListSymbols',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/ListSymbols',
             mplang_dot_v1_dot_executor__pb2.ListSymbolsRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.ListSymbolsResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def UpdateSymbol(request,
@@ -332,11 +363,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/UpdateSymbol',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/UpdateSymbol',
             mplang_dot_v1_dot_executor__pb2.UpdateSymbolRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Symbol.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def DeleteSymbol(request,
@@ -349,11 +390,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/DeleteSymbol',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/DeleteSymbol',
             mplang_dot_v1_dot_executor__pb2.DeleteSymbolRequest.SerializeToString,
             google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def CreateSession(request,
@@ -366,11 +417,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/CreateSession',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/CreateSession',
             mplang_dot_v1_dot_executor__pb2.CreateSessionRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Session.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def GetSession(request,
@@ -383,11 +444,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/GetSession',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/GetSession',
             mplang_dot_v1_dot_executor__pb2.GetSessionRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Session.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def ListSessions(request,
@@ -400,11 +471,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/ListSessions',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/ListSessions',
             mplang_dot_v1_dot_executor__pb2.ListSessionsRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.ListSessionsResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def DeleteSession(request,
@@ -417,11 +498,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/DeleteSession',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/DeleteSession',
             mplang_dot_v1_dot_executor__pb2.DeleteSessionRequest.SerializeToString,
             google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def CreateExecution(request,
@@ -434,11 +525,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/CreateExecution',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/CreateExecution',
             mplang_dot_v1_dot_executor__pb2.CreateExecutionRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Execution.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def GetExecution(request,
@@ -451,11 +552,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/GetExecution',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/GetExecution',
             mplang_dot_v1_dot_executor__pb2.GetExecutionRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.Execution.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def ListExecutions(request,
@@ -468,11 +579,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/ListExecutions',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/ListExecutions',
             mplang_dot_v1_dot_executor__pb2.ListExecutionsRequest.SerializeToString,
             mplang_dot_v1_dot_executor__pb2.ListExecutionsResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def DeleteExecution(request,
@@ -485,11 +606,21 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/DeleteExecution',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/DeleteExecution',
             mplang_dot_v1_dot_executor__pb2.DeleteExecutionRequest.SerializeToString,
             google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def CommXchg(request,
@@ -502,8 +633,18 @@ class ExecutorService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/mplang.v1.ExecutorService/CommXchg',
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mplang.v1.ExecutorService/CommXchg',
             mplang_dot_v1_dot_executor__pb2.CommXchgRequest.SerializeToString,
             google_dot_protobuf_dot_empty__pb2.Empty.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

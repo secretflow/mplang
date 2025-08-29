@@ -10,7 +10,7 @@ MPLang (Multi-Party Programming Language) is a single-controller programming lib
 - Single-controller SPMD: One program orchestrates multiple parties in lockstep
 - Explicit devices and security domains: Clear annotations for P0/P1/SPU
 - Function-level compilation (@mplang.function): Enables graph optimizations and audit
-- Pluggable frontends and backends: Supports JAX, Ibis frontends and StableHLO, SPU PPHlo IR backends
+- Pluggable frontends and backends: Supports JAX, Ibis frontends and StableHLO, SPU PPHLO IR backends
 
 ## Development Commands
 

@@ -1,34 +1,119 @@
-# Project Overview
+# Copilot instructions
 
-This project is `mplang`, a library for Multi-Party Programming Language. Its goal is to provide a single-controller programming model for
-writing multi-party programs. `mplang` uses a SIMP (Single Instruction, Multiple Parties) execution model, analogous to SIMT (Single
-Instruction, Multiple Threads), where each party executes identical code in an SPMD (Single Program, Multiple Data) fashion. While it is
-a key component for secure computation, its programming model is more general.
+This file provides guidance to GitHub Copilot when working with code in this repository.
 
-## Folder Structure
+## Project Overview
 
-- `mplang/`: Contains the core source code for the `mplang` library.
-- `protos/`: Contains the protocol buffer definitions used for communication.
-- `examples/`: Contains example usage of the library.
-- `tests/`: Contains tests for the library.
-- `tutorials/`: Contains tutorials for learning how to use `mplang`.
+MPLang (Multi-Party Programming Language) is a single-controller programming library for secure multi-party computation (MPC) and multi-device workloads. It follows the SPMD (Single Program, Multiple Data) model where one Python program orchestrates multiple parties and devices with explicit security domains.
 
-## Libraries and Frameworks
+### Key Features
+- Single-controller SPMD: One program orchestrates multiple parties in lockstep
+- Explicit devices and security domains: Clear annotations for P0/P1/SPU
+- Function-level compilation (@mplang.function): Enables graph optimizations and audit
+- Pluggable frontends and backends: Supports JAX, Ibis frontends and StableHLO, SPU PPHLO IR backends
 
-- `spu`: The underlying secure computation engine.
-- `grpcio` & `protobuf`: For remote procedure calls and data serialization.
-- `jax`: Used for numerical computation and transformation to StableHLO.
-- `numpy`: For numerical operations.
+## Development Commands
 
-## Coding Standards
+### Installation and Setup
+```bash
+# Install uv (if not installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-- Code formatting and linting is enforced using `ruff`.
-- Import statements are sorted using `ruff` (replaces isort).
-- Static type checking is performed with `mypy`.
-- Testing is done using the `pytest` framework.
-- Employ inline comments to explain the intent and rationale ('the why') behind code, not to describe its mechanics ('the how').
-  Prioritize writing self-documenting code.
+# Install from source
+uv pip install .
 
-## UI guidelines
+# Editable install for development
+uv pip install -e .
 
-- Not applicable, this is a library project.
+# Install development dependencies
+uv sync --group dev
+```
+
+### Running Tests
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest tests/core/test_primitive.py
+
+# Run tests with coverage
+uv run pytest --cov=mplang
+
+# Run tests in parallel
+uv run pytest -n auto
+```
+
+### Code Quality and Type Checking
+```bash
+# Run linter
+uv run ruff check .
+
+# Fix lint issues automatically
+uv run ruff check . --fix
+
+# Format code
+uv run ruff format .
+
+# Run type checker
+uv run mypy mplang/
+```
+
+### Running Examples
+```bash
+# Run tutorials
+uv run tutorials/0_basic.py
+
+# Run other examples
+uv run tutorials/1_condition.py
+uv run tutorials/2_whileloop.py
+```
+
+## Architecture Overview
+
+### Core Components
+
+1. **Core System (`mplang/core/`)**
+   - `mpobject.py`: Base MPObject and MPContext classes
+   - `primitive.py`: Fundamental primitive operations with @primitive decorator
+   - `trace.py`: TraceContext and TraceVar for lazy evaluation and expression building
+   - `interp.py`: InterpContext and InterpVar for runtime interpretation
+
+2. **Expression System (`mplang/expr/`)**
+   - AST representation of computation graphs
+   - Expression evaluation and transformation
+
+3. **Runtime System (`mplang/runtime/`)**
+   - `simulation.py`: Simulator for local testing with multiple threads
+   - Communication layers for multi-party execution
+
+4. **Frontends and Backends**
+   - Frontends (`mplang/frontend/`): JAX, Ibis integration
+   - Backends (`mplang/backend/`): SPU, StableHLO, SQL/DuckDB implementations
+
+5. **Devices (`mplang/device.py`)**
+   - Device-oriented programming interface
+   - Automatic data transformation between devices
+
+### Key Design Patterns
+
+1. **Context Management**: Uses context managers for switching between trace and interpretation contexts
+2. **Lazy Evaluation**: Computations are traced into expressions rather than executed immediately
+3. **SPMD Model**: Single Program, Multiple Data execution model for multi-party coordination
+4. **Trace and Interpret**: Functions can be traced to build computation graphs or interpreted for immediate execution
+
+### Important APIs
+
+- `@mplang.function`: Decorator for tracing functions into computation graphs
+- `mplang.compile()`: Compile functions into traced representations
+- `mplang.evaluate()`: Execute traced functions in interpreter contexts
+- `mplang.fetch()`: Retrieve results from interpreter contexts
+- `mplang.Simulator()`: Create simulation environments for testing
+
+### Testing Approach
+
+Tests are organized by module and use pytest. Key patterns:
+- Use TraceContext for testing primitive operations
+- Trace functions to create TracedFunction objects
+- Verify expression output using Printer for IR inspection
+- Test both compile-time and runtime behavior

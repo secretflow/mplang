@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Copilot instructions
 
 This file provides guidance to GitHub Copilot when working with code in this repository.
 

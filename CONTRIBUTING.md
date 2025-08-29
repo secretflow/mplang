@@ -17,8 +17,7 @@ You'll need the following tools installed:
   ```
 - **[buf](https://buf.build/docs/installation)**: For Protobuf code generation.
   ```bash
-  # Install buf on Linux/macOS
-  curl -sSL https://github.com/bufbuild/buf/releases/latest/download/buf-Linux-x86_64 -o /usr/local/bin/buf && chmod +x /usr/local/bin/buf
+  # Install buf by following the official guide: https://buf.build/docs/installation
   ```
 
 ### 2. Install Dependencies

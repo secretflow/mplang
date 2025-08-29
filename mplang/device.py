@@ -32,6 +32,7 @@ from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc
+from mplang.frontend import teeu
 from mplang.core.context_mgr import set_ctx
 from mplang.core.interp import InterpContext
 from mplang.core.mask import Mask
@@ -72,10 +73,7 @@ SAMPLE_DEVICE_CONF = {
     "TEE0": {
         "type": "TEEU",
         "node_ids": ["node:0", "node:1", "node:3"],
-        "configs": {
-            "mode": "sim",
-            "tee_node": "node:3"
-        },
+        "configs": {"mode": "sim", "tee_node": "node:3"},
     },
     "P0": {"type": "PPU", "node_ids": ["node:0"]},
     "P1": {"type": "PPU", "node_ids": ["node:1"]},
@@ -103,6 +101,12 @@ class DeviceContext:
         dev_info = self.dev_infos[dev_id]
         if dev_info.type == "SPU":
             raise ValueError("SPU does not have a rank")
+        if dev_info.type == "TEEU":
+            # return tee node rank
+            tee_id = dev_info.configs.get("tee_node")
+            if tee_id is None:
+                raise ValueError("miss field `tee_node`")
+            return self.node_ids.index(tee_id)
         assert len(dev_info.node_ids) == 1
         return self.node_ids.index(dev_info.node_ids[0])
 
@@ -141,7 +145,13 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     if not nodes_def:
         driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
     else:
-        driver = ExecutorDriver(nodes_def, spu_mask=spu_mask, tee_mask=tee_mask, tee_index=tee_index, device_ctx=device_ctx)
+        driver = ExecutorDriver(
+            nodes_def,
+            spu_mask=spu_mask,
+            tee_mask=tee_mask,
+            tee_index=tee_index,
+            device_ctx=device_ctx,
+        )
 
     set_ctx(driver)
 
@@ -247,19 +257,21 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         var = mpi.p2p(frm_rank, to_rank, obj)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEEU", "PPU"):
-        var = smpc.revealTo(obj, device_ctx.id2rank(to_dev_id))
+        frm_rank = device_ctx.id2rank(frm_dev_id)
+        to_rank = device_ctx.id2rank(to_dev_id)
+        encrypted_var = teeu.sealTo(obj, frm_rank, to_rank, frm_rank)
+        var = teeu.reveal(encrypted_var, to_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "TEEU"):
-        var = smpc.sealFrom(obj, device_ctx.id2rank(frm_dev_id))
+        frm_rank = device_ctx.id2rank(frm_dev_id)
+        to_rank = device_ctx.id2rank(to_dev_id)
+        var = teeu.sealTo(obj, frm_rank, to_rank, to_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEEU", "SPU"):
-        # TEEU to SPU - treat as SPU to SPU for now
         raise NotImplementedError("TEEU to SPU transfer not yet implemented.")
     elif frm_to_pair == ("SPU", "TEEU"):
-        # SPU to TEEU - treat as SPU to SPU for now
         raise NotImplementedError("SPU to TEEU transfer not yet implemented.")
     elif frm_to_pair == ("TEEU", "TEEU"):
-        # TEEU to TEEU - treat as SPU to SPU for now
         raise NotImplementedError("Only one TEEU is supported for now.")
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")

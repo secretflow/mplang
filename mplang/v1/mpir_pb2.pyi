@@ -15,7 +15,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
 import builtins
 import collections.abc
 import google.protobuf.descriptor
@@ -126,7 +125,7 @@ JSON: DataType.ValueType  # 20
 """json (table only)"""
 global___DataType = DataType
 
-@typing.final
+@typing_extensions.final
 class AttrProto(google.protobuf.message.Message):
     """Custom attribute message (without name field since it's the map key)"""
 
@@ -195,23 +194,18 @@ class AttrProto(google.protobuf.message.Message):
     @property
     def floats(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.float]:
         """FLOATS"""
-
     @property
     def ints(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
         """INTS"""
-
     @property
     def strs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """STRINGS"""
-
     @property
     def func(self) -> global___FuncProto:
         """FUNCTION - textual function reference"""
-
     @property
     def graph(self) -> global___GraphProto:
         """GRAPH - nested function graph"""
-
     def __init__(
         self,
         *,
@@ -227,16 +221,16 @@ class AttrProto(google.protobuf.message.Message):
         func: global___FuncProto | None = ...,
         graph: global___GraphProto | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["func", b"func", "graph", b"graph"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["b", b"b", "f", b"f", "floats", b"floats", "func", b"func", "graph", b"graph", "i", b"i", "ints", b"ints", "raw_bytes", b"raw_bytes", "s", b"s", "strs", b"strs", "type", b"type"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["func", b"func", "graph", b"graph"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["b", b"b", "f", b"f", "floats", b"floats", "func", b"func", "graph", b"graph", "i", b"i", "ints", b"ints", "raw_bytes", b"raw_bytes", "s", b"s", "strs", b"strs", "type", b"type"]) -> None: ...
 
 global___AttrProto = AttrProto
 
-@typing.final
+@typing_extensions.final
 class FuncProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class AttrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -251,8 +245,8 @@ class FuncProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(self, field_name: typing_extensions.Literal["value", b"value"]) -> builtins.bool: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     TYPE_FIELD_NUMBER: builtins.int
     NAME_FIELD_NUMBER: builtins.int
@@ -270,7 +264,6 @@ class FuncProto(google.protobuf.message.Message):
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
         """Function attributes"""
-
     def __init__(
         self,
         *,
@@ -280,11 +273,11 @@ class FuncProto(google.protobuf.message.Message):
         doc_string: builtins.str = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "body", b"body", "doc_string", b"doc_string", "name", b"name", "type", b"type"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["attrs", b"attrs", "body", b"body", "doc_string", b"doc_string", "name", b"name", "type", b"type"]) -> None: ...
 
 global___FuncProto = FuncProto
 
-@typing.final
+@typing_extensions.final
 class TensorTypeProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -299,15 +292,15 @@ class TensorTypeProto(google.protobuf.message.Message):
         dtype: global___DataType.ValueType = ...,
         shape_dims: collections.abc.Iterable[builtins.int] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["dtype", b"dtype", "shape_dims", b"shape_dims"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["dtype", b"dtype", "shape_dims", b"shape_dims"]) -> None: ...
 
 global___TensorTypeProto = TensorTypeProto
 
-@typing.final
+@typing_extensions.final
 class TableTypeProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class Column(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -321,7 +314,7 @@ class TableTypeProto(google.protobuf.message.Message):
             name: builtins.str = ...,
             dtype: global___DataType.ValueType = ...,
         ) -> None: ...
-        def ClearField(self, field_name: typing.Literal["dtype", b"dtype", "name", b"name"]) -> None: ...
+        def ClearField(self, field_name: typing_extensions.Literal["dtype", b"dtype", "name", b"name"]) -> None: ...
 
     COLUMNS_FIELD_NUMBER: builtins.int
     @property
@@ -331,15 +324,15 @@ class TableTypeProto(google.protobuf.message.Message):
         *,
         columns: collections.abc.Iterable[global___TableTypeProto.Column] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["columns", b"columns"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["columns", b"columns"]) -> None: ...
 
 global___TableTypeProto = TableTypeProto
 
-@typing.final
+@typing_extensions.final
 class MPTypeProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class AttrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -354,23 +347,22 @@ class MPTypeProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(self, field_name: typing_extensions.Literal["value", b"value"]) -> builtins.bool: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     TENSOR_TYPE_FIELD_NUMBER: builtins.int
     TABLE_TYPE_FIELD_NUMBER: builtins.int
     PMASK_FIELD_NUMBER: builtins.int
     ATTRS_FIELD_NUMBER: builtins.int
-    pmask: builtins.int
-    """party mask (-1 for dynamic mask, >=0 for static mask)"""
     @property
     def tensor_type(self) -> global___TensorTypeProto: ...
     @property
     def table_type(self) -> global___TableTypeProto: ...
+    pmask: builtins.int
+    """party mask (-1 for dynamic mask, >=0 for static mask)"""
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
         """attributes"""
-
     def __init__(
         self,
         *,
@@ -379,17 +371,17 @@ class MPTypeProto(google.protobuf.message.Message):
         pmask: builtins.int = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["table_type", b"table_type", "tensor_type", b"tensor_type", "type_spec", b"type_spec"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "pmask", b"pmask", "table_type", b"table_type", "tensor_type", b"tensor_type", "type_spec", b"type_spec"]) -> None: ...
-    def WhichOneof(self, oneof_group: typing.Literal["type_spec", b"type_spec"]) -> typing.Literal["tensor_type", "table_type"] | None: ...
+    def HasField(self, field_name: typing_extensions.Literal["table_type", b"table_type", "tensor_type", b"tensor_type", "type_spec", b"type_spec"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["attrs", b"attrs", "pmask", b"pmask", "table_type", b"table_type", "tensor_type", b"tensor_type", "type_spec", b"type_spec"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing_extensions.Literal["type_spec", b"type_spec"]) -> typing_extensions.Literal["tensor_type", "table_type"] | None: ...
 
 global___MPTypeProto = MPTypeProto
 
-@typing.final
+@typing_extensions.final
 class NodeProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class AttrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -404,8 +396,8 @@ class NodeProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(self, field_name: typing_extensions.Literal["value", b"value"]) -> builtins.bool: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     OP_TYPE_FIELD_NUMBER: builtins.int
     NAME_FIELD_NUMBER: builtins.int
@@ -415,17 +407,15 @@ class NodeProto(google.protobuf.message.Message):
     DOC_STRING_FIELD_NUMBER: builtins.int
     op_type: builtins.str
     name: builtins.str
-    doc_string: builtins.str
     @property
     def inputs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """{name:index}"""
-
     @property
     def outs_info(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___MPTypeProto]:
         """"""
-
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]: ...
+    doc_string: builtins.str
     def __init__(
         self,
         *,
@@ -436,11 +426,11 @@ class NodeProto(google.protobuf.message.Message):
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
         doc_string: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "doc_string", b"doc_string", "inputs", b"inputs", "name", b"name", "op_type", b"op_type", "outs_info", b"outs_info"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["attrs", b"attrs", "doc_string", b"doc_string", "inputs", b"inputs", "name", b"name", "op_type", b"op_type", "outs_info", b"outs_info"]) -> None: ...
 
 global___NodeProto = NodeProto
 
-@typing.final
+@typing_extensions.final
 class VersionInfo(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -464,15 +454,15 @@ class VersionInfo(google.protobuf.message.Message):
         patch: builtins.int = ...,
         extra: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["extra", b"extra", "major", b"major", "minor", b"minor", "patch", b"patch"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["extra", b"extra", "major", b"major", "minor", b"minor", "patch", b"patch"]) -> None: ...
 
 global___VersionInfo = VersionInfo
 
-@typing.final
+@typing_extensions.final
 class GraphProto(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class AttrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -487,8 +477,8 @@ class GraphProto(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: global___AttrProto | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(self, field_name: typing_extensions.Literal["value", b"value"]) -> builtins.bool: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     VERSION_FIELD_NUMBER: builtins.int
     NODES_FIELD_NUMBER: builtins.int
@@ -501,7 +491,6 @@ class GraphProto(google.protobuf.message.Message):
     @property
     def outputs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """{name:index}"""
-
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]: ...
     def __init__(
@@ -512,7 +501,7 @@ class GraphProto(google.protobuf.message.Message):
         outputs: collections.abc.Iterable[builtins.str] | None = ...,
         attrs: collections.abc.Mapping[builtins.str, global___AttrProto] | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["version", b"version"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "nodes", b"nodes", "outputs", b"outputs", "version", b"version"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["version", b"version"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["attrs", b"attrs", "nodes", b"nodes", "outputs", b"outputs", "version", b"version"]) -> None: ...
 
 global___GraphProto = GraphProto

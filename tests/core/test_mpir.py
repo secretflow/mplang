@@ -146,7 +146,7 @@ class TestUtilityFunctions:
     def test_dtype_to_proto_conversion(self):
         """Test dtype to protobuf conversion."""
         from mplang.core.mpir import dtype_to_proto
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Test DType conversion
         dtype = DType.from_numpy(np.float32)
@@ -164,7 +164,7 @@ class TestUtilityFunctions:
     def test_proto_to_dtype_conversion(self):
         """Test protobuf to dtype conversion."""
         from mplang.core.mpir import proto_to_dtype
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Test basic conversion
         result = proto_to_dtype(mpir_pb2.DataType.F32)
@@ -177,7 +177,7 @@ class TestUtilityFunctions:
     def test_attr_to_proto_conversions(self):
         """Test attribute to protobuf conversions."""
         from mplang.core.mpir import attr_to_proto
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Test int
         attr = attr_to_proto(42)
@@ -451,7 +451,7 @@ class TestWriterReader:
 
     def test_reader_empty_graph(self):
         """Test Reader with empty graph."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         reader = Reader()
         empty_graph = mpir_pb2.GraphProto()
@@ -461,7 +461,7 @@ class TestWriterReader:
 
     def test_reader_invalid_output(self):
         """Test Reader with invalid output reference."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         reader = Reader()
         graph = mpir_pb2.GraphProto()
@@ -472,7 +472,7 @@ class TestWriterReader:
 
     def test_reader_unsupported_node_type(self):
         """Test Reader with unsupported node type."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Create a graph with unsupported node type
         graph = mpir_pb2.GraphProto()
@@ -512,7 +512,7 @@ class TestErrorHandling:
 
     def test_reader_missing_input(self):
         """Test Reader error when input is missing."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Create graph with missing dependency
         graph = mpir_pb2.GraphProto()
@@ -674,7 +674,7 @@ class TestEdgeCases:
 
     def test_pmask_proto_encoding(self):
         """Test that pmask values are correctly encoded in protobuf."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Test static pmask values
         proto = mpir_pb2.MPTypeProto()
@@ -719,7 +719,7 @@ class TestEdgeCases:
 
     def test_reader_proto_to_attr_edge_cases(self):
         """Test Reader._proto_to_attr with edge cases."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         reader = Reader()
 
@@ -739,7 +739,7 @@ class TestEdgeCases:
     def test_attr_to_proto_edge_cases(self):
         """Test attr_to_proto with edge cases."""
         from mplang.core.mpir import attr_to_proto
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Test empty list - should work and create INTS type
         attr = attr_to_proto([])
@@ -924,7 +924,7 @@ class TestRelationTypeSupport:
         """Test dtype conversion for relation-only types."""
         from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP
         from mplang.core.mpir import dtype_to_proto, proto_to_dtype
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Test relation-only dtypes to proto
         test_cases = [
@@ -946,7 +946,7 @@ class TestRelationTypeSupport:
 
     def test_mptype_proto_tensor_type(self):
         """Test MPTypeProto with tensor type."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Create tensor type proto
         mp_proto = mpir_pb2.MPTypeProto()
@@ -963,7 +963,7 @@ class TestRelationTypeSupport:
 
     def test_mptype_proto_table_type(self):
         """Test MPTypeProto with table type."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Create table type proto
         mp_proto = mpir_pb2.MPTypeProto()
@@ -1000,7 +1000,7 @@ class TestRelationTypeSupport:
 
     def test_mptype_proto_serialization(self):
         """Test MPTypeProto serialization/deserialization."""
-        from mplang.protos import mpir_pb2
+        from mplang.v1 import mpir_pb2
 
         # Create and serialize table type
         mp_proto = mpir_pb2.MPTypeProto()

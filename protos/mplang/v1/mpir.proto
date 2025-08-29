@@ -14,7 +14,9 @@
 
 syntax = "proto3";
 
-package secretflow;
+package mplang.v1;
+
+option go_package = "github.com/secretflow/mplang/protos/mplang/v1";
 
 // Custom attribute message (without name field since it's the map key)
 message AttrProto {

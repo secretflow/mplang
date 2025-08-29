@@ -215,3 +215,7 @@ pylintrc
 
 # Temporary files
 tmp/
+
+# LLM
+CLAUDE.md
+QWEN.md

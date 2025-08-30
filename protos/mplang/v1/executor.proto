@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//   http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,7 +14,9 @@
 
 syntax = "proto3";
 
-package secretflow;
+package mplang.v1;
+
+option go_package = "github.com/secretflow/mplang/protos/mplang/v1";
 
 import "google/api/annotations.proto";
 import "google/api/resource.proto";
@@ -24,6 +26,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/any.proto";
+import "mplang/v1/mpir.proto";
 
 // Service definition for managing symbols.
 service ExecutorService {

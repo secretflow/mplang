@@ -7,7 +7,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-  http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,7 +15,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
 import builtins
 import collections.abc
 import google.protobuf.any_pb2
@@ -68,7 +67,7 @@ CANCELLED: ExecutionState.ValueType  # 4
 """The operation was cancelled."""
 global___ExecutionState = ExecutionState
 
-@typing.final
+@typing_extensions.final
 class CommXchgRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -86,17 +85,17 @@ class CommXchgRequest(google.protobuf.message.Message):
         name: builtins.str = ...,
         data: builtins.bytes = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["data", b"data", "name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["data", b"data", "name", b"name"]) -> None: ...
 
 global___CommXchgRequest = CommXchgRequest
 
-@typing.final
+@typing_extensions.final
 class Session(google.protobuf.message.Message):
     """Represents a computation session."""
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class PartyAddrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -110,9 +109,9 @@ class Session(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: builtins.str = ...,
         ) -> None: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
-    @typing.final
+    @typing_extensions.final
     class MetadataEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -126,7 +125,7 @@ class Session(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: builtins.str = ...,
         ) -> None: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     NAME_FIELD_NUMBER: builtins.int
     PARTY_ADDRS_FIELD_NUMBER: builtins.int
@@ -140,19 +139,15 @@ class Session(google.protobuf.message.Message):
     @property
     def party_addrs(self) -> google.protobuf.internal.containers.ScalarMap[builtins.str, builtins.str]:
         """Map of all participant addresses involved in this session."""
-
     @property
     def metadata(self) -> google.protobuf.internal.containers.ScalarMap[builtins.str, builtins.str]:
         """Additional metadata for the session."""
-
     @property
     def create_time(self) -> google.protobuf.timestamp_pb2.Timestamp:
         """Timestamp when the session was created."""
-
     @property
     def update_time(self) -> google.protobuf.timestamp_pb2.Timestamp:
         """Timestamp when the session was last updated."""
-
     def __init__(
         self,
         *,
@@ -162,18 +157,18 @@ class Session(google.protobuf.message.Message):
         create_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         update_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["create_time", b"create_time", "update_time", b"update_time"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["create_time", b"create_time", "metadata", b"metadata", "name", b"name", "party_addrs", b"party_addrs", "update_time", b"update_time"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["create_time", b"create_time", "update_time", b"update_time"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["create_time", b"create_time", "metadata", b"metadata", "name", b"name", "party_addrs", b"party_addrs", "update_time", b"update_time"]) -> None: ...
 
 global___Session = Session
 
-@typing.final
+@typing_extensions.final
 class Execution(google.protobuf.message.Message):
     """Represents an execution operation within a session."""
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    @typing.final
+    @typing_extensions.final
     class AttrsEntry(google.protobuf.message.Message):
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
@@ -188,8 +183,8 @@ class Execution(google.protobuf.message.Message):
             key: builtins.str = ...,
             value: google.protobuf.struct_pb2.Value | None = ...,
         ) -> None: ...
-        def HasField(self, field_name: typing.Literal["value", b"value"]) -> builtins.bool: ...
-        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+        def HasField(self, field_name: typing_extensions.Literal["value", b"value"]) -> builtins.bool: ...
+        def ClearField(self, field_name: typing_extensions.Literal["key", b"key", "value", b"value"]) -> None: ...
 
     NAME_FIELD_NUMBER: builtins.int
     PROGRAM_FIELD_NUMBER: builtins.int
@@ -209,45 +204,38 @@ class Execution(google.protobuf.message.Message):
     """
     program: builtins.bytes
     """The program binary to execute."""
-    state: global___ExecutionState.ValueType
-    """Current state of the execution."""
-    error: builtins.str
-    """Error message if the execution failed or was cancelled."""
     @property
     def input_names(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """List of input symbol resource names. Format examples:
         - "symbols/{symbol_id}" (global)
         - "sessions/{session_id}/executions/{execution_id}/symbols/{symbol_id}"
         """
-
     @property
     def output_names(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
         """List of output symbol resource names. Format examples:
         - "sessions/{session_id}/executions/{execution_id}/symbols/{symbol_id}"
         """
-
     @property
     def rt_config(self) -> google.protobuf.any_pb2.Any:
         """Configuration for execution runtime"""
-
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, google.protobuf.struct_pb2.Value]:
         """Attributes for the execution, such as environment variables or
         additional parameters.
         """
-
+    state: global___ExecutionState.ValueType
+    """Current state of the execution."""
+    error: builtins.str
+    """Error message if the execution failed or was cancelled."""
     @property
     def create_time(self) -> google.protobuf.timestamp_pb2.Timestamp:
         """Timestamp when the execution was created."""
-
     @property
     def start_time(self) -> google.protobuf.timestamp_pb2.Timestamp:
         """Timestamp when the execution started."""
-
     @property
     def end_time(self) -> google.protobuf.timestamp_pb2.Timestamp:
         """Timestamp when the execution completed."""
-
     def __init__(
         self,
         *,
@@ -263,12 +251,12 @@ class Execution(google.protobuf.message.Message):
         start_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         end_time: google.protobuf.timestamp_pb2.Timestamp | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["create_time", b"create_time", "end_time", b"end_time", "rt_config", b"rt_config", "start_time", b"start_time"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["attrs", b"attrs", "create_time", b"create_time", "end_time", b"end_time", "error", b"error", "input_names", b"input_names", "name", b"name", "output_names", b"output_names", "program", b"program", "rt_config", b"rt_config", "start_time", b"start_time", "state", b"state"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["create_time", b"create_time", "end_time", b"end_time", "rt_config", b"rt_config", "start_time", b"start_time"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["attrs", b"attrs", "create_time", b"create_time", "end_time", b"end_time", "error", b"error", "input_names", b"input_names", "name", b"name", "output_names", b"output_names", "program", b"program", "rt_config", b"rt_config", "start_time", b"start_time", "state", b"state"]) -> None: ...
 
 global___Execution = Execution
 
-@typing.final
+@typing_extensions.final
 class Symbol(google.protobuf.message.Message):
     """Represents a symbol in a symbol table."""
 
@@ -292,11 +280,11 @@ class Symbol(google.protobuf.message.Message):
         data: builtins.bytes = ...,
         type: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["data", b"data", "name", b"name", "type", b"type"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["data", b"data", "name", b"name", "type", b"type"]) -> None: ...
 
 global___Symbol = Symbol
 
-@typing.final
+@typing_extensions.final
 class CreateSymbolRequest(google.protobuf.message.Message):
     """Request message for creating a symbol."""
 
@@ -311,19 +299,18 @@ class CreateSymbolRequest(google.protobuf.message.Message):
     @property
     def symbol(self) -> global___Symbol:
         """The symbol to create."""
-
     def __init__(
         self,
         *,
         parent: builtins.str = ...,
         symbol: global___Symbol | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["symbol", b"symbol"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["parent", b"parent", "symbol", b"symbol"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["symbol", b"symbol"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["parent", b"parent", "symbol", b"symbol"]) -> None: ...
 
 global___CreateSymbolRequest = CreateSymbolRequest
 
-@typing.final
+@typing_extensions.final
 class GetSymbolRequest(google.protobuf.message.Message):
     """Request message for retrieving a symbol."""
 
@@ -337,11 +324,11 @@ class GetSymbolRequest(google.protobuf.message.Message):
         *,
         name: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["name", b"name"]) -> None: ...
 
 global___GetSymbolRequest = GetSymbolRequest
 
-@typing.final
+@typing_extensions.final
 class ListSymbolsRequest(google.protobuf.message.Message):
     """Request message for listing symbols."""
 
@@ -368,11 +355,11 @@ class ListSymbolsRequest(google.protobuf.message.Message):
         page_size: builtins.int = ...,
         page_token: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["page_size", b"page_size", "page_token", b"page_token", "parent", b"parent"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["page_size", b"page_size", "page_token", b"page_token", "parent", b"parent"]) -> None: ...
 
 global___ListSymbolsRequest = ListSymbolsRequest
 
-@typing.final
+@typing_extensions.final
 class ListSymbolsResponse(google.protobuf.message.Message):
     """Response message for listing symbols."""
 
@@ -380,23 +367,22 @@ class ListSymbolsResponse(google.protobuf.message.Message):
 
     SYMBOLS_FIELD_NUMBER: builtins.int
     NEXT_PAGE_TOKEN_FIELD_NUMBER: builtins.int
-    next_page_token: builtins.str
-    """The token to retrieve the next page of results."""
     @property
     def symbols(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Symbol]:
         """The list of symbols."""
-
+    next_page_token: builtins.str
+    """The token to retrieve the next page of results."""
     def __init__(
         self,
         *,
         symbols: collections.abc.Iterable[global___Symbol] | None = ...,
         next_page_token: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["next_page_token", b"next_page_token", "symbols", b"symbols"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["next_page_token", b"next_page_token", "symbols", b"symbols"]) -> None: ...
 
 global___ListSymbolsResponse = ListSymbolsResponse
 
-@typing.final
+@typing_extensions.final
 class UpdateSymbolRequest(google.protobuf.message.Message):
     """Request message for updating a symbol."""
 
@@ -409,23 +395,21 @@ class UpdateSymbolRequest(google.protobuf.message.Message):
         """The symbol to update.
         The `name` field must be set to the full resource name of the symbol.
         """
-
     @property
     def update_mask(self) -> google.protobuf.field_mask_pb2.FieldMask:
         """The list of fields to be updated."""
-
     def __init__(
         self,
         *,
         symbol: global___Symbol | None = ...,
         update_mask: google.protobuf.field_mask_pb2.FieldMask | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["symbol", b"symbol", "update_mask", b"update_mask"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["symbol", b"symbol", "update_mask", b"update_mask"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["symbol", b"symbol", "update_mask", b"update_mask"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["symbol", b"symbol", "update_mask", b"update_mask"]) -> None: ...
 
 global___UpdateSymbolRequest = UpdateSymbolRequest
 
-@typing.final
+@typing_extensions.final
 class DeleteSymbolRequest(google.protobuf.message.Message):
     """Request message for deleting a symbol."""
 
@@ -439,11 +423,11 @@ class DeleteSymbolRequest(google.protobuf.message.Message):
         *,
         name: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["name", b"name"]) -> None: ...
 
 global___DeleteSymbolRequest = DeleteSymbolRequest
 
-@typing.final
+@typing_extensions.final
 class CreateSessionRequest(google.protobuf.message.Message):
     """Request message for creating a session."""
 
@@ -460,12 +444,12 @@ class CreateSessionRequest(google.protobuf.message.Message):
         parent: builtins.str = ...,
         session: global___Session | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["session", b"session"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["parent", b"parent", "session", b"session"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["session", b"session"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["parent", b"parent", "session", b"session"]) -> None: ...
 
 global___CreateSessionRequest = CreateSessionRequest
 
-@typing.final
+@typing_extensions.final
 class GetSessionRequest(google.protobuf.message.Message):
     """Request message for retrieving a session."""
 
@@ -478,11 +462,11 @@ class GetSessionRequest(google.protobuf.message.Message):
         *,
         name: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["name", b"name"]) -> None: ...
 
 global___GetSessionRequest = GetSessionRequest
 
-@typing.final
+@typing_extensions.final
 class ListSessionsRequest(google.protobuf.message.Message):
     """Request message for listing sessions."""
 
@@ -498,11 +482,11 @@ class ListSessionsRequest(google.protobuf.message.Message):
         page_size: builtins.int = ...,
         page_token: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["page_size", b"page_size", "page_token", b"page_token"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["page_size", b"page_size", "page_token", b"page_token"]) -> None: ...
 
 global___ListSessionsRequest = ListSessionsRequest
 
-@typing.final
+@typing_extensions.final
 class ListSessionsResponse(google.protobuf.message.Message):
     """Response message for listing sessions."""
 
@@ -510,20 +494,20 @@ class ListSessionsResponse(google.protobuf.message.Message):
 
     SESSIONS_FIELD_NUMBER: builtins.int
     NEXT_PAGE_TOKEN_FIELD_NUMBER: builtins.int
-    next_page_token: builtins.str
     @property
     def sessions(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Session]: ...
+    next_page_token: builtins.str
     def __init__(
         self,
         *,
         sessions: collections.abc.Iterable[global___Session] | None = ...,
         next_page_token: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["next_page_token", b"next_page_token", "sessions", b"sessions"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["next_page_token", b"next_page_token", "sessions", b"sessions"]) -> None: ...
 
 global___ListSessionsResponse = ListSessionsResponse
 
-@typing.final
+@typing_extensions.final
 class DeleteSessionRequest(google.protobuf.message.Message):
     """Request message for deleting a session."""
 
@@ -536,11 +520,11 @@ class DeleteSessionRequest(google.protobuf.message.Message):
         *,
         name: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["name", b"name"]) -> None: ...
 
 global___DeleteSessionRequest = DeleteSessionRequest
 
-@typing.final
+@typing_extensions.final
 class CreateExecutionRequest(google.protobuf.message.Message):
     """Request message for creating an execution."""
 
@@ -557,12 +541,12 @@ class CreateExecutionRequest(google.protobuf.message.Message):
         parent: builtins.str = ...,
         execution: global___Execution | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["execution", b"execution"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["execution", b"execution", "parent", b"parent"]) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["execution", b"execution"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["execution", b"execution", "parent", b"parent"]) -> None: ...
 
 global___CreateExecutionRequest = CreateExecutionRequest
 
-@typing.final
+@typing_extensions.final
 class GetExecutionRequest(google.protobuf.message.Message):
     """Request message for retrieving an execution."""
 
@@ -575,11 +559,11 @@ class GetExecutionRequest(google.protobuf.message.Message):
         *,
         name: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["name", b"name"]) -> None: ...
 
 global___GetExecutionRequest = GetExecutionRequest
 
-@typing.final
+@typing_extensions.final
 class ListExecutionsRequest(google.protobuf.message.Message):
     """Request message for listing executions."""
 
@@ -598,11 +582,11 @@ class ListExecutionsRequest(google.protobuf.message.Message):
         page_size: builtins.int = ...,
         page_token: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["page_size", b"page_size", "page_token", b"page_token", "parent", b"parent"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["page_size", b"page_size", "page_token", b"page_token", "parent", b"parent"]) -> None: ...
 
 global___ListExecutionsRequest = ListExecutionsRequest
 
-@typing.final
+@typing_extensions.final
 class ListExecutionsResponse(google.protobuf.message.Message):
     """Response message for listing executions."""
 
@@ -610,20 +594,20 @@ class ListExecutionsResponse(google.protobuf.message.Message):
 
     EXECUTIONS_FIELD_NUMBER: builtins.int
     NEXT_PAGE_TOKEN_FIELD_NUMBER: builtins.int
-    next_page_token: builtins.str
     @property
     def executions(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Execution]: ...
+    next_page_token: builtins.str
     def __init__(
         self,
         *,
         executions: collections.abc.Iterable[global___Execution] | None = ...,
         next_page_token: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["executions", b"executions", "next_page_token", b"next_page_token"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["executions", b"executions", "next_page_token", b"next_page_token"]) -> None: ...
 
 global___ListExecutionsResponse = ListExecutionsResponse
 
-@typing.final
+@typing_extensions.final
 class DeleteExecutionRequest(google.protobuf.message.Message):
     """Request message for deleting an execution."""
 
@@ -636,6 +620,6 @@ class DeleteExecutionRequest(google.protobuf.message.Message):
         *,
         name: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["name", b"name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["name", b"name"]) -> None: ...
 
 global___DeleteExecutionRequest = DeleteExecutionRequest

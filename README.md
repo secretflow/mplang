@@ -1,111 +1,68 @@
-# MPLang: Multi-Party Programming Language
+# MPLang: A Programming Language for Multi-Party Computation
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/secretflow/mplang/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/secretflow/mplang/tree/main)
 [![Lint](https://github.com/secretflow/mplang/actions/workflows/lint.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/lint.yml)
 [![Mypy](https://github.com/secretflow/mplang/actions/workflows/mypy.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/mypy.yml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
+MPLang is a Python-native library for building and executing multi-party and multi-device programs. It simplifies secure computation by allowing developers to write a single program that orchestrates multiple parties in a synchronous, SPMD (Single Program, Multiple Data) fashion.
 
-MPLang (Multi-Party Language) is a single-controller programming library for multi-party and multi-device workloads. It follows the SPMD (Single Program, Multiple Data) model, where one Python program orchestrates multiple parties and devices (e.g., P0/P1/SPU) with explicit security domains. Programs are compilable and auditable, and can run in local simulation or on secure-computation backends.
+## Features
 
-## Highlights
+- **Single-Controller SPMD**: Write one program that runs across multiple parties in lockstep.
+- **Explicit Device Placement**: Clearly annotate and control where data lives and computation happens (e.g., on party `P0`, `P1`, or a secure `SPU`).
+- **Function-Level Compilation**: Use the `@mplang.function` decorator to compile Python functions into an auditable, optimizable graph representation.
+- **Pluggable Architecture**: Easily extend MPLang with new frontends (like JAX, Ibis) and backends (like StableHLO, SPU).
 
-- Single-controller SPMD: one program, multiple parties in lockstep
-- Explicit devices and security domains: clear annotations for P0/P1/SPU
-- Function-level compilation (@mplang.function): narrow instruction surface, reduce RCE risk, enable graph optimizations and audit
-- Pluggable frontends and backends: not tied to specific FE/BE technologies
-    - Frontends (FE): JAX, Ibis, and other computation frameworks
-    - Backends (BE): StableHLO IR, Substrait IR, SPU PPHlo IR, and other intermediate representations
-    - Execution: in-memory simulation, gRPC-based executors, or your custom engines
+## Getting Started
 
-## Quick start
+### Installation
 
-Writing multi-party secure computation programs is easy:
-
-Note: The snippet below is illustrative and not directly runnable; for a complete runnable example of the device API, see `tutorials/3_device.py`.
-
-```python
-import mplang.device as mpd
-
-def millionaire():
-    # Alice's value on P0
-    x = mpd.device("P0")(randint)(0, 1000000)
-    # Bob's value on P1
-    y = mpd.device("P1")(randint)(0, 1000000)
-    # Compare values on SPU
-    z = mpd.device("SPU")(lambda a, b: a < b)(x, y)
-    return z
-```
-
-Add one decorator to get the "compiled version":
-
-```python
-@mplang.function
-def millionaire():
-    x = mpd.device("P0")(randint)(0, 1000000)
-    y = mpd.device("P1")(randint)(0, 1000000)
-    z = mpd.device("SPU")(lambda a, b: a < b)(x, y)
-    return z
-
-# Run it
-sim = mplang.Simulator(2)
-result = mplang.eval(sim, millionaire)
-print("result:", mplang.fetch(sim, result))
-```
-
-
-## Installation and setup
-
-- Install uv (if not installed):
-
-    Linux/macOS:
-
-    ```bash
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    ```
-
-    Or with pipx:
-
-    ```bash
-    pipx install uv
-    ```
-
-- Install from source:
-
-    ```bash
-    uv pip install .
-    ```
-
-- Editable install for development:
-
-    ```bash
-    uv pip install -e .
-    ```
-
-- Run tutorials (complete examples and explanations):
-
-    ```bash
-    uv run tutorials/0_basic.py
-    ```
-
-See more examples in `tutorials/` (e.g., `1_condition.py`, `2_whileloop.py`).
-
-## Beyond the basics
-
-- SPMD for all-party execution: describe once, execute on all parties
-- `mplang.compile(...)`: inspect compiler IR for understanding and optimization
-- SMPC primitives: `smpc.seal`, `smpc.reveal`, `smpc.srun` to express secure operators
-
-## Contributing and development
-
-We welcome PRs and issues. Common dev commands:
+You'll need a modern Python environment (3.8+). We recommend using `uv` for fast installation.
 
 ```bash
-uv sync --group dev
-uv run pytest
-uv run ruff check . --fix && uv run ruff format .
-uv run mypy mplang/
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install MPLang from PyPI
+uv pip install mplang
 ```
+
+### Quick Example
+
+Here's a taste of what MPLang looks like. This example shows a "millionaire's problem" where two parties compare their wealth without revealing it.
+
+```python
+import mplang
+import mplang.device as mpd
+from numpy.random import randint
+
+# Use a decorator to compile this function for multi-party execution
+@mplang.function
+def millionaire():
+    # Alice's value, placed on device P0
+    x = mpd.device("P0")(randint)(0, 1000000)
+    # Bob's value, placed on device P1
+    y = mpd.device("P1")(randint)(0, 1000000)
+    # The comparison happens on a secure device (SPU)
+    z = mpd.device("SPU")(lambda a, b: a < b)(x, y)
+    return z
+
+# Set up a local simulator with 2 parties
+sim = mplang.Simulator(2)
+
+# Evaluate the compiled function
+result = mplang.eval(sim, millionaire)
+
+# Securely fetch the result
+print("Is Alice poorer than Bob?", mplang.fetch(sim, result))
+```
+
+## Learn More
+
+- **Tutorials**: Check out the `tutorials/` directory for in-depth, runnable examples covering conditions, loops, and more.
+- **Contributing**: We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) to get started with the development setup.
 
 ## License
 
-Apache-2.0. See `LICENSE` for details.
+MPLang is licensed under the Apache 2.0 License.

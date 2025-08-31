@@ -36,8 +36,8 @@ from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
 from mplang.expr.ast import Expr
+from mplang.protos.v1alpha1 import executor_pb2, executor_pb2_grpc
 from mplang.runtime.executor.resource import SessionName, SymbolName
-from mplang.v1 import executor_pb2, executor_pb2_grpc
 
 
 def new_uuid() -> str:

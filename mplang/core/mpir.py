@@ -51,7 +51,7 @@ from mplang.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
-from mplang.v1 import mpir_pb2
+from mplang.protos.v1alpha1 import mpir_pb2
 
 # Single mapping table for dtype conversion
 DTYPE_MAPPING = {

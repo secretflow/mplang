@@ -14,19 +14,19 @@
 
 syntax = "proto3";
 
-package mplang.v1;
-
-option go_package = "github.com/secretflow/mplang/protos/mplang/v1";
+package mplang.protos.v1alpha1;
 
 import "google/api/annotations.proto";
-import "google/api/resource.proto";
 import "google/api/field_behavior.proto";
-import "google/protobuf/struct.proto";
-import "google/protobuf/field_mask.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/empty.proto";
+import "google/api/resource.proto";
 import "google/protobuf/any.proto";
-import "mplang/v1/mpir.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "mplang/protos/v1alpha1/mpir.proto";
+
+option go_package = "github.com/secretflow/mplang/protos/v1alpha1";
 
 // Service definition for managing symbols.
 service ExecutorService {
@@ -42,10 +42,8 @@ service ExecutorService {
   rpc GetSymbol(GetSymbolRequest) returns (Symbol) {
     option (google.api.http) = {
       get: "/v1/{name=symbols/*}"
-      additional_bindings: { get: "/v1/{name=sessions/*/symbols/*}" }
-      additional_bindings: {
-        get: "/v1/{name=sessions/*/executions/*/symbols/*}"
-      }
+      additional_bindings: {get: "/v1/{name=sessions/*/symbols/*}"}
+      additional_bindings: {get: "/v1/{name=sessions/*/executions/*/symbols/*}"}
     };
   }
 
@@ -53,10 +51,8 @@ service ExecutorService {
   rpc ListSymbols(ListSymbolsRequest) returns (ListSymbolsResponse) {
     option (google.api.http) = {
       get: "/v1/symbols"
-      additional_bindings: { get: "/v1/{parent=sessions/*}/symbols" }
-      additional_bindings: {
-        get: "/v1/{parent=sessions/*/executions/*}/symbols"
-      }
+      additional_bindings: {get: "/v1/{parent=sessions/*}/symbols"}
+      additional_bindings: {get: "/v1/{parent=sessions/*/executions/*}/symbols"}
     };
   }
 
@@ -80,10 +76,8 @@ service ExecutorService {
   rpc DeleteSymbol(DeleteSymbolRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/{name=symbols/*}"
-      additional_bindings: { delete: "/v1/{name=sessions/*/symbols/*}" }
-      additional_bindings: {
-        delete: "/v1/{name=sessions/*/executions/*/symbols/*}"
-      }
+      additional_bindings: {delete: "/v1/{name=sessions/*/symbols/*}"}
+      additional_bindings: {delete: "/v1/{name=sessions/*/executions/*/symbols/*}"}
     };
   }
 
@@ -96,21 +90,15 @@ service ExecutorService {
   }
 
   rpc GetSession(GetSessionRequest) returns (Session) {
-    option (google.api.http) = {
-      get: "/v1/{name=sessions/*}"
-    };
+    option (google.api.http) = {get: "/v1/{name=sessions/*}"};
   }
 
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
-    option (google.api.http) = {
-      get: "/v1/sessions"
-    };
+    option (google.api.http) = {get: "/v1/sessions"};
   }
 
   rpc DeleteSession(DeleteSessionRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {
-      delete: "/v1/{name=sessions/*}"
-    };
+    option (google.api.http) = {delete: "/v1/{name=sessions/*}"};
   }
 
   // Methods for managing Execution
@@ -122,23 +110,17 @@ service ExecutorService {
   }
 
   rpc GetExecution(GetExecutionRequest) returns (Execution) {
-    option (google.api.http) = {
-      get: "/v1/{name=sessions/*/executions/*}"
-    };
+    option (google.api.http) = {get: "/v1/{name=sessions/*/executions/*}"};
   }
 
   rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {
-    option (google.api.http) = {
-      get: "/v1/{parent=sessions/*}/executions"
-    };
+    option (google.api.http) = {get: "/v1/{parent=sessions/*}/executions"};
   }
 
   // No UpdateExecution
 
   rpc DeleteExecution(DeleteExecutionRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {
-      delete: "/v1/{name=sessions/*/executions/*}"
-    };
+    option (google.api.http) = {delete: "/v1/{name=sessions/*/executions/*}"};
   }
 
   // Methods for inter-party communication
@@ -195,12 +177,10 @@ message Session {
   map<string, string> metadata = 3;
 
   // Timestamp when the session was created.
-  google.protobuf.Timestamp create_time = 4
-      [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp create_time = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Timestamp when the session was last updated.
-  google.protobuf.Timestamp update_time = 5
-      [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp update_time = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // Represents an execution operation within a session.
@@ -241,16 +221,13 @@ message Execution {
   string error = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Timestamp when the execution was created.
-  google.protobuf.Timestamp create_time = 9
-      [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp create_time = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Timestamp when the execution started.
-  google.protobuf.Timestamp start_time = 10
-      [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp start_time = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Timestamp when the execution completed.
-  google.protobuf.Timestamp end_time = 11
-      [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp end_time = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // Represents a symbol in a symbol table.
@@ -322,8 +299,7 @@ message UpdateSymbolRequest {
   Symbol symbol = 1 [(google.api.field_behavior) = REQUIRED];
 
   // The list of fields to be updated.
-  google.protobuf.FieldMask update_mask = 2
-      [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.FieldMask update_mask = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Request message for deleting a symbol.

@@ -60,12 +60,10 @@ examples = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
-force-include = { "protos" = "mplang/protos" }
 
 [tool.hatch.build.targets.sdist]
 include = [
     "/mplang",
-    "/protos",
     "/scripts",
     "/examples",
     "/tests",
@@ -153,8 +151,8 @@ disallow_untyped_defs = true
 disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
-# ignore errors in all files in `mplang/v1` (generated protobuf files)
-module = ["mplang.v1.*"]
+# ignore errors in generated protobuf files
+module = ["mplang.protos.v1alpha1.*"]
 ignore_errors = true
 
 [tool.pytest.ini_options]

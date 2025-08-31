@@ -42,6 +42,7 @@ from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
+from mplang.protos.v1alpha1 import executor_pb2, executor_pb2_grpc, mpir_pb2
 from mplang.runtime.executor.resource import (
     ExecutionName,
     MessageName,
@@ -50,7 +51,6 @@ from mplang.runtime.executor.resource import (
 )
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import CommunicatorBase as CommunicatorImpl
-from mplang.v1 import executor_pb2, executor_pb2_grpc, mpir_pb2
 
 
 def datetime_to_timestamp(dt: datetime.datetime | None) -> Timestamp:

@@ -1,5 +1,5 @@
 version: v1
-name: buf.build/secretflow/mplang
+name: buf.build/secretflow/mplang_proto
 deps:
   - buf.build/googleapis/googleapis
 breaking:

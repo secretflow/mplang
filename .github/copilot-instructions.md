@@ -69,6 +69,28 @@ uv run tutorials/1_condition.py
 uv run tutorials/2_whileloop.py
 ```
 
+### Protobuf (Buf)
+
+```bash
+# Install buf by following the official guide:
+# https://buf.build/docs/installation
+
+# Format .proto files (rewrites in place)
+buf format -w
+
+# Lint .proto files
+buf lint
+
+# Regenerate code from protos using buf.gen.yaml
+buf generate
+
+# Check for breaking API changes vs. main branch
+buf breaking --against '.git#branch=main'
+
+# Update dependencies in buf.lock
+buf dep update
+```
+
 ## Architecture Overview
 
 ### Core Components

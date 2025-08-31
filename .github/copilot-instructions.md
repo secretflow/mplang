@@ -91,6 +91,8 @@ buf breaking --against '.git#branch=main'
 buf dep update
 ```
 
+All protobuf (.proto) files and APIs must comply with Google AIP resource‑oriented design.
+
 ## Architecture Overview
 
 ### Core Components

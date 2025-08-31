@@ -1,0 +1,9 @@
+version: v2
+
+modules:
+  - path: protos
+    name: buf.build/secretflow/mplang_proto
+
+# Shared dependencies for all modules
+deps:
+  - buf.build/googleapis/googleapis

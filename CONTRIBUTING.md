@@ -11,11 +11,14 @@ To get started, you'll need to set up your local environment for development.
 You'll need the following tools installed:
 
 - **[uv](https://github.com/astral-sh/uv)**: A fast Python package installer and resolver.
+
   ```bash
   # Install uv on Linux/macOS
   curl -LsSf https://astral.sh/uv/install.sh | sh
   ```
+
 - **[buf](https://buf.build/docs/installation)**: For Protobuf code generation.
+
   ```bash
   # Install buf by following the official guide: https://buf.build/docs/installation
   ```
@@ -38,13 +41,37 @@ uv pip install -e .
 
 ## Development Workflow
 
-### 1. Code Generation
+### 1. Protobuf/Buf workflow
 
-If you modify any `.proto` files in the `protos/` directory, you must regenerate the Python code.
+If you touch `.proto` files under `protos/`, use the following workflow:
 
 ```bash
+# Optional: format .proto files in place
+buf format -w
+
+# Lint proto style and naming
+buf lint
+
+# Validate schema compiles and imports resolve
+buf build
+
+# Generate Python stubs and gRPC code
 buf generate
 ```
+
+When you introduce new imports (for example, `google/api/*.proto`), ensure dependencies are up to date:
+
+```bash
+# After updating deps in buf.yaml if needed, refresh the lockfile
+buf dep update
+```
+
+Notes:
+
+- Protos live in `protos/`.
+- Buf configs live at repo root: `buf.yaml` and `buf.gen.yaml`.
+- Generated Python files are written into the repo (out: `.`), e.g. under `mplang/protos/v1alpha1/`.
+- Commit updated generated files together with your `.proto` changes.
 
 ### 2. Running Tests
 
@@ -78,9 +105,9 @@ uv run mypy mplang/
 
 ## Submitting Pull Requests
 
-1.  Fork the repository and create a new branch for your feature or bug fix.
-2.  Make your changes and ensure all tests and code quality checks pass.
-3.  Push your branch and open a pull request against the `main` branch.
-4.  Provide a clear description of your changes in the pull request.
+1. Fork the repository and create a new branch for your feature or bug fix.
+2. Make your changes and ensure all tests and code quality checks pass.
+3. Push your branch and open a pull request against the `main` branch.
+4. Provide a clear description of your changes in the pull request.
 
 Thank you for your contribution!

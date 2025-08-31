@@ -89,9 +89,15 @@ buf breaking --against '.git#branch=main'
 
 # Update dependencies in buf.lock
 buf dep update
+
+# All protobuf (.proto) files and APIs must comply with Google AIP resource‑oriented design.
+# The project runs [Google API Linter](https://github.com/googleapis/api-linter) in CI alongside buf.
+buf build -o /tmp/mplang-descriptors.binpb
+api-linter --set-exit-status --output-format text \
+  --descriptor-set-in /tmp/mplang-descriptors.binpb \
+  $(git ls-files 'protos/**/*.proto')
 ```
 
-All protobuf (.proto) files and APIs must comply with Google AIP resource‑oriented design.
 
 ## Architecture Overview
 

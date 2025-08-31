@@ -41,23 +41,42 @@ uv pip install -e .
 
 ## Development Workflow
 
-### 1. Protobuf/Buf workflow
+### 1. Protobuf workflow
 
-If you touch `.proto` files under `protos/`, use the following workflow:
+If you edit `.proto` files under `protos/`, use these tools separately:
+
+Buf (style/structure, build, codegen):
 
 ```bash
-# Optional: format .proto files in place
+# Format files in place
 buf format -w
 
-# Lint proto style and naming
+# Style & naming lint
 buf lint
 
-# Validate schema compiles and imports resolve
+# Validate schema and imports
 buf build
 
-# Generate Python stubs and gRPC code
+# Generate stubs per buf.gen.yaml
 buf generate
+
+# Check breaking changes vs main
+buf breaking --against '.git#branch=main'
 ```
+
+Google API Linter (AIP design rules, separate from buf):
+
+```bash
+# Download from: https://github.com/googleapis/api-linter/releases
+
+# Prefer using a descriptor set for accurate import resolution and clearer output
+buf build -o /tmp/mplang-descriptors.binpb
+api-linter --set-exit-status --output-format text \
+  --descriptor-set-in /tmp/mplang-descriptors.binpb \
+  $(git ls-files 'protos/**/*.proto')
+```
+
+Note: API Linter runs in CI alongside buf. It focuses on Google AIP design compliance.
 
 When you introduce new imports (for example, `google/api/*.proto`), ensure dependencies are up to date:
 

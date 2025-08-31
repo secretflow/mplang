@@ -6,10 +6,18 @@ MPLang follows a modular architecture that separates API definitions from implem
 
 ```
 mplang/
-├── mplang/                      # Core library implementation
-├── protos/                      # API definitions (.proto files)
-├── mplang/protos/               # Generated Python bindings
-└── buf.yaml                     # Buf v2 workspace configuration (replaces buf.work.yaml)
+├── buf.yaml                      # Buf v2 workspace configuration
+├── buf.gen.yaml                  # Code generation configuration
+├── protos/                       # API definitions (.proto files)
+│   └── mplang/protos/v1alpha1/
+│       ├── executor.proto
+│       └── mpir.proto
+├── mplang/                       # Core Python library
+│   └── protos/                   # Generated Python bindings (after buf generate)
+│       └── v1alpha1/
+└── ...
 ```
 
-> **Note on `mplang-proto`**: This directory contains protobuf definitions that can function as a standalone repository supporting multi-language integration. However, due to early development stage, it's currently embedded within the mplang repository for rapid iteration. Generated Python code is placed in `mplang/mplang_proto`. The mplang package contains two top-level directories: `mplang` and `mplang_proto`.
+> Note: The protobuf definitions can live in a standalone repo for multi-language integration.
+> During early development, they are embedded here for faster iteration.
+> Generated Python code is placed under `mplang/protos/v1alpha1/` after generation.

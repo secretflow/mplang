@@ -14,8 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+temp_analysis/
 parts/
 sdist/
 var/
@@ -219,3 +218,6 @@ tmp/
 # LLM
 CLAUDE.md
 QWEN.md
+
+# LLVM
+third_party/

@@ -1,0 +1,55 @@
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
+
+using namespace mlir;
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeSupport.h"
+#include "mlir/IR/Attributes.h"
+
+// Decls first: typedefs and ops
+#define GET_TYPEDEF_CLASSES
+#include "mplang/Dialect/MPIR/MPIRTypes.h.inc"
+
+#define GET_OP_CLASSES
+#include "mplang/Dialect/MPIR/MPIROps.h.inc"
+
+// Dialect decls
+#include "mplang/Dialect/MPIR/MPIRDialect.h.inc"
+
+// Definitions (includes dialect initialize())
+#include "mplang/Dialect/MPIR/MPIRDialect.cpp.inc"
+#define GET_TYPEDEF_CLASSES
+#include "mplang/Dialect/MPIR/MPIRTypes.cpp.inc"
+
+#define GET_OP_CLASSES
+#include "mplang/Dialect/MPIR/MPIROps.cpp.inc"
+
+namespace mplang {
+void MPIRDialect::initialize() {
+	addTypes<
+#define GET_TYPEDEF_LIST
+#include "mplang/Dialect/MPIR/MPIRTypes.cpp.inc"
+	>();
+
+	addOperations<
+#define GET_OP_LIST
+#include "mplang/Dialect/MPIR/MPIROps.cpp.inc"
+	>();
+}
+} // namespace mplang
+
+// Template C++ for MPIR dialect registration.
+// This file is a placeholder to indicate where the C++ implementation will live
+// once CMake with LLVM/MLIR is wired. It intentionally avoids including MLIR
+// headers to pass repository lint.
+
+// Real implementation will:
+// - include generated headers from ODS (MPIROps.h.inc, MPIRDialect.h.inc)
+// - define folder/canonicalization hooks
+// - register the dialect via DialectRegistration

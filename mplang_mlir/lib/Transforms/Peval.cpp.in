@@ -1,0 +1,68 @@
+// Minimal mpir-peval pass: folds trivial mpir.tuple/mpir.pconv shapes where possible.
+
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
+
+using namespace mlir;
+
+namespace {
+
+struct FoldTrivialTuple : public RewritePattern {
+	FoldTrivialTuple(MLIRContext *ctx) : RewritePattern("mpir.tuple", 1, ctx) {}
+	LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
+		if (op->getName().getStringRef() != "mpir.tuple") return failure();
+		// If tuple has one input and produces one result of same type, fold away.
+		if (op->getNumOperands() == 1 && op->getNumResults() == 1 &&
+				op->getOperand(0).getType() == op->getResult(0).getType()) {
+			rewriter.replaceOp(op, op->getOperand(0));
+			return success();
+		}
+		return failure();
+	}
+};
+
+struct FoldPConvSingle : public RewritePattern {
+	FoldPConvSingle(MLIRContext *ctx) : RewritePattern("mpir.pconv", 1, ctx) {}
+	LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
+		if (op->getName().getStringRef() != "mpir.pconv") return failure();
+		// If pconv has exactly one input, it's an identity.
+		if (op->getNumOperands() == 1 && op->getNumResults() == 1 &&
+				op->getOperand(0).getType() == op->getResult(0).getType()) {
+			rewriter.replaceOp(op, op->getOperand(0));
+			return success();
+		}
+		return failure();
+	}
+};
+
+struct MPIRPevalPass : public PassWrapper<MPIRPevalPass, OperationPass<ModuleOp>> {
+	MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MPIRPevalPass)
+	StringRef getArgument() const final { return "mpir-peval"; }
+	StringRef getDescription() const final { return "Partial evaluation for MPIR (tuple/pconv trivial folds)"; }
+	void runOnOperation() final {
+		MLIRContext *ctx = &getContext();
+		RewritePatternSet patterns(ctx);
+		patterns.add<FoldTrivialTuple>(ctx);
+		patterns.add<FoldPConvSingle>(ctx);
+		GreedyRewriteConfig config;
+		if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns), config)))
+			signalPassFailure();
+	}
+};
+
+} // namespace
+
+std::unique_ptr<Pass> createMPIRPevalPass() { return std::make_unique<MPIRPevalPass>(); }
+
+// Explicit registration entry point; call this in the tool to make the pass available.
+namespace mplang {
+void registerMPLANGPasses() {
+		::mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+			return std::make_unique<MPIRPevalPass>();
+		});
+}
+} // namespace mplang

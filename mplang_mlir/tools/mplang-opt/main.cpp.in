@@ -1,0 +1,23 @@
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+
+// Generated dialect headers
+#include "mplang/Dialect/MPIR/MPIRDialect.h.inc"
+#include "mplang/Dialect/PHE/PHEDialect.h.inc"
+
+// MPLANG passes
+#include "mplang/Transforms/Passes.h"
+
+using namespace mlir;
+
+int main(int argc, char **argv) {
+  DialectRegistry registry;
+  registry.insert<mplang::MPIRDialect, mplang::PHEDialect, mlir::func::FuncDialect, mlir::arith::ArithDialect>();
+  // Register MPLANG passes so textual names like 'mpir-peval' are recognized.
+  mplang::registerMPLANGPasses();
+  return failed(mlir::MlirOptMain(argc, argv, "MPLANG optimizer", registry));
+}

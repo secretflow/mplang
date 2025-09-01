@@ -72,7 +72,7 @@ class HttpExecutorClient:
             RuntimeError: If session creation fails
         """
         url = f"{self.endpoint}/sessions"
-        payload = {}
+        payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         payload["rank"] = rank
@@ -82,7 +82,7 @@ class HttpExecutorClient:
         try:
             response = requests.post(url, json=payload, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()["name"]
+            return str(response.json()["name"])
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to create session: {e}") from e
 
@@ -103,7 +103,7 @@ class HttpExecutorClient:
         try:
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()
+            return dict(response.json())
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to get session {session_name}: {e}") from e
 
@@ -140,7 +140,7 @@ class HttpExecutorClient:
         try:
             response = requests.post(url, json=payload, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()["name"]
+            return str(response.json()["name"])
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to create computation: {e}") from e
 
@@ -164,7 +164,7 @@ class HttpExecutorClient:
         try:
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()
+            return dict(response.json())
         except requests.RequestException as e:
             raise RuntimeError(
                 f"Failed to get computation {computation_name}: {e}"
@@ -244,6 +244,6 @@ class HttpExecutorClient:
         try:
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
-            return response.json()["symbols"]
+            return list(response.json()["symbols"])
         except requests.RequestException as e:
             raise RuntimeError(f"Failed to list symbols: {e}") from e

@@ -42,9 +42,7 @@ class Symbol:
 class Computation:
     name: str
     expr: Expr  # The computation expression
-    symbols: dict[str, Symbol] = field(
-        default_factory=dict
-    )  # Computation-level symbols
+    symbols: dict[str, Symbol] = field(default_factory=dict)
 
 
 @dataclass
@@ -166,9 +164,9 @@ def execute_computation(
 
     # Store results in session symbols using output_names
     if results:
-        assert len(results) == len(output_names), (
-            f"Expected {len(output_names)} results, got {len(results)}"
-        )
+        assert len(results) == len(
+            output_names
+        ), f"Expected {len(output_names)} results, got {len(results)}"
         for name, val in zip(output_names, results, strict=False):
             session.symbols[name] = Symbol(name=name, mptype={}, data=val)
 
@@ -228,7 +226,7 @@ def list_symbols(session_name: str) -> list[str]:
     if not session:
         raise ValueError(f"Session {session_name} not found.")
 
-    symbols = []
+    symbols: list[str] = []
     # Add session-level symbols
     symbols.extend(session.symbols.keys())
 

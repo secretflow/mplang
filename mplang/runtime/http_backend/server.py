@@ -56,7 +56,7 @@ def validate_name(name: str, name_type: str) -> None:
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok"}
 
@@ -109,7 +109,7 @@ class CommSendRequest(BaseModel):
 
 # Session endpoints
 @app.post("/sessions", response_model=SessionResponse)
-def create_session(request: CreateSessionRequest):
+def create_session(request: CreateSessionRequest) -> SessionResponse:
     # Validate session name if provided
     if request.name:
         validate_name(request.name, "session")
@@ -121,7 +121,7 @@ def create_session(request: CreateSessionRequest):
 
 
 @app.get("/sessions/{session_name}", response_model=SessionResponse)
-def get_session(session_name: str):
+def get_session(session_name: str) -> SessionResponse:
     session = resource.get_session(session_name)
     if not session:
         logger.warning(f"Session not found: {session_name}")
@@ -133,7 +133,7 @@ def get_session(session_name: str):
 @app.post("/sessions/{session_name}/computations", response_model=ComputationResponse)
 def create_and_execute_computation(
     session_name: str, request: CreateComputationRequest
-):
+) -> ComputationResponse:
     graph_proto = mpir_pb2.GraphProto()
     try:
         graph_proto.ParseFromString(base64.b64decode(request.mpprogram))
@@ -164,7 +164,9 @@ def create_and_execute_computation(
 
 # Symbol endpoints
 @app.post("/sessions/{session_name}/symbols", response_model=SymbolResponse)
-def create_session_symbol(session_name: str, request: CreateSymbolRequest):
+def create_session_symbol(
+    session_name: str, request: CreateSymbolRequest
+) -> SymbolResponse:
     """Create a symbol in a session."""
     try:
         symbol = resource.create_symbol(
@@ -185,7 +187,7 @@ def create_session_symbol(session_name: str, request: CreateSymbolRequest):
 )
 def create_computation_symbol(
     session_name: str, computation_name: str, request: CreateComputationSymbolRequest
-):
+) -> SymbolResponse:
     """Create a symbol in a computation."""
     try:
         symbol = resource.create_computation_symbol(
@@ -203,7 +205,7 @@ def create_computation_symbol(
 @app.get(
     "/sessions/{session_name}/symbols/{symbol_name}", response_model=SymbolResponse
 )
-def get_session_symbol(session_name: str, symbol_name: str):
+def get_session_symbol(session_name: str, symbol_name: str) -> SymbolResponse:
     """Get a symbol from a session."""
     try:
         # URL decode the symbol name to handle encoded slashes and special characters
@@ -242,7 +244,7 @@ def get_session_symbol(session_name: str, symbol_name: str):
 
 
 @app.get("/sessions/{session_name}/symbols")
-def list_session_symbols(session_name: str):
+def list_session_symbols(session_name: str) -> dict[str, list[str]]:
     """List all symbols in a session."""
     try:
         symbols = resource.list_symbols(session_name)
@@ -253,7 +255,7 @@ def list_session_symbols(session_name: str):
 
 # Communication endpoints
 @app.post("/sessions/{session_name}/comm/send")
-def comm_send(session_name: str, request: CommSendRequest):
+def comm_send(session_name: str, request: CommSendRequest) -> dict[str, str]:
     """
     Receive a message from another party and deliver it to the session's communicator.
     This endpoint runs on the receiver's server.

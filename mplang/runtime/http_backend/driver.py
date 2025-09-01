@@ -132,7 +132,9 @@ class HttpDriver(InterpContext):
                     session_id = client.create_session(
                         name=new_session_id,
                         rank=rank,
-                        endpoints={r: addr for r, addr in self.party_addrs.items()},
+                        endpoints={
+                            int(r): addr for r, addr in self.party_addrs.items()
+                        },
                     )
                     assert session_id == new_session_id
                 except RuntimeError as e:
@@ -155,9 +157,9 @@ class HttpDriver(InterpContext):
         for name, var in bindings.items():
             if var.ctx is not self:
                 raise ValueError(f"Variable {name} not in this context, got {var.ctx}.")
-            assert isinstance(var, HttpDriverVar), (
-                f"Expected HttpDriverVar, got {type(var)}"
-            )
+            assert isinstance(
+                var, HttpDriverVar
+            ), f"Expected HttpDriverVar, got {type(var)}"
             var_names.append(name)
             party_symbol_names.append(var.symbol_name)
 

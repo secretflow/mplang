@@ -54,9 +54,9 @@ class HttpExecutorClient:
     # Session Management
     def create_session(
         self,
-        name: str | None = None,
-        rank: int = 0,
-        endpoints: list[str] | None = None,
+        name: str,
+        rank: int,
+        endpoints: list[str],
     ) -> str:
         """Create a new session.
 
@@ -72,12 +72,11 @@ class HttpExecutorClient:
             RuntimeError: If session creation fails
         """
         url = f"{self.endpoint}/sessions"
-        payload: dict[str, Any] = {}
-        if name is not None:
-            payload["name"] = name
-        payload["rank"] = rank
-        if endpoints is not None:
-            payload["endpoints"] = endpoints
+        payload: dict[str, Any] = {
+            "name": name,
+            "rank": rank,
+            "endpoints": endpoints,
+        }
 
         try:
             response = requests.post(url, json=payload, timeout=self.timeout)

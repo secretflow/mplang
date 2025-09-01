@@ -19,7 +19,6 @@ It uses FastAPI to provide a RESTful API for managing computations.
 
 import base64
 import logging
-import os
 import re
 
 from fastapi import FastAPI, HTTPException
@@ -63,7 +62,7 @@ async def health_check() -> dict[str, str]:
 
 # Request/Response Models
 class CreateSessionRequest(BaseModel):
-    name: str | None = None
+    name: str
     rank: int
     endpoints: list[str]
 
@@ -110,10 +109,7 @@ class CommSendRequest(BaseModel):
 # Session endpoints
 @app.post("/sessions", response_model=SessionResponse)
 def create_session(request: CreateSessionRequest) -> SessionResponse:
-    # Validate session name if provided
-    if request.name:
-        validate_name(request.name, "session")
-
+    validate_name(request.name, "session")
     session = resource.create_session(
         name=request.name, rank=request.rank, endpoints=request.endpoints
     )

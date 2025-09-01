@@ -69,58 +69,6 @@ CANCELLED: ExecutionState.ValueType  # 4
 global___ExecutionState = ExecutionState
 
 @typing.final
-class GetTEEReportRequest(google.protobuf.message.Message):
-    """Request message for TEE attestation report generation"""
-
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    NAME_FIELD_NUMBER: builtins.int
-    GENERATION_PARAMS_JSON_FIELD_NUMBER: builtins.int
-    name: builtins.str
-    """The resource name of the session. Format: "sessions/{session_id}"."""
-    generation_params_json: builtins.str
-    """The JSON serialized string of
-    secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationGenerationParams
-    """
-    def __init__(
-        self,
-        *,
-        name: builtins.str = ...,
-        generation_params_json: builtins.str = ...,
-    ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["generation_params_json", b"generation_params_json", "name", b"name"]) -> None: ...
-
-global___GetTEEReportRequest = GetTEEReportRequest
-
-@typing.final
-class GetTEEReportResponse(google.protobuf.message.Message):
-    """Response message for TEE attestation report"""
-
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    PEM_PUBLIC_KEY_FIELD_NUMBER: builtins.int
-    TEE_MODE_FIELD_NUMBER: builtins.int
-    REPORT_JSON_FIELD_NUMBER: builtins.int
-    pem_public_key: builtins.str
-    """Public key for TEE party (PEM format)"""
-    tee_mode: builtins.str
-    """TEE mode: "sim" or "tdx" """
-    report_json: builtins.str
-    """The JSON serialized string of
-    secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationReport
-    """
-    def __init__(
-        self,
-        *,
-        pem_public_key: builtins.str = ...,
-        tee_mode: builtins.str = ...,
-        report_json: builtins.str = ...,
-    ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["pem_public_key", b"pem_public_key", "report_json", b"report_json", "tee_mode", b"tee_mode"]) -> None: ...
-
-global___GetTEEReportResponse = GetTEEReportResponse
-
-@typing.final
 class CommXchgRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 

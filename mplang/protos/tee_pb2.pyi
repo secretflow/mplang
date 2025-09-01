@@ -24,6 +24,32 @@ import typing
 DESCRIPTOR: google.protobuf.descriptor.FileDescriptor
 
 @typing.final
+class InitRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    SESSION_NAME_FIELD_NUMBER: builtins.int
+    session_name: builtins.str
+    """The resource name of the session. Format: "sessions/{session_id}"."""
+    def __init__(
+        self,
+        *,
+        session_name: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["session_name", b"session_name"]) -> None: ...
+
+global___InitRequest = InitRequest
+
+@typing.final
+class InitResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+
+global___InitResponse = InitResponse
+
+@typing.final
 class GetTEEReportRequest(google.protobuf.message.Message):
     """Request message for TEE attestation report generation"""
 

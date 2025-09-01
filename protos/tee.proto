@@ -20,7 +20,14 @@ import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 
 // Service definition for TEE attestation
-service TEEAttestationService {
+service TEEMgrService {
+
+  rpc Init(InitRequest) returns (InitResponse) {
+    option (google.api.http) = {
+      post : "/v1/{session_name=sessions/*}/tee_init"
+    };
+  }
+
   // Get TEE attestation report
   rpc GetTEEReport(GetTEEReportRequest) returns (GetTEEReportResponse) {
     option (google.api.http) = {
@@ -28,6 +35,15 @@ service TEEAttestationService {
     };
   }
 }
+
+message InitRequest {
+  // The resource name of the session. Format: "sessions/{session_id}".
+  string session_name = 1 [ (google.api.field_behavior) = REQUIRED ];
+
+  string tee_party_addr = 2 [ (google.api.field_behavior) = REQUIRED ];
+}
+
+message InitResponse {}
 
 // Request message for TEE attestation report generation
 message GetTEEReportRequest {

@@ -41,6 +41,15 @@ python -m grpc_tools.protoc -I"${PROTO_DIR}" \
   --mypy_out="${OUTPUT_DIR}" \
   "${PROTO_DIR}"/mpir.proto
 
+# Generate tee.proto with proper Python package path
+python -m grpc_tools.protoc -I"${PROTO_DIR}" \
+  -I"${SITE_PACKAGES_PATH}" \
+  --python_out="${OUTPUT_DIR}"  \
+  --mypy_out="${OUTPUT_DIR}" \
+  --grpc_python_out="${OUTPUT_DIR}"  \
+  --mypy_grpc_out="${OUTPUT_DIR}" \
+  "${PROTO_DIR}"/tee.proto
+
 # Fix the import issue in generated grpc files
 # Replace absolute imports with relative imports
 if [ -f "${OUTPUT_DIR}/executor_pb2_grpc.py" ]; then
@@ -48,4 +57,10 @@ if [ -f "${OUTPUT_DIR}/executor_pb2_grpc.py" ]; then
 fi
 if [ -f "${OUTPUT_DIR}/executor_pb2_grpc.pyi" ]; then
     sed -i 's/^import executor_pb2/from . import executor_pb2/' "${OUTPUT_DIR}/executor_pb2_grpc.pyi"
+fi
+if [ -f "${OUTPUT_DIR}/tee_pb2_grpc.py" ]; then
+    sed -i 's/import tee_pb2 as tee__pb2/from . import tee_pb2 as tee__pb2/g' "${OUTPUT_DIR}/tee_pb2_grpc.py"
+fi
+if [ -f "${OUTPUT_DIR}/tee_pb2_grpc.pyi" ]; then
+    sed -i 's/^import tee_pb2/from . import tee_pb2/' "${OUTPUT_DIR}/tee_pb2_grpc.pyi"
 fi

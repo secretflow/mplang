@@ -21,15 +21,14 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "spu==0.9.4.dev20250827",  # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
-    "grpcio>=1.60.0",
-    "grpcio-tools>=1.60.0",
+    "spu==0.9.4.dev20250827",         # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "protobuf>=5.0,<6.0",
     "typing_extensions",
-    "ibis-framework==10.8.0",
-    "sqlglot==27.7.0",         # for ibis parse_sql
-    "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
+    "ibis-framework[duckdb]==10.8.0",
+    "lightphe>=0.0.15,<0.1.0",        # for PHE backend implementation
     # runtime only
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
     "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
     "pandas>=2.0.0",
     "duckdb>=1.0.0",
@@ -43,8 +42,8 @@ dev = [
     "ruff",
     "mypy",
     "pre-commit",
-    "grpcio",
-    "grpcio-tools",
+    # "grpcio",
+    # "grpcio-tools",
     "fastapi",
     "uvicorn[standard]",
     "requests",
@@ -52,11 +51,11 @@ dev = [
 ]
 
 examples = [
-    "numpy==1.26.4",
-    "tensorflow-datasets==4.9.9",
-    "tensorflow==2.18.1",
-    "scikit-learn==1.7.1",
-    "keras==3.11.1",
+    # "numpy==1.26.4",
+    # "tensorflow-datasets==4.9.9",
+    # "tensorflow==2.18.1",
+    # "scikit-learn==1.7.1",
+    # "keras==3.11.1",
 ]
 
 [tool.hatch.build.targets.wheel]

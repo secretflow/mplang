@@ -54,17 +54,15 @@ def validate_name(name: str, name_type: str) -> None:
         )
 
 
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "ok"}
-
-
 # Request/Response Models
 class CreateSessionRequest(BaseModel):
     name: str
     rank: int
     endpoints: list[str]
+    # SPU related
+    spu_mask: int = -1
+    spu_protocol: int = 0
+    spu_field: int = 0
 
 
 class SessionResponse(BaseModel):
@@ -106,12 +104,23 @@ class CommSendRequest(BaseModel):
     key: str
 
 
+@app.get("/health")
+async def health_check() -> dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "ok"}
+
+
 # Session endpoints
 @app.post("/sessions", response_model=SessionResponse)
 def create_session(request: CreateSessionRequest) -> SessionResponse:
     validate_name(request.name, "session")
     session = resource.create_session(
-        name=request.name, rank=request.rank, endpoints=request.endpoints
+        name=request.name,
+        rank=request.rank,
+        endpoints=request.endpoints,
+        spu_mask=request.spu_mask,
+        spu_protocol=request.spu_protocol,
+        spu_field=request.spu_field,
     )
     return SessionResponse(name=session.name)
 

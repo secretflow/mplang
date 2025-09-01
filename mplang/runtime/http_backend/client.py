@@ -57,6 +57,10 @@ class HttpExecutorClient:
         name: str,
         rank: int,
         endpoints: list[str],
+        *,
+        spu_mask: int = -1,
+        spu_protocol: int = 0,
+        spu_field: int = 0,
     ) -> str:
         """Create a new session.
 
@@ -64,6 +68,9 @@ class HttpExecutorClient:
             name: Optional session name. If None, server will generate one.
             rank: The rank of this party in the session.
             endpoints: List of endpoint URLs for all parties, indexed by rank.
+            spu_mask: SPU mask for the session, -1 means no SPU.
+            spu_protocol: SPU protocol for the session.
+            spu_field: SPU field for the session.
 
         Returns:
             The session name/ID
@@ -76,6 +83,9 @@ class HttpExecutorClient:
             "name": name,
             "rank": rank,
             "endpoints": endpoints,
+            "spu_mask": spu_mask,
+            "spu_protocol": spu_protocol,
+            "spu_field": spu_field,
         }
 
         try:

@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 class HttpCommunicator(CommunicatorBase):
     def __init__(self, session_name: str, rank: int, endpoints: list[str]):
         super().__init__(rank, len(endpoints))
-        self._session_name = session_name
-        self._endpoints = endpoints
+        self.session_name = session_name
+        self.endpoints = endpoints
         logger.info(
             f"HttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={endpoints}"
         )
@@ -44,8 +44,8 @@ class HttpCommunicator(CommunicatorBase):
 
     def send(self, to: int, key: str, data: Any) -> None:
         """Sends data to a peer party by POSTing to its /comm/send endpoint."""
-        target_endpoint = self._endpoints[to]
-        url = f"{target_endpoint}/sessions/{self._session_name}/comm/send"
+        target_endpoint = self.endpoints[to]
+        url = f"{target_endpoint}/sessions/{self.session_name}/comm/send"
         logger.info(
             f"Sending data: from_rank={self._rank}, to_rank={to}, key={key}, target_url={url}"
         )

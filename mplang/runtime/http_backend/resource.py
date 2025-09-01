@@ -17,6 +17,7 @@ This module provides the resource management for the HTTP backend.
 It is a simplified, in-memory version of the original executor's resource manager.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -26,9 +27,33 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.core.mask import Mask
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
+from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.http_backend.communicator import HttpCommunicator
+
+
+class LinkCommFactory:
+    """Factory for creating and caching link communicators."""
+
+    def __init__(self) -> None:
+        self._cache: dict[tuple[int, tuple[str, ...]], LinkCommunicator] = {}
+
+    def create_link(self, rank: int, addrs: list[str]) -> LinkCommunicator:
+        key = (rank, tuple(addrs))
+        val = self._cache.get(key, None)
+        if val is not None:
+            return val
+
+        logging.info(f"LinkCommunicator created: {rank} {addrs}")
+        new_link = LinkCommunicator(rank, addrs)
+        self._cache[key] = new_link
+        return new_link
+
+
+# Global link factory instance
+g_link_factory = LinkCommFactory()
 
 
 @dataclass
@@ -48,9 +73,14 @@ class Computation:
 @dataclass
 class Session:
     name: str
-    communicator: HttpCommunicator | None = None
+    communicator: HttpCommunicator
     computations: dict[str, Computation] = field(default_factory=dict)
     symbols: dict[str, Symbol] = field(default_factory=dict)  # Session-level symbols
+
+    # spu related
+    spu_mask: int = -1
+    spu_protocol: int = 0
+    spu_field: int = 0
 
 
 # Global session storage
@@ -63,18 +93,25 @@ def gen_name(prefix: str) -> str:
 
 # Session Management
 def create_session(
-    name: str | None = None, rank: int = 0, endpoints: list[str] | None = None
+    name: str,
+    rank: int,
+    endpoints: list[str],
+    # SPU related
+    spu_mask: int = -1,
+    spu_protocol: int = 0,
+    spu_field: int = 0,
 ) -> Session:
-    name = name or gen_name("session")
     if name in _sessions:
         # Return existing session (idempotent operation)
         return _sessions[name]
-    session = Session(name)
-    if endpoints:
-        # Each session has its own communicator
-        session.communicator = HttpCommunicator(
-            session_name=name, rank=rank, endpoints=endpoints
-        )
+    session = Session(
+        name, HttpCommunicator(session_name=name, rank=rank, endpoints=endpoints)
+    )
+
+    session.spu_mask = spu_mask
+    session.spu_protocol = spu_protocol
+    session.spu_field = spu_field
+
     _sessions[name] = session
     return session
 
@@ -135,14 +172,28 @@ def execute_computation(
     import spu.libspu as libspu
 
     spu_config = libspu.RuntimeConfig(
-        protocol=libspu.ProtocolKind.SEMI2K,
-        field=libspu.FieldType.FM64,
+        protocol=libspu.ProtocolKind(session.spu_protocol),
+        field=libspu.FieldType(session.spu_field),
         fxp_fraction_bits=18,
     )
 
+    spu_mask = Mask(session.spu_mask)
+    spu_comm: LinkCommunicator | None = None
+    if session.spu_mask != -1:
+        if rank in spu_mask:
+            spu_addrs: list[str] = []
+            for r, addr in enumerate(session.communicator.endpoints):
+                if r in spu_mask:
+                    ip, port = addr.split(":")
+                    new_addr = f"{ip}:{int(port) + 100}"
+                    spu_addrs.append(new_addr)
+            spu_rank = spu_mask.global_to_relative_rank(rank)
+            spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
+
     # Use the world size from the communicator
-    world_size = session.communicator.world_size
-    spu_handler = SpuHandler(world_size, spu_config)
+    spu_handler = SpuHandler(spu_mask.num_parties(), spu_config)
+    if spu_comm is not None:
+        spu_handler.set_link_context(spu_comm)
 
     # Instantiate the Evaluator with session symbols as environment
     evaluator = Evaluator(

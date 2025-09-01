@@ -59,6 +59,10 @@ header: # <1>
 
   comment: never # <9>
 
+  comment-styles:
+    - id: TDStyle
+      start: "//"
+
   license-location-threshold: 80 # <10>
 
   language: # <11>
@@ -66,3 +70,16 @@ header: # <1>
       extensions:
         - ".py"
       comment_style_id: PythonStyle
+    C:
+      extensions:
+        - ".h"
+        - ".c"
+        - ".cpp"
+        - ".td"
+        - ".cpp.in"
+      comment_style_id: CStyle
+    TableGen:
+      extensions:
+        - ".td"
+        - ".cpp.in"
+      comment_style_id: TDStyle

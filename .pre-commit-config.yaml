@@ -54,3 +54,13 @@ repos:
         language: system
         pass_filenames: false
         files: \.proto$
+
+  # License header check
+  - repo: local
+    hooks:
+      - id: license-check-optional
+        name: license header check (optional)
+        entry: bash -c 'export PATH=$PATH:$HOME/go/bin; if command -v license-eye &> /dev/null; then license-eye header check "$@"; else echo "license-eye not found, skipping. CI will check license headers."; fi' --
+        language: system
+        files: \.(py|sh|proto|cpp|h|td)$|CMakeLists\.txt$
+        pass_filenames: true

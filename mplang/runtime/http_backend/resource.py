@@ -63,7 +63,7 @@ def gen_name(prefix: str) -> str:
 
 # Session Management
 def create_session(
-    name: str | None = None, rank: int = 0, endpoints: dict[int, str] | None = None
+    name: str | None = None, rank: int = 0, endpoints: list[str] | None = None
 ) -> Session:
     name = name or gen_name("session")
     if name in _sessions:

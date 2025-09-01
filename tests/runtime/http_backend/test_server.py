@@ -31,7 +31,7 @@ def test_create_and_get_session():
         json={
             "name": "test_session_1",
             "rank": 0,
-            "endpoints": {"0": "http://localhost:8000", "1": "http://localhost:8001"},
+            "endpoints": ["http://localhost:8000", "http://localhost:8001"],
         },
     )
     assert response.status_code == 200
@@ -55,7 +55,7 @@ def test_create_computation():
         json={
             "name": "test_session_2",
             "rank": 0,
-            "endpoints": {"0": "http://localhost:8000", "1": "http://localhost:8001"},
+            "endpoints": ["http://localhost:8000", "http://localhost:8001"],
         },
     )
 
@@ -90,14 +90,15 @@ def test_create_computation():
 def test_create_and_get_symbol():
     """Test creating and retrieving a symbol."""
     # Create session first
-    client.post(
+    response = client.post(
         "/sessions",
         json={
             "name": "test_session_3",
             "rank": 0,
-            "endpoints": {"0": "http://localhost:8000", "1": "http://localhost:8001"},
+            "endpoints": ["http://localhost:8000", "http://localhost:8001"],
         },
     )
+    assert response.status_code == 200
 
     # Create a symbol (simplified test)
     symbol_data = {

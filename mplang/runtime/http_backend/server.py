@@ -65,7 +65,7 @@ async def health_check() -> dict[str, str]:
 class CreateSessionRequest(BaseModel):
     name: str | None = None
     rank: int
-    endpoints: dict[int, str]
+    endpoints: list[str]
 
 
 class SessionResponse(BaseModel):

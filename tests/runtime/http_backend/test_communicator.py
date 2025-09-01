@@ -105,7 +105,7 @@ def test_distributed_send_recv():
             json={
                 "name": session_name,
                 "rank": rank,
-                "endpoints": {j: endpoints[j] for j in range(len(endpoints))},
+                "endpoints": endpoints,
             },
         )
         assert response.status_code == 200
@@ -121,16 +121,16 @@ def test_distributed_multiple_messages():
     # without interfering with each other
 
     # Test multiple independent sessions can be created
-    base_endpoints = {
-        0: "http://localhost:8001",
-        1: "http://localhost:8002",
-    }
+    base_endpoints = [
+        "http://localhost:8001",
+        "http://localhost:8002",
+    ]
 
     # Create multiple sessions on the servers to test isolation
     for session_idx in range(3):
         session_name = f"multi_session_{session_idx}"
 
-        for rank, endpoint in base_endpoints.items():
+        for rank, endpoint in enumerate(base_endpoints):
             response = requests.post(
                 f"{endpoint}/sessions",
                 json={"name": session_name, "rank": rank, "endpoints": base_endpoints},
@@ -142,10 +142,7 @@ def test_distributed_multiple_messages():
 def test_communicator_properties():
     """Test the communicator properties and interface compliance."""
     session_name = "properties_test"
-    endpoints = {
-        0: "http://localhost:8001",
-        1: "http://localhost:8002",
-    }
+    endpoints = ["http://localhost:8001", "http://localhost:8002"]
 
     comm = HttpCommunicator(session_name, rank=0, endpoints=endpoints)
 

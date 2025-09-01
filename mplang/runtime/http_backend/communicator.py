@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class HttpCommunicator(CommunicatorBase):
-    def __init__(self, session_name: str, rank: int, endpoints: dict[int, str]):
+    def __init__(self, session_name: str, rank: int, endpoints: list[str]):
         super().__init__(rank, len(endpoints))
         self._session_name = session_name
         self._endpoints = endpoints

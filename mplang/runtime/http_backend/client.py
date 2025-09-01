@@ -56,14 +56,14 @@ class HttpExecutorClient:
         self,
         name: str | None = None,
         rank: int = 0,
-        endpoints: dict[int, str] | None = None,
+        endpoints: list[str] | None = None,
     ) -> str:
         """Create a new session.
 
         Args:
             name: Optional session name. If None, server will generate one.
             rank: The rank of this party in the session.
-            endpoints: Dictionary mapping rank to endpoint URL for all parties.
+            endpoints: List of endpoint URLs for all parties, indexed by rank.
 
         Returns:
             The session name/ID

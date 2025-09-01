@@ -126,15 +126,17 @@ class HttpDriver(InterpContext):
         if self._session_id is None:
             new_session_id = new_uuid()
 
+            # NOTE: Assumes node_addrs in __init__ was provided with keys in rank order.
+            # Python dictionaries preserve insertion order since 3.7+.
+            endpoints_list = list(self.party_addrs.values())
+
             # Create session on all HTTP servers using clients
             for rank, client in self.clients.items():
                 try:
                     session_id = client.create_session(
                         name=new_session_id,
                         rank=rank,
-                        endpoints={
-                            int(r): addr for r, addr in self.party_addrs.items()
-                        },
+                        endpoints=endpoints_list,
                     )
                     assert session_id == new_session_id
                 except RuntimeError as e:

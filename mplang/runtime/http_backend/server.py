@@ -37,7 +37,7 @@ app = FastAPI()
 
 
 @app.exception_handler(ResourceNotFound)
-def resource_not_found_handler(request: Request, exc: ResourceNotFound):
+def resource_not_found_handler(request: Request, exc: ResourceNotFound) -> JSONResponse:
     """Handler for ResourceNotFound exceptions."""
     logger.warning(f"Resource not found at {request.url}: {exc}")
     return JSONResponse(
@@ -47,7 +47,7 @@ def resource_not_found_handler(request: Request, exc: ResourceNotFound):
 
 
 @app.exception_handler(InvalidRequestError)
-def invalid_request_handler(request: Request, exc: InvalidRequestError):
+def invalid_request_handler(request: Request, exc: InvalidRequestError) -> JSONResponse:
     """Handler for InvalidRequestError exceptions."""
     logger.warning(f"Invalid request at {request.url}: {exc}")
     return JSONResponse(
@@ -57,7 +57,7 @@ def invalid_request_handler(request: Request, exc: InvalidRequestError):
 
 
 @app.exception_handler(Exception)
-def general_exception_handler(request: Request, exc: Exception):
+def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Global exception handler for better error reporting."""
     logger.error(f"Unhandled exception at {request.url}: {exc}", exc_info=True)
     return JSONResponse(

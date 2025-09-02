@@ -122,7 +122,7 @@ class HttpDriver(InterpContext):
             clients[rank] = HttpExecutorClient(endpoint, self.timeout)
         return clients
 
-    async def _close_clients(self, clients: dict[int, HttpExecutorClient]):
+    async def _close_clients(self, clients: dict[int, HttpExecutorClient]) -> None:
         """Close all provided HTTP clients."""
         await asyncio.gather(*[client.close() for client in clients.values()])
 

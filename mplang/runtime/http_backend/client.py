@@ -52,7 +52,7 @@ class HttpExecutorClient:
         self.timeout = timeout
         self._client = httpx.AsyncClient(base_url=self.endpoint, timeout=self.timeout)
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 

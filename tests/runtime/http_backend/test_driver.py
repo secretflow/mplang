@@ -20,6 +20,7 @@ import threading
 import time
 from typing import Any
 
+import httpx
 import pytest
 import uvicorn
 
@@ -38,7 +39,7 @@ def run_distributed_server(port: int):
         host="localhost",
         port=port,
         log_level="critical",
-        ws="none"  # Disable websockets to avoid deprecation warnings
+        ws="none",  # Disable websockets to avoid deprecation warnings
     )
     server = uvicorn.Server(config)
     distributed_servers[port] = server
@@ -57,8 +58,20 @@ def start_servers():
         distributed_server_threads[port] = thread
         thread.start()
 
-    # Give servers time to start up
-    time.sleep(0.1)
+    # Wait for servers to be ready via health check
+    for port in ports:
+        ready = False
+        for _ in range(50):  # up to ~5s
+            try:
+                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
+                if r.status_code == 200:
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        if not ready:
+            raise RuntimeError(f"Server on port {port} failed to start in time")
 
     yield
 
@@ -68,8 +81,6 @@ def start_servers():
             distributed_servers[port].should_exit = True
             if port in distributed_server_threads:
                 distributed_server_threads[port].join(timeout=2)
-
-
 def test_http_driver_initialization():
     """Test HttpDriver initialization and basic properties."""
     node_addrs = {

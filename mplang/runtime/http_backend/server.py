@@ -207,17 +207,15 @@ def create_session_symbol(
     session_name: str, request: CreateSymbolRequest
 ) -> SymbolResponse:
     """Create a symbol in a session."""
-    try:
-        symbol = resource.create_symbol(
-            session_name, request.name, request.mptype, request.data
-        )
-        return SymbolResponse(
-            name=symbol.name,
-            mptype=symbol.mptype,
-            data=symbol.data,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    symbol = resource.create_symbol(
+        session_name, request.name, request.mptype, request.data
+    )
+    # Return the base64 data back to client; server stores Python object
+    return SymbolResponse(
+        name=symbol.name,
+        mptype=symbol.mptype,
+        data=request.data,
+    )
 
 
 @app.post(
@@ -228,17 +226,15 @@ def create_computation_symbol(
     session_name: str, computation_name: str, request: CreateComputationSymbolRequest
 ) -> SymbolResponse:
     """Create a symbol in a computation."""
-    try:
-        symbol = resource.create_computation_symbol(
-            session_name, computation_name, request.name, request.mptype, request.data
-        )
-        return SymbolResponse(
-            name=symbol.name,
-            mptype=symbol.mptype,
-            data=symbol.data,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    symbol = resource.create_computation_symbol(
+        session_name, computation_name, request.name, request.mptype, request.data
+    )
+    # Return the base64 data back to client
+    return SymbolResponse(
+        name=symbol.name,
+        mptype=symbol.mptype,
+        data=request.data,
+    )
 
 
 @app.get(
@@ -272,11 +268,8 @@ def get_session_symbol(session_name: str, symbol_name: str) -> SymbolResponse:
 @app.get("/sessions/{session_name}/symbols")
 def list_session_symbols(session_name: str) -> dict[str, list[str]]:
     """List all symbols in a session."""
-    try:
-        symbols = resource.list_symbols(session_name)
-        return {"symbols": symbols}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    symbols = resource.list_symbols(session_name)
+    return {"symbols": symbols}
 
 
 # Communication endpoints
@@ -294,7 +287,9 @@ def comm_send(session_name: str, request: CommSendRequest) -> dict[str, str]:
     # The 'to_rank' should be the rank of the server hosting this endpoint
     if session.communicator.rank != request.to_rank:
         logger.error(
-            f"Rank mismatch: session.communicator.rank={session.communicator.rank}, request.to_rank={request.to_rank}"
+            "Rank mismatch: session.communicator.rank=%s, request.to_rank=%s",
+            session.communicator.rank,
+            request.to_rank,
         )
         raise HTTPException(
             status_code=400,

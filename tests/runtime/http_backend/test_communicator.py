@@ -39,7 +39,7 @@ def run_distributed_server(port: int):
         host="localhost",
         port=port,
         log_level="critical",
-        ws="none"  # Disable websockets to avoid deprecation warnings
+        ws="none",  # Disable websockets to avoid deprecation warnings
     )
     server = uvicorn.Server(config)
     distributed_servers[port] = server
@@ -58,8 +58,20 @@ def start_servers():
         distributed_server_processes[port] = process
         process.start()
 
-    # Give servers time to start up
-    time.sleep(0.1)
+    # Wait for servers to be ready via health check
+    for port in ports:
+        ready = False
+        for _ in range(50):  # up to ~5s
+            try:
+                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
+                if r.status_code == 200:
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        if not ready:
+            raise RuntimeError(f"Server on port {port} failed to start in time")
 
     yield
 
@@ -72,11 +84,7 @@ def start_servers():
             if process.is_alive():
                 process.kill()
 
-    # Clean up any leftover log files
-    import os
-
-    if os.path.exists("e2e_communicator_test.log"):
-        os.remove("e2e_communicator_test.log")
+    # No file logging cleanup needed
 
 
 def test_distributed_send_recv():
@@ -173,14 +181,11 @@ def run_party_e2e_process(rank: int, return_dict: dict):
     import sys
     import threading
 
-    # Configure logging for this process
+    # Configure logging for this process (stdout only to avoid file conflicts)
     logging.basicConfig(
         level=logging.DEBUG,
         format=f"%(asctime)s - E2E_PARTY{rank} - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler("e2e_communicator_test.log"),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
     logger = logging.getLogger(f"e2e_party{rank}")
 
@@ -209,8 +214,12 @@ def run_party_e2e_process(rank: int, return_dict: dict):
         # Define server lifespan
         @asynccontextmanager
         async def lifespan(app):
+            import asyncio
+
             logger.info(f"Server starting for party {rank}")
+            await asyncio.sleep(0)
             yield
+            await asyncio.sleep(0)
             logger.info(f"Server shutting down for party {rank}")
 
         # Import server app and set lifespan
@@ -226,7 +235,7 @@ def run_party_e2e_process(rank: int, return_dict: dict):
                 host="localhost",
                 port=port,
                 log_level="error",
-                ws="none"  # Disable websockets to avoid deprecation warnings
+                ws="none",  # Disable websockets to avoid deprecation warnings
             )
             server = uvicorn.Server(config)
             server.run()
@@ -235,16 +244,18 @@ def run_party_e2e_process(rank: int, return_dict: dict):
         server_thread.start()
 
         # Wait for server to be ready
-        for _ in range(30):  # Try for 30 seconds
+        server_ready = False
+        for _ in range(50):  # Try for ~5 seconds
             try:
                 response = httpx.get(f"http://localhost:{port}/health", timeout=1)
                 if response.status_code == 200:
                     logger.info(f"Party {rank} server ready")
+                    server_ready = True
                     break
             except Exception:
                 pass
             time.sleep(0.1)
-        else:
+        if not server_ready:
             raise RuntimeError("Server failed to start within timeout")
 
         # Run party-specific communication logic
@@ -290,11 +301,7 @@ def test_end_to_end_communication():
     Test complete end-to-end communication between two parties.
     This validates the full single-process-per-party architecture.
     """
-    import os
-
-    # Clean up any existing log file
-    if os.path.exists("e2e_communicator_test.log"):
-        os.remove("e2e_communicator_test.log")
+    # No log file cleanup needed
 
     # Use multiprocessing to run two party processes
     with multiprocessing.Manager() as manager:

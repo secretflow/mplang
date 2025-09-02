@@ -17,10 +17,13 @@ This module provides the resource management for the HTTP backend.
 It is a simplified, in-memory version of the original executor's resource manager.
 """
 
+import base64
 import logging
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
+
+import cloudpickle as pickle
 
 from mplang.backend.builtin import BuiltinHandler
 from mplang.backend.phe import PHEHandler
@@ -194,19 +197,18 @@ def execute_computation(
         spu_addrs: list[str] = []
         for r, addr in enumerate(session.communicator.endpoints):
             if r in spu_mask:
-                # Extract IP and port from HTTP URL
-                if addr.startswith("http://"):
-                    addr = addr[7:]  # Remove "http://" prefix
-                elif addr.startswith("https://"):
-                    addr = addr[8:]  # Remove "https://" prefix
-
-                if ":" in addr:
-                    ip, port = addr.split(":", 1)  # Split only on first ':'
-                    new_addr = f"{ip}:{int(port) + 100}"
+                # Robust URL parsing
+                parsed = urlparse(addr)
+                hostname = parsed.hostname or "localhost"
+                if parsed.port is not None:
+                    base_port = parsed.port
                 else:
-                    # Default port 80 for HTTP if no port specified
-                    ip = addr
-                    new_addr = f"{ip}:180"  # 80 + 100
+                    # Default ports: http 80, https 443; fallback to 80
+                    if parsed.scheme == "https":
+                        base_port = 443
+                    else:
+                        base_port = 80
+                new_addr = f"{hostname}:{base_port + 100}"
                 spu_addrs.append(new_addr)
         spu_rank = spu_mask.global_to_relative_rank(rank)
         spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
@@ -239,21 +241,32 @@ def execute_computation(
 
     # Store results in session symbols using output_names
     if results:
-        assert len(results) == len(
-            output_names
-        ), f"Expected {len(output_names)} results, got {len(results)}"
+        if len(results) != len(output_names):
+            raise RuntimeError(
+                f"Expected {len(output_names)} results, got {len(results)}"
+            )
         for name, val in zip(output_names, results, strict=True):
             session.symbols[name] = Symbol(name=name, mptype={}, data=val)
 
 
 # Symbol Management
 def create_symbol(session_name: str, name: str, mptype: Any, data: Any) -> Symbol:
-    """Create a symbol in a session's symbol table."""
+    """Create a symbol in a session's symbol table.
+
+    The `data` is expected to be a base64-encoded pickled Python object.
+    """
     session = get_session(session_name)
     if not session:
-        raise ValueError(f"Session {session_name} not found.")
+        raise ResourceNotFound(f"Session '{session_name}' not found.")
 
-    symbol = Symbol(name, mptype, data)
+    # Deserialize base64-encoded data to Python object
+    try:
+        data_bytes = base64.b64decode(data)
+        obj = pickle.loads(data_bytes)
+    except Exception as e:
+        raise InvalidRequestError(f"Invalid symbol data encoding: {e!s}") from e
+
+    symbol = Symbol(name, mptype, obj)
     session.symbols[name] = symbol
     return symbol
 
@@ -299,7 +312,7 @@ def list_symbols(session_name: str) -> list[str]:
     """List all symbols in a session's symbol table (both session-level and computation-level)."""
     session = get_session(session_name)
     if not session:
-        raise ValueError(f"Session {session_name} not found.")
+        raise ResourceNotFound(f"Session '{session_name}' not found.")
 
     symbols: list[str] = []
     # Add session-level symbols

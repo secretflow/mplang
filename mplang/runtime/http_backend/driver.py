@@ -221,7 +221,7 @@ class HttpDriver(InterpContext):
 
         # Create HttpDriverVar objects for each output
         driver_vars = []
-        for symbol_name, mptype in zip(output_symbols, expr.mptypes, strict=False):
+        for symbol_name, mptype in zip(output_symbols, expr.mptypes, strict=True):
             driver_var = HttpDriverVar(self, symbol_name, mptype)
             driver_vars.append(driver_var)
 

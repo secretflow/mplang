@@ -16,6 +16,9 @@
 Tests for the HTTP server endpoints.
 """
 
+import base64
+
+import cloudpickle as pickle
 from fastapi.testclient import TestClient
 
 from mplang.runtime.http_backend.server import app
@@ -102,11 +105,15 @@ def test_create_and_get_symbol():
     )
     assert response.status_code == 200
 
-    # Create a symbol (simplified test)
+    # Create valid pickled data for a simple integer
+    test_value = 42
+    pickled_data = pickle.dumps(test_value)
+    encoded_data = base64.b64encode(pickled_data).decode("utf-8")
+
     symbol_data = {
         "name": "my_symbol",
         "mptype": {"scalar_type": {"type": "SCALAR_TYPE_I32"}},
-        "data": "AAAAAA==",  # dummy data
+        "data": encoded_data,
     }
     response = client.post(
         "/sessions/test_session_3/symbols",
@@ -121,5 +128,3 @@ def test_create_and_get_symbol():
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["name"] == "my_symbol"
-    retrieved_data = response.json()
-    assert retrieved_data["name"] == "my_symbol"

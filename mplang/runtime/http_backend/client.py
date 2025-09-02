@@ -56,6 +56,22 @@ class HttpExecutorClient:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
+    # Internal helpers
+    def _raise_http_error(self, action: str, e: Exception) -> RuntimeError:
+        if isinstance(e, httpx.HTTPStatusError):
+            # Extract detailed error message from response
+            error_detail = "Unknown error"
+            try:
+                error_response = e.response.json()
+                error_detail = error_response.get("detail", str(e))
+            except Exception:
+                error_detail = str(e)
+            return RuntimeError(f"Failed to {action}: {error_detail}")
+        elif isinstance(e, httpx.RequestError):
+            return RuntimeError(f"Failed to {action}: {e}")
+        else:
+            return RuntimeError(f"Failed to {action}: {e}")
+
     # Session Management
     async def create_session(
         self,
@@ -113,7 +129,7 @@ class HttpExecutorClient:
         """Get session information.
 
         Args:
-            session_name: The session name/ID
+            session_id: The session name/ID
 
         Returns:
             Session information dictionary
@@ -166,17 +182,8 @@ class HttpExecutorClient:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
-        except httpx.HTTPStatusError as e:
-            # Extract detailed error message from response
-            error_detail = "Unknown error"
-            try:
-                error_response = e.response.json()
-                error_detail = error_response.get("detail", str(e))
-            except Exception:
-                error_detail = str(e)
-            raise RuntimeError(f"Failed to create computation: {error_detail}") from e
-        except httpx.RequestError as e:
-            raise RuntimeError(f"Failed to create computation: {e}") from e
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error("create computation", e) from e
 
     async def get_computation(
         self, session_id: str, computation_id: str
@@ -184,8 +191,8 @@ class HttpExecutorClient:
         """Get computation information.
 
         Args:
-            session_name: The session name/ID
-            computation_name: The computation name/ID
+            session_id: The session name/ID
+            computation_id: The computation name/ID
 
         Returns:
             Computation information dictionary
@@ -199,10 +206,8 @@ class HttpExecutorClient:
             response = await self._client.get(url)
             response.raise_for_status()
             return dict(response.json())
-        except httpx.RequestError as e:
-            raise RuntimeError(
-                f"Failed to get computation {computation_id}: {e}"
-            ) from e
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"get computation {computation_id}", e) from e
 
     # Symbol Management
     async def create_symbol(
@@ -230,8 +235,8 @@ class HttpExecutorClient:
         try:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
-        except httpx.RequestError as e:
-            raise RuntimeError(f"Failed to create symbol {symbol_name}: {e}") from e
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"create symbol {symbol_name}", e) from e
 
     async def get_symbol(self, session_name: str, symbol_name: str) -> Any:
         """Get symbol data.
@@ -258,8 +263,8 @@ class HttpExecutorClient:
             data_bytes = base64.b64decode(symbol_data["data"])
             return pickle.loads(data_bytes)
 
-        except httpx.RequestError as e:
-            raise RuntimeError(f"Failed to get symbol {symbol_name}: {e}") from e
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"get symbol {symbol_name}", e) from e
 
     async def list_symbols(self, session_name: str) -> list[str]:
         """List all symbols in a session.
@@ -279,5 +284,5 @@ class HttpExecutorClient:
             response = await self._client.get(url)
             response.raise_for_status()
             return list(response.json()["symbols"])
-        except httpx.RequestError as e:
-            raise RuntimeError(f"Failed to list symbols: {e}") from e
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error("list symbols", e) from e

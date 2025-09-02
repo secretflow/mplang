@@ -60,8 +60,21 @@ def start_e2e_servers():
         e2e_server_processes[port] = process
         process.start()
 
-    # Give servers time to start up
-    time.sleep(1.0)  # Increased timeout for process startup
+    # Wait for servers to be ready via health check
+    import httpx
+    for port in ports:
+        ready = False
+        for _ in range(100):  # up to ~10s
+            try:
+                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
+                if r.status_code == 200:
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        if not ready:
+            raise RuntimeError(f"Server on port {port} failed to start in time")
 
     yield
 

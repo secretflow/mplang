@@ -29,6 +29,7 @@ jobs:
         run: buf format --diff --exit-code
 
       - name: buf lint
+        id: buf_lint
         run: buf lint
         continue-on-error: true
 
@@ -48,6 +49,7 @@ jobs:
           buf build -o /tmp/mplang-descriptors.binpb
 
       - name: Google API Linter (AIP rules)
+        id: api_linter
         continue-on-error: true
         run: |
           set -euxo pipefail
@@ -61,3 +63,15 @@ jobs:
       - name: buf breaking
         if: github.event_name == 'pull_request'
         run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main"
+
+      - name: check critical lint steps's outcome
+        if: always()
+        run: |
+          set -euxo pipefail
+          if [ ${{ steps.buf_lint.outcome }} != 'success' ]; then
+            echo "buf lint failed"; exit 1;
+          fi
+          if [ ${{ steps.api_linter.outcome }} != 'success' ]; then
+            echo "Google API Linter failed"; exit 1;
+          fi
+          echo "All critical lint steps passed."

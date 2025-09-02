@@ -21,16 +21,52 @@ import base64
 import logging
 import re
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from mplang.core.mpir import Reader
 from mplang.protos.v1alpha1 import mpir_pb2
 from mplang.runtime.http_backend import resource
+from mplang.runtime.http_backend.exceptions import InvalidRequestError, ResourceNotFound
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+
+@app.exception_handler(ResourceNotFound)
+def resource_not_found_handler(request: Request, exc: ResourceNotFound):
+    """Handler for ResourceNotFound exceptions."""
+    logger.warning(f"Resource not found at {request.url}: {exc}")
+    return JSONResponse(
+        status_code=404,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(InvalidRequestError)
+def invalid_request_handler(request: Request, exc: InvalidRequestError):
+    """Handler for InvalidRequestError exceptions."""
+    logger.warning(f"Invalid request at {request.url}: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+def general_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for better error reporting."""
+    logger.error(f"Unhandled exception at {request.url}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Internal server error: {exc!s}",
+            "error_type": type(exc).__name__,
+            "path": str(request.url.path),
+        },
+    )
 
 
 def validate_name(name: str, name_type: str) -> None:
@@ -129,8 +165,7 @@ def create_session(request: CreateSessionRequest) -> SessionResponse:
 def get_session(session_name: str) -> SessionResponse:
     session = resource.get_session(session_name)
     if not session:
-        logger.warning(f"Session not found: {session_name}")
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise ResourceNotFound(f"Session '{session_name}' not found")
     return SessionResponse(name=session.name)
 
 
@@ -143,28 +178,23 @@ def create_and_execute_computation(
     try:
         graph_proto.ParseFromString(base64.b64decode(request.mpprogram))
     except Exception as e:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid base64 or protobuf for mpprogram: {e}"
+        raise InvalidRequestError(
+            f"Invalid base64 or protobuf for mpprogram: {e!s}"
         ) from e
 
     reader = Reader()
     expr = reader.loads(graph_proto)
 
     if expr is None:
-        raise HTTPException(
-            status_code=400, detail="Failed to parse expression from protobuf"
-        )
+        raise InvalidRequestError("Failed to parse expression from protobuf")
 
-    try:
-        # Create the computation resource
-        computation = resource.create_computation(session_name, expr)
-        # Execute with input/output names
-        resource.execute_computation(
-            session_name, computation.name, request.input_names, request.output_names
-        )
-        return ComputationResponse(name=computation.name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    # Create the computation resource
+    computation = resource.create_computation(session_name, expr)
+    # Execute with input/output names
+    resource.execute_computation(
+        session_name, computation.name, request.input_names, request.output_names
+    )
+    return ComputationResponse(name=computation.name)
 
 
 # Symbol endpoints

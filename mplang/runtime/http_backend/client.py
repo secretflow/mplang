@@ -73,7 +73,7 @@ class HttpExecutorClient:
             name: Optional session name. If None, server will generate one.
             rank: The rank of this party in the session.
             endpoints: List of endpoint URLs for all parties, indexed by rank.
-            spu_mask: SPU mask for the session, -1 means no SPU.
+            spu_mask: SPU mask for the session, -1 means all parties construct SPU.
             spu_protocol: SPU protocol for the session.
             spu_field: SPU field for the session.
 
@@ -97,6 +97,15 @@ class HttpExecutorClient:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
+        except httpx.HTTPStatusError as e:
+            # Extract detailed error message from response
+            error_detail = "Unknown error"
+            try:
+                error_response = e.response.json()
+                error_detail = error_response.get("detail", str(e))
+            except Exception:
+                error_detail = str(e)
+            raise RuntimeError(f"Failed to create session: {error_detail}") from e
         except httpx.RequestError as e:
             raise RuntimeError(f"Failed to create session: {e}") from e
 
@@ -155,6 +164,15 @@ class HttpExecutorClient:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
+        except httpx.HTTPStatusError as e:
+            # Extract detailed error message from response
+            error_detail = "Unknown error"
+            try:
+                error_response = e.response.json()
+                error_detail = error_response.get("detail", str(e))
+            except Exception:
+                error_detail = str(e)
+            raise RuntimeError(f"Failed to create computation: {error_detail}") from e
         except httpx.RequestError as e:
             raise RuntimeError(f"Failed to create computation: {e}") from e
 

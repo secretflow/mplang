@@ -32,6 +32,7 @@ from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.http_backend.communicator import HttpCommunicator
+from mplang.runtime.http_backend.exceptions import InvalidRequestError, ResourceNotFound
 
 
 class LinkCommFactory:
@@ -101,8 +102,10 @@ def create_session(
     spu_protocol: int = 0,
     spu_field: int = 0,
 ) -> Session:
+    logging.info(f"Creating session: {name}, rank: {rank}, spu_mask: {spu_mask}")
     if name in _sessions:
         # Return existing session (idempotent operation)
+        logging.info(f"Session {name} already exists, returning existing session")
         return _sessions[name]
     session = Session(
         name, HttpCommunicator(session_name=name, rank=rank, endpoints=endpoints)
@@ -113,6 +116,7 @@ def create_session(
     session.spu_field = spu_field
 
     _sessions[name] = session
+    logging.info(f"Session {name} created successfully")
     return session
 
 
@@ -122,12 +126,14 @@ def get_session(name: str) -> Session | None:
 
 # Computation Management
 def create_computation(session_name: str, expr: Expr) -> Computation:
+    """Creates a computation resource within a session."""
     session = get_session(session_name)
     if not session:
-        raise ValueError(f"Session {session_name} not found.")
+        raise ResourceNotFound(f"Session '{session_name}' not found.")
     comp_name = gen_name("comp")
     computation = Computation(comp_name, expr)
     session.computations[comp_name] = computation
+    logging.info(f"Computation {comp_name} created for session {session_name}")
     return computation
 
 
@@ -144,16 +150,18 @@ def execute_computation(
     """Execute a computation using the Evaluator."""
     session = get_session(session_name)
     if not session:
-        raise ValueError(f"Session {session_name} not found.")
+        raise ResourceNotFound(f"Session '{session_name}' not found.")
 
     computation = get_computation(session_name, comp_name)
     if not computation:
-        raise ValueError(
-            f"Computation {comp_name} not found in session {session_name}."
+        raise ResourceNotFound(
+            f"Computation '{comp_name}' not found in session '{session_name}'."
         )
 
     if not session.communicator:
-        raise ValueError(f"Communicator not initialized for session {session_name}.")
+        raise InvalidRequestError(
+            f"Communicator not initialized for session '{session_name}'."
+        )
 
     # Get rank from session communicator
     rank = session.communicator.rank
@@ -163,8 +171,8 @@ def execute_computation(
     for input_name in input_names:
         symbol = get_symbol(session_name, input_name)
         if not symbol:
-            raise ValueError(
-                f"Input symbol {input_name} not found in session {session_name}"
+            raise ResourceNotFound(
+                f"Input symbol '{input_name}' not found in session '{session_name}'"
             )
         bindings[input_name] = symbol.data
 
@@ -179,19 +187,32 @@ def execute_computation(
     )
 
     spu_comm: LinkCommunicator | None = None
+    spu_mask = (
+        Mask(session.spu_mask)
+        if session.spu_mask != -1
+        else Mask.all(session.communicator.world_size)
+    )
 
-    if session.spu_mask != -1:
-        # -1 means not SPU runtime, but spu IO should always exist.
-        spu_mask = Mask(session.spu_mask)
-        if rank in spu_mask:
-            spu_addrs: list[str] = []
-            for r, addr in enumerate(session.communicator.endpoints):
-                if r in spu_mask:
-                    ip, port = addr.split(":")
+    if rank in spu_mask:
+        spu_addrs: list[str] = []
+        for r, addr in enumerate(session.communicator.endpoints):
+            if r in spu_mask:
+                # Extract IP and port from HTTP URL
+                if addr.startswith("http://"):
+                    addr = addr[7:]  # Remove "http://" prefix
+                elif addr.startswith("https://"):
+                    addr = addr[8:]  # Remove "https://" prefix
+
+                if ":" in addr:
+                    ip, port = addr.split(":", 1)  # Split only on first ':'
                     new_addr = f"{ip}:{int(port) + 100}"
-                    spu_addrs.append(new_addr)
-            spu_rank = spu_mask.global_to_relative_rank(rank)
-            spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
+                else:
+                    # Default port 80 for HTTP if no port specified
+                    ip = addr
+                    new_addr = f"{ip}:180"  # 80 + 100
+                spu_addrs.append(new_addr)
+        spu_rank = spu_mask.global_to_relative_rank(rank)
+        spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
 
     # Use the world size from the communicator
     spu_handler = SpuHandler(
@@ -246,12 +267,12 @@ def create_computation_symbol(
     """Create a symbol in a computation's symbol table."""
     session = get_session(session_name)
     if not session:
-        raise ValueError(f"Session {session_name} not found.")
+        raise ResourceNotFound(f"Session '{session_name}' not found.")
 
     computation = get_computation(session_name, computation_name)
     if not computation:
-        raise ValueError(
-            f"Computation {computation_name} not found in session {session_name}."
+        raise ResourceNotFound(
+            f"Computation '{computation_name}' not found in session '{session_name}'."
         )
 
     symbol = Symbol(symbol_name, mptype, data)

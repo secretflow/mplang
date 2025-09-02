@@ -100,9 +100,13 @@ class HttpDriver(InterpContext):
         self._counter = 0
 
         spu_mask = spu_mask or Mask.all(self.world_size)
+        self.spu_protocol = int(spu_protocol)
+        self.spu_field = int(spu_field)
+        self.spu_mask_int = int(spu_mask)
+
         executor_attrs = {
-            "spu_protocol": int(spu_protocol),
-            "spu_field": int(spu_field),
+            "spu_protocol": self.spu_protocol,
+            "spu_field": self.spu_field,
             "spu_mask": spu_mask,
             "trace_ranks": trace_ranks,
             **attrs,
@@ -144,6 +148,9 @@ class HttpDriver(InterpContext):
                         name=new_session_id,
                         rank=rank,
                         endpoints=endpoints_list,
+                        spu_mask=self.spu_mask_int,
+                        spu_protocol=self.spu_protocol,
+                        spu_field=self.spu_field,
                     )
                     tasks.append(task)
 

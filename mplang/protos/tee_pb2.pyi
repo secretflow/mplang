@@ -28,14 +28,17 @@ class InitRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     SESSION_NAME_FIELD_NUMBER: builtins.int
+    TEE_PARTY_ADDR_FIELD_NUMBER: builtins.int
     session_name: builtins.str
     """The resource name of the session. Format: "sessions/{session_id}"."""
+    tee_party_addr: builtins.str
     def __init__(
         self,
         *,
         session_name: builtins.str = ...,
+        tee_party_addr: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["session_name", b"session_name"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["session_name", b"session_name", "tee_party_addr", b"tee_party_addr"]) -> None: ...
 
 global___InitRequest = InitRequest
 
@@ -57,11 +60,13 @@ class GetTEEReportRequest(google.protobuf.message.Message):
 
     SESSION_NAME_FIELD_NUMBER: builtins.int
     PEM_PUBLIC_KEY_FIELD_NUMBER: builtins.int
+    RANK_FIELD_NUMBER: builtins.int
     GENERATION_PARAMS_JSON_FIELD_NUMBER: builtins.int
     session_name: builtins.str
     """The resource name of the session. Format: "sessions/{session_id}"."""
     pem_public_key: builtins.str
     """PEM-encoded public key for TEE attestation"""
+    rank: builtins.int
     generation_params_json: builtins.str
     """The JSON serialized string of
     secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationGenerationParams
@@ -71,9 +76,10 @@ class GetTEEReportRequest(google.protobuf.message.Message):
         *,
         session_name: builtins.str = ...,
         pem_public_key: builtins.str = ...,
+        rank: builtins.int = ...,
         generation_params_json: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["generation_params_json", b"generation_params_json", "pem_public_key", b"pem_public_key", "session_name", b"session_name"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["generation_params_json", b"generation_params_json", "pem_public_key", b"pem_public_key", "rank", b"rank", "session_name", b"session_name"]) -> None: ...
 
 global___GetTEEReportRequest = GetTEEReportRequest
 

@@ -53,9 +53,11 @@ message GetTEEReportRequest {
   // PEM-encoded public key for TEE attestation
   string pem_public_key = 2 [ (google.api.field_behavior) = REQUIRED ];
 
+  int32 rank = 3;
+
   // The JSON serialized string of
   // secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationGenerationParams
-  string generation_params_json = 3 [ (google.api.field_behavior) = REQUIRED ];
+  string generation_params_json = 4 [ (google.api.field_behavior) = REQUIRED ];
 }
 
 // Response message for TEE attestation report

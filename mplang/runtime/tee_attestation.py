@@ -21,8 +21,9 @@ attestation reports in both simulation and TDX modes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 import grpc
 from google.protobuf.json_format import MessageToJson, Parse
@@ -40,7 +41,6 @@ try:
 except ImportError:
     UnifiedAttestationGenerationParams = None
     UnifiedAttestationReport = None
-    IntelTdxReport = None
 
 from mplang.protos import tee_pb2, tee_pb2_grpc
 
@@ -68,9 +68,46 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
 
     def Init(
         self, request: tee_pb2.InitRequest, context: grpc.ServicerContext
-    ) -> tee_pb2.GetTEEReportResponse:
-        # TODO: 向tee party进行grpc请求GetTEEReport进行验证
-        ...
+    ) -> tee_pb2.InitResponse:
+        """Initialize TEE session and verify attestation."""
+        logging.info(f"Init TEE session: {request.session_name}")
+
+        response = tee_pb2.InitResponse()
+
+        # Create a gRPC channel to the TEE party
+        channel = grpc.insecure_channel(request.tee_party_addr)
+        stub = tee_pb2_grpc.TEEMgrServiceStub(channel)
+
+        # Create GetTEEReportRequest
+        generation_params = UnifiedAttestationGenerationParams()
+        # TODO: Use user-defined content
+        generation_params.tee_identity = "tdx_vm_instance"
+        generation_params.report_type = "TDX"
+        # TODO: Use user-defined content
+        generation_params.report_hex_nonce = "f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8"
+
+        report_request = tee_pb2.GetTEEReportRequest()
+        report_request.session_name = request.session_name
+        report_request.generation_params_json = MessageToJson(generation_params)
+
+        try:
+            # Call the TEE party's GetTEEReport method
+            report_response = stub.GetTEEReport(report_request)
+            # TODO: check report valid
+
+            self._key_manager.insert_tee_pub_key(
+                request.session_name, report_response.pem_public_key
+            )
+
+            return response
+
+        except grpc.RpcError as e:
+            logging.error(
+                f"Failed to get TEE report from {request.tee_party_addr}: {e}"
+            )
+            context.set_code(e.code())
+            context.set_details(f"Failed to get TEE report: {e.details()}")
+            return response
 
     def GetTEEReport(
         self, request: tee_pb2.GetTEEReportRequest, context: grpc.ServicerContext
@@ -79,12 +116,21 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
         logging.info(f"GetTEEReport: {request.session_name}")
 
         try:
-            report_json, public_key = self._generate_report(request)
+            public_key, _ = self._key_manager.get_or_create_self_key_pair(
+                request.session_name
+            )
+
+            report_json = self._generate_report(request)
 
             response = tee_pb2.GetTEEReportResponse()
             response.pem_public_key = public_key
             response.tee_mode = self._tee_mode
             response.report_json = report_json
+
+            # store non-tee party pub key
+            self._key_manager.insert_peer_pub_key(
+                request.session_name, request.rank, request.pem_public_key
+            )
 
             return response
 
@@ -94,12 +140,8 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
             context.set_details(f"Failed to generate TEE report: {e}")
             return tee_pb2.GetTEEReportResponse()
 
-    def _generate_report(self, request: tee_pb2.GetTEEReportRequest) -> tuple[str, str]:
+    def _generate_report(self, request: tee_pb2.GetTEEReportRequest) -> str:
         """Generate TEE attestation report."""
-
-        public_key, _ = self._key_manager.get_or_create_self_key_pair(
-            request.session_name
-        )
 
         params = UnifiedAttestationGenerationParams()
         Parse(request.generation_params_json, params)
@@ -111,13 +153,13 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
         else:
             raise ValueError(f"Unsupported TEE mode: {self._tee_mode}")
 
-        return report_json, public_key
+        return report_json
 
     def _generate_sim_report(self) -> str:
         # Create simulation report
         return "dummy"
 
-    def _generate_tdx_report(self, params: UnifiedAttestationGenerationParams) -> str:
+    def _generate_tdx_report(self, params: Any) -> str:
         # Generate TDX report
         generator = tdx_generation.create_attestation_generator()
         report_json: str = generator.generate_report_json(MessageToJson(params))
@@ -135,8 +177,10 @@ class SessionKeySet:
 class TEEKeyManager:
     """Manager for TEE key pairs."""
 
-    def __init__(self) -> None:
+    def __init__(self, tee_rank: int) -> None:
+        self._tee_rank = tee_rank
         self._keys: dict[str, SessionKeySet] = {}
+        self._tee_keys: dict[str, str] = {}
 
     def insert_peer_pub_key(self, session_name: str, rank: int, pub_key: str) -> None:
         if session_name not in self._keys:
@@ -151,7 +195,7 @@ class TEEKeyManager:
         from cryptography.hazmat.primitives.asymmetric import rsa
 
         # Generate private key
-        private_key = rsa.generate_private_key(
+        private_key: rsa.RSAPrivateKey = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
         )
@@ -173,11 +217,19 @@ class TEEKeyManager:
         )
         return public_pem, private_pem
 
+    def insert_tee_pub_key(self, session_name: str, pub_key: str) -> None:
+        self._tee_keys[session_name] = pub_key
+
+    def get_tee_pub_key(self, session_name: str) -> str:
+        if session_name not in self._tee_keys:
+            raise ValueError(f"Can not found tee pub key for session:{session_name}")
+        return self._tee_keys[session_name]
+
 
 def add_tee_attestation_service(
-    server, key_manager: TEEKeyManager, tee_mode: str = "sim"
+    server: Any, key_manager: TEEKeyManager, tee_mode: str = "sim"
 ) -> None:
     """Add TEE attestation service to gRPC server."""
     service = TEEAttestationService(key_manager, tee_mode)
-    executor_pb2_grpc.add_TEEAttestationServiceServicer_to_server(service, server)
+    tee_pb2_grpc.add_TEEMgrServiceServicer_to_server(service, server)
     logging.info(f"TEE attestation service added (mode: {tee_mode})")

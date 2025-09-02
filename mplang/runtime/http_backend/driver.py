@@ -187,7 +187,7 @@ class HttpDriver(InterpContext):
             var_names.append(name)
             party_symbol_names.append(var.symbol_name)
 
-        var_name_mapping = dict(zip(var_names, party_symbol_names, strict=False))
+        var_name_mapping = dict(zip(var_names, party_symbol_names, strict=True))
 
         writer = Writer(var_name_mapping)
         program_proto = writer.dumps(expr)

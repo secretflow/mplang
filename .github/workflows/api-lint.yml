@@ -22,8 +22,6 @@ jobs:
 
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1
-        with:
-          github_token: ${{ github.token }}
 
       - name: buf format
         run: buf format --diff --exit-code
@@ -67,7 +65,6 @@ jobs:
       - name: check critical lint steps's outcome
         if: always()
         run: |
-          set -euxo pipefail
           if [ ${{ steps.buf_lint.outcome }} != 'success' ]; then
             echo "buf lint failed"; exit 1;
           fi

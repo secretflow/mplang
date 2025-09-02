@@ -252,20 +252,21 @@ class CommunicatorBase(ICommunicator):
 
     # override
     def new_id(self) -> str:
-        res = self._counter
-        self._counter += 1
-        return str(res)
+        # Ensure thread-safe ID generation
+        with self._cond:
+            res = self._counter
+            self._counter += 1
+            return str(res)
 
     def recv(self, frm: int, key: str) -> Any:
         """Wait until the key is set, returns the value"""
         # print(f"recv {key}: {sender_rank} -> {self.rank}")
         mkey = (frm, key)
         with self._cond:
-            var = self._msgboxes.get(mkey, None)
-            while var is None:
+            # Wait until message arrives, then consume it
+            while mkey not in self._msgboxes:
                 self._cond.wait()
-                var = self._msgboxes.get(mkey, None)
-            return var
+            return self._msgboxes.pop(mkey)
 
     def onSent(self, frm: int, key: str, data: Any) -> None:
         """Called when a key is sent to self"""

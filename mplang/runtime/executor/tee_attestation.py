@@ -45,6 +45,29 @@ except ImportError:
 from mplang.protos import tee_pb2, tee_pb2_grpc
 
 
+def grpc_exception_handler(response_cls):
+    def decorator(func):
+        def wrapper(self, request, context):
+            try:
+                return func(self, request, context)
+            except ValueError as be:
+                context.set_details(be.message)
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                return response_cls()
+            except grpc.RpcError as e:
+                context.set_code(e.code())
+                context.set_details(f"Failed to call rpc: {e.details()}")
+                return response_cls()
+            except Exception:
+                context.set_details("Internal error.")
+                context.set_code(grpc.StatusCode.INTERNAL)
+                return response_cls()
+
+        return wrapper
+
+    return decorator
+
+
 class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
     """gRPC service implementation for TEE attestation."""
 
@@ -66,6 +89,7 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
         if self._tee_mode == "tdx" and UnifiedAttestationReport is None:
             raise ImportError("sdc-apis package is required for TEE attestation")
 
+    @grpc_exception_handler(tee_pb2.InitResponse)
     def Init(
         self, request: tee_pb2.InitRequest, context: grpc.ServicerContext
     ) -> tee_pb2.InitResponse:
@@ -88,57 +112,45 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
 
         report_request = tee_pb2.GetTEEReportRequest()
         report_request.session_name = request.session_name
+        report_request.pem_public_key, _ = (
+            self._key_manager.get_or_create_self_key_pair(request.session_name)
+        )
         report_request.generation_params_json = MessageToJson(generation_params)
 
-        try:
-            # Call the TEE party's GetTEEReport method
-            report_response = stub.GetTEEReport(report_request)
-            # TODO: check report valid
+        # Call the TEE party's GetTEEReport method
+        report_response = stub.GetTEEReport(report_request)
+        # TODO: check report valid
 
-            self._key_manager.insert_tee_pub_key(
-                request.session_name, report_response.pem_public_key
-            )
+        self._key_manager.insert_tee_pub_key(
+            request.session_name, report_response.pem_public_key
+        )
 
-            return response
+        return response
 
-        except grpc.RpcError as e:
-            logging.error(
-                f"Failed to get TEE report from {request.tee_party_addr}: {e}"
-            )
-            context.set_code(e.code())
-            context.set_details(f"Failed to get TEE report: {e.details()}")
-            return response
-
+    @grpc_exception_handler(tee_pb2.GetTEEReportResponse)
     def GetTEEReport(
         self, request: tee_pb2.GetTEEReportRequest, context: grpc.ServicerContext
     ) -> tee_pb2.GetTEEReportResponse:
         """Generate TEE attestation report."""
         logging.info(f"GetTEEReport: {request.session_name}")
 
-        try:
-            public_key, _ = self._key_manager.get_or_create_self_key_pair(
-                request.session_name
-            )
+        public_key, _ = self._key_manager.get_or_create_self_key_pair(
+            request.session_name
+        )
 
-            report_json = self._generate_report(request)
+        report_json = self._generate_report(request)
 
-            response = tee_pb2.GetTEEReportResponse()
-            response.pem_public_key = public_key
-            response.tee_mode = self._tee_mode
-            response.report_json = report_json
+        response = tee_pb2.GetTEEReportResponse()
+        response.pem_public_key = public_key
+        response.tee_mode = self._tee_mode
+        response.report_json = report_json
 
-            # store non-tee party pub key
-            self._key_manager.insert_peer_pub_key(
-                request.session_name, request.rank, request.pem_public_key
-            )
+        # store non-tee party pub key
+        self._key_manager.insert_peer_pub_key(
+            request.session_name, request.rank, request.pem_public_key
+        )
 
-            return response
-
-        except Exception as e:
-            logging.exception(f"Failed to generate TEE report: {e}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to generate TEE report: {e}")
-            return tee_pb2.GetTEEReportResponse()
+        return response
 
     def _generate_report(self, request: tee_pb2.GetTEEReportRequest) -> str:
         """Generate TEE attestation report."""

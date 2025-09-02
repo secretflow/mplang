@@ -39,6 +39,7 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.backend.teeu import TEEHandler
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
@@ -48,6 +49,10 @@ from mplang.runtime.executor.resource import (
     MessageName,
     SessionName,
     SymbolName,
+)
+from mplang.runtime.executor.tee_attestation import (
+    TEEKeyManager,
+    add_tee_attestation_service,
 )
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import CommunicatorBase as CommunicatorImpl
@@ -261,6 +266,7 @@ class Execution:
                 spu_handler,
                 DuckDBHandler(),
                 PHEHandler(),
+                TEEHandler(),
             ],
         )
 
@@ -392,10 +398,15 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
     """gRPC service implementation for the executor."""
 
     def __init__(
-        self, party_id: str, make_stub_func: Callable, debug_execution: bool = False
+        self,
+        party_id: str,
+        make_stub_func: Callable,
+        key_mgr: TEEKeyManager,
+        debug_execution: bool = False,
     ):
         super().__init__(party_id)
         self.make_stub_func = make_stub_func
+        self._key_mgr = key_mgr
         self._debug_execution = debug_execution
 
     # --- Message Methods ---
@@ -647,6 +658,10 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         )
 
         self.sessions[name] = new_session
+
+        # create self key rsa pair
+        self._key_mgr.get_or_create_self_key_pair(name)
+
         return new_session.to_proto()
 
     def GetSession(
@@ -859,6 +874,8 @@ def serve(
     addr: str,
     max_message_length: int = 1024 * 1024 * 1024,
     debug_execution: bool = False,
+    enable_tee_attestation: bool = False,
+    tee_mode: str = "sim",
 ) -> None:
     """Start the executor service server."""
 
@@ -891,8 +908,14 @@ def serve(
     executor_pb2_grpc.add_ExecutorServiceServicer_to_server(
         ExecutorService(party_id, make_stub, debug_execution), server
     )
+
+    if enable_tee_attestation:
+        add_tee_attestation_service(server, tee_mode)
+        print(f"Server started {addr} (TEE mode: {tee_mode}, TEE attestation enabled)")
+    else:
+        print(f"Server started {addr}")
+
     server.add_insecure_port(addr)
-    print(f"Server started {addr}")
     server.start()
     server.wait_for_termination()
 

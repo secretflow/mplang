@@ -107,6 +107,9 @@ class ExecutorDriver(InterpContext):
         spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_mask: Mask | None = None,
+        tee_mask: Mask | None = None,
+        tee_mode: str = "sim",
+        tee_index: int | None = None,
         trace_ranks: list[Rank] | None = None,
         max_message_length: int = 1024 * 1024 * 1024,
         **attrs: Any,
@@ -128,6 +131,9 @@ class ExecutorDriver(InterpContext):
             "spu_field": int(spu_field),
             "spu_mask": spu_mask,
             "trace_ranks": trace_ranks,
+            "tee_mask": tee_mask,
+            "tee_mode": tee_mode,
+            "tee_index": tee_index,
             **attrs,
         }
 
@@ -143,6 +149,9 @@ class ExecutorDriver(InterpContext):
         if self._session_id is None:
             new_session_id = new_uuid()
             metadata: dict[str, str] = {}
+            if self.attr("tee_mask"):
+                metadata["tee_mask"] = str(Mask(self.attr("spu_mask")).value)
+                metadata["tee_index"] = str(self.attr("tee_index"))
             session = executor_pb2.Session(
                 name=new_session_id, party_addrs=self.party_addrs, metadata=metadata
             )
@@ -210,6 +219,8 @@ class ExecutorDriver(InterpContext):
         execution.attrs["spu_mask"].number_value = Mask(self.attr("spu_mask")).value
         execution.attrs["spu_protocol"].number_value = int(self.attr("spu_protocol"))
         execution.attrs["spu_field"].number_value = int(self.attr("spu_field"))
+        execution.attrs["tee_mask"].number_value = Mask(self.attr("tee_mask")).value
+        execution.attrs["tee_index"].number_value = int(self.attr("tee_index"))
 
         # Fire off execution on all nodes
         futures = []

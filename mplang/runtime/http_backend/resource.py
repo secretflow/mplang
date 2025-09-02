@@ -242,7 +242,7 @@ def execute_computation(
         assert len(results) == len(
             output_names
         ), f"Expected {len(output_names)} results, got {len(results)}"
-        for name, val in zip(output_names, results, strict=False):
+        for name, val in zip(output_names, results, strict=True):
             session.symbols[name] = Symbol(name=name, mptype={}, data=val)
 
 

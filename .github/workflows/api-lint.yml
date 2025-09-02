@@ -34,7 +34,7 @@ jobs:
       - name: Install Google API Linter
         run: |
           set -euxo pipefail
-          go install github.com/googleapis/api-linter/cmd/api-linter@1.70.2
+          go install github.com/googleapis/api-linter/cmd/api-linter@latest
           api-linter --version
 
       - name: Build descriptor set

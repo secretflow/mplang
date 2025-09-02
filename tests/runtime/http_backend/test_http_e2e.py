@@ -49,8 +49,9 @@ def run_e2e_server(port: int):
 @pytest.fixture(scope="module", autouse=True)
 def start_e2e_servers():
     """Fixture to start servers for HttpDriver e2e testing."""
-    # Start servers for e2e tests on different ports than unit tests
-    ports = [15001, 15002]
+    # Start servers for e2e tests - 5 parties: P0, P1, P2, P3, P4
+    # SPU mask = 01110, meaning P1, P2, P3 form the SPU
+    ports = [15001, 15002, 15003, 15004, 15005]
 
     # Start servers in separate processes
     for port in ports:
@@ -60,7 +61,7 @@ def start_e2e_servers():
         process.start()
 
     # Give servers time to start up
-    time.sleep(0.2)  # Increased timeout for process startup
+    time.sleep(1.0)  # Increased timeout for process startup
 
     yield
 
@@ -77,16 +78,21 @@ def start_e2e_servers():
 
 @pytest.fixture
 def http_driver():
-    """Fixture to create HttpDriver for testing."""
+    """Fixture to create HttpDriver for testing with 5 parties."""
+    # 5 parties: P0, P1, P2, P3, P4
+    # SPU mask = 01110, meaning P1, P2, P3 form the SPU
     node_addrs = {
-        0: "http://localhost:15001",
-        1: "http://localhost:15002",
+        0: "http://localhost:15001",  # P0 - plaintext party
+        1: "http://localhost:15002",  # P1 - SPU party
+        2: "http://localhost:15003",  # P2 - SPU party
+        3: "http://localhost:15004",  # P3 - SPU party
+        4: "http://localhost:15005",  # P4 - plaintext party
     }
     return HttpDriver(node_addrs)
 
 
 def test_simple_addition_e2e(http_driver):
-    """Test simple addition computation using HttpDriver."""
+    """Test simple addition computation using HttpDriver with 5 parties."""
     # Create test data
     x = np.array([1.0, 2.0, 3.0])
     y = np.array([4.0, 5.0, 6.0])
@@ -105,7 +111,7 @@ def test_simple_addition_e2e(http_driver):
     # Fetch the result
     fetched = mplang.fetch(http_driver, result)
 
-    # Verify result
+    # Verify result - all 5 parties should get the same result
     expected = x + y
     for i, actual in enumerate(fetched):
         assert np.allclose(
@@ -114,10 +120,10 @@ def test_simple_addition_e2e(http_driver):
 
 
 def test_secure_comparison_e2e(http_driver):
-    """Test secure comparison computation using HttpDriver."""
-    # Create test data
-    x = np.array([5.0])
-    y = np.array([3.0])
+    """Test secure comparison computation using HttpDriver with 5 parties."""
+    # Create test data - data comes from different parties
+    x = np.array([5.0])  # From P0
+    y = np.array([3.0])  # From P4
 
     @mplang.function
     def secure_compare():
@@ -125,9 +131,9 @@ def test_secure_comparison_e2e(http_driver):
         x_const = simp.constant(x)
         y_const = simp.constant(y)
 
-        # Seal them for secure computation
-        x_sealed = smpc.sealFrom(x_const, 0)
-        y_sealed = smpc.sealFrom(y_const, 1)
+        # Seal them for secure computation - data from P0 and P4
+        x_sealed = smpc.sealFrom(x_const, 0)  # P0 provides data
+        y_sealed = smpc.sealFrom(y_const, 4)  # P4 provides data
 
         # Perform secure comparison
         import jax.numpy as jnp
@@ -146,58 +152,78 @@ def test_secure_comparison_e2e(http_driver):
     # Fetch the result
     fetched = mplang.fetch(http_driver, result)
 
-    # Verify result
+    # Verify result - all 5 parties should get the same result
     expected = x > y  # Should be True since 5.0 > 3.0
-    assert fetched[0] == expected, f"Mismatch at rank 0: {fetched[0]} vs {expected}"
-    assert fetched[1] == expected, f"Mismatch at rank 1: {fetched[1]} vs {expected}"
+    for i in range(5):
+        assert (
+            fetched[i] == expected
+        ), f"Mismatch at rank {i}: {fetched[i]} vs {expected}"
 
 
 def test_three_way_comparison_e2e(http_driver):
-    """Test three-way comparison (millionaire problem) using HttpDriver."""
-    # Create test data
-    wealth_a = np.array([50.0])
-    wealth_b = np.array([30.0])
+    """Test multi-party comparison (millionaire problem) using HttpDriver with 5 parties."""
+    # Create test data - wealth from different parties
+    wealth_a = np.array([50.0])  # P0's wealth
+    wealth_b = np.array([30.0])  # P2's wealth
+    wealth_c = np.array([70.0])  # P4's wealth
 
     @mplang.function
     def millionaire_problem():
         # Create constants for each party's wealth
         wealth_a_const = simp.constant(wealth_a)
         wealth_b_const = simp.constant(wealth_b)
+        wealth_c_const = simp.constant(wealth_c)
 
         # Seal the wealth values for secure computation
-        wealth_a_sealed = smpc.sealFrom(wealth_a_const, 0)
-        wealth_b_sealed = smpc.sealFrom(wealth_b_const, 1)
+        wealth_a_sealed = smpc.sealFrom(wealth_a_const, 0)  # P0 provides wealth
+        wealth_b_sealed = smpc.sealFrom(wealth_b_const, 2)  # P2 provides wealth
+        wealth_c_sealed = smpc.sealFrom(wealth_c_const, 4)  # P4 provides wealth
 
-        # Perform secure three-way comparison
+        # Perform secure comparison to find the richest
         import jax.numpy as jnp
 
-        result = smpc.srun(lambda x, y: jnp.where(x > y, 1, jnp.where(x < y, 0, -1)))(
-            wealth_a_sealed, wealth_b_sealed
+        # Find who has the maximum wealth
+        max_ab = smpc.srun(jnp.maximum)(wealth_a_sealed, wealth_b_sealed)
+        max_wealth = smpc.srun(jnp.maximum)(max_ab, wealth_c_sealed)
+
+        # Check if each party is the richest
+        a_is_richest = smpc.srun(lambda a, max_w: a >= max_w)(
+            wealth_a_sealed, max_wealth
+        )
+        b_is_richest = smpc.srun(lambda b, max_w: b >= max_w)(
+            wealth_b_sealed, max_wealth
+        )
+        c_is_richest = smpc.srun(lambda c, max_w: c >= max_w)(
+            wealth_c_sealed, max_wealth
         )
 
-        # Reveal the result
-        revealed_result = smpc.reveal(result)
-        return revealed_result
+        # Reveal the results
+        a_result = smpc.reveal(a_is_richest)
+        b_result = smpc.reveal(b_is_richest)
+        c_result = smpc.reveal(c_is_richest)
+
+        return a_result, b_result, c_result
 
     # Evaluate the computation
-    result = mplang.evaluate(http_driver, millionaire_problem)
+    a_result, b_result, c_result = mplang.evaluate(http_driver, millionaire_problem)
 
-    # Fetch the result
-    fetched = mplang.fetch(http_driver, result)
+    # Fetch the results
+    fetched_a = mplang.fetch(http_driver, a_result)
+    fetched_b = mplang.fetch(http_driver, b_result)
+    fetched_c = mplang.fetch(http_driver, c_result)
 
-    # Verify result (1 means first party richer, 0 means second party richer, -1 means equal)
-    expected = (
-        1 if wealth_a[0] > wealth_b[0] else (0 if wealth_a[0] < wealth_b[0] else -1)
-    )
-    assert fetched[0] == expected, f"Mismatch at rank 0: {fetched[0]} vs {expected}"
-    assert fetched[1] == expected, f"Mismatch at rank 1: {fetched[1]} vs {expected}"
+    # Verify results - P4 (wealth_c = 70.0) should be the richest
+    for i in range(5):
+        assert not fetched_a[i], f"P0 should not be richest at rank {i}: {fetched_a[i]}"
+        assert not fetched_b[i], f"P2 should not be richest at rank {i}: {fetched_b[i]}"
+        assert fetched_c[i], f"P4 should be richest at rank {i}: {fetched_c[i]}"
 
 
 def test_multiple_operations_e2e(http_driver):
-    """Test multiple operations in sequence using HttpDriver."""
-    # Test data
-    a = np.array([10.0, 20.0])
-    b = np.array([5.0, 15.0])
+    """Test multiple operations in sequence using HttpDriver with 5 parties."""
+    # Test data - from different parties
+    a = np.array([10.0, 20.0])  # From P0
+    b = np.array([5.0, 15.0])  # From P3
 
     @mplang.function
     def multi_operations():
@@ -205,9 +231,9 @@ def test_multiple_operations_e2e(http_driver):
         a_const = simp.constant(a)
         b_const = simp.constant(b)
 
-        # Seal for secure computation
-        a_sealed = smpc.sealFrom(a_const, 0)
-        b_sealed = smpc.sealFrom(b_const, 1)
+        # Seal for secure computation - data from P0 and P3
+        a_sealed = smpc.sealFrom(a_const, 0)  # P0 provides data
+        b_sealed = smpc.sealFrom(b_const, 3)  # P3 provides data
 
         # Multiple operations
         import jax.numpy as jnp
@@ -241,7 +267,8 @@ def test_multiple_operations_e2e(http_driver):
     expected_mul = a * b
     expected_cmp = a > b
 
-    for i in range(len(fetched_sum)):
+    # All 5 parties should get the same results
+    for i in range(5):
         assert np.allclose(fetched_sum[i], expected_sum), f"Sum mismatch at rank {i}"
         assert np.allclose(fetched_mul[i], expected_mul), f"Mul mismatch at rank {i}"
         assert np.array_equal(fetched_cmp[i], expected_cmp), f"Cmp mismatch at rank {i}"

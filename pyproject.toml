@@ -43,18 +43,16 @@ dev = [
     "ruff",
     "mypy",
     "pre-commit",
-    # "grpcio",
-    # "grpcio-tools",
     "fastapi",
     "uvicorn[standard]",
 ]
 
 examples = [
-    # "numpy==1.26.4",
-    # "tensorflow-datasets==4.9.9",
-    # "tensorflow==2.18.1",
-    # "scikit-learn==1.7.1",
-    # "keras==3.11.1",
+    "numpy==1.26.4",
+    "tensorflow-datasets==4.9.9",
+    "tensorflow==2.18.1",
+    "scikit-learn==1.7.1",
+    "keras==3.11.1",
 ]
 
 [tool.hatch.build.targets.wheel]

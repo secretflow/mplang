@@ -35,7 +35,7 @@ from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
-from mplang.runtime.grpc_comm import LinkCommunicator
+from mplang.runtime.link_comm import LinkCommunicator
 from mplang.runtime.mem_comm import ThreadCommunicator
 
 

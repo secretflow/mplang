@@ -49,7 +49,7 @@ from mplang.runtime.executor.resource import (
     SessionName,
     SymbolName,
 )
-from mplang.runtime.grpc_comm import LinkCommunicator
+from mplang.runtime.link_comm import LinkCommunicator
 from mplang.runtime.mem_comm import CommunicatorBase as CommunicatorImpl
 
 

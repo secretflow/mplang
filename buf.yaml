@@ -12,8 +12,7 @@ deps:
 lint:
   use:
     - BASIC
-    # FIXME: Enable COMMENTS after buf lint passed
-    # - COMMENTS
+    - COMMENTS
   except:
     # Allow some flexibility for existing code
     - ENUM_VALUE_PREFIX

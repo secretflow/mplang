@@ -106,7 +106,9 @@ def http_driver():
     return HttpDriver(node_addrs)
 
 
-@pytest.mark.skip(reason="Works when run individually, but hangs when run with 'uv run pytest tests/runtime/'")
+@pytest.mark.skip(
+    reason="Works when run individually, but hangs when run with 'uv run pytest tests/runtime/'"
+)
 def test_simple_addition_e2e(http_driver):
     """Test simple addition computation using HttpDriver with 5 parties."""
     # Create test data

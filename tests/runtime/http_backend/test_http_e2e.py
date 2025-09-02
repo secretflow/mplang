@@ -62,6 +62,7 @@ def start_e2e_servers():
 
     # Wait for servers to be ready via health check
     import httpx
+
     for port in ports:
         ready = False
         for _ in range(100):  # up to ~10s

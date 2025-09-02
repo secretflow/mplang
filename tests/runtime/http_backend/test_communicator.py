@@ -199,7 +199,7 @@ def run_party_e2e_process(rank: int, return_dict: dict):
         # Create session in the resource manager
         logger.info(f"Creating session: {session_name}")
         session = resource.create_session(
-            name=session_name, rank=rank, endpoints=endpoints
+            name=session_name, rank=rank, endpoints=list(endpoints.values())
         )
 
         # Save communicator for server to use

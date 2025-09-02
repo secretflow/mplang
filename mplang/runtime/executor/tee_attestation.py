@@ -189,8 +189,7 @@ class SessionKeySet:
 class TEEKeyManager:
     """Manager for TEE key pairs."""
 
-    def __init__(self, tee_rank: int) -> None:
-        self._tee_rank = tee_rank
+    def __init__(self) -> None:
         self._keys: dict[str, SessionKeySet] = {}
         self._tee_keys: dict[str, str] = {}
 
@@ -236,6 +235,11 @@ class TEEKeyManager:
         if session_name not in self._tee_keys:
             raise ValueError(f"Can not found tee pub key for session:{session_name}")
         return self._tee_keys[session_name]
+
+    def get_session_key_dict(self, session_name: str) -> dict[int, str]:
+        if session_name not in self._tee_keys:
+            raise ValueError(f"Can not found session:{session_name}")
+        return self._keys[session_name].peers_pub_key
 
 
 def add_tee_attestation_service(

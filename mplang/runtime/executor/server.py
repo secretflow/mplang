@@ -174,6 +174,8 @@ class Execution:
         spu_protocol: libspu.ProtocolKind,
         spu_field: libspu.FieldType,
         make_stub_func: Callable,
+        enable_tee_handler: bool,
+        key_mgr: TEEKeyManager,
     ):
         # basic attributes.
         self.db = db
@@ -187,6 +189,9 @@ class Execution:
         self.spu_protocol = spu_protocol
         self.spu_field = spu_field
         self.spu_comm: LinkCommunicator | None = None
+
+        self.enable_tee_handler = enable_tee_handler
+        self.key_mgr = key_mgr
 
         # runtime attributes.
         self.symbols: dict[str, Symbol] = {}
@@ -255,20 +260,40 @@ class Execution:
         if self.spu_comm is not None:
             spu_handler.set_link_context(self.spu_comm)
 
-        # Create evaluator with handlers
-        evaluator = Evaluator(
-            session.rank,
-            {},  # empty environment, bindings will be provided during evaluation
-            self.comm,
-            [
-                BuiltinHandler(),
-                StablehloHandler(),
-                spu_handler,
-                DuckDBHandler(),
-                PHEHandler(),
-                TEEHandler(),
-            ],
-        )
+        if self.enable_tee_handler:
+            _, priv_key = self.key_mgr.get_or_create_self_key_pair(self.session_id)
+            tee_handler = TEEHandler(
+                key_dict=self.key_mgr.get_session_key_dict(self.session_id),
+                private_key=priv_key,
+            )
+
+            evaluator = Evaluator(
+                session.rank,
+                {},  # empty environment, bindings will be provided during evaluation
+                self.comm,
+                [
+                    BuiltinHandler(),
+                    StablehloHandler(),
+                    spu_handler,
+                    DuckDBHandler(),
+                    PHEHandler(),
+                    tee_handler,
+                ],
+            )
+        else:
+            # Create evaluator with handlers
+            evaluator = Evaluator(
+                session.rank,
+                {},  # empty environment, bindings will be provided during evaluation
+                self.comm,
+                [
+                    BuiltinHandler(),
+                    StablehloHandler(),
+                    spu_handler,
+                    DuckDBHandler(),
+                    PHEHandler(),
+                ],
+            )
 
         # Evaluate the expression
         forked_evaluator = evaluator.fork(bindings)
@@ -402,11 +427,13 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
         party_id: str,
         make_stub_func: Callable,
         key_mgr: TEEKeyManager,
+        enable_tee: bool = False,
         debug_execution: bool = False,
     ):
         super().__init__(party_id)
         self.make_stub_func = make_stub_func
         self._key_mgr = key_mgr
+        self._enable_tee = enable_tee
         self._debug_execution = debug_execution
 
     # --- Message Methods ---
@@ -779,6 +806,8 @@ class ExecutorService(ExecutorState, executor_pb2_grpc.ExecutorServiceServicer):
                 int(request.execution.attrs["spu_field"].number_value)
             ),
             make_stub_func=self.make_stub_func,
+            enable_tee_handler=self._enable_tee,
+            key_mgr=self._key_mgr,
         )
         self.executions[execution_name] = execution
 
@@ -905,12 +934,18 @@ def serve(
             ("grpc.max_receive_message_length", max_message_length),
         ],
     )
+
+    key_mgr = TEEKeyManager()
+
     executor_pb2_grpc.add_ExecutorServiceServicer_to_server(
-        ExecutorService(party_id, make_stub, debug_execution), server
+        ExecutorService(
+            party_id, make_stub, key_mgr, enable_tee_attestation, debug_execution
+        ),
+        server,
     )
 
     if enable_tee_attestation:
-        add_tee_attestation_service(server, tee_mode)
+        add_tee_attestation_service(server, key_mgr, tee_mode)
         print(f"Server started {addr} (TEE mode: {tee_mode}, TEE attestation enabled)")
     else:
         print(f"Server started {addr}")

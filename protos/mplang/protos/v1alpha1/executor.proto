@@ -24,7 +24,6 @@ import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "mplang/protos/v1alpha1/mpir.proto";
 
 option go_package = "github.com/secretflow/mplang/protos/v1alpha1";
 

@@ -81,6 +81,8 @@ def start_servers():
             distributed_servers[port].should_exit = True
             if port in distributed_server_threads:
                 distributed_server_threads[port].join(timeout=2)
+
+
 def test_http_driver_initialization():
     """Test HttpDriver initialization and basic properties."""
     node_addrs = {

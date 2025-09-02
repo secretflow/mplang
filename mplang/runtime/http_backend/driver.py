@@ -236,7 +236,7 @@ class HttpDriver(InterpContext):
         if not isinstance(obj, HttpDriverVar):
             raise ValueError(f"Expected HttpDriverVar, got {type(obj)}")
 
-        session_id = self._session_id or "default"
+        session_id = await self._get_or_create_session()
         symbol_full_name = obj.symbol_name
 
         # Create temporary clients for fetching

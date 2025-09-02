@@ -16,9 +16,8 @@
 Tests for the HttpDriver.
 """
 
-import threading
+import multiprocessing
 import time
-from typing import Any
 
 import httpx
 import pytest
@@ -28,8 +27,7 @@ from mplang.runtime.http_backend.driver import HttpDriver
 from mplang.runtime.http_backend.server import app
 
 # Global state for servers
-distributed_servers: dict[int, Any] = {}
-distributed_server_threads: dict[int, threading.Thread] = {}
+distributed_server_processes: dict[int, multiprocessing.Process] = {}
 
 
 def run_distributed_server(port: int):
@@ -42,7 +40,6 @@ def run_distributed_server(port: int):
         ws="none",  # Disable websockets to avoid deprecation warnings
     )
     server = uvicorn.Server(config)
-    distributed_servers[port] = server
     server.run()
 
 
@@ -52,11 +49,12 @@ def start_servers():
     # Start distributed servers for driver tests
     ports = [9001, 9002, 9003]
     for port in ports:
-        thread = threading.Thread(
-            target=run_distributed_server, args=(port,), daemon=True
+        process = multiprocessing.Process(
+            target=run_distributed_server, args=(port,)
         )
-        distributed_server_threads[port] = thread
-        thread.start()
+        process.daemon = True
+        distributed_server_processes[port] = process
+        process.start()
 
     # Wait for servers to be ready via health check
     for port in ports:
@@ -75,12 +73,15 @@ def start_servers():
 
     yield
 
-    # Teardown: stop all servers
+    # Teardown: stop all server processes
     for port in ports:
-        if port in distributed_servers:
-            distributed_servers[port].should_exit = True
-            if port in distributed_server_threads:
-                distributed_server_threads[port].join(timeout=2)
+        if port in distributed_server_processes:
+            process = distributed_server_processes[port]
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)  # Wait up to 5 seconds
+                if process.is_alive():
+                    process.kill()  # Force kill if still alive
 
 
 def test_http_driver_initialization():

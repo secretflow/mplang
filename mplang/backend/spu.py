@@ -23,7 +23,7 @@ import spu.libspu as libspu
 
 from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction, TensorHandler
-from mplang.runtime.grpc_comm import LinkCommunicator
+from mplang.runtime.link_comm import LinkCommunicator
 
 
 def shape_spu_to_np(spu_shape: Any) -> tuple[int, ...]:

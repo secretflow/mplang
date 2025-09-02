@@ -26,7 +26,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import ClassVar, TypeVar
 
-from mplang.utils.path_template import PathTemplate
+from mplang.runtime.path_template import PathTemplate
 
 # Type variable for generic resource types
 T = TypeVar("T", bound="ResourceName")

@@ -16,7 +16,7 @@
 
 import pytest
 
-from mplang.utils.path_template import PathTemplate
+from mplang.runtime.path_template import PathTemplate
 
 
 class TestPathTemplate:

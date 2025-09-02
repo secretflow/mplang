@@ -15,54 +15,9 @@
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
-from mplang.core.comm import CollectiveMixin, ICommunicator
-
-
-class CommunicatorBase(ICommunicator):
-    """Base implementation providing message box functionality for local communication"""
-
-    def __init__(self, rank: int, world_size: int):
-        self._rank = rank
-        self._world_size = world_size
-        self._msgboxes: dict = {}
-        self._cond = threading.Condition()
-        self._counter = 0
-
-    @property
-    def rank(self) -> int:
-        return self._rank
-
-    @property
-    def world_size(self) -> int:
-        return self._world_size
-
-    # override
-    def new_id(self) -> str:
-        res = self._counter
-        self._counter += 1
-        return str(res)
-
-    def recv(self, frm: int, key: str) -> Any:
-        """Wait until the key is set, returns the value"""
-        # print(f"recv {key}: {sender_rank} -> {self.rank}")
-        mkey = (frm, key)
-        with self._cond:
-            var = self._msgboxes.get(mkey, None)
-            while var is None:
-                self._cond.wait()
-                var = self._msgboxes.get(mkey, None)
-            return var
-
-    def onSent(self, frm: int, key: str, data: Any) -> None:
-        """Called when a key is sent to self"""
-        with self._cond:
-            assert key not in self._msgboxes, f"{key} exist {self._msgboxes.keys()}"
-            mkey = (frm, key)
-            self._msgboxes[mkey] = data
-            self._cond.notify_all()
+from mplang.core.comm import CollectiveMixin, CommunicatorBase
 
 
 class ThreadCommunicator(CommunicatorBase, CollectiveMixin):

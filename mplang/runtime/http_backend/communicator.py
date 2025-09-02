@@ -35,12 +35,16 @@ class HttpCommunicator(CommunicatorBase):
         super().__init__(rank, len(endpoints))
         self.session_name = session_name
         self.endpoints = endpoints
+        self._counter = 0
         logger.info(
             f"HttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={endpoints}"
         )
 
+    # override
     def new_id(self) -> str:
-        return str(uuid.uuid4())
+        res = self._counter
+        self._counter += 1
+        return str(res)
 
     def send(self, to: int, key: str, data: Any) -> None:
         """Sends data to a peer party by POSTing to its /comm/send endpoint."""

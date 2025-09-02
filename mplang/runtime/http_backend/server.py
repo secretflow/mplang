@@ -21,6 +21,7 @@ import base64
 import logging
 import re
 
+import cloudpickle as pickle
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -246,28 +247,15 @@ def create_computation_symbol(
 def get_session_symbol(session_name: str, symbol_name: str) -> SymbolResponse:
     """Get a symbol from a session."""
     try:
-        # URL decode the symbol name to handle encoded slashes and special characters
-        import urllib.parse
-
-        decoded_symbol_name = urllib.parse.unquote(symbol_name)
-
         logger.debug(
-            f"Looking for symbol: '{decoded_symbol_name}' in session: '{session_name}'"
+            f"Looking for symbol: '{symbol_name}' in session: '{session_name}'"
         )
 
-        symbol = resource.get_symbol(session_name, decoded_symbol_name)
+        symbol = resource.get_symbol(session_name, symbol_name)
         if not symbol:
-            # List available symbols for debugging
-            available_symbols = resource.list_symbols(session_name)
-            logger.warning(
-                f"Symbol '{decoded_symbol_name}' not found. Available symbols: {available_symbols}"
+            raise HTTPException(
+                status_code=404, detail=f"Symbol {symbol_name} not found"
             )
-            raise HTTPException(status_code=404, detail="Symbol not found")
-
-        # Serialize the data to Base64
-        import base64
-
-        import cloudpickle as pickle
 
         data_bytes = pickle.dumps(symbol.data)
         data_b64 = base64.b64encode(data_bytes).decode("utf-8")
@@ -313,16 +301,6 @@ def comm_send(session_name: str, request: CommSendRequest) -> dict[str, str]:
             detail=f"Mismatched rank. Receiver rank is {session.communicator.rank}, but request is for {request.to_rank}",
         )
 
-    # Decode the base64 data back to bytes for the communicator
-    try:
-        data_bytes = base64.b64decode(request.data)
-        logger.debug(f"Decoded {len(data_bytes)} bytes for key {request.key}")
-    except Exception as e:
-        logger.error(f"Base64 decoding failed: {e}")
-        raise HTTPException(
-            status_code=400, detail=f"Invalid base64 data: {e!s}"
-        ) from e
-
     # Use the proper onSent mechanism from CommunicatorBase
-    session.communicator.onSent(request.from_rank, request.key, data_bytes)
+    session.communicator.onSent(request.from_rank, request.key, request.data)
     return {"status": "ok"}

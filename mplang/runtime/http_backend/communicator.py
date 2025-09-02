@@ -79,9 +79,11 @@ class HttpCommunicator(CommunicatorBase):
         logging.debug(
             f"Waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
-        # The actual data is stored as bytes, so we need to deserialize it
-        data_bytes = super().recv(frm, key)
+        data_b64 = super().recv(frm, key)
+
+        data_bytes = base64.b64decode(data_b64)
         result = pickle.loads(data_bytes)
+
         logging.debug(
             f"Received data: from_rank={frm}, to_rank={self._rank}, key={key}"
         )

@@ -43,7 +43,7 @@ from mplang.backend.teeu import TEEHandler
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader
 from mplang.expr.evaluator import Evaluator
-from mplang.protos import executor_pb2, executor_pb2_grpc, mpir_pb2
+from mplang.protos.v1alpha1 import executor_pb2, executor_pb2_grpc, mpir_pb2
 from mplang.runtime.executor.resource import (
     ExecutionName,
     MessageName,

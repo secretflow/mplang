@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//   http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,7 +14,9 @@
 
 syntax = "proto3";
 
-package secretflow;
+package mplang.protos.v1alpha1;
+
+option go_package = "github.com/secretflow/mplang/protos/v1alpha1";
 
 // Custom attribute message (without name field since it's the map key)
 message AttrProto {
@@ -30,26 +32,26 @@ message AttrProto {
     INTS = 7;
     STRINGS = 8;
     FUNCTION = 10; // Textual function reference
-    GRAPH = 11;    // Nested function graph
+    GRAPH = 11; // Nested function graph
   }
 
-  AttrType type = 1;         // Type of the attribute
-  float f = 2;               // FLOAT
-  int64 i = 3;               // INT
-  string s = 4;              // STRING
-  bool b = 5;                // BOOL
-  bytes raw_bytes = 6;       // BYTES - for raw binary data
+  AttrType type = 1; // Type of the attribute
+  float f = 2; // FLOAT
+  int64 i = 3; // INT
+  string s = 4; // STRING
+  bool b = 5; // BOOL
+  bytes raw_bytes = 6; // BYTES - for raw binary data
   repeated float floats = 7; // FLOATS
-  repeated int64 ints = 8;   // INTS
-  repeated string strs = 9;  // STRINGS
-  FuncProto func = 10;       // FUNCTION - textual function reference
-  GraphProto graph = 11;     // GRAPH - nested function graph
+  repeated int64 ints = 8; // INTS
+  repeated string strs = 9; // STRINGS
+  FuncProto func = 10; // FUNCTION - textual function reference
+  GraphProto graph = 11; // GRAPH - nested function graph
 }
 
 message FuncProto {
-  string type = 1;       // Function type.
-  string name = 2;       // Function name
-  string body = 3;       // Function body as a string (e.g., Python code)
+  string type = 1; // Function type.
+  string name = 2; // Function name
+  string body = 3; // Function body as a string (e.g., Python code)
   string doc_string = 4; // Documentation string
   map<string, AttrProto> attrs = 5; // Function attributes
 }
@@ -57,26 +59,26 @@ message FuncProto {
 // Data type enumeration
 enum DataType {
   UNDEFINED = 0;
-  U8 = 1;          // uint8_t
-  I8 = 2;          // int8_t
-  U16 = 3;         // uint16_t
-  I16 = 4;         // int16_t
-  U32 = 5;         // uint32_t
-  I32 = 6;         // int32_t
-  U64 = 7;         // uint64_t
-  I64 = 8;         // int64_t
-  F16 = 9;         // float16
-  F32 = 10;        // float32
-  F64 = 11;        // double
-  STRING = 12;     // string (table only)
-  BOOL = 13;       // bool
-  COMPLEX64 = 14;  // complex with float32 real and imaginary components
+  U8 = 1; // uint8_t
+  I8 = 2; // int8_t
+  U16 = 3; // uint16_t
+  I16 = 4; // int16_t
+  U32 = 5; // uint32_t
+  I32 = 6; // int32_t
+  U64 = 7; // uint64_t
+  I64 = 8; // int64_t
+  F16 = 9; // float16
+  F32 = 10; // float32
+  F64 = 11; // double
+  STRING = 12; // string (table only)
+  BOOL = 13; // bool
+  COMPLEX64 = 14; // complex with float32 real and imaginary components
   COMPLEX128 = 15; // complex with float64 real and imaginary components
-  BFLOAT16 = 16;   // bfloat16
-  DATE = 17;       // date (table only)
-  TIME = 18;       // time (table only)
-  TIMESTAMP = 19;  // timestamp (table only)
-  JSON = 20;       // json (table only)
+  BFLOAT16 = 16; // bfloat16
+  DATE = 17; // date (table only)
+  TIME = 18; // time (table only)
+  TIMESTAMP = 19; // timestamp (table only)
+  JSON = 20; // json (table only)
 }
 
 message TensorTypeProto {
@@ -106,16 +108,16 @@ message MPTypeProto {
 message NodeProto {
   string op_type = 1;
   string name = 2;
-  repeated string inputs = 3;         // {name:index}
+  repeated string inputs = 3; // {name:index}
   repeated MPTypeProto outs_info = 5; //
   map<string, AttrProto> attrs = 4;
   string doc_string = 6;
 }
 
 message VersionInfo {
-  int32 major = 1;  // Major version, incompatible changes
-  int32 minor = 2;  // Minor version, backward compatible changes
-  int32 patch = 3;  // Patch version, bug fixes
+  int32 major = 1; // Major version, incompatible changes
+  int32 minor = 2; // Minor version, backward compatible changes
+  int32 patch = 3; // Patch version, bug fixes
   string extra = 4; // Extra information, like "beta", "rc1", etc.
 }
 

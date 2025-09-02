@@ -11,10 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # For TestPyPI Trusted Publishing if available
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -28,13 +29,13 @@ jobs:
 
       - name: Show automatically generated version
         run: |
-          echo "Development version will be: $(hatch version)"
+          echo "Development version: $(hatch version)"
 
       - name: Build package
         run: hatch build
 
-      - name: Publish package to TestPyPI
-        run: hatch publish -r testpypi
+      - name: Publish to TestPyPI
+        run: hatch publish -r test
         env:
           HATCH_INDEX_USER: __token__
           HATCH_INDEX_AUTH: ${{ secrets.TEST_PYPI_API_TOKEN }}

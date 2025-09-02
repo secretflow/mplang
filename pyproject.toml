@@ -21,10 +21,11 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "spu==0.9.4.dev20250618",  # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
-    "grpcio==1.56.2",
-    "grpcio-tools==1.56.2",
-    "protobuf>=4.21.6,<5.0",
+    "spu==0.9.4.dev20250827",  # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=5.0,<6.0",
+    "typing_extensions",
     "ibis-framework==10.8.0",
     "sqlglot==27.7.0",         # for ibis parse_sql
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
@@ -62,12 +63,10 @@ examples = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
-force-include = { "protos" = "mplang/protos" }
 
 [tool.hatch.build.targets.sdist]
 include = [
     "/mplang",
-    "/protos",
     "/scripts",
     "/examples",
     "/tests",
@@ -80,11 +79,8 @@ include = [
 [tool.hatch.version]
 source = "vcs"
 
-[tool.hatch.publish.repos.testpypi]
-url = "https://test.pypi.org/legacy/"
-
-[tool.hatch.publish.repos.pypi]
-url = "https://upload.pypi.org/legacy/"
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting
@@ -158,8 +154,8 @@ disallow_untyped_defs = true
 disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
-# ignore errors in all files in `mplang/protos`
-module = ["mplang.protos.*"]
+# ignore errors in generated protobuf files
+module = ["mplang.protos.v1alpha1.*"]
 ignore_errors = true
 
 [tool.pytest.ini_options]
@@ -168,3 +164,8 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--strict-markers --strict-config"
+
+# Convenience scripts (run with `hatch run <name>` or `uvx hatch run <name>`)
+[tool.hatch.envs.default.scripts]
+# API Linter using descriptor set for reliable import resolution and detailed output
+api-lint = "bash -lc 'buf build -o /tmp/mplang-descriptors.binpb && api-linter --set-exit-status --output-format text --descriptor-set-in /tmp/mplang-descriptors.binpb $(git ls-files \"protos/**/*.proto\")'"

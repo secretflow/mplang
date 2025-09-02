@@ -49,9 +49,7 @@ def start_servers():
     # Start distributed servers for driver tests
     ports = [9001, 9002, 9003]
     for port in ports:
-        process = multiprocessing.Process(
-            target=run_distributed_server, args=(port,)
-        )
+        process = multiprocessing.Process(target=run_distributed_server, args=(port,))
         process.daemon = True
         distributed_server_processes[port] = process
         process.start()

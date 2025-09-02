@@ -181,9 +181,9 @@ class HttpDriver(InterpContext):
         for name, var in bindings.items():
             if var.ctx is not self:
                 raise ValueError(f"Variable {name} not in this context, got {var.ctx}.")
-            assert isinstance(
-                var, HttpDriverVar
-            ), f"Expected HttpDriverVar, got {type(var)}"
+            assert isinstance(var, HttpDriverVar), (
+                f"Expected HttpDriverVar, got {type(var)}"
+            )
             var_names.append(name)
             party_symbol_names.append(var.symbol_name)
 

@@ -130,9 +130,9 @@ def test_simple_addition_e2e(http_driver):
     # Verify result - all 5 parties should get the same result
     expected = x + y
     for i, actual in enumerate(fetched):
-        assert np.allclose(
-            actual, expected
-        ), f"Mismatch at rank {i}: {actual} vs {expected}"
+        assert np.allclose(actual, expected), (
+            f"Mismatch at rank {i}: {actual} vs {expected}"
+        )
 
 
 def test_secure_comparison_e2e(http_driver):
@@ -171,9 +171,9 @@ def test_secure_comparison_e2e(http_driver):
     # Verify result - all 5 parties should get the same result
     expected = x > y  # Should be True since 5.0 > 3.0
     for i in range(5):
-        assert (
-            fetched[i] == expected
-        ), f"Mismatch at rank {i}: {fetched[i]} vs {expected}"
+        assert fetched[i] == expected, (
+            f"Mismatch at rank {i}: {fetched[i]} vs {expected}"
+        )
 
 
 def test_three_way_comparison_e2e(http_driver):

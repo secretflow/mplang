@@ -270,7 +270,7 @@ class CommunicatorBase(ICommunicator):
     def onSent(self, frm: int, key: str, data: Any) -> None:
         """Called when a key is sent to self"""
         with self._cond:
-            assert key not in self._msgboxes, f"{key} exist {self._msgboxes.keys()}"
             mkey = (frm, key)
+            assert mkey not in self._msgboxes, f"{mkey} exist {self._msgboxes.keys()}"
             self._msgboxes[mkey] = data
             self._cond.notify_all()

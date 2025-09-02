@@ -19,15 +19,12 @@ Its sole responsibility is to handle inter-party data exchange (send/recv).
 
 import base64
 import logging
-import uuid
 from typing import Any
 
 import cloudpickle as pickle
 import httpx
 
 from mplang.core.comm import CommunicatorBase
-
-logger = logging.getLogger(__name__)
 
 
 class HttpCommunicator(CommunicatorBase):
@@ -36,7 +33,7 @@ class HttpCommunicator(CommunicatorBase):
         self.session_name = session_name
         self.endpoints = endpoints
         self._counter = 0
-        logger.info(
+        logging.info(
             f"HttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={endpoints}"
         )
 
@@ -50,10 +47,9 @@ class HttpCommunicator(CommunicatorBase):
         """Sends data to a peer party by POSTing to its /comm/send endpoint."""
         target_endpoint = self.endpoints[to]
         url = f"{target_endpoint}/sessions/{self.session_name}/comm/send"
-        logger.info(
+        logging.debug(
             f"Sending data: from_rank={self._rank}, to_rank={to}, key={key}, target_url={url}"
         )
-        logger.debug(f"Data to send: {data}")
 
         try:
             # Use cloudpickle for robust serialization of complex Python objects
@@ -66,32 +62,27 @@ class HttpCommunicator(CommunicatorBase):
                 "data": data_b64,
                 "key": key,
             }
-            logger.debug(f"Request payload: {request_data}")
 
             response = httpx.post(url, json=request_data, timeout=60)
-            logger.info(f"Send response: status={response.status_code}")
+            logging.debug(f"Send response: status={response.status_code}")
             if response.status_code != 200:
-                logger.error(f"Send failed: {response.text}")
+                logging.error(f"Send failed: {response.text}")
             response.raise_for_status()
-            logger.info(
-                f"Send completed successfully: from_rank={self._rank}, to_rank={to}, key={key}"
-            )
         except httpx.RequestError as e:
-            logger.error(
+            logging.error(
                 f"Send failed with exception: from_rank={self._rank}, to_rank={to}, key={key}, error={e}"
             )
             raise OSError(f"Failed to send data to rank {to}") from e
 
     def recv(self, frm: int, key: str) -> Any:
         """Wait until the key is set, returns the value. Override to add logging."""
-        logger.info(
+        logging.debug(
             f"Waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
         # The actual data is stored as bytes, so we need to deserialize it
         data_bytes = super().recv(frm, key)
         result = pickle.loads(data_bytes)
-        logger.info(f"Received data: from_rank={frm}, to_rank={self._rank}, key={key}")
-        logger.debug(f"Received data content: {result}")
+        logging.debug(
+            f"Received data: from_rank={frm}, to_rank={self._rank}, key={key}"
+        )
         return result
-
-    # recv() method is inherited from CommunicatorBase

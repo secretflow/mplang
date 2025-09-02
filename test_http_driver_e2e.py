@@ -29,14 +29,14 @@ import uvicorn
 
 import mplang
 import mplang.simp as simp
-
-# Configure logging to see detailed error information
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 import mplang.smpc as smpc
 from mplang.runtime.http_backend.driver import HttpDriver
 from mplang.runtime.http_backend.server import app
+
+# Configure logging to see detailed error information
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def _run_simple_addition_test(driver: HttpDriver):

@@ -22,108 +22,188 @@ option go_package = "github.com/secretflow/mplang/protos/v1alpha1";
 message AttrProto {
   // Define possible attribute types
   enum AttrType {
+    // Undefined attribute type
     UNDEFINED = 0;
+    // Single float value
     FLOAT = 1;
+    // Single integer value
     INT = 2;
+    // Single string value
     STRING = 3;
+    // Single boolean value
     BOOL = 4;
+    // Binary data
     BYTES = 5;
+    // Array of float values
     FLOATS = 6;
+    // Array of integer values
     INTS = 7;
+    // Array of string values
     STRINGS = 8;
-    FUNCTION = 10; // Textual function reference
-    GRAPH = 11; // Nested function graph
+    // Textual function reference
+    FUNCTION = 10;
+    // Nested function graph
+    GRAPH = 11;
   }
 
-  AttrType type = 1; // Type of the attribute
-  float f = 2; // FLOAT
-  int64 i = 3; // INT
-  string s = 4; // STRING
-  bool b = 5; // BOOL
-  bytes raw_bytes = 6; // BYTES - for raw binary data
-  repeated float floats = 7; // FLOATS
-  repeated int64 ints = 8; // INTS
-  repeated string strs = 9; // STRINGS
-  FuncProto func = 10; // FUNCTION - textual function reference
-  GraphProto graph = 11; // GRAPH - nested function graph
+  // Type of the attribute
+  AttrType type = 1;
+  // FLOAT value
+  float f = 2;
+  // INT value
+  int64 i = 3;
+  // STRING value
+  string s = 4;
+  // BOOL value
+  bool b = 5;
+  // BYTES - for raw binary data
+  bytes raw_bytes = 6;
+  // FLOATS - array of float values
+  repeated float floats = 7;
+  // INTS - array of integer values
+  repeated int64 ints = 8;
+  // STRINGS - array of string values
+  repeated string strs = 9;
+  // FUNCTION - textual function reference
+  FuncProto func = 10;
+  // GRAPH - nested function graph
+  GraphProto graph = 11;
 }
 
+// Function prototype message
 message FuncProto {
-  string type = 1; // Function type.
-  string name = 2; // Function name
-  string body = 3; // Function body as a string (e.g., Python code)
-  string doc_string = 4; // Documentation string
-  map<string, AttrProto> attrs = 5; // Function attributes
+  // Function type
+  string type = 1;
+  // Function name
+  string name = 2;
+  // Function body as a string (e.g., Python code)
+  string body = 3;
+  // Documentation string
+  string doc_string = 4;
+  // Function attributes
+  map<string, AttrProto> attrs = 5;
 }
 
 // Data type enumeration
 enum DataType {
+  // Undefined data type
   UNDEFINED = 0;
-  U8 = 1; // uint8_t
-  I8 = 2; // int8_t
-  U16 = 3; // uint16_t
-  I16 = 4; // int16_t
-  U32 = 5; // uint32_t
-  I32 = 6; // int32_t
-  U64 = 7; // uint64_t
-  I64 = 8; // int64_t
-  F16 = 9; // float16
-  F32 = 10; // float32
-  F64 = 11; // double
-  STRING = 12; // string (table only)
-  BOOL = 13; // bool
-  COMPLEX64 = 14; // complex with float32 real and imaginary components
-  COMPLEX128 = 15; // complex with float64 real and imaginary components
-  BFLOAT16 = 16; // bfloat16
-  DATE = 17; // date (table only)
-  TIME = 18; // time (table only)
-  TIMESTAMP = 19; // timestamp (table only)
-  JSON = 20; // json (table only)
+  // uint8_t
+  U8 = 1;
+  // int8_t
+  I8 = 2;
+  // uint16_t
+  U16 = 3;
+  // int16_t
+  I16 = 4;
+  // uint32_t
+  U32 = 5;
+  // int32_t
+  I32 = 6;
+  // uint64_t
+  U64 = 7;
+  // int64_t
+  I64 = 8;
+  // float16
+  F16 = 9;
+  // float32
+  F32 = 10;
+  // double
+  F64 = 11;
+  // string (table only)
+  STRING = 12;
+  // bool
+  BOOL = 13;
+  // complex with float32 real and imaginary components
+  COMPLEX64 = 14;
+  // complex with float64 real and imaginary components
+  COMPLEX128 = 15;
+  // bfloat16
+  BFLOAT16 = 16;
+  // date (table only)
+  DATE = 17;
+  // time (table only)
+  TIME = 18;
+  // timestamp (table only)
+  TIMESTAMP = 19;
+  // json (table only)
+  JSON = 20;
 }
 
+// Tensor type definition
 message TensorTypeProto {
+  // Data type of the tensor elements
   DataType dtype = 1;
+  // Shape dimensions of the tensor
   repeated int64 shape_dims = 2;
 }
 
+// Table type definition
 message TableTypeProto {
+  // Column definition within a table
   message Column {
+    // Name of the column
     string name = 1;
+    // Data type of the column
     DataType dtype = 2;
   }
 
+  // List of columns in the table
   repeated Column columns = 1;
 }
 
+// Multi-party type definition
 message MPTypeProto {
+  // Type specification
   oneof type_spec {
+    // Tensor type specification
     TensorTypeProto tensor_type = 1;
+    // Table type specification
     TableTypeProto table_type = 2;
   }
 
-  int64 pmask = 3; // party mask (-1 for dynamic mask, >=0 for static mask)
-  map<string, AttrProto> attrs = 4; // attributes
+  // Party mask (-1 for dynamic mask, >=0 for static mask)
+  int64 pmask = 3;
+  // Additional attributes
+  map<string, AttrProto> attrs = 4;
 }
 
+// Node prototype definition
 message NodeProto {
+  // Operation type of the node
   string op_type = 1;
+  // Name of the node
   string name = 2;
-  repeated string inputs = 3; // {name:index}
-  repeated MPTypeProto outs_info = 5; //
+  // Input specifications in format {name:index}
+  repeated string inputs = 3;
+  // Output type information
+  repeated MPTypeProto outs_info = 5;
+  // Node attributes
   map<string, AttrProto> attrs = 4;
+  // Documentation string
   string doc_string = 6;
 }
 
+// Version information definition
 message VersionInfo {
-  int32 major = 1; // Major version, incompatible changes
-  int32 minor = 2; // Minor version, backward compatible changes
-  int32 patch = 3; // Patch version, bug fixes
-  string extra = 4; // Extra information, like "beta", "rc1", etc.
+  // Major version, incompatible changes
+  int32 major = 1;
+  // Minor version, backward compatible changes
+  int32 minor = 2;
+  // Patch version, bug fixes
+  int32 patch = 3;
+  // Extra information, like "beta", "rc1", etc.
+  string extra = 4;
 }
 
+// Graph prototype definition
 message GraphProto {
+  // Version information
   VersionInfo version = 1;
+  // List of nodes in the graph
   repeated NodeProto nodes = 2;
-  repeated string outputs = 3; // {name:index}
+  // Output specifications in format {name:index}
+  repeated string outputs = 3;
+  // Graph attributes
   map<string, AttrProto> attrs = 4;
 }

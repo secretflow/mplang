@@ -88,14 +88,17 @@ service ExecutorService {
     };
   }
 
+  // Retrieves a session by its resource name.
   rpc GetSession(GetSessionRequest) returns (Session) {
     option (google.api.http) = {get: "/v1/{name=sessions/*}"};
   }
 
+  // Lists sessions with pagination support.
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
   }
 
+  // Deletes a session by its resource name.
   rpc DeleteSession(DeleteSessionRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=sessions/*}"};
   }
@@ -108,16 +111,19 @@ service ExecutorService {
     };
   }
 
+  // Retrieves an execution by its resource name.
   rpc GetExecution(GetExecutionRequest) returns (Execution) {
     option (google.api.http) = {get: "/v1/{name=sessions/*/executions/*}"};
   }
 
+  // Lists executions within a session with pagination support.
   rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {
     option (google.api.http) = {get: "/v1/{parent=sessions/*}/executions"};
   }
 
   // No UpdateExecution
 
+  // Deletes an execution by its resource name.
   rpc DeleteExecution(DeleteExecutionRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=sessions/*/executions/*}"};
   }
@@ -131,6 +137,7 @@ service ExecutorService {
   }
 }
 
+// Request message for inter-party communication.
 message CommXchgRequest {
   // The resource name of the message to send.
   // "sessions/{session_id}/executions/{execution_id}/msgs/{msg_id}/frm/{rank}".
@@ -309,58 +316,78 @@ message DeleteSymbolRequest {
 
 // Request message for creating a session.
 message CreateSessionRequest {
+  // The parent resource where this session will be created.
+  // Currently not used, leave empty.
   string parent = 1;
 
+  // The session to create.
   Session session = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Request message for retrieving a session.
 message GetSessionRequest {
+  // The resource name of the session to retrieve.
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Request message for listing sessions.
 message ListSessionsRequest {
+  // The maximum number of sessions to return.
   int32 page_size = 1;
+  // The token to retrieve the next page of results.
   string page_token = 2;
 }
 
 // Response message for listing sessions.
 message ListSessionsResponse {
+  // The list of sessions.
   repeated Session sessions = 1;
+  // The token to retrieve the next page of results.
   string next_page_token = 2;
 }
 
 // Request message for deleting a session.
 message DeleteSessionRequest {
+  // The resource name of the session to delete.
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Request message for creating an execution.
 message CreateExecutionRequest {
+  // The parent session where this execution will be created.
+  // Format: "sessions/{session_id}".
   string parent = 1;
+  // The execution to create.
   Execution execution = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Request message for retrieving an execution.
 message GetExecutionRequest {
+  // The resource name of the execution to retrieve.
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Request message for listing executions.
 message ListExecutionsRequest {
+  // The parent session whose executions are to be listed.
+  // Format: "sessions/{session_id}".
   string parent = 1;
+  // The maximum number of executions to return.
   int32 page_size = 2;
+  // The token to retrieve the next page of results.
   string page_token = 3;
 }
 
 // Response message for listing executions.
 message ListExecutionsResponse {
+  // The list of executions.
   repeated Execution executions = 1;
+  // The token to retrieve the next page of results.
   string next_page_token = 2;
 }
 
 // Request message for deleting an execution.
 message DeleteExecutionRequest {
+  // The resource name of the execution to delete.
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 }

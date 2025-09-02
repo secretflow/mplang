@@ -171,15 +171,18 @@ def execute_computation(
     # Create handlers (similar to executor/server.py)
     import spu.libspu as libspu
 
+    # This config is misleading, it configs the runtime as well as spu IO.
     spu_config = libspu.RuntimeConfig(
         protocol=libspu.ProtocolKind(session.spu_protocol),
         field=libspu.FieldType(session.spu_field),
         fxp_fraction_bits=18,
     )
 
-    spu_mask = Mask(session.spu_mask)
     spu_comm: LinkCommunicator | None = None
+
     if session.spu_mask != -1:
+        # -1 means not SPU runtime, but spu IO should always exist.
+        spu_mask = Mask(session.spu_mask)
         if rank in spu_mask:
             spu_addrs: list[str] = []
             for r, addr in enumerate(session.communicator.endpoints):
@@ -191,7 +194,10 @@ def execute_computation(
             spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
 
     # Use the world size from the communicator
-    spu_handler = SpuHandler(spu_mask.num_parties(), spu_config)
+    spu_handler = SpuHandler(
+        spu_comm.world_size if spu_comm is not None else 0,
+        spu_config,
+    )
     if spu_comm is not None:
         spu_handler.set_link_context(spu_comm)
 

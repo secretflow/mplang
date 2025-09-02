@@ -26,7 +26,7 @@ import base64
 from typing import Any
 
 import cloudpickle as pickle
-import requests
+import httpx
 
 
 class ExecutionStatus:
@@ -50,17 +50,22 @@ class HttpExecutorClient:
         """
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
+        self._client = httpx.AsyncClient(base_url=self.endpoint, timeout=self.timeout)
+
+    async def close(self):
+        """Close the underlying HTTP client."""
+        await self._client.aclose()
 
     # Session Management
-    def create_session(
+    async def create_session(
         self,
         name: str,
         rank: int,
         endpoints: list[str],
         *,
         spu_mask: int = -1,
-        spu_protocol: int = 0,
-        spu_field: int = 0,
+        spu_protocol: int = 2,  # SEMI2K
+        spu_field: int = 2,  # FM64
     ) -> str:
         """Create a new session.
 
@@ -78,7 +83,7 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If session creation fails
         """
-        url = f"{self.endpoint}/sessions"
+        url = "/sessions"
         payload: dict[str, Any] = {
             "name": name,
             "rank": rank,
@@ -89,13 +94,13 @@ class HttpExecutorClient:
         }
 
         try:
-            response = requests.post(url, json=payload, timeout=self.timeout)
+            response = await self._client.post(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(f"Failed to create session: {e}") from e
 
-    def get_session(self, session_name: str) -> dict[str, Any]:
+    async def get_session(self, session_name: str) -> dict[str, Any]:
         """Get session information.
 
         Args:
@@ -107,17 +112,17 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If session retrieval fails
         """
-        url = f"{self.endpoint}/sessions/{session_name}"
+        url = f"/sessions/{session_name}"
 
         try:
-            response = requests.get(url, timeout=self.timeout)
+            response = await self._client.get(url)
             response.raise_for_status()
             return dict(response.json())
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(f"Failed to get session {session_name}: {e}") from e
 
     # Computation Management
-    def create_computation(
+    async def create_and_execute_computation(
         self,
         session_name: str,
         program: bytes,
@@ -138,7 +143,7 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If computation creation fails
         """
-        url = f"{self.endpoint}/sessions/{session_name}/computations"
+        url = f"/sessions/{session_name}/computations"
         program_data = base64.b64encode(program).decode("utf-8")
         payload = {
             "mpprogram": program_data,
@@ -147,13 +152,13 @@ class HttpExecutorClient:
         }
 
         try:
-            response = requests.post(url, json=payload, timeout=self.timeout)
+            response = await self._client.post(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(f"Failed to create computation: {e}") from e
 
-    def get_computation(
+    async def get_computation(
         self, session_name: str, computation_name: str
     ) -> dict[str, Any]:
         """Get computation information.
@@ -168,19 +173,19 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If computation retrieval fails
         """
-        url = f"{self.endpoint}/sessions/{session_name}/computations/{computation_name}"
+        url = f"/sessions/{session_name}/computations/{computation_name}"
 
         try:
-            response = requests.get(url, timeout=self.timeout)
+            response = await self._client.get(url)
             response.raise_for_status()
             return dict(response.json())
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(
                 f"Failed to get computation {computation_name}: {e}"
             ) from e
 
     # Symbol Management
-    def create_symbol(
+    async def create_symbol(
         self, session_name: str, symbol_name: str, data: Any, mptype: dict | None = None
     ) -> None:
         """Create a symbol with data.
@@ -194,7 +199,7 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If symbol creation fails
         """
-        url = f"{self.endpoint}/sessions/{session_name}/symbols"
+        url = f"/sessions/{session_name}/symbols"
 
         # Serialize data
         data_bytes = pickle.dumps(data)
@@ -203,12 +208,12 @@ class HttpExecutorClient:
         payload = {"name": symbol_name, "data": data_b64, "mptype": mptype or {}}
 
         try:
-            response = requests.post(url, json=payload, timeout=self.timeout)
+            response = await self._client.post(url, json=payload)
             response.raise_for_status()
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(f"Failed to create symbol {symbol_name}: {e}") from e
 
-    def get_symbol(self, session_name: str, symbol_name: str) -> Any:
+    async def get_symbol(self, session_name: str, symbol_name: str) -> Any:
         """Get symbol data.
 
         Args:
@@ -222,10 +227,10 @@ class HttpExecutorClient:
             RuntimeError: If symbol retrieval fails
         """
         # For simple symbol names (no slashes), we can use them directly in the URL
-        url = f"{self.endpoint}/sessions/{session_name}/symbols/{symbol_name}"
+        url = f"/sessions/{session_name}/symbols/{symbol_name}"
 
         try:
-            response = requests.get(url, timeout=self.timeout)
+            response = await self._client.get(url)
             response.raise_for_status()
             symbol_data = response.json()
 
@@ -233,10 +238,10 @@ class HttpExecutorClient:
             data_bytes = base64.b64decode(symbol_data["data"])
             return pickle.loads(data_bytes)
 
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(f"Failed to get symbol {symbol_name}: {e}") from e
 
-    def list_symbols(self, session_name: str) -> list[str]:
+    async def list_symbols(self, session_name: str) -> list[str]:
         """List all symbols in a session.
 
         Args:
@@ -248,11 +253,11 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If symbol listing fails
         """
-        url = f"{self.endpoint}/sessions/{session_name}/symbols"
+        url = f"/sessions/{session_name}/symbols"
 
         try:
-            response = requests.get(url, timeout=self.timeout)
+            response = await self._client.get(url)
             response.raise_for_status()
             return list(response.json()["symbols"])
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise RuntimeError(f"Failed to list symbols: {e}") from e

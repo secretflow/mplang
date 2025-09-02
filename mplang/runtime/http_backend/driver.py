@@ -21,6 +21,7 @@ using REST APIs for distributed multi-party computation coordination.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import uuid
 from collections.abc import Sequence
@@ -95,12 +96,6 @@ class HttpDriver(InterpContext):
         self.party_addrs = node_addrs
         self.timeout = timeout
 
-        # Create HTTP clients for each endpoint
-        self.clients = {}
-        for key, endpoint in node_addrs.items():
-            rank = int(key) if isinstance(key, str) else key
-            self.clients[rank] = HttpExecutorClient(endpoint, timeout)
-
         self._session_id: str | None = None
         self._counter = 0
 
@@ -115,43 +110,63 @@ class HttpDriver(InterpContext):
 
         super().__init__(self.world_size, executor_attrs)
 
+    def _create_clients(self) -> dict[int, HttpExecutorClient]:
+        """Create HTTP clients for all endpoints."""
+        clients = {}
+        for key, endpoint in self.party_addrs.items():
+            rank = int(key) if isinstance(key, str) else key
+            clients[rank] = HttpExecutorClient(endpoint, self.timeout)
+        return clients
+
+    async def _close_clients(self, clients: dict[int, HttpExecutorClient]):
+        """Close all provided HTTP clients."""
+        await asyncio.gather(*[client.close() for client in clients.values()])
+
     def new_name(self, prefix: str = "var") -> str:
         """Generate a unique execution name."""
         name = f"{prefix}_{self._counter}"
         self._counter += 1
         return name
 
-    def get_or_create_session(self) -> str:
+    async def _get_or_create_session(self) -> str:
         """Get existing session or create a new one across all HTTP servers."""
         if self._session_id is None:
             new_session_id = new_uuid()
-
-            # NOTE: Assumes node_addrs in __init__ was provided with keys in rank order.
-            # Python dictionaries preserve insertion order since 3.7+.
             endpoints_list = list(self.party_addrs.values())
 
-            # Create session on all HTTP servers using clients
-            for rank, client in self.clients.items():
-                try:
-                    session_id = client.create_session(
+            # Create temporary clients for session creation
+            clients = self._create_clients()
+            try:
+                # Create session on all HTTP servers concurrently
+                tasks = []
+                for rank, client in clients.items():
+                    task = client.create_session(
                         name=new_session_id,
                         rank=rank,
                         endpoints=endpoints_list,
                     )
-                    assert session_id == new_session_id
+                    tasks.append(task)
+
+                try:
+                    results = await asyncio.gather(*tasks)
+                    for session_id in results:
+                        assert session_id == new_session_id
+                    self._session_id = new_session_id
                 except RuntimeError as e:
                     raise RuntimeError(
-                        f"Failed to create session on rank {rank}: {e}"
+                        f"Failed to create session on one or more parties: {e}"
                     ) from e
-
-            self._session_id = new_session_id
+            finally:
+                await self._close_clients(clients)
 
         assert self._session_id is not None
         return self._session_id
 
-    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
-        """Evaluate an expression using distributed HTTP execution."""
-        session_id = self.get_or_create_session()
+    async def _evaluate(
+        self, expr: Expr, bindings: dict[str, MPObject]
+    ) -> Sequence[MPObject]:
+        """Async implementation to evaluate an expression."""
+        session_id = await self._get_or_create_session()
 
         # Prepare input names from bindings
         var_names = []
@@ -165,67 +180,76 @@ class HttpDriver(InterpContext):
             var_names.append(name)
             party_symbol_names.append(var.symbol_name)
 
-        # Create variable name mapping from DAG variable names to remote symbol names
         var_name_mapping = dict(zip(var_names, party_symbol_names, strict=False))
 
-        # Serialize the expression using mpir.proto
         writer = Writer(var_name_mapping)
         program_proto = writer.dumps(expr)
 
-        # Generate output names for the execution
-        # Use simple symbol names instead of full paths for easier URL handling
         output_symbols = [self.new_name() for _ in range(expr.num_outputs)]
 
-        # Create computation on all HTTP servers using clients
-        for rank, client in self.clients.items():
-            try:
-                input_names = (
-                    party_symbol_names  # Use the already extracted symbol names
-                )
-                output_names = output_symbols  # Use simple names directly
-                client.create_computation(
+        # Create temporary clients for computation execution
+        clients = self._create_clients()
+        try:
+            # Concurrently create and execute computation on all parties
+            tasks = []
+            for _rank, client in clients.items():
+                task = client.create_and_execute_computation(
                     session_id,
                     program_proto.SerializeToString(),
-                    input_names,
-                    output_names,
+                    party_symbol_names,
+                    output_symbols,
                 )
-                # For now, we don't track individual computation IDs per rank
+                tasks.append(task)
+
+            try:
+                await asyncio.gather(*tasks)
             except RuntimeError as e:
                 raise RuntimeError(
-                    f"Failed to create computation on rank {rank}: {e}"
+                    f"Failed to create and execute computation on one or more parties: {e}"
                 ) from e
+        finally:
+            await self._close_clients(clients)
 
         # Create HttpDriverVar objects for each output
         driver_vars = []
         for symbol_name, mptype in zip(output_symbols, expr.mptypes, strict=False):
-            driver_var = HttpDriverVar(
-                self,
-                symbol_name,
-                mptype,
-            )
+            driver_var = HttpDriverVar(self, symbol_name, mptype)
             driver_vars.append(driver_var)
 
         return driver_vars
 
-    def fetch(self, obj: MPObject) -> list[Any]:
-        """Fetch results from the distributed HTTP execution."""
+    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
+        """Evaluate an expression using distributed HTTP execution."""
+        return asyncio.run(self._evaluate(expr, bindings))
+
+    async def _fetch(self, obj: MPObject) -> list[Any]:
+        """Async implementation to fetch results."""
         if not isinstance(obj, HttpDriverVar):
             raise ValueError(f"Expected HttpDriverVar, got {type(obj)}")
 
-        # Fetch symbol by resource name from all HTTP servers using clients
-        results = []
-        for rank, client in self.clients.items():
+        session_id = self._session_id or "default"
+        symbol_full_name = obj.symbol_name
+
+        # Create temporary clients for fetching
+        clients = self._create_clients()
+        try:
+            # Concurrently fetch symbol from all parties
+            tasks = []
+            for _rank, client in clients.items():
+                task = client.get_symbol(session_id, symbol_full_name)
+                tasks.append(task)
+
             try:
-                # Use session-level symbol access
-                session_id = self._session_id or "default"
-                # Symbol name is already a simple string
-                symbol_full_name = obj.symbol_name
-                # For now, just use the full name as the symbol name - the server should handle this
-                result = client.get_symbol(session_id, symbol_full_name)
-                results.append(result)
+                # The results will be in the same order as the clients (ranks)
+                results = await asyncio.gather(*tasks)
+                return list(results)
             except RuntimeError as e:
                 raise RuntimeError(
-                    f"Failed to fetch symbol from rank {rank}: {e}"
+                    f"Failed to fetch symbol from one or more parties: {e}"
                 ) from e
+        finally:
+            await self._close_clients(clients)
 
-        return results
+    def fetch(self, obj: MPObject) -> list[Any]:
+        """Fetch results from the distributed HTTP execution."""
+        return asyncio.run(self._fetch(obj))

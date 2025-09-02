@@ -57,4 +57,4 @@ jobs:
 
       - name: buf breaking
         if: github.event_name == 'pull_request'
-        run: buf breaking --against '.git#branch=main'
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main"

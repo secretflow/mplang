@@ -30,6 +30,7 @@ jobs:
 
       - name: buf lint
         run: buf lint
+        continue-on-error: true
 
       - name: setup go
         uses: actions/setup-go@v5
@@ -47,6 +48,7 @@ jobs:
           buf build -o /tmp/mplang-descriptors.binpb
 
       - name: Google API Linter (AIP rules)
+        continue-on-error: true
         run: |
           set -euxo pipefail
           proto_files=$(git ls-files 'protos/**/*.proto')

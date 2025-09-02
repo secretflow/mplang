@@ -317,7 +317,6 @@ message DeleteSymbolRequest {
 // Request message for creating a session.
 message CreateSessionRequest {
   // The parent resource where this session will be created.
-  // Currently not used, leave empty.
   string parent = 1;
 
   // The session to create.

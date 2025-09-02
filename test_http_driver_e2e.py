@@ -89,6 +89,7 @@ def _run_millionaire_test(driver: HttpDriver):
         x = np.array([5.0])
         y = np.array([3.0])
 
+        @mplang.function
         def simple_compare():
             # Create constants
             x_const = simp.constant(x)

@@ -18,12 +18,12 @@ Its sole responsibility is to handle inter-party data exchange (send/recv).
 """
 
 import base64
-import json
 import logging
 import uuid
 from typing import Any
 
-import requests
+import cloudpickle as pickle
+import httpx
 
 from mplang.core.comm import CommunicatorBase
 
@@ -52,9 +52,9 @@ class HttpCommunicator(CommunicatorBase):
         logger.debug(f"Data to send: {data}")
 
         try:
-            # Encode data as base64 JSON
-            data_str = json.dumps(data)
-            data_b64 = base64.b64encode(data_str.encode()).decode()
+            # Use cloudpickle for robust serialization of complex Python objects
+            data_bytes = pickle.dumps(data)
+            data_b64 = base64.b64encode(data_bytes).decode("utf-8")
 
             request_data = {
                 "from_rank": self._rank,
@@ -64,7 +64,7 @@ class HttpCommunicator(CommunicatorBase):
             }
             logger.debug(f"Request payload: {request_data}")
 
-            response = requests.post(url, json=request_data, timeout=60)
+            response = httpx.post(url, json=request_data, timeout=60)
             logger.info(f"Send response: status={response.status_code}")
             if response.status_code != 200:
                 logger.error(f"Send failed: {response.text}")
@@ -72,7 +72,7 @@ class HttpCommunicator(CommunicatorBase):
             logger.info(
                 f"Send completed successfully: from_rank={self._rank}, to_rank={to}, key={key}"
             )
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             logger.error(
                 f"Send failed with exception: from_rank={self._rank}, to_rank={to}, key={key}, error={e}"
             )
@@ -83,7 +83,9 @@ class HttpCommunicator(CommunicatorBase):
         logger.info(
             f"Waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
-        result = super().recv(frm, key)
+        # The actual data is stored as bytes, so we need to deserialize it
+        data_bytes = super().recv(frm, key)
+        result = pickle.loads(data_bytes)
         logger.info(f"Received data: from_rank={frm}, to_rank={self._rank}, key={key}")
         logger.debug(f"Received data content: {result}")
         return result

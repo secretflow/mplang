@@ -106,6 +106,7 @@ class SessionResponse(BaseModel):
 
 
 class CreateComputationRequest(BaseModel):
+    computation_id: str  # name of the computation
     mpprogram: str  # Base64 encoded MPProgram proto
     input_names: list[str]  # Mandatory input symbol names
     output_names: list[str]  # Mandatory output symbol names
@@ -189,7 +190,9 @@ def create_and_execute_computation(
         raise InvalidRequestError("Failed to parse expression from protobuf")
 
     # Create the computation resource
-    computation = resource.create_computation(session_name, expr)
+    computation = resource.create_computation(
+        session_name, request.computation_id, expr
+    )
     # Execute with input/output names
     resource.execute_computation(
         session_name, computation.name, request.input_names, request.output_names
@@ -310,19 +313,16 @@ def comm_send(session_name: str, request: CommSendRequest) -> dict[str, str]:
             detail=f"Mismatched rank. Receiver rank is {session.communicator.rank}, but request is for {request.to_rank}",
         )
 
-    # Decode the base64 data back to original format
+    # Decode the base64 data back to bytes for the communicator
     try:
-        import json
-
-        data_str = base64.b64decode(request.data).decode()
-        data = json.loads(data_str)
-        logger.debug(f"Decoded data: {data}")
+        data_bytes = base64.b64decode(request.data)
+        logger.debug(f"Decoded {len(data_bytes)} bytes for key {request.key}")
     except Exception as e:
-        logger.error(f"Failed to decode data: {e}")
+        logger.error(f"Base64 decoding failed: {e}")
         raise HTTPException(
-            status_code=400, detail=f"Failed to decode data: {e}"
+            status_code=400, detail=f"Invalid base64 data: {e!s}"
         ) from e
 
     # Use the proper onSent mechanism from CommunicatorBase
-    session.communicator.onSent(request.from_rank, request.key, data)
+    session.communicator.onSent(request.from_rank, request.key, data_bytes)
     return {"status": "ok"}

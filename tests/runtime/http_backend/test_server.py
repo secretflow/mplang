@@ -66,6 +66,7 @@ def test_create_computation():
     response = client.post(
         "/sessions/test_session_2/computations",
         json={
+            "computation_id": "test_computation",
             "mpprogram": mpprogram_b64,
             "input_names": [],
             "output_names": ["result"],
@@ -78,6 +79,7 @@ def test_create_computation():
     response = client.post(
         "/sessions/non_existent_session/computations",
         json={
+            "computation_id": "test_computation_2",
             "mpprogram": mpprogram_b64,
             "input_names": [],
             "output_names": ["result"],

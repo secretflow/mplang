@@ -133,7 +133,8 @@ class HttpExecutorClient:
     # Computation Management
     async def create_and_execute_computation(
         self,
-        session_name: str,
+        session_id: str,
+        computation_id: str,
         program: bytes,
         input_names: list[str],
         output_names: list[str],
@@ -152,9 +153,10 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If computation creation fails
         """
-        url = f"/sessions/{session_name}/computations"
+        url = f"/sessions/{session_id}/computations"
         program_data = base64.b64encode(program).decode("utf-8")
         payload = {
+            "computation_id": computation_id,
             "mpprogram": program_data,
             "input_names": input_names,
             "output_names": output_names,
@@ -177,7 +179,7 @@ class HttpExecutorClient:
             raise RuntimeError(f"Failed to create computation: {e}") from e
 
     async def get_computation(
-        self, session_name: str, computation_name: str
+        self, session_id: str, computation_id: str
     ) -> dict[str, Any]:
         """Get computation information.
 
@@ -191,7 +193,7 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If computation retrieval fails
         """
-        url = f"/sessions/{session_name}/computations/{computation_name}"
+        url = f"/sessions/{session_id}/computations/{computation_id}"
 
         try:
             response = await self._client.get(url)
@@ -199,7 +201,7 @@ class HttpExecutorClient:
             return dict(response.json())
         except httpx.RequestError as e:
             raise RuntimeError(
-                f"Failed to get computation {computation_name}: {e}"
+                f"Failed to get computation {computation_id}: {e}"
             ) from e
 
     # Symbol Management

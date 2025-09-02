@@ -88,10 +88,6 @@ class Session:
 _sessions: dict[str, Session] = {}
 
 
-def gen_name(prefix: str) -> str:
-    return f"{prefix}-{uuid.uuid4().hex}"
-
-
 # Session Management
 def create_session(
     name: str,
@@ -125,15 +121,16 @@ def get_session(name: str) -> Session | None:
 
 
 # Computation Management
-def create_computation(session_name: str, expr: Expr) -> Computation:
+def create_computation(
+    session_name: str, computation_name: str, expr: Expr
+) -> Computation:
     """Creates a computation resource within a session."""
     session = get_session(session_name)
     if not session:
         raise ResourceNotFound(f"Session '{session_name}' not found.")
-    comp_name = gen_name("comp")
-    computation = Computation(comp_name, expr)
-    session.computations[comp_name] = computation
-    logging.info(f"Computation {comp_name} created for session {session_name}")
+    computation = Computation(computation_name, expr)
+    session.computations[computation_name] = computation
+    logging.info(f"Computation {computation_name} created for session {session_name}")
     return computation
 
 

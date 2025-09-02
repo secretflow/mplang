@@ -33,7 +33,13 @@ distributed_server_threads: dict[int, threading.Thread] = {}
 
 def run_distributed_server(port: int):
     """Function to run a uvicorn server on a specific port for distributed testing."""
-    config = uvicorn.Config(app, host="localhost", port=port, log_level="critical")
+    config = uvicorn.Config(
+        app,
+        host="localhost",
+        port=port,
+        log_level="critical",
+        ws="none"  # Disable websockets to avoid deprecation warnings
+    )
     server = uvicorn.Server(config)
     distributed_servers[port] = server
     server.run()
@@ -52,7 +58,7 @@ def start_servers():
         thread.start()
 
     # Give servers time to start up
-    time.sleep(3)
+    time.sleep(0.1)
 
     yield
 
@@ -78,11 +84,17 @@ def test_http_driver_initialization():
     assert driver.world_size == 3
     assert len(driver.party_addrs) == 3
 
-    # clients dictionary uses integer keys
-    assert len(driver.clients) == 3
-    assert 0 in driver.clients
-    assert 1 in driver.clients
-    assert 2 in driver.clients
+    # Test that _create_clients method works correctly
+    clients = driver._create_clients()
+    assert len(clients) == 3
+    assert 0 in clients
+    assert 1 in clients
+    assert 2 in clients
+
+    # Clean up clients
+    import asyncio
+
+    asyncio.run(driver._close_clients(clients))
 
 
 def test_session_creation():
@@ -94,13 +106,15 @@ def test_session_creation():
 
     driver = HttpDriver(node_addrs)
 
-    # Create session
-    session_id = driver.get_or_create_session()
+    # Create session using async method
+    import asyncio
+
+    session_id = asyncio.run(driver._get_or_create_session())
     assert isinstance(session_id, str)
     assert len(session_id) > 0
 
     # Should return same session ID on subsequent calls
-    session_id2 = driver.get_or_create_session()
+    session_id2 = asyncio.run(driver._get_or_create_session())
     assert session_id == session_id2
 
 

@@ -20,8 +20,8 @@ import multiprocessing
 import time
 from typing import Any
 
+import httpx
 import pytest
-import requests
 import uvicorn
 
 from mplang.runtime.http_backend.communicator import HttpCommunicator
@@ -34,7 +34,13 @@ distributed_server_processes: dict[int, multiprocessing.Process] = {}
 
 def run_distributed_server(port: int):
     """Function to run a uvicorn server on a specific port for distributed testing."""
-    config = uvicorn.Config(app, host="localhost", port=port, log_level="critical")
+    config = uvicorn.Config(
+        app,
+        host="localhost",
+        port=port,
+        log_level="critical",
+        ws="none"  # Disable websockets to avoid deprecation warnings
+    )
     server = uvicorn.Server(config)
     distributed_servers[port] = server
     server.run()
@@ -90,7 +96,7 @@ def test_distributed_send_recv():
     ]
 
     for endpoint in endpoints:
-        response = requests.get(f"{endpoint}/health")
+        response = httpx.get(f"{endpoint}/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
@@ -100,7 +106,7 @@ def test_distributed_send_recv():
 
     for i, endpoint in enumerate(endpoints):
         rank = i  # Server 0 gets rank 0, server 1 gets rank 1
-        response = requests.post(
+        response = httpx.post(
             f"{endpoint}/sessions",
             json={
                 "name": session_name,
@@ -131,7 +137,7 @@ def test_distributed_multiple_messages():
         session_name = f"multi_session_{session_idx}"
 
         for rank, endpoint in enumerate(base_endpoints):
-            response = requests.post(
+            response = httpx.post(
                 f"{endpoint}/sessions",
                 json={"name": session_name, "rank": rank, "endpoints": base_endpoints},
             )
@@ -215,7 +221,13 @@ def run_party_e2e_process(rank: int, return_dict: dict):
         # Start server in background thread
         def start_server():
             logger.info(f"Starting HTTP server on port {port}")
-            config = uvicorn.Config(app, host="localhost", port=port, log_level="error")
+            config = uvicorn.Config(
+                app,
+                host="localhost",
+                port=port,
+                log_level="error",
+                ws="none"  # Disable websockets to avoid deprecation warnings
+            )
             server = uvicorn.Server(config)
             server.run()
 
@@ -225,7 +237,7 @@ def run_party_e2e_process(rank: int, return_dict: dict):
         # Wait for server to be ready
         for _ in range(30):  # Try for 30 seconds
             try:
-                response = requests.get(f"http://localhost:{port}/health", timeout=1)
+                response = httpx.get(f"http://localhost:{port}/health", timeout=1)
                 if response.status_code == 200:
                     logger.info(f"Party {rank} server ready")
                     break

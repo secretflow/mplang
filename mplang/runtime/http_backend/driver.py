@@ -199,9 +199,11 @@ class HttpDriver(InterpContext):
         try:
             # Concurrently create and execute computation on all parties
             tasks = []
+            computation_id = new_uuid()
             for _rank, client in clients.items():
                 task = client.create_and_execute_computation(
                     session_id,
+                    computation_id,
                     program_proto.SerializeToString(),
                     party_symbol_names,
                     output_symbols,

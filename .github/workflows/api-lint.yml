@@ -28,32 +28,28 @@ jobs:
       - name: buf format
         run: buf format --diff --exit-code
 
-  #    - name: buf lint
-  #      run: buf lint
+      - name: buf lint
+        run: buf lint
 
-  # - name: Install Google API Linter
-  #   run: |
-  #     set -euxo pipefail
-  #     LINTER_VERSION=1.70.2
-  #     curl -sSL -o api-linter.tar.gz \
-  #       https://github.com/googleapis/api-linter/releases/download/v${LINTER_VERSION}/api-linter-linux-amd64-${LINTER_VERSION}.tar.gz
-  #     tar -xzf api-linter.tar.gz
-  #     sudo mv api-linter /usr/local/bin/api-linter
-  #     api-linter --version
+      - name: Install Google API Linter
+        run: |
+          set -euxo pipefail
+          go install github.com/googleapis/api-linter/cmd/api-linter@1.70.2
+          api-linter --version
 
-  # - name: Build descriptor set
-  #   run: |
-  #     buf build -o /tmp/mplang-descriptors.binpb
+      - name: Build descriptor set
+        run: |
+          buf build -o /tmp/mplang-descriptors.binpb
 
-  # - name: Google API Linter (AIP rules)
-  #   run: |
-  #     set -euxo pipefail
-  #     proto_files=$(git ls-files 'protos/**/*.proto')
-  #     if [ -z "$proto_files" ]; then
-  #       echo "No protos found"; exit 0; fi
-  #     api-linter --set-exit-status --output-format text \
-  #       --descriptor-set-in /tmp/mplang-descriptors.binpb \
-  #       $proto_files
+      - name: Google API Linter (AIP rules)
+        run: |
+          set -euxo pipefail
+          proto_files=$(git ls-files 'protos/**/*.proto')
+          if [ -z "$proto_files" ]; then
+            echo "No protos found"; exit 0; fi
+          api-linter --set-exit-status --output-format text \
+            --descriptor-set-in /tmp/mplang-descriptors.binpb \
+            $proto_files
 
       - name: buf breaking
         if: github.event_name == 'pull_request'

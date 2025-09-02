@@ -2,7 +2,7 @@ version: v2
 
 modules:
   - path: protos
-    name: buf.build/secretflow/mplang_proto
+    name: buf.build/secretflow/mplang-protos
 
 # Shared dependencies for all modules
 deps:

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -229,3 +230,48 @@ class CollectiveMixin(ICommunicator, ICollective):
         """Broadcast data from root to all processes"""
         pmask = Mask.all(self.world_size)
         return self.bcast_m(pmask.value, root, arg)
+
+
+class CommunicatorBase(ICommunicator):
+    """Base implementation providing message box functionality for local communication"""
+
+    def __init__(self, rank: int, world_size: int):
+        self._rank = rank
+        self._world_size = world_size
+        self._msgboxes: dict = {}
+        self._cond = threading.Condition()
+        self._counter = 0
+
+    @property
+    def rank(self) -> int:
+        return self._rank
+
+    @property
+    def world_size(self) -> int:
+        return self._world_size
+
+    # override
+    def new_id(self) -> str:
+        # Ensure thread-safe ID generation
+        with self._cond:
+            res = self._counter
+            self._counter += 1
+            return str(res)
+
+    def recv(self, frm: int, key: str) -> Any:
+        """Wait until the key is set, returns the value"""
+        # print(f"recv {key}: {sender_rank} -> {self.rank}")
+        mkey = (frm, key)
+        with self._cond:
+            # Wait until message arrives, then consume it
+            while mkey not in self._msgboxes:
+                self._cond.wait()
+            return self._msgboxes.pop(mkey)
+
+    def onSent(self, frm: int, key: str, data: Any) -> None:
+        """Called when a key is sent to self"""
+        with self._cond:
+            mkey = (frm, key)
+            assert mkey not in self._msgboxes, f"{mkey} exist {self._msgboxes.keys()}"
+            self._msgboxes[mkey] = data
+            self._cond.notify_all()

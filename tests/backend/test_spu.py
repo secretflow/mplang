@@ -22,7 +22,7 @@ import spu.libspu as libspu
 from mplang.backend.spu import SpuHandler, SpuValue
 from mplang.core.tensor import TensorType
 from mplang.frontend.spu import SpuFE
-from mplang.runtime.grpc_comm import LinkCommunicator
+from mplang.runtime.link_comm import LinkCommunicator
 
 
 def create_mem_link_contexts(world_size: int = 2):

@@ -10,7 +10,6 @@ mplang/
 ├── buf.gen.yaml                  # Code generation configuration
 ├── protos/                       # API definitions (.proto files)
 │   └── mplang/protos/v1alpha1/
-│       ├── executor.proto
 │       └── mpir.proto
 ├── mplang/                       # Core Python library
 │   └── protos/                   # Generated Python bindings (after buf generate)

@@ -11,7 +11,8 @@ mplang/
 ├── protos/                       # API definitions (.proto files)
 │   └── mplang/protos/v1alpha1/
 │       ├── executor.proto
-│       └── mpir.proto
+│       ├── mpir.proto
+│       └── tee.proto
 ├── mplang/                       # Core Python library
 │   └── protos/                   # Generated Python bindings (after buf generate)
 │       └── v1alpha1/

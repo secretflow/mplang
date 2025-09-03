@@ -15,16 +15,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
 import builtins
 import google.protobuf.descriptor
 import google.protobuf.message
-import typing
+import sys
+
+if sys.version_info >= (3, 8):
+    import typing as typing_extensions
+else:
+    import typing_extensions
 
 DESCRIPTOR: google.protobuf.descriptor.FileDescriptor
 
-@typing.final
+@typing_extensions.final
 class InitRequest(google.protobuf.message.Message):
+    """Request message for TEE session initialization"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     SESSION_NAME_FIELD_NUMBER: builtins.int
@@ -32,18 +38,23 @@ class InitRequest(google.protobuf.message.Message):
     session_name: builtins.str
     """The resource name of the session. Format: "sessions/{session_id}"."""
     tee_party_addr: builtins.str
+    """Network address of the TEE party for communication"""
     def __init__(
         self,
         *,
         session_name: builtins.str = ...,
         tee_party_addr: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["session_name", b"session_name", "tee_party_addr", b"tee_party_addr"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["session_name", b"session_name", "tee_party_addr", b"tee_party_addr"]) -> None: ...
 
 global___InitRequest = InitRequest
 
-@typing.final
+@typing_extensions.final
 class InitResponse(google.protobuf.message.Message):
+    """Response message for TEE session initialization
+    Empty response indicating successful initialization
+    """
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     def __init__(
@@ -52,7 +63,7 @@ class InitResponse(google.protobuf.message.Message):
 
 global___InitResponse = InitResponse
 
-@typing.final
+@typing_extensions.final
 class GetTEEReportRequest(google.protobuf.message.Message):
     """Request message for TEE attestation report generation"""
 
@@ -67,6 +78,7 @@ class GetTEEReportRequest(google.protobuf.message.Message):
     pem_public_key: builtins.str
     """PEM-encoded public key for TEE attestation"""
     rank: builtins.int
+    """Rank of the party in the TEE context"""
     generation_params_json: builtins.str
     """The JSON serialized string of
     secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationGenerationParams
@@ -79,11 +91,11 @@ class GetTEEReportRequest(google.protobuf.message.Message):
         rank: builtins.int = ...,
         generation_params_json: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["generation_params_json", b"generation_params_json", "pem_public_key", b"pem_public_key", "rank", b"rank", "session_name", b"session_name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["generation_params_json", b"generation_params_json", "pem_public_key", b"pem_public_key", "rank", b"rank", "session_name", b"session_name"]) -> None: ...
 
 global___GetTEEReportRequest = GetTEEReportRequest
 
-@typing.final
+@typing_extensions.final
 class GetTEEReportResponse(google.protobuf.message.Message):
     """Response message for TEE attestation report"""
 
@@ -107,6 +119,6 @@ class GetTEEReportResponse(google.protobuf.message.Message):
         tee_mode: builtins.str = ...,
         report_json: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["pem_public_key", b"pem_public_key", "report_json", b"report_json", "tee_mode", b"tee_mode"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["pem_public_key", b"pem_public_key", "report_json", b"report_json", "tee_mode", b"tee_mode"]) -> None: ...
 
 global___GetTEEReportResponse = GetTEEReportResponse

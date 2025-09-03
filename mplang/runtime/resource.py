@@ -33,8 +33,8 @@ from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.mask import Mask
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
-from mplang.runtime.http_backend.communicator import HttpCommunicator
-from mplang.runtime.http_backend.exceptions import InvalidRequestError, ResourceNotFound
+from mplang.runtime.communicator import HttpCommunicator
+from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 from mplang.runtime.link_comm import LinkCommunicator
 
 

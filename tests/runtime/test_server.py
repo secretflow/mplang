@@ -21,7 +21,7 @@ import base64
 import cloudpickle as pickle
 from fastapi.testclient import TestClient
 
-from mplang.runtime.http_backend.server import app
+from mplang.runtime.server import app
 
 client = TestClient(app)
 

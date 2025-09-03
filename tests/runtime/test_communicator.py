@@ -24,8 +24,9 @@ import httpx
 import pytest
 import uvicorn
 
-from mplang.runtime.http_backend.communicator import HttpCommunicator
-from mplang.runtime.http_backend.server import app
+from mplang.runtime import resource
+from mplang.runtime.communicator import HttpCommunicator
+from mplang.runtime.server import app
 
 # Global state for servers
 distributed_servers: dict[int, Any] = {}
@@ -199,8 +200,6 @@ def run_party_e2e_process(rank: int, return_dict: dict):
         # Import after logging is configured
         from contextlib import asynccontextmanager
 
-        from mplang.runtime.http_backend import resource
-
         # Create session in the resource manager
         logger.info(f"Creating session: {session_name}")
         session = resource.create_session(
@@ -221,9 +220,6 @@ def run_party_e2e_process(rank: int, return_dict: dict):
             yield
             await asyncio.sleep(0)
             logger.info(f"Server shutting down for party {rank}")
-
-        # Import server app and set lifespan
-        from mplang.runtime.http_backend.server import app
 
         app.router.lifespan_context = lifespan
 

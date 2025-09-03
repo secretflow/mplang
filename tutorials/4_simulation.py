@@ -230,7 +230,7 @@ def cmd_main(main_func) -> None:
         )
         main_func(simulator)
     elif args.command == "run":
-        driver = mprt.ExecutorDriver(
+        driver = mprt.Driver(
             nodes_def,
             spu_mask=spu_mask,
         )

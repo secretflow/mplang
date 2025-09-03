@@ -37,8 +37,7 @@ from mplang.core.interp import InterpContext
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.primitive import primitive
-from mplang.runtime.driver import ExecutorDriver
-from mplang.runtime.simulation import Simulator
+from mplang.runtime import Driver, Simulator
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -121,7 +120,7 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     if not nodes_def:
         driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
     else:
-        driver = ExecutorDriver(nodes_def, spu_mask=spu_mask, device_ctx=device_ctx)
+        driver = Driver(nodes_def, spu_mask=spu_mask, device_ctx=device_ctx)
 
     set_ctx(driver)
 

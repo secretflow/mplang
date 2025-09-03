@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import faulthandler
+import logging
 import sys
 import traceback
 from collections.abc import Sequence
@@ -28,6 +29,7 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
@@ -36,7 +38,26 @@ from mplang.core.mptype import MPType, TensorLike
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
 from mplang.runtime.link_comm import LinkCommunicator
-from mplang.runtime.mem_comm import ThreadCommunicator
+
+
+class ThreadCommunicator(CommunicatorBase, CollectiveMixin):
+    """Thread-based communicator for in-memory communication between threads"""
+
+    def __init__(self, rank: int, world_size: int):
+        super().__init__(rank, world_size)
+        self.peers: list[ThreadCommunicator] = []
+        logging.debug(
+            f"ThreadCommunicator initialized with rank={self.rank}, world_size={self.world_size}"
+        )
+
+    def set_peers(self, peers: list[ThreadCommunicator]) -> None:
+        assert self.world_size == len(peers)
+        self.peers = peers
+
+    def send(self, to: int, key: str, data: Any) -> None:
+        assert 0 <= to < self.world_size
+        # print(f"send {key}: {self.rank} -> {to_rank}")
+        self.peers[to].onSent(self.rank, key, data)
 
 
 class SimVar(InterpVar):
@@ -89,9 +110,8 @@ class Simulator(InterpContext):
             comm.set_peers(self._comms)
 
         # Prepare link context and spu handlers.
-        spu_mask_attr: Mask = self.attr("spu_mask")
-        if spu_mask_attr is None:
-            raise ValueError("spu_mask attribute is required")
+        spu_mask_attr: Mask = Mask(self.attr("spu_mask"))
+
         spu_addrs = [f"P{spu_rank}" for spu_rank in Mask(spu_mask_attr)]
         spu_comms = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
@@ -220,4 +240,5 @@ class Simulator(InterpContext):
             sim_var = SimVar(self, mptype, list(values))
             sim_vars.append(sim_var)
 
+        return sim_vars
         return sim_vars

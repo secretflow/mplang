@@ -23,8 +23,8 @@ import httpx
 import pytest
 import uvicorn
 
-from mplang.runtime.http_backend.driver import HttpDriver
-from mplang.runtime.http_backend.server import app
+from mplang.runtime.driver import Driver
+from mplang.runtime.server import app
 
 # Global state for servers
 distributed_server_processes: dict[int, multiprocessing.Process] = {}
@@ -90,7 +90,7 @@ def test_http_driver_initialization():
         2: "http://localhost:9003",
     }
 
-    driver = HttpDriver(node_addrs)
+    driver = Driver(node_addrs)
 
     # Test basic properties
     assert driver.world_size == 3
@@ -116,7 +116,7 @@ def test_session_creation():
         1: "http://localhost:9002",
     }
 
-    driver = HttpDriver(node_addrs)
+    driver = Driver(node_addrs)
 
     # Create session using async method
     import asyncio
@@ -133,7 +133,7 @@ def test_session_creation():
 def test_unique_name_generation():
     """Test unique name generation for executions."""
     node_addrs = {0: "http://localhost:9001"}
-    driver = HttpDriver(node_addrs)
+    driver = Driver(node_addrs)
 
     # Generate multiple names
     name1 = driver.new_name()
@@ -154,7 +154,7 @@ def test_driver_context_properties():
         1: "http://localhost:9002",
     }
 
-    driver = HttpDriver(node_addrs, custom_attr="test_value")
+    driver = Driver(node_addrs, custom_attr="test_value")
 
     # Test context properties
     assert driver.world_size == 2

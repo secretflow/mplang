@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO(jint): rename this module to link_comm
-
 from __future__ import annotations
 
 import logging

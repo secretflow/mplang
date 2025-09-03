@@ -28,8 +28,8 @@ from pydantic import BaseModel
 
 from mplang.core.mpir import Reader
 from mplang.protos.v1alpha1 import mpir_pb2
-from mplang.runtime.http_backend import resource
-from mplang.runtime.http_backend.exceptions import InvalidRequestError, ResourceNotFound
+from mplang.runtime import resource
+from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 
 logger = logging.getLogger(__name__)
 

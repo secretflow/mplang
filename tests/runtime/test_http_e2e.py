@@ -27,8 +27,8 @@ import uvicorn
 import mplang
 import mplang.simp as simp
 import mplang.smpc as smpc
-from mplang.runtime.http_backend.driver import HttpDriver
-from mplang.runtime.http_backend.server import app
+from mplang.runtime.driver import Driver
+from mplang.runtime.server import app
 
 # Global state for test servers
 e2e_server_processes: dict[int, multiprocessing.Process] = {}
@@ -103,7 +103,7 @@ def http_driver():
         3: "http://localhost:15004",  # P3 - SPU party
         4: "http://localhost:15005",  # P4 - plaintext party
     }
-    return HttpDriver(node_addrs)
+    return Driver(node_addrs)
 
 
 @pytest.mark.skip(

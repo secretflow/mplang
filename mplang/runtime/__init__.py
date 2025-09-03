@@ -17,18 +17,16 @@ Runtime components for mplang.
 
 This module contains runtime implementations including:
 - Simulator for local simulation
-- ExecutorDriver for distributed execution
+- Driver for distributed execution
 """
 
-from mplang.runtime.driver import DriverVar, ExecutorDriver
-from mplang.runtime.executor.server import ExecutorService, serve, start_cluster
+from mplang.runtime.driver import Driver, DriverVar
 from mplang.runtime.simulation import Simulator
 
 __all__ = [
+    "Driver",
     "DriverVar",
-    "ExecutorDriver",
-    "ExecutorService",
     "Simulator",
-    "serve",
-    "start_cluster",
+    # "serve",
+    # "start_cluster",
 ]

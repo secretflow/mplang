@@ -71,7 +71,6 @@ class Symbol:
 class Computation:
     name: str
     expr: Expr  # The computation expression
-    symbols: dict[str, Symbol] = field(default_factory=dict)
 
 
 @dataclass
@@ -123,6 +122,19 @@ def get_session(name: str) -> Session | None:
     return _sessions.get(name)
 
 
+def delete_session(name: str) -> bool:
+    """Delete a session and all associated resources.
+
+    Returns:
+        True if session was deleted, False if session was not found.
+    """
+    if name in _sessions:
+        del _sessions[name]
+        logging.info(f"Session {name} deleted successfully")
+        return True
+    return False
+
+
 # Computation Management
 def create_computation(
     session_name: str, computation_name: str, expr: Expr
@@ -142,6 +154,23 @@ def get_computation(session_name: str, comp_name: str) -> Computation | None:
     if session:
         return session.computations.get(comp_name)
     return None
+
+
+def delete_computation(session_name: str, comp_name: str) -> bool:
+    """Delete a computation from a session.
+
+    Returns:
+        True if computation was deleted, False if not found.
+    """
+    session = get_session(session_name)
+    if not session:
+        return False
+
+    if comp_name in session.computations:
+        del session.computations[comp_name]
+        logging.info(f"Computation {comp_name} deleted from session {session_name}")
+        return True
+    return False
 
 
 def execute_computation(
@@ -268,55 +297,43 @@ def create_symbol(session_name: str, name: str, mptype: Any, data: Any) -> Symbo
     return symbol
 
 
-def create_computation_symbol(
-    session_name: str, computation_name: str, symbol_name: str, mptype: Any, data: Any
-) -> Symbol:
-    """Create a symbol in a computation's symbol table."""
-    session = get_session(session_name)
-    if not session:
-        raise ResourceNotFound(f"Session '{session_name}' not found.")
-
-    computation = get_computation(session_name, computation_name)
-    if not computation:
-        raise ResourceNotFound(
-            f"Computation '{computation_name}' not found in session '{session_name}'."
-        )
-
-    symbol = Symbol(symbol_name, mptype, data)
-    computation.symbols[symbol_name] = symbol
-    return symbol
-
-
 def get_symbol(session_name: str, name: str) -> Symbol | None:
-    """Get a symbol from a session's symbol table (session-level or computation-level)."""
+    """Get a symbol from a session's symbol table (session-level only)."""
     session = get_session(session_name)
     if not session:
         return None
 
-    # First try session-level symbols
-    if name in session.symbols:
-        return session.symbols[name]
-
-    # Then try computation-level symbols from all computations
-    for computation in session.computations.values():
-        if name in computation.symbols:
-            return computation.symbols[name]
-
-    return None
+    # Only session-level symbols are supported now
+    return session.symbols.get(name)
 
 
 def list_symbols(session_name: str) -> list[str]:
-    """List all symbols in a session's symbol table (both session-level and computation-level)."""
+    """List all symbols in a session's symbol table."""
     session = get_session(session_name)
     if not session:
         raise ResourceNotFound(f"Session '{session_name}' not found.")
 
-    symbols: list[str] = []
-    # Add session-level symbols
-    symbols.extend(session.symbols.keys())
+    # Only session-level symbols are supported now
+    return list(session.symbols.keys())
 
-    # Add computation-level symbols from all computations
-    for computation in session.computations.values():
-        symbols.extend(computation.symbols.keys())
 
-    return symbols
+def delete_symbol(session_name: str, symbol_name: str) -> bool:
+    """Delete a symbol from a session.
+
+    Returns:
+        True if symbol was deleted, False if not found.
+    """
+    session = get_session(session_name)
+    if not session:
+        return False
+
+    if symbol_name in session.symbols:
+        del session.symbols[symbol_name]
+        logging.info(f"Symbol {symbol_name} deleted from session {session_name}")
+        return True
+    return False
+
+
+def list_all_sessions() -> list[str]:
+    """List all session names."""
+    return list(_sessions.keys())

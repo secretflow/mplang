@@ -18,6 +18,7 @@ Command-line interface for managing MPLang clusters.
 """
 
 import argparse
+import asyncio
 import json
 import multiprocessing
 import sys
@@ -25,6 +26,7 @@ from typing import Any, cast
 
 import uvicorn
 
+from mplang.runtime.client import HttpExecutorClient
 from mplang.runtime.server import app
 
 
@@ -196,6 +198,85 @@ def status_command(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
+
+    async def _get_node_status(
+        node_id: str, endpoint: str, details: bool = False, timeout: int = 60
+    ) -> dict[str, Any]:
+        """Get status information for a single node.
+
+        Args:
+            node_id: Identifier for the node
+            endpoint: HTTP endpoint of the node
+            details: Whether to include detailed session information
+            timeout: HTTP request timeout in seconds (default: 60)
+        """
+
+        client = HttpExecutorClient(endpoint, timeout)
+        status: dict[str, Any] = {
+            "node_id": node_id,
+            "endpoint": client.endpoint,  # Use the normalized endpoint from client
+            "healthy": False,
+            "sessions": [],
+            "error": None,
+        }
+
+        try:
+            # Check node health
+            status["healthy"] = await client.health_check()
+
+            if status["healthy"]:
+                # Get sessions on this node
+                sessions = await client.list_sessions()
+                status["sessions"] = sessions
+
+                # Get detailed session info if requested
+                if details:
+                    session_details = []
+                    for session_name in sessions:
+                        try:
+                            # Get computations and symbols for each session
+                            computations = await client.list_computations(session_name)
+                            symbols = await client.list_symbols(session_name)
+                            session_details.append({
+                                "name": session_name,
+                                "computations": len(computations),
+                                "symbols": len(symbols),
+                                "computation_list": computations,
+                                "symbol_list": symbols,
+                            })
+                        except Exception as e:
+                            session_details.append({
+                                "name": session_name,
+                                "error": str(e),
+                            })
+                    status["session_details"] = session_details
+
+        except Exception as e:
+            status["error"] = str(e)
+
+        finally:
+            await client.close()
+
+        return status
+
+    async def _collect_cluster_status(
+        nodes: dict[str, str], details: bool = False
+    ) -> list[dict[str, Any] | BaseException]:
+        """Collect status from all nodes concurrently.
+
+        Args:
+            nodes: Dictionary mapping node IDs to their HTTP endpoints
+            details: Whether to include detailed session information for each node
+
+        Returns:
+            List of status dictionaries or exceptions for each node
+        """
+        tasks = [
+            _get_node_status(node_id, endpoint, details)
+            for node_id, endpoint in nodes.items()
+        ]
+        return await asyncio.gather(*tasks, return_exceptions=True)
+
     try:
         # Load configuration
         config = load_config(args.config)
@@ -205,27 +286,76 @@ def status_command(args: argparse.Namespace) -> int:
             print("No nodes defined in configuration")
             return 1
 
-        # Import Driver here to avoid unnecessary imports
-        from mplang.runtime.driver import Driver
+        # Collect status from all nodes
+        cluster_status = asyncio.run(_collect_cluster_status(nodes, args.details))
 
-        # Create driver instance
-        driver = Driver(nodes)
-
-        # Check status of each node
+        # Basic node health check
         print("Node Status:")
-        print("-" * 40)
+        print("-" * 50)
         all_healthy = True
 
-        for node_id, endpoint in nodes.items():
-            try:
-                is_healthy = driver.ping(node_id)
-                status = "HEALTHY" if is_healthy else "UNHEALTHY"
-                if not is_healthy:
-                    all_healthy = False
-                print(f"{node_id:<15} {endpoint:<20} {status}")
-            except Exception as e:
-                print(f"{node_id:<15} {endpoint:<20} ERROR - {e}")
+        valid_statuses = []
+        for status in cluster_status:
+            if isinstance(status, BaseException):
+                print(f"{'UNKNOWN':<15} {'UNKNOWN':<20} ERROR - {status}")
                 all_healthy = False
+                continue
+
+            valid_statuses.append(status)
+            node_id = status["node_id"]
+            endpoint = status["endpoint"]
+
+            if status["error"]:
+                print(f"{node_id:<15} {endpoint:<20} ERROR - {status['error']}")
+                all_healthy = False
+            elif status["healthy"]:
+                session_count = len(status["sessions"])
+                print(
+                    f"{node_id:<15} {endpoint:<20} HEALTHY ({session_count} sessions)"
+                )
+            else:
+                print(f"{node_id:<15} {endpoint:<20} UNHEALTHY")
+                all_healthy = False
+
+        # If detailed status is requested, show detailed information
+        if args.details and valid_statuses:
+            print("\nDetailed Runtime Status:")
+            print("-" * 50)
+
+            for status in valid_statuses:
+                node_id = status["node_id"]
+
+                if status["error"]:
+                    print(f"{node_id}: Error - {status['error']}")
+                    continue
+
+                if not status["healthy"]:
+                    print(f"{node_id}: Node is unhealthy")
+                    continue
+
+                sessions = status.get("session_details", status["sessions"])
+                print(f"{node_id}: {len(sessions)} session(s)")
+
+                if isinstance(sessions, list) and sessions:
+                    for session in sessions:
+                        if isinstance(session, str):
+                            # Simple session name only
+                            print(f"  - Session '{session}'")
+                        elif isinstance(session, dict):
+                            # Detailed session info
+                            session_name = session["name"]
+                            if "error" in session:
+                                print(
+                                    f"  - Session '{session_name}': Error - {session['error']}"
+                                )
+                            else:
+                                computations = session.get("computations", 0)
+                                symbols = session.get("symbols", 0)
+                                print(
+                                    f"  - Session '{session_name}': {computations} computations, {symbols} symbols"
+                                )
+                elif not sessions:
+                    print("  - No active sessions")
 
         return 0 if all_healthy else 1
     except Exception as e:
@@ -252,6 +382,12 @@ def main() -> int:
     )
     status_parser.add_argument(
         "--config", "-c", required=True, help="Path to the JSON configuration file"
+    )
+    status_parser.add_argument(
+        "--details",
+        "-d",
+        action="store_true",
+        help="Show detailed runtime status including sessions, computations, and symbols",
     )
     status_parser.set_defaults(func=status_command)
 

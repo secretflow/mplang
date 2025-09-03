@@ -19,7 +19,7 @@ Tests for the CLI module.
 import json
 import os
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -29,7 +29,6 @@ from mplang.runtime.cli import (
     start_command,
     status_command,
 )
-from mplang.runtime.driver import Driver
 
 
 def test_load_config():
@@ -73,11 +72,20 @@ def test_status_command_success():
         config_path = f.name
 
     try:
-        # Mock the Driver.ping method to return True (healthy)
-        with patch.object(Driver, "ping", return_value=True):
+        # Mock the HttpExecutorClient
+        mock_client = AsyncMock()
+        mock_client.endpoint = "http://127.0.0.1:9530"  # Add endpoint attribute
+        mock_client.health_check.return_value = True
+        mock_client.list_sessions.return_value = ["session1"]
+        mock_client.list_computations.return_value = ["comp1", "comp2"]
+        mock_client.list_symbols.return_value = ["sym1", "sym2", "sym3"]
+        mock_client.close.return_value = None
+
+        with patch("mplang.runtime.cli.HttpExecutorClient", return_value=mock_client):
             # Create mock args
             args = MagicMock()
             args.config = config_path
+            args.details = True
 
             # Run the status command
             result = status_command(args)
@@ -99,14 +107,29 @@ def test_status_command_unhealthy_node():
         config_path = f.name
 
     try:
-        # Mock the Driver.ping method to return False for one node
-        def mock_ping(node_id):
-            return node_id == "P0"  # Node P0 is healthy, node P1 is not
+        # Mock different health states for different nodes
+        def mock_client_side_effect(endpoint, timeout=60):
+            mock_client = AsyncMock()
+            mock_client.endpoint = f"http://{endpoint}"  # Add endpoint attribute
+            if "9530" in endpoint:
+                # P0 is healthy
+                mock_client.health_check.return_value = True
+                mock_client.list_sessions.return_value = ["session1"]
+            else:
+                # P1 is unhealthy
+                mock_client.health_check.return_value = False
+                mock_client.list_sessions.return_value = []
+            mock_client.close.return_value = None
+            return mock_client
 
-        with patch.object(Driver, "ping", side_effect=mock_ping):
+        with patch(
+            "mplang.runtime.cli.HttpExecutorClient",
+            side_effect=mock_client_side_effect,
+        ):
             # Create mock args
             args = MagicMock()
             args.config = config_path
+            args.details = False
 
             # Run the status command
             result = status_command(args)
@@ -128,11 +151,17 @@ def test_status_command_exception():
         config_path = f.name
 
     try:
-        # Mock the Driver.ping method to raise an exception
-        with patch.object(Driver, "ping", side_effect=Exception("Connection failed")):
+        # Mock the HttpExecutorClient to raise an exception
+        mock_client = AsyncMock()
+        mock_client.endpoint = "http://127.0.0.1:9530"  # Add endpoint attribute
+        mock_client.health_check.side_effect = Exception("Connection failed")
+        mock_client.close.return_value = None
+
+        with patch("mplang.runtime.cli.HttpExecutorClient", return_value=mock_client):
             # Create mock args
             args = MagicMock()
             args.config = config_path
+            args.details = False
 
             # Run the status command
             result = status_command(args)

@@ -28,7 +28,7 @@ import uvicorn
 from mplang.runtime.server import app
 
 
-def load_config(config_path: str) -> dict[Any, Any]:
+def load_config(config_path: str) -> dict[str, Any]:
     """Load configuration from a JSON file.
 
     Args:
@@ -38,7 +38,7 @@ def load_config(config_path: str) -> dict[Any, Any]:
         Dictionary containing the configuration
     """
     with open(config_path) as f:
-        return dict[Any, Any](json.load(f))
+        return json.load(f)
 
 
 def run_server(port: int, node_id: str) -> None:

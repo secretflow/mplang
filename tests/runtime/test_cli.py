@@ -74,6 +74,7 @@ def test_status_command_success():
     try:
         # Mock the HttpExecutorClient
         mock_client = AsyncMock()
+        mock_client.endpoint = "http://127.0.0.1:9530"  # Add endpoint attribute
         mock_client.health_check.return_value = True
         mock_client.list_sessions.return_value = ["session1"]
         mock_client.list_computations.return_value = ["comp1", "comp2"]
@@ -111,6 +112,7 @@ def test_status_command_unhealthy_node():
         # Mock different health states for different nodes
         def mock_client_side_effect(endpoint, timeout=60):
             mock_client = AsyncMock()
+            mock_client.endpoint = f"http://{endpoint}"  # Add endpoint attribute
             if "9530" in endpoint:
                 # P0 is healthy
                 mock_client.health_check.return_value = True
@@ -153,6 +155,7 @@ def test_status_command_exception():
     try:
         # Mock the HttpExecutorClient to raise an exception
         mock_client = AsyncMock()
+        mock_client.endpoint = "http://127.0.0.1:9530"  # Add endpoint attribute
         mock_client.health_check.side_effect = Exception("Connection failed")
         mock_client.close.return_value = None
 

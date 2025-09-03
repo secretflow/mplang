@@ -204,14 +204,10 @@ def status_command(args: argparse.Namespace) -> int:
         """Get status information for a single node."""
         from mplang.runtime.client import HttpExecutorClient
 
-        # Ensure endpoint has protocol
-        if not endpoint.startswith(("http://", "https://")):
-            endpoint = f"http://{endpoint}"
-
         client = HttpExecutorClient(endpoint, timeout)
         status: dict[str, Any] = {
             "node_id": node_id,
-            "endpoint": endpoint,
+            "endpoint": client.endpoint,  # Use the normalized endpoint from client
             "healthy": False,
             "sessions": [],
             "error": None,

@@ -85,23 +85,23 @@ def start_servers():
 def test_http_driver_initialization():
     """Test HttpDriver initialization and basic properties."""
     node_addrs = {
-        0: "http://localhost:9001",
-        1: "http://localhost:9002",
-        2: "http://localhost:9003",
+        "0": "http://localhost:9001",
+        "1": "http://localhost:9002",
+        "2": "http://localhost:9003",
     }
 
     driver = Driver(node_addrs)
 
     # Test basic properties
     assert driver.world_size == 3
-    assert len(driver.party_addrs) == 3
+    assert len(driver.node_addrs) == 3
 
     # Test that _create_clients method works correctly
     clients = driver._create_clients()
     assert len(clients) == 3
-    assert 0 in clients
-    assert 1 in clients
-    assert 2 in clients
+    assert "0" in clients
+    assert "1" in clients
+    assert "2" in clients
 
     # Clean up clients
     import asyncio
@@ -112,8 +112,8 @@ def test_http_driver_initialization():
 def test_session_creation():
     """Test session creation across multiple HTTP servers."""
     node_addrs = {
-        0: "http://localhost:9001",
-        1: "http://localhost:9002",
+        "0": "http://localhost:9001",
+        "1": "http://localhost:9002",
     }
 
     driver = Driver(node_addrs)
@@ -132,7 +132,7 @@ def test_session_creation():
 
 def test_unique_name_generation():
     """Test unique name generation for executions."""
-    node_addrs = {0: "http://localhost:9001"}
+    node_addrs = {"0": "http://localhost:9001"}
     driver = Driver(node_addrs)
 
     # Generate multiple names
@@ -150,8 +150,8 @@ def test_unique_name_generation():
 def test_driver_context_properties():
     """Test HttpDriver as InterpContext."""
     node_addrs = {
-        0: "http://localhost:9001",
-        1: "http://localhost:9002",
+        "0": "http://localhost:9001",
+        "1": "http://localhost:9002",
     }
 
     driver = Driver(node_addrs, custom_attr="test_value")

@@ -111,16 +111,18 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     # unique node_ids across all devices
     node_ids = [nid for dev_info in device_conf.values() for nid in dev_info.node_ids]
     node_ids = sorted(set(node_ids))
-    world_size = len(node_ids)
-    spu_mask = Mask.none()
-    for nid in spu_conf[0].node_ids:
-        spu_mask |= Mask.from_ranks(node_ids.index(nid))
 
     driver: InterpContext
     if not nodes_def:
+        world_size = len(node_ids)
+        spu_mask = Mask.from_ranks([
+            node_ids.index(nid) for nid in spu_conf[0].node_ids
+        ])
         driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
     else:
-        driver = Driver(nodes_def, spu_mask=spu_mask, device_ctx=device_ctx)
+        driver = Driver(
+            nodes_def, spu_nodes=spu_conf[0].node_ids, device_ctx=device_ctx
+        )
 
     set_ctx(driver)
 

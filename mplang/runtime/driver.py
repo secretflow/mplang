@@ -45,8 +45,8 @@ def new_uuid() -> str:
     uuid_bytes = u.bytes
     # Encode using URL-safe Base64
     encoded_bytes = base64.urlsafe_b64encode(uuid_bytes)
-    # Decode to UTF-8 string and remove the '==' padding
-    encoded_string = encoded_bytes.decode("utf-8").rstrip("=")
+    # Decode to UTF-8 string, remove padding, and take first 8 characters
+    encoded_string = encoded_bytes.decode("utf-8").rstrip("=")[:8]
     return encoded_string
 
 
@@ -76,15 +76,28 @@ class DriverVar(InterpVar):
 
 
 class Driver(InterpContext):
-    """Driver for distributed execution using HTTP-based services."""
+    """Driver for distributed execution using HTTP-based services.
+
+    Args:
+        node_addrs: Mapping from node IDs (strings) to their HTTP endpoint addresses.
+        spu_protocol: SPU protocol to use for secure computation.
+        spu_field: SPU field type for arithmetic operations.
+        spu_nodes: List of node IDs (strings) that participate in SPU computation.
+            If None, all nodes participate in SPU. Cannot be used with spu_mask.
+        spu_mask: Mask indicating which nodes participate in SPU computation.
+            Cannot be used with spu_nodes. Provided for backward compatibility.
+        trace_ranks: List of ranks to trace execution for debugging.
+        timeout: HTTP request timeout in seconds.
+        **attrs: Additional attributes passed to the executor.
+    """
 
     def __init__(
         self,
-        node_addrs: dict[str, str] | dict[int, str],
+        node_addrs: dict[str, str],
         *,
         spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
-        spu_mask: Mask | None = None,
+        spu_nodes: list[str] | None = None,
         trace_ranks: list[Rank] | None = None,
         timeout: int = 60,
         **attrs: Any,
@@ -93,13 +106,27 @@ class Driver(InterpContext):
             trace_ranks = []
 
         self.world_size = len(node_addrs)
-        self.party_addrs = node_addrs
+        self.node_addrs = node_addrs
         self.timeout = timeout
 
         self._session_id: str | None = None
         self._counter = 0
 
-        spu_mask = spu_mask or Mask.all(self.world_size)
+        if spu_nodes is None:
+            # Default: all nodes participate in SPU
+            spu_mask = Mask.all(self.world_size)
+        else:
+            # Convert node IDs to ranks and build mask
+            node_id_to_rank = {
+                node_id: rank for rank, node_id in enumerate(node_addrs.keys())
+            }
+            spu_ranks = []
+            for node_id in spu_nodes:
+                if node_id not in node_id_to_rank:
+                    raise ValueError(f"SPU node '{node_id}' not found in node_addrs")
+                spu_ranks.append(node_id_to_rank[node_id])
+            spu_mask = Mask.from_ranks(spu_ranks)
+
         self.spu_protocol = int(spu_protocol)
         self.spu_field = int(spu_field)
         self.spu_mask_int = int(spu_mask)
@@ -114,15 +141,14 @@ class Driver(InterpContext):
 
         super().__init__(self.world_size, executor_attrs)
 
-    def _create_clients(self) -> dict[int, HttpExecutorClient]:
+    def _create_clients(self) -> dict[str, HttpExecutorClient]:
         """Create HTTP clients for all endpoints."""
         clients = {}
-        for key, endpoint in self.party_addrs.items():
-            rank = int(key) if isinstance(key, str) else key
-            clients[rank] = HttpExecutorClient(endpoint, self.timeout)
+        for node_id, endpoint in self.node_addrs.items():
+            clients[node_id] = HttpExecutorClient(endpoint, self.timeout)
         return clients
 
-    async def _close_clients(self, clients: dict[int, HttpExecutorClient]) -> None:
+    async def _close_clients(self, clients: dict[str, HttpExecutorClient]) -> None:
         """Close all provided HTTP clients."""
         await asyncio.gather(*[client.close() for client in clients.values()])
 
@@ -136,14 +162,16 @@ class Driver(InterpContext):
         """Get existing session or create a new one across all HTTP servers."""
         if self._session_id is None:
             new_session_id = new_uuid()
-            endpoints_list = list(self.party_addrs.values())
+            endpoints_list = list(self.node_addrs.values())
 
             # Create temporary clients for session creation
             clients = self._create_clients()
             try:
                 # Create session on all HTTP servers concurrently
                 tasks = []
-                for rank, client in clients.items():
+                for node_id, client in clients.items():
+                    # Convert node_id to rank for the session creation
+                    rank = list(self.node_addrs.keys()).index(node_id)
                     task = client.create_session(
                         name=new_session_id,
                         rank=rank,
@@ -262,3 +290,39 @@ class Driver(InterpContext):
     def fetch(self, obj: MPObject) -> list[Any]:
         """Fetch results from the distributed HTTP execution."""
         return asyncio.run(self._fetch(obj))
+
+    async def _ping(self, node_id: str) -> bool:
+        """Async implementation to ping a node.
+
+        Args:
+            node_id: The ID of the node to ping
+
+        Returns:
+            True if the node is healthy, False otherwise
+        """
+        # Create a temporary client for the node
+        if node_id not in self.node_addrs:
+            raise ValueError(f"Node {node_id} not found in party addresses")
+
+        endpoint = self.node_addrs[node_id]
+        client = HttpExecutorClient(endpoint, self.timeout)
+
+        try:
+            # Perform health check
+            return await client.health_check()
+        except Exception:
+            # Any exception means the node is not healthy
+            return False
+        finally:
+            await client.close()
+
+    def ping(self, node_id: str) -> bool:
+        """Ping a node to check if it's healthy.
+
+        Args:
+            node_id: The ID of the node to ping
+
+        Returns:
+            True if the node is healthy, False otherwise
+        """
+        return asyncio.run(self._ping(node_id))

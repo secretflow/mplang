@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-python tutorials/0_basic.py
-python tutorials/1_condition.py
-python tutorials/2_whileloop.py
-python tutorials/3_device.py
-python tutorials/4_simulation.py sim
-python tutorials/5_ir_dump.py
-python tutorials/6_advanced.py
+uv run python tutorials/0_basic.py
+uv run python tutorials/1_condition.py
+uv run python tutorials/2_whileloop.py
+uv run python tutorials/3_device.py
+uv run python tutorials/4_simulation.py sim
+uv run python tutorials/5_ir_dump.py
+uv run python tutorials/6_advanced.py

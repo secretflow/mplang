@@ -94,16 +94,14 @@ def start_e2e_servers():
 @pytest.fixture
 def http_driver():
     """Fixture to create HttpDriver for testing with 5 parties."""
-    # 5 parties: P0, P1, P2, P3, P4
-    # SPU mask = 01110, meaning P1, P2, P3 form the SPU
     node_addrs = {
-        0: "http://localhost:15001",  # P0 - plaintext party
-        1: "http://localhost:15002",  # P1 - SPU party
-        2: "http://localhost:15003",  # P2 - SPU party
-        3: "http://localhost:15004",  # P3 - SPU party
-        4: "http://localhost:15005",  # P4 - plaintext party
+        "P0": "http://localhost:15001",  # P0 - plaintext party
+        "P1": "http://localhost:15002",  # P1 - SPU party
+        "P2": "http://localhost:15003",  # P2 - SPU party
+        "P3": "http://localhost:15004",  # P3 - SPU party
+        "P4": "http://localhost:15005",  # P4 - plaintext party
     }
-    return Driver(node_addrs)
+    return Driver(node_addrs, spu_nodes=["P1", "P2", "P3"])
 
 
 @pytest.mark.skip(

@@ -44,9 +44,9 @@ class HttpCommunicator(CommunicatorBase):
         return str(res)
 
     def send(self, to: int, key: str, data: Any) -> None:
-        """Sends data to a peer party by POSTing to its /comm/send endpoint."""
+        """Sends data to a peer party by PUTing to its /comm/{key}/from/{from_rank} endpoint."""
         target_endpoint = self.endpoints[to]
-        url = f"{target_endpoint}/sessions/{self.session_name}/comm/send"
+        url = f"{target_endpoint}/sessions/{self.session_name}/comm/{key}/from/{self._rank}"
         logging.debug(
             f"Sending data: from_rank={self._rank}, to_rank={to}, key={key}, target_url={url}"
         )
@@ -57,13 +57,10 @@ class HttpCommunicator(CommunicatorBase):
             data_b64 = base64.b64encode(data_bytes).decode("utf-8")
 
             request_data = {
-                "from_rank": self._rank,
-                "to_rank": to,
                 "data": data_b64,
-                "key": key,
             }
 
-            response = httpx.post(url, json=request_data, timeout=60)
+            response = httpx.put(url, json=request_data, timeout=60)
             logging.debug(f"Send response: status={response.status_code}")
             if response.status_code != 200:
                 logging.error(f"Send failed: {response.text}")

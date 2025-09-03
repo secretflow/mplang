@@ -193,9 +193,6 @@ def cmd_main(main_func) -> None:
         "-c", "--config", default="examples/conf/3pc.json", help="the config"
     )
     subparsers = parser.add_subparsers(dest="command")
-    parser_start = subparsers.add_parser("start", help="to start a single node")
-    parser_start.add_argument("-n", "--node_id", default="node:0", help="the node id")
-    subparsers.add_parser("up", help="to bring up all nodes")
     subparsers.add_parser("sim", help="simulate the test code")
     subparsers.add_parser("run", help="run the test code")
     args = parser.parse_args()
@@ -214,25 +211,28 @@ def cmd_main(main_func) -> None:
         for nid in spu_conf[0].node_ids:
             spu_mask |= 1 << all_node_ids.index(nid)
 
-    if args.command == "start":
-        node_id = args.node_id
-        if node_id not in nodes_def:
-            print(f"Error: Node ID '{node_id}' not found in nodes definition")
-            print(f"Available nodes: {list(nodes_def.keys())}")
-            return
-        mprt.serve(node_id, nodes_def[node_id], debug_execution=True)
-    elif args.command == "up":
-        mprt.start_cluster(nodes_def, debug_execution=True)
-    elif args.command == "sim":
+    if args.command == "sim":
+        from mplang.core.mask import Mask
+
         simulator = mplang.Simulator(
             len(nodes_def),
-            spu_mask=spu_mask,
+            spu_mask=Mask.from_ranks([
+                all_node_ids.index(nid) for nid in spu_conf[0].node_ids
+            ]),
         )
         main_func(simulator)
     elif args.command == "run":
+        # Convert node addresses to HTTP URLs for Driver
+        http_nodes_def = {}
+        for node_id, address in nodes_def.items():
+            if not address.startswith(("http://", "https://")):
+                http_nodes_def[node_id] = f"http://{address}"
+            else:
+                http_nodes_def[node_id] = address
+
         driver = mprt.Driver(
-            nodes_def,
-            spu_mask=spu_mask,
+            http_nodes_def,
+            spu_nodes=spu_conf[0].node_ids,
         )
         main_func(driver)
     else:
@@ -240,14 +240,14 @@ def cmd_main(main_func) -> None:
 
 
 if __name__ == "__main__":
-    # run the function on simulator or executor
-    # To run on simulator, use command:
-    #   python tutorials/4_simulation.py sim
+    # Run the function on simulator or executor
     #
-    # To run on executor, first start the executor with command:
-    #   python tutorials/4_simulation.py up  (start all nodes)
-    # Or start a single node:
-    #   python tutorials/4_simulation.py start -n node:0
-    # Then run the command:
-    #   python tutorials/4_simulation.py run
+    # To run on simulator, use command:
+    #   uv run python tutorials/4_simulation.py sim
+    #
+    # To run on real multi-party execution:
+    # 1. First start the cluster with:
+    #    uv run python -m mplang.runtime.cli up -c examples/conf/3pc.json
+    # 2. Then run the computation:
+    #    uv run python tutorials/4_simulation.py run
     cmd_main(main)

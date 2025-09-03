@@ -29,10 +29,9 @@ client = TestClient(app)
 def test_create_and_get_session():
     """Test creating and retrieving a session."""
     # Create a session with a specific name, rank, and endpoints
-    response = client.post(
-        "/sessions",
+    response = client.put(
+        "/sessions/test_session_1",
         json={
-            "name": "test_session_1",
             "rank": 0,
             "endpoints": ["http://localhost:8000", "http://localhost:8001"],
         },
@@ -53,10 +52,9 @@ def test_create_and_get_session():
 def test_create_computation():
     """Test creating a computation within a session."""
     # First, create a session
-    client.post(
-        "/sessions",
+    client.put(
+        "/sessions/test_session_2",
         json={
-            "name": "test_session_2",
             "rank": 0,
             "endpoints": ["http://localhost:8000", "http://localhost:8001"],
         },
@@ -66,10 +64,9 @@ def test_create_computation():
     # The mpprogram is a dummy base64 string that won't parse correctly
     # but we just want to test the basic HTTP mechanics for now
     mpprogram_b64 = "dGVzdA=="  # "test" in base64
-    response = client.post(
-        "/sessions/test_session_2/computations",
+    response = client.put(
+        "/sessions/test_session_2/computations/test_computation",
         json={
-            "computation_id": "test_computation",
             "mpprogram": mpprogram_b64,
             "input_names": [],
             "output_names": ["result"],
@@ -79,10 +76,9 @@ def test_create_computation():
     assert response.status_code == 400
 
     # Try to create a computation in a non-existent session
-    response = client.post(
-        "/sessions/non_existent_session/computations",
+    response = client.put(
+        "/sessions/non_existent_session/computations/test_computation_2",
         json={
-            "computation_id": "test_computation_2",
             "mpprogram": mpprogram_b64,
             "input_names": [],
             "output_names": ["result"],
@@ -95,10 +91,9 @@ def test_create_computation():
 def test_create_and_get_symbol():
     """Test creating and retrieving a symbol."""
     # Create session first
-    response = client.post(
-        "/sessions",
+    response = client.put(
+        "/sessions/test_session_3",
         json={
-            "name": "test_session_3",
             "rank": 0,
             "endpoints": ["http://localhost:8000", "http://localhost:8001"],
         },
@@ -111,12 +106,11 @@ def test_create_and_get_symbol():
     encoded_data = base64.b64encode(pickled_data).decode("utf-8")
 
     symbol_data = {
-        "name": "my_symbol",
         "mptype": {"scalar_type": {"type": "SCALAR_TYPE_I32"}},
         "data": encoded_data,
     }
-    response = client.post(
-        "/sessions/test_session_3/symbols",
+    response = client.put(
+        "/sessions/test_session_3/symbols/my_symbol",
         json=symbol_data,
     )
     assert response.status_code == 200

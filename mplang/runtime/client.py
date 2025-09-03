@@ -266,6 +266,24 @@ class HttpExecutorClient:
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error(f"get symbol {symbol_name}", e) from e
 
+    async def health_check(self) -> bool:
+        """Perform a health check on the HTTP executor service.
+
+        Returns:
+            True if the service is healthy, False otherwise
+
+        Raises:
+            RuntimeError: If the health check fails
+        """
+        url = "/health"
+
+        try:
+            response = await self._client.get(url)
+            response.raise_for_status()
+            return response.json().get("status") == "ok"
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error("perform health check", e) from e
+
     async def list_symbols(self, session_name: str) -> list[str]:
         """List all symbols in a session.
 

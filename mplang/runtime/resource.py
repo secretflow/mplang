@@ -214,10 +214,7 @@ def execute_computation(
         spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
 
     # Use the world size from the communicator
-    spu_handler = SpuHandler(
-        spu_comm.world_size if spu_comm is not None else 0,
-        spu_config,
-    )
+    spu_handler = SpuHandler(spu_mask.num_parties(), spu_config)
     if spu_comm is not None:
         spu_handler.set_link_context(spu_comm)
 

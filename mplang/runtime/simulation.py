@@ -240,5 +240,3 @@ class Simulator(InterpContext):
             sim_var = SimVar(self, mptype, list(values))
             sim_vars.append(sim_var)
 
-        return sim_vars
-        return sim_vars

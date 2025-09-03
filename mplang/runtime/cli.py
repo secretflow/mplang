@@ -21,7 +21,7 @@ import argparse
 import json
 import multiprocessing
 import sys
-from typing import Any
+from typing import Any, cast
 
 import uvicorn
 
@@ -38,7 +38,7 @@ def load_config(config_path: str) -> dict[str, Any]:
         Dictionary containing the configuration
     """
     with open(config_path) as f:
-        return json.load(f)
+        return cast(dict[str, Any], json.load(f))
 
 
 def run_server(port: int, node_id: str) -> None:

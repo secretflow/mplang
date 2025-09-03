@@ -93,13 +93,16 @@ class Expr(ABC):
 class EvalExpr(Expr):
     """Expression for multi-party function evaluation."""
 
-    def __init__(self, pfunc: PFunction, args: list[Expr], rmask: Mask | None = None):
+    def __init__(
+        self, pfunc: PFunction, args: list[Expr], rmask: Mask | int | None = None
+    ):
         super().__init__()
         # Type checking - basic validation that we have the right number of inputs
         if len(args) != len(pfunc.ins_info):
             raise ValueError(
                 f"Expected {len(pfunc.ins_info)} arguments, got {len(args)}"
             )
+        rmask = Mask(rmask) if rmask is not None else None
 
         self.pfunc = pfunc
         self.args = args

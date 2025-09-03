@@ -120,11 +120,6 @@ class CreateSymbolRequest(BaseModel):
     data: str  # Base64 encoded data
 
 
-class CreateComputationSymbolRequest(BaseModel):
-    mptype: dict
-    data: str  # Base64 encoded data
-
-
 class SymbolResponse(BaseModel):
     name: str
     mptype: dict
@@ -135,10 +130,40 @@ class CommSendRequest(BaseModel):
     data: str  # Base64 encoded data
 
 
+# Response Models for enhanced status
+class SessionListResponse(BaseModel):
+    sessions: list[str]
+
+
+class ComputationListResponse(BaseModel):
+    computations: list[str]
+
+
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# List all sessions
+@app.get("/sessions", response_model=SessionListResponse)
+def list_sessions() -> SessionListResponse:
+    """List all session names."""
+    from mplang.runtime import resource
+
+    return SessionListResponse(sessions=resource.list_all_sessions())
+
+
+# List all computations in a session
+@app.get(
+    "/sessions/{session_name}/computations", response_model=ComputationListResponse
+)
+def list_session_computations(session_name: str) -> ComputationListResponse:
+    """List all computation names in a session."""
+    session = resource.get_session(session_name)
+    if not session:
+        raise ResourceNotFound(f"Session '{session_name}' not found")
+    return ComputationListResponse(computations=list(session.computations.keys()))
 
 
 # Session endpoints
@@ -162,6 +187,15 @@ def get_session(session_name: str) -> SessionResponse:
     if not session:
         raise ResourceNotFound(f"Session '{session_name}' not found")
     return SessionResponse(name=session.name)
+
+
+@app.delete("/sessions/{session_name}")
+def delete_session(session_name: str) -> dict[str, str]:
+    """Delete a session and all its associated resources."""
+    if resource.delete_session(session_name):
+        return {"message": f"Session '{session_name}' deleted successfully"}
+    else:
+        raise ResourceNotFound(f"Session '{session_name}' not found")
 
 
 # Computation endpoints
@@ -195,6 +229,17 @@ def create_and_execute_computation(
     return ComputationResponse(name=computation.name)
 
 
+@app.delete("/sessions/{session_name}/computations/{computation_id}")
+def delete_computation(session_name: str, computation_id: str) -> dict[str, str]:
+    """Delete a specific computation."""
+    if resource.delete_computation(session_name, computation_id):
+        return {"message": f"Computation '{computation_id}' deleted successfully"}
+    else:
+        raise ResourceNotFound(
+            f"Computation '{computation_id}' not found in session '{session_name}'"
+        )
+
+
 # Symbol endpoints
 @app.put(
     "/sessions/{session_name}/symbols/{symbol_name}", response_model=SymbolResponse
@@ -207,28 +252,6 @@ def create_session_symbol(
         session_name, symbol_name, request.mptype, request.data
     )
     # Return the base64 data back to client; server stores Python object
-    return SymbolResponse(
-        name=symbol.name,
-        mptype=symbol.mptype,
-        data=request.data,
-    )
-
-
-@app.put(
-    "/sessions/{session_name}/computations/{computation_name}/symbols/{symbol_name}",
-    response_model=SymbolResponse,
-)
-def create_computation_symbol(
-    session_name: str,
-    computation_name: str,
-    symbol_name: str,
-    request: CreateComputationSymbolRequest,
-) -> SymbolResponse:
-    """Create a symbol in a computation."""
-    symbol = resource.create_computation_symbol(
-        session_name, computation_name, symbol_name, request.mptype, request.data
-    )
-    # Return the base64 data back to client
     return SymbolResponse(
         name=symbol.name,
         mptype=symbol.mptype,
@@ -269,6 +292,17 @@ def list_session_symbols(session_name: str) -> dict[str, list[str]]:
     """List all symbols in a session."""
     symbols = resource.list_symbols(session_name)
     return {"symbols": symbols}
+
+
+@app.delete("/sessions/{session_name}/symbols/{symbol_name}")
+def delete_symbol(session_name: str, symbol_name: str) -> dict[str, str]:
+    """Delete a specific symbol."""
+    if resource.delete_symbol(session_name, symbol_name):
+        return {"message": f"Symbol '{symbol_name}' deleted successfully"}
+    else:
+        raise ResourceNotFound(
+            f"Symbol '{symbol_name}' not found in session '{session_name}'"
+        )
 
 
 # Communication endpoints

@@ -48,6 +48,10 @@ class HttpExecutorClient:
             endpoint: The base URL of the HTTP executor service
             timeout: Default timeout for HTTP requests in seconds
         """
+        # Ensure endpoint has a protocol prefix
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = f"http://{endpoint}"
+
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
         self._client = httpx.AsyncClient(base_url=self.endpoint, timeout=self.timeout)
@@ -142,8 +146,25 @@ class HttpExecutorClient:
             response = await self._client.get(url)
             response.raise_for_status()
             return dict(response.json())
-        except httpx.RequestError as e:
-            raise RuntimeError(f"Failed to get session {session_name}: {e}") from e
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"get session {session_name}", e) from e
+
+    async def delete_session(self, session_name: str) -> None:
+        """Delete a session and all its associated resources.
+
+        Args:
+            session_name: The session name/ID
+
+        Raises:
+            RuntimeError: If session deletion fails
+        """
+        url = f"/sessions/{session_name}"
+
+        try:
+            response = await self._client.delete(url)
+            response.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"delete session {session_name}", e) from e
 
     # Computation Management
     async def create_and_execute_computation(
@@ -208,6 +229,26 @@ class HttpExecutorClient:
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error(f"get computation {computation_id}", e) from e
 
+    async def delete_computation(self, session_id: str, computation_id: str) -> None:
+        """Delete a computation from a session.
+
+        Args:
+            session_id: The session name/ID
+            computation_id: The computation name/ID
+
+        Raises:
+            RuntimeError: If computation deletion fails
+        """
+        url = f"/sessions/{session_id}/computations/{computation_id}"
+
+        try:
+            response = await self._client.delete(url)
+            response.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(
+                f"delete computation {computation_id}", e
+            ) from e
+
     # Symbol Management
     async def create_symbol(
         self, session_name: str, symbol_name: str, data: Any, mptype: dict | None = None
@@ -265,6 +306,24 @@ class HttpExecutorClient:
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error(f"get symbol {symbol_name}", e) from e
 
+    async def delete_symbol(self, session_name: str, symbol_name: str) -> None:
+        """Delete a symbol from a session.
+
+        Args:
+            session_name: The session name/ID
+            symbol_name: The symbol name/ID
+
+        Raises:
+            RuntimeError: If symbol deletion fails
+        """
+        url = f"/sessions/{session_name}/symbols/{symbol_name}"
+
+        try:
+            response = await self._client.delete(url)
+            response.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"delete symbol {symbol_name}", e) from e
+
     async def health_check(self) -> bool:
         """Perform a health check on the HTTP executor service.
 
@@ -304,3 +363,42 @@ class HttpExecutorClient:
             return list(response.json()["symbols"])
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error("list symbols", e) from e
+
+    async def list_sessions(self) -> list[str]:
+        """List all sessions on this node.
+
+        Returns:
+            List of session names
+
+        Raises:
+            RuntimeError: If session listing fails
+        """
+        url = "/sessions"
+        try:
+            response = await self._client.get(url)
+            response.raise_for_status()
+            return list(response.json()["sessions"])
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error("list sessions", e) from e
+
+    async def list_computations(self, session_name: str) -> list[str]:
+        """List all computations in a session.
+
+        Args:
+            session_name: The session name/ID
+
+        Returns:
+            List of computation names
+
+        Raises:
+            RuntimeError: If computation listing fails
+        """
+        url = f"/sessions/{session_name}/computations"
+        try:
+            response = await self._client.get(url)
+            response.raise_for_status()
+            return list(response.json()["computations"])
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(
+                f"list computations for session {session_name}", e
+            ) from e

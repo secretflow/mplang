@@ -21,18 +21,15 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "spu==0.9.4.dev20250827",         # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "protobuf>=5.0,<6.0",
     "typing_extensions",
+    # both FE & BE
+    "spu==0.9.4.dev20250827",         # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "ibis-framework[duckdb]==10.8.0",
-    "lightphe>=0.0.15,<0.1.0",        # for PHE backend implementation
     # runtime only
-    "grpcio>=1.60.0",
-    "grpcio-tools>=1.60.0",
-    "google-api-core==2.24.2", # TODO(jint): this is only required for runtime.
+    "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
     "pandas>=2.0.0",
     "duckdb>=1.0.0",
-    "httpx>=0.27.0",
 ]
 
 [dependency-groups]
@@ -45,6 +42,7 @@ dev = [
     "pre-commit",
     "fastapi",
     "uvicorn[standard]",
+    "httpx>=0.27.0",
 ]
 
 examples = [

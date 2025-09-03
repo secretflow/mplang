@@ -45,13 +45,7 @@ dev = [
     "httpx>=0.27.0",
 ]
 
-examples = [
-    "numpy==1.26.4",
-    "tensorflow-datasets==4.9.9",
-    "tensorflow==2.18.1",
-    "scikit-learn==1.7.1",
-    "keras==3.11.1",
-]
+examples = ["scikit-learn", "keras"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]

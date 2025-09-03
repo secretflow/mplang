@@ -24,12 +24,10 @@ import jax
 import jax.numpy as jnp
 import models
 import numpy as np
-import tensorflow_datasets as tfds
 from jax.example_libraries import stax
 from sklearn.metrics import accuracy_score
 
 import mplang.device as mpd
-import mplang.runtime as mprt
 
 parser = argparse.ArgumentParser(description="distributed driver.")
 parser.add_argument("--model", default="network_a", type=str)
@@ -143,24 +141,41 @@ def train(
 
 def get_datasets(name="mnist"):
     """Load MNIST train and test datasets into memory."""
-    if name == "cifar10":
+    if name == "mnist":
+        from keras.datasets import mnist
+
+        (train_images, train_labels), (test_images, test_labels) = mnist.load_data()
+
+        # Data preprocessing, consistent with the original code
+        # 1. Normalize to the [0, 1] interval
+        train_images = np.float32(train_images) / 255.0
+        test_images = np.float32(test_images) / 255.0
+
+        # 2. (Optional but recommended) Add a channel dimension to conform to the conventional model input (batch, H, W, C)
+        # The MNIST data loaded by Keras is (60000, 28, 28), which needs to be expanded to (60000, 28, 28, 1)
+        train_images = np.expand_dims(train_images, -1)
+        test_images = np.expand_dims(test_images, -1)
+
+        # 3. Construct a dictionary with the same output format as the original function
+        train_ds = {"image": train_images, "label": train_labels}
+        test_ds = {"image": test_images, "label": test_labels}
+
+        return train_ds, test_ds
+
+    elif name == "cifar10":
         from keras.datasets import cifar10
 
-        train_ds, test_ds = cifar10.load_data()
-        (train_x, train_y), (test_imgs, test_labels) = train_ds, test_ds
+        (train_x, train_y), (test_imgs, test_labels) = cifar10.load_data()
         train_x = np.float32(train_x) / 255.0
         train_y = np.squeeze(train_y)
         test_imgs = np.float32(test_imgs) / 255.0
         test_labels = np.squeeze(test_labels)
 
+        # Note: The return format of cifar10 is different from mnist, keeping it as is here
         return (train_x, train_y), (test_imgs, test_labels)
-    ds_builder = tfds.builder(name)
-    ds_builder.download_and_prepare()
-    train_ds = tfds.as_numpy(ds_builder.as_dataset(split="train", batch_size=-1))
-    test_ds = tfds.as_numpy(ds_builder.as_dataset(split="test", batch_size=-1))
-    train_ds["image"] = np.float32(train_ds["image"]) / 255.0
-    test_ds["image"] = np.float32(test_ds["image"]) / 255.0
-    return train_ds, test_ds
+
+    else:
+        raise ValueError(f"Dataset '{name}' not supported.")
 
 
 def train_mnist(model, run_on_spu: bool = False):
@@ -218,12 +233,6 @@ def run_model(model_name, run_cpu=True):
 
 
 def main():
-    if args.action == "up":
-        with open(args.config) as file:
-            conf = json.load(file)
-        mprt.start_cluster(conf["nodes"], debug_execution=True)
-        return
-
     if args.run_cpu:
         run_model(args.model, run_cpu=True)
         return

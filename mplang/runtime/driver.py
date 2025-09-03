@@ -105,6 +105,15 @@ class Driver(InterpContext):
         if trace_ranks is None:
             trace_ranks = []
 
+        def ensure_http_schema(addr):
+            return (
+                addr if addr.startswith(("http://", "https://")) else f"http://{addr}"
+            )
+
+        node_addrs = {
+            node_id: ensure_http_schema(addr) for node_id, addr in node_addrs.items()
+        }
+
         self.world_size = len(node_addrs)
         self.node_addrs = node_addrs
         self.timeout = timeout

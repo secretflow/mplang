@@ -32,12 +32,12 @@ from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import mpi, simp, smpc
-from mplang.frontend import teeu
 from mplang.core.context_mgr import set_ctx
 from mplang.core.interp import InterpContext
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.primitive import primitive
+from mplang.frontend import teeu
 from mplang.runtime.driver import ExecutorDriver
 from mplang.runtime.simulation import Simulator
 from mplang.utils.func_utils import normalize_fn
@@ -129,17 +129,20 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     node_ids = sorted(set(node_ids))
     world_size = len(node_ids)
     spu_mask = Mask.none()
-    tee_mask = Mask.none()
-    tee_index = None
+    tee_mask = None
+    tee_rank = None
+    tee_mode = "sim"
     if len(spu_conf) > 0:
         for nid in spu_conf[0].node_ids:
             spu_mask |= Mask.from_ranks(node_ids.index(nid))
     if len(tee_conf) > 0:
+        tee_mode = tee_conf[0].configs["tee_mode"]
         tee_node_id = tee_conf[0].configs["tee_node"]
+        tee_mask = Mask.none()
         for nid in tee_conf[0].node_ids:
             tee_mask |= Mask.from_ranks(node_ids.index(nid))
             if nid == tee_node_id:
-                tee_index = node_ids.index(nid)
+                tee_rank = node_ids.index(nid)
 
     driver: InterpContext
     if not nodes_def:
@@ -149,7 +152,8 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
             nodes_def,
             spu_mask=spu_mask,
             tee_mask=tee_mask,
-            tee_index=tee_index,
+            tee_rank=tee_rank,
+            tee_mode=tee_mode,
             device_ctx=device_ctx,
         )
 

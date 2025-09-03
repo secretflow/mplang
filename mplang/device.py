@@ -115,7 +115,9 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     driver: InterpContext
     if not nodes_def:
         world_size = len(node_ids)
-            spu_mask |= Mask.from_ranks([node_ids.index(nid)])
+        spu_mask = Mask.none()
+        for nid in spu_conf[0].node_ids:
+            spu_mask |= Mask.from_ranks(node_ids.index(nid))
         driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
     else:
         driver = Driver(

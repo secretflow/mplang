@@ -36,6 +36,7 @@ from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
 from mplang.expr.ast import Expr
+from mplang.protos import tee_pb2, tee_pb2_grpc
 from mplang.protos.v1alpha1 import executor_pb2, executor_pb2_grpc
 from mplang.runtime.executor.resource import SessionName, SymbolName
 
@@ -50,6 +51,18 @@ def new_uuid() -> str:
     # Decode to UTF-8 string and remove the '==' padding
     encoded_string = encoded_bytes.decode("utf-8").rstrip("=")
     return encoded_string
+
+
+def make_channel(
+    addr: str, max_message_length: int = 1024 * 1024 * 1024
+) -> grpc.Channel:
+    return grpc.insecure_channel(
+        addr,
+        options=[
+            ("grpc.max_send_message_length", max_message_length),
+            ("grpc.max_receive_message_length", max_message_length),
+        ],
+    )
 
 
 def make_stub(
@@ -109,7 +122,7 @@ class ExecutorDriver(InterpContext):
         spu_mask: Mask | None = None,
         tee_mask: Mask | None = None,
         tee_mode: str = "sim",
-        tee_index: int | None = None,
+        tee_rank: int | None = None,
         trace_ranks: list[Rank] | None = None,
         max_message_length: int = 1024 * 1024 * 1024,
         **attrs: Any,
@@ -119,11 +132,22 @@ class ExecutorDriver(InterpContext):
         self.world_size = len(node_addrs)
         self.party_addrs = node_addrs
         self.max_message_length = max_message_length
-        self._stubs = [
-            make_stub(addr, max_message_length) for addr in node_addrs.values()
+        self._channels = [
+            make_channel(addr, max_message_length) for addr in node_addrs.values()
         ]
+        self._stubs = [
+            executor_pb2_grpc.ExecutorServiceStub(channel) for channel in self._channels
+        ]
+        self._tee_stubs = None
+        if tee_mask is not None:
+            self._tee_stubs = {
+                rank: tee_pb2_grpc.TEEMgrServiceStub(self._channels[rank])
+                for rank in tee_mask.ranks()
+            }
+
         self._session_id: str | None = None
         self._counter = 0
+        self._tee_rank = tee_rank
 
         spu_mask = spu_mask or Mask.all(self.world_size)
         executor_attrs = {
@@ -133,7 +157,7 @@ class ExecutorDriver(InterpContext):
             "trace_ranks": trace_ranks,
             "tee_mask": tee_mask,
             "tee_mode": tee_mode,
-            "tee_index": tee_index,
+            "tee_rank": tee_rank,
             **attrs,
         }
 
@@ -151,7 +175,7 @@ class ExecutorDriver(InterpContext):
             metadata: dict[str, str] = {}
             if self.attr("tee_mask"):
                 metadata["tee_mask"] = str(Mask(self.attr("spu_mask")).value)
-                metadata["tee_index"] = str(self.attr("tee_index"))
+                metadata["tee_rank"] = str(self.attr("tee_rank"))
             session = executor_pb2.Session(
                 name=new_session_id, party_addrs=self.party_addrs, metadata=metadata
             )
@@ -170,10 +194,30 @@ class ExecutorDriver(InterpContext):
         )
         return self._session_id
 
+    def trigger_tee_attestation(self) -> None:
+        if self._session_id is None:
+            raise ValueError
+
+        request = tee_pb2.InitRequest(
+            session_name=self._session_id,
+            tee_party_addr=list(self.party_addrs.values())[self._tee_rank],
+        )
+        futures = []
+        for rank, stub in self._tee_stubs.items():
+            if rank == self._tee_rank:
+                continue
+            futures.append(stub.Init.future(request))
+
+        # Wait for all futures to complete
+        _ = [future.result() for future in futures]
+
     # override
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
         """Evaluate an expression using distributed execution."""
         session_id = self.get_or_create_session()
+        if self._tee_stubs is not None:
+            self.trigger_tee_attestation()
+
         execution_id = new_uuid()
 
         # Prepare input names from bindings

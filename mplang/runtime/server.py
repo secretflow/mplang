@@ -149,8 +149,6 @@ async def health_check() -> dict[str, str]:
 @app.get("/sessions", response_model=SessionListResponse)
 def list_sessions() -> SessionListResponse:
     """List all session names."""
-    from mplang.runtime import resource
-
     return SessionListResponse(sessions=resource.list_all_sessions())
 
 

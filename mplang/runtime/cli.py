@@ -18,6 +18,7 @@ Command-line interface for managing MPLang clusters.
 """
 
 import argparse
+import asyncio
 import json
 import multiprocessing
 import sys
@@ -25,6 +26,7 @@ from typing import Any, cast
 
 import uvicorn
 
+from mplang.runtime.client import HttpExecutorClient
 from mplang.runtime.server import app
 
 
@@ -196,13 +198,11 @@ def status_command(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
-    import asyncio
 
     async def _get_node_status(
         node_id: str, endpoint: str, timeout: int = 60
     ) -> dict[str, Any]:
         """Get status information for a single node."""
-        from mplang.runtime.client import HttpExecutorClient
 
         client = HttpExecutorClient(endpoint, timeout)
         status: dict[str, Any] = {

@@ -21,13 +21,14 @@ import argparse
 import json
 import multiprocessing
 import sys
+from typing import Any
 
 import uvicorn
 
 from mplang.runtime.server import app
 
 
-def load_config(config_path: str) -> dict:
+def load_config(config_path: str) -> dict[Any, Any]:
     """Load configuration from a JSON file.
 
     Args:
@@ -37,7 +38,7 @@ def load_config(config_path: str) -> dict:
         Dictionary containing the configuration
     """
     with open(config_path) as f:
-        return json.load(f)
+        return dict[Any, Any](json.load(f))
 
 
 def run_server(port: int, node_id: str) -> None:
@@ -232,7 +233,7 @@ def status_command(args: argparse.Namespace) -> int:
         return 1
 
 
-def main():
+def main() -> int:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
         prog="mplang-cli",
@@ -292,7 +293,8 @@ def main():
 
     # Handle subcommands
     if hasattr(args, "func"):
-        return args.func(args)
+        result = args.func(args)
+        return int(result)
 
     return 0
 

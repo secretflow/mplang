@@ -37,9 +37,9 @@ def test_load_config():
     # Create a temporary config file
     config_data = {
         "nodes": {
-            "node:0": "127.0.0.1:9530",
-            "node:1": "127.0.0.1:9531",
-            "node:2": "127.0.0.1:9532",
+            "P0": "127.0.0.1:9530",
+            "P1": "127.0.0.1:9531",
+            "P2": "127.0.0.1:9532",
         }
     }
 
@@ -66,7 +66,7 @@ def test_load_config_invalid_file():
 def test_status_command_success():
     """Test the status command when all nodes are healthy."""
     # Create a temporary config file
-    config_data = {"nodes": {"node:0": "127.0.0.1:9530", "node:1": "127.0.0.1:9531"}}
+    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config_data, f)
@@ -92,7 +92,7 @@ def test_status_command_success():
 def test_status_command_unhealthy_node():
     """Test the status command when a node is unhealthy."""
     # Create a temporary config file
-    config_data = {"nodes": {"node:0": "127.0.0.1:9530", "node:1": "127.0.0.1:9531"}}
+    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config_data, f)
@@ -101,7 +101,7 @@ def test_status_command_unhealthy_node():
     try:
         # Mock the Driver.ping method to return False for one node
         def mock_ping(node_id):
-            return node_id == 0  # Node 0 is healthy, node 1 is not
+            return node_id == "P0"  # Node P0 is healthy, node P1 is not
 
         with patch.object(Driver, "ping", side_effect=mock_ping):
             # Create mock args
@@ -121,7 +121,7 @@ def test_status_command_unhealthy_node():
 def test_status_command_exception():
     """Test the status command when an exception occurs."""
     # Create a temporary config file
-    config_data = {"nodes": {"node:0": "127.0.0.1:9530", "node:1": "127.0.0.1:9531"}}
+    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config_data, f)
@@ -171,7 +171,7 @@ def test_status_command_empty_config():
 def test_start_command_success():
     """Test the start command when successful."""
     # Create a temporary config file
-    config_data = {"nodes": {"node:0": "127.0.0.1:9530", "node:1": "127.0.0.1:9531"}}
+    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config_data, f)
@@ -183,7 +183,7 @@ def test_start_command_success():
             # Create mock args
             args = MagicMock()
             args.config = config_path
-            args.node_id = 0
+            args.node_id = "P0"
 
             # Run the start command
             result = start_command(args)
@@ -191,8 +191,8 @@ def test_start_command_success():
             # Check that it returns 0 (success)
             assert result == 0
 
-            # Check that run_server was called with the correct port
-            mock_run_server.assert_called_once_with(9530)
+            # Check that run_server was called with the correct port and node_id
+            mock_run_server.assert_called_once_with(9530, "P0")
     finally:
         # Clean up
         os.unlink(config_path)
@@ -201,7 +201,7 @@ def test_start_command_success():
 def test_start_command_node_not_found():
     """Test the start command when the specified node is not found."""
     # Create a temporary config file
-    config_data = {"nodes": {"node:0": "127.0.0.1:9530", "node:1": "127.0.0.1:9531"}}
+    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config_data, f)
@@ -211,7 +211,7 @@ def test_start_command_node_not_found():
         # Create mock args
         args = MagicMock()
         args.config = config_path
-        args.node_id = 2  # This node doesn't exist in the config
+        args.node_id = "P2"  # This node doesn't exist in the config
 
         # Run the start command
         result = start_command(args)
@@ -236,7 +236,7 @@ def test_start_command_empty_config():
         # Create mock args
         args = MagicMock()
         args.config = config_path
-        args.node_id = 0
+        args.node_id = "P0"
 
         # Run the start command
         result = start_command(args)
@@ -251,7 +251,7 @@ def test_start_command_empty_config():
 def test_start_cluster_command_success():
     """Test the start-cluster command when successful."""
     # Create a temporary config file
-    config_data = {"nodes": {"node:0": "127.0.0.1:9530", "node:1": "127.0.0.1:9531"}}
+    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(config_data, f)

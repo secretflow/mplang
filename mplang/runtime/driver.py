@@ -291,7 +291,7 @@ class Driver(InterpContext):
         """Fetch results from the distributed HTTP execution."""
         return asyncio.run(self._fetch(obj))
 
-    async def _ping(self, node_id: int) -> bool:
+    async def _ping(self, node_id: str) -> bool:
         """Async implementation to ping a node.
 
         Args:
@@ -316,7 +316,7 @@ class Driver(InterpContext):
         finally:
             await client.close()
 
-    def ping(self, node_id: int) -> bool:
+    def ping(self, node_id: str) -> bool:
         """Ping a node to check if it's healthy.
 
         Args:

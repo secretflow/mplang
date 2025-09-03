@@ -279,7 +279,8 @@ class HttpExecutorClient:
         try:
             response = await self._client.get(url)
             response.raise_for_status()
-            return response.json().get("status") == "ok"
+            result = response.json().get("status") == "ok"
+            return bool(result)  # Ensure we return a bool type
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error("perform health check", e) from e
 

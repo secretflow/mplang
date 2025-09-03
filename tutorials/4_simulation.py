@@ -151,7 +151,7 @@ def device_eager(ectx):
             },
         },
         "P0": {"type": "PPU", "node_ids": ["node:0"]},
-        "P1": {"type": "PPU", "node_ids": ["node:3"]},
+        "P1": {"type": "PPU", "node_ids": ["node:1"]},
     }
 
     # Initialize device configuration

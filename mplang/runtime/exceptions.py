@@ -12,21 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Runtime components for mplang.
+"""Custom exception types for the HTTP backend."""
 
-This module contains runtime implementations including:
-- Simulator for local simulation
-- Driver for distributed execution
-"""
 
-from mplang.runtime.driver import Driver, DriverVar
-from mplang.runtime.simulation import Simulator
+class HttpBackendError(Exception):
+    """Base exception for all HTTP backend errors."""
 
-__all__ = [
-    "Driver",
-    "DriverVar",
-    "Simulator",
-    # "serve",
-    # "start_cluster",
-]
+
+class ResourceNotFound(HttpBackendError):
+    """Raised when a resource (session, computation, etc.) is not found."""
+
+
+class InvalidRequestError(HttpBackendError, ValueError):
+    """Raised for invalid requests, e.g., bad parameters or invalid state."""

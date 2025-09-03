@@ -13,21 +13,20 @@
 # limitations under the License.
 
 """
-Executor client implementation.
+HTTP-based driver implementation for distributed execution.
 
-This module contains the client-side implementation for communicating with
-the executor service, including the driver for distributed execution.
+This module provides an HTTP-based alternative to the gRPC Driver,
+using REST APIs for distributed multi-party computation coordination.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import uuid
 from collections.abc import Sequence
 from typing import Any
 
-import cloudpickle as pickle
-import grpc
 import spu.libspu as libspu
 
 from mplang.core.interp import InterpContext, InterpVar
@@ -36,8 +35,7 @@ from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
 from mplang.expr.ast import Expr
-from mplang.protos.v1alpha1 import executor_pb2, executor_pb2_grpc
-from mplang.runtime.executor.resource import SessionName, SymbolName
+from mplang.runtime.client import HttpExecutorClient
 
 
 def new_uuid() -> str:
@@ -52,41 +50,21 @@ def new_uuid() -> str:
     return encoded_string
 
 
-def make_stub(
-    addr: str, max_message_length: int = 1024 * 1024 * 1024
-) -> executor_pb2_grpc.ExecutorServiceStub:
-    """Create a gRPC stub for the executor service."""
-    channel = grpc.insecure_channel(
-        addr,
-        options=[
-            ("grpc.max_send_message_length", max_message_length),
-            ("grpc.max_receive_message_length", max_message_length),
-        ],
-    )
-    return executor_pb2_grpc.ExecutorServiceStub(channel)
-
-
 class DriverVar(InterpVar):
-    """A variable that references a value in distributed executor nodes.
+    """A variable that references a value in distributed HTTP executor nodes.
 
-    DriverVar represents a value that has been computed and exists
-    across multiple executor nodes, identified by a SymbolName.
+    This represents a symbol stored on remote HTTP servers that can be
+    retrieved via REST API calls.
     """
 
-    def __init__(self, ctx: InterpContext, symbol_name: SymbolName, mptype: MPType):
-        self._ctx = ctx
-        self._symbol_name = symbol_name
-        self._mptype = mptype
-
-    @property
-    def ctx(self) -> InterpContext:
-        """The executor driver context this variable belongs to."""
-        return self._ctx
-
-    @property
-    def symbol_name(self) -> SymbolName:
-        """The symbol name of this variable across executor nodes."""
-        return self._symbol_name
+    def __init__(
+        self,
+        ctx: Driver,
+        symbol_name: str,
+        mptype: MPType,
+    ) -> None:
+        super().__init__(ctx, mptype)
+        self.symbol_name = symbol_name
 
     @property
     def mptype(self) -> MPType:
@@ -94,38 +72,41 @@ class DriverVar(InterpVar):
         return self._mptype
 
     def __repr__(self) -> str:
-        return f"DriverVar(symbol_name={self.symbol_name}, mptype={self.mptype})"
+        return f"HttpDriverVar(symbol_name={self.symbol_name}, mptype={self.mptype})"
 
 
-class ExecutorDriver(InterpContext):
-    """Driver for distributed execution using gRPC-based executor services."""
+class Driver(InterpContext):
+    """Driver for distributed execution using HTTP-based services."""
 
     def __init__(
         self,
-        node_addrs: dict[str, str],
+        node_addrs: dict[str, str] | dict[int, str],
         *,
         spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_mask: Mask | None = None,
         trace_ranks: list[Rank] | None = None,
-        max_message_length: int = 1024 * 1024 * 1024,
+        timeout: int = 60,
         **attrs: Any,
     ) -> None:
         if trace_ranks is None:
             trace_ranks = []
+
         self.world_size = len(node_addrs)
         self.party_addrs = node_addrs
-        self.max_message_length = max_message_length
-        self._stubs = [
-            make_stub(addr, max_message_length) for addr in node_addrs.values()
-        ]
+        self.timeout = timeout
+
         self._session_id: str | None = None
         self._counter = 0
 
         spu_mask = spu_mask or Mask.all(self.world_size)
+        self.spu_protocol = int(spu_protocol)
+        self.spu_field = int(spu_field)
+        self.spu_mask_int = int(spu_mask)
+
         executor_attrs = {
-            "spu_protocol": int(spu_protocol),
-            "spu_field": int(spu_field),
+            "spu_protocol": self.spu_protocol,
+            "spu_field": self.spu_field,
             "spu_mask": spu_mask,
             "trace_ranks": trace_ranks,
             **attrs,
@@ -133,120 +114,151 @@ class ExecutorDriver(InterpContext):
 
         super().__init__(self.world_size, executor_attrs)
 
+    def _create_clients(self) -> dict[int, HttpExecutorClient]:
+        """Create HTTP clients for all endpoints."""
+        clients = {}
+        for key, endpoint in self.party_addrs.items():
+            rank = int(key) if isinstance(key, str) else key
+            clients[rank] = HttpExecutorClient(endpoint, self.timeout)
+        return clients
+
+    async def _close_clients(self, clients: dict[int, HttpExecutorClient]) -> None:
+        """Close all provided HTTP clients."""
+        await asyncio.gather(*[client.close() for client in clients.values()])
+
     def new_name(self, prefix: str = "var") -> str:
         """Generate a unique execution name."""
         name = f"{prefix}_{self._counter}"
         self._counter += 1
         return name
 
-    def get_or_create_session(self) -> str:
+    async def _get_or_create_session(self) -> str:
+        """Get existing session or create a new one across all HTTP servers."""
         if self._session_id is None:
             new_session_id = new_uuid()
-            metadata: dict[str, str] = {}
-            session = executor_pb2.Session(
-                name=new_session_id, party_addrs=self.party_addrs, metadata=metadata
-            )
-            request = executor_pb2.CreateSessionRequest(parent="", session=session)
-            futures = []
-            for stub in self._stubs:
-                futures.append(stub.CreateSession.future(request))
+            endpoints_list = list(self.party_addrs.values())
 
-            # Wait for all futures to complete
-            _ = [future.result() for future in futures]
+            # Create temporary clients for session creation
+            clients = self._create_clients()
+            try:
+                # Create session on all HTTP servers concurrently
+                tasks = []
+                for rank, client in clients.items():
+                    task = client.create_session(
+                        name=new_session_id,
+                        rank=rank,
+                        endpoints=endpoints_list,
+                        spu_mask=self.spu_mask_int,
+                        spu_protocol=self.spu_protocol,
+                        spu_field=self.spu_field,
+                    )
+                    tasks.append(task)
 
-            # Store the new session ID
-            self._session_id = new_session_id
-        assert self._session_id is not None, (
-            "Session ID should not be None after get_or_create_session"
-        )
+                try:
+                    results = await asyncio.gather(*tasks)
+                    for session_id in results:
+                        assert session_id == new_session_id
+                    self._session_id = new_session_id
+                except RuntimeError as e:
+                    raise RuntimeError(
+                        f"Failed to create session on one or more parties: {e}"
+                    ) from e
+            finally:
+                await self._close_clients(clients)
+
+        assert self._session_id is not None
         return self._session_id
 
-    # override
-    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
-        """Evaluate an expression using distributed execution."""
-        session_id = self.get_or_create_session()
-        execution_id = new_uuid()
+    async def _evaluate(
+        self, expr: Expr, bindings: dict[str, MPObject]
+    ) -> Sequence[MPObject]:
+        """Async implementation to evaluate an expression."""
+        session_id = await self._get_or_create_session()
 
         # Prepare input names from bindings
-        # e.g. $0, $1, ...
         var_names = []
-        # e.g. /session/{session_id}/execution/{execution_id}/input/{name}
         party_symbol_names = []
         for name, var in bindings.items():
             if var.ctx is not self:
                 raise ValueError(f"Variable {name} not in this context, got {var.ctx}.")
-            assert isinstance(var, DriverVar), f"Expected DriverVar, got {type(var)}"
+            assert isinstance(var, DriverVar), (
+                f"Expected HttpDriverVar, got {type(var)}"
+            )
             var_names.append(name)
-            party_symbol_names.append(var.symbol_name.to_string())
+            party_symbol_names.append(var.symbol_name)
 
-        # Create variable name mapping from DAG variable names to remote symbol names
-        var_name_mapping = dict(zip(var_names, party_symbol_names, strict=False))
+        var_name_mapping = dict(zip(var_names, party_symbol_names, strict=True))
 
-        # Serialize the expression using mpir.proto
         writer = Writer(var_name_mapping)
-        program = writer.dumps(expr).SerializeToString()
+        program_proto = writer.dumps(expr)
 
-        # Generate output names for the execution
-        output_symbols = [
-            SymbolName.execution_symbol(
-                session_id=session_id,
-                execution_id=execution_id,
-                symbol_id=self.new_name(),
-            )
-            for _ in range(expr.num_outputs)
-        ]
-        output_names = [s.to_string() for s in output_symbols]
+        output_symbols = [self.new_name() for _ in range(expr.num_outputs)]
 
-        # Create the execution object
-        execution = executor_pb2.Execution(
-            name=execution_id,
-            program=program,
-            input_names=party_symbol_names,
-            output_names=output_names,
-        )
+        # Create temporary clients for computation execution
+        clients = self._create_clients()
+        try:
+            # Concurrently create and execute computation on all parties
+            tasks = []
+            computation_id = new_uuid()
+            for _rank, client in clients.items():
+                task = client.create_and_execute_computation(
+                    session_id,
+                    computation_id,
+                    program_proto.SerializeToString(),
+                    party_symbol_names,
+                    output_symbols,
+                )
+                tasks.append(task)
 
-        # Set attributes for the execution
-        execution.attrs["session_id"].string_value = session_id
-        execution.attrs["spu_mask"].number_value = Mask(self.attr("spu_mask")).value
-        execution.attrs["spu_protocol"].number_value = int(self.attr("spu_protocol"))
-        execution.attrs["spu_field"].number_value = int(self.attr("spu_field"))
+            try:
+                await asyncio.gather(*tasks)
+            except RuntimeError as e:
+                raise RuntimeError(
+                    f"Failed to create and execute computation on one or more parties: {e}"
+                ) from e
+        finally:
+            await self._close_clients(clients)
 
-        # Fire off execution on all nodes
-        futures = []
-        for rank in range(self.world_size):
-            request = executor_pb2.CreateExecutionRequest(
-                parent=SessionName(session_id).to_string(),
-                execution=execution,
-            )
-            stub = self._stubs[rank]
-            futures.append(stub.CreateExecution.future(request))
-
-        # Wait for execution to complete
-        _ = [future.result() for future in futures]
-
-        # Create DriverVar objects for each output
+        # Create HttpDriverVar objects for each output
         driver_vars = []
-        for symbol_name, mptype in zip(output_symbols, expr.mptypes, strict=False):
-            driver_var = DriverVar(
-                self,
-                symbol_name,
-                mptype,
-            )
+        for symbol_name, mptype in zip(output_symbols, expr.mptypes, strict=True):
+            driver_var = DriverVar(self, symbol_name, mptype)
             driver_vars.append(driver_var)
 
         return driver_vars
 
-    # override
-    def fetch(self, obj: MPObject) -> list[Any]:
-        """Fetch results from the distributed execution."""
+    def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
+        """Evaluate an expression using distributed HTTP execution."""
+        return asyncio.run(self._evaluate(expr, bindings))
+
+    async def _fetch(self, obj: MPObject) -> list[Any]:
+        """Async implementation to fetch results."""
         if not isinstance(obj, DriverVar):
-            raise ValueError(f"Expected DriverVar, got {type(obj)}")
+            raise ValueError(f"Expected HttpDriverVar, got {type(obj)}")
 
-        # Fetch symbol by resource name from all executor nodes
-        results = []
-        for rank in range(self.world_size):
-            request = executor_pb2.GetSymbolRequest(name=obj.symbol_name.to_string())
-            response = self._stubs[rank].GetSymbol(request)
-            results.append(pickle.loads(response.data))
+        session_id = await self._get_or_create_session()
+        symbol_full_name = obj.symbol_name
 
-        return results
+        # Create temporary clients for fetching
+        clients = self._create_clients()
+        try:
+            # Concurrently fetch symbol from all parties
+            tasks = []
+            for _rank, client in clients.items():
+                task = client.get_symbol(session_id, symbol_full_name)
+                tasks.append(task)
+
+            try:
+                # The results will be in the same order as the clients (ranks)
+                results = await asyncio.gather(*tasks)
+                return list(results)
+            except RuntimeError as e:
+                raise RuntimeError(
+                    f"Failed to fetch symbol from one or more parties: {e}"
+                ) from e
+        finally:
+            await self._close_clients(clients)
+
+    def fetch(self, obj: MPObject) -> list[Any]:
+        """Fetch results from the distributed HTTP execution."""
+        return asyncio.run(self._fetch(obj))

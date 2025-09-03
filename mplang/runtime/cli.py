@@ -200,9 +200,16 @@ def status_command(args: argparse.Namespace) -> int:
     """
 
     async def _get_node_status(
-        node_id: str, endpoint: str, timeout: int = 60
+        node_id: str, endpoint: str, details: bool = False, timeout: int = 60
     ) -> dict[str, Any]:
-        """Get status information for a single node."""
+        """Get status information for a single node.
+
+        Args:
+            node_id: Identifier for the node
+            endpoint: HTTP endpoint of the node
+            details: Whether to include detailed session information
+            timeout: HTTP request timeout in seconds (default: 60)
+        """
 
         client = HttpExecutorClient(endpoint, timeout)
         status: dict[str, Any] = {
@@ -223,7 +230,7 @@ def status_command(args: argparse.Namespace) -> int:
                 status["sessions"] = sessions
 
                 # Get detailed session info if requested
-                if args.details:
+                if details:
                     session_details = []
                     for session_name in sessions:
                         try:
@@ -253,11 +260,20 @@ def status_command(args: argparse.Namespace) -> int:
         return status
 
     async def _collect_cluster_status(
-        nodes: dict[str, str],
+        nodes: dict[str, str], details: bool = False
     ) -> list[dict[str, Any] | BaseException]:
-        """Collect status from all nodes concurrently."""
+        """Collect status from all nodes concurrently.
+
+        Args:
+            nodes: Dictionary mapping node IDs to their HTTP endpoints
+            details: Whether to include detailed session information for each node
+
+        Returns:
+            List of status dictionaries or exceptions for each node
+        """
         tasks = [
-            _get_node_status(node_id, endpoint) for node_id, endpoint in nodes.items()
+            _get_node_status(node_id, endpoint, details)
+            for node_id, endpoint in nodes.items()
         ]
         return await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -271,7 +287,7 @@ def status_command(args: argparse.Namespace) -> int:
             return 1
 
         # Collect status from all nodes
-        cluster_status = asyncio.run(_collect_cluster_status(nodes))
+        cluster_status = asyncio.run(_collect_cluster_status(nodes, args.details))
 
         # Basic node health check
         print("Node Status:")

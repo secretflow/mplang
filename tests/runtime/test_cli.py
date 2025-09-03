@@ -81,9 +81,7 @@ def test_status_command_success():
         mock_client.list_symbols.return_value = ["sym1", "sym2", "sym3"]
         mock_client.close.return_value = None
 
-        with patch(
-            "mplang.runtime.client.HttpExecutorClient", return_value=mock_client
-        ):
+        with patch("mplang.runtime.cli.HttpExecutorClient", return_value=mock_client):
             # Create mock args
             args = MagicMock()
             args.config = config_path
@@ -125,7 +123,7 @@ def test_status_command_unhealthy_node():
             return mock_client
 
         with patch(
-            "mplang.runtime.client.HttpExecutorClient",
+            "mplang.runtime.cli.HttpExecutorClient",
             side_effect=mock_client_side_effect,
         ):
             # Create mock args
@@ -159,9 +157,7 @@ def test_status_command_exception():
         mock_client.health_check.side_effect = Exception("Connection failed")
         mock_client.close.return_value = None
 
-        with patch(
-            "mplang.runtime.client.HttpExecutorClient", return_value=mock_client
-        ):
+        with patch("mplang.runtime.cli.HttpExecutorClient", return_value=mock_client):
             # Create mock args
             args = MagicMock()
             args.config = config_path

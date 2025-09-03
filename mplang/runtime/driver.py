@@ -105,7 +105,7 @@ class Driver(InterpContext):
         if trace_ranks is None:
             trace_ranks = []
 
-        def ensure_http_schema(addr):
+        def ensure_http_schema(addr: str) -> str:
             return (
                 addr if addr.startswith(("http://", "https://")) else f"http://{addr}"
             )

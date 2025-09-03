@@ -38,7 +38,7 @@ The base path for all endpoints is `/api/v1`.
 | `PUT`  | `/sessions/{session_id}`                                   | Creates or updates a session with a client-provided ID.      |
 | `GET`  | `/sessions`                                                | Lists all sessions on the node.                              |
 | `GET`  | `/sessions/{session_id}`                                   | Retrieves details for a specific session.                    |
-| `DELETE`| `/sessions/{session_id}`                                   | Deletes a session and all its associated resources.          |
+| `DELETE` | /sessions/{session_id}                                   | Deletes a session and all its associated resources.          |
 | `PUT`  | `/sessions/{session_id}/computations/{computation_id}`     | Creates and executes a computation with a client-provided ID. |
 | `GET`  | `/sessions/{session_id}/computations`                      | Lists all computations within a session.                     |
 | `DELETE`| `/sessions/{session_id}/computations/{computation_id}`     | Deletes a specific computation.                              |

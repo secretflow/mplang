@@ -40,17 +40,55 @@ def load_config(config_path: str) -> dict:
         return json.load(f)
 
 
-def run_server(port: int) -> None:
+def run_server(port: int, node_id: str) -> None:
     """Run a uvicorn server on a specific port.
 
     Args:
         port: The port to run the server on
+        node_id: The ID of the node
     """
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": f"%(levelname)s: [{node_id}] %(message)s",
+                "use_colors": None,
+            },
+            "access": {
+                "()": "uvicorn.logging.AccessFormatter",
+                "fmt": f'%(levelname)s: [{node_id}] %(client_addr)s - "%(request_line)s" %(status_code)s',
+                "use_colors": None,
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+            "access": {
+                "formatter": "access",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"level": "INFO"},
+            "uvicorn.access": {
+                "handlers": ["access"],
+                "level": "INFO",
+                "propagate": False,
+            },
+        },
+    }
     config = uvicorn.Config(
         app,
         host="127.0.0.1",
         port=port,
-        log_level="info",
+        log_config=log_config,
         ws="none",  # Disable websockets
     )
     server = uvicorn.Server(config)
@@ -76,18 +114,18 @@ def start_command(args: argparse.Namespace) -> int:
             return 1
 
         # Find the endpoint for the specified node
-        node_key = f"node:{args.node_id}"
-        if node_key not in nodes:
-            print(f"Node {args.node_id} not found in configuration")
+        node_id = args.node_id
+        if node_id not in nodes:
+            print(f"Node {node_id} not found in configuration")
             return 1
 
-        endpoint = nodes[node_key]
+        endpoint = nodes[node_id]
         # Extract port from endpoint (format: host:port)
         port = int(endpoint.split(":")[-1])
 
-        print(f"Starting node {args.node_id} on port {port}...")
+        print(f"Starting node {node_id} on port {port}...")
         # Run the server directly (blocking)
-        run_server(port)
+        run_server(port, node_id)
 
         return 0
     except Exception as e:
@@ -115,14 +153,12 @@ def start_cluster_command(args: argparse.Namespace) -> int:
 
         # Start a process for each node
         processes = []
-        for node_key, endpoint in nodes.items():
-            # Extract node_id from node_key (format: node:id)
-            node_id = int(node_key.split(":")[-1])
+        for node_id, endpoint in nodes.items():
             # Extract port from endpoint (format: host:port)
             port = int(endpoint.split(":")[-1])
 
             # Create and start process
-            process = multiprocessing.Process(target=run_server, args=(port,))
+            process = multiprocessing.Process(target=run_server, args=(port, node_id))
             process.start()
             processes.append((node_id, process))
             print(f"Started node {node_id} on port {port} (PID: {process.pid})")
@@ -181,7 +217,7 @@ def status_command(args: argparse.Namespace) -> int:
 
         for node_id, endpoint in nodes.items():
             try:
-                is_healthy = driver.ping(int(node_id.split(":")[-1]))
+                is_healthy = driver.ping(node_id)
                 status = "HEALTHY" if is_healthy else "UNHEALTHY"
                 if not is_healthy:
                     all_healthy = False
@@ -224,7 +260,7 @@ def main():
         "--config", "-c", required=True, help="Path to the JSON configuration file"
     )
     start_parser.add_argument(
-        "--node-id", "-n", required=True, type=int, help="ID of the node to start"
+        "--node-id", "-n", required=True, type=str, help="ID of the node to start"
     )
     start_parser.set_defaults(func=start_command)
 

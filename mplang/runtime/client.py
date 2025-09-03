@@ -86,7 +86,7 @@ class HttpExecutorClient:
         """Create a new session.
 
         Args:
-            name: Optional session name. If None, server will generate one.
+            name: Session name/ID.
             rank: The rank of this party in the session.
             endpoints: List of endpoint URLs for all parties, indexed by rank.
             spu_mask: SPU mask for the session, -1 means all parties construct SPU.
@@ -99,9 +99,8 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If session creation fails
         """
-        url = "/sessions"
+        url = f"/sessions/{name}"
         payload: dict[str, Any] = {
-            "name": name,
             "rank": rank,
             "endpoints": endpoints,
             "spu_mask": spu_mask,
@@ -110,7 +109,7 @@ class HttpExecutorClient:
         }
 
         try:
-            response = await self._client.post(url, json=payload)
+            response = await self._client.put(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
         except httpx.HTTPStatusError as e:
@@ -158,7 +157,8 @@ class HttpExecutorClient:
         """Create a new computation in a session.
 
         Args:
-            session_name: The session name/ID
+            session_id: The session name/ID
+            computation_id: The computation name/ID
             program: Serialized computation program (protobuf bytes)
             input_names: List of input symbol names
             output_names: List of output symbol names
@@ -169,17 +169,16 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If computation creation fails
         """
-        url = f"/sessions/{session_id}/computations"
+        url = f"/sessions/{session_id}/computations/{computation_id}"
         program_data = base64.b64encode(program).decode("utf-8")
         payload = {
-            "computation_id": computation_id,
             "mpprogram": program_data,
             "input_names": input_names,
             "output_names": output_names,
         }
 
         try:
-            response = await self._client.post(url, json=payload)
+            response = await self._client.put(url, json=payload)
             response.raise_for_status()
             return str(response.json()["name"])
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
@@ -224,16 +223,16 @@ class HttpExecutorClient:
         Raises:
             RuntimeError: If symbol creation fails
         """
-        url = f"/sessions/{session_name}/symbols"
+        url = f"/sessions/{session_name}/symbols/{symbol_name}"
 
         # Serialize data
         data_bytes = pickle.dumps(data)
         data_b64 = base64.b64encode(data_bytes).decode("utf-8")
 
-        payload = {"name": symbol_name, "data": data_b64, "mptype": mptype or {}}
+        payload = {"data": data_b64, "mptype": mptype or {}}
 
         try:
-            response = await self._client.post(url, json=payload)
+            response = await self._client.put(url, json=payload)
             response.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error(f"create symbol {symbol_name}", e) from e

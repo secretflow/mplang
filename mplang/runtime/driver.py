@@ -45,8 +45,8 @@ def new_uuid() -> str:
     uuid_bytes = u.bytes
     # Encode using URL-safe Base64
     encoded_bytes = base64.urlsafe_b64encode(uuid_bytes)
-    # Decode to UTF-8 string and remove the '==' padding
-    encoded_string = encoded_bytes.decode("utf-8").rstrip("=")
+    # Decode to UTF-8 string, remove padding, and take first 8 characters
+    encoded_string = encoded_bytes.decode("utf-8").rstrip("=")[:8]
     return encoded_string
 
 

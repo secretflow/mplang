@@ -93,7 +93,6 @@ def validate_name(name: str, name_type: str) -> None:
 
 # Request/Response Models
 class CreateSessionRequest(BaseModel):
-    name: str
     rank: int
     endpoints: list[str]
     # SPU related
@@ -107,7 +106,6 @@ class SessionResponse(BaseModel):
 
 
 class CreateComputationRequest(BaseModel):
-    computation_id: str  # name of the computation
     mpprogram: str  # Base64 encoded MPProgram proto
     input_names: list[str]  # Mandatory input symbol names
     output_names: list[str]  # Mandatory output symbol names
@@ -118,13 +116,11 @@ class ComputationResponse(BaseModel):
 
 
 class CreateSymbolRequest(BaseModel):
-    name: str
     mptype: dict
     data: str  # Base64 encoded data
 
 
 class CreateComputationSymbolRequest(BaseModel):
-    name: str
     mptype: dict
     data: str  # Base64 encoded data
 
@@ -136,10 +132,7 @@ class SymbolResponse(BaseModel):
 
 
 class CommSendRequest(BaseModel):
-    from_rank: int
-    to_rank: int
     data: str  # Base64 encoded data
-    key: str
 
 
 @app.get("/health")
@@ -149,11 +142,11 @@ async def health_check() -> dict[str, str]:
 
 
 # Session endpoints
-@app.post("/sessions", response_model=SessionResponse)
-def create_session(request: CreateSessionRequest) -> SessionResponse:
-    validate_name(request.name, "session")
+@app.put("/sessions/{session_name}", response_model=SessionResponse)
+def create_session(session_name: str, request: CreateSessionRequest) -> SessionResponse:
+    validate_name(session_name, "session")
     session = resource.create_session(
-        name=request.name,
+        name=session_name,
         rank=request.rank,
         endpoints=request.endpoints,
         spu_mask=request.spu_mask,
@@ -172,9 +165,12 @@ def get_session(session_name: str) -> SessionResponse:
 
 
 # Computation endpoints
-@app.post("/sessions/{session_name}/computations", response_model=ComputationResponse)
+@app.put(
+    "/sessions/{session_name}/computations/{computation_id}",
+    response_model=ComputationResponse,
+)
 def create_and_execute_computation(
-    session_name: str, request: CreateComputationRequest
+    session_name: str, computation_id: str, request: CreateComputationRequest
 ) -> ComputationResponse:
     graph_proto = mpir_pb2.GraphProto()
     try:
@@ -191,9 +187,7 @@ def create_and_execute_computation(
         raise InvalidRequestError("Failed to parse expression from protobuf")
 
     # Create the computation resource
-    computation = resource.create_computation(
-        session_name, request.computation_id, expr
-    )
+    computation = resource.create_computation(session_name, computation_id, expr)
     # Execute with input/output names
     resource.execute_computation(
         session_name, computation.name, request.input_names, request.output_names
@@ -202,13 +196,15 @@ def create_and_execute_computation(
 
 
 # Symbol endpoints
-@app.post("/sessions/{session_name}/symbols", response_model=SymbolResponse)
+@app.put(
+    "/sessions/{session_name}/symbols/{symbol_name}", response_model=SymbolResponse
+)
 def create_session_symbol(
-    session_name: str, request: CreateSymbolRequest
+    session_name: str, symbol_name: str, request: CreateSymbolRequest
 ) -> SymbolResponse:
     """Create a symbol in a session."""
     symbol = resource.create_symbol(
-        session_name, request.name, request.mptype, request.data
+        session_name, symbol_name, request.mptype, request.data
     )
     # Return the base64 data back to client; server stores Python object
     return SymbolResponse(
@@ -218,16 +214,19 @@ def create_session_symbol(
     )
 
 
-@app.post(
-    "/sessions/{session_name}/computations/{computation_name}/symbols",
+@app.put(
+    "/sessions/{session_name}/computations/{computation_name}/symbols/{symbol_name}",
     response_model=SymbolResponse,
 )
 def create_computation_symbol(
-    session_name: str, computation_name: str, request: CreateComputationSymbolRequest
+    session_name: str,
+    computation_name: str,
+    symbol_name: str,
+    request: CreateComputationSymbolRequest,
 ) -> SymbolResponse:
     """Create a symbol in a computation."""
     symbol = resource.create_computation_symbol(
-        session_name, computation_name, request.name, request.mptype, request.data
+        session_name, computation_name, symbol_name, request.mptype, request.data
     )
     # Return the base64 data back to client
     return SymbolResponse(
@@ -273,8 +272,11 @@ def list_session_symbols(session_name: str) -> dict[str, list[str]]:
 
 
 # Communication endpoints
-@app.post("/sessions/{session_name}/comm/send")
-def comm_send(session_name: str, request: CommSendRequest) -> dict[str, str]:
+# TODO(jint) this should be computation level, add multi computation parallel support.
+@app.put("/sessions/{session_name}/comm/{key}/from/{from_rank}")
+def comm_send(
+    session_name: str, key: str, from_rank: int, request: CommSendRequest
+) -> dict[str, str]:
     """
     Receive a message from another party and deliver it to the session's communicator.
     This endpoint runs on the receiver's server.
@@ -284,18 +286,9 @@ def comm_send(session_name: str, request: CommSendRequest) -> dict[str, str]:
         logger.error(f"Session or communicator not found: session={session_name}")
         raise HTTPException(status_code=404, detail="Session or communicator not found")
 
-    # The 'to_rank' should be the rank of the server hosting this endpoint
-    if session.communicator.rank != request.to_rank:
-        logger.error(
-            "Rank mismatch: session.communicator.rank=%s, request.to_rank=%s",
-            session.communicator.rank,
-            request.to_rank,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Mismatched rank. Receiver rank is {session.communicator.rank}, but request is for {request.to_rank}",
-        )
+    # The receiver rank should be the rank of the server hosting this endpoint
+    # We don't need to validate to_rank since the request is coming to this server
 
     # Use the proper onSent mechanism from CommunicatorBase
-    session.communicator.onSent(request.from_rank, request.key, request.data)
+    session.communicator.onSent(from_rank, key, request.data)
     return {"status": "ok"}

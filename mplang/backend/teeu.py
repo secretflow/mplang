@@ -17,7 +17,7 @@ from typing import Any
 
 from mplang.core.mptype import TableLike, TensorLike
 from mplang.core.pfunc import HybridHandler, PFunction
-from mplang.crypto.rsa import EncryptedTable, EncryptedTensor, RSAEncryptor
+from mplang.runtime.crypto.rsa import EncryptedTable, EncryptedTensor, RSAEncryptor
 from mplang.runtime.executor.tee_attestation import TEEKeyManager
 
 

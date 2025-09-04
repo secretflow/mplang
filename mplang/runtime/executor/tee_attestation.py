@@ -31,6 +31,8 @@ from typing import Any
 
 import grpc
 import trustflow.attestation.verification as verification
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from google.protobuf.json_format import MessageToJson
 
 try:
@@ -236,9 +238,6 @@ class TEEKeyManager:
     def get_or_create_self_key_pair(self, session_name: str) -> tuple[str, str]:
         if session_name in self._keys:
             return self._keys[session_name].pub_key, self._keys[session_name].priv_key
-
-        from cryptography.hazmat.primitives import serialization  # type: ignore
-        from cryptography.hazmat.primitives.asymmetric import rsa  # type: ignore
 
         # Generate private key
         private_key = rsa.generate_private_key(

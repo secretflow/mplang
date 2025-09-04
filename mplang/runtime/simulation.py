@@ -119,8 +119,6 @@ class Simulator(InterpContext):
                 else None
             )
 
-        print(f"tee_mask: {tee_mask}, tee_rank: {tee_rank}")
-
         if tee_mask is not None:
             assert tee_rank is not None and tee_rank in tee_mask.ranks()
             key_mgrs = {rank: TEEKeyManager() for rank in tee_mask.ranks()}
@@ -151,9 +149,6 @@ class Simulator(InterpContext):
         for rank in range(self.psize()):
             if tee_mask is not None and rank in key_mgrs.keys():
                 key_mgr = key_mgrs[rank]
-                print(
-                    f"rank {rank}, key_dict: {key_mgr.get_session_key_dict('sim_session')}"
-                )
                 tee_handler = TEEHandler(
                     key_mgr=key_mgr,
                     session_id="sim_session",

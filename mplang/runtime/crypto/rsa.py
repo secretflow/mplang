@@ -15,7 +15,6 @@
 """RSA encryption utilities for TensorLike and TableLike data."""
 
 import base64
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -153,7 +152,9 @@ class RSAEncryptor:
         """
         if private_key_pem:
             private_key_data = (
-                private_key_pem.encode("utf-8") if isinstance(private_key_pem, str) else private_key_pem
+                private_key_pem.encode("utf-8")
+                if isinstance(private_key_pem, str)
+                else private_key_pem
             )
             private_key = load_pem_private_key(private_key_data, password=None)
             if not isinstance(private_key, rsa.RSAPrivateKey):
@@ -163,7 +164,9 @@ class RSAEncryptor:
 
         if public_key_pem and not self._public_key:
             public_key_data = (
-                public_key_pem.encode("utf-8") if isinstance(public_key_pem, str) else public_key_pem
+                public_key_pem.encode("utf-8")
+                if isinstance(public_key_pem, str)
+                else public_key_pem
             )
             public_key = load_pem_public_key(public_key_data)
             if not isinstance(public_key, rsa.RSAPublicKey):

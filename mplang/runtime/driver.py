@@ -203,7 +203,7 @@ class ExecutorDriver(InterpContext):
 
     def _trigger_tee_attestation(self) -> None:
         if self._session_id is None:
-            raise ValueError
+            raise SystemError("Session must be created before TEE attestation")
 
         if self._tee_inited:
             return

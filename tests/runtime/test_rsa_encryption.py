@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mplang.crypto.rsa import EncryptedTensor, RSAEncryptor
+from mplang.runtime.crypto.rsa import EncryptedTensor, RSAEncryptor
 
 
 class TestRSAEncryption:

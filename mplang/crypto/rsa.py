@@ -269,7 +269,7 @@ class RSAEncryptor:
         serialized = flat_data.astype(np.float64).tobytes()
 
         # Split into chunks for RSA encryption (max 190 bytes for 2048-bit key)
-        chunk_size = 190
+        chunk_size = (self.key_size // 8) - 2 * 32 - 2
         encrypted_chunks = []
 
         for i in range(0, len(serialized), chunk_size):

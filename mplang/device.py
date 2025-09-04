@@ -122,7 +122,7 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     assert len(spu_conf) <= 1, "Only one SPU is supported for now."
 
     tee_conf = [dev for dev in device_conf.values() if dev.type == "TEEU"]
-    assert len(spu_conf) <= 1, "Only one TEEU is supported for now."
+    assert len(tee_conf) <= 1, "Only one TEEU is supported for now."
 
     # unique node_ids across all devices
     node_ids = [nid for dev_info in device_conf.values() for nid in dev_info.node_ids]

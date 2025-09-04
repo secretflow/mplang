@@ -7,7 +7,6 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 1. Launch SPU backend runtime
 
     ```sh
-    uv sync --group examples
     uv run python -m mplang.runtime.cli up -c examples/conf/3pc.json
     ```
 

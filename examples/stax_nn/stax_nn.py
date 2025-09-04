@@ -142,7 +142,7 @@ def train(
 def get_datasets(name="mnist"):
     """Load MNIST train and test datasets into memory."""
     if name == "mnist":
-        from keras.datasets import mnist
+        from tensorflow.keras.datasets import mnist
 
         (train_images, train_labels), (test_images, test_labels) = mnist.load_data()
 
@@ -163,7 +163,7 @@ def get_datasets(name="mnist"):
         return train_ds, test_ds
 
     elif name == "cifar10":
-        from keras.datasets import cifar10
+        from tensorflow.keras.datasets import cifar10
 
         (train_x, train_y), (test_imgs, test_labels) = cifar10.load_data()
         train_x = np.float32(train_x) / 255.0

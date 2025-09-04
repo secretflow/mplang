@@ -99,7 +99,7 @@ class Driver(InterpContext):
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_nodes: list[str] | None = None,
         trace_ranks: list[Rank] | None = None,
-        timeout: int = 60,
+        timeout: int = 120,  # TODO(jint): expose to user
         **attrs: Any,
     ) -> None:
         if trace_ranks is None:

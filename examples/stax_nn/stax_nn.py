@@ -36,9 +36,6 @@ parser.add_argument("-e", "--epoch", default=5, type=int)
 parser.add_argument("-b", "--batch_size", default=128, type=int)
 parser.add_argument("-o", "--optimizer", default="SGD", type=str)
 parser.add_argument("--run_cpu", default=False, action="store_true")
-parser.add_argument(
-    "--action", default="run", type=str, help="Action to perform: 'up' or 'run'"
-)
 args = parser.parse_args()
 
 # Follows https://arxiv.org/pdf/2107.00501.pdf Appendix C.

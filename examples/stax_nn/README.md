@@ -8,13 +8,13 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 
     ```sh
     uv sync --group examples
-
-    uv run examples/stax_nn/stax_nn.py --action up
+    uv run python -m mplang.runtime.cli up -c examples/conf/3pc.json
     ```
 
 2. Run `stax_nn` example
 
     ```sh
+    uv sync --group examples
     uv run examples/stax_nn/stax_nn.py -e 1 -b 1024
     ```
 

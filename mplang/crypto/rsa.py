@@ -99,8 +99,8 @@ class RSAEncryptor:
             key_size: RSA key size in bits (default: 2048)
         """
         self.key_size = key_size
-        self._private_key: Any | None = None
-        self._public_key: Any | None = None
+        self._private_key: rsa.RSAPrivateKey | None = None
+        self._public_key: rsa.RSAPublicKey | None = None
 
     def generate_keys(self) -> tuple[bytes, bytes]:
         """
@@ -131,7 +131,9 @@ class RSAEncryptor:
         return private_pem, public_pem
 
     def load_keys(
-        self, private_key_pem: str | None = None, public_key_pem: str | None = None
+        self,
+        private_key_pem: str | bytes | None = None,
+        public_key_pem: str | bytes | None = None,
     ) -> None:
         """
         Load RSA keys from PEM format strings.
@@ -150,16 +152,20 @@ class RSAEncryptor:
             ... )
         """
         if private_key_pem:
-            private_key = load_pem_private_key(
-                private_key_pem.encode("utf-8"), password=None
+            private_key_data = (
+                private_key_pem.encode("utf-8") if isinstance(private_key_pem, str) else private_key_pem
             )
+            private_key = load_pem_private_key(private_key_data, password=None)
             if not isinstance(private_key, rsa.RSAPrivateKey):
                 raise ValueError("Private key is not an RSA key")
             self._private_key = private_key
             self._public_key = private_key.public_key()
 
         if public_key_pem and not self._public_key:
-            public_key = load_pem_public_key(public_key_pem.encode("utf-8"))
+            public_key_data = (
+                public_key_pem.encode("utf-8") if isinstance(public_key_pem, str) else public_key_pem
+            )
+            public_key = load_pem_public_key(public_key_data)
             if not isinstance(public_key, rsa.RSAPublicKey):
                 raise ValueError("Public key is not an RSA key")
             self._public_key = public_key

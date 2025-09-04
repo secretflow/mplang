@@ -97,7 +97,7 @@ def sealTo(
 
     pfunc = encrypt_data(plaintext, frm_rank, to_rank, tee_rank)
     encrypted = prim.peval(pfunc, [plaintext], Mask.from_ranks(frm_rank))
-    return mpi.p2p(frm_rank, to_rank, encrypted[0])
+    return encrypted[0]
 
 
 def reveal(ciphertext: MPObject, frm_rank: int) -> MPObject:

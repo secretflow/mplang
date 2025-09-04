@@ -270,13 +270,15 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         frm_rank = device_ctx.id2rank(frm_dev_id)
         to_rank = device_ctx.id2rank(to_dev_id)
         encrypted_var = teeu.sealTo(obj, frm_rank, to_rank, frm_rank)
-        var = teeu.reveal(encrypted_var, to_rank)
+        trans_var = mpi.p2p(frm_rank, to_rank, encrypted_var)
+        var = teeu.reveal(trans_var, to_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "TEEU"):
         frm_rank = device_ctx.id2rank(frm_dev_id)
         to_rank = device_ctx.id2rank(to_dev_id)
         encrypted_var = teeu.sealTo(obj, frm_rank, to_rank, to_rank)
-        var = teeu.reveal(encrypted_var, to_rank)
+        trans_var = mpi.p2p(frm_rank, to_rank, encrypted_var)
+        var = teeu.reveal(trans_var, to_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEEU", "SPU"):
         raise NotImplementedError("TEEU to SPU transfer not yet implemented.")

@@ -99,11 +99,20 @@ class Driver(InterpContext):
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_nodes: list[str] | None = None,
         trace_ranks: list[Rank] | None = None,
-        timeout: int = 60,
+        timeout: int = 120,  # TODO(jint): expose to user
         **attrs: Any,
     ) -> None:
         if trace_ranks is None:
             trace_ranks = []
+
+        def ensure_http_schema(addr: str) -> str:
+            return (
+                addr if addr.startswith(("http://", "https://")) else f"http://{addr}"
+            )
+
+        node_addrs = {
+            node_id: ensure_http_schema(addr) for node_id, addr in node_addrs.items()
+        }
 
         self.world_size = len(node_addrs)
         self.node_addrs = node_addrs

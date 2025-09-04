@@ -222,16 +222,8 @@ def cmd_main(main_func) -> None:
         )
         main_func(simulator)
     elif args.command == "run":
-        # Convert node addresses to HTTP URLs for Driver
-        http_nodes_def = {}
-        for node_id, address in nodes_def.items():
-            if not address.startswith(("http://", "https://")):
-                http_nodes_def[node_id] = f"http://{address}"
-            else:
-                http_nodes_def[node_id] = address
-
         driver = mprt.Driver(
-            http_nodes_def,
+            nodes_def,
             spu_nodes=spu_conf[0].node_ids,
         )
         main_func(driver)

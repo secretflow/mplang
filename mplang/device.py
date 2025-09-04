@@ -309,10 +309,7 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
         result = mapi.fetch(interp, obj)
         return result[rank]
     elif dev_type == "TEEU":
-        # TODO: need encrypt and decypt
-        revealed = smpc.reveal(obj)
-        result = mapi.fetch(interp, revealed)
-        return result[0]
+        raise PermissionError(f"Not allowed fetch data from TEEU device {dev_id}")
     else:
         raise ValueError(f"Unknown device id: {dev_id}")
 

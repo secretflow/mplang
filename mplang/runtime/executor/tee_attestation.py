@@ -130,6 +130,10 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
                 f"TEE mode mismatch: expected {self._tee_mode}, got {report_response.tee_mode}"
             )
         # store tee party pub key
+        if not report_response.pem_public_key:
+            raise ValueError(
+                "TEE party did not return a public key in the attestation report."
+            )
         self._key_manager.insert_tee_pub_key(
             request.session_name, report_response.pem_public_key
         )

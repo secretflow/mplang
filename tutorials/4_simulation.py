@@ -17,7 +17,6 @@ import random
 import mplang
 import mplang.device as mpd
 import mplang.random as mpr
-import mplang.runtime as mprt
 import mplang.smpc as smpc
 
 
@@ -212,7 +211,7 @@ def cmd_main(main_func) -> None:
             spu_mask |= 1 << all_node_ids.index(nid)
 
     if args.command == "sim":
-        from mplang.core.mask import Mask
+        from mplang.core import Mask
 
         simulator = mplang.Simulator(
             len(nodes_def),
@@ -222,7 +221,7 @@ def cmd_main(main_func) -> None:
         )
         main_func(simulator)
     elif args.command == "run":
-        driver = mprt.Driver(
+        driver = mplang.Driver(
             nodes_def,
             spu_nodes=spu_conf[0].node_ids,
         )

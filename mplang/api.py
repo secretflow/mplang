@@ -26,10 +26,9 @@ from mplang.core import (
     MPObject,
     TraceContext,
     TracedFunction,
-    cur_ctx,
     trace,
-    with_ctx,
 )
+from mplang.core.context_mgr import cur_ctx, with_ctx
 
 
 def evaluate(

@@ -36,7 +36,7 @@ from mplang.core.mptype import Rank
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike
 from mplang.core.tensor import ScalarType, Shape, TensorLike
-from mplang.core.trace import TraceContext, TraceVar, trace
+from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.expr.ast import (
     AccessExpr,
     CondExpr,

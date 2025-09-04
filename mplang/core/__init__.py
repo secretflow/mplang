@@ -49,7 +49,6 @@ from mplang.core.primitive import (
     peval,
     prand,
     prank,
-    primitive,
     pshfl,
     pshfl_s,
     psize,
@@ -62,48 +61,40 @@ from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
 
 # Tracing system
-from mplang.core.trace import TraceContext, TracedFunction, TraceVar, VarNamer
+from mplang.core.tracer import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 
 __all__ = [
-    # Type system
+    "CollectiveMixin",
+    "CommunicatorBase",
     "DType",
-    "Mask",
-    "MPType",
-    "TableType",
-    "TensorType",
-    # Object model
+    "ICollective",
+    "ICommunicator",
+    "InterpContext",
+    "InterpVar",
     "MPContext",
     "MPObject",
-    # Tracing system
+    "MPType",
+    "Mask",
+    "PFunction",
+    "TableLike",
+    "TableType",
+    "TensorLike",
+    "TensorType",
     "TraceContext",
     "TraceVar",
     "TracedFunction",
     "VarNamer",
-    # Interpreter system
-    "InterpContext",
-    "InterpVar",
-    # Primitive operations
     "cond",
     "constant",
     "function",
+    "pconv",
     "peval",
+    "prand",
+    "prank",
     "pshfl",
     "pshfl_s",
     "psize",
-    "prank",
-    "prand",
-    "primitive",
-    "pconv",
     "set_mask",
+    "trace",
     "while_loop",
-    # Communication interfaces
-    "ICollective",
-    "ICommunicator",
-    "CollectiveMixin",
-    "CommunicatorBase",
-    # Protocol types
-    "TensorLike",
-    "TableLike",
-    # Function handling
-    "PFunction",
 ]

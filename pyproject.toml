@@ -24,7 +24,7 @@ dependencies = [
     "spu==0.9.4.dev20250827",  # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
-    "protobuf>=5.0,<6.0",
+    #"protobuf>=5.0,<6.0",
     "typing_extensions",
     "ibis-framework==10.8.0",
     "sqlglot==27.7.0",         # for ibis parse_sql

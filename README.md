@@ -2,7 +2,6 @@
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/secretflow/mplang/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/secretflow/mplang/tree/main)
 [![Lint](https://github.com/secretflow/mplang/actions/workflows/lint.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/lint.yml)
-[![API Lint](https://github.com/secretflow/mplang/actions/workflows/api-lint.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/api-lint.yml)
 [![Mypy](https://github.com/secretflow/mplang/actions/workflows/mypy.yml/badge.svg)](https://github.com/secretflow/mplang/actions/workflows/mypy.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 

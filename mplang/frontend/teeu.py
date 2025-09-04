@@ -83,14 +83,32 @@ def sealTo(
     to_rank: int,
     tee_rank: int,
 ) -> MPObject:
+    if plaintext.pmask is None:
+        raise ValueError("SealTo does not support dynamic masks.")
+
+    if plaintext.pmask != Mask.from_ranks(frm_rank):
+        raise ValueError(
+            f"Cannot seal from {Mask.from_ranks(frm_rank)} to {plaintext.pmask}, "
+        )
+
     # TODO: sealTo only allowed between non-tee party and tee party
+
+    # TODO: what if frm_rank == to_rank, no need to encrypt
+
     pfunc = encrypt_data(plaintext, frm_rank, to_rank, tee_rank)
     encrypted = prim.peval(pfunc, [plaintext], Mask.from_ranks(frm_rank))
     return mpi.p2p(frm_rank, to_rank, encrypted[0])
 
 
 def reveal(ciphertext: MPObject, frm_rank: int) -> MPObject:
-    # TODO: revealTo only allowed between non-tee party and tee party
+    if ciphertext.pmask is None:
+        raise ValueError("Reveal does not support dynamic masks.")
+
+    if ciphertext.pmask != Mask.from_ranks(frm_rank):
+        raise ValueError(
+            f"Cannot reveal from {Mask.from_ranks(frm_rank)} to {ciphertext.pmask}, "
+        )
+
     pfunc = decrypt_data(ciphertext, frm_rank)
     plaintext = prim.peval(pfunc, [ciphertext], Mask.from_ranks(frm_rank))
     return plaintext[0]

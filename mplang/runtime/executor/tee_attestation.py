@@ -268,9 +268,18 @@ class TEEKeyManager:
         return self._tee_keys[session_name]
 
     def get_session_key_dict(self, session_name: str) -> dict[int, str]:
-        if session_name not in self._tee_keys:
+        if session_name not in self._keys:
             raise ValueError(f"Can not found session:{session_name}")
         return self._keys[session_name].peers_pub_key
+
+    def get_peer_pub_key(self, session_name: str, rank: int) -> str:
+        if session_name not in self._keys:
+            raise ValueError(f"Can not found session:{session_name}")
+        if rank not in self._keys[session_name].peers_pub_key:
+            raise ValueError(
+                f"Can not found rank:{rank} pub key in session:{session_name}"
+            )
+        return self._keys[session_name].peers_pub_key[rank]
 
 
 def add_tee_attestation_service(

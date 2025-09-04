@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import faulthandler
+import logging
 import sys
 import traceback
 from collections.abc import Sequence
@@ -28,6 +29,7 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.backend.teeu import TEEHandler
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
@@ -35,6 +37,7 @@ from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
 from mplang.expr.ast import Expr
 from mplang.expr.evaluator import Evaluator
+from mplang.runtime.executor.tee_attestation import TEEKeyManager
 from mplang.runtime.grpc_comm import LinkCommunicator
 from mplang.runtime.mem_comm import ThreadCommunicator
 
@@ -68,6 +71,8 @@ class Simulator(InterpContext):
         spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
         spu_field: libspu.FieldType = libspu.FieldType.FM64,
         spu_mask: Mask | None = None,
+        tee_mask: Mask | None = None,
+        tee_rank: int | None = None,
         trace_ranks: list[int] | None = None,
         **attrs: Any,
     ) -> None:
@@ -79,6 +84,8 @@ class Simulator(InterpContext):
             "spu_protocol": int(spu_protocol),
             "spu_field": int(spu_field),
             "spu_mask": spu_mask or Mask((1 << psize) - 1),
+            "tee_mask": tee_mask or Mask(0),
+            "tee_rank": tee_rank or -1,
             **attrs,
         }
         super().__init__(psize, all_attrs)
@@ -112,22 +119,75 @@ class Simulator(InterpContext):
                 else None
             )
 
+        print(f"tee_mask: {tee_mask}, tee_rank: {tee_rank}")
+
+        if tee_mask is not None:
+            assert tee_rank is not None and tee_rank in tee_mask.ranks()
+            key_mgrs = {rank: TEEKeyManager() for rank in tee_mask.ranks()}
+            for mgr in key_mgrs.values():
+                mgr.get_or_create_self_key_pair("sim_session")
+            # exchange public keys
+            for rank, mgr in key_mgrs.items():
+                if rank == tee_rank:
+                    for peer in tee_mask.ranks():
+                        if peer != rank:
+                            mgr.insert_peer_pub_key(
+                                session_name="sim_session",
+                                rank=peer,
+                                pub_key=key_mgrs[peer].get_or_create_self_key_pair(
+                                    "sim_session"
+                                )[0],
+                            )
+                else:
+                    mgr.insert_tee_pub_key(
+                        session_name="sim_session",
+                        pub_key=key_mgrs[tee_rank].get_or_create_self_key_pair(
+                            "sim_session"
+                        )[0],
+                    )
+
         # Setup evaluators
-        self._evaluators = [
-            Evaluator(
-                rank,
-                {},  # the global environment for this rank
-                self._comms[rank],
-                [
-                    BuiltinHandler(),
-                    StablehloHandler(),
-                    spu_handlers[rank],
-                    DuckDBHandler(),
-                    PHEHandler(),
-                ],
-            )
-            for rank in range(self.psize())
-        ]
+        self._evaluators = []
+        for rank in range(self.psize()):
+            if tee_mask is not None and rank in key_mgrs.keys():
+                key_mgr = key_mgrs[rank]
+                print(
+                    f"rank {rank}, key_dict: {key_mgr.get_session_key_dict('sim_session')}"
+                )
+                tee_handler = TEEHandler(
+                    key_mgr=key_mgr,
+                    session_id="sim_session",
+                )
+                self._evaluators.append(
+                    Evaluator(
+                        rank,
+                        {},  # the global environment for this rank
+                        self._comms[rank],
+                        [
+                            BuiltinHandler(),
+                            StablehloHandler(),
+                            tee_handler,
+                            spu_handlers[rank],
+                            DuckDBHandler(),
+                            PHEHandler(),
+                        ],
+                    )
+                )
+            else:
+                self._evaluators.append(
+                    Evaluator(
+                        rank,
+                        {},  # the global environment for this rank
+                        self._comms[rank],
+                        [
+                            BuiltinHandler(),
+                            StablehloHandler(),
+                            spu_handlers[rank],
+                            DuckDBHandler(),
+                            PHEHandler(),
+                        ],
+                    )
+                )
 
     def _do_evaluate(self, expr: Expr, evaluator: Evaluator) -> Any:
         """

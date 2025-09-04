@@ -73,7 +73,7 @@ SAMPLE_DEVICE_CONF = {
     "TEE0": {
         "type": "TEEU",
         "node_ids": ["node:0", "node:1", "node:3"],
-        "configs": {"mode": "sim", "tee_node": "node:3"},
+        "configs": {"tee_mode": "sim", "tee_node": "node:3"},
     },
     "P0": {"type": "PPU", "node_ids": ["node:0"]},
     "P1": {"type": "PPU", "node_ids": ["node:1"]},
@@ -121,7 +121,7 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     spu_conf = [dev for dev in device_conf.values() if dev.type == "SPU"]
     assert len(spu_conf) <= 1, "Only one SPU is supported for now."
 
-    tee_conf = [dev for dev in device_conf.values() if dev.type == "TEE"]
+    tee_conf = [dev for dev in device_conf.values() if dev.type == "TEEU"]
     assert len(spu_conf) <= 1, "Only one TEEU is supported for now."
 
     # unique node_ids across all devices
@@ -146,7 +146,13 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
 
     driver: InterpContext
     if not nodes_def:
-        driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
+        driver = Simulator(
+            world_size,
+            spu_mask=spu_mask,
+            tee_mask=tee_mask,
+            tee_rank=tee_rank,
+            device_ctx=device_ctx,
+        )
     else:
         driver = ExecutorDriver(
             nodes_def,

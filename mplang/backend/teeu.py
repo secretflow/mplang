@@ -18,14 +18,15 @@ from typing import Any
 from mplang.core.mptype import TableLike, TensorLike
 from mplang.core.pfunc import HybridHandler, PFunction
 from mplang.crypto.rsa import EncryptedTable, EncryptedTensor, RSAEncryptor
+from mplang.runtime.executor.tee_attestation import TEEKeyManager
 
 
 class TEEHandler(HybridHandler):
-    def __init__(self, key_dict: dict[int, str], private_key: str) -> None:
+    def __init__(self, key_mgr: TEEKeyManager, session_id: str) -> None:
         super().__init__()
 
-        self._key_dict = key_dict
-        self._priv_key = private_key
+        self._key_mgr = key_mgr
+        self._session_id = session_id
 
     def setup(self, rank: int) -> None: ...
     def teardown(self) -> None: ...
@@ -56,12 +57,14 @@ class TEEHandler(HybridHandler):
 
         plaintext = args[0]
         attrs: dict[str, Any] = dict(pfunc.attrs or {})
-        target_rank = attrs.get("target_rank")
+        target_rank = attrs.get("to_rank")
+        tee_rank = attrs.get("tee_rank")
         assert target_rank is not None
-        if target_rank not in self._key_dict:
-            raise KeyError(f"Can not found public key for rank: {target_rank}")
 
-        public_key = self._key_dict.get(target_rank)
+        if target_rank == tee_rank:
+            public_key = self._key_mgr.get_tee_pub_key(self._session_id)
+        else:
+            public_key = self._key_mgr.get_peer_pub_key(self._session_id, target_rank)
 
         try:
             rsa = RSAEncryptor()
@@ -90,7 +93,11 @@ class TEEHandler(HybridHandler):
 
         try:
             rsa = RSAEncryptor()
-            rsa.load_keys(private_key_pem=self._priv_key)
+            rsa.load_keys(
+                private_key_pem=self._key_mgr.get_or_create_self_key_pair(
+                    self._session_id
+                )[1]
+            )
             if isinstance(ciphertext, EncryptedTensor):
                 plaintext_np = rsa.decrypt_tensor(ciphertext)
                 return [plaintext_np]

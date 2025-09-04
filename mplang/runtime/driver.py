@@ -36,8 +36,12 @@ from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
 from mplang.expr.ast import Expr
-from mplang.protos import tee_pb2, tee_pb2_grpc
-from mplang.protos.v1alpha1 import executor_pb2, executor_pb2_grpc
+from mplang.protos.v1alpha1 import (
+    executor_pb2,
+    executor_pb2_grpc,
+    tee_pb2,
+    tee_pb2_grpc,
+)
 from mplang.runtime.executor.resource import SessionName, SymbolName
 
 
@@ -138,7 +142,10 @@ class ExecutorDriver(InterpContext):
         self._stubs = [
             executor_pb2_grpc.ExecutorServiceStub(channel) for channel in self._channels
         ]
-        self._tee_stubs = None
+
+        # setup tee stubs
+        self._tee_rank = tee_rank
+        self._tee_stubs = {}
         if tee_mask is not None:
             self._tee_stubs = {
                 rank: tee_pb2_grpc.TEEMgrServiceStub(self._channels[rank])
@@ -147,7 +154,7 @@ class ExecutorDriver(InterpContext):
 
         self._session_id: str | None = None
         self._counter = 0
-        self._tee_rank = tee_rank
+        self._tee_inited = False
 
         spu_mask = spu_mask or Mask.all(self.world_size)
         executor_attrs = {
@@ -194,10 +201,14 @@ class ExecutorDriver(InterpContext):
         )
         return self._session_id
 
-    def trigger_tee_attestation(self) -> None:
+    def _trigger_tee_attestation(self) -> None:
         if self._session_id is None:
             raise ValueError
 
+        if self._tee_inited:
+            return
+
+        assert self._tee_rank is not None, "tee_rank must be set for TEE initialization"
         request = tee_pb2.InitRequest(
             session_name=self._session_id,
             tee_party_addr=list(self.party_addrs.values())[self._tee_rank],
@@ -215,8 +226,8 @@ class ExecutorDriver(InterpContext):
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
         """Evaluate an expression using distributed execution."""
         session_id = self.get_or_create_session()
-        if self._tee_stubs is not None:
-            self.trigger_tee_attestation()
+        if len(self._tee_stubs) > 0:
+            self._trigger_tee_attestation()
 
         execution_id = new_uuid()
 
@@ -264,7 +275,7 @@ class ExecutorDriver(InterpContext):
         execution.attrs["spu_protocol"].number_value = int(self.attr("spu_protocol"))
         execution.attrs["spu_field"].number_value = int(self.attr("spu_field"))
         execution.attrs["tee_mask"].number_value = Mask(self.attr("tee_mask")).value
-        execution.attrs["tee_index"].number_value = int(self.attr("tee_index"))
+        execution.attrs["tee_rank"].number_value = int(self.attr("tee_rank"))
 
         # Fire off execution on all nodes
         futures = []

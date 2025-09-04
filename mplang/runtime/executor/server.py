@@ -261,10 +261,10 @@ class Execution:
             spu_handler.set_link_context(self.spu_comm)
 
         if self.enable_tee_handler:
-            _, priv_key = self.key_mgr.get_or_create_self_key_pair(self.session_id)
+            self.key_mgr.get_or_create_self_key_pair(self.session_id)
             tee_handler = TEEHandler(
-                key_dict=self.key_mgr.get_session_key_dict(self.session_id),
-                private_key=priv_key,
+                key_mgr=self.key_mgr,
+                session_id=self.session_id,
             )
 
             evaluator = Evaluator(

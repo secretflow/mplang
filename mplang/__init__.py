@@ -25,8 +25,8 @@ except PackageNotFoundError:
 
 # Core API functions
 from mplang.api import CompileOptions, compile, evaluate, fetch
+from mplang.core import cur_ctx, set_ctx, with_ctx
 from mplang.core import primitive as prim
-from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
 from mplang.runtime.simulation import Simulator
 
 function = prim.primitive

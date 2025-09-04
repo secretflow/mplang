@@ -342,8 +342,8 @@ class RSAEncryptor:
                 serialized = data.astype(np.float64).tobytes()
             else:
                 # For string/object types, encode as UTF-8
-                data = series.astype(str).values
-                serialized = "|".join(data).encode("utf-8")
+                import json
+                serialized = json.dumps(series.astype(str).to_list()).encode("utf-8")
 
             # Split into chunks for RSA encryption
             chunk_size = 190

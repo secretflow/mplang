@@ -72,26 +72,23 @@ class GetTEEReportRequest(google.protobuf.message.Message):
     SESSION_NAME_FIELD_NUMBER: builtins.int
     PEM_PUBLIC_KEY_FIELD_NUMBER: builtins.int
     RANK_FIELD_NUMBER: builtins.int
-    GENERATION_PARAMS_JSON_FIELD_NUMBER: builtins.int
+    NONCE_FIELD_NUMBER: builtins.int
     session_name: builtins.str
     """The resource name of the session. Format: "sessions/{session_id}"."""
     pem_public_key: builtins.str
     """PEM-encoded public key for TEE attestation"""
     rank: builtins.int
     """Rank of the party in the TEE context"""
-    generation_params_json: builtins.str
-    """The JSON serialized string of
-    secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationGenerationParams
-    """
+    nonce: builtins.str
     def __init__(
         self,
         *,
         session_name: builtins.str = ...,
         pem_public_key: builtins.str = ...,
         rank: builtins.int = ...,
-        generation_params_json: builtins.str = ...,
+        nonce: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["generation_params_json", b"generation_params_json", "pem_public_key", b"pem_public_key", "rank", b"rank", "session_name", b"session_name"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["nonce", b"nonce", "pem_public_key", b"pem_public_key", "rank", b"rank", "session_name", b"session_name"]) -> None: ...
 
 global___GetTEEReportRequest = GetTEEReportRequest
 

@@ -16,7 +16,7 @@ from google.api import annotations_pb2 as google_dot_api_dot_annotations__pb2
 from google.api import field_behavior_pb2 as google_dot_api_dot_field__behavior__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n mplang/protos/v1alpha1/tee.proto\x12\x16mplang.protos.v1alpha1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"`\n\x0bInitRequest\x12&\n\x0csession_name\x18\x01 \x01(\tB\x03\xe0\x41\x02R\x0bsessionName\x12)\n\x0etee_party_addr\x18\x02 \x01(\tB\x03\xe0\x41\x02R\x0cteePartyAddr\"\x0e\n\x0cInitResponse\"\xb7\x01\n\x13GetTEEReportRequest\x12&\n\x0csession_name\x18\x01 \x01(\tB\x03\xe0\x41\x02R\x0bsessionName\x12)\n\x0epem_public_key\x18\x02 \x01(\tB\x03\xe0\x41\x02R\x0cpemPublicKey\x12\x12\n\x04rank\x18\x03 \x01(\x05R\x04rank\x12\x39\n\x16generation_params_json\x18\x04 \x01(\tB\x03\xe0\x41\x02R\x14generationParamsJson\"\x87\x01\n\x14GetTEEReportResponse\x12)\n\x0epem_public_key\x18\x01 \x01(\tB\x03\xe0\x41\x01R\x0cpemPublicKey\x12\x1e\n\x08tee_mode\x18\x02 \x01(\tB\x03\xe0\x41\x02R\x07teeMode\x12$\n\x0breport_json\x18\x03 \x01(\tB\x03\xe0\x41\x02R\nreportJson2\xb1\x02\n\rTEEMgrService\x12\x81\x01\n\x04Init\x12#.mplang.protos.v1alpha1.InitRequest\x1a$.mplang.protos.v1alpha1.InitResponse\".\x82\xd3\xe4\x93\x02(\"&/v1/{session_name=sessions/*}/tee_init\x12\x9b\x01\n\x0cGetTEEReport\x12+.mplang.protos.v1alpha1.GetTEEReportRequest\x1a,.mplang.protos.v1alpha1.GetTEEReportResponse\"0\x82\xd3\xe4\x93\x02*\x12(/v1/{session_name=sessions/*}/tee_reportb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n mplang/protos/v1alpha1/tee.proto\x12\x16mplang.protos.v1alpha1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"`\n\x0bInitRequest\x12&\n\x0csession_name\x18\x01 \x01(\tB\x03\xe0\x41\x02R\x0bsessionName\x12)\n\x0etee_party_addr\x18\x02 \x01(\tB\x03\xe0\x41\x02R\x0cteePartyAddr\"\x0e\n\x0cInitResponse\"\x97\x01\n\x13GetTEEReportRequest\x12&\n\x0csession_name\x18\x01 \x01(\tB\x03\xe0\x41\x02R\x0bsessionName\x12)\n\x0epem_public_key\x18\x02 \x01(\tB\x03\xe0\x41\x02R\x0cpemPublicKey\x12\x12\n\x04rank\x18\x03 \x01(\x05R\x04rank\x12\x19\n\x05nonce\x18\x04 \x01(\tB\x03\xe0\x41\x02R\x05nonce\"\x87\x01\n\x14GetTEEReportResponse\x12)\n\x0epem_public_key\x18\x01 \x01(\tB\x03\xe0\x41\x01R\x0cpemPublicKey\x12\x1e\n\x08tee_mode\x18\x02 \x01(\tB\x03\xe0\x41\x02R\x07teeMode\x12$\n\x0breport_json\x18\x03 \x01(\tB\x03\xe0\x41\x02R\nreportJson2\xb1\x02\n\rTEEMgrService\x12\x81\x01\n\x04Init\x12#.mplang.protos.v1alpha1.InitRequest\x1a$.mplang.protos.v1alpha1.InitResponse\".\x82\xd3\xe4\x93\x02(\"&/v1/{session_name=sessions/*}/tee_init\x12\x9b\x01\n\x0cGetTEEReport\x12+.mplang.protos.v1alpha1.GetTEEReportRequest\x1a,.mplang.protos.v1alpha1.GetTEEReportResponse\"0\x82\xd3\xe4\x93\x02*\x12(/v1/{session_name=sessions/*}/tee_reportb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -31,8 +31,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GETTEEREPORTREQUEST'].fields_by_name['session_name']._serialized_options = b'\340A\002'
   _globals['_GETTEEREPORTREQUEST'].fields_by_name['pem_public_key']._loaded_options = None
   _globals['_GETTEEREPORTREQUEST'].fields_by_name['pem_public_key']._serialized_options = b'\340A\002'
-  _globals['_GETTEEREPORTREQUEST'].fields_by_name['generation_params_json']._loaded_options = None
-  _globals['_GETTEEREPORTREQUEST'].fields_by_name['generation_params_json']._serialized_options = b'\340A\002'
+  _globals['_GETTEEREPORTREQUEST'].fields_by_name['nonce']._loaded_options = None
+  _globals['_GETTEEREPORTREQUEST'].fields_by_name['nonce']._serialized_options = b'\340A\002'
   _globals['_GETTEEREPORTRESPONSE'].fields_by_name['pem_public_key']._loaded_options = None
   _globals['_GETTEEREPORTRESPONSE'].fields_by_name['pem_public_key']._serialized_options = b'\340A\001'
   _globals['_GETTEEREPORTRESPONSE'].fields_by_name['tee_mode']._loaded_options = None
@@ -48,9 +48,9 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_INITRESPONSE']._serialized_start=221
   _globals['_INITRESPONSE']._serialized_end=235
   _globals['_GETTEEREPORTREQUEST']._serialized_start=238
-  _globals['_GETTEEREPORTREQUEST']._serialized_end=421
-  _globals['_GETTEEREPORTRESPONSE']._serialized_start=424
-  _globals['_GETTEEREPORTRESPONSE']._serialized_end=559
-  _globals['_TEEMGRSERVICE']._serialized_start=562
-  _globals['_TEEMGRSERVICE']._serialized_end=867
+  _globals['_GETTEEREPORTREQUEST']._serialized_end=389
+  _globals['_GETTEEREPORTRESPONSE']._serialized_start=392
+  _globals['_GETTEEREPORTRESPONSE']._serialized_end=527
+  _globals['_TEEMGRSERVICE']._serialized_start=530
+  _globals['_TEEMGRSERVICE']._serialized_end=835
 # @@protoc_insertion_point(module_scope)

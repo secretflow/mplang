@@ -57,9 +57,7 @@ message GetTEEReportRequest {
   // Rank of the party in the TEE context
   int32 rank = 3;
 
-  // The JSON serialized string of
-  // secretflowapis.v2.sdc.ual_pb2.UnifiedAttestationGenerationParams
-  string generation_params_json = 4 [(google.api.field_behavior) = REQUIRED];
+  string nonce = 4 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Response message for TEE attestation report

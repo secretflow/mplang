@@ -21,12 +21,17 @@ attestation reports in both simulation and TDX modes.
 
 from __future__ import annotations
 
+import base64
+import functools
 import logging
+import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import grpc
-from google.protobuf.json_format import MessageToJson, Parse
+import trustflow.attestation.verification as verification
+from google.protobuf.json_format import MessageToJson
 
 try:
     import trustflow.attestation.generation as tdx_generation
@@ -35,23 +40,32 @@ except ImportError:
 
 try:
     from secretflowapis.v2.sdc.ual_pb2 import (
+        UnifiedAttestationAttributes,
         UnifiedAttestationGenerationParams,
+        UnifiedAttestationPolicy,
         UnifiedAttestationReport,
+        UnifiedAttestationReportParams,
     )
 except ImportError:
     UnifiedAttestationGenerationParams = None
     UnifiedAttestationReport = None
+    UnifiedAttestationReportParams = None
+    UnifiedAttestationPolicy = None
+    UnifiedAttestationAttributes = None
 
-from mplang.protos import tee_pb2, tee_pb2_grpc
+from mplang.protos.v1alpha1 import tee_pb2, tee_pb2_grpc
 
 
-def grpc_exception_handler(response_cls):
-    def decorator(func):
-        def wrapper(self, request, context):
+def grpc_exception_handler(
+    response_cls: type[Any],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def wrapper(self: Any, request: Any, context: grpc.ServicerContext) -> Any:
             try:
                 return func(self, request, context)
             except ValueError as be:
-                context.set_details(be.message)
+                context.set_details(str(be))
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
                 return response_cls()
             except grpc.RpcError as e:
@@ -102,28 +116,42 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
         channel = grpc.insecure_channel(request.tee_party_addr)
         stub = tee_pb2_grpc.TEEMgrServiceStub(channel)
 
-        # Create GetTEEReportRequest
-        generation_params = UnifiedAttestationGenerationParams()
-        # TODO: Use user-defined content
-        generation_params.tee_identity = "tdx_vm_instance"
-        generation_params.report_type = "TDX"
-        # TODO: Use user-defined content
-        generation_params.report_hex_nonce = "f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8"
-
         report_request = tee_pb2.GetTEEReportRequest()
         report_request.session_name = request.session_name
         report_request.pem_public_key, _ = (
             self._key_manager.get_or_create_self_key_pair(request.session_name)
         )
-        report_request.generation_params_json = MessageToJson(generation_params)
+        report_request.nonce = base64.b64encode(os.urandom(16)).decode("utf-8")
 
         # Call the TEE party's GetTEEReport method
         report_response = stub.GetTEEReport(report_request)
-        # TODO: check report valid
-
+        if report_response.tee_mode != self._tee_mode:
+            raise ValueError(
+                f"TEE mode mismatch: expected {self._tee_mode}, got {report_response.tee_mode}"
+            )
+        # store tee party pub key
         self._key_manager.insert_tee_pub_key(
             request.session_name, report_response.pem_public_key
         )
+
+        if report_response.tee_mode == "sim":
+            logging.warning("Running in sim mode, skipping attestation verification")
+            return response
+
+        attrs = UnifiedAttestationAttributes()
+        attrs.str_tee_platform = "TDX"
+        attrs.hex_user_data = report_request.nonce
+        # TODO: use user provide measurement
+        # attrs.hex_ta_measurement = "test"
+        attrs.bool_debug_disabled = "true"
+        status = verification.attestation_report_verify(
+            report_response.report_json,
+            UnifiedAttestationPolicy(main_attributes=[attrs]),
+        )
+        if status.code != 0:
+            raise ValueError(
+                f"Attestation verification failed: {status.message}, detail: {status.detail}"
+            )
 
         return response
 
@@ -156,7 +184,10 @@ class TEEAttestationService(tee_pb2_grpc.TEEMgrServiceServicer):
         """Generate TEE attestation report."""
 
         params = UnifiedAttestationGenerationParams()
-        Parse(request.generation_params_json, params)
+        params.tee_identity = "tdx_instance"
+        params.report_type = "Passport"
+        params.report_params = UnifiedAttestationReportParams()
+        params.report_params.hex_user_data = request.nonce
 
         if self._tee_mode == "sim":
             report_json = self._generate_sim_report()
@@ -202,11 +233,11 @@ class TEEKeyManager:
         if session_name in self._keys:
             return self._keys[session_name].pub_key, self._keys[session_name].priv_key
 
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization  # type: ignore
+        from cryptography.hazmat.primitives.asymmetric import rsa  # type: ignore
 
         # Generate private key
-        private_key: rsa.RSAPrivateKey = rsa.generate_private_key(
+        private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
         )

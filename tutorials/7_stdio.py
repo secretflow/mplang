@@ -35,7 +35,7 @@ def save_data():
 
 @mplang.function
 def load_data():
-    tensor_info = mplang.TensorType(shape=(2, 2), dtype=jnp.float32)
+    tensor_info = mplang.core.TensorType(shape=(2, 2), dtype=jnp.float32)
 
     x = simp.runAt(0, builtin.read)("tmp/x.npy", tensor_info)
     y = simp.runAt(1, builtin.read)("tmp/y.npy", tensor_info)

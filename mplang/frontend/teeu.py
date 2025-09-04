@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import mplang.mpi as mpi
 from mplang.core import primitive as prim
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject

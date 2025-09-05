@@ -25,7 +25,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.tensor import TensorType
-from mplang.core.trace import TraceContext, TracedFunction, TraceVar, VarNamer, trace
+from mplang.core.tracer import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 from mplang.expr.ast import VariableExpr
 
 

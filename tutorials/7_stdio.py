@@ -18,7 +18,6 @@ import numpy as np
 import mplang
 import mplang.simp as simp
 import mplang.smpc as smpc
-from mplang.core.tensor import TensorType
 from mplang.frontend import builtin
 
 
@@ -36,7 +35,7 @@ def save_data():
 
 @mplang.function
 def load_data():
-    tensor_info = TensorType(shape=(2, 2), dtype=jnp.float32)
+    tensor_info = mplang.core.TensorType(shape=(2, 2), dtype=jnp.float32)
 
     x = simp.runAt(0, builtin.read)("tmp/x.npy", tensor_info)
     y = simp.runAt(1, builtin.read)("tmp/y.npy", tensor_info)

@@ -28,7 +28,7 @@ from typing import Any, cast
 
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType, TensorLike
-from mplang.core.trace import TracedFunction
+from mplang.core.tracer import TracedFunction
 from mplang.expr.ast import Expr, VariableExpr
 from mplang.utils.func_utils import var_demorph, var_morph
 

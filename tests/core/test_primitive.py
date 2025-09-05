@@ -46,7 +46,7 @@ from mplang.core.primitive import (
     set_mask,
     while_loop,
 )
-from mplang.core.trace import TraceContext, TraceVar, trace
+from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.expr.printer import Printer
 from mplang.frontend import jax_cc
 

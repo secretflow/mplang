@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import mplang
 import mplang.random as mpr
 import mplang.simp as simp
-from mplang import smpc
+import mplang.smpc as smpc
 
 
 @mplang.function

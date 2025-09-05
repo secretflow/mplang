@@ -14,43 +14,39 @@ Our goal is to build a frontend and backend that allows N data-providing parties
 
 ## 2. High-Level Flow
 
-The attestation and verification process is deeply integrated into the MPLang compiler and runtime lifecycle. It applies to any setup with N data-providing parties (verifiers) and M TEE-enabled parties (provers).
+The attestation process is initiated by the `Driver` and transparently handled by the MPLang runtime, ensuring the user's script remains focused on business logic.
 
-The flow is as follows:
+1. **Scripting & Compilation**: A user writes a Python script. Either the programmer explicitly, or a security-aware compiler automatically, inserts `quote_gen` and `quote_verify` calls at the appropriate points before sensitive data is sent to a TEE party. The final computation graph (MPIR) thus contains this security logic, which can be independently reviewed or formally verified. The `Driver` then compiles this into a final MPIR.
 
-1.  **Scripting**: A user writes a Python script defining the computation logic, treating TEE parties as regular participants.
+2. **Session Initiation (by Driver)**: Before execution, the `Driver` prepares a security context for the session:
+    * It computes the hash of the MPIR: `mpir_hash`.
+    * It generates a globally unique nonce for the session: `session_nonce`.
+    * It signs the tuple `(mpir_hash, session_nonce)` with its private key to produce a `driver_signature`. This signature proves the authenticity and integrity of the computation to all parties.
 
-2.  **Tracing & Compilation**: As MPLang traces the script into a computation graph (MPIR), it identifies data flows that cross trust boundaries (e.g., plaintext from a data-provider to a TEE party). Based on the cluster's security layout, the compiler **automatically inserts** the necessary attestation and data-sealing nodes (`quote_gen`, `quote_verify`, and data transfer operations like `pshfl`) into the graph.
+3. **Distribution**: The `Driver` distributes the execution package to all participating parties. This package contains: `(MPIR, session_nonce, driver_signature)`.
 
-3.  **Distribution**: The final, augmented computation graph (MPIR) is serialized and distributed by the `Driver` to all N+M participating parties.
+4. **Runtime Verification**:
+    * **Initial Check (All Parties)**: Upon receiving the package, every party's runtime first verifies the `driver_signature` against the `mpir_hash` and `session_nonce` using the `Driver`'s public key. This confirms the job's authenticity and prevents tampering.
+    * **TEE Attestation (TEE Parties)**: When a TEE party's runtime encounters a `quote_gen` instruction, it automatically includes the `mpir_hash` and `session_nonce` from the execution context into the quote's `report_data`.
+    * **Quote Verification (Data Parties)**: When a data-providing party's runtime **executes a `quote_verify` instruction,** it performs verification on the received quote. It independently reconstructs the expected `report_data` using the same `mpir_hash` and `session_nonce` and compares it against the data in the quote. If this check, or any other part of the quote verification, fails, the runtime **must immediately halt**.
 
-4.  **Runtime Verification**: Each party's runtime executes the graph.
-    *   When a TEE party encounters a `quote_gen` instruction, it calls its local TEE backend to produce a cryptographic quote.
-    *   When a data-providing party encounters a `quote_verify` instruction, it verifies the received quote. If the verification fails for any reason (invalid signature, wrong program measurement, mismatched graph hash), the runtime **must immediately halt**.
+5. **Secure Execution**: Once all verifications succeed, data-providing parties can securely transmit their data to the TEE parties, and the computation proceeds as defined in the MPIR.
 
-5.  **Secure Execution**: Once verification succeeds, the data-providing parties can securely transmit their data to the TEE parties (e.g., by encrypting it with a public key obtained from the TEE's quote). The rest of the computation then proceeds, executed by MPLang's various backends (e.g., SPU for MPC, DuckDB for local SQL, or the TEE backend for trusted computation).
+### 3.1. Trust & Verification Logic
 
-## 3. Trust & Verification Logic
+Our design relies on a chain of trust:
 
-### 3.1. Pre-existing Trust Assumptions
+* **Trust in Driver**: All participating parties must trust the `Driver`. They have access to the `Driver`'s public key to verify its signature on the computation job.
+* **Trust in TEE Hardware**: Data-providing parties trust the TEE hardware manufacturer (e.g., Intel, AMD) and have access to their public root certificates for quote verification.
 
-Our design relies on the following foundational trust relationships:
-
-* **Trust in Business Logic:** All participants (`A`, `B`, `C`) trust the **computation graph** they receive from the `Driver`. The mechanism for this trust (e.g., `Driver` digitally signing the graph) is **out of scope** for this protocol but is a prerequisite. All parties start with a shared, trusted **computation graph**.
-* **Trust in TEE Hardware:** `A` and `B` trust the TEE hardware manufacturer (e.g., Intel, AMD) and have access to their public root certificates. This is a fundamental platform assumption.
-
-### 3.2. Who Proves What to Whom?
-
-This is the core logic of the protocol, generalized for any number of parties:
+The core logic is as follows:
 
 * **The Provers:** The M TEE-based parties.
 * **The Verifiers:** The N non-TEE data-providing parties.
 * **The Proof's Content (Each TEE party proves to all data-providers that...)**:
-    1. **"I am a real TEE."** (Authenticity): This is proven by a cryptographic signature on the `quote` that chains back to the TEE hardware manufacturer's trusted root certificate.
-    2. **"I am running the program you expect."** (Code Integrity): The `quote` contains a measurement of the TEE party's program binary (e.g., `MRENCLAVE`). The verifiers will check this against a known-good value.
-    3. **"I am about to execute the exact same computation graph you have, right now."** (Logic & Freshness): This is the most critical part. The `quote` must also contain a commitment to the specific **computation graph** for this session, combined with a freshness guarantee (via nonces).
-
-The combination of these three proofs establishes a secure context for the computation.
+    1. **"I am a real TEE."** (Authenticity): Proven by the quote's signature chaining back to a trusted hardware vendor.
+    2. **"I am running the program you expect."** (Code Integrity): Proven by the program measurement (e.g., `MRENCLAVE`) in the quote.
+    3. **"I am executing the specific, untampered job from our trusted Driver, for this specific session."** (Logic & Freshness): This is the most critical part. It is proven by the quote containing a commitment to `hash(mpir_hash, session_nonce)`, where both `mpir_hash` and `session_nonce` were provided by the trusted `Driver`.
 
 ## 4. TEE Frontend API
 
@@ -58,56 +54,50 @@ To enable this flow, we will introduce a new `mplang.frontend.tee` module. These
 
 ### 4.1. API Functions
 
+The user-facing API is minimal. The complexity of nonce and hash management is handled by the framework.
+
 | Function           | Description                                                                                                                                                                                          |
 | :----------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gen_nonce()`      | Generates a fresh, cryptographic random number on the executing party.                                                                                                                               |
-| `quote_gen(data)`  | A core attestation function. It requests the TEE platform to generate a `quote` that cryptographically binds the machine's identity, the program's identity, and the input `data`. **Must run in a TEE.** |
-| `quote_verify(...)`| Verifies a received `quote` against a set of expectations (program hash, data hash, nonces). Typically runs on non-TEE parties.                                                                    |
+| `quote_gen()`      | A core attestation function. When executed on a TEE party, it generates a quote. The `report_data` for the quote is **implicitly constructed** by the runtime from the session's `mpir_hash` and `session_nonce`. |
+| `quote_verify(quote)`| Verifies a received `quote`. The expected `report_data` is also **implicitly constructed** by the runtime for comparison. Typically runs on non-TEE parties.                                        |
 
-**Note on Data Transfer:** There are no explicit `send` or `receive` functions in this API. Data transfer between parties (e.g., sending nonces to the TEE party or broadcasting the quote) is handled implicitly by the MPLang runtime when the computation graph indicates that data produced by one party is consumed by another. This is typically realized using the `pshfl` (Party Shuffle) primitive under the hood.
+**Note on Data Transfer:** There are no explicit `send` or `receive` functions in this API. Data transfer (e.g., broadcasting the quote) is handled implicitly by the MPLang runtime when the computation graph indicates that data produced by one party is consumed by another. This is typically realized using the `pshfl` (Party Shuffle) primitive under the hood.
 
 ### 4.2. Conceptual Execution Flow
 
-The following shows the logical sequence of operations for a single data-provider `A` and a single TEE party `C`. This logic extends to N providers and M TEEs.
+The following shows the logical sequence of operations. The `session_nonce` and `mpir_hash` are assumed to be present in the runtime context.
 
 ```python
-# In Party A's script (a data-provider)
-# The computation graph hash is known/provided.
-graph_hash = hash(computation_graph)
-my_nonce = tee.gen_nonce()
+# In a TEE Party's runtime (e.g., Party C):
+# The runtime automatically accesses the hash and nonce from the job context.
+report_data = hash(context.mpir_hash, context.session_nonce)
+# The user's code simply calls quote_gen(), and the runtime provides the data.
+c_quote, c_pubkey = tee.quote_gen(report_data=report_data) # report_data is implicit
 
-# The nonce is sent to C implicitly by being used in a function call on C.
-# C waits to receive all nonces from all N data-providers.
+# The quote and public key are broadcast to data-providers.
 
-# C generates the quote and a public key for data sealing.
-# report_data = hash(graph_hash, nonce_from_A, nonce_from_B, ...)
-# c_quote, c_pubkey = tee.quote_gen(report_data) # Executed on C
-
-# The quote and public key are broadcast from C to all data-providers.
-# Party A receives them and verifies.
+# In a Data-Provider's runtime (e.g., Party A):
+# The runtime also automatically accesses the hash and nonce.
+expected_report_data = hash(context.mpir_hash, context.session_nonce)
+# The user's code calls quote_verify(c_quote), and the runtime provides
+# the expected data for verification.
 is_trusted = tee.quote_verify(c_quote, c_pubkey,
                               EXPECTED_C_PROGRAM_HASH,
-                              graph_hash,
-                              my_nonce,
-                              # ... and all other nonces
+                              expected_report_data=expected_report_data # implicit
                              )
-assert(is_trusted) # Runtime MUST halt here if false
-
-# If trusted, A can now send its sensitive data to C.
-encrypted_data = encrypt(c_pubkey, my_sensitive_data)
-# `encrypted_data` is sent to C implicitly.
+assert(is_trusted)
 ```
 
 ### 4.3. Example MPLang Implementation
 
-Here is how the flow could be implemented in an MPLang script.
+With the simplified design, the user's code becomes much cleaner.
 
 ```python
 import mplang
 import mplang.simp as simp
 import mplang.frontend.tee as tee # Proposed TEE frontend
 
-# Parties are identified by an index. Let's say N providers (0..N-1) and M TEEs (N..N+M-1).
+# Parties are identified by an index.
 # Example: 2 providers (A, B) and 1 TEE (C)
 A, B, C = 0, 1, 2
 DATA_PROVIDERS = [A, B]
@@ -115,29 +105,23 @@ TEE_PARTIES = [C]
 
 @mplang.function
 def secure_computation_with_attestation(a_data, b_data):
-    # The traced graph of this function is the "computation_graph"
-    graph_hash = "..." # Assume this can be obtained or is a constant
+    # The mpir_hash and session_nonce are handled by the Driver and Runtime.
+    # The user's logic does not need to be aware of them.
 
-    # 1. All data providers generate a nonce.
-    nonces = [simp.runAt(p, tee.gen_nonce) for p in DATA_PROVIDERS]
+    # 1. Each TEE party generates a quote.
+    # The runtime implicitly provides the correct report_data.
+    quotes_and_keys = [simp.runAt(p, tee.quote_gen) for p in TEE_PARTIES]
 
-    # 2. Each TEE party generates a quote.
-    # It implicitly gathers the graph_hash and all nonces.
-    # (Broadcasting nonces from all providers to all TEEs happens here).
-    quotes_and_keys = [simp.runAt(p, tee.quote_gen, graph_hash, nonces) for p in TEE_PARTIES]
-
-    # 3. Each data provider verifies the quotes from all TEE parties.
-    # (Broadcasting quotes from all TEEs to all providers happens here).
+    # 2. Each data provider verifies the quotes from all TEE parties.
+    # The runtime implicitly provides the expected report_data for verification.
     for p in DATA_PROVIDERS:
-        # Each provider `p` needs all original nonces to perform verification.
-        is_trusted = simp.runAt(p, tee.quote_verify, quotes_and_keys, graph_hash, nonces)
+        is_trusted = simp.runAt(p, tee.quote_verify, quotes_and_keys)
         assert is_trusted
 
-    # 4. Proceed with actual computation...
+    # 3. Proceed with actual computation...
     # ...
     return ...
 ```
-
 
 ## 5. Security Analysis: Attack Vectors & Defenses
 
@@ -160,8 +144,8 @@ This design is intended to counter the following specific attacks:
 
 ### 5.4. Attack: Replay Attack
 
-* **Vector:** An attacker records a valid `quote` from a previous, legitimate session and replays it to `A` and `B` to trick them into sending data.
-* **Defense:** This is what the nonces are for. `A` and `B` generate **fresh, unpredictable nonces** for *every single session*. The `quote` is cryptographically bound to these specific nonces. A replayed `quote` will contain old nonces and will be rejected by `quote_verify`. This ensures the proof is "live".
+* **Vector:** An attacker records a valid `quote` from a previous, legitimate session and replays it to trick data-providers into sending data.
+* **Defense:** This is prevented by the `session_nonce`. The `Driver` generates a **fresh, unpredictable nonce for every single session**. The `quote` is cryptographically bound to this specific `session_nonce`. A replayed `quote` will contain an old, invalid nonce and will be rejected by `quote_verify`. This ensures the proof is "live" for the current session.
 
 ## 6. Implementation Guidance for Backend and Runtime
 

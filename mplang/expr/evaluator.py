@@ -117,7 +117,8 @@ class Evaluator(ExprVisitor):
 
     def fork(self, sub_bindings: dict[str, Any]) -> Evaluator:
         """Create a forked evaluator with additional variables."""
-        forked = Evaluator(self.rank, sub_bindings, self.comm, self._pfunc_handles)
+        merged_env = {**self.env, **sub_bindings}
+        forked = Evaluator(self.rank, merged_env, self.comm, self._pfunc_handles)
         return forked
 
     def visit_eval(self, expr: EvalExpr) -> Any:

@@ -64,19 +64,6 @@ buf generate
 buf breaking --against '.git#branch=main'
 ```
 
-Google API Linter (AIP design rules, separate from buf):
-
-```bash
-# Download from: https://github.com/googleapis/api-linter/releases
-
-# Prefer using a descriptor set for accurate import resolution and clearer output
-buf build -o /tmp/mplang-descriptors.binpb
-api-linter --set-exit-status --output-format text \
-  --descriptor-set-in /tmp/mplang-descriptors.binpb \
-  $(git ls-files 'protos/**/*.proto')
-```
-
-Note: API Linter runs in CI alongside buf. It focuses on Google AIP design compliance.
 
 When you introduce new imports (for example, `google/api/*.proto`), ensure dependencies are up to date:
 

@@ -150,8 +150,3 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--strict-markers --strict-config"
-
-# Convenience scripts (run with `hatch run <name>` or `uvx hatch run <name>`)
-[tool.hatch.envs.default.scripts]
-# API Linter using descriptor set for reliable import resolution and detailed output
-api-lint = "bash -lc 'buf build -o /tmp/mplang-descriptors.binpb && api-linter --set-exit-status --output-format text --descriptor-set-in /tmp/mplang-descriptors.binpb $(git ls-files \"protos/**/*.proto\")'"

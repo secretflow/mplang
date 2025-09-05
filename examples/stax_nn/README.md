@@ -8,6 +8,9 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 
     ```sh
     uv run python -m mplang.runtime.cli up -c examples/conf/3pc.json
+
+    # alternative method
+    uv run mplang-cli up -c examples/conf/3pc.json
     ```
 
 2. Run `stax_nn` example

@@ -65,27 +65,46 @@ The user-facing API is minimal. The complexity of nonce and hash management is h
 
 ### 4.2. Conceptual Execution Flow
 
-The following shows the logical sequence of operations. The `session_nonce` and `mpir_hash` are assumed to be present in the runtime context.
+The following sequence diagram illustrates the roles of the `Driver`, data-providers (`A`, `B`), and the TEE party (`C`).
 
-```python
-# In a TEE Party's runtime (e.g., Party C):
-# The runtime automatically accesses the hash and nonce from the job context.
-report_data = hash(context.mpir_hash, context.session_nonce)
-# The user's code simply calls quote_gen(), and the runtime provides the data.
-c_quote, c_pubkey = tee.quote_gen(report_data=report_data) # report_data is implicit
+```mermaid
+sequenceDiagram
+    participant Driver
+    participant A as Data-Provider A
+    participant B as Data-Provider B
+    participant C as TEE Party C
 
-# The quote and public key are broadcast to data-providers.
+    note right of Driver: 1. Session Initiation (Offline)
+    Driver->>Driver: Compile script to MPIR
+    Driver->>Driver: mpir_hash = hash(MPIR)
+    Driver->>Driver: session_nonce = gen_nonce()
+    Driver->>Driver: signature = sign(mpir_hash, session_nonce)
 
-# In a Data-Provider's runtime (e.g., Party A):
-# The runtime also automatically accesses the hash and nonce.
-expected_report_data = hash(context.mpir_hash, context.session_nonce)
-# The user's code calls quote_verify(c_quote), and the runtime provides
-# the expected data for verification.
-is_trusted = tee.quote_verify(c_quote, c_pubkey,
-                              EXPECTED_C_PROGRAM_HASH,
-                              expected_report_data=expected_report_data # implicit
-                             )
-assert(is_trusted)
+    note right of Driver: 2. Distribution & Runtime Execution
+    Driver->>A: Distribute (MPIR, nonce, signature)
+    Driver->>B: Distribute (MPIR, nonce, signature)
+    Driver->>C: Distribute (MPIR, nonce, signature)
+
+    note over A, C: All parties verify driver's signature first
+
+    C->>C: Execute graph until quote_gen()
+    C->>C: report_data = hash(mpir_hash, session_nonce)
+    C->>C: Generate quote with report_data
+
+    C-->>A: Broadcast quote
+    C-->>B: Broadcast quote
+
+    A->>A: Execute graph until quote_verify(quote)
+    A->>A: Verify quote from C
+    B->>B: Execute graph until quote_verify(quote)
+    B->>B: Verify quote from C
+
+    note over A, B: Halt if verification fails
+
+    A-->>C: Send encrypted data
+    B-->>C: Send encrypted data
+
+    note over A, C: Computation proceeds...
 ```
 
 ### 4.3. Example MPLang Implementation

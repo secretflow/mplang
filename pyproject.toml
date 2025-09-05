@@ -30,7 +30,11 @@ dependencies = [
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
     "pandas>=2.0.0",
     "duckdb>=1.0.0",
+    "httpx>=0.27.0",
 ]
+
+[project.scripts]
+mplang-cli = "mplang.runtime.cli:main"
 
 [dependency-groups]
 dev = [
@@ -42,7 +46,6 @@ dev = [
     "pre-commit",
     "fastapi",
     "uvicorn[standard]",
-    "httpx>=0.27.0",
 ]
 
 examples = ["scikit-learn", "tensorflow"]
@@ -67,6 +70,9 @@ source = "vcs"
 
 [tool.hatch.version.raw-options]
 local_scheme = "no-local-version"
+
+[tool.hatch.envs.default]
+installer = "uv"
 
 [tool.ruff]
 # Use recommended settings with black-compatible formatting

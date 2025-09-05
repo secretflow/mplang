@@ -20,7 +20,7 @@ multiple parties in a synchronous, SPMD (Single Program, Multiple Data) fashion.
 
 ### Installation
 
-You'll need a modern Python environment (3.8+). We recommend using `uv` for fast installation.
+You'll need a modern Python environment (3.10+). We recommend using `uv` for fast installation.
 
 ```bash
 # Install uv (if not already installed)

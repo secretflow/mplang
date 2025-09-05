@@ -1,9 +1,5 @@
 # Design Doc: Verifiable Computation Primitives
 
-**Status:** Draft
-**Owner:** [Your Name/Team]
-**Last Updated:** September 5, 2025
-
 ## 1. Motivation & Goal
 
 In many multi-party computation scenarios, a "full trust" model (where all parties trust each other) is not feasible, while a "zero trust" model relying purely on cryptographic techniques (like Multi-Party Computation or Homomorphic Encryption) can be prohibitively expensive in terms of performance.
@@ -114,33 +110,50 @@ With the simplified design, the user's code becomes much cleaner.
 ```python
 import mplang
 import mplang.simp as simp
-import mplang.frontend.tee as tee # Proposed TEE frontend
+import mplang.mpi as mpi
+import mplang.frontend.tee as tee
 
-# Parties are identified by an index.
-# Example: 2 providers (A, B) and 1 TEE (C)
-A, B, C = 0, 1, 2
-DATA_PROVIDERS = [A, B]
-TEE_PARTIES = [C]
+# Parties: 0, 1 are data providers; 2 is TEE party
+P0, P1, P2 = 0, 1, 2
 
 @mplang.function
 def secure_computation_with_attestation(a_data, b_data):
     # The mpir_hash and session_nonce are handled by the Driver and Runtime.
-    # The user's logic does not need to be aware of them.
+    # User code does not need to be aware of them.
 
-    # 1. Each TEE party generates a quote.
-    # The runtime implicitly provides the correct report_data.
-    quotes_and_keys = [simp.runAt(p, tee.quote_gen) for p in TEE_PARTIES]
+    # 1. TEE party (P2) generates multiple quotes with unique symmetric keys
+    # The runtime automatically generates different quotes for different recipients
+    # Each quote contains a different symmetric key for security isolation
+    quotes = simp.runAt(P2, tee.quote_gen, 2)  # Returns [quote_for_p0, quote_for_p1]
 
-    # 2. Each data provider verifies the quotes from all TEE parties.
-    # The runtime implicitly provides the expected report_data for verification.
-    for p in DATA_PROVIDERS:
-        is_trusted = simp.runAt(p, tee.quote_verify, quotes_and_keys)
-        assert is_trusted
+    # 2. Broadcast quotes using SIMP semantics
+    # SIMP automatically distributes: P0 gets quote[0], P1 gets quote[1]
+    # This eliminates the need for explicit mpi.send operations
+    quote = mpi.bcast(quotes, P2, [P0, P1])
 
-    # 3. Proceed with actual computation...
-    # ...
-    return ...
+    # 3. Each party verifies their automatically-assigned quote and extracts their unique key
+    # P0 receives quote[0] containing sym_key_a, P1 receives quote[1] containing sym_key_b
+    sym_key_a = simp.runAt(P0, tee.quote_verify, quote)  # P0 verifies quote[0]
+    sym_key_b = simp.runAt(P1, tee.quote_verify, quote)  # P1 verifies quote[1]
+
+    # 4. Secure data transmission using party-specific symmetric keys
+    # P0 cannot decrypt P1's data and vice versa due to different keys
+    encrypted_a = simp.runAt(P0, symmetric_encrypt, a_data, sym_key_a)
+    encrypted_b = simp.runAt(P1, symmetric_encrypt, b_data, sym_key_b)
+
+    # 5. Send encrypted data to TEE
+    encrypted_a_at_tee = mpi.send(encrypted_a, P0, P2)
+    encrypted_b_at_tee = mpi.send(encrypted_b, P1, P2)
+
+    # 6. TEE decrypts using the respective keys (TEE knows all keys since it generated them)
+    decrypted_a = simp.runAt(P2, symmetric_decrypt, encrypted_a_at_tee, sym_key_a)
+    decrypted_b = simp.runAt(P2, symmetric_decrypt, encrypted_b_at_tee, sym_key_b)
+
+    # ... perform secure computation on decrypted data ...
+    return result
 ```
+
+**Note:** This example demonstrates direct invocation of TEE quote primitives from the SIMP layer. In practice, users typically do not need to handle these primitives directly, as they can be abstracted by higher-level frontends.
 
 ## 5. Security Analysis: Attack Vectors & Defenses
 

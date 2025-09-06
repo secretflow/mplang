@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-
 from mplang.core.pfunc import PFunction, TableHandler
 from mplang.core.table import TableLike
 
@@ -47,7 +45,8 @@ class DuckDBHandler(TableHandler):
             assert "in_names" in pfunc.attrs, (
                 f"cannot find in_names in attrs while having {len(args)} inputs"
             )
-            in_names: list[str] = json.loads(pfunc.attrs["in_names"])
+            in_names: list[str] = pfunc.attrs["in_names"]
+            assert isinstance(in_names, list)
             # register input tables
             for arg, name in zip(args, in_names, strict=True):
                 # assert isinstance(arg, pd.DataFrame)

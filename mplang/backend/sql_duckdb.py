@@ -41,24 +41,24 @@ class DuckDBHandler(TableHandler):
         import duckdb
         import pandas as pd
 
-        assert "in_names" in pfunc.attrs, (
-            f"cannot find in_names in attrs{list(pfunc.attrs.keys())}."
-        )
-        in_names: list[str] = json.loads(pfunc.attrs["in_names"])
-
         conn = duckdb.connect(":memory:")
 
-        # register input tables
-        for arg, name in zip(args, in_names, strict=True):
-            # assert isinstance(arg, pd.DataFrame)
-            if isinstance(arg, pd.DataFrame):
-                df = arg
-            elif isinstance(arg, list):
-                # const df, only for test
-                df = pd.DataFrame.from_records(arg)
-            else:
-                raise ValueError(f"unsupport type, {type(arg)}")
-            conn.register(name, df)
+        if len(args) > 0:
+            assert "in_names" in pfunc.attrs, (
+                f"cannot find in_names in attrs while having {len(args)} inputs"
+            )
+            in_names: list[str] = json.loads(pfunc.attrs["in_names"])
+            # register input tables
+            for arg, name in zip(args, in_names, strict=True):
+                # assert isinstance(arg, pd.DataFrame)
+                if isinstance(arg, pd.DataFrame):
+                    df = arg
+                elif isinstance(arg, list):
+                    # const df, only for test
+                    df = pd.DataFrame.from_records(arg)
+                else:
+                    raise ValueError(f"unsupport type, {type(arg)}")
+                conn.register(name, df)
 
         res_df = conn.execute(pfunc.fn_text).fetchdf()
         return [res_df]

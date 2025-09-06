@@ -25,7 +25,15 @@ except PackageNotFoundError:
 
 # Core API functions
 from mplang.api import CompileOptions, compile, evaluate, fetch
-from mplang.core import DType, Mask, MPContext, MPObject, MPType, function
+from mplang.core import (
+    DType,
+    InterpContext,
+    Mask,
+    MPContext,
+    MPObject,
+    MPType,
+    function,
+)
 from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
@@ -35,6 +43,7 @@ __all__ = [
     "CompileOptions",
     "DType",
     "Driver",
+    "InterpContext",
     "MPContext",
     "MPObject",
     "MPType",

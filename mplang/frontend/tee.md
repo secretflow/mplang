@@ -161,6 +161,7 @@ def secure_computation_with_attestation(a_data, b_data):
     decrypted_b = simp.runAt(P2, symmetric_decrypt, encrypted_b_at_tee, sym_keys[1])
 
     # ... perform secure computation on decrypted data ...
+    result = decrypted_a + decrypted_b # An example computation
     return result
 ```
 

@@ -47,7 +47,7 @@ class SqlFE(FEOp):
             fn_text=sql,
             ins_info=tuple(ins_info),
             outs_info=(out_type,),
-            in_names=in_names,
+            in_names=tuple(in_names),
         )
         _, treedef = tree_flatten(out_type)
         return pfn, in_vars, treedef

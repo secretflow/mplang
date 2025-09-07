@@ -45,8 +45,7 @@ class DuckDBHandler(TableHandler):
             assert "in_names" in pfunc.attrs, (
                 f"cannot find in_names in attrs while having {len(args)} inputs"
             )
-            in_names: list[str] = pfunc.attrs["in_names"]
-            assert isinstance(in_names, list)
+            in_names = pfunc.attrs["in_names"]
             # register input tables
             for arg, name in zip(args, in_names, strict=True):
                 # assert isinstance(arg, pd.DataFrame)

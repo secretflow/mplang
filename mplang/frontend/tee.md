@@ -24,7 +24,7 @@ The attestation process is initiated by the `Driver` and transparently handled b
 
 4. **Runtime Verification**:
     * **Initial Check (All Parties)**: Upon receiving the package, every party's runtime first verifies the `driver_signature` against the `(program_hash, runtime_measurement, session_nonce)` tuple using the `Driver`'s public key. This confirms the job's authenticity and prevents tampering.
-    * **TEE Attestation (TEE Parties)**: When a TEE party's runtime encounters a `quote_gen` instruction, it automatically includes the `program_hash`, `session_nonce`, and generates symmetric keys for secure communication into the quote's `report_data`.
+    * **TEE Attestation (TEE Parties)**: When a TEE party's runtime encounters a `quote_gen` instruction, it generates symmetric keys for secure communication and embeds them in the quote. The quote's `report_data` is populated with a commitment to the `program_hash` and `session_nonce` to bind the quote to the current session.
     * **Quote Verification (Data Parties)**: When a data-providing party's runtime **executes a `quote_verify` instruction,** it performs comprehensive verification on the received quote:
         * Verifies the quote's cryptographic signature chains back to a trusted TEE vendor.
         * Compares the TEE's hardware measurement in the quote (e.g., `MRENCLAVE`) against the expected `runtime_measurement` from the Driver. This verifies the integrity of the execution environment itself.

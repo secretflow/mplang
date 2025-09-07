@@ -26,11 +26,10 @@ The attestation process is initiated by the `Driver` and transparently handled b
     * **Initial Check (All Parties)**: Upon receiving the package, every party's runtime first verifies the `driver_signature` against the `(program_hash, runtime_measurement, session_nonce)` tuple using the `Driver`'s public key. This confirms the job's authenticity and prevents tampering.
     * **TEE Attestation (TEE Parties)**: When a TEE party's runtime encounters a `quote_gen` instruction, it automatically includes the `program_hash`, `session_nonce`, and generates symmetric keys for secure communication into the quote's `report_data`.
     * **Quote Verification (Data Parties)**: When a data-providing party's runtime **executes a `quote_verify` instruction,** it performs comprehensive verification on the received quote:
-        * Verifies the quote's cryptographic signature chains back to a trusted TEE vendor
-        * Compares the program measurement in the quote against the expected `program_hash` from the Driver
-        * Verifies the runtime measurement against the expected `runtime_measurement` (if provided)
-        * Reconstructs the expected `report_data` using the same `mpir_hash` and `session_nonce` and compares it against the data in the quote
-        * If any verification step fails, the runtime **must immediately halt**. If all checks pass, extracts and returns the symmetric key for subsequent encryption operations.
+        * Verifies the quote's cryptographic signature chains back to a trusted TEE vendor.
+        * Compares the TEE's hardware measurement in the quote (e.g., `MRENCLAVE`) against the expected `runtime_measurement` from the Driver. This verifies the integrity of the execution environment itself.
+        * Reconstructs the expected `report_data` using the `program_hash` and `session_nonce` (both from the Driver) and compares it against the `report_data` field in the quote. This verifies that the TEE is executing the correct computation logic for the current session.
+        * If any verification step fails, the runtime **must immediately halt**. If all checks pass, it extracts and returns the symmetric key embedded in the quote for subsequent encryption operations.
 
 5. **Secure Execution**: Once all verifications succeed, data-providing parties can securely transmit their data to the TEE parties, and the computation proceeds as defined in the MPIR.
 
@@ -69,7 +68,7 @@ The user-facing API is minimal. The complexity of nonce and hash management is h
 
 ### 4.2. Conceptual Execution Flow
 
-The following sequence diagram illustrates the roles of the `Driver`, data-providers (`A`, `B`), and the TEE party (`C`).
+The following sequence diagram illustrates the roles of the `Driver`, data-providers (`A`, `B`), and the TEE party (`C`), reflecting the comprehensive security context.
 
 ```mermaid
 sequenceDiagram
@@ -80,28 +79,29 @@ sequenceDiagram
 
     note right of Driver: 1. Session Initiation (Offline)
     Driver->>Driver: Compile script to MPIR
-    Driver->>Driver: mpir_hash = hash(MPIR)
+    Driver->>Driver: program_hash = hash(MPIR)
+    Driver->>Driver: runtime_measurement = get_expected_measurement()
     Driver->>Driver: session_nonce = gen_nonce()
-    Driver->>Driver: signature = sign(mpir_hash, session_nonce)
+    Driver->>Driver: signature = sign(program_hash, runtime_measurement, session_nonce)
 
     note right of Driver: 2. Distribution & Runtime Execution
-    Driver->>A: Distribute (MPIR, nonce, signature)
-    Driver->>B: Distribute (MPIR, nonce, signature)
-    Driver->>C: Distribute (MPIR, nonce, signature)
+    Driver->>A: Distribute (MPIR, program_hash, runtime_measurement, nonce, signature)
+    Driver->>B: Distribute (MPIR, program_hash, runtime_measurement, nonce, signature)
+    Driver->>C: Distribute (MPIR, program_hash, runtime_measurement, nonce, signature)
 
     note over A, C: All parties verify driver's signature first
 
     C->>C: Execute graph until quote_gen()
-    C->>C: report_data = hash(mpir_hash, session_nonce)
-    C->>C: Generate quote with report_data
+    C->>C: report_data = hash(program_hash, session_nonce)
+    C->>C: Generate quote with report_data & runtime_measurement
 
     C-->>A: Broadcast quote
     C-->>B: Broadcast quote
 
     A->>A: Execute graph until quote_verify(quote)
-    A->>A: Verify quote from C
+    A->>A: Verify quote from C (incl. runtime_measurement & report_data)
     B->>B: Execute graph until quote_verify(quote)
-    B->>B: Verify quote from C
+    B->>B: Verify quote from C (incl. runtime_measurement & report_data)
 
     note over A, B: Halt if verification fails
 
@@ -134,12 +134,12 @@ def secure_computation_with_attestation(a_data, b_data):
     # 1. TEE party (P2) generates multiple quotes with unique symmetric keys
     # The runtime automatically generates different quotes for different recipients
     # Each quote contains a different symmetric key for security isolation
-    quotes = simp.runAt(P2, tee.quote_gen, 2)  # Returns [quote_for_p0, quote_for_p1]
+    quotes, sym_keys = simp.runAt(P2, tee.quote_gen, 2)  # Returns [quote_for_p0, quote_for_p1]
 
     # 2. Broadcast quotes using SIMP semantics
     # SIMP automatically distributes: P0 gets quote[0], P1 gets quote[1]
     # This eliminates the need for explicit mpi.send operations
-    quote = mpi.bcast(quotes, P2, [P0, P1])
+    quote = mpi.scatter(quotes, P2, [P0, P1])
 
     # 3. Each party verifies their automatically-assigned quote and extracts their unique key
     # P0 receives quote[0] containing sym_key_a, P1 receives quote[1] containing sym_key_b
@@ -157,8 +157,8 @@ def secure_computation_with_attestation(a_data, b_data):
     encrypted_b_at_tee = mpi.send(encrypted_b, P1, P2)
 
     # 6. TEE decrypts using the respective keys (TEE knows all keys since it generated them)
-    decrypted_a = simp.runAt(P2, symmetric_decrypt, encrypted_a_at_tee, sym_key_a)
-    decrypted_b = simp.runAt(P2, symmetric_decrypt, encrypted_b_at_tee, sym_key_b)
+    decrypted_a = simp.runAt(P2, symmetric_decrypt, encrypted_a_at_tee, sym_keys[0])
+    decrypted_b = simp.runAt(P2, symmetric_decrypt, encrypted_b_at_tee, sym_keys[1])
 
     # ... perform secure computation on decrypted data ...
     return result

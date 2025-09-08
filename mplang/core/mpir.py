@@ -33,13 +33,8 @@ import numpy as np
 import spu.libspu as spu_api
 
 from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
-from mplang.core.mask import Mask
-from mplang.core.mptype import MPType
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
-from mplang.core.tensor import TensorType
-from mplang.expr import Expr, ExprVisitor, FuncDefExpr
-from mplang.expr.ast import (
+from mplang.core.expr import Expr, ExprVisitor, FuncDefExpr
+from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -51,6 +46,11 @@ from mplang.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
+from mplang.core.mask import Mask
+from mplang.core.mptype import MPType
+from mplang.core.pfunc import PFunction
+from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.protos.v1alpha1 import mpir_pb2
 
 # Single mapping table for dtype conversion

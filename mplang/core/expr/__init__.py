@@ -20,7 +20,7 @@ multi-party computation graphs using the visitor pattern.
 """
 
 # Core expression types
-from mplang.expr.ast import (
+from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -36,12 +36,12 @@ from mplang.expr.ast import (
 )
 
 # Built-in visitor implementations
-from mplang.expr.evaluator import Evaluator
-from mplang.expr.printer import Printer
-from mplang.expr.transformer import ExprTransformer
+from mplang.core.expr.evaluator import Evaluator
+from mplang.core.expr.printer import Printer
+from mplang.core.expr.transformer import ExprTransformer
 
 # Utility functions
-from mplang.expr.utils import (
+from mplang.core.expr.utils import (
     deduce_mask,
     ensure_scalar,
     ensure_tensorlist_equal,
@@ -49,7 +49,7 @@ from mplang.expr.utils import (
 )
 
 # Visitor pattern interface
-from mplang.expr.visitor import ExprVisitor
+from mplang.core.expr.visitor import ExprVisitor
 
 __all__ = [
     "AccessExpr",

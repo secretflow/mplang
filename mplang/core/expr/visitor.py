@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mplang.expr.ast import (
+    from mplang.core.expr.ast import (
         AccessExpr,
         CallExpr,
         CondExpr,

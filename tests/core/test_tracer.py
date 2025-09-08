@@ -21,12 +21,12 @@ from unittest.mock import Mock
 import pytest
 
 from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.expr.ast import VariableExpr
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.tensor import TensorType
 from mplang.core.tracer import TraceContext, TracedFunction, TraceVar, VarNamer, trace
-from mplang.expr.ast import VariableExpr
 
 
 class MockMPObject(MPObject):
@@ -235,7 +235,7 @@ class TestTracedFunction:
 
     def test_initialization(self, trace_context, mock_mpobject):
         """Test TracedFunction initialization."""
-        from mplang.expr.ast import VariableExpr
+        from mplang.core.expr.ast import VariableExpr
         from mplang.utils.func_utils import var_morph
 
         # Create mock data for TracedFunction
@@ -279,7 +279,7 @@ class TestTracedFunction:
 
     def test_in_names(self, trace_context, mock_mpobject):
         """Test in_names method."""
-        from mplang.expr.ast import VariableExpr
+        from mplang.core.expr.ast import VariableExpr
         from mplang.utils.func_utils import var_morph
 
         in_vars = [
@@ -310,7 +310,7 @@ class TestTracedFunction:
 
     def test_capture_names(self, trace_context, mock_mpobject):
         """Test capture_names method."""
-        from mplang.expr.ast import VariableExpr
+        from mplang.core.expr.ast import VariableExpr
         from mplang.utils.func_utils import var_morph
 
         captured_var = TraceVar(
@@ -337,7 +337,7 @@ class TestTracedFunction:
 
     def test_make_expr_single_output(self, trace_context, mock_mpobject):
         """Test make_expr method with single output."""
-        from mplang.expr.ast import FuncDefExpr, VariableExpr
+        from mplang.core.expr.ast import FuncDefExpr, VariableExpr
         from mplang.utils.func_utils import var_morph
 
         in_var = TraceVar(trace_context, VariableExpr("param1", mock_mpobject.mptype))
@@ -363,7 +363,7 @@ class TestTracedFunction:
 
     def test_make_expr_no_outputs(self, trace_context, mock_mpobject):
         """Test make_expr method with no outputs."""
-        from mplang.expr.ast import FuncDefExpr, TupleExpr, VariableExpr
+        from mplang.core.expr.ast import FuncDefExpr, TupleExpr, VariableExpr
         from mplang.utils.func_utils import var_morph
 
         in_var = TraceVar(trace_context, VariableExpr("param1", mock_mpobject.mptype))
@@ -443,7 +443,7 @@ class TestTrace:
         assert isinstance(traced_fn, TracedFunction)
         func_expr = traced_fn.make_expr()
         # Should always return a FuncDefExpr, even for no MPObject outputs
-        from mplang.expr.ast import FuncDefExpr, TupleExpr
+        from mplang.core.expr.ast import FuncDefExpr, TupleExpr
 
         assert isinstance(func_expr, FuncDefExpr)
         # Body should be an empty tuple for no MPObject outputs

@@ -26,15 +26,15 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from mplang.core.expr.utils import deduce_mask
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType, Rank
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
-from mplang.expr.utils import deduce_mask
 
 if TYPE_CHECKING:
-    from mplang.expr.visitor import ExprVisitor
+    from mplang.core.expr.visitor import ExprVisitor
 
 
 class Expr(ABC):

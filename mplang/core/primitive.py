@@ -29,15 +29,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.interp import InterpContext, InterpVar, apply
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import Rank
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike
-from mplang.core.tensor import ScalarType, Shape, TensorLike
-from mplang.core.tracer import TraceContext, TraceVar, trace
-from mplang.expr.ast import (
+from mplang.core.expr.ast import (
     AccessExpr,
     CondExpr,
     ConvExpr,
@@ -46,6 +38,14 @@ from mplang.expr.ast import (
     ShflSExpr,
     WhileExpr,
 )
+from mplang.core.interp import InterpContext, InterpVar, apply
+from mplang.core.mask import Mask
+from mplang.core.mpobject import MPContext, MPObject
+from mplang.core.mptype import Rank
+from mplang.core.pfunc import PFunction
+from mplang.core.table import TableLike
+from mplang.core.tensor import ScalarType, Shape, TensorLike
+from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.frontend import builtin
 from mplang.utils.func_utils import var_demorph
 

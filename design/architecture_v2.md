@@ -26,12 +26,12 @@ introducing a strict separation between physical and logical concepts.
 
 The new architecture is built upon a fundamental duality:
 
-- **Physical World (The "How")**: Composed of **Physical Nodes**. A Node is an
+- **Physical World (The "How")**: Composed of **Physical Nodes** (also referred to as Physical Parties or **PPs**). A Node is an
   actual, addressable compute process with a unique `rank`. It is the ultimate
-  executor of computation and communication. The `simp-api` operates exclusively
+  executor of computation and communication. The P-API operates exclusively
   in this world.
 
-- **Logical World (The "What")**: Composed of **Logical Devices**. A Device is a
+- **Logical World (The "What")**: Composed of **Logical Devices** (also referred to as Virtual Parties or **VPs**). A Device is a
   user-facing entity representing a specific computational capability or security
   domain (e.g., an SPU computation, a TEE enclave). A Device is realized by one
   or more Nodes.
@@ -59,7 +59,7 @@ physical world. Each element is a physical node with the following attributes:
 ### 3.2. `devices`: The Logical Layer
 
 This section is a dictionary defining the complete universe of logical devices
-addressable by the `device-api`. Each key is a logical device name.
+addressable by the D-API. Each key is a logical device name.
 
 - `kind`: The type of device. We define several base kinds:
   - `local`: A device representing a single physical node for local computation.
@@ -156,7 +156,7 @@ Users are responsible for the correctness and security of their code.
 
 **Module Structure**: `mplang/simp/`
 
-- `__init__.py`: Main P-API entry point
+- `__init__.py`: Main P-API entry point, including `get_device_config()`
 - `executor.py`: Core execution primitives (`run()`, `run_at()`)
 - `comm.py`: Communication primitives (`bcast()`, `scatter()`)
 - `control_flow.py`: Control flow primitives (`cond()`, `while_loop()`)

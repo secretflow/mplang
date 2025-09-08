@@ -1,6 +1,6 @@
 # MPLang Cluster Configuration v2.4
 # This file serves as the Single Source of Truth (SSOT) for a sample cluster
-# topology, reflecting the final naming convention (nodes/devices/kind:participant).
+# topology.
 
 # ===================================================================
 # Physical Layer: Definition of all Physical Nodes

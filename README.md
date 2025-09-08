@@ -62,7 +62,13 @@ print("Is Alice poorer than Bob?", mplang.fetch(sim, result))
 
 ## Examples
 
-See the dedicated examples guide in [`examples/README.md`](examples/README.md) for installation of extra dependencies and runnable scripts.
+Before running the examples, install the required dependencies:
+
+```bash
+uv run pip install -r examples/requirements.txt
+```
+
+See the dedicated examples guide for details.
 
 ## Learn More
 

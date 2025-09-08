@@ -60,6 +60,10 @@ result = mplang.eval(sim, millionaire)
 print("Is Alice poorer than Bob?", mplang.fetch(sim, result))
 ```
 
+## Examples
+
+See the dedicated examples guide in [`examples/README.md`](examples/README.md) for installation of extra dependencies and runnable scripts.
+
 ## Learn More
 
 - **Tutorials**: Check out the `tutorials/` directory for in-depth, runnable examples covering conditions, loops, and more.

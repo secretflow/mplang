@@ -63,7 +63,6 @@ devices:
     members: [carol_node]
 
   # --- Composite and Special Devices ---
-  # --- Composite and Special Devices ---
   # An SPU device for 2-party computation between Alice and Bob.
   spu_2pc:
     kind: spu

@@ -55,6 +55,7 @@ header: # <1>
     - '.gitattributes'
     - '.gitignore'
     - 'pyproject.toml'
+    - 'uv.lock'
     - '.python-version'
 
   comment: never # <9>

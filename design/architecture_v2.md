@@ -112,8 +112,8 @@ API for 90% of users**.
 
 **Core APIs**:
 
-- Device Management: `device()`, `to()`, `fetch()`
-- Device Classes: `Device`, `LocalDevice`, `SpuDevice`, `TeeDevice`
+- `device` decorator to make a function execute on a specific Logical Device
+- `to` moves data from one device to another, handling security concerns automatically
 
 **Example**:
 
@@ -158,11 +158,11 @@ Users are responsible for the correctness and security of their code.
 
 **Core APIs**:
 
-- Execution: `run()`, `run_at()`
-- Shuffle: `pshfl()`, `pshfl_s()`
-- Control Flow: `cond()`, `while_loop()`, `pconv()`
-- MPI-style Communication: `scatter()`, `bcast()`, `gather()`, `allgather()`
-- SMPC Operations: `seal()`, `reveal()`, `share()`
+- `run`, `run_at` executes functions on specific Physical Nodes by rank
+- `bcast`, `scatter`, `gather`, `allgather` provide MPI-style communication primitives
+- `cond`, `while_loop`, `pconv` enable low-level control flow programming
+- `seal`, `reveal`, `srun` offer direct SMPC operations without abstraction
+- `pshfl`, `pshfl_s` provide secure shuffling capabilities
 
 **Example**:
 

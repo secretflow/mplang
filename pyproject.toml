@@ -31,24 +31,15 @@ dependencies = [
     "pandas>=2.0.0",
     "duckdb>=1.0.0",
     "httpx>=0.27.0",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.scripts]
 mplang-cli = "mplang.runtime.cli:main"
 
 [dependency-groups]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "pytest-asyncio",
-    "ruff",
-    "mypy",
-    "pre-commit",
-    "fastapi",
-    "uvicorn[standard]",
-]
-
-examples = ["scikit-learn", "tensorflow"]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]

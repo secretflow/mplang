@@ -14,7 +14,6 @@
 
 
 import inspect
-import json
 from collections.abc import Callable
 from typing import Any
 
@@ -64,7 +63,7 @@ def ibis2sql(
         fn_text=sql,
         ins_info=tuple(ins_info),
         outs_info=tuple(outs_info),
-        in_names=json.dumps(in_names),
+        in_names=tuple(in_names),
     )
     return pfn
 

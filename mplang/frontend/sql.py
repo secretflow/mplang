@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.mpobject import MPObject
@@ -49,7 +47,7 @@ class SqlFE(FEOp):
             fn_text=sql,
             ins_info=tuple(ins_info),
             outs_info=(out_type,),
-            in_names=json.dumps(in_names),
+            in_names=tuple(in_names),
         )
         _, treedef = tree_flatten(out_type)
         return pfn, in_vars, treedef

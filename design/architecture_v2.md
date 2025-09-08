@@ -64,17 +64,16 @@ addressable by the D-API. Each key is a logical device name.
 - `kind`: The type of device. We define several base kinds:
   - `local`: A device representing a single physical node for local computation.
   - `spu`: A composite device for multi-party computation.
-  - `tee`: A special device for trusted execution environments.
+  - `tee`: A device for trusted execution environments (e.g., Intel SGX, ARM TrustZone).
 - `members`: A list of `name`s from the `nodes` section, linking the device
   to its constituent physical nodes.
-- `config`: Device-specific configuration (e.g., SPU protocol, enclave binary).
+- `config`: Device-specific configuration (e.g., SPU protocol, enclave binary path).
 
 ### 3.3. Example Configuration
 
-A canonical example configuration file, `cluster.yaml`, is located in this
-directory. It serves as a concrete reference and demonstrates the power of
-the new structure, clearly modeling a scenario where Carol's capabilities are
-split into two separate physical nodes for security.
+The `cluster.yaml` file in this directory serves as a concrete reference,
+demonstrating the power of the new structure by clearly modeling a scenario
+where Carol's capabilities are split into two separate physical nodes for security.
 
 ## 4. API Design: Two-Layer Architecture
 
@@ -111,17 +110,23 @@ This single initialization step:
 completely hides `rank` and other physical details. This is the **recommended
 API for 90% of users**.
 
-**Core APIs**: `device()`, `to()`, `fetch()`, and device classes (`Device`, `LocalDevice`, `SpuDevice`, `TeeDevice`)
+**Core APIs**:
+
+- Device Management: `device()`, `to()`, `fetch()`
+- Device Classes: `Device`, `LocalDevice`, `SpuDevice`, `TeeDevice`
 
 **Example**:
 
 ```python
 # Get logical devices from cluster config
 alice = mplang.device("alice")        # kind: local
+bob = mplang.device("bob")            # kind: local
 spu = mplang.device("spu_3pc")       # kind: spu
 tee = mplang.device("trusted_executor") # kind: tee
 
 # Place data on devices
+x_data = [1, 2, 3]
+y_data = [4, 5, 6]
 x_on_alice = mplang.to(alice, x_data)
 y_on_bob = mplang.to(bob, y_data)
 
@@ -151,7 +156,13 @@ advanced users needing fine-grained control.
 It provides maximum control but **offers no built-in security guarantees**.
 Users are responsible for the correctness and security of their code.
 
-**Core APIs**: `get_device_config()`, `run()`, `run_at()`, `bcast()`, `scatter()`, `cond()`, `while_loop()`
+**Core APIs**:
+
+- Execution: `run()`, `run_at()`
+- Shuffle: `pshfl()`, `pshfl_s()`
+- Control Flow: `cond()`, `while_loop()`, `pconv()`
+- MPI-style Communication: `scatter()`, `bcast()`, `gather()`, `allgather()`
+- SMPC Operations: `seal()`, `reveal()`, `share()`
 
 **Example**:
 
@@ -164,8 +175,9 @@ obj_ref = simp.run_at(0, lambda: "hello from alice_node")
 # Broadcast data across all parties
 all_objs = simp.bcast(obj_ref, root=0)
 
-# Access device configuration for manual setup
-spu_config = simp.get_device_config("spu_3pc")
+# Use low-level SMPC operations
+sealed_obj = simp.seal(obj_ref)
+result = simp.reveal(sealed_obj)
 ```
 
 ### 4.4. Universal Libraries: `mplang.lib`
@@ -173,7 +185,9 @@ spu_config = simp.get_device_config("spu_3pc")
 **Philosophy**: Provide computation primitives that work seamlessly across both
 API layers with **context-aware behavior**.
 
-**Core APIs**: Context-aware computation libraries such as `random`
+**Core APIs**:
+
+- Context-aware Libraries: `random`
 
 **Context-Aware Behavior**:
 

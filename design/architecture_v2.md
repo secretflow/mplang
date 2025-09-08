@@ -121,8 +121,8 @@ API for 90% of users**.
 # Get logical devices from cluster config
 alice = mplang.device("alice")        # kind: local
 bob = mplang.device("bob")            # kind: local
-spu = mplang.device("spu_3pc")       # kind: spu
-tee = mplang.device("trusted_executor") # kind: tee
+spu = mplang.device("spu_3pc")        # kind: spu
+tee = mplang.device("trusted_party")  # kind: tee
 
 # Place data on devices
 x_data = [1, 2, 3]

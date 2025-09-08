@@ -111,10 +111,7 @@ This single initialization step:
 completely hides `rank` and other physical details. This is the **recommended
 API for 90% of users**.
 
-**Module Structure**: `mplang/device/`
-
-- `__init__.py`: Core D-API functions (`device()`, `to()`, `fetch()`)
-- `base.py`: Device class hierarchy (`Device`, `LocalDevice`, `SpuDevice`, `TeeDevice`)
+**Core APIs**: `device()`, `to()`, `fetch()`, and device classes (`Device`, `LocalDevice`, `SpuDevice`, `TeeDevice`)
 
 **Example**:
 
@@ -154,12 +151,7 @@ advanced users needing fine-grained control.
 It provides maximum control but **offers no built-in security guarantees**.
 Users are responsible for the correctness and security of their code.
 
-**Module Structure**: `mplang/simp/`
-
-- `__init__.py`: Main P-API entry point, including `get_device_config()`
-- `executor.py`: Core execution primitives (`run()`, `run_at()`)
-- `comm.py`: Communication primitives (`bcast()`, `scatter()`)
-- `control_flow.py`: Control flow primitives (`cond()`, `while_loop()`)
+**Core APIs**: `get_device_config()`, `run()`, `run_at()`, `bcast()`, `scatter()`, `cond()`, `while_loop()`
 
 **Example**:
 
@@ -172,12 +164,8 @@ obj_ref = simp.run_at(0, lambda: "hello from alice_node")
 # Broadcast data across all parties
 all_objs = simp.bcast(obj_ref, root=0)
 
-# Access device configuration for manual library initialization
+# Access device configuration for manual setup
 spu_config = simp.get_device_config("spu_3pc")
-simp.smpc.init(spu_config)  # Explicit initialization required
-
-# Use low-level smpc operations
-sealed_obj = simp.smpc.seal(obj_ref)
 ```
 
 ### 4.4. Universal Libraries: `mplang.lib`
@@ -185,12 +173,7 @@ sealed_obj = simp.smpc.seal(obj_ref)
 **Philosophy**: Provide computation primitives that work seamlessly across both
 API layers with **context-aware behavior**.
 
-**Module Structure**: `mplang/lib/`
-
-- `__init__.py`: Library entry point
-- `random.py`: Context-aware random number generation
-- `smpc.py`: SMPC library for P-API usage (requires explicit initialization)
-- `mpi.py`: MPI functionality wrapper
+**Core APIs**: Context-aware computation libraries such as `random`
 
 **Context-Aware Behavior**:
 
@@ -221,14 +204,6 @@ simp.run_at(0, lambda: random.rand((2, 3)))  # → numpy.random on rank 0
    understand the implications
 3. **Library Consistency**: Use `mplang.lib.*` for computations that need to
    work across different execution contexts
-
-**Migration Path from Current Implementation**:
-
-- `mplang/core/primitive.py` → `mplang/simp/executor.py` + `control_flow.py`
-- `mplang/core/comm.py` → `mplang/simp/comm.py`
-- `mplang/random.py` → `mplang/lib/random.py`
-- `mplang/smpc.py` → `mplang/lib/smpc.py`
-- `mplang/device.py` → `mplang/device/base.py`
 
 ## 5. Conclusion
 

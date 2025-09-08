@@ -15,9 +15,7 @@
 import pytest
 
 from mplang.core.dtype import FLOAT32, INT32, UINT64
-from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank
-from mplang.expr import (
+from mplang.core.expr import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -30,6 +28,8 @@ from mplang.expr import (
     VariableExpr,
     WhileExpr,
 )
+from mplang.core.mask import Mask
+from mplang.core.mptype import MPType, Rank
 
 
 class TestEvalExpr:

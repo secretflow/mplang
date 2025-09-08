@@ -30,13 +30,13 @@ from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
+from mplang.core.expr.ast import Expr
+from mplang.core.expr.evaluator import Evaluator
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
-from mplang.expr.ast import Expr
-from mplang.expr.evaluator import Evaluator
 from mplang.runtime.link_comm import LinkCommunicator
 
 

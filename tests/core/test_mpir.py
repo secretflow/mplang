@@ -17,13 +17,8 @@ import numpy as np
 import pytest
 
 from mplang.core.dtype import FLOAT32, INT32, DType
-from mplang.core.mask import Mask
-from mplang.core.mpir import Reader, Writer
-from mplang.core.mptype import MPType
-from mplang.core.pfunc import PFunction
-from mplang.core.tensor import TensorType
-from mplang.expr import Expr
-from mplang.expr.ast import (
+from mplang.core.expr import Expr
+from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -36,6 +31,11 @@ from mplang.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
+from mplang.core.mask import Mask
+from mplang.core.mpir import Reader, Writer
+from mplang.core.mptype import MPType
+from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.protos.v1alpha1 import mpir_pb2
 
 
@@ -636,9 +636,9 @@ class TestEdgeCases:
     def test_dynamic_pmask(self):
         """Test MPTypeProto serialization/deserialization with dynamic pmask (None)."""
         from mplang.core.dtype import INT64, STRING
+        from mplang.core.expr.ast import VariableExpr
         from mplang.core.mpir import Reader, Writer
         from mplang.core.table import TableType
-        from mplang.expr.ast import VariableExpr
 
         # Create table type with dynamic pmask (None)
         schema = TableType.from_dict({
@@ -1044,9 +1044,9 @@ class TestRelationTypeSupport:
     def test_mptype_proto_conversion_round_trip(self):
         """Test full round-trip conversion between MPType and MPTypeProto."""
         from mplang.core.dtype import INT64, JSON, STRING, TIMESTAMP
+        from mplang.core.expr.ast import VariableExpr
         from mplang.core.mpir import Reader, Writer
         from mplang.core.table import TableType
-        from mplang.expr.ast import VariableExpr
 
         # Create complex table type
         schema = TableType.from_dict({

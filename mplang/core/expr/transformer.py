@@ -18,7 +18,7 @@ Expression transformer based on visitor pattern.
 
 from collections.abc import Callable
 
-from mplang.expr.ast import (
+from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -32,7 +32,7 @@ from mplang.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
-from mplang.expr.visitor import ExprVisitor
+from mplang.core.expr.visitor import ExprVisitor
 
 
 class ExprTransformer(ExprVisitor):

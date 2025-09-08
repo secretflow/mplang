@@ -30,6 +30,7 @@ import pytest
 from mplang import simp
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.expr.printer import Printer
 from mplang.core.mask import Mask
 from mplang.core.mptype import Rank
 from mplang.core.primitive import (
@@ -47,7 +48,6 @@ from mplang.core.primitive import (
     while_loop,
 )
 from mplang.core.tracer import TraceContext, TraceVar, trace
-from mplang.expr.printer import Printer
 from mplang.frontend import jax_cc
 
 
@@ -1365,7 +1365,7 @@ class TestSetMask:
 
     def test_set_mask_expression_structure(self, trace_context):
         """Test the internal expression structure of set_mask."""
-        from mplang.expr.ast import AccessExpr, EvalExpr
+        from mplang.core.expr.ast import AccessExpr, EvalExpr
 
         # Create input variable using constant
         def const_func():
@@ -1424,7 +1424,7 @@ class TestSetMask:
         func_expr = traced_fn.make_expr()
         assert func_expr is not None
 
-        from mplang.expr.printer import Printer
+        from mplang.core.expr.printer import Printer
 
         printer = Printer()
         expr_str = printer.print_expr(func_expr)

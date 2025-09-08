@@ -8,7 +8,6 @@
 # ===================================================================
 nodes:
   - name: alice_node
-    rank: 0
     endpoint: "127.0.0.1:9001"
     runtime_info:
       version: "2.0.0"
@@ -16,7 +15,6 @@ nodes:
       platform: "cpu"
 
   - name: bob_node
-    rank: 1
     endpoint: "127.0.0.1:9002"
     runtime_info:
       version: "2.0.0"
@@ -26,7 +24,6 @@ nodes:
   # --- Carol's capabilities are split into two distinct PPs for security ---
 
   - name: carol_node
-    rank: 2
     endpoint: "127.0.0.1:9003"
     runtime_info:
       version: "2.0.0"
@@ -35,7 +32,6 @@ nodes:
       platform: "cpu"
 
   - name: carol_tee
-    rank: 3
     endpoint: "127.0.0.1:9004" # Note: Different port, separate process
     runtime_info:
       version: "2.0.0"

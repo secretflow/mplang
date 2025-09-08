@@ -50,7 +50,8 @@ This section is a list that serves as the **single source of truth** for the
 physical world. Each element is a physical node with the following attributes:
 
 - `name`: A unique, human-readable identifier.
-- `rank`: The unique integer ID used by the `simp` runtime.
+- `rank`: The unique integer ID. **It is implicitly defined by the node's order
+  (index) in the `nodes` list**, which simplifies configuration and prevents errors.
 - `endpoint`: The network address of the node process.
 - `runtime_info` (optional): Metadata about the node's capabilities, such as
   `version`, supported `backends` (`spu`, `tee_enclave_runner`,

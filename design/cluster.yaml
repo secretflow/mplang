@@ -12,7 +12,7 @@ nodes:
     endpoint: "127.0.0.1:9001"
     runtime_info:
       version: "2.0.0"
-      backends: ["stablehlo", "spu", "phe"]
+      backends: ["builtin", "stablehlo", "spu", "phe"]
       platform: "cpu"
 
   - name: bob_node
@@ -20,7 +20,7 @@ nodes:
     endpoint: "127.0.0.1:9002"
     runtime_info:
       version: "2.0.0"
-      backends: ["stablehlo", "spu"]
+      backends: ["builtin", "stablehlo", "spu"]
       platform: "cpu"
 
   # --- Carol's capabilities are split into two distinct PPs for security ---
@@ -31,7 +31,7 @@ nodes:
     runtime_info:
       version: "2.0.0"
       # This PP is Carol's standard compute node. It can access local data.
-      backends: ["stablehlo", "spu", "filesystem_io"]
+      backends: ["builtin", "stablehlo", "spu", "duckdb"]
       platform: "cpu"
 
   - name: carol_tee
@@ -40,7 +40,7 @@ nodes:
     runtime_info:
       version: "2.0.0"
       # This PP is a dedicated TEE service node. It cannot access local data.
-      backends: ["tee_enclave_runner"]
+      backends: ["builtin", "stablehlo"]
       platform: "intel_sgx_2.16"
 
 # ===================================================================

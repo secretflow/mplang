@@ -859,7 +859,7 @@ class TestWhileLoop:
         assert isinstance(traced_fn.out_vars[0], TraceVar)
 
         # Check that the expression contains a while loop
-        from mplang.expr.printer import Printer
+        from mplang.core.expr.printer import Printer
 
         printer = Printer()
         expr_str = printer.print_expr(func_expr)
@@ -1158,7 +1158,7 @@ class TestWhileLoop:
         assert func_expr is not None
 
         # Check expression structure
-        from mplang.expr.printer import Printer
+        from mplang.core.expr.printer import Printer
 
         printer = Printer()
         expr_str = printer.print_expr(func_expr)

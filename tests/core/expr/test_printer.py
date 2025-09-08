@@ -19,11 +19,7 @@ Tests for expression printer module.
 import pytest
 
 from mplang.core.dtype import FLOAT32, UINT64
-from mplang.core.mask import Mask
-from mplang.core.mptype import MPType, Rank
-from mplang.core.pfunc import PFunction
-from mplang.core.tensor import TensorType
-from mplang.expr import (
+from mplang.core.expr import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -36,7 +32,11 @@ from mplang.expr import (
     VariableExpr,
     WhileExpr,
 )
-from mplang.expr.printer import Printer
+from mplang.core.expr.printer import Printer
+from mplang.core.mask import Mask
+from mplang.core.mptype import MPType, Rank
+from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 
 
 class TestPrinter:

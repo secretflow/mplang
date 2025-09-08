@@ -21,10 +21,7 @@ from __future__ import annotations
 from typing import Any
 
 from mplang.core.dtype import DType
-from mplang.core.mptype import MPType
-from mplang.core.pfunc import PFunction
-from mplang.core.tensor import Shape, TensorType
-from mplang.expr.ast import (
+from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,
@@ -38,7 +35,10 @@ from mplang.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
-from mplang.expr.visitor import ExprVisitor
+from mplang.core.expr.visitor import ExprVisitor
+from mplang.core.mptype import MPType
+from mplang.core.pfunc import PFunction
+from mplang.core.tensor import Shape, TensorType
 
 
 class Printer(ExprVisitor):

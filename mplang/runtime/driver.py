@@ -29,12 +29,12 @@ from typing import Any
 
 import spu.libspu as libspu
 
+from mplang.core.expr.ast import Expr
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
-from mplang.expr.ast import Expr
 from mplang.runtime.client import HttpExecutorClient
 
 

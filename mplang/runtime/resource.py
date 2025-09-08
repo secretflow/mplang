@@ -30,9 +30,9 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.core.expr.ast import Expr
+from mplang.core.expr.evaluator import Evaluator
 from mplang.core.mask import Mask
-from mplang.expr.ast import Expr
-from mplang.expr.evaluator import Evaluator
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 from mplang.runtime.link_comm import LinkCommunicator

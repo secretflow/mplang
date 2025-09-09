@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
 import pytest
 
 import mplang
-import mplang.mpi as mpi
 import mplang.random as mpr
 import mplang.simp as simp
+import mplang.simp.mpi as mpi
 
 
 def eval_and_fetch(sim, fn, *args, **kwargs):
@@ -372,28 +371,6 @@ class TestMPICommunication:
         sent = mplang.evaluate(sim, mpi.p2p, 0, 2, large_data)
         large_data, sent = mplang.fetch(sim, (large_data, sent))
         assert sent == [None, None, 2**20]
-
-
-class TestPShfl:
-    """Test pshfl related functions"""
-
-    def test_pshfl_basic(self):
-        """Test basic pshfl_s functionality"""
-        num_parties = 10
-        sim = mplang.Simulator(num_parties)
-
-        src = mplang.evaluate(sim, mpr.prandint, 0, 100)
-        key = mplang.evaluate(sim, mpr.ukey, 42)
-        index = mplang.evaluate(sim, mpr.pperm, key)
-
-        # shuffle data with range, nothing changed.
-        shuffled = mplang.evaluate(sim, mpi.pshfl, src, index)
-
-        data, index, shuffled = mplang.fetch(sim, (src, index, shuffled))
-        data, index, shuffled = np.stack(data), np.stack(index), np.stack(shuffled)
-        np.testing.assert_array_equal(data[index], shuffled)
-
-    # TODO(jint): add shfl complicated
 
 
 if __name__ == "__main__":

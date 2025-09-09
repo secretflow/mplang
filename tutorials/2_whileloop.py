@@ -18,7 +18,6 @@ import jax.numpy as jnp
 import mplang
 import mplang.random as mpr
 import mplang.simp as simp
-import mplang.smpc as smpc
 
 
 @mplang.function
@@ -46,10 +45,10 @@ def while_sum_greater():
 
     def cond(x: simp.MPObject):
         # Seal all parties private
-        xs_ = smpc.seal(x)
+        xs_ = simp.seal(x)
         # Sum them and reveal it.
-        pred_ = smpc.srun(lambda i: sum(i) < 15)(xs_)
-        return smpc.reveal(pred_)
+        pred_ = simp.srun(lambda i: sum(i) < 15)(xs_)
+        return simp.reveal(pred_)
 
     def body(x: simp.MPObject):
         return simp.run(lambda x: x + 1)(x)
@@ -77,11 +76,11 @@ def while_until_ascending():
 
     def cond(x: simp.MPObject):
         # seal it, or we can not directly compare all parties numbers.
-        xs_ = smpc.seal(x)
+        xs_ = simp.seal(x)
         # check if parties' numbers are accending
-        p_ = smpc.srun(not_ascending)(xs_)
+        p_ = simp.srun(not_ascending)(xs_)
         # reveal the result, all parties agree on it.
-        return smpc.reveal(p_)
+        return simp.reveal(p_)
 
     def body(x: simp.MPObject):
         # randomize a new number

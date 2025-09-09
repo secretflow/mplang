@@ -18,35 +18,47 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from mplang.core import primitive as prim
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
-from mplang.core.mptype import Rank, ScalarType, Shape, TensorLike
-from mplang.core.pfunc import PFunction
+from mplang.core.mptype import Rank
+from mplang.core.primitive import (
+    cond,
+    constant,
+    pconv,
+    peval,
+    prand,
+    prank,
+    pshfl,
+    pshfl_s,
+    while_loop,
+)
 from mplang.frontend import ibis_cc, jax_cc
 from mplang.frontend.base import FEOp
+from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
+from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
 
-
-def prank() -> MPObject:
-    """Get the rank of current party."""
-    return prim.prank()
-
-
-def prand(shape: Shape = ()) -> MPObject:
-    """Generate a random number in the range [0, psize)."""
-    return prim.prand(shape)
-
-
-def constant(data: TensorLike | ScalarType) -> MPObject:
-    return prim.constant(data)
-
-
-def peval(
-    pfunc: PFunction,
-    args: list[MPObject],
-    pmask: Mask | None = None,
-) -> list[MPObject]:
-    return prim.peval(pfunc, args, pmask)
+__reexport__ = [
+    cond,
+    constant,
+    MPObject,
+    pconv,
+    peval,
+    prank,
+    prand,
+    pshfl,
+    pshfl_s,
+    while_loop,
+    scatter_m,
+    gather_m,
+    bcast_m,
+    allgather_m,
+    p2p,
+    seal,
+    sealFrom,
+    reveal,
+    revealTo,
+    srun,
+]
 
 
 def run_impl(
@@ -122,35 +134,3 @@ def run(pyfn: Callable) -> Callable:
 def runAt(rank: Rank, pyfn: Callable) -> Callable:
     pmask = Mask.from_ranks(rank)
     return partial(run_impl, pmask, pyfn)
-
-
-# cond :: m Bool -> (m a -> m b) -> (m a -> m b) -> m b
-def cond(
-    pred: MPObject,
-    then_fn: Callable[..., MPObject],
-    else_fn: Callable[..., MPObject],
-    *args: Any,
-) -> MPObject:
-    return prim.cond(pred, then_fn, else_fn, *args)
-
-
-# while_loop :: m a -> (m a -> m Bool) -> (m a -> m a) -> m a
-def while_loop(
-    cond_fn: Callable[[MPObject], MPObject],
-    body_fn: Callable[[MPObject], MPObject],
-    init: MPObject,
-) -> MPObject:
-    return prim.while_loop(cond_fn, body_fn, init)
-
-
-def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
-    return prim.pshfl_s(src_val, pmask, src_ranks)
-
-
-def pshfl(src: MPObject, index: MPObject) -> MPObject:
-    """Shuffle the value from src to the index party."""
-    raise NotImplementedError("TODO")
-
-
-def pconv(vars: list[MPObject]) -> MPObject:
-    return prim.pconv(vars)

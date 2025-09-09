@@ -26,8 +26,6 @@ import uvicorn
 
 import mplang
 import mplang.simp as simp
-import mplang.smpc as smpc
-from mplang.runtime.driver import Driver
 from mplang.runtime.server import app
 
 # Global state for test servers
@@ -101,7 +99,7 @@ def http_driver():
         "P3": "http://localhost:15004",  # P3 - SPU party
         "P4": "http://localhost:15005",  # P4 - plaintext party
     }
-    return Driver(node_addrs, spu_nodes=["P1", "P2", "P3"])
+    return mplang.Driver(node_addrs, spu_nodes=["P1", "P2", "P3"])
 
 
 @pytest.mark.skip(
@@ -146,18 +144,18 @@ def test_secure_comparison_e2e(http_driver):
         y_const = simp.constant(y)
 
         # Seal them for secure computation - data from P0 and P4
-        x_sealed = smpc.sealFrom(x_const, 0)  # P0 provides data
-        y_sealed = smpc.sealFrom(y_const, 4)  # P4 provides data
+        x_sealed = simp.sealFrom(x_const, 0)  # P0 provides data
+        y_sealed = simp.sealFrom(y_const, 4)  # P4 provides data
 
         # Perform secure comparison
         import jax.numpy as jnp
 
-        result = smpc.srun(lambda a, b: jnp.where(a > b, True, False))(
+        result = simp.srun(lambda a, b: jnp.where(a > b, True, False))(
             x_sealed, y_sealed
         )
 
         # Reveal the result
-        revealed = smpc.reveal(result)
+        revealed = simp.reveal(result)
         return revealed
 
     # Evaluate the computation
@@ -189,32 +187,32 @@ def test_three_way_comparison_e2e(http_driver):
         wealth_c_const = simp.constant(wealth_c)
 
         # Seal the wealth values for secure computation
-        wealth_a_sealed = smpc.sealFrom(wealth_a_const, 0)  # P0 provides wealth
-        wealth_b_sealed = smpc.sealFrom(wealth_b_const, 2)  # P2 provides wealth
-        wealth_c_sealed = smpc.sealFrom(wealth_c_const, 4)  # P4 provides wealth
+        wealth_a_sealed = simp.sealFrom(wealth_a_const, 0)  # P0 provides wealth
+        wealth_b_sealed = simp.sealFrom(wealth_b_const, 2)  # P2 provides wealth
+        wealth_c_sealed = simp.sealFrom(wealth_c_const, 4)  # P4 provides wealth
 
         # Perform secure comparison to find the richest
         import jax.numpy as jnp
 
         # Find who has the maximum wealth
-        max_ab = smpc.srun(jnp.maximum)(wealth_a_sealed, wealth_b_sealed)
-        max_wealth = smpc.srun(jnp.maximum)(max_ab, wealth_c_sealed)
+        max_ab = simp.srun(jnp.maximum)(wealth_a_sealed, wealth_b_sealed)
+        max_wealth = simp.srun(jnp.maximum)(max_ab, wealth_c_sealed)
 
         # Check if each party is the richest
-        a_is_richest = smpc.srun(lambda a, max_w: a >= max_w)(
+        a_is_richest = simp.srun(lambda a, max_w: a >= max_w)(
             wealth_a_sealed, max_wealth
         )
-        b_is_richest = smpc.srun(lambda b, max_w: b >= max_w)(
+        b_is_richest = simp.srun(lambda b, max_w: b >= max_w)(
             wealth_b_sealed, max_wealth
         )
-        c_is_richest = smpc.srun(lambda c, max_w: c >= max_w)(
+        c_is_richest = simp.srun(lambda c, max_w: c >= max_w)(
             wealth_c_sealed, max_wealth
         )
 
         # Reveal the results
-        a_result = smpc.reveal(a_is_richest)
-        b_result = smpc.reveal(b_is_richest)
-        c_result = smpc.reveal(c_is_richest)
+        a_result = simp.reveal(a_is_richest)
+        b_result = simp.reveal(b_is_richest)
+        c_result = simp.reveal(c_is_richest)
 
         return a_result, b_result, c_result
 
@@ -246,25 +244,25 @@ def test_multiple_operations_e2e(http_driver):
         b_const = simp.constant(b)
 
         # Seal for secure computation - data from P0 and P3
-        a_sealed = smpc.sealFrom(a_const, 0)  # P0 provides data
-        b_sealed = smpc.sealFrom(b_const, 3)  # P3 provides data
+        a_sealed = simp.sealFrom(a_const, 0)  # P0 provides data
+        b_sealed = simp.sealFrom(b_const, 3)  # P3 provides data
 
         # Multiple operations
         import jax.numpy as jnp
 
         # Addition
-        sum_result = smpc.srun(jnp.add)(a_sealed, b_sealed)
+        sum_result = simp.srun(jnp.add)(a_sealed, b_sealed)
 
         # Multiplication
-        mul_result = smpc.srun(jnp.multiply)(a_sealed, b_sealed)
+        mul_result = simp.srun(jnp.multiply)(a_sealed, b_sealed)
 
         # Comparison
-        cmp_result = smpc.srun(lambda x, y: x > y)(a_sealed, b_sealed)
+        cmp_result = simp.srun(lambda x, y: x > y)(a_sealed, b_sealed)
 
         # Reveal all results
-        sum_revealed = smpc.reveal(sum_result)
-        mul_revealed = smpc.reveal(mul_result)
-        cmp_revealed = smpc.reveal(cmp_result)
+        sum_revealed = simp.reveal(sum_result)
+        mul_revealed = simp.reveal(mul_result)
+        cmp_revealed = simp.reveal(cmp_result)
 
         return sum_revealed, mul_revealed, cmp_revealed
 

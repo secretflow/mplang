@@ -35,7 +35,7 @@ from mplang.core.mask import Mask
 
 # Core object model
 from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import MPType
+from mplang.core.mptype import MPType, Rank, Shape
 
 # Function handling
 from mplang.core.pfunc import PFunction
@@ -76,6 +76,8 @@ __all__ = [
     "MPType",
     "Mask",
     "PFunction",
+    "Rank",
+    "Shape",
     "TableLike",
     "TableType",
     "TensorLike",

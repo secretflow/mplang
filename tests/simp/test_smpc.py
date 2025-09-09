@@ -19,7 +19,7 @@ import pytest
 import mplang
 import mplang.random as mpr
 import mplang.simp as simp
-import mplang.smpc as smpc
+import mplang.simp.smpc as smpc
 
 
 class TestSmpcBasics:

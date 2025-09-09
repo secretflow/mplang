@@ -24,7 +24,6 @@ This tutorial demonstrates a three-party computation using PHE:
 """
 
 import mplang
-import mplang.mpi as mpi
 import mplang.simp as simp
 from mplang.frontend import phe
 
@@ -41,14 +40,14 @@ def three_party_phe_sum():
 
     # Step 3: Party 0 broadcasts public key to all parties
     world_mask = mplang.Mask.all(3)
-    pkey_bcasted = mpi.bcast_m(world_mask, 0, pkey)
+    pkey_bcasted = simp.bcast_m(world_mask, 0, pkey)
 
     # Step 4: Each party encrypts their data
     encrypted = simp.run(phe.encrypt)(data, pkey_bcasted)
 
     # Step 5: All parties send encrypted data to Party 0
     # Gather all encrypted data at Party 0
-    e0, e1, e2 = mpi.gather_m(world_mask, 0, encrypted)
+    e0, e1, e2 = simp.gather_m(world_mask, 0, encrypted)
 
     # Step 6: Party 0 computes sum and decrypts
     sum_e0_e1 = simp.runAt(0, phe.add)(e0, e1)

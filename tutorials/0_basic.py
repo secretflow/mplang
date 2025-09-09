@@ -17,7 +17,6 @@ from functools import partial
 
 import mplang
 import mplang.simp as simp
-import mplang.smpc as smpc
 
 
 # This is a simple example of how to use the MPLang library to create a
@@ -32,14 +31,14 @@ def millionaire():
     y = simp.runAt(1, range_rand)()
 
     # both of them seal it
-    x_ = smpc.sealFrom(x, 0)
-    y_ = smpc.sealFrom(y, 1)
+    x_ = simp.sealFrom(x, 0)
+    y_ = simp.sealFrom(y, 1)
 
     # compare it securely.
-    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = smpc.reveal(z_)
+    z = simp.reveal(z_)
 
     return x, y, z
 
@@ -81,14 +80,14 @@ def millionaire_simp():
     x = simp.run(range_rand)()
 
     # all parties seal it, result a list of sealed values
-    xs_ = smpc.seal(x)
+    xs_ = simp.seal(x)
     # assert len(xs_) == 2  # Fixed from simp.cur_ctx().psize()
 
     # compare it securely.
-    z_ = smpc.srun(lambda x, y: x < y)(*xs_)
+    z_ = simp.srun(lambda x, y: x < y)(*xs_)
 
     # reveal it to all.
-    z = smpc.reveal(z_)
+    z = simp.reveal(z_)
 
     return x, z
 
@@ -134,7 +133,7 @@ print(
 
 # Here is a more complicated example that shows how to use `mplang.function` to
 # create a function that can be run at different parties, and how to use
-# `smpc` to securely compute the result.
+# `simp` to securely compute the result.
 
 
 @mplang.function
@@ -161,10 +160,10 @@ def myfun(*args, **kwargs):
     a = simp.runAt(0, lambda v: v * 2)(u)
     b = simp.runAt(1, lambda v: v + 5)(v)
 
-    x_ = smpc.sealFrom(x, 0)
-    y_ = smpc.sealFrom(y, 1)
-    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
-    c = smpc.reveal(z_)
+    x_ = simp.sealFrom(x, 0)
+    y_ = simp.sealFrom(y, 1)
+    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
+    c = simp.reveal(z_)
 
     # return complicated result.
     return a, [b, c2], {"c": c, "c3": c3}

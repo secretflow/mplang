@@ -17,13 +17,11 @@ from __future__ import annotations
 import logging
 
 import mplang.core.primitive as prim
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import Rank
+from mplang.core import Mask, MPObject, Rank, function
 
 
 # scatter :: [m a] -> m Rank -> m a
-@prim.primitive
+@function
 def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
     """Scatter the object from root to the parties in pmask.
 
@@ -55,7 +53,7 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
 
 
 # gather :: m a -> m Rank -> [m a]
-@prim.primitive
+@function
 def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
     """Gather the object from pmask'ed parties to the root party.
 
@@ -86,7 +84,7 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
 
 
 # bcast :: m a -> m Rank -> m a
-@prim.function
+@function
 def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
     """Broadcast the object from the root party to the parties in pmask."""
     if obj.pmask is None:
@@ -102,7 +100,7 @@ def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
 
 
 # p2p :: m Rank -> m Rank -> m a -> m a
-@prim.function
+@function
 def p2p(frm: Rank, to: Rank, obj: MPObject) -> MPObject:
     """Point-to-point communication from frm to to."""
 
@@ -120,7 +118,7 @@ def p2p(frm: Rank, to: Rank, obj: MPObject) -> MPObject:
 
 
 # allgather :: m a -> [m a]
-@prim.function
+@function
 def allgather_m(pmask: Mask, arg: MPObject) -> list[MPObject]:
     """Gather the object from all parties in pmask and return a list of objects."""
 
@@ -132,9 +130,3 @@ def allgather_m(pmask: Mask, arg: MPObject) -> list[MPObject]:
 
     # TODO(jint): implement me.
     raise NotImplementedError("Allgather not implemented")
-
-
-@prim.function
-def pshfl(val: MPObject, index: MPObject) -> MPObject:
-    """Shuffle the value to the index party from the source party."""
-    return prim.pshfl(val, index)  # type: ignore[no-any-return]

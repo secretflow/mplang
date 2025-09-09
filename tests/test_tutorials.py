@@ -16,10 +16,8 @@ import jax.numpy as jnp
 import pytest
 
 import mplang
-import mplang.mpi as mpi
 import mplang.random as mpr
 import mplang.simp as simp
-import mplang.smpc as smpc
 
 
 class TestTutorialBasicExamples:
@@ -42,14 +40,14 @@ class TestTutorialBasicExamples:
             y = simp.runAt(1, range_rand)()
 
             # both of them seal it
-            x_ = smpc.sealFrom(x, 0)
-            y_ = smpc.sealFrom(y, 1)
+            x_ = simp.sealFrom(x, 0)
+            y_ = simp.sealFrom(y, 1)
 
             # compare it securely
-            z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+            z_ = simp.srun(lambda x, y: x < y)(x_, y_)
 
             # reveal it to all
-            z = smpc.reveal(z_)
+            z = simp.reveal(z_)
 
             return x, y, z
 
@@ -105,12 +103,12 @@ class TestTutorialConditionalExamples:
             x = mpr.prandint(0, 10)
 
             # seal all parties private variable
-            xs_ = smpc.seal(x)
+            xs_ = simp.seal(x)
 
             # Sum it privately, and compare to 15
-            pred_ = smpc.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
+            pred_ = simp.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
             # Reveal the comparison result
-            pred = smpc.reveal(pred_)
+            pred = simp.reveal(pred_)
 
             # if the sum is greater than 15, return it, else return negate of it
             pos = simp.run(lambda x: x)(x)
@@ -201,10 +199,10 @@ class TestTutorialWhileLoopExamples:
 
             def cond(x: simp.MPObject):
                 # Seal all parties private
-                xs_ = smpc.seal(x)
+                xs_ = simp.seal(x)
                 # Sum them and reveal it
-                pred_ = smpc.srun(lambda i: sum(i) < 15)(xs_)
-                return smpc.reveal(pred_)
+                pred_ = simp.srun(lambda i: sum(i) < 15)(xs_)
+                return simp.reveal(pred_)
 
             def body(x: simp.MPObject):
                 return simp.run(lambda x: x + 1)(x)
@@ -314,14 +312,14 @@ class TestTutorialSimulationExamples:
             y = mpr.prandint(0, 10)
 
             # both of them seal it
-            x_ = smpc.sealFrom(x, 0)
-            y_ = smpc.sealFrom(y, 1)
+            x_ = simp.sealFrom(x, 0)
+            y_ = simp.sealFrom(y, 1)
 
             # compare it securely
-            z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+            z_ = simp.srun(lambda x, y: x < y)(x_, y_)
 
             # reveal it to all
-            z = smpc.reveal(z_)
+            z = simp.reveal(z_)
 
             return x, y, z
 
@@ -359,7 +357,7 @@ class TestTutorialErrorHandling:
         def mismatched_seal():
             x = mpr.prandint(0, 10)
             # Try to seal from non-existent party
-            return smpc.sealFrom(x, 5)
+            return simp.sealFrom(x, 5)
 
         with pytest.raises(Exception):  # Should raise some kind of error
             mplang.evaluate(sim2, mismatched_seal)
@@ -400,7 +398,7 @@ class TestTutorialDataStructures:
             val = simp.prank()  # Each party has its rank
 
             # Gather from all parties to party 0
-            gathered = mpi.gather_m((1 << 2) - 1, 0, val)
+            gathered = simp.gather_m((1 << 2) - 1, 0, val)
 
             return gathered
 

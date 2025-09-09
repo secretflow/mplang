@@ -31,13 +31,11 @@ from typing import Any
 from jax.tree_util import tree_map
 
 import mplang.api as mapi
-from mplang import mpi, simp, smpc
+from mplang import simp
+from mplang.core import InterpContext, Mask, MPObject, primitive
 from mplang.core.context_mgr import set_ctx
-from mplang.core.interp import InterpContext
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPObject
-from mplang.core.primitive import primitive
 from mplang.runtime import Driver, Simulator
+from mplang.simp import mpi, smpc
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -56,21 +54,6 @@ class DeviceInfo:
 
     configs: dict = field(default_factory=dict)
     """The device runtime configurations"""
-
-
-SAMPLE_DEVICE_CONF = {
-    "SP0": {
-        "type": "SPU",
-        "node_ids": ["node:0", "node:1", "node:2"],
-        "configs": {
-            "protocol": "SEMI2K",
-            "field": "FM128",
-            "enable_pphlo_profile": True,
-        },
-    },
-    "P0": {"type": "PPU", "node_ids": ["node:0"]},
-    "P1": {"type": "PPU", "node_ids": ["node:1"]},
-}
 
 
 def parse_device_conf(conf: dict) -> dict[str, DeviceInfo]:
@@ -127,7 +110,7 @@ def init(device_def: dict, nodes_def: dict | None = None) -> None:
     set_ctx(driver)
 
 
-function = primitive
+function = primitive.function
 
 
 class Utils:

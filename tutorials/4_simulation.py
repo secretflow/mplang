@@ -17,7 +17,7 @@ import random
 import mplang
 import mplang.device as mpd
 import mplang.random as mpr
-import mplang.smpc as smpc
+import mplang.simp as simp
 
 
 def randint(lo, hi):
@@ -35,14 +35,14 @@ def millionaire():
     y = mpr.prandint(0, 10)
 
     # both of them seal it
-    x_ = smpc.sealFrom(x, 0)
-    y_ = smpc.sealFrom(y, 1)
+    x_ = simp.sealFrom(x, 0)
+    y_ = simp.sealFrom(y, 1)
 
     # compare it seally.
-    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = smpc.reveal(z_)
+    z = simp.reveal(z_)
 
     return x, y, z
 

@@ -21,13 +21,10 @@ from typing import Any
 
 from jax.tree_util import tree_unflatten
 
-import mplang.mpi as mpi
-from mplang.core import primitive as prim
+from mplang.core import Mask, MPObject, Rank, peval, psize
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import Rank
 from mplang.frontend.spu import SpuFE, Visibility
+from mplang.simp import mpi
 
 
 class SecureAPI(ABC):
@@ -96,7 +93,7 @@ class SPU(SecureAPI):
 
         # make shares on each party.
         pfunc = spu.makeshares(obj, visibility=Visibility.SECRET)
-        shares = prim.peval(pfunc, [obj], frm_mask)
+        shares = peval(pfunc, [obj], frm_mask)
 
         # scatter the shares to each party.
         return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
@@ -117,7 +114,7 @@ class SPU(SecureAPI):
         pfunc, in_vars, out_tree = spu.compile_jax(is_mpobject, pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
 
-        out_flat = prim.peval(pfunc, in_vars, spu_mask)
+        out_flat = peval(pfunc, in_vars, spu_mask)
 
         return tree_unflatten(out_tree, out_flat)
 
@@ -134,7 +131,7 @@ class SPU(SecureAPI):
         # Reconstruct the original object from shares
         spu = SpuFE(world_size=Mask(spu_mask).num_parties())
         pfunc = spu.reconstruct(shares)
-        return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
+        return peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
         return self.reveal(obj, to_mask=Mask.from_ranks(to_rank))
@@ -181,7 +178,7 @@ def sealFrom(obj: MPObject, root: Rank) -> MPObject:
 # reveal :: s a -> m a
 def reveal(obj: MPObject, to_mask: Mask | None = None) -> MPObject:
     """Reveal a sealed object to pmask'ed parties."""
-    to_mask = to_mask or Mask.all(prim.psize())
+    to_mask = to_mask or Mask.all(psize())
     return _get_sapi().reveal(obj, to_mask)
 
 

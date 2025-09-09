@@ -1,0 +1,87 @@
+# MPLang Cluster Configuration v2.4
+# This file serves as the Single Source of Truth (SSOT) for a sample cluster
+# topology.
+
+# ===================================================================
+# Physical Layer: Definition of all Physical Nodes
+# This is the complete list of all addressable compute nodes in the network.
+# ===================================================================
+nodes:
+  - name: alice_node
+    endpoint: "127.0.0.1:9001"
+    runtime_info:
+      version: "2.0.0"
+      backends: ["builtin", "stablehlo", "spu", "phe"]
+      platform: "cpu"
+
+  - name: bob_node
+    endpoint: "127.0.0.1:9002"
+    runtime_info:
+      version: "2.0.0"
+      backends: ["builtin", "stablehlo", "spu"]
+      platform: "cpu"
+
+  # --- Carol's capabilities are split into two distinct PPs for security ---
+
+  - name: carol_node
+    endpoint: "127.0.0.1:9003"
+    runtime_info:
+      version: "2.0.0"
+      # This PP is Carol's standard compute node. It can access local data.
+      backends: ["builtin", "stablehlo", "spu", "duckdb"]
+      platform: "cpu"
+
+  - name: carol_tee
+    endpoint: "127.0.0.1:9004" # Note: Different port, separate process
+    runtime_info:
+      version: "2.0.0"
+      # This PP is a dedicated TEE service node. It cannot access local data.
+      backends: ["builtin", "stablehlo"]
+      platform: "intel_sgx_2.16"
+
+# ===================================================================
+# Logical Layer: Definition of all Logical Devices (VPs)
+# This is the complete universe of entities addressable by the user-facing API.
+# ===================================================================
+devices:
+  # --- Devices representing single nodes (kind: local) ---
+  # These devices map 1:1 to physical nodes for local computation
+  alice:
+    kind: local
+    members: [alice_node]
+
+  bob:
+    kind: local
+    members: [bob_node]
+
+  carol_local:
+    kind: local
+    members: [carol_node]
+
+  # --- Composite and Special Devices ---
+  # An SPU device for 2-party computation between Alice and Bob.
+  spu_2pc:
+    kind: spu
+    members: [alice_node, bob_node]
+    config:
+      protocol: SEMI2K
+      field: FM64
+
+  # An SPU device for 3-party computation.
+  # Note that it uses 'carol_node', not 'carol_tee'.
+  spu_3pc:
+    kind: spu
+    members: [alice_node, bob_node, carol_node]
+    config:
+      protocol: ABY3
+      field: FM128
+
+  # The TEE device, which is a VP composed of the dedicated 'carol_tee' PP.
+  trusted_executor:
+    kind: tee
+    members: [carol_tee]
+    config:
+      # Intel SGX enclave configuration
+      enclave_binary: "trusted_executor.signed.so"  # Enclave binary filename
+      enclave_config: "trusted_executor.xml"         # SGX config file
+      # The binary should be available on the carol_tee node's filesystem

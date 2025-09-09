@@ -105,7 +105,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
                 var = simp.runAt(rank, nfn)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             else:
-                raise ValueError(f"Unknown device type: {dev_info.type}")
+                raise ValueError(f"Unknown device type: {dev_info.kind}")
 
         return wrapped
 

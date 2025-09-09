@@ -16,6 +16,7 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 2. Run `stax_nn` example
 
     ```sh
+    uv sync --group examples
     uv run examples/stax_nn/stax_nn.py -e 1 -b 1024
     ```
 

@@ -28,7 +28,7 @@ class TestTutorialBasicExamples:
         import random
         from functools import partial
 
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def millionaire():
@@ -64,7 +64,7 @@ class TestTutorialConditionalExamples:
 
     def test_negate_if_local_cond(self):
         """Test local conditional execution from tutorial"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         @mplang.function
         def negate_if_local_cond():
@@ -95,7 +95,7 @@ class TestTutorialConditionalExamples:
 
     def test_negate_if_shared_cond(self):
         """Test shared conditional execution from tutorial"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         @mplang.function
         def negate_if_shared_cond():
@@ -133,7 +133,7 @@ class TestTutorialConditionalExamples:
 
     def test_party_branch_on_cond(self):
         """Test party-specific branching from tutorial"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         @mplang.function
         def party_branch_on_cond():
@@ -163,7 +163,7 @@ class TestTutorialWhileLoopExamples:
 
     def test_while_party_local(self):
         """Test party-local while loop from tutorial"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def while_party_local():
@@ -190,7 +190,7 @@ class TestTutorialWhileLoopExamples:
 
     def test_while_sum_greater(self):
         """Test while loop with shared condition from tutorial"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def while_sum_greater():
@@ -221,7 +221,7 @@ class TestTutorialWhileLoopExamples:
 
     def test_while_until_ascending(self):
         """Test while loop until ascending order from tutorial (simplified)"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         @mplang.function
         def while_simple():
@@ -250,7 +250,7 @@ class TestTutorialAdvancedExamples:
 
     def test_pass_and_capture(self):
         """Test parameter passing and variable capture from tutorial"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         # Make two variables on the simulator
         x = mplang.evaluate(sim3, simp.prank)
@@ -274,7 +274,7 @@ class TestTutorialAdvancedExamples:
 
     def test_jitted_function(self):
         """Test JIT compilation from tutorial"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         x = mplang.evaluate(sim3, simp.prank)
         y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
@@ -303,7 +303,7 @@ class TestTutorialSimulationExamples:
 
     def test_simulation_millionaire(self):
         """Test millionaire problem with simulation from tutorial"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def millionaire():
@@ -336,7 +336,7 @@ class TestTutorialErrorHandling:
 
     def test_invalid_party_mask(self):
         """Test behavior with invalid party operations"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def test_runAt_invalid_party():
@@ -351,7 +351,7 @@ class TestTutorialErrorHandling:
 
     def test_mismatched_seal_operations(self):
         """Test error handling for mismatched seal operations"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def mismatched_seal():
@@ -364,7 +364,7 @@ class TestTutorialErrorHandling:
 
     def test_empty_while_loop(self):
         """Test while loop that doesn't execute"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def empty_while():
@@ -390,7 +390,7 @@ class TestTutorialDataStructures:
 
     def test_list_operations(self):
         """Test simple gather operations"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def simple_gather():
@@ -412,7 +412,7 @@ class TestTutorialDataStructures:
 
     def test_nested_data_structures(self):
         """Test simple data structures"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def simple_data():

@@ -44,7 +44,7 @@ def millionaire():
 
 
 # Now we create a simulator with 2 parties, which use two threads to simulate the two parties.
-sim2 = mplang.Simulator(2)
+sim2 = mplang.Simulator.simple(2)
 # Evaluate the millionaire function in the simulator.
 x, y, z = mplang.evaluate(sim2, millionaire)
 # x, y, z will be references to the values of the two parties.
@@ -58,7 +58,7 @@ print(
 )
 
 # Of course, we can also run the same function in a different simulator with 3 parties.
-sim3 = mplang.Simulator(3)
+sim3 = mplang.Simulator.simple(3)
 # Evaluate the millionaire function in the simulator.
 x, y, z = mplang.evaluate(sim3, millionaire)
 # Uncomments to see the result.

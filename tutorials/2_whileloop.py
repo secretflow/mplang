@@ -93,9 +93,9 @@ def while_until_ascending():
 
 if __name__ == "__main__":
     # Three party computation.
-    sim2 = mplang.Simulator(2)
-    sim3 = mplang.Simulator(3)
-    sim4 = mplang.Simulator(4)
+    sim2 = mplang.Simulator.simple(2)
+    sim3 = mplang.Simulator.simple(3)
+    sim4 = mplang.Simulator.simple(4)
 
     print("all parties increase until 15")
     x = mplang.evaluate(sim2, while_party_local)

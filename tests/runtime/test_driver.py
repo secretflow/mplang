@@ -23,11 +23,53 @@ import httpx
 import pytest
 import uvicorn
 
+from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
 from mplang.runtime.driver import Driver
 from mplang.runtime.server import app
 
 # Global state for servers
 distributed_server_processes: dict[int, multiprocessing.Process] = {}
+
+
+def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
+    """Create a ClusterSpec for testing with the given node addresses."""
+    nodes = {}
+    for node_id, addr in node_addrs.items():
+        rank = int(node_id)
+        nodes[f"node{rank}"] = PhysicalNode(
+            name=f"node{rank}",
+            rank=rank,
+            endpoint=addr,  # Keep the full HTTP URL as endpoint
+            runtime_info=RuntimeInfo(
+                version="test",
+                platform="test",
+                backends=["__all__"],
+            ),
+        )
+
+    # Create local devices for each node
+    local_devices = {}
+    for _node_name, node in nodes.items():
+        local_devices[f"local_{node.rank}"] = LogicalDevice(
+            name=f"local_{node.rank}",
+            kind="local",
+            members=[node],
+        )
+
+    # Create SPU device with all nodes
+    spu_device = LogicalDevice(
+        name="SPU_0",
+        kind="SPU",
+        members=list(nodes.values()),
+        config={
+            "protocol": "SEMI2K",
+            "field": "FM128",
+        },
+    )
+
+    devices = {**local_devices, "SPU_0": spu_device}
+
+    return ClusterSpec(nodes=nodes, devices=devices)
 
 
 def run_distributed_server(port: int):
@@ -90,18 +132,19 @@ def test_http_driver_initialization():
         "2": "http://localhost:9003",
     }
 
-    driver = Driver(node_addrs)
+    cluster_spec = create_test_cluster_spec(node_addrs)
+    driver = Driver(cluster_spec)
 
     # Test basic properties
-    assert driver.world_size == 3
+    assert driver.world_size() == 3
     assert len(driver.node_addrs) == 3
 
     # Test that _create_clients method works correctly
     clients = driver._create_clients()
     assert len(clients) == 3
-    assert "0" in clients
-    assert "1" in clients
-    assert "2" in clients
+    assert "node0" in clients
+    assert "node1" in clients
+    assert "node2" in clients
 
     # Clean up clients
     import asyncio
@@ -116,7 +159,8 @@ def test_session_creation():
         "1": "http://localhost:9002",
     }
 
-    driver = Driver(node_addrs)
+    cluster_spec = create_test_cluster_spec(node_addrs)
+    driver = Driver(cluster_spec)
 
     # Create session using async method
     import asyncio
@@ -133,7 +177,8 @@ def test_session_creation():
 def test_unique_name_generation():
     """Test unique name generation for executions."""
     node_addrs = {"0": "http://localhost:9001"}
-    driver = Driver(node_addrs)
+    cluster_spec = create_test_cluster_spec(node_addrs)
+    driver = Driver(cluster_spec)
 
     # Generate multiple names
     name1 = driver.new_name()
@@ -154,8 +199,8 @@ def test_driver_context_properties():
         "1": "http://localhost:9002",
     }
 
-    driver = Driver(node_addrs, custom_attr="test_value")
+    cluster_spec = create_test_cluster_spec(node_addrs)
+    driver = Driver(cluster_spec)
 
     # Test context properties
-    assert driver.world_size == 2
-    assert driver.attr("custom_attr") == "test_value"
+    assert driver.world_size() == 2

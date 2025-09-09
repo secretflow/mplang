@@ -83,7 +83,7 @@ def party_branch_on_cond():
 
 if __name__ == "__main__":
     WORLD_SIZE = 3
-    mplang.set_ctx(mplang.Simulator(WORLD_SIZE))
+    mplang.set_ctx(mplang.Simulator.simple(WORLD_SIZE))
 
     print("negate if x_i > 10")
     x, r = negate_if_local_cond()

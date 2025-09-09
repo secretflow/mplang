@@ -42,11 +42,10 @@ def millionaire():
 
 if __name__ == "__main__":
     world_size = 4
-    spu_mask = 14  # 0b1110, SPU is 2nd, 3rd, and 4th node
 
     # Create compilation options for ahead-of-time (AOT) compilation
     # This specifies the number of parties and which parties have SPU devices
-    copts = mplang.CompileOptions(world_size, spu_mask=spu_mask)
+    copts = mplang.CompileOptions.simple(world_size)
 
     # Compile the function to get the IR representation
     # This traces the function and creates a static computation graph

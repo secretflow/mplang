@@ -96,9 +96,9 @@ class CreateSessionRequest(BaseModel):
     rank: int
     endpoints: list[str]
     # SPU related
-    spu_mask: int = -1
-    spu_protocol: int = 0
-    spu_field: int = 0
+    spu_mask: int
+    spu_protocol: str
+    spu_field: str
 
 
 class SessionResponse(BaseModel):

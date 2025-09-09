@@ -54,12 +54,12 @@ def run_stdio_example():
     print("x = [[1, 2], [3, 4]]")
     print("y = [[5, 6], [7, 8]]")
 
-    sim2 = mplang.Simulator(2)
+    sim2 = mplang.Simulator.simple(2)
     _ = mplang.evaluate(sim2, save_data)
     print("Data saved to files successfully")
 
     print("\n--- Session 2: Loading data and computing x + y ---")
-    sim3 = mplang.Simulator(3)
+    sim3 = mplang.Simulator.simple(3)
     z = mplang.evaluate(sim3, load_data)
     result = mplang.fetch(sim3, z)
     print(result)

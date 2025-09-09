@@ -85,7 +85,7 @@ class TestDuckDBHandler:
 
             return out_tbl
 
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
         res = mplang.evaluate(sim2, example)
         print(f"output table: {op}, {new_feature_name}\n", mplang.fetch(sim2, res))
 
@@ -107,7 +107,7 @@ class TestDuckDBHandler:
             res = simp.runAt(0, _union)(t1, t2)
             return res
 
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
         res = mplang.evaluate(sim2, example)
         out_tbl = mplang.fetch(sim2, res)
         print(f"output table: \n {out_tbl[0]}")

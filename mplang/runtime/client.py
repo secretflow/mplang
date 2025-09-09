@@ -83,9 +83,9 @@ class HttpExecutorClient:
         rank: int,
         endpoints: list[str],
         *,
-        spu_mask: int = -1,
-        spu_protocol: int = 2,  # SEMI2K
-        spu_field: int = 2,  # FM64
+        spu_mask: int = 0,
+        spu_protocol: str = "SEMI2K",
+        spu_field: str = "FM64",
     ) -> str:
         """Create a new session.
 
@@ -93,9 +93,9 @@ class HttpExecutorClient:
             name: Session name/ID.
             rank: The rank of this party in the session.
             endpoints: List of endpoint URLs for all parties, indexed by rank.
-            spu_mask: SPU mask for the session, -1 means all parties construct SPU.
-            spu_protocol: SPU protocol for the session.
-            spu_field: SPU field for the session.
+            spu_mask: SPU mask for the session, 0 means no SPU.
+            spu_protocol: SPU protocol for the session (e.g., "SEMI2K", "ABY3").
+            spu_field: SPU field for the session (e.g., "FM64", "FM128").
 
         Returns:
             The session name/ID
@@ -104,6 +104,7 @@ class HttpExecutorClient:
             RuntimeError: If session creation fails
         """
         url = f"/sessions/{name}"
+
         payload: dict[str, Any] = {
             "rank": rank,
             "endpoints": endpoints,

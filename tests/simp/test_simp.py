@@ -32,7 +32,7 @@ class TestPShfl:
     def test_pshfl_basic(self):
         """Test basic pshfl_s functionality"""
         num_parties = 10
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         src = mplang.evaluate(sim, mpr.prandint, 0, 100)
         key = mplang.evaluate(sim, mpr.ukey, 42)

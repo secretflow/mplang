@@ -20,6 +20,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from mplang.core.cluster import ClusterSpec
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.expr.ast import VariableExpr
 from mplang.core.mask import Mask
@@ -73,9 +74,15 @@ def mask_2p():
 
 
 @pytest.fixture
-def trace_context(mask_2p):
+def cluster_spec_2p():
+    """Create a 2-party cluster spec for testing."""
+    return ClusterSpec.simple(2)
+
+
+@pytest.fixture
+def trace_context(mask_2p, cluster_spec_2p):
     """Create a trace context for testing."""
-    return TraceContext(world_size=2, mask=mask_2p)
+    return TraceContext(cluster_spec_2p, mask=mask_2p)
 
 
 @pytest.fixture
@@ -112,21 +119,21 @@ class TestVarNamer:
 class TestTraceContext:
     """Test the TraceContext class."""
 
-    def test_initialization(self, mask_2p):
+    def test_initialization(self, mask_2p, cluster_spec_2p):
         """Test TraceContext initialization."""
-        ctx = TraceContext(world_size=2, mask=mask_2p)
+        ctx = TraceContext(cluster_spec_2p, mask=mask_2p)
 
-        assert ctx.psize() == 2
+        assert ctx.world_size() == 2
         assert ctx.mask == mask_2p
-        assert ctx.attrs() == {}
+        assert ctx.cluster_spec == cluster_spec_2p
         assert ctx._captures == {}
 
-    def test_initialization_with_attrs(self, mask_2p):
-        """Test TraceContext initialization with attributes."""
-        attrs = {"key1": "value1", "key2": 42}
-        ctx = TraceContext(world_size=2, mask=mask_2p, attrs=attrs)
+    def test_initialization_default_mask(self, cluster_spec_2p):
+        """Test TraceContext initialization with default mask."""
+        ctx = TraceContext(cluster_spec_2p)
 
-        assert ctx.attrs() == attrs
+        assert ctx.world_size() == 2
+        assert ctx.mask == Mask.all(2)  # Should default to all parties
 
     def test_name_generation(self, trace_context):
         """Test unique name generation."""

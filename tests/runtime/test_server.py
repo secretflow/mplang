@@ -34,6 +34,9 @@ def test_create_and_get_session():
         json={
             "rank": 0,
             "endpoints": ["http://localhost:8000", "http://localhost:8001"],
+            "spu_mask": -1,
+            "spu_protocol": "SEMI2K",
+            "spu_field": "FM64",
         },
     )
     assert response.status_code == 200
@@ -57,6 +60,9 @@ def test_create_computation():
         json={
             "rank": 0,
             "endpoints": ["http://localhost:8000", "http://localhost:8001"],
+            "spu_mask": -1,
+            "spu_protocol": "SEMI2K",
+            "spu_field": "FM64",
         },
     )
 
@@ -96,6 +102,9 @@ def test_create_and_get_symbol():
         json={
             "rank": 0,
             "endpoints": ["http://localhost:8000", "http://localhost:8001"],
+            "spu_mask": -1,
+            "spu_protocol": "SEMI2K",
+            "spu_field": "FM64",
         },
     )
     assert response.status_code == 200

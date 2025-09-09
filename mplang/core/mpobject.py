@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
@@ -23,21 +23,32 @@ from mplang.core.mptype import MPType
 from mplang.core.table import TableType
 from mplang.core.tensor import Shape
 
+if TYPE_CHECKING:
+    from mplang.core.cluster import ClusterSpec
 
-class MPContext(ABC):
-    """The context of an MPObject."""
 
-    @abstractmethod
-    def psize(self) -> int:
-        """Return the world size."""
+class MPContext:
+    """The context of an MPObject.
 
-    @abstractmethod
-    def attrs(self) -> dict[str, Any]:
-        """Return the attributes of the context."""
+    MPContext is the base class for all execution contexts in MPLang.
+    It holds the cluster specification that defines the physical and logical
+    structure of the computation environment.
+    """
 
-    def attr(self, key: str, default: Any = None) -> Any:
-        """Return the attribute of the context by key."""
-        return self.attrs().get(key, default)
+    def __init__(self, cluster_spec: ClusterSpec):
+        """Initialize MPContext with a cluster specification.
+
+        Args:
+            cluster_spec: The cluster specification defining the physical nodes
+                         and logical devices available for computation.
+        """
+        if cluster_spec is None:
+            raise ValueError("cluster_spec cannot be None")
+        self.cluster_spec = cluster_spec
+
+    def world_size(self) -> int:
+        """Return the world size (number of physical nodes)."""
+        return len(self.cluster_spec.nodes)
 
 
 class MPObject(ABC):

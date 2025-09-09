@@ -61,9 +61,9 @@ def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
         # If the object is already in the correct context, return it directly
         return obj
 
-    if obj.ctx.psize() != ctx.psize():
+    if obj.ctx.world_size() != ctx.world_size():
         # TODO(jint): strict check if source and target context are compatible.
-        raise ValueError(f"{obj} world_size mismatch, expect {ctx.psize()}.")
+        raise ValueError(f"{obj} world_size mismatch, expect {ctx.world_size()}.")
 
     if isinstance(ctx, TraceContext):
         # Capture the object (as a variable) into current TraceContext
@@ -98,7 +98,7 @@ def primitive(fn: Callable[P, R]) -> Callable[P, R]:
             args, kwargs = tree_map(partial(_switch_ctx, current_ctx), (args, kwargs))
             return fn(*args, **kwargs)
         elif isinstance(current_ctx, InterpContext):
-            trace_ctx = TraceContext(current_ctx.psize(), attrs=current_ctx.attrs())
+            trace_ctx = TraceContext(current_ctx.cluster_spec)
             # TODO(jint): should we add trace_and_apply to improve the performance?
             traced_fn = trace(trace_ctx, fn, *args, **kwargs)
             # Return back to the original context.
@@ -133,7 +133,7 @@ def psize() -> int:
         int: The total number of parties in the current multi-party computation context.
     """
     ctx = _tracer()
-    return ctx.psize()
+    return ctx.world_size()
 
 
 @primitive
@@ -287,7 +287,7 @@ def peval(
 
     if rmask is None and len(args) == 0:
         # If no rmask is provided and no args, use full mask
-        rmask = Mask.all(ctx.psize())
+        rmask = Mask.all(ctx.world_size())
     if rmask is not None and not Mask(rmask).is_subset(ctx.mask):
         raise ValueError(
             f"Specified rmask {rmask} is not a subset of deduced pmask {ctx.mask}"

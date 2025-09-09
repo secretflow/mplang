@@ -69,8 +69,18 @@ class Delegation(SecureAPI):
 class SPU(SecureAPI):
     """Use SPU to  perform secure operations."""
 
+    def get_spu_mask(self) -> Mask:
+        spu_devices = cur_ctx().cluster_spec.get_devices_by_kind("SPU")
+        if not spu_devices:
+            raise ValueError("No SPU device found in the cluster specification")
+        if len(spu_devices) > 1:
+            raise ValueError("Multiple SPU devices found in the cluster specification")
+        spu_device = spu_devices[0]
+        spu_mask = Mask.from_ranks([member.rank for member in spu_device.members])
+        return spu_mask
+
     def seal(self, obj: MPObject, frm_mask: Mask | None = None) -> list[MPObject]:
-        spu_mask: Mask = cur_ctx().attr("spu_mask")
+        spu_mask: Mask = self.get_spu_mask()
         if obj.pmask is None:
             if frm_mask is None:
                 # NOTE: The length of the return list is statically determined by obj_mask,
@@ -107,7 +117,7 @@ class SPU(SecureAPI):
         if fe_type != "jax":
             raise ValueError(f"Unsupported fe_type: {fe_type}")
 
-        spu_mask = cur_ctx().attr("spu_mask")
+        spu_mask = self.get_spu_mask()
 
         spu = SpuFE(world_size=Mask(spu_mask).num_parties())
         is_mpobject = lambda x: isinstance(x, MPObject)
@@ -119,7 +129,7 @@ class SPU(SecureAPI):
         return tree_unflatten(out_tree, out_flat)
 
     def reveal(self, obj: MPObject, to_mask: Mask) -> MPObject:
-        spu_mask = cur_ctx().attr("spu_mask")
+        spu_mask = self.get_spu_mask()
 
         assert obj.pmask == spu_mask, (obj.pmask, spu_mask)
 

@@ -29,6 +29,7 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import Evaluator
@@ -38,6 +39,7 @@ from mplang.core.mpir import Reader, Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
 from mplang.runtime.link_comm import LinkCommunicator
+from mplang.utils.spu_utils import parse_field, parse_protocol
 
 
 class ThreadCommunicator(CommunicatorBase, CollectiveMixin):
@@ -84,54 +86,62 @@ class SimVar(InterpVar):
 class Simulator(InterpContext):
     def __init__(
         self,
-        psize: int,
+        cluster_spec: ClusterSpec,
         *,
-        spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
-        spu_field: libspu.FieldType = libspu.FieldType.FM64,
-        spu_mask: Mask | None = None,
         trace_ranks: list[int] | None = None,
-        **attrs: Any,
     ) -> None:
-        """Initialize a simulator with the given process size and attributes."""
-        if trace_ranks is None:
-            trace_ranks = []
-        all_attrs = {
-            "trace_ranks": trace_ranks,
-            "spu_protocol": int(spu_protocol),
-            "spu_field": int(spu_field),
-            "spu_mask": spu_mask or Mask((1 << psize) - 1),
-            **attrs,
-        }
-        super().__init__(psize, all_attrs)
+        """Initialize a simulator with the given cluster specification.
+
+        Args:
+            cluster_spec: The cluster specification defining the simulation environment.
+            trace_ranks: List of ranks to trace execution for debugging.
+        """
+        super().__init__(cluster_spec)
+        self._trace_ranks = trace_ranks or []
+
+        spu_devices = cluster_spec.get_devices_by_kind("SPU")
+        if not spu_devices:
+            raise ValueError("No SPU device found in the cluster specification")
+        if len(spu_devices) > 1:
+            raise ValueError("Multiple SPU devices found in the cluster specification")
+        spu_device = spu_devices[0]
+
+        # compute spu_mask from spu_device members
+        spu_mask = Mask.from_ranks([member.rank for member in spu_device.members])
+
+        # Convert protocol and field from config using utility functions
+        spu_protocol = parse_protocol(spu_device.config["protocol"])
+        spu_field = parse_field(spu_device.config["field"])
+
+        world_size = self.world_size()
 
         # Setup communicators
-        self._comms = [ThreadCommunicator(rank, psize) for rank in range(psize)]
+        self._comms = [
+            ThreadCommunicator(rank, world_size) for rank in range(world_size)
+        ]
         for comm in self._comms:
             comm.set_peers(self._comms)
 
         # Prepare link context and spu handlers.
-        spu_mask_attr: Mask = Mask(self.attr("spu_mask"))
 
-        spu_addrs = [f"P{spu_rank}" for spu_rank in Mask(spu_mask_attr)]
+        spu_addrs = [f"P{spu_rank}" for spu_rank in spu_mask]
         spu_comms = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
-            for idx in range(spu_mask_attr.num_parties())
+            for idx in range(spu_mask.num_parties())
         ]
-        spu_config = libspu.RuntimeConfig(
-            protocol=libspu.ProtocolKind.SEMI2K,
-            field=libspu.FieldType.FM64,
-        )
+        spu_config = libspu.RuntimeConfig(protocol=spu_protocol, field=spu_field)
         # Create separate SpuHandler instances for each party to avoid sharing state
         spu_handlers = [
-            SpuHandler(spu_mask_attr.num_parties(), spu_config) for _ in range(psize)
+            SpuHandler(spu_mask.num_parties(), spu_config) for _ in range(world_size)
         ]
         for rank, handler in enumerate(spu_handlers):
             handler.set_link_context(
-                spu_comms[Mask(spu_mask_attr).global_to_relative_rank(rank)]
-                if rank in Mask(spu_mask_attr)
+                spu_comms[Mask(spu_mask).global_to_relative_rank(rank)]
+                if rank in Mask(spu_mask)
                 else None
             )
 
+        # TODO(jint): add backends according to cluster_spec.
         # Setup evaluators
         self._evaluators = [
             Evaluator(
@@ -146,8 +156,29 @@ class Simulator(InterpContext):
                     PHEHandler(),
                 ],
             )
-            for rank in range(self.psize())
+            for rank in range(self.world_size())
         ]
+
+    @classmethod
+    def simple(
+        cls,
+        world_size: int,
+        **kwargs: Any,
+    ) -> Simulator:
+        """Create a simple simulator with the given number of parties.
+
+        This is a convenience method that creates a ClusterSpec.simple()
+        configuration for quick testing and prototyping.
+
+        Args:
+            world_size: Number of simulated parties.
+            **kwargs: Additional arguments passed to the Simulator constructor.
+
+        Returns:
+            A Simulator instance with a simple cluster configuration.
+        """
+        cluster_spec = ClusterSpec.simple(world_size)
+        return cls(cluster_spec, **kwargs)
 
     def _do_evaluate(self, expr: Expr, evaluator: Evaluator) -> Any:
         """
@@ -184,11 +215,12 @@ class Simulator(InterpContext):
 
         pts_env = [
             {name: cast(SimVar, var).values[rank] for name, var in bindings.items()}
-            for rank in range(self.psize())
+            for rank in range(self.world_size())
         ]
 
         pts_evaluators = [
-            self._evaluators[rank].fork(pts_env[rank]) for rank in range(self.psize())
+            self._evaluators[rank].fork(pts_env[rank])
+            for rank in range(self.world_size())
         ]
 
         # Collect evaluation results from all parties
@@ -220,7 +252,7 @@ class Simulator(InterpContext):
         # Convert results to SimVar objects
         # pts_results is a list of party results, where each party result is a list of values
         # We need to transpose this to get (n_outputs, n_parties) structure
-        assert len(pts_results) == self.psize()
+        assert len(pts_results) == self.world_size()
 
         # Ensure all parties returned the same number of outputs (matrix validation)
         if pts_results and not all(

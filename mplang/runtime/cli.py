@@ -19,28 +19,23 @@ Command-line interface for managing MPLang clusters.
 
 import argparse
 import asyncio
-import json
 import multiprocessing
 import sys
-from typing import Any, cast
+from typing import Any
 
 import uvicorn
+import yaml
 
+from mplang.core.cluster import ClusterSpec
 from mplang.runtime.client import HttpExecutorClient
 from mplang.runtime.server import app
 
 
-def load_config(config_path: str) -> dict[str, Any]:
-    """Load configuration from a JSON file.
-
-    Args:
-        config_path: Path to the JSON configuration file
-
-    Returns:
-        Dictionary containing the configuration
-    """
-    with open(config_path) as f:
-        return cast(dict[str, Any], json.load(f))
+def load_config(config_path: str) -> ClusterSpec:
+    """Load configuration from a YAML file."""
+    with open(config_path) as file:
+        conf = yaml.safe_load(file)
+        return ClusterSpec.from_dict(conf)
 
 
 def run_server(port: int, node_id: str) -> None:
@@ -109,8 +104,8 @@ def start_command(args: argparse.Namespace) -> int:
     """
     try:
         # Load configuration
-        config = load_config(args.config)
-        nodes = config.get("nodes", {})
+        cluster_spec = load_config(args.config)
+        nodes = cluster_spec.nodes
 
         if not nodes:
             print("No nodes defined in configuration")
@@ -122,7 +117,7 @@ def start_command(args: argparse.Namespace) -> int:
             print(f"Node {node_id} not found in configuration")
             return 1
 
-        endpoint = nodes[node_id]
+        endpoint = nodes[node_id].endpoint
         # Extract port from endpoint (format: host:port)
         port = int(endpoint.split(":")[-1])
 
@@ -147,8 +142,8 @@ def start_cluster_command(args: argparse.Namespace) -> int:
     """
     try:
         # Load configuration
-        config = load_config(args.config)
-        nodes = config.get("nodes", {})
+        cluster_spec = load_config(args.config)
+        nodes = cluster_spec.nodes
 
         if not nodes:
             print("No nodes defined in configuration")
@@ -156,9 +151,9 @@ def start_cluster_command(args: argparse.Namespace) -> int:
 
         # Start a process for each node
         processes = []
-        for node_id, endpoint in nodes.items():
+        for node_id, node in nodes.items():
             # Extract port from endpoint (format: host:port)
-            port = int(endpoint.split(":")[-1])
+            port = int(node.endpoint.split(":")[-1])
 
             # Create and start process
             process = multiprocessing.Process(target=run_server, args=(port, node_id))
@@ -279,15 +274,17 @@ def status_command(args: argparse.Namespace) -> int:
 
     try:
         # Load configuration
-        config = load_config(args.config)
-        nodes = config.get("nodes", {})
+        cluster_spec = load_config(args.config)
+        nodes = cluster_spec.nodes
 
         if not nodes:
             print("No nodes defined in configuration")
             return 1
 
+        node_addrs = {node_id: node.endpoint for node_id, node in nodes.items()}
+
         # Collect status from all nodes
-        cluster_status = asyncio.run(_collect_cluster_status(nodes, args.details))
+        cluster_status = asyncio.run(_collect_cluster_status(node_addrs, args.details))
 
         # Basic node health check
         print("Node Status:")
@@ -381,7 +378,7 @@ def main() -> int:
         "status", help="Check status of nodes in the cluster"
     )
     status_parser.add_argument(
-        "--config", "-c", required=True, help="Path to the JSON configuration file"
+        "--config", "-c", required=True, help="Path to the YAML configuration file"
     )
     status_parser.add_argument(
         "--details",
@@ -394,7 +391,7 @@ def main() -> int:
     # Start command
     start_parser = subparsers.add_parser("start", help="Start a single MPC node")
     start_parser.add_argument(
-        "--config", "-c", required=True, help="Path to the JSON configuration file"
+        "--config", "-c", required=True, help="Path to the YAML configuration file"
     )
     start_parser.add_argument(
         "--node-id", "-n", required=True, type=str, help="ID of the node to start"
@@ -406,7 +403,7 @@ def main() -> int:
         "start-cluster", help="Start all MPC nodes in the cluster"
     )
     start_cluster_parser.add_argument(
-        "--config", "-c", required=True, help="Path to the JSON configuration file"
+        "--config", "-c", required=True, help="Path to the YAML configuration file"
     )
     start_cluster_parser.set_defaults(func=start_cluster_command)
 
@@ -415,7 +412,7 @@ def main() -> int:
         "up", help="Start all MPC nodes in the cluster (alias for start-cluster)"
     )
     up_parser.add_argument(
-        "--config", "-c", required=True, help="Path to the JSON configuration file"
+        "--config", "-c", required=True, help="Path to the YAML configuration file"
     )
     up_parser.set_defaults(func=start_cluster_command)
 

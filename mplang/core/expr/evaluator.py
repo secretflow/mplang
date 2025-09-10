@@ -67,7 +67,7 @@ class EvalSemantic:
         self._pfunc_handles: list[PFunctionHandler] = pfunc_handles or []
 
         # setup pfunction dispatch table
-        self._dispatch_table: dict[str, Any] = {}
+        self._dispatch_table: dict[str, PFunctionHandler] = {}
         for handler in self._pfunc_handles:
             for pfunc_name in handler.list_fn_names():
                 if pfunc_name not in self._dispatch_table:

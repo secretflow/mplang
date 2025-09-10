@@ -239,7 +239,7 @@ def main():
     with open(args.config) as file:
         conf = yaml.safe_load(file)
     cluster_spec = ClusterSpec.from_dict(conf)
-    driver = mplang.Driver(cluster_spec)
+    driver = mplang.Driver(cluster_spec, timeout=600)
     mplang.set_ctx(driver)
 
     # with open(args.config) as file:

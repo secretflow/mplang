@@ -14,7 +14,7 @@
 
 
 import mplang
-from mplang import simp
+import mplang.simp as simp
 from mplang.core import mpir
 
 

@@ -378,7 +378,7 @@ def _topo_kahn(
         n = key2node[k]
         produced += 1
         yield from _maybe_yield(n, yield_condition)
-        for c in children.get(k, ()):  # type: ignore[arg-type]
+        for c in children.get(k, set()):
             indeg[c] -= 1
             if indeg[c] == 0:
                 q.append(c)

@@ -13,10 +13,13 @@
 # limitations under the License.
 
 """
-Expression evaluator for executing MPLang expressions.
+Expression evaluation engines and facade for MPLang expressions.
 
-This module implements an expression evaluator that can execute expressions
-using a fork-based execution model for clean parameter binding and isolation.
+- Evaluator: public facade; default to iterative engine; still a Visitor to allow
+    expr.accept(evaluator) by delegating to internal recursive evaluator.
+- _IterativeEvaluator: non-recursive dataflow executor.
+- _RecursiveEvaluator: visitor-based executor.
+- _EvalSemantics: shared helpers for both engines.
 """
 
 from __future__ import annotations
@@ -44,14 +47,8 @@ from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction, PFunctionHandler
 
 
-class Evaluator(ExprVisitor):
-    """Simple expression evaluator using fork-based execution model.
-
-    This evaluator uses a fork-based design instead of explicit execution frames:
-    - Each function call creates a forked evaluator with parameter bindings
-    - Variable lookup is done in a simple flat environment
-    - Lexical scoping is achieved through environment sharing in forks
-    """
+class _EvalSemantics:
+    """Shared evaluation semantics and utilities for evaluators."""
 
     def __init__(
         self,
@@ -59,21 +56,11 @@ class Evaluator(ExprVisitor):
         env: dict[str, Any],
         comm: ICommunicator,
         pfunc_handles: list[PFunctionHandler] | None = None,
-    ):
-        """Initialize the evaluator.
-
-        Args:
-            rank: The rank of the current party (default 0).
-            env: Variable environment for free variables (stores values referenced by pname in DAG,
-                 not the evaluator's symbol table for intermediate DAG node values)
-            comm: The communicator for inter-party communication.
-            pfunc_handles: Optional dictionary of PFunction handlers.
-        """
+    ) -> None:
         self.rank = rank
         self.comm = comm
         self.env = env
         self._pfunc_handles: list[PFunctionHandler] = pfunc_handles or []
-        self._cache: dict[int, Any] = {}  # Cache based on expr id
 
         # setup pfunction dispatch table
         self._dispatch_table: dict[str, Any] = {}
@@ -90,6 +77,104 @@ class Evaluator(ExprVisitor):
         # setup handlers for PFunction execution
         for handler in self._pfunc_handles:
             handler.setup(self.rank)
+
+    # ------------------------------ Shared helpers (semantics) ------------------------------
+    def _should_run(self, rmask: Mask | None, args: list[Any]) -> bool:
+        if rmask is not None:
+            return self.comm.rank in Mask(rmask)
+        return all(arg is not None for arg in args)
+
+    def _exec_pfunc(self, pfunc: PFunction, args: list[Any]) -> list[Any]:
+        if pfunc.fn_type in self._dispatch_table:
+            handler = self._dispatch_table[pfunc.fn_type]
+            return handler.execute(pfunc, args)
+        raise NotImplementedError(f"PFunction type {pfunc.fn_type} not supported")
+
+    def _eval_eval_node(self, expr: EvalExpr, arg_vals: list[Any]) -> list[Any]:
+        assert isinstance(expr.pfunc, PFunction)
+        if not self._should_run(expr.rmask, arg_vals):
+            return [None] * len(expr.mptypes)
+        return self._exec_pfunc(expr.pfunc, arg_vals)
+
+    def _eval_conv_node(self, vars_vals: list[Any]) -> list[Any]:
+        assert len(vars_vals) > 0, "pconv called with empty vars list."
+        filtered = [v for v in vars_vals if v is not None]
+        if len(filtered) == 0:
+            return [None]
+        if len(filtered) == 1:
+            return [filtered[0]]
+        raise ValueError(f"pconv called with multiple vars={filtered}.")
+
+    def _eval_shfl_s_node(self, expr: ShflSExpr, src_value: Any) -> list[Any]:
+        pmask = expr.pmask
+        src_ranks = expr.src_ranks
+        dst_ranks = list(Mask(pmask))
+        assert len(src_ranks) == len(dst_ranks)
+        cid = self.comm.new_id()
+        result = []
+        for src, dst in zip(src_ranks, dst_ranks, strict=False):
+            if self.comm.rank == src:
+                self.comm.send(dst, cid, src_value)
+        for src, dst in zip(src_ranks, dst_ranks, strict=False):
+            if self.comm.rank == dst:
+                result.append(self.comm.recv(src, cid))
+        if self.comm.rank in dst_ranks:
+            assert len(result) == 1
+            return result
+        else:
+            assert len(result) == 0
+            return [None]
+
+    def _eval_shfl_node(self, expr: ShflExpr, data: Any, index: Any) -> list[Any]:
+        # allgather index via send/recv
+        indices = [None] * self.comm.world_size
+        cid = self.comm.new_id()
+        for dst_rank in range(self.comm.world_size):
+            if dst_rank != self.comm.rank:
+                self.comm.send(dst_rank, cid, index)
+        for src_rank in range(self.comm.world_size):
+            if src_rank != self.comm.rank:
+                indices[src_rank] = self.comm.recv(src_rank, cid)
+            else:
+                indices[src_rank] = index
+        indices_int: list[int | None] = [
+            (
+                val
+                if val is None
+                else int(val.item())
+                if hasattr(val, "item")
+                else int(val)
+            )
+            for val in indices
+        ]
+        send_pairs: list[tuple[int, int]] = []
+        for dst_idx, src_idx in enumerate(indices_int):
+            if src_idx is not None:
+                send_pairs.append((src_idx, dst_idx))
+        send_pairs.sort()
+        cid = self.comm.new_id()
+        received_data = None
+        for src_rank, dst_rank in send_pairs:
+            if self.comm.rank == src_rank:
+                self.comm.send(dst_rank, cid, data)
+        for src_rank, dst_rank in send_pairs:
+            if self.comm.rank == dst_rank:
+                received_data = self.comm.recv(src_rank, cid)
+        return [received_data]
+
+
+class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
+    """Recursive visitor-based evaluator (for accept/debug/compat)."""
+
+    def __init__(
+        self,
+        rank: int,
+        env: dict[str, Any],
+        comm: ICommunicator,
+        pfunc_handles: list[PFunctionHandler] | None = None,
+    ) -> None:
+        super().__init__(rank, env, comm, pfunc_handles)
+        self._cache: dict[int, Any] = {}  # Cache based on expr id
 
     def _get_var(self, name: str) -> Any:
         """Get variable from environment."""
@@ -116,11 +201,12 @@ class Evaluator(ExprVisitor):
             raise ValueError(f"got {type(values)} for expression {expr}")
         return values
 
-    def fork(self, sub_bindings: dict[str, Any]) -> Evaluator:
+    def fork(self, sub_bindings: dict[str, Any]) -> _RecursiveEvaluator:
         """Create a forked evaluator with additional variables."""
         merged_env = {**self.env, **sub_bindings}
-        forked = Evaluator(self.rank, merged_env, self.comm, self._pfunc_handles)
-        return forked
+        return _RecursiveEvaluator(
+            self.rank, merged_env, self.comm, self._pfunc_handles
+        )
 
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Evaluate function call expression."""
@@ -227,95 +313,11 @@ class Evaluator(ExprVisitor):
         return [result[expr.index]]  # Ensure we return a list
 
     def visit_func_def(self, expr: FuncDefExpr) -> Any:
-        # Definition expressions should not be evaluated directly.
         raise RuntimeError("FuncDefExpr should not be directly evaluated")
 
-    # ==================================================================================
-    # Iterative, non-recursive evaluation
-    # ==================================================================================
-    # ------------------------------ Shared helpers (semantics) ------------------------------
-    def _should_run(self, rmask: Mask | None, args: list[Any]) -> bool:
-        if rmask is not None:
-            return self.comm.rank in Mask(rmask)
-        return all(arg is not None for arg in args)
 
-    def _exec_pfunc(self, pfunc: PFunction, args: list[Any]) -> list[Any]:
-        if pfunc.fn_type in self._dispatch_table:
-            handler = self._dispatch_table[pfunc.fn_type]
-            return handler.execute(pfunc, args)
-        raise NotImplementedError(f"PFunction type {pfunc.fn_type} not supported")
-
-    def _eval_eval_node(self, expr: EvalExpr, arg_vals: list[Any]) -> list[Any]:
-        assert isinstance(expr.pfunc, PFunction)
-        if not self._should_run(expr.rmask, arg_vals):
-            return [None] * len(expr.mptypes)
-        return self._exec_pfunc(expr.pfunc, arg_vals)
-
-    def _eval_conv_node(self, vars_vals: list[Any]) -> list[Any]:
-        assert len(vars_vals) > 0, "pconv called with empty vars list."
-        filtered = [v for v in vars_vals if v is not None]
-        if len(filtered) == 0:
-            return [None]
-        if len(filtered) == 1:
-            return [filtered[0]]
-        raise ValueError(f"pconv called with multiple vars={filtered}.")
-
-    def _eval_shfl_s_node(self, expr: ShflSExpr, src_value: Any) -> list[Any]:
-        pmask = expr.pmask
-        src_ranks = expr.src_ranks
-        dst_ranks = list(Mask(pmask))
-        assert len(src_ranks) == len(dst_ranks)
-        cid = self.comm.new_id()
-        result = []
-        for src, dst in zip(src_ranks, dst_ranks, strict=False):
-            if self.comm.rank == src:
-                self.comm.send(dst, cid, src_value)
-        for src, dst in zip(src_ranks, dst_ranks, strict=False):
-            if self.comm.rank == dst:
-                result.append(self.comm.recv(src, cid))
-        if self.comm.rank in dst_ranks:
-            assert len(result) == 1
-            return result
-        else:
-            assert len(result) == 0
-            return [None]
-
-    def _eval_shfl_node(self, expr: ShflExpr, data: Any, index: Any) -> list[Any]:
-        # allgather index via send/recv
-        indices = [None] * self.comm.world_size
-        cid = self.comm.new_id()
-        for dst_rank in range(self.comm.world_size):
-            if dst_rank != self.comm.rank:
-                self.comm.send(dst_rank, cid, index)
-        for src_rank in range(self.comm.world_size):
-            if src_rank != self.comm.rank:
-                indices[src_rank] = self.comm.recv(src_rank, cid)
-            else:
-                indices[src_rank] = index
-        indices_int: list[int | None] = [
-            (
-                val
-                if val is None
-                else int(val.item())
-                if hasattr(val, "item")
-                else int(val)
-            )
-            for val in indices
-        ]
-        send_pairs: list[tuple[int, int]] = []
-        for dst_idx, src_idx in enumerate(indices_int):
-            if src_idx is not None:
-                send_pairs.append((src_idx, dst_idx))
-        send_pairs.sort()
-        cid = self.comm.new_id()
-        received_data = None
-        for src_rank, dst_rank in send_pairs:
-            if self.comm.rank == src_rank:
-                self.comm.send(dst_rank, cid, data)
-        for src_rank, dst_rank in send_pairs:
-            if self.comm.rank == dst_rank:
-                received_data = self.comm.recv(src_rank, cid)
-        return [received_data]
+class _IterativeEvaluator(_EvalSemantics):
+    """Iterative (non-recursive) evaluator using dataflow traversal."""
 
     @staticmethod
     def _first(vals: list[Any]) -> Any:
@@ -330,8 +332,6 @@ class Evaluator(ExprVisitor):
         return new + old[len(new) :]
 
     def _eval_region_iter(self, body: Expr, sub_env: dict[str, Any]) -> list[Any]:
-        from mplang.core.expr.walk import walk_dataflow
-
         local_symbols: dict[int, list[Any]] = {}
         for node in walk_dataflow(body, traversal="dfs_post_iter"):
             if isinstance(node, VariableExpr):
@@ -404,10 +404,7 @@ class Evaluator(ExprVisitor):
                 )
         return local_symbols[id(body)]
 
-    # ==================================================================================
-    # Iterative, non-recursive evaluation
-    # ==================================================================================
-    def evaluate_iterative_values(
+    def evaluate_values(
         self, root: Expr, env: dict[str, Any] | None = None
     ) -> list[Any]:
         """Evaluate an expression graph iteratively (no Python recursion).
@@ -425,12 +422,6 @@ class Evaluator(ExprVisitor):
         """
         symbols: dict[int, list[Any]] = {}
         cur_env = self.env if env is None else env
-
-        def _val_of(e: Expr) -> list[Any]:
-            vid = id(e)
-            if vid not in symbols:
-                raise KeyError(f"Value for expr not ready: {e}")
-            return symbols[vid]
 
         def _iter_eval_body(body: Expr, sub_env: dict[str, Any]) -> list[Any]:
             return self._eval_region_iter(body, sub_env)
@@ -510,13 +501,113 @@ class Evaluator(ExprVisitor):
             raise ValueError(f"got {type(res)} for expression {root}")
         return res
 
-    def evaluate_iterative_value(
-        self, root: Expr, env: dict[str, Any] | None = None
-    ) -> Any:
-        """Convenience wrapper for single-output expressions."""
-        values = self.evaluate_iterative_values(root, env)
+    def evaluate_value(self, root: Expr, env: dict[str, Any] | None = None) -> Any:
+        values = self.evaluate_values(root, env)
         if len(root.mptypes) != 1:
             raise ValueError(
                 f"Expected single value for expression {root}, got {len(values)} values"
             )
         return values[0]
+
+
+class Evaluator(ExprVisitor):
+    """Public facade for expression evaluation.
+
+    - Default to iterative execution via evaluate_values/evaluate_value.
+    - Remains a Visitor to support expr.accept(evaluator) for compatibility, delegating
+      to an internal recursive evaluator.
+    - fork(bindings) returns a recursive evaluator suitable for expr.accept(...).
+    """
+
+    def __init__(
+        self,
+        rank: int,
+        env: dict[str, Any],
+        comm: ICommunicator,
+        pfunc_handles: list[PFunctionHandler] | None = None,
+    ) -> None:
+        self.rank = rank
+        self.comm = comm
+        self.env = env
+        self._pfunc_handles: list[PFunctionHandler] = pfunc_handles or []
+        # Engines
+        self._recur = _RecursiveEvaluator(rank, env, comm, self._pfunc_handles)
+        self._iter = _IterativeEvaluator(rank, env, comm, self._pfunc_handles)
+
+    # Facade APIs
+    def evaluate_values(
+        self, expr: Expr, env: dict[str, Any] | None = None, engine: str = "iterative"
+    ) -> list[Any]:
+        if engine == "iterative":
+            return self._iter.evaluate_values(expr, env or self.env)
+        elif engine == "recursive":
+            if env is None:
+                return expr.accept(self._recur)
+            else:
+                return expr.accept(
+                    _RecursiveEvaluator(self.rank, env, self.comm, self._pfunc_handles)
+                )
+        else:
+            raise ValueError(f"Unknown engine: {engine}")
+
+    def evaluate_value(
+        self, expr: Expr, env: dict[str, Any] | None = None, engine: str = "iterative"
+    ) -> Any:
+        values = self.evaluate_values(expr, env, engine)
+        if len(expr.mptypes) != 1:
+            raise ValueError(
+                f"Expected single value for expression {expr}, got {len(values)} values"
+            )
+        return values[0]
+
+    # Back-compat aliases
+    def evaluate_iterative_values(
+        self, expr: Expr, env: dict[str, Any] | None = None
+    ) -> list[Any]:
+        return self.evaluate_values(expr, env, engine="iterative")
+
+    def evaluate_iterative_value(
+        self, expr: Expr, env: dict[str, Any] | None = None
+    ) -> Any:
+        return self.evaluate_value(expr, env, engine="iterative")
+
+    # Fork returns a recursive evaluator (for expr.accept usage)
+    def fork(self, sub_bindings: dict[str, Any]) -> _RecursiveEvaluator:
+        merged_env = {**self.env, **sub_bindings}
+        return _RecursiveEvaluator(
+            self.rank, merged_env, self.comm, self._pfunc_handles
+        )
+
+    # Delegate visitor methods to internal recursive evaluator to support expr.accept(self)
+    def visit_eval(self, expr: EvalExpr) -> Any:
+        return self._recur.visit_eval(expr)
+
+    def visit_variable(self, expr: VariableExpr) -> Any:
+        return self._recur.visit_variable(expr)
+
+    def visit_tuple(self, expr: TupleExpr) -> Any:
+        return self._recur.visit_tuple(expr)
+
+    def visit_cond(self, expr: CondExpr) -> Any:
+        return self._recur.visit_cond(expr)
+
+    def visit_call(self, expr: CallExpr) -> Any:
+        return self._recur.visit_call(expr)
+
+    def visit_while(self, expr: WhileExpr) -> Any:
+        return self._recur.visit_while(expr)
+
+    def visit_conv(self, expr: ConvExpr) -> Any:
+        return self._recur.visit_conv(expr)
+
+    def visit_shfl_s(self, expr: ShflSExpr) -> Any:
+        return self._recur.visit_shfl_s(expr)
+
+    def visit_shfl(self, expr: ShflExpr) -> Any:
+        return self._recur.visit_shfl(expr)
+
+    def visit_access(self, expr: AccessExpr) -> Any:
+        return self._recur.visit_access(expr)
+
+    def visit_func_def(self, expr: FuncDefExpr) -> Any:
+        return self._recur.visit_func_def(expr)

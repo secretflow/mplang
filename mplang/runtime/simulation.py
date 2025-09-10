@@ -32,7 +32,7 @@ from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
-from mplang.core.expr.evaluator import Evaluator
+from mplang.core.expr.evaluator import IEvaluator, evaluator
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
@@ -142,19 +142,25 @@ class Simulator(InterpContext):
             )
 
         # TODO(jint): add backends according to cluster_spec.
-        # Setup evaluators
-        self._evaluators = [
-            Evaluator(
+        # Setup backend handlers per rank and evaluators (iterative by default)
+        self._handlers: list[list[Any]] = [
+            [
+                BuiltinHandler(),
+                StablehloHandler(),
+                spu_handlers[rank],
+                DuckDBHandler(),
+                PHEHandler(),
+            ]
+            for rank in range(self.world_size())
+        ]
+
+        self._evaluators: list[IEvaluator] = [
+            evaluator(
+                "iterative",
                 rank,
                 {},  # the global environment for this rank
                 self._comms[rank],
-                [
-                    BuiltinHandler(),
-                    StablehloHandler(),
-                    spu_handlers[rank],
-                    DuckDBHandler(),
-                    PHEHandler(),
-                ],
+                self._handlers[rank],
             )
             for rank in range(self.world_size())
         ]
@@ -180,7 +186,7 @@ class Simulator(InterpContext):
         cluster_spec = ClusterSpec.simple(world_size)
         return cls(cluster_spec, **kwargs)
 
-    def _do_evaluate(self, expr: Expr, evaluator: Evaluator) -> Any:
+    def _do_evaluate(self, expr: Expr, evaluator_engine: IEvaluator) -> Any:
         """
         Helper function to simulate real-world MPIR serialization/deserialization
         process instead of direct expr.accept execution.
@@ -197,7 +203,7 @@ class Simulator(InterpContext):
         if deserialized_expr is None:
             raise ValueError("Failed to deserialize expression")
 
-        return deserialized_expr.accept(evaluator)
+        return evaluator_engine.evaluate(deserialized_expr)
 
     # override
     def fetch(self, obj: MPObject) -> list[TensorLike]:
@@ -218,8 +224,15 @@ class Simulator(InterpContext):
             for rank in range(self.world_size())
         ]
 
-        pts_evaluators = [
-            self._evaluators[rank].fork(pts_env[rank])
+        # Build per-rank evaluators with the per-party environment
+        pts_evaluators: list[IEvaluator] = [
+            evaluator(
+                "iterative",
+                rank,
+                pts_env[rank],
+                self._comms[rank],
+                self._handlers[rank],
+            )
             for rank in range(self.world_size())
         ]
 

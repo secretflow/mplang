@@ -35,8 +35,14 @@ from mplang.core.expr.ast import (
     WhileExpr,
 )
 
-# Built-in visitor implementations
-from mplang.core.expr.evaluator import Evaluator
+# Built-in evaluator engines
+from mplang.core.expr.evaluator import (
+    EvalSemantic,
+    IEvaluator,
+    IterativeEvaluator,
+    RecursiveEvaluator,
+    evaluator,
+)
 from mplang.core.expr.printer import Printer
 from mplang.core.expr.transformer import ExprTransformer
 
@@ -58,12 +64,15 @@ __all__ = [
     "CondExpr",
     "ConvExpr",
     "EvalExpr",
-    "Evaluator",
+    "EvalSemantic",
     "Expr",
     "ExprTransformer",
     "ExprVisitor",
     "FuncDefExpr",
+    "IEvaluator",
+    "IterativeEvaluator",
     "Printer",
+    "RecursiveEvaluator",
     "ShflExpr",
     "ShflSExpr",
     "TupleExpr",
@@ -72,6 +81,7 @@ __all__ = [
     "deduce_mask",
     "ensure_scalar",
     "ensure_tensorlist_equal",
+    "evaluator",
     "type_equal",
     "walk",
     "walk_dataflow",

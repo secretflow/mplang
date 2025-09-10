@@ -13,18 +13,18 @@
 # limitations under the License.
 
 """
-Expression evaluation engines and facade for MPLang expressions.
+Expression evaluation engines for MPLang expressions.
 
-- Evaluator: public facade; default to iterative engine; still a Visitor to allow
-    expr.accept(evaluator) by delegating to internal recursive evaluator.
-- _IterativeEvaluator: non-recursive dataflow executor.
-- _RecursiveEvaluator: visitor-based executor.
-- _EvalSemantics: shared helpers for both engines.
+- IterativeEvaluator: non-recursive dataflow executor.
+- RecursiveEvaluator: visitor-based executor.
+- EvalSemantic: shared helpers for both engines.
+- IEvaluator: minimal evaluation interface.
+- evaluator(kind, ...): factory returning an IEvaluator.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
@@ -47,7 +47,11 @@ from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction, PFunctionHandler
 
 
-class _EvalSemantics:
+class IEvaluator(Protocol):
+    def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]: ...
+
+
+class EvalSemantic:
     """Shared evaluation semantics and utilities for evaluators."""
 
     def __init__(
@@ -163,8 +167,8 @@ class _EvalSemantics:
         return [received_data]
 
 
-class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
-    """Recursive visitor-based evaluator (for accept/debug/compat)."""
+class RecursiveEvaluator(EvalSemantic, ExprVisitor):
+    """Recursive visitor-based evaluator."""
 
     def __init__(
         self,
@@ -201,12 +205,10 @@ class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
             raise ValueError(f"got {type(values)} for expression {expr}")
         return values
 
-    def fork(self, sub_bindings: dict[str, Any]) -> _RecursiveEvaluator:
-        """Create a forked evaluator with additional variables."""
+    # Internal helper to create a new evaluator with extended env for nested regions
+    def _fork(self, sub_bindings: dict[str, Any]) -> RecursiveEvaluator:
         merged_env = {**self.env, **sub_bindings}
-        return _RecursiveEvaluator(
-            self.rank, merged_env, self.comm, self._pfunc_handles
-        )
+        return RecursiveEvaluator(self.rank, merged_env, self.comm, self._pfunc_handles)
 
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Evaluate function call expression."""
@@ -246,12 +248,9 @@ class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
 
     def visit_call(self, expr: CallExpr) -> Any:
         args = [self._value(arg) for arg in expr.args]
-
         assert isinstance(expr.fn, FuncDefExpr)
-
         sub_env = dict(zip(expr.fn.params, args, strict=True))
-        sub_evaluator = self.fork(sub_env)
-
+        sub_evaluator = self._fork(sub_env)
         return expr.fn.body.accept(sub_evaluator)
 
     def visit_while(self, expr: WhileExpr) -> Any:
@@ -262,7 +261,7 @@ class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
         while True:
             # Call condition function
             cond_env = dict(zip(expr.cond_fn.params, state, strict=True))
-            cond_evaluator = self.fork(cond_env)
+            cond_evaluator = self._fork(cond_env)
             cond_result = expr.cond_fn.body.accept(cond_evaluator)
 
             assert len(cond_result) == 1, (
@@ -274,7 +273,7 @@ class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
 
             # Call body function with same arguments
             body_env = dict(zip(expr.body_fn.params, state, strict=True))
-            body_evaluator = self.fork(body_env)
+            body_evaluator = self._fork(body_env)
             new_state = expr.body_fn.body.accept(body_evaluator)
 
             assert len(new_state) == len(expr.body_fn.mptypes)
@@ -315,8 +314,20 @@ class _RecursiveEvaluator(_EvalSemantics, ExprVisitor):
     def visit_func_def(self, expr: FuncDefExpr) -> Any:
         raise RuntimeError("FuncDefExpr should not be directly evaluated")
 
+    # IEvaluator API: return list of values
+    def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]:
+        if env is None:
+            res = root.accept(self)
+        else:
+            res = root.accept(
+                RecursiveEvaluator(self.rank, env, self.comm, self._pfunc_handles)
+            )
+        if not isinstance(res, list):
+            raise ValueError(f"got {type(res)} for expression {root}")
+        return res
 
-class _IterativeEvaluator(_EvalSemantics):
+
+class IterativeEvaluator(EvalSemantic):
     """Iterative (non-recursive) evaluator using dataflow traversal."""
 
     @staticmethod
@@ -404,9 +415,7 @@ class _IterativeEvaluator(_EvalSemantics):
                 )
         return local_symbols[id(body)]
 
-    def evaluate_values(
-        self, root: Expr, env: dict[str, Any] | None = None
-    ) -> list[Any]:
+    def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]:
         """Evaluate an expression graph iteratively (no Python recursion).
 
         - Traverses dataflow using iterative DFS-postorder to compute ready nodes.
@@ -501,113 +510,29 @@ class _IterativeEvaluator(_EvalSemantics):
             raise ValueError(f"got {type(res)} for expression {root}")
         return res
 
-    def evaluate_value(self, root: Expr, env: dict[str, Any] | None = None) -> Any:
-        values = self.evaluate_values(root, env)
-        if len(root.mptypes) != 1:
-            raise ValueError(
-                f"Expected single value for expression {root}, got {len(values)} values"
-            )
-        return values[0]
 
+def evaluator(
+    kind: str,
+    rank: int,
+    env: dict[str, Any],
+    comm: ICommunicator,
+    pfunc_handles: list[PFunctionHandler] | None = None,
+) -> IEvaluator:
+    """Factory to create an evaluator engine.
 
-class Evaluator(ExprVisitor):
-    """Public facade for expression evaluation.
+    Args:
+        kind: "iterative" or "recursive".
+        rank: Party rank.
+        env: Initial variable environment.
+        comm: Communicator for this party.
+        pfunc_handles: Backend handlers.
 
-    - Default to iterative execution via evaluate_values/evaluate_value.
-    - Remains a Visitor to support expr.accept(evaluator) for compatibility, delegating
-      to an internal recursive evaluator.
-    - fork(bindings) returns a recursive evaluator suitable for expr.accept(...).
+    Returns:
+        An IEvaluator instance of the requested kind.
     """
-
-    def __init__(
-        self,
-        rank: int,
-        env: dict[str, Any],
-        comm: ICommunicator,
-        pfunc_handles: list[PFunctionHandler] | None = None,
-    ) -> None:
-        self.rank = rank
-        self.comm = comm
-        self.env = env
-        self._pfunc_handles: list[PFunctionHandler] = pfunc_handles or []
-        # Engines
-        self._recur = _RecursiveEvaluator(rank, env, comm, self._pfunc_handles)
-        self._iter = _IterativeEvaluator(rank, env, comm, self._pfunc_handles)
-
-    # Facade APIs
-    def evaluate_values(
-        self, expr: Expr, env: dict[str, Any] | None = None, engine: str = "iterative"
-    ) -> list[Any]:
-        if engine == "iterative":
-            return self._iter.evaluate_values(expr, env or self.env)
-        elif engine == "recursive":
-            if env is None:
-                return expr.accept(self._recur)
-            else:
-                return expr.accept(
-                    _RecursiveEvaluator(self.rank, env, self.comm, self._pfunc_handles)
-                )
-        else:
-            raise ValueError(f"Unknown engine: {engine}")
-
-    def evaluate_value(
-        self, expr: Expr, env: dict[str, Any] | None = None, engine: str = "iterative"
-    ) -> Any:
-        values = self.evaluate_values(expr, env, engine)
-        if len(expr.mptypes) != 1:
-            raise ValueError(
-                f"Expected single value for expression {expr}, got {len(values)} values"
-            )
-        return values[0]
-
-    # Back-compat aliases
-    def evaluate_iterative_values(
-        self, expr: Expr, env: dict[str, Any] | None = None
-    ) -> list[Any]:
-        return self.evaluate_values(expr, env, engine="iterative")
-
-    def evaluate_iterative_value(
-        self, expr: Expr, env: dict[str, Any] | None = None
-    ) -> Any:
-        return self.evaluate_value(expr, env, engine="iterative")
-
-    # Fork returns a recursive evaluator (for expr.accept usage)
-    def fork(self, sub_bindings: dict[str, Any]) -> _RecursiveEvaluator:
-        merged_env = {**self.env, **sub_bindings}
-        return _RecursiveEvaluator(
-            self.rank, merged_env, self.comm, self._pfunc_handles
-        )
-
-    # Delegate visitor methods to internal recursive evaluator to support expr.accept(self)
-    def visit_eval(self, expr: EvalExpr) -> Any:
-        return self._recur.visit_eval(expr)
-
-    def visit_variable(self, expr: VariableExpr) -> Any:
-        return self._recur.visit_variable(expr)
-
-    def visit_tuple(self, expr: TupleExpr) -> Any:
-        return self._recur.visit_tuple(expr)
-
-    def visit_cond(self, expr: CondExpr) -> Any:
-        return self._recur.visit_cond(expr)
-
-    def visit_call(self, expr: CallExpr) -> Any:
-        return self._recur.visit_call(expr)
-
-    def visit_while(self, expr: WhileExpr) -> Any:
-        return self._recur.visit_while(expr)
-
-    def visit_conv(self, expr: ConvExpr) -> Any:
-        return self._recur.visit_conv(expr)
-
-    def visit_shfl_s(self, expr: ShflSExpr) -> Any:
-        return self._recur.visit_shfl_s(expr)
-
-    def visit_shfl(self, expr: ShflExpr) -> Any:
-        return self._recur.visit_shfl(expr)
-
-    def visit_access(self, expr: AccessExpr) -> Any:
-        return self._recur.visit_access(expr)
-
-    def visit_func_def(self, expr: FuncDefExpr) -> Any:
-        return self._recur.visit_func_def(expr)
+    if kind == "iterative":
+        return IterativeEvaluator(rank, env, comm, pfunc_handles)
+    elif kind == "recursive":
+        return RecursiveEvaluator(rank, env, comm, pfunc_handles)
+    else:
+        raise ValueError(f"Unknown evaluator kind: {kind}")

@@ -27,7 +27,7 @@ from mplang.core import MPObject, Shape
 
 
 @prim.function
-def split(key: MPObject) -> tuple[MPObject, MPObject]:
+def key_split(key: MPObject) -> tuple[MPObject, MPObject]:
     """Split the key into two keys."""
 
     def kernel(key: jax.Array) -> tuple[jax.Array, jax.Array]:

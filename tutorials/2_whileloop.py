@@ -16,14 +16,13 @@ import jax
 import jax.numpy as jnp
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
 
 
 @mplang.function
 def while_party_local():
     # Parties random a number privately
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     def cond(x: simp.MPObject):
         assert isinstance(x, simp.MPObject), x
@@ -41,7 +40,7 @@ def while_party_local():
 @mplang.function
 def while_sum_greater():
     # Parties random a number privately
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     def cond(x: simp.MPObject):
         # Seal all parties private
@@ -61,7 +60,7 @@ def while_sum_greater():
 
 @mplang.function
 def while_until_ascending():
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     def not_ascending(data):
         data = jnp.asarray(data)
@@ -84,7 +83,7 @@ def while_until_ascending():
 
     def body(x: simp.MPObject):
         # randomize a new number
-        return mpr.prandint(0, 10)
+        return simp.prandint(0, 10)
 
     z = simp.while_loop(cond, body, x)
 

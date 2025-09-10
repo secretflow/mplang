@@ -15,14 +15,13 @@
 import jax.numpy as jnp
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
 
 
 @mplang.function
 def negate_if_local_cond():
     # Parties random a number privately
-    x = mpr.prandint(0, 20)
+    x = simp.prandint(0, 20)
 
     # Check if local var is less than a given number.
     p = simp.run(lambda x: x <= 10)(x)
@@ -44,7 +43,7 @@ def negate_if_local_cond():
 @mplang.function
 def negate_if_shared_cond():
     # Seal all parties private
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     # seal all parties private variable.
     xs_ = simp.seal(x)

@@ -16,7 +16,6 @@ import jax.numpy as jnp
 import pytest
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
 
 
@@ -69,7 +68,7 @@ class TestTutorialConditionalExamples:
         @mplang.function
         def negate_if_local_cond():
             # Parties random a number privately
-            x = mpr.prandint(0, 20)
+            x = simp.prandint(0, 20)
 
             # Check if local var is less than a given number
             p = simp.run(lambda x: x <= 10)(x)
@@ -100,7 +99,7 @@ class TestTutorialConditionalExamples:
         @mplang.function
         def negate_if_shared_cond():
             # Seal all parties private
-            x = mpr.prandint(0, 10)
+            x = simp.prandint(0, 10)
 
             # seal all parties private variable
             xs_ = simp.seal(x)
@@ -168,7 +167,7 @@ class TestTutorialWhileLoopExamples:
         @mplang.function
         def while_party_local():
             # Parties random a number privately
-            x = mpr.prandint(0, 10)
+            x = simp.prandint(0, 10)
 
             def cond(x: simp.MPObject):
                 return simp.run(lambda x: x < 15)(x)
@@ -195,7 +194,7 @@ class TestTutorialWhileLoopExamples:
         @mplang.function
         def while_sum_greater():
             # Parties random a number privately
-            x = mpr.prandint(0, 10)
+            x = simp.prandint(0, 10)
 
             def cond(x: simp.MPObject):
                 # Seal all parties private
@@ -225,7 +224,7 @@ class TestTutorialWhileLoopExamples:
 
         @mplang.function
         def while_simple():
-            x = mpr.prandint(0, 3)  # Use smaller range for predictable results
+            x = simp.prandint(0, 3)  # Use smaller range for predictable results
 
             def cond(x: simp.MPObject):
                 # Simple condition - stop when all values are >= 2
@@ -254,7 +253,7 @@ class TestTutorialAdvancedExamples:
 
         # Make two variables on the simulator
         x = mplang.evaluate(sim3, simp.prank)
-        y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
+        y = mplang.evaluate(sim3, lambda: simp.prandint(0, 100))
 
         def pass_and_capture(x):
             # pass x as a parameter, and capture y from the outer scope
@@ -277,7 +276,7 @@ class TestTutorialAdvancedExamples:
         sim3 = mplang.Simulator.simple(3)
 
         x = mplang.evaluate(sim3, simp.prank)
-        y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
+        y = mplang.evaluate(sim3, lambda: simp.prandint(0, 100))
 
         def pass_and_capture(x):
             return simp.run(jnp.multiply)(x, y)
@@ -308,8 +307,8 @@ class TestTutorialSimulationExamples:
         @mplang.function
         def millionaire():
             # Use prandint instead of random.randint to avoid state capture
-            x = mpr.prandint(0, 10)
-            y = mpr.prandint(0, 10)
+            x = simp.prandint(0, 10)
+            y = simp.prandint(0, 10)
 
             # both of them seal it
             x_ = simp.sealFrom(x, 0)
@@ -355,7 +354,7 @@ class TestTutorialErrorHandling:
 
         @mplang.function
         def mismatched_seal():
-            x = mpr.prandint(0, 10)
+            x = simp.prandint(0, 10)
             # Try to seal from non-existent party
             return simp.sealFrom(x, 5)
 

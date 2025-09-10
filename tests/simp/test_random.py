@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 import mplang
-import mplang.random as mpr
+import mplang.simp.random as mpr
 
 
 def eval_and_fetch(sim, fn, *args, **kwargs):

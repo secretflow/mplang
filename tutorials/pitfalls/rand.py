@@ -19,7 +19,6 @@ import jax.numpy as jnp
 import jax.random as jr
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
 
 
@@ -75,7 +74,7 @@ def rand_from_host():
     # copts = simp.CompileOptions(2)
     # print(simp.compile(copts, func))
 
-    sim5 = mplang.Simulator(5)
+    sim5 = mplang.Simulator.simple(5)
     mplang.set_ctx(sim5)
     res = func()
     from pprint import pprint
@@ -96,8 +95,8 @@ def rand_from_parties():
 
     @mplang.function
     def gen_randoms(lo, hi):
-        # use mpr.prandint primitive to generate a random seed.
-        seed = mpr.prandint(lo, hi)
+        # use simp.prandint primitive to generate a random seed.
+        seed = simp.prandint(lo, hi)
 
         # use jax random module to generate random number for different distribution.
         key = simp.run(jr.PRNGKey)(seed)
@@ -114,7 +113,7 @@ def rand_from_parties():
             "bernoulli": bernoulli,
         }
 
-    sim8 = mplang.Simulator(8)
+    sim8 = mplang.Simulator.simple(8)
     mplang.set_ctx(sim8)
     res = gen_randoms(0, 100)
     from pprint import pprint

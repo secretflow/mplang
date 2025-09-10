@@ -15,14 +15,13 @@
 import jax.numpy as jnp
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
 
 sim3 = mplang.Simulator.simple(3)
 
 # make two variables on the simulator, one is a random integer, the other is a prank.
 x = mplang.evaluate(sim3, simp.prank)
-y = mplang.evaluate(sim3, lambda: mpr.prandint(0, 100))
+y = mplang.evaluate(sim3, lambda: simp.prandint(0, 100))
 print(mplang.fetch(sim3, (x, y)))
 
 

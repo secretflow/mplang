@@ -1093,8 +1093,7 @@ class TestWhileLoop:
             return while_loop(cond_fn, body_fn, init_val)
 
         with pytest.raises(
-            ValueError,
-            match=r"Body function output type .* does not match initial state type",
+            (ValueError, TypeError), match=r"Body output leaf 0 type mismatch: .*"
         ):
             with with_ctx(trace_context):
                 trace(trace_context, invalid_loop)

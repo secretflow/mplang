@@ -1070,12 +1070,77 @@ class TestWhileLoop:
 
             return while_loop(cond_fn, body_fn, init_val)
 
-        # This should raise a ValueError due to type mismatch
+        # This should raise a ValueError/TypeError due to type mismatch
         with pytest.raises(
-            ValueError,
-            match=r"Body function output type .* does not match initial state type",
+            (ValueError, TypeError), match=r"Body output leaf 0 type mismatch: .*"
         ):
             trace(trace_context, while_func_wrong_type)
+
+    def test_while_loop_pytree_params_complex(self, trace_context):
+        """Test while loop with a complex PyTree init and multiple leaf updates."""
+
+        def while_func():
+            init = {
+                "left": (constant(0), [constant(1), constant(2)]),
+                "right": {"x": constant(10)},
+            }
+
+            inc = constant(3)
+            limit = constant(20)
+
+            def cond_fn(s):
+                i, _arr = s["left"]
+                # Keep it simple: loop while i < limit
+                return run_jax(lambda a, b: a < b, i, limit)
+
+            def body_fn(s):
+                i, arr = s["left"]
+                x = s["right"]["x"]
+                new_i = run_jax(lambda a, b: a + b, i, inc)
+                new_arr0 = run_jax(lambda a, b: a + b, arr[0], inc)
+                return {"left": (new_i, [new_arr0, arr[1]]), "right": {"x": x}}
+
+            final_state = while_loop(cond_fn, body_fn, init)
+            # Return a single leaf to keep a single output var for tracing
+            return final_state["left"][0]
+
+        traced_fn = trace(trace_context, while_func)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+        assert len(traced_fn.out_vars) == 1
+        assert isinstance(traced_fn.out_vars[0], TraceVar)
+
+        printer = Printer()
+        expr_str = printer.print_expr(func_expr)
+        print(f"while loop complex PyTree expression:\n{expr_str}")
+
+        expected = """
+() {
+  %0 = pconst() {data=0} : i64<3>
+  %1 = pconst() {data=1} : i64<3>
+  %2 = pconst() {data=2} : i64<3>
+  %3 = pconst() {data=10} : i64<3>
+  %4 = pconst() {data=20} : i64<3>
+  %5 = pconst() {data=3} : i64<3>
+  %6 = pwhile(%0, %1, %2, %3, %4, %5) {
+    cond_fn: ($0, $1, $2, $3, $4, ) {
+      %0 = peval($0, $4) {fn_type=mlir.stablehlo, fn_name=<lambda>} : bool<3>
+      return %0
+    }
+    body_fn: ($0, $1, $2, $3, , $4) {
+      %0 = peval($0, $4) {fn_type=mlir.stablehlo, fn_name=<lambda>} : i64<3>
+      %1 = peval($1, $4) {fn_type=mlir.stablehlo, fn_name=<lambda>} : i64<3>
+      %2 = tuple(%0, %1, $2, $3) : (i64<3>, i64<3>, i64<3>, i64<3>)
+      return %2
+    }
+  } : (i64<3>, i64<3>, i64<3>, i64<3>)
+  return %6:0
+}
+"""
+        assert expr_str == expected.strip()
+        assert len(traced_fn.out_vars) == 1
+        assert isinstance(traced_fn.out_vars[0], TraceVar)
 
 
 class TestCompleteExample:

@@ -18,12 +18,12 @@ run the expected environment, and execute the exact same MPIR.
 Attestation is initiated by the Driver and handled by the runtime, keeping user
 code focused on business logic.
 
-1. Scripting & Compilation: Before data is sent to TEE, insert `tee.quote()`
-   and `tee.attest(quote)` into the program. In mock mode we may also use
-   `crypto.keygen` for test keys; in production `tee.quote()` provides an
-   ephemeral public key and `tee.attest` derives a symmetric session key via
-   KEM/ECDH. The final MPIR contains auditable security logic. The Driver
-   compiles and distributes the session security context.
+1. Scripting & Compilation: Before data is sent to TEE, insert `tee.quote(pk)`
+  and `tee.attest(quote)` into the program. The quote binds the provided
+  ephemeral public key. Attestation returns the attested TEE public key to
+  verifiers, which then use KEM/ECDH + HKDF to derive session keys. The final
+  MPIR contains auditable security logic. The Driver compiles and distributes
+  the session security context.
 
 2. Session Initiation (Driver):
    - Compute `program_hash` (hash of MPIR)
@@ -37,19 +37,19 @@ code focused on business logic.
 
 4. Runtime Verification:
    - Initial Check (All): Verify `driver_signature` over the tuple
-   - TEE Attestation (TEE parties): execute `tee.quote()`; the TEE generates an
-     ephemeral keypair inside the enclave and emits a quote that binds
-     `report_data = H(program_hash || session_nonce || H(ephemeral_pubkey))`
-   - Quote Verification & KEM (Data parties): execute `tee.attest(quote)`;
-     verify vendor chain, measurement, and `report_data`. On success, perform
-     KEM/ECDH encapsulation against the attested `ephemeral_pubkey` to derive a
-     symmetric `session_key` and produce a `kem_ct` header to be delivered to the
-     TEE. The data party then uses `session_key` to encrypt sealed payloads and
-     attaches `kem_ct` (once per session or per sender) so the TEE can
-     decapsulate and derive the same key.
+   - TEE Attestation (TEE parties): generate an ephemeral keypair and emit
+     a quote that binds `report_data = H(program_hash || session_nonce ||
+     H(ephemeral_pubkey))`. In the current implementation this is expressed
+     as `tee.quote(pk)` where `pk` is the ephemeral public key.
+   - Quote Verification (Data parties): execute `tee.attest(quote)`; verify
+     vendor chain, measurement, and `report_data`, and obtain the attested
+     TEE public key. Each verifier then performs KEM/ECDH (and HKDF) with the
+     TEE public key to derive a per-party session key; the TEE performs the
+     matched derivation with the verifier's public material.
 
-5. Secure Execution: After verification, data parties encrypt and send their
-   data to TEE and computation proceeds as defined by MPIR.
+5. Secure Execution: After verification, data parties encrypt with the derived
+  session keys and send ciphertexts (nonce||ciphertext) to the TEE. The TEE
+  derives the same session keys and decrypts; computation proceeds per MPIR.
 
 ## 3. Trust & Verification
 
@@ -67,26 +67,27 @@ backend instructions. The API stays simple for users while allowing a mock mode
 and a production-ready KEM/ECDH path under the hood.
 
 - `mplang.frontend.crypto`
-  - `keygen(length: int = 32) -> key` (mock/testing)
-  - `enc(plaintext, key) -> ciphertext` (nonce-prefixed; AES-GCM recommended)
+  - `keygen(length: int = 32) -> key`
+  - `enc(plaintext, key) -> ciphertext` (ciphertext = 12B nonce || payload)
   - `dec(ciphertext, key) -> plaintext`
+  - `kem_keygen(suite: str = 'x25519') -> (sk, pk)`
+  - `kem_derive(sk, peer_pk, suite: str = 'x25519') -> secret`
+  - `hkdf(secret, info) -> key`
 
 - `mplang.frontend.tee`
-  - `quote() -> quote`
-  - `attest(quote) -> session`
+  - `quote(pk) -> quote` (binds the provided ephemeral public key)
+  - `attest(quote) -> tee_pk` (returns the attested TEE public key)
 
 Notes:
 
-- `tee.quote` runs on TEE; in production it generates an ephemeral keypair and
-  binds the public key via `report_data = H(program_hash || session_nonce ||
-  H(ephemeral_pubkey))` to respect platform limits (e.g., SGX 64B)
-- `tee.attest` runs on data parties; on success it derives a symmetric
-  `session_key` via KEM/ECDH and produces a `kem_ct` header to be delivered to
-  the TEE so it can decapsulate the same `session_key`
-- In mock mode (for local testing), `tee.quote(payload)` and `tee.attest(quote)`
-  may still return a symmetric key directly; the high-level user semantics
-  remain “encrypt-to-TEE before leaving the current security domain”
-- Data transfer is implicit from the graph (typically via `pshfl`/`scatter`)
+- `tee.quote` runs on the TEE. In production, the TEE SHOULD generate the
+  ephemeral keypair internally and bind `H(ephemeral_pubkey)` in `report_data`.
+  The current implementation expresses the binding as `tee.quote(pk)` for
+  clarity and auditability.
+- `tee.attest` runs on data parties and returns the attested TEE public key;
+  verifiers use it with KEM/ECDH (+ HKDF) to derive session keys. The TEE
+  performs matching derivations upon receiving the verifier's public material.
+- Data transfer is implicit from the graph (e.g., via `p2p`/`scatter`).
 
 ## 5. Sequence (conceptual)
 
@@ -111,20 +112,20 @@ sequenceDiagram
   note over A, C: Verify driver signature
 
   C->>C: generate ephemeral keypair inside TEE
-  C->>C: report_data = H(program_hash, nonce, H(ephemeral_pubkey))
-  C->>C: quote = tee.quote()
+  C->>C: report_data = H(program_hash + nonce + H(ephemeral_pubkey))
+  C->>C: quote = tee.quote(pk)
 
   C-->>A: quote
   C-->>B: quote
 
-  A->>A: session = tee.attest(quote)
-  B->>B: session = tee.attest(quote)
+  A->>A: tee_pk = tee.attest(quote)
+  B->>B: tee_pk = tee.attest(quote)
 
-  note over A: session = { session_key, kem_ct }
-  note over B: session = { session_key, kem_ct }
-
-  A-->>C: send kem_ct (once) and encrypted data (nonce||ciphertext)
-  B-->>C: send kem_ct (once) and encrypted data (nonce||ciphertext)
+  A->>A: shared = kem_derive(sk_A + tee_pk) then key = hkdf(shared + info)
+  B->>B: shared = kem_derive(sk_B + tee_pk) then key = hkdf(shared + info)
+  A-->>C: send public material (e.g., v_pk_A) and encrypted data (nonce + ciphertext)
+  B-->>C: send public material (e.g., v_pk_B) and encrypted data (nonce + ciphertext)
+  C->>C: derive matching keys and decrypt
 
   note over A, C: Computation proceeds
 ```
@@ -163,9 +164,9 @@ include a small header so the TEE can decapsulate before decryption. A minimal
 format is:
 
 ```text
-| kem_ct_len (u32 LE) | kem_ct bytes | nonce (12B) | ciphertext ... |
+[ kem_ct_len (u32 LE) ] [ kem_ct bytes ] [ nonce (12B) ] [ ciphertext ... ]
 ```
 
-This allows the same `enc/dec` user API while enabling production E2E security.
+This enables production E2E security without changing the `enc/dec` user API.
 Implementations may cache `kem_ct` per session and omit it from subsequent
-messages if a channel/session is already established.
+messages once a secure channel is established.

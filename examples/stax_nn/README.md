@@ -17,7 +17,5 @@ These models are widely used for evaluation benchmarks in MPC-enabled literature
 
     ```sh
     uv sync --group examples
-    uv run examples/stax_nn/stax_nn.py -e 1 -b 1024
+    uv run examples/stax_nn/stax_nn.py -e 1
     ```
-
-    **Note**: The parameters `-e 1 -b 1024` are required to run this example. Using the default epoch and batch size will cause the traced AST to become too large, leading to a stack overflow during expression visitor operations. A fundamental fix for this issue requires operating at the IR level instead of the AST level.

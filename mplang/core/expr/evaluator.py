@@ -116,10 +116,10 @@ class EvalSemantic:
         assert len(src_ranks) == len(dst_ranks)
         cid = self.comm.new_id()
         result = []
-        for src, dst in zip(src_ranks, dst_ranks, strict=False):
+        for src, dst in zip(src_ranks, dst_ranks, strict=True):
             if self.comm.rank == src:
                 self.comm.send(dst, cid, src_value)
-        for src, dst in zip(src_ranks, dst_ranks, strict=False):
+        for src, dst in zip(src_ranks, dst_ranks, strict=True):
             if self.comm.rank == dst:
                 result.append(self.comm.recv(src, cid))
         if self.comm.rank in dst_ranks:

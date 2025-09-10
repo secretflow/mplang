@@ -24,7 +24,11 @@ from mplang.frontend.base import FEOp
 
 
 class QuoteGen(FEOp):
-    """TEE quote generation FEOp (payload-based).
+    """TEE quote generation FEOp (payload-based, MOCK).
+
+    WARNING: Mock-only API for demos/tests. Production design binds an
+    ephemeral TEE public key in report_data and uses KEM/ECDH; quotes should
+    not embed plaintext keys.
 
     Takes one key or a list of keys as payloads and returns a list of quotes.
     """
@@ -47,7 +51,11 @@ class QuoteGen(FEOp):
 
 
 class QuoteVerifyAndExtract(FEOp):
-    """TEE quote verification FEOp that returns the embedded payload (key)."""
+    """TEE quote verification FEOp that returns the embedded payload (MOCK).
+
+    WARNING: Mock-only behavior. In production, this should verify the quote
+    and drive KEM/ECDH to derive a session key, not extract plaintext payloads.
+    """
 
     def __call__(self, quote: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         quote_ty = TensorType.from_obj(quote)

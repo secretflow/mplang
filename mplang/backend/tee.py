@@ -39,6 +39,11 @@ class Quote:
 class TeeHandler(TensorHandler):
     """TEE Handler with a mock implementation (payload-based).
 
+    WARNING: This is a mock implementation for demos/tests. It does NOT perform
+    real verification of vendor quotes, measurements, or program hashes, and it
+    embeds payload bytes into the quote for easy extraction. Do not use in
+    production. The production design uses TEE ephemeral key binding and KEM.
+
     PFunctions:
     - tee.quote_gen(payloads...): returns list of quotes (one per payload)
     - tee.quote_verify_and_extract(quote): verifies and extracts payload

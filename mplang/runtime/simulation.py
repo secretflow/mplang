@@ -25,10 +25,12 @@ from typing import Any, cast
 import spu.libspu as libspu
 
 from mplang.backend.builtin import BuiltinHandler
+from mplang.backend.crypto import CryptoHandler
 from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.backend.tee import TeeHandler
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
@@ -150,6 +152,8 @@ class Simulator(InterpContext):
                 spu_handlers[rank],
                 DuckDBHandler(),
                 PHEHandler(),
+                CryptoHandler(),
+                TeeHandler(),
             ]
             for rank in range(self.world_size())
         ]

@@ -243,7 +243,6 @@ def execute_computation(
 
     # Build evaluator with bindings as environment and execute
     engine: IEvaluator = evaluator(
-        "iterative",
         rank=rank,
         env=bindings,
         comm=session.communicator,

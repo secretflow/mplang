@@ -512,20 +512,20 @@ class IterativeEvaluator(EvalSemantic):
 
 
 def evaluator(
-    kind: str,
     rank: int,
     env: dict[str, Any],
     comm: ICommunicator,
     pfunc_handles: list[PFunctionHandler] | None = None,
+    kind: str = "iterative",
 ) -> IEvaluator:
     """Factory to create an evaluator engine.
 
     Args:
-        kind: "iterative" or "recursive".
         rank: Party rank.
         env: Initial variable environment.
         comm: Communicator for this party.
         pfunc_handles: Backend handlers.
+        kind: "iterative" or "recursive".
 
     Returns:
         An IEvaluator instance of the requested kind.

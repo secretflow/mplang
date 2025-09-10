@@ -156,7 +156,6 @@ class Simulator(InterpContext):
 
         self._evaluators: list[IEvaluator] = [
             evaluator(
-                "iterative",
                 rank,
                 {},  # the global environment for this rank
                 self._comms[rank],
@@ -227,7 +226,6 @@ class Simulator(InterpContext):
         # Build per-rank evaluators with the per-party environment
         pts_evaluators: list[IEvaluator] = [
             evaluator(
-                "iterative",
                 rank,
                 pts_env[rank],
                 self._comms[rank],

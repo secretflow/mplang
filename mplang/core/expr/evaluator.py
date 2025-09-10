@@ -141,16 +141,7 @@ class EvalSemantic:
                 indices[src_rank] = self.comm.recv(src_rank, cid)
             else:
                 indices[src_rank] = index
-        indices_int: list[int | None] = [
-            (
-                val
-                if val is None
-                else int(val.item())
-                if hasattr(val, "item")
-                else int(val)
-            )
-            for val in indices
-        ]
+        indices_int: list[int | None] = [self._as_optional_int(val) for val in indices]
         send_pairs: list[tuple[int, int]] = []
         for dst_idx, src_idx in enumerate(indices_int):
             if src_idx is not None:
@@ -165,6 +156,18 @@ class EvalSemantic:
             if self.comm.rank == dst_rank:
                 received_data = self.comm.recv(src_rank, cid)
         return [received_data]
+
+    @staticmethod
+    def _as_optional_int(val: Any) -> int | None:
+        """Convert a value to int if possible, preserving None.
+
+        Handles Python ints, numpy scalars with .item(), and None.
+        """
+        if val is None:
+            return None
+        if hasattr(val, "item"):
+            return int(val.item())
+        return int(val)
 
 
 class RecursiveEvaluator(EvalSemantic, ExprVisitor):
@@ -342,107 +345,15 @@ class IterativeEvaluator(EvalSemantic):
         assert len(new) <= len(old)
         return new + old[len(new) :]
 
-    def _eval_region_iter(self, body: Expr, sub_env: dict[str, Any]) -> list[Any]:
-        local_symbols: dict[int, list[Any]] = {}
-        for node in walk_dataflow(body, traversal="dfs_post_iter"):
-            if isinstance(node, VariableExpr):
-                if node.name not in sub_env:
-                    raise ValueError(
-                        f"Variable '{node.name}' not found in sub environment"
-                    )
-                local_symbols[id(node)] = [sub_env[node.name]]
-            elif isinstance(node, TupleExpr):
-                vals = [self._first(local_symbols[id(a)]) for a in node.args]
-                local_symbols[id(node)] = vals
-            elif isinstance(node, AccessExpr):
-                src_vals = local_symbols[id(node.src)]
-                local_symbols[id(node)] = [src_vals[node.index]]
-            elif isinstance(node, CallExpr):
-                arg_vals = [self._first(local_symbols[id(a)]) for a in node.args]
-                assert isinstance(node.fn, FuncDefExpr)
-                nested_env = dict(zip(node.fn.params, arg_vals, strict=True))
-                res = self._eval_region_iter(node.fn.body, {**sub_env, **nested_env})
-                local_symbols[id(node)] = res
-            elif isinstance(node, CondExpr):
-                pred_v = self._first(local_symbols[id(node.pred)])
-                arg_vals = [self._first(local_symbols[id(a)]) for a in node.args]
-                if pred_v is None:
-                    local_symbols[id(node)] = [None] * len(node.mptypes)
-                elif bool(pred_v):
-                    nested_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
-                    res = self._eval_region_iter(
-                        node.then_fn.body, {**sub_env, **nested_env}
-                    )
-                    local_symbols[id(node)] = res
-                else:
-                    nested_env = dict(zip(node.else_fn.params, arg_vals, strict=True))
-                    res = self._eval_region_iter(
-                        node.else_fn.body, {**sub_env, **nested_env}
-                    )
-                    local_symbols[id(node)] = res
-            elif isinstance(node, WhileExpr):
-                state = [self._first(local_symbols[id(a)]) for a in node.args]
-                while True:
-                    cond_env = dict(zip(node.cond_fn.params, state, strict=True))
-                    cond_vals = self._eval_region_iter(
-                        node.cond_fn.body, {**sub_env, **cond_env}
-                    )
-                    assert len(cond_vals) == 1
-                    if not bool(cond_vals[0]):
-                        break
-                    body_env = dict(zip(node.body_fn.params, state, strict=True))
-                    new_state = self._eval_region_iter(
-                        node.body_fn.body, {**sub_env, **body_env}
-                    )
-                    state = self._merge_state(state, new_state)
-                local_symbols[id(node)] = state[0 : len(node.body_fn.mptypes)]
-            elif isinstance(node, EvalExpr):
-                arg_vals = [self._first(local_symbols[id(a)]) for a in node.args]
-                local_symbols[id(node)] = self._eval_eval_node(node, arg_vals)
-            elif isinstance(node, ConvExpr):
-                vars_vals = [self._first(local_symbols[id(v)]) for v in node.vars]
-                local_symbols[id(node)] = self._eval_conv_node(vars_vals)
-            elif isinstance(node, ShflSExpr):
-                src_val = self._first(local_symbols[id(node.src_val)])
-                local_symbols[id(node)] = self._eval_shfl_s_node(node, src_val)
-            elif isinstance(node, ShflExpr):
-                data = self._first(local_symbols[id(node.src)])
-                index = self._first(local_symbols[id(node.index)])
-                local_symbols[id(node)] = self._eval_shfl_node(node, data, index)
-            else:
-                raise NotImplementedError(
-                    f"Unsupported expr in iterative region eval: {type(node)}"
-                )
-        return local_symbols[id(body)]
-
-    def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]:
-        """Evaluate an expression graph iteratively (no Python recursion).
-
-        - Traverses dataflow using iterative DFS-postorder to compute ready nodes.
-        - For control flow/functional regions (Call/Cond/While), performs a
-          localized iterative evaluation of the region body with a child environment.
-
-        Args:
-            root: The root expression to evaluate.
-            env: Optional environment override for VariableExpr lookups.
-
-        Returns:
-            A list of computed output values for the root expression.
-        """
+    def _iter_eval_graph(self, root: Expr, env: dict[str, Any]) -> list[Any]:
         symbols: dict[int, list[Any]] = {}
-        cur_env = self.env if env is None else env
-
-        def _iter_eval_body(body: Expr, sub_env: dict[str, Any]) -> list[Any]:
-            return self._eval_region_iter(body, sub_env)
-
-        # Main iterative pass on the outer graph
         for node in walk_dataflow(root, traversal="dfs_post_iter"):
             if isinstance(node, VariableExpr):
-                if node.name not in cur_env:
+                if node.name not in env:
                     raise ValueError(
                         f"Variable '{node.name}' not found in evaluator environment"
                     )
-                symbols[id(node)] = [cur_env[node.name]]
+                symbols[id(node)] = [env[node.name]]
             elif isinstance(node, TupleExpr):
                 vals = [self._first(symbols[id(a)]) for a in node.args]
                 symbols[id(node)] = vals
@@ -453,7 +364,7 @@ class IterativeEvaluator(EvalSemantic):
                 arg_vals = [self._first(symbols[id(a)]) for a in node.args]
                 assert isinstance(node.fn, FuncDefExpr)
                 sub_env = dict(zip(node.fn.params, arg_vals, strict=True))
-                res = _iter_eval_body(node.fn.body, {**cur_env, **sub_env})
+                res = self._iter_eval_graph(node.fn.body, {**env, **sub_env})
                 symbols[id(node)] = res
             elif isinstance(node, CondExpr):
                 pred_v = self._first(symbols[id(node.pred)])
@@ -462,25 +373,25 @@ class IterativeEvaluator(EvalSemantic):
                     symbols[id(node)] = [None] * len(node.mptypes)
                 elif bool(pred_v):
                     sub_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
-                    res = _iter_eval_body(node.then_fn.body, {**cur_env, **sub_env})
+                    res = self._iter_eval_graph(node.then_fn.body, {**env, **sub_env})
                     symbols[id(node)] = res
                 else:
                     sub_env = dict(zip(node.else_fn.params, arg_vals, strict=True))
-                    res = _iter_eval_body(node.else_fn.body, {**cur_env, **sub_env})
+                    res = self._iter_eval_graph(node.else_fn.body, {**env, **sub_env})
                     symbols[id(node)] = res
             elif isinstance(node, WhileExpr):
                 state = [self._first(symbols[id(a)]) for a in node.args]
                 while True:
                     cond_env = dict(zip(node.cond_fn.params, state, strict=True))
-                    cond_vals = _iter_eval_body(
-                        node.cond_fn.body, {**cur_env, **cond_env}
+                    cond_vals = self._iter_eval_graph(
+                        node.cond_fn.body, {**env, **cond_env}
                     )
                     assert len(cond_vals) == 1
                     if not bool(cond_vals[0]):
                         break
                     body_env = dict(zip(node.body_fn.params, state, strict=True))
-                    new_state = _iter_eval_body(
-                        node.body_fn.body, {**cur_env, **body_env}
+                    new_state = self._iter_eval_graph(
+                        node.body_fn.body, {**env, **body_env}
                     )
                     state = self._merge_state(state, new_state)
                 symbols[id(node)] = state[0 : len(node.body_fn.mptypes)]
@@ -498,17 +409,33 @@ class IterativeEvaluator(EvalSemantic):
                 index = self._first(symbols[id(node.index)])
                 symbols[id(node)] = self._eval_shfl_node(node, data, index)
             elif isinstance(node, FuncDefExpr):
-                # Function definition isn't evaluated in outer dataflow pass
-                symbols[id(node)] = node.body.mptypes  # placeholder; not used
+                # Definition nodes are not evaluated; placeholder to satisfy walkers
+                symbols[id(node)] = node.body.mptypes
             else:
                 raise NotImplementedError(
                     f"Unsupported expr in iterative eval: {type(node)}"
                 )
-
         res = symbols[id(root)]
         if not isinstance(res, list):
             raise ValueError(f"got {type(res)} for expression {root}")
         return res
+
+    def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]:
+        """Evaluate an expression graph iteratively (no Python recursion).
+
+        - Traverses dataflow using iterative DFS-postorder to compute ready nodes.
+        - For control flow/functional regions (Call/Cond/While), performs a
+          localized iterative evaluation of the region body with a child environment.
+
+        Args:
+            root: The root expression to evaluate.
+            env: Optional environment override for VariableExpr lookups.
+
+        Returns:
+            A list of computed output values for the root expression.
+        """
+        cur_env = self.env if env is None else env
+        return self._iter_eval_graph(root, cur_env)
 
 
 def evaluator(

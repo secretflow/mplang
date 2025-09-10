@@ -31,7 +31,7 @@ from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.expr.ast import Expr
-from mplang.core.expr.evaluator import IEvaluator, evaluator
+from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
@@ -242,7 +242,7 @@ def execute_computation(
         spu_handler.set_link_context(spu_comm)
 
     # Build evaluator with bindings as environment and execute
-    engine: IEvaluator = evaluator(
+    evaluator: IEvaluator = create_evaluator(
         rank=rank,
         env=bindings,
         comm=session.communicator,
@@ -255,7 +255,7 @@ def execute_computation(
         ],
     )
 
-    results = engine.evaluate(computation.expr)
+    results = evaluator.evaluate(computation.expr)
 
     # Store results in session symbols using output_names
     if results:

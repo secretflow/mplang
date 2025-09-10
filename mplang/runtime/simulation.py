@@ -32,7 +32,7 @@ from mplang.backend.stablehlo import StablehloHandler
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
-from mplang.core.expr.evaluator import IEvaluator, evaluator
+from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
@@ -155,7 +155,7 @@ class Simulator(InterpContext):
         ]
 
         self._evaluators: list[IEvaluator] = [
-            evaluator(
+            create_evaluator(
                 rank,
                 {},  # the global environment for this rank
                 self._comms[rank],
@@ -225,7 +225,7 @@ class Simulator(InterpContext):
 
         # Build per-rank evaluators with the per-party environment
         pts_evaluators: list[IEvaluator] = [
-            evaluator(
+            create_evaluator(
                 rank,
                 pts_env[rank],
                 self._comms[rank],

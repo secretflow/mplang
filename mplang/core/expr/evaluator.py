@@ -438,7 +438,7 @@ class IterativeEvaluator(EvalSemantic):
         return self._iter_eval_graph(root, cur_env)
 
 
-def evaluator(
+def create_evaluator(
     rank: int,
     env: dict[str, Any],
     comm: ICommunicator,

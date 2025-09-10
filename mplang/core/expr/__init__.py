@@ -36,7 +36,7 @@ from mplang.core.expr.ast import (
 )
 
 # Built-in evaluator engines
-from mplang.core.expr.evaluator import IEvaluator, evaluator
+from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.expr.printer import Printer
 from mplang.core.expr.transformer import ExprTransformer
 
@@ -69,10 +69,10 @@ __all__ = [
     "TupleExpr",
     "VariableExpr",
     "WhileExpr",
+    "create_evaluator",
     "deduce_mask",
     "ensure_scalar",
     "ensure_tensorlist_equal",
-    "evaluator",
     "type_equal",
     "walk",
     "walk_dataflow",

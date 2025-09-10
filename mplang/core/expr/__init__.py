@@ -50,6 +50,7 @@ from mplang.core.expr.utils import (
 
 # Visitor pattern interface
 from mplang.core.expr.visitor import ExprVisitor
+from mplang.core.expr.walk import walk, walk_dataflow, walk_structural
 
 __all__ = [
     "AccessExpr",
@@ -72,4 +73,7 @@ __all__ = [
     "ensure_scalar",
     "ensure_tensorlist_equal",
     "type_equal",
+    "walk",
+    "walk_dataflow",
+    "walk_structural",
 ]

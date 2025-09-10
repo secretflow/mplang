@@ -24,37 +24,27 @@ from mplang.frontend.base import FEOp
 
 
 class QuoteGen(FEOp):
-    """TEE quote generation FEOp (payload-based, MOCK).
+    """TEE quote generation FEOp binding the provided ephemeral public key.
 
-    WARNING: Mock-only API for demos/tests. Production design binds an
-    ephemeral TEE public key in report_data and uses KEM/ECDH; quotes should
-    not embed plaintext keys.
-
-    Takes one key or a list of keys as payloads and returns a list of quotes.
+    API (mock): quote(pk[u8[32]]) -> quote[u8[1]]
     """
 
-    def __call__(
-        self, payloads: list[MPObject]
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        if not payloads:
-            raise ValueError("payloads list must not be empty")
-        in_tys = tuple(TensorType.from_obj(p) for p in payloads)
-        outs_info = tuple(TensorType(UINT8, (1,)) for _ in payloads)
+    def __call__(self, pk: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        pk_ty = TensorType.from_obj(pk)
+        quote_ty = TensorType(UINT8, (1,))
         pfunc = PFunction(
             fn_type="tee.quote",
-            ins_info=in_tys,
-            outs_info=outs_info,
-            num_quotes=len(payloads),
+            ins_info=(pk_ty,),
+            outs_info=(quote_ty,),
         )
-        _, treedef = tree_flatten([TensorType(UINT8, (1,)) for _ in payloads])
-        return pfunc, payloads, treedef
+        _, treedef = tree_flatten(quote_ty)
+        return pfunc, [pk], treedef
 
 
 class QuoteVerifyAndExtract(FEOp):
-    """TEE quote verification FEOp that returns the embedded payload (MOCK).
+    """TEE quote verification FEOp returning a gating byte (1 for success).
 
-    WARNING: Mock-only behavior. In production, this should verify the quote
-    and drive KEM/ECDH to derive a session key, not extract plaintext payloads.
+    Mock behavior: returns u8[1] = 1 on success.
     """
 
     def __call__(self, quote: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:

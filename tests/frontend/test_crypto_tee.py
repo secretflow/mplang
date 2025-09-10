@@ -7,21 +7,51 @@ from mplang.frontend import crypto, tee
 
 def _demo_flow():
     P0, P1, P2 = 0, 1, 2
-    key_a = simp.runAt(P2, crypto.keygen)(16)
-    key_b = simp.runAt(P2, crypto.keygen)(16)
-    quotes = simp.runAt(P2, tee.quote)([key_a, key_b])
-    q0 = simp.p2p(P2, P0, quotes[0])
-    q1 = simp.p2p(P2, P1, quotes[1])
-    k0 = simp.runAt(P0, tee.attest)(q0)
-    k1 = simp.runAt(P1, tee.attest)(q1)
+    # TEE generates two ephemeral keypairs and quotes binding their pk
+    t_sk0, t_pk0 = simp.runAt(P2, crypto.kem_keygen)("x25519")
+    t_sk1, t_pk1 = simp.runAt(P2, crypto.kem_keygen)("x25519")
+    q0 = simp.runAt(P2, tee.quote)(t_pk0)
+    q1 = simp.runAt(P2, tee.quote)(t_pk1)
+
+    # Send quotes to P0/P1 and gate via attest
+    q0_for_p0 = simp.p2p(P2, P0, q0)
+    q1_for_p1 = simp.p2p(P2, P1, q1)
+    _g0 = simp.runAt(P0, tee.attest)(q0_for_p0)
+    _g1 = simp.runAt(P1, tee.attest)(q1_for_p1)
+
+    # Send TEE public keys to P0/P1
+    t_pk0_for_p0 = simp.p2p(P2, P0, t_pk0)
+    t_pk1_for_p1 = simp.p2p(P2, P1, t_pk1)
+
+    # Each party generates its own ephemeral keypair and shares pk with TEE
+    v_sk0, v_pk0 = simp.runAt(P0, crypto.kem_keygen)("x25519")
+    v_sk1, v_pk1 = simp.runAt(P1, crypto.kem_keygen)("x25519")
+    v_pk0_at_tee = simp.p2p(P0, P2, v_pk0)
+    v_pk1_at_tee = simp.p2p(P1, P2, v_pk1)
+
+    # Derive shared secrets on both sides and HKDF to session keys
+    shared0_v = simp.runAt(P0, crypto.kem_derive)(v_sk0, t_pk0_for_p0, "x25519")
+    shared1_v = simp.runAt(P1, crypto.kem_derive)(v_sk1, t_pk1_for_p1, "x25519")
+    shared0_t = simp.runAt(P2, crypto.kem_derive)(t_sk0, v_pk0_at_tee, "x25519")
+    shared1_t = simp.runAt(P2, crypto.kem_derive)(t_sk1, v_pk1_at_tee, "x25519")
+
+    info_p0 = simp.runAt(P0, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
+    info_p1 = simp.runAt(P1, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
+    info_t = simp.runAt(P2, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
+    sess0_v = simp.runAt(P0, crypto.hkdf)(shared0_v, info_p0)
+    sess1_v = simp.runAt(P1, crypto.hkdf)(shared1_v, info_p1)
+    sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info_t)
+    sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info_t)
+
+    # Encrypt at data parties and decrypt at TEE
     x0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
     x1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
-    c0 = simp.runAt(P0, crypto.enc)(x0, k0)
-    c1 = simp.runAt(P1, crypto.enc)(x1, k1)
+    c0 = simp.runAt(P0, crypto.enc)(x0, sess0_v)
+    c1 = simp.runAt(P1, crypto.enc)(x1, sess1_v)
     c0_at_tee = simp.p2p(P0, P2, c0)
     c1_at_tee = simp.p2p(P1, P2, c1)
-    p0 = simp.runAt(P2, crypto.dec)(c0_at_tee, key_a)
-    p1 = simp.runAt(P2, crypto.dec)(c1_at_tee, key_b)
+    p0 = simp.runAt(P2, crypto.dec)(c0_at_tee, sess0_t)
+    p1 = simp.runAt(P2, crypto.dec)(c1_at_tee, sess1_t)
     return p0, p1
 
 

@@ -22,22 +22,22 @@ import numpy as np
 
 from mplang.core.pfunc import PFunction, TensorHandler
 from mplang.core.tensor import TensorLike
+from mplang.utils.crypto import blake2b  # noqa: F401
 
 
 @dataclass
 class Quote:
-    """Simple quote structure for the mock TEE backend."""
+    """Simple quote structure for the mock TEE backend (no payload)."""
 
-    report_data: bytes
-    payload: bytes  # could carry key commitment or encrypted key
+    report_data: bytes  # e.g., H(program_hash||nonce||H(epk)) in real impl
 
     def to_array(self) -> np.ndarray:
-        data = self.report_data + b"|" + self.payload
-        return np.frombuffer(data, dtype=np.uint8)
+        data = self.report_data
+        return np.frombuffer(data if data else b"\x00", dtype=np.uint8)
 
 
 class TeeHandler(TensorHandler):
-    """TEE Handler with a mock implementation (payload-based).
+    """TEE Handler with a mock implementation that binds provided pk.
 
     WARNING: This is a mock implementation for demos/tests. It does NOT perform
     real verification of vendor quotes, measurements, or program hashes, and it
@@ -45,8 +45,8 @@ class TeeHandler(TensorHandler):
     production. The production design uses TEE ephemeral key binding and KEM.
 
     PFunctions:
-    - tee.quote_gen(payloads...): returns list of quotes (one per payload)
-    - tee.quote_verify_and_extract(quote): verifies and extracts payload
+    - tee.quote(pk): returns quote binding the provided public key
+    - tee.attest(quote): verifies and returns a gating byte
 
     This mock does not perform real attestation. It emulates the flow so the
     IR/plumbing/API work end-to-end. Quotes and payloads are byte arrays.
@@ -67,49 +67,32 @@ class TeeHandler(TensorHandler):
     def list_fn_names(self) -> list[str]:  # override
         return [self.QUOTE_GEN, self.QUOTE_VERIFY_AND_EXTRACT]
 
-    def _quote_bytes(self, payload: bytes) -> np.ndarray:
-        # Mock report_data binds to a fake session tuple; here we just hash-ish
-        # Keep it simple for now: prefix + key (to allow extraction)
-        prefix = b"REPORTDATA:"
-        q = Quote(report_data=prefix, payload=payload)
-        arr = q.to_array()
-        if arr.size == 0:
-            # Guarantee at least 1 byte to satisfy placeholder TensorType
-            return np.array([0], dtype=np.uint8)
-        return arr
+    def _quote_from_pk(self, pk: np.ndarray) -> np.ndarray:
+        # Bind the provided pk (mock: only first byte) into report_data
+        if pk.size == 0:
+            report = b"REPORTDATA:\x00"
+        else:
+            report = b"REPORTDATA:" + bytes([int(pk.flatten()[0])])
+        q = Quote(report_data=report).to_array()
+        return q.astype(np.uint8)
 
     def _execute_quote_gen(
         self, args: list[TensorLike], pfunc: PFunction
     ) -> list[TensorLike]:
-        # For each payload, build a quote embedding it.
-        quotes: list[TensorLike] = []
-        for payload in args:
-            pb = np.asarray(payload, dtype=np.uint8).tobytes()
-            quote_arr = self._quote_bytes(pb)
-            quotes.append(quote_arr)
-        return quotes
+        # Expect one arg: pk[u8[32]]; return single quote tensor
+        if len(args) != 1:
+            raise ValueError("tee.quote expects exactly one argument (pk)")
+        pk = np.asarray(args[0], dtype=np.uint8)
+        q = self._quote_from_pk(pk)
+        return [q]
 
     def _execute_quote_verify_and_extract(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
+        # Mock attest: return a single-byte 1 to indicate verification passed
         if len(args) != 1:
-            raise ValueError(
-                "tee.quote_verify_and_extract expects exactly one argument (quote)"
-            )
-        quote_arr = args[0]
-        if not isinstance(quote_arr, np.ndarray):
-            quote_arr = np.asarray(quote_arr)
-
-        # Split on the first '|' (124) byte to recover payload
-        sep_idx = (
-            int(np.where(quote_arr == 124)[0][0]) if np.any(quote_arr == 124) else -1
-        )
-        if sep_idx <= 0:
-            # invalid mock quote
-            raise RuntimeError("Invalid quote format: separator not found")
-
-        payload = quote_arr[sep_idx + 1 :].astype(np.uint8)
-        return [payload]
+            raise ValueError("tee.attest expects exactly one argument (quote)")
+        return [np.array([1], dtype=np.uint8)]
 
     def execute(
         self, pfunc: PFunction, args: list[TensorLike]

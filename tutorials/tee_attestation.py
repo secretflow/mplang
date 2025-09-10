@@ -35,23 +35,21 @@ from mplang.frontend import crypto, tee
 def demo_flow():
     P0, P1, P2 = 0, 1, 2
 
-    # 1) TEE party generates two ephemeral keypairs (KEM-style)
-    # In real impl, quote will bind H(t_pk) in report_data.
+    # 1) TEE generates ephemeral keypairs and quotes binding their pk
     t_sk0, t_pk0 = simp.runAt(P2, crypto.kem_keygen)("x25519")
     t_sk1, t_pk1 = simp.runAt(P2, crypto.kem_keygen)("x25519")
+    q0 = simp.runAt(P2, tee.quote)(t_pk0)
+    q1 = simp.runAt(P2, tee.quote)(t_pk1)
 
-    # 2) TEE generates quotes that carry (or bind) the public materials
-    quotes = simp.runAt(P2, tee.quote)([t_pk0, t_pk1])
-
-    # Scatter quotes to data providers
-    q_for_p0 = simp.p2p(P2, P0, quotes[0])
-    q_for_p1 = simp.p2p(P2, P1, quotes[1])
+    # Scatter quotes to P0 & P1
+    q_for_p0 = simp.p2p(P2, P0, q0)
+    q_for_p1 = simp.p2p(P2, P1, q1)
 
     # 3) Data providers verify their quotes (gating). In a real impl, attest
     # would return the attested TEE public key. Our mock returns a tiny tensor,
     # so we perform an explicit p2p of the public material after this step.
-    _ = simp.runAt(P0, tee.attest)(q_for_p0)
-    _ = simp.runAt(P1, tee.attest)(q_for_p1)
+    _g0 = simp.runAt(P0, tee.attest)(q_for_p0)
+    _g1 = simp.runAt(P1, tee.attest)(q_for_p1)
     t_pk0_for_p0 = simp.p2p(P2, P0, t_pk0)
     t_pk1_for_p1 = simp.p2p(P2, P1, t_pk1)
 

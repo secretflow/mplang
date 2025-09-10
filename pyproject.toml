@@ -41,6 +41,8 @@ mplang-cli = "mplang.runtime.cli:main"
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
 
+examples = ["scikit-learn", "tensorflow"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
 

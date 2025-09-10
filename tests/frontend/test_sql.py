@@ -31,7 +31,7 @@ def test_sqlrun():
     assert len(input_args) == 0
 
     # test with inputs
-    sim2 = mplang.Simulator(2)
+    sim2 = mplang.Simulator.simple(2)
     mplang.set_ctx(sim2)
 
     data = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [4.1, 5.1, 6.1]})

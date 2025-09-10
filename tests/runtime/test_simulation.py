@@ -27,6 +27,7 @@ import numpy as np
 import pytest
 
 from mplang import simp
+from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.mask import Mask
@@ -49,13 +50,14 @@ def mask_2p():
 @pytest.fixture
 def trace_context(mask_2p):
     """Create a trace context for testing."""
-    return TraceContext(world_size=2, mask=mask_2p)
+    cluster_spec = ClusterSpec.simple(world_size=2)
+    return TraceContext(cluster_spec=cluster_spec, mask=mask_2p)
 
 
 @pytest.fixture
 def simulator():
     """Create a simulator for testing."""
-    return Simulator(psize=2)
+    return Simulator.simple(world_size=2)
 
 
 class TestSimVar:
@@ -97,9 +99,9 @@ class TestSimulator:
 
     def test_simulator_creation(self):
         """Test Simulator creation."""
-        sim = Simulator(psize=3)
+        sim = Simulator.simple(world_size=3)
 
-        assert sim.psize() == 3
+        assert sim.world_size() == 3
         assert len(sim._comms) == 3
         assert len(sim._evaluators) == 3
 
@@ -108,14 +110,6 @@ class TestSimulator:
             assert comm.rank == i
             assert comm.world_size == 3
             assert len(comm.peers) == 3
-
-    def test_simulator_with_attrs(self):
-        """Test Simulator creation with attributes."""
-        sim = Simulator(psize=2, test_attr="test_value", debug=True)
-
-        assert sim.psize() == 2
-        assert sim.attrs()["test_attr"] == "test_value"
-        assert sim.attrs()["debug"] is True
 
     def test_evaluate_constant(self, simulator, trace_context):
         """Test evaluating a constant expression."""
@@ -249,8 +243,8 @@ class TestSimulator:
 
     def test_evaluate_wrong_context(self, trace_context):
         """Test that evaluation fails with variables from wrong context."""
-        sim1 = Simulator(psize=2)
-        sim2 = Simulator(psize=2)
+        sim1 = Simulator.simple(world_size=2)
+        sim2 = Simulator.simple(world_size=2)
 
         # Create a variable in sim1
         mptype = MPType.tensor(INT32, (1,), Mask(3))
@@ -331,8 +325,8 @@ class TestSimulatorIntegration:
 
     def test_multiple_simulator_independence(self, trace_context):
         """Test that multiple simulators are independent."""
-        sim1 = Simulator(psize=2)
-        sim2 = Simulator(psize=2)
+        sim1 = Simulator.simple(world_size=2)
+        sim2 = Simulator.simple(world_size=2)
 
         def const_func():
             return constant(100)

@@ -27,14 +27,13 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-import spu.libspu as libspu
-
+from mplang.core.cluster import ClusterSpec
 from mplang.core.expr.ast import Expr
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType, Rank
+from mplang.core.mptype import MPType
 from mplang.runtime.client import HttpExecutorClient
 
 
@@ -79,76 +78,51 @@ class Driver(InterpContext):
     """Driver for distributed execution using HTTP-based services.
 
     Args:
-        node_addrs: Mapping from node IDs (strings) to their HTTP endpoint addresses.
-        spu_protocol: SPU protocol to use for secure computation.
-        spu_field: SPU field type for arithmetic operations.
-        spu_nodes: List of node IDs (strings) that participate in SPU computation.
-            If None, all nodes participate in SPU. Cannot be used with spu_mask.
-        spu_mask: Mask indicating which nodes participate in SPU computation.
-            Cannot be used with spu_nodes. Provided for backward compatibility.
+        cluster_spec: The cluster specification defining the distributed environment.
         trace_ranks: List of ranks to trace execution for debugging.
         timeout: HTTP request timeout in seconds.
-        **attrs: Additional attributes passed to the executor.
     """
 
     def __init__(
         self,
-        node_addrs: dict[str, str],
+        cluster_spec: ClusterSpec,
         *,
-        spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
-        spu_field: libspu.FieldType = libspu.FieldType.FM64,
-        spu_nodes: list[str] | None = None,
-        trace_ranks: list[Rank] | None = None,
-        timeout: int = 120,  # TODO(jint): expose to user
-        **attrs: Any,
+        trace_ranks: list[int] | None = None,
+        timeout: int = 120,
     ) -> None:
-        if trace_ranks is None:
-            trace_ranks = []
+        """Initialize a driver with the given cluster specification.
 
-        def ensure_http_schema(addr: str) -> str:
-            return (
-                addr if addr.startswith(("http://", "https://")) else f"http://{addr}"
-            )
-
-        node_addrs = {
-            node_id: ensure_http_schema(addr) for node_id, addr in node_addrs.items()
-        }
-
-        self.world_size = len(node_addrs)
-        self.node_addrs = node_addrs
+        Args:
+            cluster_spec: The cluster specification defining the distributed environment.
+            trace_ranks: List of ranks to trace execution for debugging.
+            timeout: HTTP request timeout in seconds.
+        """
+        super().__init__(cluster_spec)
+        self._trace_ranks = trace_ranks or []
         self.timeout = timeout
 
         self._session_id: str | None = None
         self._counter = 0
 
-        if spu_nodes is None:
-            # Default: all nodes participate in SPU
-            spu_mask = Mask.all(self.world_size)
-        else:
-            # Convert node IDs to ranks and build mask
-            node_id_to_rank = {
-                node_id: rank for rank, node_id in enumerate(node_addrs.keys())
-            }
-            spu_ranks = []
-            for node_id in spu_nodes:
-                if node_id not in node_id_to_rank:
-                    raise ValueError(f"SPU node '{node_id}' not found in node_addrs")
-                spu_ranks.append(node_id_to_rank[node_id])
-            spu_mask = Mask.from_ranks(spu_ranks)
-
-        self.spu_protocol = int(spu_protocol)
-        self.spu_field = int(spu_field)
-        self.spu_mask_int = int(spu_mask)
-
-        executor_attrs = {
-            "spu_protocol": self.spu_protocol,
-            "spu_field": self.spu_field,
-            "spu_mask": spu_mask,
-            "trace_ranks": trace_ranks,
-            **attrs,
+        self.node_addrs = {
+            node_id: node.endpoint for node_id, node in cluster_spec.nodes.items()
         }
 
-        super().__init__(self.world_size, executor_attrs)
+        # Get SPU configuration from cluster_spec
+        spu_devices = cluster_spec.get_devices_by_kind("SPU")
+        if not spu_devices:
+            raise ValueError("No SPU device found in the cluster specification")
+        if len(spu_devices) > 1:
+            raise ValueError("Multiple SPU devices found in the cluster specification")
+        spu_device = spu_devices[0]
+
+        # Store SPU configuration as strings for better readability
+        self.spu_protocol_str = spu_device.config["protocol"]
+        self.spu_field_str = spu_device.config["field"]
+
+        # Compute spu_mask from spu_device members
+        spu_mask = Mask.from_ranks([member.rank for member in spu_device.members])
+        self.spu_mask_int = int(spu_mask)
 
     def _create_clients(self) -> dict[str, HttpExecutorClient]:
         """Create HTTP clients for all endpoints."""
@@ -186,8 +160,8 @@ class Driver(InterpContext):
                         rank=rank,
                         endpoints=endpoints_list,
                         spu_mask=self.spu_mask_int,
-                        spu_protocol=self.spu_protocol,
-                        spu_field=self.spu_field,
+                        spu_protocol=self.spu_protocol_str,
+                        spu_field=self.spu_field_str,
                     )
                     tasks.append(task)
 

@@ -14,7 +14,6 @@
 
 import argparse
 import itertools
-import json
 import math
 import time
 from datetime import datetime
@@ -24,14 +23,17 @@ import jax
 import jax.numpy as jnp
 import models
 import numpy as np
+import yaml
 from jax.example_libraries import stax
 from sklearn.metrics import accuracy_score
 
+import mplang
 import mplang.device as mpd
+from mplang.core.cluster import ClusterSpec
 
 parser = argparse.ArgumentParser(description="distributed driver.")
 parser.add_argument("--model", default="network_a", type=str)
-parser.add_argument("-c", "--config", default="examples/conf/3pc.json", type=str)
+parser.add_argument("-c", "--config", default="examples/conf/3pc.yaml", type=str)
 parser.add_argument("-e", "--epoch", default=5, type=int)
 parser.add_argument("-b", "--batch_size", default=128, type=int)
 parser.add_argument("-o", "--optimizer", default="SGD", type=str)
@@ -235,8 +237,14 @@ def main():
         return
 
     with open(args.config) as file:
-        conf = json.load(file)
-    mpd.init(conf["devices"], conf["nodes"])
+        conf = yaml.safe_load(file)
+    cluster_spec = ClusterSpec.from_dict(conf)
+    driver = mplang.Driver(cluster_spec)
+    mplang.set_ctx(driver)
+
+    # with open(args.config) as file:
+    #     conf = json.load(file)
+    # mpd.init(conf["devices"], conf["nodes"])
     return run_model(args.model, run_cpu=False)
 
 

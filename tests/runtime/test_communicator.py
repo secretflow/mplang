@@ -120,6 +120,9 @@ def test_distributed_send_recv():
             json={
                 "rank": rank,
                 "endpoints": endpoints,
+                "spu_mask": -1,
+                "spu_protocol": "SEMI2K",
+                "spu_field": "FM64",
             },
         )
         assert response.status_code == 200
@@ -147,7 +150,13 @@ def test_distributed_multiple_messages():
         for rank, endpoint in enumerate(base_endpoints):
             response = httpx.put(
                 f"{endpoint}/sessions/{session_name}",
-                json={"rank": rank, "endpoints": base_endpoints},
+                json={
+                    "rank": rank,
+                    "endpoints": base_endpoints,
+                    "spu_mask": -1,
+                    "spu_protocol": "SEMI2K",
+                    "spu_field": "FM64",
+                },
             )
             assert response.status_code == 200
             assert response.json()["name"] == session_name

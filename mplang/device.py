@@ -24,7 +24,6 @@ transformation between devices.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from functools import partial, wraps
 from typing import Any
 
@@ -32,84 +31,16 @@ from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import simp
-from mplang.core import InterpContext, Mask, MPObject, primitive
-from mplang.core.context_mgr import set_ctx
-from mplang.runtime import Driver, Simulator
+from mplang.core import InterpContext, MPObject, primitive
+from mplang.core.cluster import ClusterSpec
 from mplang.simp import mpi, smpc
 from mplang.utils.func_utils import normalize_fn
 
-
-@dataclass
-class DeviceInfo:
-    """A device description."""
-
-    type: str
-    """The backend type information."""
-
-    node_ids: list[str]
-    """The nodes that runs together to construct the device.
-    For device that requires multiple nodes to run together, we assume that
-    they run in a SPMD manner.
-    """
-
-    configs: dict = field(default_factory=dict)
-    """The device runtime configurations"""
+# Automatic transfer between devices when parameter is not on the target device.
+g_auto_trans: bool = True
 
 
-def parse_device_conf(conf: dict) -> dict[str, DeviceInfo]:
-    return {dev_id: DeviceInfo(**desc) for dev_id, desc in conf.items()}
-
-
-class DeviceContext:
-    def __init__(self, dev_infos: dict[str, DeviceInfo], auto_trans: bool = True):
-        super().__init__()
-        self.dev_infos = dev_infos
-        self.auto_trans = auto_trans
-        # Note: ensure node_ids maintain a consistent order for deterministic behavior
-        node_ids = [nid for info in dev_infos.values() for nid in info.node_ids]
-        node_ids = sorted(set(node_ids))
-        assert len(node_ids) == len(set(node_ids)), (
-            f"node_ids must be unique. {node_ids}"
-        )
-        self.node_ids = node_ids
-
-    def id2rank(self, dev_id: str) -> int:
-        dev_info = self.dev_infos[dev_id]
-        if dev_info.type == "SPU":
-            raise ValueError("SPU does not have a rank")
-        assert len(dev_info.node_ids) == 1
-        return self.node_ids.index(dev_info.node_ids[0])
-
-
-def init(device_def: dict, nodes_def: dict | None = None) -> None:
-    if nodes_def is None:
-        nodes_def = {}
-    device_conf = parse_device_conf(device_def)
-    device_ctx = DeviceContext(device_conf)
-
-    # no 'real' party defined, we are in simulation mode
-    spu_conf = [dev for dev in device_conf.values() if dev.type == "SPU"]
-    assert len(spu_conf) == 1, "Only one SPU is supported for now."
-
-    # unique node_ids across all devices
-    node_ids = [nid for dev_info in device_conf.values() for nid in dev_info.node_ids]
-    node_ids = sorted(set(node_ids))
-
-    driver: InterpContext
-    if not nodes_def:
-        world_size = len(node_ids)
-        spu_mask = Mask.from_ranks([
-            node_ids.index(nid) for nid in spu_conf[0].node_ids
-        ])
-        driver = Simulator(world_size, spu_mask=spu_mask, device_ctx=device_ctx)
-    else:
-        driver = Driver(
-            nodes_def, spu_nodes=spu_conf[0].node_ids, device_ctx=device_ctx
-        )
-
-    set_ctx(driver)
-
-
+# `function` decorator could also compile device-level apis.
 function = primitive.function
 
 
@@ -159,21 +90,22 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
             if not all(Utils.is_device_obj(arg) for arg in args_flat):
                 raise ValueError(f"All arguments must be device objects. {args_flat}")
 
-            device_ctx = mapi.cur_ctx().attr("device_ctx")
-            if device_ctx.auto_trans:
+            cluster_spec = mapi.cur_ctx().cluster_spec
+            if g_auto_trans:
                 args_flat = [_d2d(dev_id, arg) for arg in args_flat]
 
             assert all(Utils.get_devid(arg) == dev_id for arg in args_flat)
-            dev_info = device_ctx.dev_infos[dev_id]
-            if dev_info.type == "SPU":
+            dev_info = cluster_spec.devices[dev_id]
+            if dev_info.kind.upper() == "SPU":
                 var = smpc.srun(nfn, fe_type=fe_type)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
-            elif dev_info.type == "PPU":
-                rank = device_ctx.id2rank(dev_id)
+            elif dev_info.kind.upper() == "PPU":
+                assert len(dev_info.members) == 1
+                rank = dev_info.members[0].rank
                 var = simp.runAt(rank, nfn)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             else:
-                raise ValueError(f"Unknown device type: {dev_info.type}")
+                raise ValueError(f"Unknown device type: {dev_info.kind}")
 
         return wrapped
 
@@ -187,23 +119,27 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
     if frm_dev_id == to_dev_id:
         return obj
 
-    device_ctx: DeviceContext = mapi.cur_ctx().attr("device_ctx")
-    frm_to_pair = (
-        device_ctx.dev_infos[frm_dev_id].type,
-        device_ctx.dev_infos[to_dev_id].type,
-    )
+    cluster_spec: ClusterSpec = mapi.cur_ctx().cluster_spec
+    frm_dev = cluster_spec.devices[frm_dev_id]
+    to_dev = cluster_spec.devices[to_dev_id]
+    frm_to_pair = (frm_dev.kind.upper(), to_dev.kind.upper())
 
     if frm_to_pair == ("SPU", "SPU"):
         raise NotImplementedError("Only one SPU is supported for now.")
     elif frm_to_pair == ("SPU", "PPU"):
-        var = smpc.revealTo(obj, device_ctx.id2rank(to_dev_id))
+        assert len(to_dev.members) == 1
+        to_rank = to_dev.members[0].rank
+        var = smpc.revealTo(obj, to_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "SPU"):
-        var = smpc.sealFrom(obj, device_ctx.id2rank(frm_dev_id))
+        assert len(frm_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
+        var = smpc.sealFrom(obj, frm_rank)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "PPU"):
-        frm_rank = device_ctx.id2rank(frm_dev_id)
-        to_rank = device_ctx.id2rank(to_dev_id)
+        assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
+        to_rank = to_dev.members[0].rank
         var = mpi.p2p(frm_rank, to_rank, obj)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     else:
@@ -219,15 +155,17 @@ def put(to_dev_id: str, obj: Any) -> MPObject:
 
 def _fetch(interp: InterpContext, obj: MPObject) -> Any:
     dev_id = Utils.get_devid(obj)
-    device_ctx = interp.attr("device_ctx")
-    dev_type = device_ctx.dev_infos[dev_id].type
+    cluster_spec = interp.cluster_spec
+    dev_kind = cluster_spec.devices[dev_id].kind.upper()
 
-    if dev_type == "SPU":
+    if dev_kind == "SPU":
         revealed = smpc.reveal(obj)
         result = mapi.fetch(interp, revealed)
         return result[0]
-    elif dev_type == "PPU":
-        rank = device_ctx.id2rank(dev_id)
+    elif dev_kind == "PPU":
+        dev_info = cluster_spec.devices[dev_id]
+        assert len(dev_info.members) == 1
+        rank = dev_info.members[0].rank
         result = mapi.fetch(interp, obj)
         return result[rank]
     else:

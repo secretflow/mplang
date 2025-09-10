@@ -14,10 +14,13 @@
 
 import random
 
+import yaml
+
 import mplang
 import mplang.device as mpd
 import mplang.random as mpr
 import mplang.simp as simp
+from mplang.core.cluster import ClusterSpec
 
 
 def randint(lo, hi):
@@ -137,28 +140,9 @@ def device_func():
     return x, y, z
 
 
-def device_eager(ectx):
-    # Initialize device configuration for simulation
-    device_conf = {
-        "SP0": {
-            "type": "SPU",
-            "node_ids": ["node:0", "node:1", "node:2"],
-            "configs": {
-                "protocol": "SEMI2K",
-                "field": "FM128",
-                "enable_pphlo_profile": True,
-            },
-        },
-        "P0": {"type": "PPU", "node_ids": ["node:0"]},
-        "P1": {"type": "PPU", "node_ids": ["node:1"]},
-    }
-
-    # Initialize device configuration
-    mpd.init(device_conf, {})
-    mplang.set_ctx(ectx)
-
-    x, y, z = device_func()
-    hx, hy, hz = mplang.fetch(None, (x, y, z))
+def device_eager(ctx):
+    x, y, z = mplang.evaluate(ctx, device_func)
+    hx, hy, hz = mplang.fetch(ctx, (x, y, z))
     print("hx:", hx)
     print("hy:", hy)
     print("hz:", hz)
@@ -166,7 +150,7 @@ def device_eager(ectx):
 
 def aot_compilation(ectx):
     # This function illustrates the AOT compilation process
-    copts = mplang.CompileOptions(ectx.psize(), spu_mask=ectx.attr("spu_mask"))
+    copts = mplang.CompileOptions(ectx.cluster_spec)
     compiled = mplang.compile(copts, millionaire)
     print(compiled.compiler_ir())
 
@@ -185,46 +169,26 @@ def main(driver):
 def cmd_main(main_func) -> None:
     """Simple command line interface for simulation."""
     import argparse
-    import json
 
     parser = argparse.ArgumentParser(description="MPLang simulation and execution.")
     parser.add_argument(
-        "-c", "--config", default="examples/conf/3pc.json", help="the config"
+        "-c", "--config", default="examples/conf/3pc.yaml", help="the config"
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("sim", help="simulate the test code")
     subparsers.add_parser("run", help="run the test code")
     args = parser.parse_args()
 
-    # Load config file
+    # load ClusterSpec from yaml file
     with open(args.config) as file:
-        conf = json.load(file)
-    nodes_def = conf["nodes"]
-
-    devices_conf = mpd.parse_device_conf(conf["devices"])
-    all_node_ids = sorted(nodes_def.keys())
-    spu_conf = [dev for dev in devices_conf.values() if dev.type == "SPU"]
-    spu_mask = 0  # Default mask
-    if len(spu_conf) == 1:
-        spu_mask = 0
-        for nid in spu_conf[0].node_ids:
-            spu_mask |= 1 << all_node_ids.index(nid)
+        conf = yaml.safe_load(file)
+    cluster_spec = ClusterSpec.from_dict(conf)
 
     if args.command == "sim":
-        from mplang.core import Mask
-
-        simulator = mplang.Simulator(
-            len(nodes_def),
-            spu_mask=Mask.from_ranks([
-                all_node_ids.index(nid) for nid in spu_conf[0].node_ids
-            ]),
-        )
-        main_func(simulator)
+        sim = mplang.Simulator(cluster_spec)
+        main_func(sim)
     elif args.command == "run":
-        driver = mplang.Driver(
-            nodes_def,
-            spu_nodes=spu_conf[0].node_ids,
-        )
+        driver = mplang.Driver(cluster_spec)
         main_func(driver)
     else:
         parser.print_help()
@@ -238,7 +202,7 @@ if __name__ == "__main__":
     #
     # To run on real multi-party execution:
     # 1. First start the cluster with:
-    #    uv run python -m mplang.runtime.cli up -c examples/conf/3pc.json
+    #    uv run python -m mplang.runtime.cli up -c examples/conf/3pc.yaml
     # 2. Then run the computation:
     #    uv run python tutorials/4_simulation.py run
     cmd_main(main)

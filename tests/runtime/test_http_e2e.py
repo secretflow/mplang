@@ -26,10 +26,64 @@ import uvicorn
 
 import mplang
 import mplang.simp as simp
+from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
 from mplang.runtime.server import app
 
-# Global state for test servers
-e2e_server_processes: dict[int, multiprocessing.Process] = {}
+# Global state for servers
+http_server_processes: dict[int, multiprocessing.Process] = {}
+
+
+def create_e2e_cluster_spec(
+    node_addrs: dict[str, str], spu_nodes: list[str]
+) -> ClusterSpec:
+    """Create a ClusterSpec for e2e testing with specific SPU nodes."""
+    nodes = {}
+
+    # Create nodes for all parties
+    for node_id, addr in node_addrs.items():
+        # Extract rank from node_id (e.g., "P0" -> 0)
+        rank = int(node_id[1:])
+        nodes[f"node{rank}"] = PhysicalNode(
+            name=f"node{rank}",
+            rank=rank,
+            endpoint=addr,
+            runtime_info=RuntimeInfo(
+                version="test",
+                platform="test",
+                backends=["__all__"],
+            ),
+        )
+
+    # Create local devices for each node
+    local_devices = {}
+    for _node_name, node in nodes.items():
+        local_devices[f"local_{node.rank}"] = LogicalDevice(
+            name=f"local_{node.rank}",
+            kind="local",
+            members=[node],
+        )
+
+    # Create SPU device with specified nodes
+    spu_node_ranks = [int(node_id[1:]) for node_id in spu_nodes]
+    spu_members = [nodes[f"node{rank}"] for rank in spu_node_ranks]
+
+    spu_device = LogicalDevice(
+        name="SPU_0",
+        kind="SPU",
+        members=spu_members,
+        config={
+            "protocol": "SEMI2K",
+            "field": "FM128",
+        },
+    )
+
+    devices = {**local_devices, "SPU_0": spu_device}
+
+    return ClusterSpec(nodes=nodes, devices=devices)
+
+
+# Global state for servers
+http_server_processes: dict[int, multiprocessing.Process] = {}
 
 
 def run_e2e_server(port: int):
@@ -56,7 +110,7 @@ def start_e2e_servers():
     for port in ports:
         process = multiprocessing.Process(target=run_e2e_server, args=(port,))
         process.daemon = True
-        e2e_server_processes[port] = process
+        http_server_processes[port] = process
         process.start()
 
     # Wait for servers to be ready via health check
@@ -80,8 +134,8 @@ def start_e2e_servers():
 
     # Teardown: stop all server processes
     for port in ports:
-        if port in e2e_server_processes:
-            process = e2e_server_processes[port]
+        if port in http_server_processes:
+            process = http_server_processes[port]
             if process.is_alive():
                 process.terminate()
                 process.join(timeout=5)  # Wait up to 5 seconds
@@ -99,7 +153,8 @@ def http_driver():
         "P3": "http://localhost:15004",  # P3 - SPU party
         "P4": "http://localhost:15005",  # P4 - plaintext party
     }
-    return mplang.Driver(node_addrs, spu_nodes=["P1", "P2", "P3"])
+    cluster_spec = create_e2e_cluster_spec(node_addrs, ["P1", "P2", "P3"])
+    return mplang.Driver(cluster_spec)
 
 
 @pytest.mark.skip(

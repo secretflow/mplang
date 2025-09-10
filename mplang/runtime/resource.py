@@ -36,6 +36,7 @@ from mplang.core.mask import Mask
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 from mplang.runtime.link_comm import LinkCommunicator
+from mplang.utils.spu_utils import parse_field, parse_protocol
 
 
 class LinkCommFactory:
@@ -82,8 +83,8 @@ class Session:
 
     # spu related
     spu_mask: int = -1
-    spu_protocol: int = 0
-    spu_field: int = 0
+    spu_protocol: str = "SEMI2K"
+    spu_field: str = "FM64"
 
 
 # Global session storage
@@ -96,9 +97,9 @@ def create_session(
     rank: int,
     endpoints: list[str],
     # SPU related
-    spu_mask: int = -1,
-    spu_protocol: int = 0,
-    spu_field: int = 0,
+    spu_mask: int = 0,
+    spu_protocol: str = "SEMI2K",
+    spu_field: str = "FM64",
 ) -> Session:
     logging.info(f"Creating session: {name}, rank: {rank}, spu_mask: {spu_mask}")
     if name in _sessions:
@@ -205,13 +206,12 @@ def execute_computation(
             )
         bindings[input_name] = symbol.data
 
-    # Create handlers (similar to executor/server.py)
     import spu.libspu as libspu
 
     # This config is misleading, it configs the runtime as well as spu IO.
     spu_config = libspu.RuntimeConfig(
-        protocol=libspu.ProtocolKind(session.spu_protocol),
-        field=libspu.FieldType(session.spu_field),
+        protocol=parse_protocol(session.spu_protocol),
+        field=parse_field(session.spu_field),
         fxp_fraction_bits=18,
     )
 
@@ -226,18 +226,12 @@ def execute_computation(
         spu_addrs: list[str] = []
         for r, addr in enumerate(session.communicator.endpoints):
             if r in spu_mask:
-                # Robust URL parsing
+                if "://" not in addr:
+                    # without schema, add dummy schema for parsing
+                    addr = f"//{addr}"
                 parsed = urlparse(addr)
-                hostname = parsed.hostname or "localhost"
-                if parsed.port is not None:
-                    base_port = parsed.port
-                else:
-                    # Default ports: http 80, https 443; fallback to 80
-                    if parsed.scheme == "https":
-                        base_port = 443
-                    else:
-                        base_port = 80
-                new_addr = f"{hostname}:{base_port + 100}"
+                assert isinstance(parsed.port, int)
+                new_addr = f"{parsed.hostname}:{parsed.port + 100}"
                 spu_addrs.append(new_addr)
         spu_rank = spu_mask.global_to_relative_rank(rank)
         spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)

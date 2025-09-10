@@ -18,7 +18,7 @@ import mplang
 import mplang.random as mpr
 import mplang.simp as simp
 
-sim3 = mplang.Simulator(3)
+sim3 = mplang.Simulator.simple(3)
 
 # make two variables on the simulator, one is a random integer, the other is a prank.
 x = mplang.evaluate(sim3, simp.prank)

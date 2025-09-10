@@ -16,27 +16,32 @@ import random
 
 import mplang
 import mplang.device as mpd
+from mplang.core.cluster import ClusterSpec
+from mplang.core.context_mgr import set_ctx
+from mplang.runtime.simulation import Simulator
 
-device_conf = {
-    "SP0": {
-        "type": "SPU",
-        "node_ids": ["node:1", "node:2", "node:3"],
-        "configs": {
-            "protocol": "SEMI2K",
-            "field": "FM128",
-            "enable_pphlo_profile": True,
+cluster_spec = ClusterSpec.from_dict({
+    "nodes": [
+        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+        {"name": "node_2", "endpoint": "127.0.0.1:61922"},
+        {"name": "node_3", "endpoint": "127.0.0.1:61923"},
+        {"name": "node_4", "endpoint": "127.0.0.1:61924"},
+    ],
+    "devices": {
+        "SP0": {
+            "kind": "SPU",
+            "members": ["node_1", "node_2", "node_3"],
+            "config": {
+                "protocol": "SEMI2K",
+                "field": "FM128",
+                "enable_pphlo_profile": True,
+            },
         },
+        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+        "P1": {"kind": "PPU", "members": ["node_4"], "config": {}},
     },
-    "P0": {"type": "PPU", "node_ids": ["node:0"]},
-    "P1": {"type": "PPU", "node_ids": ["node:4"]},
-}
-node_def = {
-    "node:0": "127.0.0.1:61920",
-    "node:1": "127.0.0.1:61921",
-    "node:2": "127.0.0.1:61922",
-    "node:3": "127.0.0.1:61923",
-    "node:4": "127.0.0.1:61924",
-}
+})
 
 
 @mpd.function
@@ -76,24 +81,26 @@ def millionaire():
     return x, y, z, r
 
 
-def lazy_eval():
-    compiled = mplang.compile(mplang.cur_ctx(), millionaire)
+def main(ctx):
+    compiled = mplang.compile(ctx, millionaire)
     print("millionaire compiled:", compiled.compiler_ir())
 
-    x, y, z, r = millionaire()
-    print("x:", x, mplang.fetch(None, x))
-    print("y:", y, mplang.fetch(None, y))
-    print("z:", z, mplang.fetch(None, z))
-    print("r:", r, mplang.fetch(None, r))
+    x, y, z, r = mplang.evaluate(ctx, millionaire)
+    print("x:", x, mplang.fetch(ctx, x))
+    print("y:", y, mplang.fetch(ctx, y))
+    print("z:", z, mplang.fetch(ctx, z))
+    print("r:", r, mplang.fetch(ctx, r))
 
     print("-" * 10, "myfun", "-" * 10)
-    xx, [yy, _c0], res_dict = myfun(x, y)
+    xx, [yy, _c0], res_dict = mplang.evaluate(ctx, myfun, x, y)
     print("xx:", xx)
     print("yy:", yy)
     print("res_dict", res_dict)
 
 
-def eager_eval():
+def main2(ctx):
+    set_ctx(ctx)
+
     # the function is evaluated immediately, on P0
     x = mpd.device("P0")(random.randint)(0, 10)
     assert mpd.Utils.get_devid(x) == "P0", x
@@ -119,12 +126,9 @@ def eager_eval():
     print("v:", v)
 
 
-# import logging
-# logging.basicConfig(level=logging.DEBUG)
-
 if __name__ == "__main__":
-    mpd.init(device_conf, {})
-    print("-" * 10, "lazy_eval", "-" * 10)
-    lazy_eval()
-    print("-" * 10, "eager_eval", "-" * 10)
-    eager_eval()
+    # Create a simple simulator with cluster_spec directly
+    simulator = Simulator(cluster_spec)
+
+    main(simulator)
+    main2(simulator)

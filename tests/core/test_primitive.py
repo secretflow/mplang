@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from mplang import simp
+from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.expr.printer import Printer
@@ -58,9 +59,15 @@ def mask_2p():
 
 
 @pytest.fixture
-def trace_context(mask_2p):
+def cluster_spec_2p():
+    """Create a 2-party cluster spec for testing."""
+    return ClusterSpec.simple(2)
+
+
+@pytest.fixture
+def trace_context(mask_2p, cluster_spec_2p):
     """Create a trace context for testing."""
-    return TraceContext(world_size=2, mask=mask_2p)
+    return TraceContext(cluster_spec_2p, mask=mask_2p)
 
 
 class TestPrimitiveDecorator:
@@ -1257,7 +1264,9 @@ class TestSetMask:
         # The final output pmask should be the target_mask
         assert f": i64<{target_mask}>" in expr_str
 
-    def test_set_mask_with_static_pmask_valid_subset(self, trace_context):
+    def test_set_mask_with_static_pmask_valid_subset(
+        self, trace_context, cluster_spec_2p
+    ):
         """Test set_mask with static pmask where mask is a valid subset."""
 
         # Create a function that uses prank to get rank in specific context
@@ -1266,7 +1275,7 @@ class TestSetMask:
 
         # Create a new trace context with specific mask
         original_mask = Mask(0b11)  # Parties 0, 1 (full mask for 2-party context)
-        specific_context = TraceContext(world_size=2, mask=original_mask)
+        specific_context = TraceContext(cluster_spec_2p, mask=original_mask)
         traced_fn = trace(specific_context, rank_func)
         static_var = traced_fn.out_vars[0]
 
@@ -1310,7 +1319,7 @@ class TestSetMask:
         with pytest.raises(ValueError, match="not a subset"):
             trace(trace_context, test_func)
 
-    def test_set_mask_with_empty_mask(self, trace_context):
+    def test_set_mask_with_empty_mask(self, trace_context, cluster_spec_2p):
         """Test set_mask with empty mask (0)."""
 
         # Create a function that uses prank to get rank in specific context
@@ -1319,7 +1328,7 @@ class TestSetMask:
 
         # Create a new trace context with specific mask
         original_mask = Mask(0b11)  # Parties 0, 1 (full mask for 2-party context)
-        specific_context = TraceContext(world_size=2, mask=original_mask)
+        specific_context = TraceContext(cluster_spec_2p, mask=original_mask)
         traced_fn = trace(specific_context, rank_func)
         static_var = traced_fn.out_vars[0]
 

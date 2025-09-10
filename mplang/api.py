@@ -21,13 +21,13 @@ from jax.tree_util import tree_map
 
 from mplang.core import (
     InterpContext,
-    Mask,
     MPContext,
     MPObject,
     TraceContext,
     TracedFunction,
     trace,
 )
+from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import cur_ctx, with_ctx
 
 
@@ -72,26 +72,27 @@ class CompileOptions(MPContext):
         psize: Number of participating parties.
         spu_mask: Bitmask indicating which parties own an SPU device. Defaults
             to a mask that enables all parties.
-        **attrs: Extra attributes forwarded to the underlying ``TraceContext``.
     """
 
-    def __init__(self, psize: int, spu_mask: Mask | None = None, **attrs: Any):
-        self._psize = psize
-        self.spu_mask = spu_mask or Mask.all(psize)
-        # Keep user-defined attributes together with the default ones.
-        self._attrs: dict[str, Any] = attrs
-        self._attrs.setdefault("spu_mask", self.spu_mask)
+    def __init__(self, cluster_spec: Any) -> None:
+        super().__init__(cluster_spec)
 
-    # ---------- MPContext interface ----------
-    def psize(self) -> int:
-        return self._psize
+    @classmethod
+    def simple(cls, world_size: int) -> CompileOptions:
+        """Create a simple CompileOptions with the given party size and SPU mask.
 
-    def attrs(self) -> dict[str, Any]:
-        return self._attrs
+        Args:
+            world_size: Number of participating parties.
+
+        Returns:
+            A CompileOptions instance.
+        """
+        cluster_spec = ClusterSpec.simple(world_size)
+        return cls(cluster_spec)
 
 
 def compile(
     mctx: MPContext, fn: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> TracedFunction:
-    trace_ctx = TraceContext(mctx.psize(), attrs=mctx.attrs())
+    trace_ctx = TraceContext(mctx.cluster_spec)
     return trace(trace_ctx, fn, *args, **kwargs)

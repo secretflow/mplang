@@ -27,6 +27,7 @@ cluster_spec = ClusterSpec.from_dict({
         {"name": "node_2", "endpoint": "127.0.0.1:61922"},
         {"name": "node_3", "endpoint": "127.0.0.1:61923"},
         {"name": "node_4", "endpoint": "127.0.0.1:61924"},
+        {"name": "node_5", "endpoint": "127.0.0.1:61925"},
     ],
     "devices": {
         "SP0": {
@@ -40,6 +41,7 @@ cluster_spec = ClusterSpec.from_dict({
         },
         "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
         "P1": {"kind": "PPU", "members": ["node_4"], "config": {}},
+        "TEE0": {"kind": "TEE", "members": ["node_5"], "config": {}},
     },
 })
 
@@ -81,6 +83,29 @@ def millionaire():
     return x, y, z, r
 
 
+@mpd.function
+def millionaire_tee():
+    """Same millionaire comparison, but run at TEE device.
+
+    Transfers from P0/P1 to TEE are transparently encrypted on first use
+    (quote/attest + KEM/HKDF), and the result sent back TEE->P0 is also
+    transparently encrypted.
+    """
+    x = mpd.device("P0")(random.randint)(0, 10)
+    assert mpd.Utils.get_devid(x) == "P0", x
+
+    y = mpd.device("P1")(random.randint)(0, 10)
+    assert mpd.Utils.get_devid(y) == "P1", y
+
+    # Run comparison inside TEE
+    z = mpd.device("TEE0")(lambda x, y: x < y)(x, y)
+    assert mpd.Utils.get_devid(z) == "TEE0", z
+
+    # Bring result back to P0
+    r = mpd.put("P0", z)
+    return x, y, z, r
+
+
 def main(ctx):
     compiled = mplang.compile(ctx, millionaire)
     print("millionaire compiled:", compiled.compiler_ir())
@@ -90,6 +115,14 @@ def main(ctx):
     print("y:", y, mplang.fetch(ctx, y))
     print("z:", z, mplang.fetch(ctx, z))
     print("r:", r, mplang.fetch(ctx, r))
+
+    # TEE version
+    print("-" * 10, "millionaire (TEE)", "-" * 10)
+    x_t, y_t, z_t, r_t = mplang.evaluate(ctx, millionaire_tee)
+    print("x_t:", x_t, mplang.fetch(ctx, x_t))
+    print("y_t:", y_t, mplang.fetch(ctx, y_t))
+    print("z_t (at TEE):", z_t, mplang.fetch(ctx, z_t))
+    print("r_t (at P0):", r_t, mplang.fetch(ctx, r_t))
 
     print("-" * 10, "myfun", "-" * 10)
     xx, [yy, _c0], res_dict = mplang.evaluate(ctx, myfun, x, y)
@@ -124,6 +157,12 @@ def main2(ctx):
     # direct reveal a variable from P0 to P1
     v = mpd.put("P1", x)
     print("v:", v)
+
+    # Immediate evaluation: compute at TEE
+    z_tee = mpd.device("TEE0")(lambda a, b: a < b)(x, y)
+    print("z_tee (TEE0):", z_tee)
+    r_tee = mpd.put("P0", z_tee)
+    print("r_tee (P0):", r_tee)
 
 
 if __name__ == "__main__":

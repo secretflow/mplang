@@ -26,12 +26,13 @@ from mplang.frontend.base import FEOp
 class QuoteGen(FEOp):
     """TEE quote generation FEOp binding the provided ephemeral public key.
 
-    API (mock): quote(pk[u8[32]]) -> quote[u8[1]]
+    API (mock): quote(pk[u8[32]]) -> quote[u8[33]]
+    The mock encodes a 1-byte header + 32-byte pk.
     """
 
     def __call__(self, pk: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         pk_ty = TensorType.from_obj(pk)
-        quote_ty = TensorType(UINT8, (1,))
+        quote_ty = TensorType(UINT8, (33,))
         pfunc = PFunction(
             fn_type="tee.quote",
             ins_info=(pk_ty,),
@@ -42,20 +43,20 @@ class QuoteGen(FEOp):
 
 
 class QuoteVerifyAndExtract(FEOp):
-    """TEE quote verification FEOp returning a gating byte (1 for success).
+    """TEE quote verification FEOp returning the attested TEE public key.
 
-    Mock behavior: returns u8[1] = 1 on success.
+    API (mock): attest(quote[u8[33]]) -> tee_pk[u8[32]]
     """
 
     def __call__(self, quote: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         quote_ty = TensorType.from_obj(quote)
-        key_ty = TensorType(UINT8, (1,))
+        pk_ty = TensorType(UINT8, (32,))
         pfunc = PFunction(
             fn_type="tee.attest",
             ins_info=(quote_ty,),
-            outs_info=(key_ty,),
+            outs_info=(pk_ty,),
         )
-        _, treedef = tree_flatten(key_ty)
+        _, treedef = tree_flatten(pk_ty)
         return pfunc, [quote], treedef
 
 

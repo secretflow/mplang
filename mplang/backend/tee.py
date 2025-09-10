@@ -68,13 +68,10 @@ class TeeHandler(TensorHandler):
         return [self.QUOTE_GEN, self.QUOTE_VERIFY_AND_EXTRACT]
 
     def _quote_from_pk(self, pk: np.ndarray) -> np.ndarray:
-        # Bind the provided pk (mock: only first byte) into report_data
-        if pk.size == 0:
-            report = b"REPORTDATA:\x00"
-        else:
-            report = b"REPORTDATA:" + bytes([int(pk.flatten()[0])])
-        q = Quote(report_data=report).to_array()
-        return q.astype(np.uint8)
+        # Mock quote structure: 1-byte header + 32-byte pk
+        header = np.array([1], dtype=np.uint8)
+        pk32 = np.asarray(pk, dtype=np.uint8).reshape(32)
+        return np.concatenate([header, pk32]).astype(np.uint8)
 
     def _execute_quote_gen(
         self, args: list[TensorLike], pfunc: PFunction
@@ -89,10 +86,14 @@ class TeeHandler(TensorHandler):
     def _execute_quote_verify_and_extract(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
-        # Mock attest: return a single-byte 1 to indicate verification passed
+        # Mock attest: parse and return pk from quote (no real verification)
         if len(args) != 1:
             raise ValueError("tee.attest expects exactly one argument (quote)")
-        return [np.array([1], dtype=np.uint8)]
+        quote = np.asarray(args[0], dtype=np.uint8)
+        if quote.size != 33:
+            raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")
+        pk = quote[1:33].astype(np.uint8)
+        return [pk]
 
     def execute(
         self, pfunc: PFunction, args: list[TensorLike]

@@ -36,67 +36,63 @@ def demo_flow():
     P0, P1, P2 = 0, 1, 2
 
     # 1) TEE generates ephemeral keypairs and quotes binding their pk
-    t_sk0, t_pk0 = simp.runAt(P2, crypto.kem_keygen)("x25519")
-    t_sk1, t_pk1 = simp.runAt(P2, crypto.kem_keygen)("x25519")
-    q0 = simp.runAt(P2, tee.quote)(t_pk0)
-    q1 = simp.runAt(P2, tee.quote)(t_pk1)
+    tee_sk0, tee_pk0 = simp.runAt(P2, crypto.kem_keygen)("x25519")
+    tee_sk1, tee_pk1 = simp.runAt(P2, crypto.kem_keygen)("x25519")
+    quote_p0 = simp.runAt(P2, tee.quote)(tee_pk0)
+    quote_p1 = simp.runAt(P2, tee.quote)(tee_pk1)
 
     # Scatter quotes to P0 & P1
-    q_for_p0 = simp.p2p(P2, P0, q0)
-    q_for_p1 = simp.p2p(P2, P1, q1)
+    quote_p0_at_p0 = simp.p2p(P2, P0, quote_p0)
+    quote_p1_at_p1 = simp.p2p(P2, P1, quote_p1)
 
-    # 3) Data providers verify their quotes (gating). In a real impl, attest
-    # would return the attested TEE public key. Our mock returns a tiny tensor,
-    # so we perform an explicit p2p of the public material after this step.
-    _g0 = simp.runAt(P0, tee.attest)(q_for_p0)
-    _g1 = simp.runAt(P1, tee.attest)(q_for_p1)
-    t_pk0_for_p0 = simp.p2p(P2, P0, t_pk0)
-    t_pk1_for_p1 = simp.p2p(P2, P1, t_pk1)
+    # 3) Data providers verify quotes and obtain the attested TEE public key
+    tee_pk0_at_p0 = simp.runAt(P0, tee.attest)(quote_p0_at_p0)
+    tee_pk1_at_p1 = simp.runAt(P1, tee.attest)(quote_p1_at_p1)
 
     # 4) Each data provider generates its own ephemeral keypair
-    v_sk0, v_pk0 = simp.runAt(P0, crypto.kem_keygen)("x25519")
-    v_sk1, v_pk1 = simp.runAt(P1, crypto.kem_keygen)("x25519")
+    v_sk_p0, v_pk_p0 = simp.runAt(P0, crypto.kem_keygen)("x25519")
+    v_sk_p1, v_pk_p1 = simp.runAt(P1, crypto.kem_keygen)("x25519")
 
     # Send V-side public materials to TEE
-    v_pk0_at_tee = simp.p2p(P0, P2, v_pk0)
-    v_pk1_at_tee = simp.p2p(P1, P2, v_pk1)
+    v_pk_p0_at_tee = simp.p2p(P0, P2, v_pk_p0)
+    v_pk_p1_at_tee = simp.p2p(P1, P2, v_pk_p1)
 
     # 5) Derive per-party shared secrets, then HKDF to final session keys
-    shared0_v = simp.runAt(P0, crypto.kem_derive)(v_sk0, t_pk0_for_p0, "x25519")
-    shared1_v = simp.runAt(P1, crypto.kem_derive)(v_sk1, t_pk1_for_p1, "x25519")
-    shared0_t = simp.runAt(P2, crypto.kem_derive)(t_sk0, v_pk0_at_tee, "x25519")
-    shared1_t = simp.runAt(P2, crypto.kem_derive)(t_sk1, v_pk1_at_tee, "x25519")
+    shared0_p0 = simp.runAt(P0, crypto.kem_derive)(v_sk_p0, tee_pk0_at_p0, "x25519")
+    shared1_p1 = simp.runAt(P1, crypto.kem_derive)(v_sk_p1, tee_pk1_at_p1, "x25519")
+    shared0_tee = simp.runAt(P2, crypto.kem_derive)(tee_sk0, v_pk_p0_at_tee, "x25519")
+    shared1_tee = simp.runAt(P2, crypto.kem_derive)(tee_sk1, v_pk_p1_at_tee, "x25519")
 
     info_p0 = simp.runAt(P0, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
     info_p1 = simp.runAt(P1, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    info_t = simp.runAt(P2, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
+    info_tee = simp.runAt(P2, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
 
-    sess0_v = simp.runAt(P0, crypto.hkdf)(shared0_v, info_p0)
-    sess1_v = simp.runAt(P1, crypto.hkdf)(shared1_v, info_p1)
-    sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info_t)
-    sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info_t)
+    sess0_p0 = simp.runAt(P0, crypto.hkdf)(shared0_p0, info_p0)
+    sess1_p1 = simp.runAt(P1, crypto.hkdf)(shared1_p1, info_p1)
+    sess0_tee = simp.runAt(P2, crypto.hkdf)(shared0_tee, info_tee)
+    sess1_tee = simp.runAt(P2, crypto.hkdf)(shared1_tee, info_tee)
 
     # 6) Encrypt local data using derived session keys
-    x0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
-    x1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
-    c0 = simp.runAt(P0, crypto.enc)(x0, sess0_v)
-    c1 = simp.runAt(P1, crypto.enc)(x1, sess1_v)
+    x_p0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
+    x_p1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
+    ct_p0 = simp.runAt(P0, crypto.enc)(x_p0, sess0_p0)
+    ct_p1 = simp.runAt(P1, crypto.enc)(x_p1, sess1_p1)
 
     # 7) Send ciphertexts to TEE and decrypt using the same session keys at TEE
-    c0_at_tee = simp.p2p(P0, P2, c0)
-    c1_at_tee = simp.p2p(P1, P2, c1)
+    ct_p0_at_tee = simp.p2p(P0, P2, ct_p0)
+    ct_p1_at_tee = simp.p2p(P1, P2, ct_p1)
 
-    p0 = simp.runAt(P2, crypto.dec)(c0_at_tee, sess0_t)
-    p1 = simp.runAt(P2, crypto.dec)(c1_at_tee, sess1_t)
+    pt0_at_tee = simp.runAt(P2, crypto.dec)(ct_p0_at_tee, sess0_tee)
+    pt1_at_tee = simp.runAt(P2, crypto.dec)(ct_p1_at_tee, sess1_tee)
 
     # Return plaintexts reconstructed at TEE for quick visual check
-    return p0, p1
+    return pt0_at_tee, pt1_at_tee
 
 
 if __name__ == "__main__":
     # Build a simple 3-party simulator
     sim = mplang.Simulator.simple(3)
-    p0, p1 = mplang.evaluate(sim, demo_flow)
+    pt0_at_tee, pt1_at_tee = mplang.evaluate(sim, demo_flow)
     print("tee_attestation (mock) results:")
-    print("P0 plaintext:", mplang.fetch(sim, p0))
-    print("P1 plaintext:", mplang.fetch(sim, p1))
+    print("P0 plaintext:", mplang.fetch(sim, pt0_at_tee))
+    print("P1 plaintext:", mplang.fetch(sim, pt1_at_tee))

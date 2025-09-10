@@ -27,12 +27,14 @@ from collections.abc import Callable
 from functools import partial, wraps
 from typing import Any
 
+import numpy as np
 from jax.tree_util import tree_map
 
 import mplang.api as mapi
 from mplang import simp
 from mplang.core import InterpContext, MPObject, primitive
 from mplang.core.cluster import ClusterSpec
+from mplang.frontend import crypto, tee
 from mplang.simp import mpi, smpc
 from mplang.utils.func_utils import normalize_fn
 
@@ -46,6 +48,7 @@ function = primitive.function
 
 class Utils:
     DEV_ID = "dev_id"
+    TEE_SESS_KEY = "tee_sess_id"
 
     @classmethod
     def is_device_obj(cls, obj: MPObject) -> bool:
@@ -66,6 +69,19 @@ class Utils:
             raise TypeError("Input must be an instance of Object")
 
         return obj.attrs[cls.DEV_ID]  # type: ignore[no-any-return]
+
+    @classmethod
+    def set_tee_sess(cls, obj: MPObject, sess_id: str) -> MPObject:
+        if not isinstance(obj, MPObject):
+            raise TypeError(f"Input must be an instance of Object, {obj}")
+        obj.attrs[cls.TEE_SESS_KEY] = sess_id
+        return obj
+
+    @classmethod
+    def get_tee_sess(cls, obj: MPObject) -> str | None:
+        if not isinstance(obj, MPObject):
+            return None
+        return obj.attrs.get(cls.TEE_SESS_KEY)  # type: ignore[no-any-return]
 
 
 def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
@@ -100,6 +116,12 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
                 var = smpc.srun(nfn, fe_type=fe_type)(args_flat)
                 return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
             elif dev_info.kind.upper() == "PPU":
+                assert len(dev_info.members) == 1
+                rank = dev_info.members[0].rank
+                var = simp.runAt(rank, nfn)(args_flat)
+                return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
+            elif dev_info.kind.upper() == "TEE":
+                # Execute on TEE device (single member expected)
                 assert len(dev_info.members) == 1
                 rank = dev_info.members[0].rank
                 var = simp.runAt(rank, nfn)(args_flat)
@@ -142,8 +164,75 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         to_rank = to_dev.members[0].rank
         var = mpi.p2p(frm_rank, to_rank, obj)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
+    elif frm_to_pair == ("PPU", "TEE"):
+        # Transparent handshake + encryption for the first transfer; reuse thereafter
+        assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
+        tee_rank = to_dev.members[0].rank
+        # Ensure sessions (both directions) exist for this PPU<->TEE pair
+        sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
+
+        # Encrypt at sender, transfer, then decrypt at TEE
+        ct = simp.runAt(frm_rank, crypto.enc)(obj, sess_p)
+        ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
+        pt_at_tee = simp.runAt(tee_rank, crypto.dec)(ct_at_tee, sess_t)
+        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
+    elif frm_to_pair == ("TEE", "PPU"):
+        # Transparent encryption from TEE to a specific PPU using the reverse-direction session key
+        assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
+        tee_rank = frm_dev.members[0].rank
+        ppu_rank = to_dev.members[0].rank
+        # Ensure bidirectional session established for this pair
+        _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
+        # Fetch established session for (PPU, TEE) pair, then use (TEE->PPU) direction
+        sess_p, sess_t = _TEE_SESS_CACHE[to_dev_id, frm_dev_id]
+        sess_sender = sess_t  # TEE side key used to encrypt
+        sess_receiver = sess_p  # PPU side key used to decrypt
+        ct = simp.runAt(tee_rank, crypto.enc)(obj, sess_sender)
+        ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
+        pt_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_receiver)
+        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
+
+
+# Simple in-process cache for per-(from_dev,to_dev) TEE sessions within a program run
+_TEE_SESS_CACHE: dict[tuple[str, str], tuple[MPObject, MPObject]] = {}
+
+
+def _ensure_tee_session(
+    frm_dev_id: str, to_dev_id: str, frm_rank: int, tee_rank: int
+) -> tuple[MPObject, MPObject]:
+    """Ensure a TEE session (sess_p at sender, sess_t at TEE) exists.
+
+    Returns (sess_p, sess_t).
+    """
+    key = (frm_dev_id, to_dev_id)
+    if key in _TEE_SESS_CACHE:
+        return _TEE_SESS_CACHE[key]
+
+    # 1) TEE generates (sk, pk) and quote(pk)
+    tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)("x25519")
+    quote = simp.runAt(tee_rank, tee.quote)(tee_pk)
+
+    # 2) Send quote to sender and attest to obtain TEE pk
+    quote_at_sender = mpi.p2p(tee_rank, frm_rank, quote)
+    tee_pk_at_sender = simp.runAt(frm_rank, tee.attest)(quote_at_sender)
+
+    # 3) Sender generates its ephemeral keypair and sends its pk to TEE
+    v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)("x25519")
+    v_pk_at_tee = mpi.p2p(frm_rank, tee_rank, v_pk)
+
+    # 4) Both sides derive the shared secret and session key
+    shared_p = simp.runAt(frm_rank, crypto.kem_derive)(v_sk, tee_pk_at_sender, "x25519")
+    shared_t = simp.runAt(tee_rank, crypto.kem_derive)(tee_sk, v_pk_at_tee, "x25519")
+    info_p = simp.runAt(frm_rank, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
+    info_t = simp.runAt(tee_rank, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
+    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_p)
+    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_t)
+
+    _TEE_SESS_CACHE[key] = (sess_p, sess_t)
+    return sess_p, sess_t
 
 
 def put(to_dev_id: str, obj: Any) -> MPObject:
@@ -163,6 +252,12 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
         result = mapi.fetch(interp, revealed)
         return result[0]
     elif dev_kind == "PPU":
+        dev_info = cluster_spec.devices[dev_id]
+        assert len(dev_info.members) == 1
+        rank = dev_info.members[0].rank
+        result = mapi.fetch(interp, obj)
+        return result[rank]
+    elif dev_kind == "TEE":
         dev_info = cluster_spec.devices[dev_id]
         assert len(dev_info.members) == 1
         rank = dev_info.members[0].rank

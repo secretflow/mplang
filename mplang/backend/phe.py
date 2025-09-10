@@ -114,6 +114,11 @@ class PHEHandler(TensorHandler):
             "phe.add",
             "phe.mul",
             "phe.decrypt",
+            # our extensions
+            "phe.dot",
+            "phe.concat",
+            "phe.gather",
+            "phe.scatter",
         ]
 
     def execute(
@@ -132,6 +137,8 @@ class PHEHandler(TensorHandler):
             return self._execute_mul(pfunc, args)
         elif pfunc.fn_type == "phe.decrypt":
             return self._execute_decrypt(pfunc, args)
+        elif pfunc.fn_type == "phe.dot":
+            return self._execute_dot(pfunc, args)
         else:
             raise ValueError(f"Unsupported PHE function type: {pfunc.fn_type}")
 
@@ -237,7 +244,7 @@ class PHEHandler(TensorHandler):
             else:  # integer types
                 data_list = [int(x) for x in flat_data]
 
-            lightphe_ciphertext = phe.encrypt(data_list)
+            lightphe_ciphertext = [phe.encrypt([val]) for val in data_list]
 
             # Create CipherText object
             ciphertext = CipherText(
@@ -297,7 +304,10 @@ class PHEHandler(TensorHandler):
 
             # Perform homomorphic multiplication
             # In Paillier, ciphertext * plaintext is supported
-            result_ciphertext = ciphertext.ct_data * multiplier
+            raw_ct: list[Any] = ciphertext.ct_data
+            result_ciphertext = [
+                raw_ct[i] * [multiplier[i]] for i in range(len(multiplier))
+            ]
 
             # Create result CipherText
             return [
@@ -380,7 +390,9 @@ class PHEHandler(TensorHandler):
 
         # Perform homomorphic addition
         # lightPHE handles both scalar and tensor addition automatically
-        result_ciphertext = ct1.ct_data + ct2.ct_data
+        raw_ct1: list[Any] = ct1.ct_data
+        raw_ct2: list[Any] = ct2.ct_data
+        result_ciphertext = [raw_ct1[i] + raw_ct2[i] for i in range(len(raw_ct1))]
 
         # Create result CipherText
         return CipherText(
@@ -438,10 +450,13 @@ class PHEHandler(TensorHandler):
         else:  # integer types
             data_list = [int(x) for x in flat_data]
 
-        encrypted_plaintext = phe.encrypt(data_list)
+        encrypted_plaintext = [phe.encrypt([val]) for val in data_list]
 
         # Perform addition
-        result_ciphertext = ciphertext.ct_data + encrypted_plaintext
+        result_ciphertext = [
+            encrypted_plaintext[i] + ciphertext.ct_data[i]
+            for i in range(len(encrypted_plaintext))
+        ]
 
         # Create result CipherText
         return CipherText(
@@ -500,7 +515,7 @@ class PHEHandler(TensorHandler):
 
             # Decrypt the data
             target_dtype = ciphertext.semantic_dtype.to_numpy()
-            decrypted_raw = phe.decrypt(ciphertext.ct_data)
+            decrypted_raw = [phe.decrypt(ct) for ct in ciphertext.ct_data]
 
             # Since we always use list encryption, decrypted_raw is always a list
             if not isinstance(decrypted_raw, list):
@@ -523,7 +538,7 @@ class PHEHandler(TensorHandler):
             if target_dtype.kind in "iu":  # integer types
                 info = np.iinfo(target_dtype)
                 processed_data = [
-                    max(info.min, min(info.max, val)) for val in decrypted_raw
+                    max(info.min, min(info.max, val[0])) for val in decrypted_raw
                 ]
             else:
                 processed_data = decrypted_raw
@@ -537,3 +552,79 @@ class PHEHandler(TensorHandler):
 
         except Exception as e:
             raise RuntimeError(f"Failed to decrypt data: {e}") from e
+
+    def _execute_dot(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute homomorphic dot product.
+
+        Args:
+            pfunc: PFunction for dot product
+            args: [ciphertext, plaintext] where ciphertext is CipherText and plaintext is TensorLike
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText
+        """
+        if len(args) != 2:
+            raise ValueError("Dot product expects exactly two arguments")
+
+        ciphertext, plaintext = args
+
+        # Validate that first argument is a CipherText
+        if not isinstance(ciphertext, CipherText):
+            raise ValueError("First argument must be a CipherText instance")
+
+        try:
+            # Convert plaintext to numpy
+            plaintext_np = self._convert_to_numpy(plaintext)
+
+            # Validate shape compatibility for dot product
+            if len(ciphertext.semantic_shape) != 1 or len(plaintext_np.shape) != 1:
+                raise ValueError("Both operands must be 1-D vectors for dot product")
+
+            if ciphertext.semantic_shape[0] != plaintext_np.shape[0]:
+                raise ValueError(
+                    f"Vector size mismatch: CipherText size {ciphertext.semantic_shape[0]} "
+                    f"vs plaintext size {plaintext_np.shape[0]}"
+                )
+
+            # Flatten the plaintext data
+            target_dtype = ciphertext.semantic_dtype
+            flat_data = plaintext_np.flatten()
+
+            if target_dtype.is_floating:
+                multiplier = [float(x) for x in flat_data]
+            else:  # integer types
+                multiplier = [int(x) for x in flat_data]
+
+            # Perform homomorphic dot product
+            # This is done by multiplying each element and summing up
+            intermediate_products = [
+                ciphertext.ct_data[i] * [multiplier[i]] for i in range(len(multiplier))
+            ]
+
+            # Sum up the intermediate products using lightPHE addition
+            # Start with the first product and add the rest
+            result_ciphertext = intermediate_products[0]
+            for i in range(1, len(intermediate_products)):
+                result_ciphertext = result_ciphertext + intermediate_products[i]
+
+            # Create result CipherText with scalar shape
+            return [
+                CipherText(
+                    ct_data=[
+                        result_ciphertext
+                    ],  # Wrap single result in list for consistency
+                    semantic_dtype=ciphertext.semantic_dtype,
+                    semantic_shape=(),  # Scalar result
+                    scheme=ciphertext.scheme,
+                    key_size=ciphertext.key_size,
+                    pk_data=ciphertext.pk_data,
+                )
+            ]
+
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform dot product: {e}") from e

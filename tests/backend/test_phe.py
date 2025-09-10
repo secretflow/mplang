@@ -52,6 +52,10 @@ class TestPHEHandler:
             "phe.add",
             "phe.mul",
             "phe.decrypt",
+            "phe.dot",
+            "phe.concat",
+            "phe.gather",
+            "phe.scatter",
         ]
 
         for expected_fn in expected_functions:
@@ -868,3 +872,244 @@ class TestPHEHandler:
                 assert abs(decrypted.item() - plaintext.item()) < 1e-6
             else:
                 assert decrypted.item() == plaintext.item()
+
+    def test_dot_ciphertext_plaintext_int32(self):
+        """Test CipherText dot plaintext with int32 vectors."""
+        pk, sk = self._generate_keypair()
+
+        # Create int32 vectors
+        ciphertext_vec = np.array([1, 2, 3, 4], dtype=np.int32)
+        plaintext_vec = np.array([2, 1, 3, 2], dtype=np.int32)
+
+        # Encrypt the first vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Perform dot product
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(plaintext_vec),
+            ),
+            outs_info=(
+                TensorType.from_obj(np.array(0, dtype=np.int32)),
+            ),  # Scalar result
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(np.array(0, dtype=np.int32)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.dot(
+            ciphertext_vec, plaintext_vec
+        )  # 1*2 + 2*1 + 3*3 + 4*2 = 2 + 2 + 9 + 8 = 21
+        assert decrypted.item() == expected
+
+    def test_dot_ciphertext_plaintext_float64(self):
+        """Test CipherText dot plaintext with float64 vectors."""
+        pk, sk = self._generate_keypair()
+
+        # Create float64 vectors
+        ciphertext_vec = np.array([1.5, 2.0, 3.5], dtype=np.float64)
+        plaintext_vec = np.array([2.0, 1.5, 1.0], dtype=np.float64)
+
+        # Encrypt the first vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Perform dot product
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(plaintext_vec),
+            ),
+            outs_info=(
+                TensorType.from_obj(np.array(0.0, dtype=np.float64)),
+            ),  # Scalar result
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+        assert result_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(np.array(0.0, dtype=np.float64)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(np.array(0.0, dtype=np.float64)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.dot(
+            ciphertext_vec, plaintext_vec
+        )  # 1.5*2.0 + 2.0*1.5 + 3.5*1.0 = 3.0 + 3.0 + 3.5 = 9.5
+        assert abs(decrypted.item() - expected) < 1e-10
+
+    def test_dot_ciphertext_plaintext_array_int16(self):
+        """Test CipherText dot plaintext with int16 vectors."""
+        pk, sk = self._generate_keypair()
+
+        # Create int16 vectors
+        ciphertext_vec = np.array([10, 20, 30], dtype=np.int16)
+        plaintext_vec = np.array([1, 2, 3], dtype=np.int16)
+
+        # Encrypt the first vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Perform dot product
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(plaintext_vec),
+            ),
+            outs_info=(
+                TensorType.from_obj(np.array(0, dtype=np.int16)),
+            ),  # Scalar result
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT16
+        assert result_ct.semantic_shape == ()
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(np.array(0, dtype=np.int16)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int16)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.dot(
+            ciphertext_vec, plaintext_vec
+        )  # 10*1 + 20*2 + 30*3 = 10 + 40 + 90 = 140
+        assert decrypted.item() == expected
+
+    def test_dot_invalid_args(self):
+        """Test dot product with invalid arguments."""
+        pk, _sk = self._generate_keypair()
+
+        # Test with wrong number of arguments
+        ciphertext_vec = np.array([1, 2], dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Test with only one argument
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ciphertext_vec),),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+        )
+        with pytest.raises(
+            ValueError, match="Dot product expects exactly two arguments"
+        ):
+            self.handler.execute(dot_pfunc, [ciphertext])
+
+    def test_dot_shape_mismatch(self):
+        """Test dot product with shape mismatch."""
+        pk, _sk = self._generate_keypair()
+
+        # Create vectors with different sizes
+        ciphertext_vec = np.array([1, 2, 3], dtype=np.int32)
+        plaintext_vec = np.array([1, 2], dtype=np.int32)  # Different size
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(plaintext_vec),
+            ),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+        )
+        with pytest.raises(ValueError, match="Vector size mismatch"):
+            self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])
+
+    def test_dot_non_vector_operands(self):
+        """Test dot product with non-vector operands."""
+        pk, _sk = self._generate_keypair()
+
+        # Test with scalar (should fail as dot product requires vectors)
+        ciphertext_scalar = np.array(5, dtype=np.int32)
+        plaintext_scalar = np.array(3, dtype=np.int32)
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_scalar),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_scalar, pk])[0]
+
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_scalar),
+                TensorType.from_obj(plaintext_scalar),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_scalar),),
+        )
+        with pytest.raises(
+            ValueError, match="Both operands must be 1-D vectors for dot product"
+        ):
+            self.handler.execute(dot_pfunc, [ciphertext, plaintext_scalar])
+
+    def test_dot_non_ciphertext_first_arg(self):
+        """Test dot product with non-CipherText as first argument."""
+        # Test with plaintext as first argument (should fail)
+        plaintext_vec1 = np.array([1, 2, 3], dtype=np.int32)
+        plaintext_vec2 = np.array([2, 1, 3], dtype=np.int32)
+
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(plaintext_vec1),
+                TensorType.from_obj(plaintext_vec2),
+            ),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+        )
+        with pytest.raises(
+            ValueError, match="First argument must be a CipherText instance"
+        ):
+            self.handler.execute(dot_pfunc, [plaintext_vec1, plaintext_vec2])

@@ -646,6 +646,11 @@ def while_loop(
         raise ValueError(
             f"Condition function must return a single boolean variable: got {len(cond_tfn.out_vars)} outputs"
         )
+    cond_out_var = cond_tfn.out_vars[0]
+    if len(cond_out_var.mptype.shape) != 0:
+        raise TypeError(
+            f"Condition function must return a scalar, but got shape {cond_out_var.mptype.shape}"
+        )
 
     # Validate body returns same number of leaves and same dtype/shape per leaf
     if len(body_tfn.out_vars) != len(cond_tfn.in_vars):

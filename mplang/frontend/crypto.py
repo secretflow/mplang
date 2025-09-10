@@ -1,20 +1,27 @@
-"""
-Crypto frontend FEOps (mock implementation backend).
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-Notes:
-- This frontend describes operation signatures, types, and high-level semantics; it
-    does not implement cryptography. Security properties depend on the selected backend.
-- Backends are responsible for providing secure algorithms (e.g., AEAD for enc/dec;
-    real KEM/ECDH/HPKE and HKDF for key agreement/derivation) and for validating inputs.
-- This repository also includes a tutorial/mock backend for local demos that is NOT
-    secure. When using that backend, `enc/dec` is a hash-based stream cipher without
-    authentication and KEM/HKDF are simplified. Production deployments should use a
-    proper backend implementation.
-    - Stream cipher is hash-based XOR and NOT AEAD (no integrity/authenticity).
-    - KEM ops and HKDF are placeholders (not real ECDH/HPKE/HKDF).
-- This frontend describes types/attrs; execution is handled by backend/crypto.
-- The mock backend uses a blake2b-based keystream (NOT secure) with a random
-    12-byte nonce prepended to the ciphertext.
+"""
+Crypto frontend FEOps: operation signatures, types, and high‑level semantics.
+
+Scope and contracts:
+- This module defines portable API shapes; it does not implement cryptography.
+- Backends execute the operations and must meet the security semantics required
+    by the deployment (confidentiality, authenticity, correctness, etc.).
+- The enc/dec API in this frontend uses a conventional 12‑byte nonce prefix
+    (ciphertext = nonce || payload), and dec expects that format. Other security
+    properties (e.g., AEAD) are backend responsibilities.
 """
 
 from __future__ import annotations
@@ -29,6 +36,15 @@ from mplang.frontend.base import FEOp
 
 
 class KeyGen(FEOp):
+    """Generate random bytes for symmetric keys or generic randomness.
+
+    API: keygen(length: int = 32) -> key[u8[length]]
+
+    Notes:
+    - Frontend defines the type/shape; backend provides randomness.
+    - Raises ValueError when length <= 0.
+    """
+
     def __call__(self, length: int = 32) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         if length <= 0:
             raise ValueError("length must be > 0")
@@ -47,6 +63,19 @@ keygen = KeyGen()
 
 
 class SymmetricEncrypt(FEOp):
+    """Symmetric encryption.
+
+    API: enc(plaintext[u8[N]], key[u8[M]]) -> ciphertext[u8[N + 12]]
+
+    Semantics:
+    - Ciphertext is defined as nonce(12 bytes) || encrypted_payload.
+    - Frontend validates input dtype/shape (1-D UINT8) and builds IR types.
+
+    Notes:
+    - Authenticity/integrity guarantees are backend-defined.
+    - Raises TypeError if plaintext is not 1-D UINT8.
+    """
+
     def __call__(
         self, plaintext: MPObject, key: MPObject
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -72,6 +101,19 @@ enc = SymmetricEncrypt()
 
 
 class SymmetricDecrypt(FEOp):
+    """Symmetric decryption.
+
+    API: dec(ciphertext[u8[N + 12]], key[u8[M]]) -> plaintext[u8[N]]
+
+    Semantics:
+    - Expects a 12-byte nonce prefix and returns the decrypted payload bytes.
+    - Frontend validates input dtype/shape and builds IR types.
+
+    Notes:
+    - Authenticity/integrity checks (if any) are backend-defined.
+    - Raises TypeError if ciphertext is not 1-D UINT8 with nonce.
+    """
+
     def __call__(
         self, ciphertext: MPObject, key: MPObject
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -95,9 +137,13 @@ dec = SymmetricDecrypt()
 
 
 class KemKeyGen(FEOp):
-    """KEM-style keypair generation (frontend semantic; backend may mock).
+    """KEM-style keypair generation.
 
     API: kem_keygen(suite: str = 'x25519') -> (sk[u8[32]], pk[u8[32]])
+
+    Notes:
+    - Frontend expresses the signature/shape; backend implements the scheme.
+    - The suite string is forwarded to the backend.
     """
 
     def __call__(
@@ -122,6 +168,10 @@ class KemDerive(FEOp):
     """KEM-style shared secret derivation.
 
     API: kem_derive(sk[u8[32]], peer_pk[u8[32]], suite: str = 'x25519') -> secret[u8[32]]
+
+    Notes:
+    - Frontend defines types; backend performs the cryptographic operation.
+    - The suite string is forwarded to the backend.
     """
 
     def __call__(
@@ -144,9 +194,12 @@ kem_derive = KemDerive()
 
 
 class HKDF(FEOp):
-    """HKDF-style key derivation (frontend semantic; backend may mock).
+    """HKDF-style key derivation.
 
     API: hkdf(secret[u8[32]], info[u8[M]]) -> key[u8[32]]
+
+    Notes:
+    - Frontend expresses API; backend implements the KDF.
     """
 
     def __call__(

@@ -248,8 +248,10 @@ class WhileExpr(Expr):
         self.args = args
 
     def _compute_mptypes(self) -> list[MPType]:
-        # The result types of a while loop are the same as its initial state.
-        return self.args[0].mptypes
+        # The result types of a while loop are the same as the body function's outputs.
+        # This supports multi-value loop-carried state (PyTree leaves) and ensures
+        # evaluator can determine how many values are produced by the loop.
+        return self.body_fn.mptypes
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_while(self)

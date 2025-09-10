@@ -18,7 +18,6 @@ import yaml
 
 import mplang
 import mplang.device as mpd
-import mplang.random as mpr
 import mplang.simp as simp
 from mplang.core.cluster import ClusterSpec
 
@@ -34,8 +33,8 @@ def millionaire():
     # Note: mpl.run(random.randint) will not work, because
     # the random number generator's state is captured and will always
     # return the same number on both parties.
-    x = mpr.prandint(0, 10)
-    y = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
+    y = simp.prandint(0, 10)
 
     # both of them seal it
     x_ = simp.sealFrom(x, 0)

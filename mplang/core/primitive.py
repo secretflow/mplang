@@ -38,6 +38,7 @@ from mplang.core.expr.ast import (
     ShflSExpr,
     WhileExpr,
 )
+from mplang.core.expr.utils import deduce_mask
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
@@ -47,7 +48,7 @@ from mplang.core.table import TableLike
 from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.frontend import builtin
-from mplang.utils.func_utils import var_demorph
+from mplang.utils.func_utils import var_demorph, var_morph
 
 
 def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
@@ -367,10 +368,10 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
 @primitive
 def cond(
     pred: MPObject,
-    then_fn: Callable[..., MPObject],
-    else_fn: Callable[..., MPObject],
+    then_fn: Callable[..., Any],
+    else_fn: Callable[..., Any],
     *args: Any,
-) -> MPObject:
+) -> Any:
     """Multi-party conditional execution based on a predicate.
 
     This function implements conditional branching in multi-party computation,
@@ -395,9 +396,9 @@ def cond(
                Must be compatible with both then_fn and else_fn input signatures.
 
     Returns:
-        MPObject: The result of the executed branch. The output type is inferred
-                 from both branches, with pmask set conservatively if the branches
-                 differ in these properties.
+        Any: The result of the executed branch. May be a single MPObject or a
+             PyTree of MPObjects. The output type/structure is validated to match
+             between then_fn and else_fn.
 
     Raises:
         ValueError: If then_fn or else_fn don't have compatible input/output signatures,
@@ -448,9 +449,10 @@ def cond(
             Output:  x0+1 -    x2-1   (only parties with input data produce output)
 
     Note:
-        Both branches must have identical input and output type signatures.
-        The output pmask is set conservatively if branches have different pmasks.
-        Both functions can capture variables from outer scopes.
+    Both branches must have identical input and output signatures (including
+    PyTree structure and per-leaf dtype/shape). The output pmask is set
+    conservatively if branches have different pmasks. Both functions can
+    capture variables from outer scopes.
     """
     assert all(isinstance(x, MPObject) for x in args), args
 
@@ -524,10 +526,10 @@ def cond(
 
 @primitive
 def while_loop(
-    cond_fn: Callable[[MPObject], MPObject],
-    body_fn: Callable[[MPObject], MPObject],
-    init: MPObject,
-) -> MPObject:
+    cond_fn: Callable[[Any], MPObject],
+    body_fn: Callable[[Any], Any],
+    init: Any,
+) -> Any:
     """Multi-party while loop with condition and body functions.
 
     This function implements iterative computation in multi-party settings using
@@ -615,52 +617,66 @@ def while_loop(
         during iteration. Both functions can capture variables from outer scopes.
         This implementation is similar to JAX while_loop but adapted for multi-party computation.
     """
-    # TODO(jint): support multiple initial states
     cur_tracer = _tracer()
 
-    # Step 1: Trace both condition and body functions in separate contexts
-    cond_tracer = cur_tracer.fork(init.pmask)
+    # Flatten init into loop-carried MPObject leaves, disallow non-MPObject leaves for now
+    is_mpobj = lambda x: isinstance(x, MPObject)
+    init_vars, init_imms, _init_struct = var_morph(init, is_mpobj)
+
+    if len(init_vars) == 0:
+        raise ValueError("while_loop requires at least one MPObject in init state")
+    if len(init_imms) != 0:
+        raise TypeError(
+            "while_loop init must be a PyTree of MPObjects (no Python/immediate leaves)"
+        )
+
+    # Deduce execution mask from init leaves; fallback to current context mask if unknown
+    init_pmasks = [cast(TraceVar, v).mptype.pmask for v in init_vars]
+    fork_mask = deduce_mask(*init_pmasks) or cur_tracer.mask
+
+    # Trace cond/body in separate forked contexts using the deduced mask
+    cond_tracer = cur_tracer.fork(fork_mask)
     cond_tfn = trace(cond_tracer, cond_fn, init)
 
-    body_tracer = cur_tracer.fork(init.pmask)
+    body_tracer = cur_tracer.fork(fork_mask)
     body_tfn = trace(body_tracer, body_fn, init)
 
-    # Step 2: Validate function signatures
-    if len(body_tfn.out_vars) != 1:
-        raise ValueError(
-            f"Body function must return a single variable: got {len(body_tfn.out_vars)} outputs"
-        )
-    if body_tfn.out_vars[0].mptype != init.mptype:
-        raise ValueError(
-            f"Body function output type {body_tfn.out_vars[0].mptype} "
-            f"does not match initial state type {init.mptype}"
-        )
-
+    # Validate cond returns single value
     if len(cond_tfn.out_vars) != 1:
         raise ValueError(
-            f"Condition function must return a single boolean variable: "
-            f"got {len(cond_tfn.out_vars)} outputs"
+            f"Condition function must return a single boolean variable: got {len(cond_tfn.out_vars)} outputs"
+        )
+    cond_out_var = cond_tfn.out_vars[0]
+    if len(cond_out_var.mptype.shape) != 0:
+        raise TypeError(
+            f"Condition function must return a scalar, but got shape {cond_out_var.mptype.shape}"
         )
 
-    # Step 3: Handle variable captures from outer scopes
-    # Collect all variables captured by either function
-    # Similar to cond: union of captures from both functions
-    all_captures = list((cond_tfn.capture_map | body_tfn.capture_map).keys())
+    # Validate body returns same number of leaves and same dtype/shape per leaf
+    if len(body_tfn.out_vars) != len(cond_tfn.in_vars):
+        raise ValueError(
+            "Body function must return the same number of MPObject leaves as the init state"
+        )
+    for i, (out_v, in_v) in enumerate(
+        zip(body_tfn.out_vars, cond_tfn.in_vars, strict=True)
+    ):
+        if out_v.mptype != in_v.mptype:
+            raise TypeError(
+                f"Body output leaf {i} type mismatch: {out_v.mptype} vs {in_v.mptype}"
+            )
 
-    # Re-capture all outer variables into current scope for expression building
+    # Handle variable captures from outer scopes (union of both functions)
+    all_captures = list((cond_tfn.capture_map | body_tfn.capture_map).keys())
     capture_vars = [
         var if var.ctx is cur_tracer else cur_tracer.capture(var)
         for var in all_captures
     ]
-
     assert all(isinstance(var, TraceVar) for var in capture_vars), capture_vars
 
-    # Step 4: Build the while loop expression
-    init_expr = cast(TraceVar, init).expr
+    # Build WhileExpr with all state leaves followed by captures
+    state_exprs = [cast(TraceVar, v).expr for v in init_vars]
     capture_exprs = [cast(TraceVar, var).expr for var in capture_vars]
 
-    # Generate function expressions with correct parameter mapping:
-    # Parameter order: [state_param, capture_params...]
     cond_fn_expr = cond_tfn.make_expr(
         cond_tfn.in_names() + cond_tfn.capture_names(all_captures)
     )
@@ -668,13 +684,17 @@ def while_loop(
         body_tfn.in_names() + body_tfn.capture_names(all_captures)
     )
 
-    # Create WhileExpr with init value and captured variables as arguments
     assert cond_fn_expr is not None and body_fn_expr is not None
-    all_args = [init_expr, *capture_exprs]
+    all_args = [*state_exprs, *capture_exprs]
     out_expr = WhileExpr(cond_fn_expr, body_fn_expr, all_args)
-    assert out_expr.mptype == init.mptype
 
-    return TraceVar(cur_tracer, out_expr)
+    # Materialize outputs and reconstruct the original PyTree of init (args part)
+    rets_expr = [AccessExpr(out_expr, idx) for idx in range(out_expr.num_outputs)]
+    out_vars = [TraceVar(cur_tracer, res) for res in rets_expr]
+
+    # Reconstruct the Python return using the body function's output structure
+    # This preserves the exact PyTree the body returns (matching JAX semantics).
+    return var_demorph(out_vars, body_tfn.out_imms, body_tfn.out_struct)
 
 
 @primitive

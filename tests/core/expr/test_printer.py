@@ -462,7 +462,7 @@ class TestPrinterComplexExpressions:
     %0 = pname("state") : f32[1]<3>
     return %0
   }
-} : u64<3>
+} : f32[1]<3>
 """
 
         assert result == expected.strip()
@@ -837,7 +837,7 @@ class TestPrinterMeaningfulParameterUsage:
     %1 = access(%0) {index=0} : f32[3]<3>
     return %1
   }
-} : u64<3>
+} : f32[3]<3>
 """
 
         assert result == expected.strip()

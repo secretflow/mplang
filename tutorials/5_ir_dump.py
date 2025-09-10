@@ -14,9 +14,8 @@
 
 
 import mplang
-from mplang import random as mpr
+import mplang.simp as simp
 from mplang.core import mpir
-from mplang.simp import smpc
 
 
 @mplang.function
@@ -24,18 +23,18 @@ def millionaire():
     # Note: mpl.run(random.randint) will not work, because
     # the random number generator's state is captured and will always
     # return the same number on both parties.
-    x = mpr.prandint(0, 10)
-    y = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
+    y = simp.prandint(0, 10)
 
     # both of them seal it
-    x_ = smpc.sealFrom(x, 0)
-    y_ = smpc.sealFrom(y, 1)
+    x_ = simp.sealFrom(x, 0)
+    y_ = simp.sealFrom(y, 1)
 
     # compare it seally.
-    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = smpc.reveal(z_)
+    z = simp.reveal(z_)
 
     return x, y, z
 

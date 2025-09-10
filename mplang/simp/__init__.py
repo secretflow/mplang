@@ -35,6 +35,7 @@ from mplang.core.primitive import (
 from mplang.frontend import ibis_cc, jax_cc
 from mplang.frontend.base import FEOp
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
+from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
 from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
 
 __reexport__ = [
@@ -58,6 +59,11 @@ __reexport__ = [
     reveal,
     revealTo,
     srun,
+    key_split,
+    ukey,
+    urandint,
+    prandint,
+    pperm,
 ]
 
 

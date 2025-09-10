@@ -46,8 +46,16 @@ class TestWalkDataflow:
         # Helper: all deps must appear before node
         pos = {id(n): i for i, n in enumerate(order)}
 
+        def get_deps(node):
+            if node is t:
+                return TupleExpr([a, b]).args
+            elif node is x:
+                return (t,)
+            else:
+                return ()
+
         def assert_deps_before(node):
-            for d in TupleExpr([a, b]).args if node is t else (t,) if node is x else ():  # type: ignore
+            for d in get_deps(node):
                 assert pos[id(d)] < pos[id(node)]
 
         # a and b before t, and t before x

@@ -1113,3 +1113,423 @@ class TestPHEHandler:
             ValueError, match="First argument must be a CipherText instance"
         ):
             self.handler.execute(dot_pfunc, [plaintext_vec1, plaintext_vec2])
+
+    def test_gather_ciphertext_basic_int32(self):
+        """Test gather operation with basic int32 array."""
+        pk, sk = self._generate_keypair()
+
+        # Create int32 array
+        ciphertext_vec = np.array([10, 20, 30, 40, 50], dtype=np.int32)
+        indices = np.array([0, 2, 4], dtype=np.int32)
+
+        # Encrypt the vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Perform gather operation
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(indices),),
+        )
+        result_ct = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (3,)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(indices), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(indices),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([10, 30, 50], dtype=np.int32)  # Values at indices [0, 2, 4]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_gather_ciphertext_scalar_index_float64(self):
+        """Test gather operation with scalar index and float64 array."""
+        pk, sk = self._generate_keypair()
+
+        # Create float64 array
+        ciphertext_vec = np.array([1.5, 2.5, 3.5], dtype=np.float64)
+        scalar_index = np.array(1, dtype=np.int32)  # Scalar index
+
+        # Encrypt the vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Perform gather operation
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(scalar_index),
+            ),
+            outs_info=(TensorType.from_obj(scalar_index),),
+        )
+        result_ct = self.handler.execute(gather_pfunc, [ciphertext, scalar_index])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+        assert result_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(scalar_index), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(scalar_index),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert abs(decrypted.item() - 2.5) < 1e-10  # Value at index 1
+
+    def test_gather_invalid_args(self):
+        """Test gather with invalid arguments."""
+        pk, _sk = self._generate_keypair()
+
+        ciphertext_vec = np.array([1, 2, 3], dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        # Test with wrong number of arguments
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(TensorType.from_obj(ciphertext_vec),),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        with pytest.raises(ValueError, match="Gather expects exactly two arguments"):
+            self.handler.execute(gather_pfunc, [ciphertext])
+
+    def test_gather_out_of_bounds_indices(self):
+        """Test gather with out-of-bounds indices."""
+        pk, _sk = self._generate_keypair()
+
+        ciphertext_vec = np.array([1, 2, 3], dtype=np.int32)
+        bad_indices = np.array([0, 1, 5], dtype=np.int32)  # Index 5 is out of bounds
+
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vec),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
+
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vec),
+                TensorType.from_obj(bad_indices),
+            ),
+            outs_info=(TensorType.from_obj(bad_indices),),
+        )
+        with pytest.raises(ValueError, match="Indices are out of bounds"):
+            self.handler.execute(gather_pfunc, [ciphertext, bad_indices])
+
+    def test_gather_non_ciphertext_first_arg(self):
+        """Test gather with non-CipherText as first argument."""
+        plaintext_vec = np.array([1, 2, 3], dtype=np.int32)
+        indices = np.array([0, 1], dtype=np.int32)
+
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(plaintext_vec),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(indices),),
+        )
+        with pytest.raises(
+            ValueError, match="First argument must be a CipherText instance"
+        ):
+            self.handler.execute(gather_pfunc, [plaintext_vec, indices])
+
+    def test_scatter_ciphertext_basic_int32(self):
+        """Test scatter operation with basic int32 array."""
+        pk, sk = self._generate_keypair()
+
+        # Create original and updated arrays
+        original_vec = np.array([10, 20, 30, 40, 50], dtype=np.int32)
+        updated_values = np.array([100, 300], dtype=np.int32)
+        indices = np.array([0, 2], dtype=np.int32)
+
+        # Encrypt both arrays
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_vec),),
+        )
+        original_ciphertext = self.handler.execute(encrypt_pfunc, [original_vec, pk])[0]
+
+        encrypt_pfunc_updated = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_updated, [updated_values, pk]
+        )[0]
+
+        # Perform scatter operation
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_vec),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_vec),),
+        )
+        result_ct = self.handler.execute(
+            scatter_pfunc, [original_ciphertext, indices, updated_ciphertext]
+        )[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (5,)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_vec),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        # Note: scatter should update positions based on indices
+        # indices=[0,2], updated_values=[100,300] -> positions 0 and 2 get new values
+        expected = np.array(
+            [100, 20, 300, 40, 50], dtype=np.int32
+        )  # Updated at positions 0 and 2
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_scatter_invalid_args(self):
+        """Test scatter with invalid arguments."""
+        pk, _sk = self._generate_keypair()
+
+        original_vec = np.array([1, 2, 3], dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_vec), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_vec),),
+        )
+        original_ciphertext = self.handler.execute(encrypt_pfunc, [original_vec, pk])[0]
+
+        # Test with wrong number of arguments
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_vec),
+                TensorType.from_obj(original_vec),
+            ),
+            outs_info=(TensorType.from_obj(original_vec),),
+        )
+        with pytest.raises(ValueError, match="Scatter expects exactly three arguments"):
+            self.handler.execute(scatter_pfunc, [original_ciphertext, original_vec])
+
+    def test_scatter_non_ciphertext_args(self):
+        """Test scatter with non-CipherText arguments."""
+        original_vec = np.array([1, 2, 3], dtype=np.int32)
+        indices = np.array([0], dtype=np.int32)
+        updated_values = np.array([10], dtype=np.int32)
+
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_vec),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_vec),),
+        )
+        with pytest.raises(
+            ValueError, match="First and third argument must be a CipherText instance"
+        ):
+            self.handler.execute(scatter_pfunc, [original_vec, indices, updated_values])
+
+    def test_concat_ciphertext_basic_int32(self):
+        """Test concat operation with basic int32 arrays."""
+        pk, sk = self._generate_keypair()
+
+        # Create two arrays to concatenate
+        vec1 = np.array([10, 20, 30], dtype=np.int32)
+        vec2 = np.array([40, 50], dtype=np.int32)
+
+        # Encrypt both arrays
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [vec1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [vec2, pk])[0]
+
+        # Perform concat operation
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(vec1),
+                TensorType.from_obj(vec2),
+            ),
+            outs_info=(TensorType.from_obj(np.array([1, 2, 3, 4, 5], dtype=np.int32)),),
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (5,)  # 3 + 2 elements
+
+        # Decrypt and verify
+        concat_result_shape = np.array([1, 2, 3, 4, 5], dtype=np.int32)
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([10, 20, 30, 40, 50], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_concat_ciphertext_float64(self):
+        """Test concat operation with float64 arrays."""
+        pk, sk = self._generate_keypair()
+
+        # Create two float64 arrays to concatenate
+        vec1 = np.array([1.5, 2.5], dtype=np.float64)
+        vec2 = np.array([3.5, 4.5, 5.5], dtype=np.float64)
+
+        # Encrypt both arrays
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [vec1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [vec2, pk])[0]
+
+        # Perform concat operation
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(vec1),
+                TensorType.from_obj(vec2),
+            ),
+            outs_info=(
+                TensorType.from_obj(np.array([1, 2, 3, 4, 5], dtype=np.float64)),
+            ),
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+        assert result_ct.semantic_shape == (5,)  # 2 + 3 elements
+
+        # Decrypt and verify
+        concat_result_shape = np.array([1, 2, 3, 4, 5], dtype=np.float64)
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([1.5, 2.5, 3.5, 4.5, 5.5], dtype=np.float64)
+        np.testing.assert_allclose(decrypted, expected, rtol=1e-10)
+
+    def test_concat_invalid_args(self):
+        """Test concat with invalid number of arguments."""
+        pk, _sk = self._generate_keypair()
+
+        vec1 = np.array([1, 2], dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc, [vec1, pk])[0]
+
+        # Test with wrong number of arguments
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(TensorType.from_obj(vec1),),
+            outs_info=(TensorType.from_obj(vec1),),
+        )
+        with pytest.raises(ValueError, match="Concat expects exactly two arguments"):
+            self.handler.execute(concat_pfunc, [ciphertext1])
+
+    def test_concat_non_ciphertext_args(self):
+        """Test concat with non-CipherText arguments."""
+        vec1 = np.array([1, 2], dtype=np.int32)
+        vec2 = np.array([3, 4], dtype=np.int32)
+
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(vec1),
+                TensorType.from_obj(vec2),
+            ),
+            outs_info=(TensorType.from_obj(np.array([1, 2, 3, 4], dtype=np.int32)),),
+        )
+        with pytest.raises(
+            AssertionError, match="All arguments must be CipherText instances"
+        ):
+            self.handler.execute(concat_pfunc, [vec1, vec2])
+
+    def test_concat_dtype_mismatch(self):
+        """Test concat with different dtypes."""
+        pk, _sk = self._generate_keypair()
+
+        vec1 = np.array([1, 2], dtype=np.int32)
+        vec2 = np.array([3.0, 4.0], dtype=np.float32)
+
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [vec1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(vec2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vec2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [vec2, pk])[0]
+
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(vec1),
+                TensorType.from_obj(vec2),
+            ),
+            outs_info=(TensorType.from_obj(np.array([1, 2, 3, 4], dtype=np.int32)),),
+        )
+        with pytest.raises(
+            ValueError, match="All CipherTexts must have same semantic dtype"
+        ):
+            self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])

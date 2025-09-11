@@ -116,9 +116,9 @@ class PHEHandler(TensorHandler):
             "phe.decrypt",
             # our extensions
             "phe.dot",
-            "phe.concat",
             "phe.gather",
             "phe.scatter",
+            "phe.concat",
         ]
 
     def execute(
@@ -139,6 +139,12 @@ class PHEHandler(TensorHandler):
             return self._execute_decrypt(pfunc, args)
         elif pfunc.fn_type == "phe.dot":
             return self._execute_dot(pfunc, args)
+        elif pfunc.fn_type == "phe.gather":
+            return self._execute_gather(pfunc, args)
+        elif pfunc.fn_type == "phe.scatter":
+            return self._execute_scatter(pfunc, args)
+        elif pfunc.fn_type == "phe.concat":
+            return self._execute_concat(pfunc, args)
         else:
             raise ValueError(f"Unsupported PHE function type: {pfunc.fn_type}")
 
@@ -628,3 +634,219 @@ class PHEHandler(TensorHandler):
             raise
         except Exception as e:
             raise RuntimeError(f"Failed to perform dot product: {e}") from e
+
+    def _execute_gather(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute gather operation on CipherText.
+
+        Args:
+            pfunc: PFunction for gather
+            args: [ciphertext, indices] where ciphertext is CipherText and indices is TensorLike of integers
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText
+        """
+        if len(args) != 2:
+            raise ValueError("Gather expects exactly two arguments")
+
+        ciphertext, indices = args
+
+        # Validate that first argument is a CipherText
+        if not isinstance(ciphertext, CipherText):
+            raise ValueError("First argument must be a CipherText instance")
+
+        try:
+            # Convert indices to numpy
+            indices_np = self._convert_to_numpy(indices)
+
+            # indices should be 1-d or scalar
+            assert indices_np.ndim in (0, 1), "Indices must be a scalar or 1-D array"
+
+            if not np.issubdtype(indices_np.dtype, np.integer):
+                raise ValueError("Indices must be of integer type")
+
+            # Validate indices are within bounds
+            if np.any(indices_np < 0) or np.any(
+                indices_np >= ciphertext.semantic_shape[0]
+            ):
+                raise ValueError("Indices are out of bounds")
+
+            # Perform gather operation
+            gathered_ct_data = [ciphertext.ct_data[i] for i in indices_np.flatten()]
+
+            # Determine new shape after gather
+            new_shape = indices_np.shape
+
+            # Create result CipherText
+            return [
+                CipherText(
+                    ct_data=gathered_ct_data,
+                    semantic_dtype=ciphertext.semantic_dtype,
+                    semantic_shape=new_shape,
+                    scheme=ciphertext.scheme,
+                    key_size=ciphertext.key_size,
+                    pk_data=ciphertext.pk_data,
+                )
+            ]
+
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform gather: {e}") from e
+
+    def _execute_scatter(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute scatter operation on CipherText.
+
+        Args:
+            pfunc: PFunction for scatter
+            args: [ciphertext, indices, updated] where ciphertext is CipherText, indices is TensorLike of integers,
+                  and updated is the updated values as a CipherText
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText with same shape as original ciphertext
+        """
+        if len(args) != 3:
+            raise ValueError("Scatter expects exactly three arguments")
+
+        ciphertext, indices, updated = args
+
+        # Validate that first argument is a CipherText
+        if not isinstance(ciphertext, CipherText) or not isinstance(
+            updated, CipherText
+        ):
+            raise ValueError("First and third argument must be a CipherText instance")
+
+        # Validate that both ciphertexts use same scheme/key_size
+        if (
+            ciphertext.scheme != updated.scheme
+            or ciphertext.key_size != updated.key_size
+        ):
+            raise ValueError("Both CipherTexts must use same scheme and key size")
+
+        assert (
+            ciphertext.pk_data == updated.pk_data
+        ), "Both CipherTexts must be encrypted with same key"
+
+        try:
+            # Convert indices to numpy
+            indices_np = self._convert_to_numpy(indices)
+
+            if not np.issubdtype(indices_np.dtype, np.integer):
+                raise ValueError("Indices must be of integer type")
+
+            # Validate shape
+            if len(indices_np.shape) != 1:
+                raise ValueError(
+                    f"Indices must be a 1-D array, got shape {indices_np.shape}"
+                )
+            assert (
+                len(updated.semantic_shape) == 1
+            ), f"Updated values must be 1-D CipherText, got shape {updated.semantic_shape}"
+            if len(indices_np) != updated.semantic_shape[0]:
+                raise ValueError(
+                    f"Number of indices must match number of updated values, got {len(indices_np)} vs {updated.semantic_shape[0]}"
+                )
+
+            # Create an empty list for scattered data
+            scattered_ct_data = ciphertext.ct_data.copy()
+            updated_ct_data = updated.ct_data
+
+            # Scatter the ciphertext data according to indices
+            for i, idx in enumerate(indices_np.flatten()):
+                if idx < 0 or idx >= len(ciphertext.ct_data):
+                    raise ValueError(f"Index {idx} is out of bounds")
+                scattered_ct_data[idx] = updated_ct_data[i]
+
+            # Create result CipherText
+            return [
+                CipherText(
+                    ct_data=scattered_ct_data,
+                    semantic_dtype=ciphertext.semantic_dtype,
+                    semantic_shape=ciphertext.semantic_shape,
+                    scheme=ciphertext.scheme,
+                    key_size=ciphertext.key_size,
+                    pk_data=ciphertext.pk_data,
+                )
+            ]
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform scatter: {e}") from e
+
+    def _execute_concat(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute concat operation on multiple CipherTexts.
+
+        Args:
+            pfunc: PFunction for concat
+            args: List of CipherText operands to concatenate
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText
+        """
+        if len(args) != 2:
+            raise ValueError("Concat expects exactly two arguments")
+
+        c1, c2 = args
+
+        # Validate that all arguments are CipherText
+        assert isinstance(c1, CipherText) and isinstance(
+            c2, CipherText
+        ), "All arguments must be CipherText instances"
+
+        # validate that all ciphertexts has the same key & scheme
+        for arg in (c2,):
+            if arg.scheme != c1.scheme or arg.key_size != c1.key_size:
+                raise ValueError("All CipherTexts must use same scheme and key size")
+            if arg.pk_data != c1.pk_data:
+                raise ValueError("All CipherTexts must be encrypted with same key")
+            if arg.semantic_dtype != c1.semantic_dtype:
+                raise ValueError(
+                    f"All CipherTexts must have same semantic dtype, got {c1.semantic_dtype} vs {arg.semantic_dtype}"
+                )
+            # Note: shapes don't need to be the same for concat, just dimension count should be the same
+            if len(arg.semantic_shape) != len(c1.semantic_shape):
+                raise ValueError(
+                    f"All CipherTexts must have same number of dimensions for concat, got {len(c1.semantic_shape)} vs {len(arg.semantic_shape)}"
+                )
+
+        assert (
+            len(c1.semantic_shape) == 1
+        ), f"Only 1-D CipherTexts are supported for concat, got shape {c1.semantic_shape}"
+
+        try:
+            # Validate compatibility and collect data
+            total_length = c1.semantic_shape[0] + c2.semantic_shape[0]
+            semantic_dtype = c1.semantic_dtype
+            scheme = c1.scheme
+            key_size = c1.key_size
+            pk_data = c1.pk_data
+
+            # Concatenate the ciphertext data
+            concatenated_ct_data = []
+            for ct in [c1, c2]:
+                concatenated_ct_data.extend(ct.ct_data)
+
+            # Create result CipherText with new shape
+            return [
+                CipherText(
+                    ct_data=concatenated_ct_data,
+                    semantic_dtype=semantic_dtype,
+                    semantic_shape=(total_length,),
+                    scheme=scheme,
+                    key_size=key_size,
+                    pk_data=pk_data,
+                )
+            ]
+
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform concat: {e}") from e

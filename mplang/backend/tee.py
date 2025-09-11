@@ -75,7 +75,8 @@ class MockTeeHandler(TensorHandler):
         # Mock quote structure: 1-byte header + 32-byte pk
         header = np.array([1], dtype=np.uint8)
         pk32 = np.asarray(pk, dtype=np.uint8).reshape(32)
-        return np.concatenate([header, pk32]).astype(np.uint8)
+        ret: np.ndarray = np.concatenate([header, pk32]).astype(np.uint8)
+        return ret
 
     def _execute_quote_gen(
         self, args: list[TensorLike], pfunc: PFunction

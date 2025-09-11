@@ -73,31 +73,30 @@ class CryptoHandler(TensorHandler):
 
     def _execute_encrypt(self, args: list[TensorLike]) -> list[TensorLike]:
         # WARNING: Not AEAD. Ciphertext has no auth tag.
-        pt, key = (
-            np.asarray(args[0], dtype=np.uint8),
-            np.asarray(args[1], dtype=np.uint8),
-        )
+        # Convert plaintext of any dtype/shape (including scalars) to raw bytes.
+        pt_any = np.asarray(args[0])
+        pt_bytes = np.frombuffer(pt_any.tobytes(order="C"), dtype=np.uint8)
+        key = np.asarray(args[1], dtype=np.uint8)
         nonce = self._rng.integers(0, 256, size=(12,), dtype=np.uint8)
         stream = np.frombuffer(
-            self._keystream(key.tobytes(), nonce.tobytes(), len(pt)), dtype=np.uint8
+            self._keystream(key.tobytes(), nonce.tobytes(), pt_bytes.size),
+            dtype=np.uint8,
         )
-        ct = (pt ^ stream).astype(np.uint8)
+        ct = (pt_bytes ^ stream).astype(np.uint8)
         out = np.concatenate([nonce, ct]).astype(np.uint8)
         return [out]
 
     def _execute_decrypt(self, args: list[TensorLike]) -> list[TensorLike]:
         # WARNING: No authenticity/integrity check prior to decryption.
-        ct_with_nonce, key = (
-            np.asarray(args[0], dtype=np.uint8),
-            np.asarray(args[1], dtype=np.uint8),
-        )
+        ct_with_nonce = np.asarray(args[0], dtype=np.uint8)
+        key = np.asarray(args[1], dtype=np.uint8)
         nonce = ct_with_nonce[:12]
         ct = ct_with_nonce[12:]
         stream = np.frombuffer(
             self._keystream(key.tobytes(), nonce.tobytes(), len(ct)), dtype=np.uint8
         )
-        pt = (ct ^ stream).astype(np.uint8)
-        return [pt]
+        pt_bytes = (ct ^ stream).astype(np.uint8)
+        return [pt_bytes]
 
     def _execute_kem_keygen(self, pfunc: PFunction) -> list[TensorLike]:
         # WARNING: Mock KEM keypair. public = H(sk) for symmetric demo only.

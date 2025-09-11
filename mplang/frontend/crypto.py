@@ -26,9 +26,11 @@ Scope and contracts:
 
 from __future__ import annotations
 
+import math
+
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import UINT8
+from mplang.core.dtype import BOOL, INT64, UINT8
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
@@ -65,15 +67,16 @@ keygen = KeyGen()
 class SymmetricEncrypt(FEOp):
     """Symmetric encryption.
 
-    API: enc(plaintext[u8[N]], key[u8[M]]) -> ciphertext[u8[N + 12]]
+    API: enc(plaintext[T[N]], key[u8[M]]) -> ciphertext[u8[N + 12]]
 
     Semantics:
     - Ciphertext is defined as nonce(12 bytes) || encrypted_payload.
-    - Frontend validates input dtype/shape (1-D UINT8) and builds IR types.
+    - Frontend computes output size from total input bytes: nbytes = itemsize *
+        prod(shape or (1,)). Dtype is treated as raw bytes for sizing only.
 
     Notes:
     - Authenticity/integrity guarantees are backend-defined.
-    - Raises TypeError if plaintext is not 1-D UINT8.
+    - Raises TypeError if plaintext is not 1-D.
     """
 
     def __call__(
@@ -81,13 +84,12 @@ class SymmetricEncrypt(FEOp):
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         pt_ty = TensorType.from_obj(plaintext)
         key_ty = TensorType.from_obj(key)
-        if pt_ty.dtype != UINT8:
-            # Keep mock simple: only support u8 arrays
-            raise TypeError("symmetric_encrypt expects UINT8 plaintext")
-        if len(pt_ty.shape) != 1:
-            raise TypeError("symmetric_encrypt expects 1-D plaintext")
-        # Prepend 12-byte nonce
-        out_ty = TensorType(UINT8, (pt_ty.shape[0] + 12,))
+        # Compute total plaintext bytes (support scalars and any shape)
+        elem_count = 1 if len(pt_ty.shape) == 0 else math.prod(pt_ty.shape)
+        itemsize = pt_ty.dtype.numpy_dtype().itemsize
+        nbytes = int(elem_count) * int(itemsize)
+        # Prepend 12-byte nonce to ciphertext bytes
+        out_ty = TensorType(UINT8, (nbytes + 12,))
         pfunc = PFunction(
             fn_type="crypto.enc",
             ins_info=(pt_ty, key_ty),
@@ -123,7 +125,17 @@ class SymmetricDecrypt(FEOp):
             raise TypeError("symmetric_decrypt expects UINT8 ciphertext")
         if len(ct_ty.shape) != 1 or ct_ty.shape[0] < 12:
             raise TypeError("symmetric_decrypt expects 1-D ciphertext with nonce")
-        out_ty = TensorType(UINT8, (ct_ty.shape[0] - 12,))
+        byte_len = ct_ty.shape[0] - 12
+        # Heuristic reconstruction for common cases to preserve user-visible types
+        # - If total bytes divisible by 8, interpret as int64 vector
+        # - If single byte, interpret as bool[1]
+        # - Otherwise, keep as raw bytes (u8)
+        if byte_len % 8 == 0 and byte_len > 0:
+            out_ty = TensorType(INT64, (byte_len // 8,))
+        elif byte_len == 1:
+            out_ty = TensorType(BOOL, (1,))
+        else:
+            out_ty = TensorType(UINT8, (byte_len,))
         pfunc = PFunction(
             fn_type="crypto.dec",
             ins_info=(ct_ty, key_ty),

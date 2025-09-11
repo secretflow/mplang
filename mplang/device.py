@@ -47,8 +47,7 @@ function = primitive.function
 
 
 class Utils:
-    DEV_ID = "dev_id"
-    TEE_SESS_KEY = "tee_sess_id"
+    DEV_ID = "_devid_"
 
     @classmethod
     def is_device_obj(cls, obj: MPObject) -> bool:
@@ -69,19 +68,6 @@ class Utils:
             raise TypeError("Input must be an instance of Object")
 
         return obj.attrs[cls.DEV_ID]  # type: ignore[no-any-return]
-
-    @classmethod
-    def set_tee_sess(cls, obj: MPObject, sess_id: str) -> MPObject:
-        if not isinstance(obj, MPObject):
-            raise TypeError(f"Input must be an instance of Object, {obj}")
-        obj.attrs[cls.TEE_SESS_KEY] = sess_id
-        return obj
-
-    @classmethod
-    def get_tee_sess(cls, obj: MPObject) -> str | None:
-        if not isinstance(obj, MPObject):
-            return None
-        return obj.attrs.get(cls.TEE_SESS_KEY)  # type: ignore[no-any-return]
 
 
 def device(dev_id: str, *, fe_type: str = "jax") -> Callable:

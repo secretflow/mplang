@@ -30,7 +30,7 @@ from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
-from mplang.backend.tee import TeeHandler
+from mplang.backend.tee import MockTeeHandler
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
@@ -153,7 +153,7 @@ class Simulator(InterpContext):
                 DuckDBHandler(),
                 PHEHandler(),
                 CryptoHandler(),
-                TeeHandler(),
+                MockTeeHandler(),
             ]
             for rank in range(self.world_size())
         ]

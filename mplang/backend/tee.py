@@ -14,9 +14,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
-from typing import Any  # noqa: F401
 
 import numpy as np
 
@@ -36,7 +36,7 @@ class Quote:
         return np.frombuffer(data if data else b"\x00", dtype=np.uint8)
 
 
-class TeeHandler(TensorHandler):
+class MockTeeHandler(TensorHandler):
     """TEE Handler with a mock implementation that binds provided pk.
 
     WARNING: This is a mock implementation for demos/tests. It does NOT perform
@@ -61,6 +61,10 @@ class TeeHandler(TensorHandler):
         seed = int(os.environ.get("MPLANG_TEE_SEED", "0")) + rank * 10007
         self._rng = np.random.default_rng(seed)
 
+        logging.warning(
+            f"*** WARNING: Using MockTeeHandler (not secure) on rank {rank} ***"
+        )
+
     def teardown(self) -> None:  # override
         ...
 
@@ -76,7 +80,7 @@ class TeeHandler(TensorHandler):
     def _execute_quote_gen(
         self, args: list[TensorLike], pfunc: PFunction
     ) -> list[TensorLike]:
-        # Expect one arg: pk[u8[32]]; return single quote tensor
+        # Expect one arg (pk: u8[32]); return single quote tensor
         if len(args) != 1:
             raise ValueError("tee.quote expects exactly one argument (pk)")
         pk = np.asarray(args[0], dtype=np.uint8)

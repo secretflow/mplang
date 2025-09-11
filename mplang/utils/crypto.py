@@ -14,44 +14,19 @@
 
 """Lightweight cryptographic utilities.
 
-This module intentionally keeps a minimal API surface for hashing and simple
-sign/verify to be used by TEE components. Real implementations can replace
-these with proper key management and hardware-backed primitives.
+Currently only exposes `blake2b` which is used by mock crypto backends.
+Previously contained mock signing/key utilities which were unused in code
+paths and have been removed to avoid confusion.
 """
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 
 
 def blake2b(data: bytes) -> bytes:
+    """Return 32-byte BLAKE2b digest for the given data."""
     return hashlib.blake2b(data, digest_size=32).digest()
 
 
-@dataclass
-class SoftKey:
-    """Simple software keypair for demonstration only."""
-
-    sk: bytes
-    pk: bytes
-
-
-def soft_keypair() -> SoftKey:
-    # Not secure: derive deterministic keypair for tests
-    seed = hashlib.sha256(b"mplang-soft-key").digest()
-    sk = hashlib.sha256(seed + b"sk").digest()
-    pk = hashlib.sha256(seed + b"pk").digest()
-    return SoftKey(sk=sk, pk=pk)
-
-
-def sign(sk: bytes, msg: bytes) -> bytes:
-    # Naive HMAC-like using blake2b keyed hashing for demonstration
-    return hashlib.blake2b(msg, key=sk, digest_size=32).digest()
-
-
-def verify(pk: bytes, msg: bytes, sig: bytes) -> bool:
-    # Insecure: since pk is unrelated to sk in this mock, we just recompute using pk
-    # Real impl should be ed25519/ecdsa etc.
-    expect = hashlib.blake2b(msg, key=pk, digest_size=32).digest()
-    return expect == sig
+__all__ = ["blake2b"]

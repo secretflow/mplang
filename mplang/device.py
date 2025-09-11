@@ -23,6 +23,7 @@ transformation between devices.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from functools import partial, wraps
 from typing import Any
@@ -187,6 +188,13 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
 
 # Simple in-process cache for per-(from_dev,to_dev) TEE sessions within a program run
 _TEE_SESS_CACHE: dict[tuple[str, str], tuple[MPObject, MPObject]] = {}
+_TEE_SESS_CACHE_LOCK = threading.Lock()
+
+
+def clear_tee_session_cache():
+    """Clear the global TEE session cache. For testing purposes."""
+    with _TEE_SESS_CACHE_LOCK:
+        _TEE_SESS_CACHE.clear()
 
 
 def _ensure_tee_session(
@@ -197,10 +205,14 @@ def _ensure_tee_session(
     Returns (sess_p, sess_t).
     """
     key = (frm_dev_id, to_dev_id)
-    if key in _TEE_SESS_CACHE:
-        return _TEE_SESS_CACHE[key]
+    with _TEE_SESS_CACHE_LOCK:
+        if key in _TEE_SESS_CACHE:
+            return _TEE_SESS_CACHE[key]
 
     # 1) TEE generates (sk, pk) and quote(pk)
+    # TODO: The KEM suite identifier "x25519" is hardcoded. This should be
+    # configurable, for example, by reading it from the TEE device's
+    # configuration in the ClusterSpec.
     tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)("x25519")
     quote = simp.runAt(tee_rank, tee.quote)(tee_pk)
 
@@ -220,7 +232,8 @@ def _ensure_tee_session(
     sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_literal)
     sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_literal)
 
-    _TEE_SESS_CACHE[key] = (sess_p, sess_t)
+    with _TEE_SESS_CACHE_LOCK:
+        _TEE_SESS_CACHE[key] = (sess_p, sess_t)
     return sess_p, sess_t
 
 

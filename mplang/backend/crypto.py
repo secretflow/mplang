@@ -75,21 +75,6 @@ class CryptoHandler(TensorHandler):
         key = self._rng.integers(0, 256, size=(length,), dtype=np.uint8)
         return [key]
 
-    def _execute_encrypt(self, args: list[TensorLike]) -> list[TensorLike]:
-        # WARNING: Not AEAD. Ciphertext has no auth tag.
-        # Convert plaintext of any dtype/shape (including scalars) to raw bytes.
-        pt_any = np.asarray(args[0])
-        pt_bytes = np.frombuffer(pt_any.tobytes(order="C"), dtype=np.uint8)
-        key = np.asarray(args[1], dtype=np.uint8)
-        nonce = self._rng.integers(0, 256, size=(12,), dtype=np.uint8)
-        stream = np.frombuffer(
-            self._keystream(key.tobytes(), nonce.tobytes(), pt_bytes.size),
-            dtype=np.uint8,
-        )
-        ct = (pt_bytes ^ stream).astype(np.uint8)
-        out = np.concatenate([nonce, ct]).astype(np.uint8)
-        return [out]
-
     def _execute_decrypt(self, args: list[TensorLike]) -> list[TensorLike]:
         # WARNING: No authenticity/integrity check prior to decryption.
         ct_with_nonce = np.asarray(args[0], dtype=np.uint8)
@@ -102,7 +87,7 @@ class CryptoHandler(TensorHandler):
         pt_bytes = (ct ^ stream).astype(np.uint8)
         return [pt_bytes]
 
-    def _execute_encrypt_bytes(self, args: list[TensorLike]) -> list[TensorLike]:
+    def _execute_encrypt(self, args: list[TensorLike]) -> list[TensorLike]:
         # WARNING: Not AEAD. Ciphertext has no auth tag.
         pt_bytes = np.asarray(args[0], dtype=np.uint8)
         key = np.asarray(args[1], dtype=np.uint8)
@@ -178,10 +163,8 @@ class CryptoHandler(TensorHandler):
         if pfunc.fn_type == self.KEY_GEN:
             return self._execute_keygen(pfunc)
         if pfunc.fn_type == self.ENC:
-            # Frontend now enforces bytes-only for enc
-            return self._execute_encrypt_bytes(args)
+            return self._execute_encrypt(args)
         if pfunc.fn_type == self.DEC:
-            # Frontend now enforces bytes-only for dec
             return self._execute_decrypt(args)
         if pfunc.fn_type == self.PACK:
             return self._execute_pack(args)

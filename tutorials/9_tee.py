@@ -130,11 +130,8 @@ def main():
     print("-" * 10, "TEE millionaire: device vs manual (end-to-end IR)", "-" * 10)
     sim = Simulator(cluster_spec)
 
-    # FIXME(jint): Clear device session cache so device IR includes handshake
-    try:
-        mpd._TEE_SESS_CACHE.clear()  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    # Clear device session cache so device IR includes handshake
+    mpd.clear_tee_session_cache()
 
     # Compile before evaluate to avoid warming the session cache
     compiled_dev = mplang.compile(sim, millionaire_device)
@@ -159,10 +156,7 @@ def main():
     print("IR:", ir_dev)
 
     # Clear cache again to avoid compile-time session objects leaking into runtime
-    try:
-        mpd._TEE_SESS_CACHE.clear()  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    mpd.clear_tee_session_cache()
 
     # Run both
     xd, yd, zd, rd = mplang.evaluate(sim, millionaire_device)

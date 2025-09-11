@@ -106,7 +106,9 @@ Notes & design choices:
 
 - `tee.quote` runs on the TEE. In production, the TEE SHOULD generate the
   ephemeral keypair internally and bind `H(ephemeral_pubkey)` in `report_data`.
-  Our current API expresses it as `tee.quote(pk)` for clarity and auditability.
+  This is to ensure the ephemeral private key never leaves the trusted hardware
+  boundary. Our current API expresses it as `tee.quote(pk)` for clarity and
+  auditability.
 - `tee.attest` runs on data parties and returns the attested TEE public key;
   each verifier then derives a per-party session key via KEM/ECDH + HKDF. The
   TEE performs the matching derivation upon receiving the verifier’s public

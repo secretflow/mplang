@@ -28,6 +28,7 @@ import numpy as np
 
 import mplang
 import mplang.simp as simp
+from mplang.core.tensor import TensorType
 from mplang.frontend import crypto, tee
 
 
@@ -83,7 +84,6 @@ def demo_flow():
 
     b0_at_tee = simp.runAt(P2, crypto.dec)(ct_p0_at_tee, sess0_tee)
     b1_at_tee = simp.runAt(P2, crypto.dec)(ct_p1_at_tee, sess1_tee)
-    from mplang.core.tensor import TensorType
 
     pt0_at_tee = simp.runAt(P2, crypto.unpack)(b0_at_tee, TensorType.from_obj(x_p0))
     pt1_at_tee = simp.runAt(P2, crypto.unpack)(b1_at_tee, TensorType.from_obj(x_p1))

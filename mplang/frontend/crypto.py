@@ -40,7 +40,7 @@ from mplang.frontend.base import FEOp
 class KeyGen(FEOp):
     """Generate random bytes for symmetric keys or generic randomness.
 
-    API: keygen(length: int = 32) -> key[u8[length]]
+    API: keygen(length: int = 32) -> key: u8[length]
 
     Notes:
     - Frontend defines the type/shape; backend provides randomness.
@@ -67,7 +67,7 @@ keygen = KeyGen()
 class SymmetricEncrypt(FEOp):
     """Symmetric encryption.
 
-    API: enc(plaintext[T[N]], key[u8[M]]) -> ciphertext[u8[N + 12]]
+    API: enc(plaintext: T[N], key: u8[M]) -> ciphertext: u8[N + 12]
 
     Semantics:
     - Ciphertext is defined as nonce(12 bytes) || encrypted_payload.
@@ -105,7 +105,7 @@ enc = SymmetricEncrypt()
 class SymmetricDecrypt(FEOp):
     """Symmetric decryption.
 
-    API: dec(ciphertext[u8[N + 12]], key[u8[M]]) -> plaintext[u8[N]]
+    API: dec(ciphertext: u8[N + 12], key: u8[M]) -> plaintext: u8[N]
 
     Semantics:
     - Expects a 12-byte nonce prefix and returns the decrypted payload bytes.
@@ -151,7 +151,7 @@ dec = SymmetricDecrypt()
 class KemKeyGen(FEOp):
     """KEM-style keypair generation.
 
-    API: kem_keygen(suite: str = 'x25519') -> (sk[u8[32]], pk[u8[32]])
+    API: kem_keygen(suite: str = 'x25519') -> (sk: u8[32], pk: u8[32])
 
     Notes:
     - Frontend expresses the signature/shape; backend implements the scheme.
@@ -179,7 +179,7 @@ kem_keygen = KemKeyGen()
 class KemDerive(FEOp):
     """KEM-style shared secret derivation.
 
-    API: kem_derive(sk[u8[32]], peer_pk[u8[32]], suite: str = 'x25519') -> secret[u8[32]]
+    API: kem_derive(sk: u8[32], peer_pk: u8[32], suite: str = 'x25519') -> secret: u8[32]
 
     Notes:
     - Frontend defines types; backend performs the cryptographic operation.
@@ -214,7 +214,7 @@ class HKDF(FEOp):
     a secure hash/HMAC. Here the frontend only defines the API shape; concrete
     security is provided by the backend.
 
-    API: hkdf(secret[u8[32]], info: str) -> key[u8[32]]
+    API: hkdf(secret: u8[32], info: str) -> key[u8[32]]
 
     Notes:
     - Frontend expresses API; backend implements the KDF.

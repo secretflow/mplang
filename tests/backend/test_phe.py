@@ -493,12 +493,13 @@ class TestPHEHandler:
         np.testing.assert_array_equal(result, expected)
 
     def test_add_shape_mismatch(self):
-        """Test addition with shape mismatch."""
+        """Test addition with incompatible shapes for broadcasting."""
         pk, _ = self._generate_keypair()
 
-        # Encrypt arrays with different shapes
-        plaintext1 = np.array([1, 2], dtype=np.int32)
-        plaintext2 = np.array([1, 2, 3], dtype=np.int32)
+        # Create tensors with truly incompatible shapes for broadcasting
+        # Shape (3, 1) and (2, 1) cannot be broadcast together
+        plaintext1 = np.array([[1], [2], [3]], dtype=np.int32)  # Shape (3, 1)
+        plaintext2 = np.array([[4], [5]], dtype=np.int32)  # Shape (2, 1)
 
         encrypt_pfunc1 = PFunction(
             fn_type="phe.encrypt",
@@ -513,14 +514,14 @@ class TestPHEHandler:
         ciphertext1 = self.handler.execute(encrypt_pfunc1, [plaintext1, pk])[0]
         ciphertext2 = self.handler.execute(encrypt_pfunc2, [plaintext2, pk])[0]
 
-        # Try to add - should fail
+        # Try to add - should fail due to incompatible broadcasting
         add_pfunc = PFunction(
             fn_type="phe.add",
             ins_info=(TensorType.from_obj(plaintext1), TensorType.from_obj(plaintext2)),
             outs_info=(TensorType.from_obj(plaintext1),),
         )
         with pytest.raises(
-            ValueError, match="CipherText operands must have same shape"
+            ValueError, match="CipherText operands cannot be broadcast together"
         ):
             self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])
 
@@ -557,12 +558,13 @@ class TestPHEHandler:
             self.handler.execute(add_pfunc, [ciphertext1, fake_ciphertext])
 
     def test_add_ciphertext_plaintext_shape_mismatch(self):
-        """Test CipherText + plaintext addition with shape mismatch."""
+        """Test CipherText + plaintext addition with incompatible shapes for broadcasting."""
         pk, _ = self._generate_keypair()
 
-        # Encrypt scalar
-        ciphertext_val = np.array(10, dtype=np.int32)
-        plaintext_val = np.array([1, 2], dtype=np.int32)  # Different shape
+        # Create tensors with truly incompatible shapes for broadcasting
+        # Shape (3, 1) and (2, 1) cannot be broadcast together
+        ciphertext_val = np.array([[1], [2], [3]], dtype=np.int32)  # Shape (3, 1)
+        plaintext_val = np.array([[4], [5]], dtype=np.int32)  # Shape (2, 1)
 
         encrypt_pfunc = PFunction(
             fn_type="phe.encrypt",
@@ -571,7 +573,7 @@ class TestPHEHandler:
         )
         ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
 
-        # Try to add - should fail
+        # Try to add - should fail due to incompatible broadcasting
         add_pfunc = PFunction(
             fn_type="phe.add",
             ins_info=(
@@ -580,7 +582,7 @@ class TestPHEHandler:
             ),
             outs_info=(TensorType.from_obj(ciphertext_val),),
         )
-        with pytest.raises(ValueError, match="operands must have same shape"):
+        with pytest.raises(ValueError, match="Operands cannot be broadcast together"):
             self.handler.execute(add_pfunc, [ciphertext, plaintext_val])
 
     def test_add_invalid_args(self):
@@ -1071,6 +1073,288 @@ class TestPHEHandler:
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
         expected = ciphertext_val * plaintext_val  # Element-wise multiplication
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_add_multidimensional_same_shape(self):
+        """Test CipherText + CipherText addition with multi-dimensional arrays of same shape."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D arrays of same shape
+        ciphertext_val1 = np.array([[1, 2], [3, 4]], dtype=np.int32)
+        ciphertext_val2 = np.array([[5, 6], [7, 8]], dtype=np.int32)
+
+        # Encrypt both arrays
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc, [ciphertext_val1, pk])[0]
+        ciphertext2 = self.handler.execute(encrypt_pfunc, [ciphertext_val2, pk])[0]
+
+        # Add two 2D ciphertexts
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val1),
+                TensorType.from_obj(ciphertext_val2),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[6, 8], [10, 12]], dtype=np.int32
+        )  # [[1+5, 2+6], [3+7, 4+8]]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_add_multidimensional_broadcast_scalar_ciphertext(self):
+        """Test CipherText + CipherText addition with broadcasting: 2D + scalar."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D ciphertext and scalar ciphertext
+        ciphertext_val1 = np.array([[2, 4], [6, 8]], dtype=np.int32)
+        ciphertext_val2 = np.array(10, dtype=np.int32)  # Scalar
+
+        # Encrypt both arrays
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val2),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [ciphertext_val1, pk])[0]
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [ciphertext_val2, pk])[0]
+
+        # Add 2D + scalar ciphertexts
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val1),
+                TensorType.from_obj(ciphertext_val2),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2)  # Result should have 2D shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[12, 14], [16, 18]], dtype=np.int32
+        )  # [[2+10, 4+10], [6+10, 8+10]]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_add_multidimensional_broadcast_vector_ciphertext(self):
+        """Test CipherText + CipherText addition with broadcasting: 2D + 1D."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D ciphertext and 1D ciphertext that broadcasts
+        ciphertext_val1 = np.array([[1, 2], [3, 4]], dtype=np.int32)
+        ciphertext_val2 = np.array(
+            [10, 20], dtype=np.int32
+        )  # Should broadcast to (2, 2)
+
+        # Encrypt both arrays
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val2),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [ciphertext_val1, pk])[0]
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [ciphertext_val2, pk])[0]
+
+        # Add 2D + 1D ciphertexts (should broadcast)
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val1),
+                TensorType.from_obj(ciphertext_val2),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (
+            2,
+            2,
+        )  # Result should have broadcasted shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        # Broadcasting: [[1, 2], [3, 4]] + [[10, 20], [10, 20]] = [[11, 22], [13, 24]]
+        expected = np.array([[11, 22], [13, 24]], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_add_multidimensional_broadcast_plaintext_scalar(self):
+        """Test CipherText + plaintext addition with broadcasting: 2D ciphertext + scalar plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D ciphertext and scalar plaintext
+        ciphertext_val = np.array([[2, 4], [6, 8]], dtype=np.int32)
+        plaintext_scalar = np.array(5, dtype=np.int32)
+
+        # Encrypt 2D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Add with scalar plaintext
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_scalar),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(add_pfunc, [ciphertext, plaintext_scalar])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2)  # Result should have ciphertext shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[7, 9], [11, 13]], dtype=np.int32
+        )  # [[2+5, 4+5], [6+5, 8+5]]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_add_multidimensional_broadcast_plaintext_vector(self):
+        """Test CipherText + plaintext addition with broadcasting: 2D ciphertext + 1D plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D ciphertext and 1D plaintext that broadcasts
+        ciphertext_val = np.array([[1, 2], [3, 4]], dtype=np.int32)
+        plaintext_vec = np.array(
+            [100, 200], dtype=np.int32
+        )  # Should broadcast to (2, 2)
+
+        # Encrypt 2D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Add with 1D plaintext (should broadcast)
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_vec),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(add_pfunc, [ciphertext, plaintext_vec])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (
+            2,
+            2,
+        )  # Result should have broadcasted shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        # Broadcasting: [[1, 2], [3, 4]] + [[100, 200], [100, 200]] = [[101, 202], [103, 204]]
+        expected = np.array([[101, 202], [103, 204]], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_add_multidimensional_3d_tensors(self):
+        """Test addition with 3D tensors."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 3D tensors
+        ciphertext_val1 = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+        ciphertext_val2 = np.array(
+            [[[10, 20], [30, 40]], [[50, 60], [70, 80]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+
+        # Encrypt both 3D arrays
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc, [ciphertext_val1, pk])[0]
+        ciphertext2 = self.handler.execute(encrypt_pfunc, [ciphertext_val2, pk])[0]
+
+        # Add 3D tensors
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val1),
+                TensorType.from_obj(ciphertext_val2),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val1),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = ciphertext_val1 + ciphertext_val2  # Element-wise addition
         np.testing.assert_array_equal(decrypted, expected)
 
     def test_various_numeric_types(self):
@@ -1775,3 +2059,214 @@ class TestPHEHandler:
             ValueError, match="All CipherTexts must have same semantic dtype"
         ):
             self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])
+
+    def test_decrypt_multidimensional_2d_matrix_int32(self):
+        """Test encrypt/decrypt cycle for 2D matrix int32."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D int32 matrix
+        plaintext = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
+        assert len(ciphertext_result) == 1
+
+        ciphertext = ciphertext_result[0]
+        assert isinstance(ciphertext, CipherText)
+        assert ciphertext.semantic_dtype == INT32
+        assert ciphertext.semantic_shape == (2, 3)
+
+        # Decrypt
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
+        assert len(decrypted_result) == 1
+
+        decrypted = decrypted_result[0]
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.dtype == np.int32
+        assert decrypted.shape == (2, 3)
+        np.testing.assert_array_equal(decrypted, [[1, 2, 3], [4, 5, 6]])
+
+    def test_decrypt_multidimensional_3d_tensor_float64(self):
+        """Test encrypt/decrypt cycle for 3D tensor float64."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 3D float64 tensor
+        plaintext = np.array(
+            [[[1.1, 2.2], [3.3, 4.4]], [[5.5, 6.6], [7.7, 8.8]]], dtype=np.float64
+        )
+
+        # Encrypt
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
+        ciphertext = ciphertext_result[0]
+
+        assert isinstance(ciphertext, CipherText)
+        assert ciphertext.semantic_dtype == FLOAT64
+        assert ciphertext.semantic_shape == (2, 2, 2)
+
+        # Decrypt
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
+        decrypted = decrypted_result[0]
+
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.dtype == np.float64
+        assert decrypted.shape == (2, 2, 2)
+        np.testing.assert_allclose(decrypted, plaintext, rtol=1e-10)
+
+    def test_decrypt_multidimensional_large_matrix_int16(self):
+        """Test encrypt/decrypt cycle for large matrix int16."""
+        pk, sk = self._generate_keypair()
+
+        # Test with larger int16 matrix
+        plaintext = np.arange(24, dtype=np.int16).reshape(4, 6)
+
+        # Encrypt
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
+        ciphertext = ciphertext_result[0]
+
+        assert isinstance(ciphertext, CipherText)
+        assert ciphertext.semantic_dtype == INT16
+        assert ciphertext.semantic_shape == (4, 6)
+
+        # Decrypt
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
+        decrypted = decrypted_result[0]
+
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.dtype == np.int16
+        assert decrypted.shape == (4, 6)
+        np.testing.assert_array_equal(decrypted, plaintext)
+
+    def test_decrypt_multidimensional_single_element_2d(self):
+        """Test encrypt/decrypt cycle for single element 2D array."""
+        pk, sk = self._generate_keypair()
+
+        # Test with single element 2D array
+        plaintext = np.array([[42]], dtype=np.int32)
+
+        # Encrypt
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
+        ciphertext = ciphertext_result[0]
+
+        assert isinstance(ciphertext, CipherText)
+        assert ciphertext.semantic_shape == (1, 1)
+
+        # Decrypt
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
+        decrypted = decrypted_result[0]
+
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.shape == (1, 1)
+        assert decrypted[0, 0] == 42
+
+    def test_decrypt_multidimensional_different_dtypes(self):
+        """Test encrypt/decrypt cycle for multidimensional arrays with different dtypes."""
+        pk, sk = self._generate_keypair()
+
+        # Test various dtypes with 2D arrays
+        test_cases = [
+            (np.array([[1, 2], [3, 4]], dtype=np.int8), INT8),
+            (np.array([[100, 200], [300, 400]], dtype=np.int64), INT64),
+            (np.array([[1.5, 2.5], [3.5, 4.5]], dtype=np.float32), FLOAT32),
+        ]
+
+        for plaintext, expected_dtype in test_cases:
+            # Encrypt
+            encrypt_pfunc = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+                outs_info=(TensorType.from_obj(plaintext),),
+            )
+            ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
+            ciphertext = ciphertext_result[0]
+
+            assert isinstance(ciphertext, CipherText)
+            assert ciphertext.semantic_dtype == expected_dtype
+            assert ciphertext.semantic_shape == (2, 2)
+
+            # Decrypt
+            decrypt_pfunc = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+                outs_info=(TensorType.from_obj(plaintext),),
+            )
+            decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
+            decrypted = decrypted_result[0]
+
+            assert isinstance(decrypted, np.ndarray)
+            assert decrypted.shape == (2, 2)
+            if expected_dtype.is_floating:
+                np.testing.assert_allclose(decrypted, plaintext, rtol=1e-6)
+            else:
+                np.testing.assert_array_equal(decrypted, plaintext)
+
+    def test_decrypt_multidimensional_negative_values(self):
+        """Test encrypt/decrypt cycle for multidimensional arrays with negative values."""
+        pk, sk = self._generate_keypair()
+
+        # Test with negative values in 2D array
+        plaintext = np.array([[-1, -2, -3], [4, -5, 6]], dtype=np.int32)
+
+        # Encrypt
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
+        ciphertext = ciphertext_result[0]
+
+        assert isinstance(ciphertext, CipherText)
+        assert ciphertext.semantic_shape == (2, 3)
+
+        # Decrypt
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext),),
+        )
+        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
+        decrypted = decrypted_result[0]
+
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.shape == (2, 3)
+        np.testing.assert_array_equal(decrypted, [[-1, -2, -3], [4, -5, 6]])

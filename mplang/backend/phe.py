@@ -407,6 +407,8 @@ class PHEHandler(TensorHandler):
     def _execute_add_ct2ct(self, ct1: CipherText, ct2: CipherText) -> CipherText:
         """Execute CipherText + CipherText addition.
 
+        Supports broadcasting between ciphertext tensors of different shapes.
+
         Args:
             ct1: First CipherText operand
             ct2: Second CipherText operand
@@ -421,20 +423,51 @@ class PHEHandler(TensorHandler):
         if ct1.pk_data != ct2.pk_data:
             raise ValueError("CipherText operands must be encrypted with same key")
 
-        if ct1.semantic_shape != ct2.semantic_shape:
-            raise ValueError("CipherText operands must have same shape")
+        # Use numpy broadcasting to determine result shape and broadcast operands
+        try:
+            dummy_ct1 = np.zeros(ct1.semantic_shape)
+            dummy_ct2 = np.zeros(ct2.semantic_shape)
+            broadcasted_dummy = dummy_ct1 + dummy_ct2
+            result_shape = broadcasted_dummy.shape
+        except ValueError as e:
+            raise ValueError(
+                f"CipherText operands cannot be broadcast together: shape {ct1.semantic_shape} "
+                f"vs shape {ct2.semantic_shape}: {e}"
+            )
+
+        # Broadcast ct1 if needed
+        if ct1.semantic_shape != result_shape:
+            dummy_ct1 = np.arange(np.prod(ct1.semantic_shape)).reshape(
+                ct1.semantic_shape
+            )
+            broadcasted_indices1 = np.broadcast_to(dummy_ct1, result_shape).flatten()
+            raw_ct1: list[Any] = ct1.ct_data
+            broadcasted_ct1_data = [raw_ct1[int(idx)] for idx in broadcasted_indices1]
+        else:
+            broadcasted_ct1_data = ct1.ct_data
+
+        # Broadcast ct2 if needed
+        if ct2.semantic_shape != result_shape:
+            dummy_ct2 = np.arange(np.prod(ct2.semantic_shape)).reshape(
+                ct2.semantic_shape
+            )
+            broadcasted_indices2 = np.broadcast_to(dummy_ct2, result_shape).flatten()
+            raw_ct2: list[Any] = ct2.ct_data
+            broadcasted_ct2_data = [raw_ct2[int(idx)] for idx in broadcasted_indices2]
+        else:
+            broadcasted_ct2_data = ct2.ct_data
 
         # Perform homomorphic addition
-        # lightPHE handles both scalar and tensor addition automatically
-        raw_ct1: list[Any] = ct1.ct_data
-        raw_ct2: list[Any] = ct2.ct_data
-        result_ciphertext = [raw_ct1[i] + raw_ct2[i] for i in range(len(raw_ct1))]
+        result_ciphertext = [
+            broadcasted_ct1_data[i] + broadcasted_ct2_data[i]
+            for i in range(len(broadcasted_ct1_data))
+        ]
 
-        # Create result CipherText
+        # Create result CipherText with broadcasted shape
         return CipherText(
             ct_data=result_ciphertext,
             semantic_dtype=ct1.semantic_dtype,
-            semantic_shape=ct1.semantic_shape,
+            semantic_shape=result_shape,
             scheme=ct1.scheme,
             key_size=ct1.key_size,
             pk_data=ct1.pk_data,
@@ -444,6 +477,8 @@ class PHEHandler(TensorHandler):
         self, ciphertext: CipherText, plaintext: TensorLike
     ) -> CipherText:
         """Execute CipherText + plaintext addition.
+
+        Supports broadcasting between ciphertext and plaintext tensors of different shapes.
 
         Args:
             ciphertext: CipherText operand
@@ -455,12 +490,34 @@ class PHEHandler(TensorHandler):
         # Convert plaintext to numpy
         plaintext_np = self._convert_to_numpy(plaintext)
 
-        # Validate shape compatibility
-        if plaintext_np.shape != ciphertext.semantic_shape:
+        # Use numpy broadcasting to determine result shape and broadcast operands
+        try:
+            dummy_ct = np.zeros(ciphertext.semantic_shape)
+            dummy_pt = np.zeros(plaintext_np.shape)
+            broadcasted_dummy = dummy_ct + dummy_pt
+            result_shape = broadcasted_dummy.shape
+        except ValueError as e:
             raise ValueError(
-                f"operands must have same shape: CipherText shape {ciphertext.semantic_shape} "
-                f"vs plaintext shape {plaintext_np.shape}"
+                f"Operands cannot be broadcast together: CipherText shape {ciphertext.semantic_shape} "
+                f"vs plaintext shape {plaintext_np.shape}: {e}"
             )
+
+        # Broadcast plaintext to match result shape if needed
+        if plaintext_np.shape != result_shape:
+            plaintext_broadcasted = np.broadcast_to(plaintext_np, result_shape)
+        else:
+            plaintext_broadcasted = plaintext_np
+
+        # Broadcast ciphertext if needed
+        if ciphertext.semantic_shape != result_shape:
+            dummy_ct = np.arange(np.prod(ciphertext.semantic_shape)).reshape(
+                ciphertext.semantic_shape
+            )
+            broadcasted_indices = np.broadcast_to(dummy_ct, result_shape).flatten()
+            raw_ct: list[Any] = ciphertext.ct_data
+            broadcasted_ct_data = [raw_ct[int(idx)] for idx in broadcasted_indices]
+        else:
+            broadcasted_ct_data = ciphertext.ct_data
 
         # For ciphertext + plaintext addition, we encrypt the plaintext first
         # and then do ciphertext + ciphertext addition
@@ -477,9 +534,9 @@ class PHEHandler(TensorHandler):
         )
         phe.cs.keys["public_key"] = ciphertext.pk_data
 
-        # Encrypt the plaintext using same method as original encryption
+        # Encrypt the broadcasted plaintext using same method as original encryption
         target_dtype = ciphertext.semantic_dtype
-        flat_data = plaintext_np.flatten()
+        flat_data = plaintext_broadcasted.flatten()
 
         if target_dtype.is_floating:
             data_list = [float(x) for x in flat_data]
@@ -490,15 +547,15 @@ class PHEHandler(TensorHandler):
 
         # Perform addition
         result_ciphertext = [
-            encrypted_plaintext[i] + ciphertext.ct_data[i]
+            encrypted_plaintext[i] + broadcasted_ct_data[i]
             for i in range(len(encrypted_plaintext))
         ]
 
-        # Create result CipherText
+        # Create result CipherText with broadcasted shape
         return CipherText(
             ct_data=result_ciphertext,
             semantic_dtype=ciphertext.semantic_dtype,
-            semantic_shape=ciphertext.semantic_shape,
+            semantic_shape=result_shape,
             scheme=ciphertext.scheme,
             key_size=ciphertext.key_size,
             pk_data=ciphertext.pk_data,

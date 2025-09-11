@@ -51,15 +51,21 @@ def _demo_flow():
     sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info_literal)
     sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info_literal)
 
-    # Encrypt at data parties and decrypt at TEE
+    # Encrypt at data parties and decrypt at TEE (bytes-only path)
     x0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
     x1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
-    c0 = simp.runAt(P0, crypto.enc)(x0, sess0_v)
-    c1 = simp.runAt(P1, crypto.enc)(x1, sess1_v)
+    b0 = simp.runAt(P0, crypto.pack)(x0)
+    b1 = simp.runAt(P1, crypto.pack)(x1)
+    c0 = simp.runAt(P0, crypto.enc)(b0, sess0_v)
+    c1 = simp.runAt(P1, crypto.enc)(b1, sess1_v)
     c0_at_tee = simp.p2p(P0, P2, c0)
     c1_at_tee = simp.p2p(P1, P2, c1)
-    p0 = simp.runAt(P2, crypto.dec)(c0_at_tee, sess0_t)
-    p1 = simp.runAt(P2, crypto.dec)(c1_at_tee, sess1_t)
+    b0_at_tee = simp.runAt(P2, crypto.dec)(c0_at_tee, sess0_t)
+    b1_at_tee = simp.runAt(P2, crypto.dec)(c1_at_tee, sess1_t)
+    from mplang.core.tensor import TensorType
+
+    p0 = simp.runAt(P2, crypto.unpack)(b0_at_tee, TensorType(x0.dtype, x0.shape))
+    p1 = simp.runAt(P2, crypto.unpack)(b1_at_tee, TensorType(x1.dtype, x1.shape))
     return p0, p1
 
 

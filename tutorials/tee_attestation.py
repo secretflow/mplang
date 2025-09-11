@@ -69,18 +69,24 @@ def demo_flow():
     sess0_tee = simp.runAt(P2, crypto.hkdf)(shared0_tee, info_literal)
     sess1_tee = simp.runAt(P2, crypto.hkdf)(shared1_tee, info_literal)
 
-    # 6) Encrypt local data using derived session keys
+    # 6) Encrypt local data using derived session keys (bytes-only path)
     x_p0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
     x_p1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
-    ct_p0 = simp.runAt(P0, crypto.enc)(x_p0, sess0_p0)
-    ct_p1 = simp.runAt(P1, crypto.enc)(x_p1, sess1_p1)
+    b0 = simp.runAt(P0, crypto.pack)(x_p0)
+    b1 = simp.runAt(P1, crypto.pack)(x_p1)
+    ct_p0 = simp.runAt(P0, crypto.enc)(b0, sess0_p0)
+    ct_p1 = simp.runAt(P1, crypto.enc)(b1, sess1_p1)
 
     # 7) Send ciphertexts to TEE and decrypt using the same session keys at TEE
     ct_p0_at_tee = simp.p2p(P0, P2, ct_p0)
     ct_p1_at_tee = simp.p2p(P1, P2, ct_p1)
 
-    pt0_at_tee = simp.runAt(P2, crypto.dec)(ct_p0_at_tee, sess0_tee)
-    pt1_at_tee = simp.runAt(P2, crypto.dec)(ct_p1_at_tee, sess1_tee)
+    b0_at_tee = simp.runAt(P2, crypto.dec)(ct_p0_at_tee, sess0_tee)
+    b1_at_tee = simp.runAt(P2, crypto.dec)(ct_p1_at_tee, sess1_tee)
+    from mplang.core.tensor import TensorType
+
+    pt0_at_tee = simp.runAt(P2, crypto.unpack)(b0_at_tee, TensorType.from_obj(x_p0))
+    pt1_at_tee = simp.runAt(P2, crypto.unpack)(b1_at_tee, TensorType.from_obj(x_p1))
 
     # Return plaintexts reconstructed at TEE for quick visual check
     return pt0_at_tee, pt1_at_tee

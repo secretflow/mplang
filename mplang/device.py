@@ -33,6 +33,7 @@ import mplang.api as mapi
 from mplang import simp
 from mplang.core import InterpContext, MPObject, primitive
 from mplang.core.cluster import ClusterSpec
+from mplang.core.tensor import TensorType
 from mplang.frontend import crypto, tee
 from mplang.simp import mpi, smpc
 from mplang.utils.func_utils import normalize_fn
@@ -158,10 +159,13 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         tee_rank = to_dev.members[0].rank
         # Ensure sessions (both directions) exist for this PPU<->TEE pair
         sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
-        # Encrypt at sender, transfer, then decrypt at TEE
-        ct = simp.runAt(frm_rank, crypto.enc)(obj, sess_p)
+        # Bytes-only path: pack -> enc -> p2p -> dec -> unpack (with static out type)
+        obj_ty = TensorType.from_obj(obj)
+        b = simp.runAt(frm_rank, crypto.pack)(obj)
+        ct = simp.runAt(frm_rank, crypto.enc)(b, sess_p)
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
-        pt_at_tee = simp.runAt(tee_rank, crypto.dec)(ct_at_tee, sess_t)
+        b_at_tee = simp.runAt(tee_rank, crypto.dec)(ct_at_tee, sess_t)
+        pt_at_tee = simp.runAt(tee_rank, crypto.unpack)(b_at_tee, obj_ty)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEE", "PPU"):
         # Transparent encryption from TEE to a specific PPU using the reverse-direction session key
@@ -170,9 +174,12 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         ppu_rank = to_dev.members[0].rank
         # Ensure bidirectional session established for this pair
         sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
-        ct = simp.runAt(tee_rank, crypto.enc)(obj, sess_t)
+        obj_ty = TensorType.from_obj(obj)
+        b = simp.runAt(tee_rank, crypto.pack)(obj)
+        ct = simp.runAt(tee_rank, crypto.enc)(b, sess_t)
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
-        pt_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_p)
+        b_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_p)
+        pt_at_ppu = simp.runAt(ppu_rank, crypto.unpack)(b_at_ppu, obj_ty)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")

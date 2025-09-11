@@ -30,7 +30,7 @@ import math
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import BOOL, INT64, UINT8
+from mplang.core.dtype import UINT8
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
@@ -67,7 +67,7 @@ keygen = KeyGen()
 class SymmetricEncrypt(FEOp):
     """Symmetric encryption.
 
-    API: enc(plaintext: T[N], key: u8[M]) -> ciphertext: u8[N + 12]
+    API: enc(plaintext: u8[N], key: u8[M]) -> ciphertext: u8[N + 12]
 
     Semantics:
     - Ciphertext is defined as nonce(12 bytes) || encrypted_payload.
@@ -84,12 +84,12 @@ class SymmetricEncrypt(FEOp):
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         pt_ty = TensorType.from_obj(plaintext)
         key_ty = TensorType.from_obj(key)
-        # Compute total plaintext bytes (support scalars and any shape)
-        elem_count = 1 if len(pt_ty.shape) == 0 else math.prod(pt_ty.shape)
-        itemsize = pt_ty.dtype.numpy_dtype().itemsize
-        nbytes = int(elem_count) * int(itemsize)
+        if pt_ty.dtype != UINT8:
+            raise TypeError("enc expects UINT8 plaintext")
+        if len(pt_ty.shape) != 1:
+            raise TypeError("enc expects 1-D plaintext")
         # Prepend 12-byte nonce to ciphertext bytes
-        out_ty = TensorType(UINT8, (nbytes + 12,))
+        out_ty = TensorType(UINT8, (pt_ty.shape[0] + 12,))
         pfunc = PFunction(
             fn_type="crypto.enc",
             ins_info=(pt_ty, key_ty),
@@ -122,20 +122,10 @@ class SymmetricDecrypt(FEOp):
         ct_ty = TensorType.from_obj(ciphertext)
         key_ty = TensorType.from_obj(key)
         if ct_ty.dtype != UINT8:
-            raise TypeError("symmetric_decrypt expects UINT8 ciphertext")
+            raise TypeError("dec expects UINT8 ciphertext")
         if len(ct_ty.shape) != 1 or ct_ty.shape[0] < 12:
-            raise TypeError("symmetric_decrypt expects 1-D ciphertext with nonce")
-        byte_len = ct_ty.shape[0] - 12
-        # Heuristic reconstruction for common cases to preserve user-visible types
-        # - If total bytes divisible by 8, interpret as int64 vector
-        # - If single byte, interpret as bool[1]
-        # - Otherwise, keep as raw bytes (u8)
-        if byte_len % 8 == 0 and byte_len > 0:
-            out_ty = TensorType(INT64, (byte_len // 8,))
-        elif byte_len == 1:
-            out_ty = TensorType(BOOL, (1,))
-        else:
-            out_ty = TensorType(UINT8, (byte_len,))
+            raise TypeError("dec expects 1-D ciphertext with nonce")
+        out_ty = TensorType(UINT8, (ct_ty.shape[0] - 12,))
         pfunc = PFunction(
             fn_type="crypto.dec",
             ins_info=(ct_ty, key_ty),
@@ -146,6 +136,55 @@ class SymmetricDecrypt(FEOp):
 
 
 dec = SymmetricDecrypt()
+
+
+class Pack(FEOp):
+    """Pack any tensor into a contiguous byte vector (C-order).
+
+    API: pack(x: T[...]) -> bytes: u8[P]
+    where P = sizeof(T) * prod(shape or (1,)).
+    """
+
+    def __call__(self, x: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        x_ty = TensorType.from_obj(x)
+        elem_count = 1 if len(x_ty.shape) == 0 else math.prod(x_ty.shape)
+        itemsize = x_ty.dtype.numpy_dtype().itemsize
+        out_ty = TensorType(UINT8, (int(elem_count) * int(itemsize),))
+        pfunc = PFunction(
+            fn_type="crypto.pack",
+            ins_info=(x_ty,),
+            outs_info=(out_ty,),
+        )
+        _, treedef = tree_flatten(out_ty)
+        return pfunc, [x], treedef
+
+
+pack = Pack()
+
+
+class Unpack(FEOp):
+    """Unpack a byte vector into a tensor specified by a TensorType.
+
+    API: unpack(bytes: u8[P], out_ty: TensorType) -> T[...]
+    """
+
+    def __call__(
+        self, b: MPObject, out_ty: TensorType
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        b_ty = TensorType.from_obj(b)
+        if b_ty.dtype != UINT8 or len(b_ty.shape) != 1:
+            raise TypeError("unpack expects UINT8 1-D byte vector")
+        # Output type is provided explicitly via TensorType
+        pfunc = PFunction(
+            fn_type="crypto.unpack",
+            ins_info=(b_ty,),
+            outs_info=(out_ty,),
+        )
+        _, treedef = tree_flatten(out_ty)
+        return pfunc, [b], treedef
+
+
+unpack = Unpack()
 
 
 class KemKeyGen(FEOp):

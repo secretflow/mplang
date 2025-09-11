@@ -25,45 +25,45 @@ your script stays focused on business logic. At a glance:
 
 1. Scripting & Compilation
 
-- Before any sensitive value goes to a TEE device, the program includes
-  `tee.quote(pk)` and `tee.attest(quote)` at the right points. The quote binds
-  the provided ephemeral public key and is tied to the current program and
-  session. Attestation returns the attested TEE public key to verifiers, who
-  then derive per-party session keys via KEM/ECDH + HKDF. The final MPIR keeps
-  this security logic explicit and auditable.
+   - Before any sensitive value goes to a TEE device, the program includes
+     `tee.quote(pk)` and `tee.attest(quote)` at the right points. The quote binds
+     the provided ephemeral public key and is tied to the current program and
+     session. Attestation returns the attested TEE public key to verifiers, who
+     then derive per-party session keys via KEM/ECDH + HKDF. The final MPIR keeps
+     this security logic explicit and auditable.
 
 1. Session Initiation (by Driver)
 
-- Compute `program_hash` (hash of the MPIR)
-- Specify `runtime_measurement` (for example, SGX `MRENCLAVE`)
-- Generate a fresh `session_nonce`
-- Sign the tuple `(program_hash, runtime_measurement, session_nonce)` to create
-        a `driver_signature`
+   - Compute `program_hash` (hash of the MPIR)
+   - Specify `runtime_measurement` (for example, SGX `MRENCLAVE`)
+   - Generate a fresh `session_nonce`
+   - Sign the tuple `(program_hash, runtime_measurement, session_nonce)` to create
+           a `driver_signature`
 
 1. Distribution
 
-- Send `(MPIR, program_hash, runtime_measurement, session_nonce,
-  driver_signature)` to all parties.
+   - Send `(MPIR, program_hash, runtime_measurement, session_nonce,
+     driver_signature)` to all parties.
 
 1. Runtime Verification
 
-- Initial check (all parties): verify the `driver_signature` over the tuple
-- TEE attestation (TEE parties): generate an ephemeral keypair and emit a quote
-  that binds `report_data = H(program_hash || session_nonce ||
-  H(ephemeral_pubkey))`. In this API this is `tee.quote(pk)`, where `pk` is the
-  ephemeral public key.
-- Quote verification (data parties): run `tee.attest(quote)`, verify the vendor
-  chain, measurement, and `report_data`, and obtain the attested TEE public key.
-  Each verifier then runs KEM/ECDH (+ HKDF) with that TEE public key to derive a
-  per-party session key; the TEE performs the matching derivation upon receiving
-  the verifier’s public material.
+   - Initial check (all parties): verify the `driver_signature` over the tuple
+   - TEE attestation (TEE parties): generate an ephemeral keypair and emit a quote
+     that binds `report_data = H(program_hash || session_nonce ||
+     H(ephemeral_pubkey))`. In this API this is `tee.quote(pk)`, where `pk` is the
+     ephemeral public key.
+   - Quote verification (data parties): run `tee.attest(quote)`, verify the vendor
+     chain, measurement, and `report_data`, and obtain the attested TEE public key.
+     Each verifier then runs KEM/ECDH (+ HKDF) with that TEE public key to derive a
+     per-party session key; the TEE performs the matching derivation upon receiving
+     the verifier’s public material.
 
 1. Secure Execution
 
-- With verification complete, data parties encrypt with their derived session
-  keys and send ciphertexts (e.g., `nonce || ciphertext`) to the TEE. The TEE
-  derives the same session keys and decrypts; computation proceeds exactly as
-  described by the MPIR.
+   - With verification complete, data parties encrypt with their derived session
+     keys and send ciphertexts (e.g., `nonce || ciphertext`) to the TEE. The TEE
+     derives the same session keys and decrypts; computation proceeds exactly as
+     described by the MPIR.
 
 ## 3. Trust & verification
 

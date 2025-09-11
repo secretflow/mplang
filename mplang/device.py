@@ -27,7 +27,6 @@ from collections.abc import Callable
 from functools import partial, wraps
 from typing import Any
 
-import numpy as np
 from jax.tree_util import tree_map
 
 import mplang.api as mapi
@@ -40,6 +39,8 @@ from mplang.utils.func_utils import normalize_fn
 
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
+
+_HKDF_INFO_LITERAL: bytes = b"mplang/device/tee/v1"
 
 
 # `function` decorator could also compile device-level apis.
@@ -207,10 +208,10 @@ def _ensure_tee_session(
     # 4) Both sides derive the shared secret and session key
     shared_p = simp.runAt(frm_rank, crypto.kem_derive)(v_sk, tee_pk_at_sender, "x25519")
     shared_t = simp.runAt(tee_rank, crypto.kem_derive)(tee_sk, v_pk_at_tee, "x25519")
-    info_p = simp.runAt(frm_rank, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    info_t = simp.runAt(tee_rank, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_p)
-    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_t)
+    # Use a fixed string literal for HKDF info on both sides
+    info_literal = _HKDF_INFO_LITERAL.decode("utf-8")
+    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_literal)
+    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_literal)
 
     _TEE_SESS_CACHE[key] = (sess_p, sess_t)
     return sess_p, sess_t

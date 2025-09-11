@@ -63,14 +63,11 @@ def demo_flow():
     shared0_tee = simp.runAt(P2, crypto.kem_derive)(tee_sk0, v_pk_p0_at_tee, "x25519")
     shared1_tee = simp.runAt(P2, crypto.kem_derive)(tee_sk1, v_pk_p1_at_tee, "x25519")
 
-    info_p0 = simp.runAt(P0, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    info_p1 = simp.runAt(P1, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    info_tee = simp.runAt(P2, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-
-    sess0_p0 = simp.runAt(P0, crypto.hkdf)(shared0_p0, info_p0)
-    sess1_p1 = simp.runAt(P1, crypto.hkdf)(shared1_p1, info_p1)
-    sess0_tee = simp.runAt(P2, crypto.hkdf)(shared0_tee, info_tee)
-    sess1_tee = simp.runAt(P2, crypto.hkdf)(shared1_tee, info_tee)
+    info_literal = "mplang/tee-session/v1"
+    sess0_p0 = simp.runAt(P0, crypto.hkdf)(shared0_p0, info_literal)
+    sess1_p1 = simp.runAt(P1, crypto.hkdf)(shared1_p1, info_literal)
+    sess0_tee = simp.runAt(P2, crypto.hkdf)(shared0_tee, info_literal)
+    sess1_tee = simp.runAt(P2, crypto.hkdf)(shared1_tee, info_literal)
 
     # 6) Encrypt local data using derived session keys
     x_p0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()

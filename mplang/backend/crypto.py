@@ -117,13 +117,14 @@ class CryptoHandler(TensorHandler):
         secret = np.frombuffer(blake2b(xored.tobytes())[:32], dtype=np.uint8)
         return [secret]
 
-    def _execute_hkdf(self, args: list[TensorLike]) -> list[TensorLike]:
+    def _execute_hkdf(
+        self, args: list[TensorLike], pfunc: PFunction
+    ) -> list[TensorLike]:
         secret = np.asarray(args[0], dtype=np.uint8)
-        info = np.asarray(args[1], dtype=np.uint8)
+        info_str = str(pfunc.attrs.get("info", ""))
+        info = info_str.encode("utf-8")
         # WARNING: Mock HKDF using blake2b(secret||info) truncation.
-        out = np.frombuffer(
-            blake2b(secret.tobytes() + info.tobytes())[:32], dtype=np.uint8
-        )
+        out = np.frombuffer(blake2b(secret.tobytes() + info)[:32], dtype=np.uint8)
         return [out]
 
     def execute(self, pfunc: PFunction, args: list[TensorLike]) -> list[TensorLike]:
@@ -138,5 +139,5 @@ class CryptoHandler(TensorHandler):
         if pfunc.fn_type == self.KEM_DERIVE:
             return self._execute_kem_derive(args, pfunc)
         if pfunc.fn_type == self.HKDF:
-            return self._execute_hkdf(args)
+            return self._execute_hkdf(args, pfunc)
         raise ValueError(f"Unsupported function type: {pfunc.fn_type}")

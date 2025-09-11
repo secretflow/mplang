@@ -208,25 +208,32 @@ kem_derive = KemDerive()
 class HKDF(FEOp):
     """HKDF-style key derivation.
 
-    API: hkdf(secret[u8[32]], info[u8[M]]) -> key[u8[32]]
+    HKDF stands for "HMAC-based Key Derivation Function". It derives one or
+    more sub-keys from a shared secret and a context string ("info"). In
+    production, HKDF typically follows an extract-and-expand construction over
+    a secure hash/HMAC. Here the frontend only defines the API shape; concrete
+    security is provided by the backend.
+
+    API: hkdf(secret[u8[32]], info: str) -> key[u8[32]]
 
     Notes:
     - Frontend expresses API; backend implements the KDF.
+    - The info parameter is a string literal carried in attrs.
     """
 
     def __call__(
-        self, secret: MPObject, info: MPObject
+        self, secret: MPObject, info: str
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         sec_ty = TensorType.from_obj(secret)
-        info_ty = TensorType.from_obj(info)
         out_ty = TensorType(UINT8, (32,))
         pfunc = PFunction(
             fn_type="crypto.hkdf",
-            ins_info=(sec_ty, info_ty),
+            ins_info=(sec_ty,),
             outs_info=(out_ty,),
+            info=info,
         )
         _, treedef = tree_flatten(out_ty)
-        return pfunc, [secret, info], treedef
+        return pfunc, [secret], treedef
 
 
 hkdf = HKDF()

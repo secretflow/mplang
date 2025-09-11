@@ -45,13 +45,11 @@ def _demo_flow():
     shared0_t = simp.runAt(P2, crypto.kem_derive)(t_sk0, v_pk0_at_tee, "x25519")
     shared1_t = simp.runAt(P2, crypto.kem_derive)(t_sk1, v_pk1_at_tee, "x25519")
 
-    info_p0 = simp.runAt(P0, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    info_p1 = simp.runAt(P1, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    info_t = simp.runAt(P2, lambda: np.frombuffer(b"V->TEE", dtype=np.uint8))()
-    sess0_v = simp.runAt(P0, crypto.hkdf)(shared0_v, info_p0)
-    sess1_v = simp.runAt(P1, crypto.hkdf)(shared1_v, info_p1)
-    sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info_t)
-    sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info_t)
+    info_literal = "mplang/device/tee/v1"
+    sess0_v = simp.runAt(P0, crypto.hkdf)(shared0_v, info_literal)
+    sess1_v = simp.runAt(P1, crypto.hkdf)(shared1_v, info_literal)
+    sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info_literal)
+    sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info_literal)
 
     # Encrypt at data parties and decrypt at TEE
     x0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()

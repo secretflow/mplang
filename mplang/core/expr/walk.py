@@ -32,7 +32,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import cast
 
-from .ast import (
+from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
     CondExpr,

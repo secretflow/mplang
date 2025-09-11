@@ -171,7 +171,6 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         tee_rank = to_dev.members[0].rank
         # Ensure sessions (both directions) exist for this PPU<->TEE pair
         sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
-
         # Encrypt at sender, transfer, then decrypt at TEE
         ct = simp.runAt(frm_rank, crypto.enc)(obj, sess_p)
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
@@ -183,14 +182,10 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         tee_rank = frm_dev.members[0].rank
         ppu_rank = to_dev.members[0].rank
         # Ensure bidirectional session established for this pair
-        _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
-        # Fetch established session for (PPU, TEE) pair, then use (TEE->PPU) direction
-        sess_p, sess_t = _TEE_SESS_CACHE[to_dev_id, frm_dev_id]
-        sess_sender = sess_t  # TEE side key used to encrypt
-        sess_receiver = sess_p  # PPU side key used to decrypt
-        ct = simp.runAt(tee_rank, crypto.enc)(obj, sess_sender)
+        sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
+        ct = simp.runAt(tee_rank, crypto.enc)(obj, sess_t)
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
-        pt_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_receiver)
+        pt_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_p)
         return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")

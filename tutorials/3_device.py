@@ -71,10 +71,8 @@ def myfun(x, y):
 def millionaire(dev_name):
     x = mpd.device("P0")(random.randint)(0, 10)
     y = mpd.device("P1")(random.randint)(0, 10)
-    # Run comparison inside TEE
+    # Run comparison inside secure device.
     z = mpd.device(dev_name)(lambda x, y: x < y)(x, y)
-    # assert mpd.Utils.get_devid(z) == dev_name, z
-
     # Bring result back to P0
     r = mpd.put("P0", z)
     return x, y, z, r

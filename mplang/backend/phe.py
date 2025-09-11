@@ -272,6 +272,8 @@ class PHEHandler(TensorHandler):
     ) -> list[TensorLike]:
         """Execute homomorphic multiplication of ciphertext with plaintext.
 
+        Supports broadcasting between ciphertext and plaintext tensors of different shapes.
+
         Args:
             pfunc: PFunction for multiplication
             args: Two operands - ciphertext and plaintext
@@ -292,16 +294,45 @@ class PHEHandler(TensorHandler):
             # Convert plaintext to numpy
             plaintext_np = self._convert_to_numpy(plaintext)
 
-            # Validate shape compatibility
-            if plaintext_np.shape != ciphertext.semantic_shape:
+            # Use numpy broadcasting to determine result shape and broadcast operands
+            # Create dummy arrays with the same shapes to test broadcasting
+            try:
+                dummy_ct = np.zeros(ciphertext.semantic_shape)
+                dummy_pt = np.zeros(plaintext_np.shape)
+                broadcasted_dummy = dummy_ct * dummy_pt
+                result_shape = broadcasted_dummy.shape
+            except ValueError as e:
                 raise ValueError(
-                    f"operands must have same shape: CipherText shape {ciphertext.semantic_shape} "
-                    f"vs plaintext shape {plaintext_np.shape}"
+                    f"Operands cannot be broadcast together: CipherText shape {ciphertext.semantic_shape} "
+                    f"vs plaintext shape {plaintext_np.shape}: {e}"
                 )
 
-            # Flatten the plaintext data
+            # Broadcast plaintext to match result shape if needed
+            if plaintext_np.shape != result_shape:
+                plaintext_broadcasted = np.broadcast_to(plaintext_np, result_shape)
+            else:
+                plaintext_broadcasted = plaintext_np
+
+            # If ciphertext needs broadcasting, we need to replicate its encrypted values
+            if ciphertext.semantic_shape != result_shape:
+                # Use numpy to create a properly broadcasted index mapping
+                # Create a dummy array with same shape as ciphertext, fill with indices
+                dummy_ct = np.arange(np.prod(ciphertext.semantic_shape)).reshape(
+                    ciphertext.semantic_shape
+                )
+                # Broadcast this to the result shape
+                broadcasted_indices = np.broadcast_to(dummy_ct, result_shape).flatten()
+
+                # Replicate ciphertext data according to the broadcasted indices
+                raw_ct: list[Any] = ciphertext.ct_data
+                broadcasted_ct_data = [raw_ct[int(idx)] for idx in broadcasted_indices]
+            else:
+                # No broadcasting needed for ciphertext
+                broadcasted_ct_data = ciphertext.ct_data
+
+            # Flatten the broadcasted plaintext data for element-wise multiplication
             target_dtype = ciphertext.semantic_dtype
-            flat_data = plaintext_np.flatten()
+            flat_data = plaintext_broadcasted.flatten()
 
             if target_dtype.is_floating:
                 multiplier = [float(x) for x in flat_data]
@@ -310,17 +341,16 @@ class PHEHandler(TensorHandler):
 
             # Perform homomorphic multiplication
             # In Paillier, ciphertext * plaintext is supported
-            raw_ct: list[Any] = ciphertext.ct_data
             result_ciphertext = [
-                raw_ct[i] * [multiplier[i]] for i in range(len(multiplier))
+                broadcasted_ct_data[i] * [multiplier[i]] for i in range(len(multiplier))
             ]
 
-            # Create result CipherText
+            # Create result CipherText with the broadcasted shape
             return [
                 CipherText(
                     ct_data=result_ciphertext,
                     semantic_dtype=ciphertext.semantic_dtype,
-                    semantic_shape=ciphertext.semantic_shape,
+                    semantic_shape=result_shape,
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,

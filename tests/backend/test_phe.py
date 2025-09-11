@@ -769,12 +769,13 @@ class TestPHEHandler:
             self.handler.execute(mul_pfunc, [plaintext_val, plaintext_val])
 
     def test_mul_shape_mismatch(self):
-        """Test multiplication with shape mismatch."""
+        """Test multiplication with incompatible shape for broadcasting."""
         pk, _ = self._generate_keypair()
 
-        # Encrypt scalar
-        ciphertext_val = np.array(5, dtype=np.int32)
-        plaintext_val = np.array([1, 2], dtype=np.int32)  # Different shape
+        # Create tensors with truly incompatible shapes for broadcasting
+        # Shape (3, 1) and (2, 1) cannot be broadcast together
+        ciphertext_val = np.array([[1], [2], [3]], dtype=np.int32)  # Shape (3, 1)
+        plaintext_val = np.array([[4], [5]], dtype=np.int32)  # Shape (2, 1)
 
         encrypt_pfunc = PFunction(
             fn_type="phe.encrypt",
@@ -783,7 +784,7 @@ class TestPHEHandler:
         )
         ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
 
-        # Try to multiply - should fail
+        # Try to multiply - should fail due to incompatible broadcasting
         mul_pfunc = PFunction(
             fn_type="phe.mul",
             ins_info=(
@@ -792,7 +793,7 @@ class TestPHEHandler:
             ),
             outs_info=(TensorType.from_obj(ciphertext_val),),
         )
-        with pytest.raises(ValueError, match="operands must have same shape"):
+        with pytest.raises(ValueError, match="Operands cannot be broadcast together"):
             self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])
 
     def test_mul_float_x_float_not_supported(self):
@@ -818,18 +819,259 @@ class TestPHEHandler:
         except ValueError as e:
             if "float x float operations" in str(e):
                 pytest.fail("float x int should be allowed")
-        except Exception:
-            pass  # Other exceptions are acceptable
 
-        # Test that int x float is allowed (should not raise validation error)
-        int_ct = jnp.array(5, dtype=jnp.int32)
-        try:
-            phe.mul(int_ct, float_pt)  # Should not raise float x float error
-        except ValueError as e:
-            if "float x float operations" in str(e):
-                pytest.fail("int x float should be allowed")
-        except Exception:
-            pass  # Other exceptions are acceptable
+    def test_mul_multidimensional_same_shape(self):
+        """Test multiplication with multi-dimensional arrays of same shape."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D arrays of same shape
+        ciphertext_val = np.array([[1, 2], [3, 4]], dtype=np.int32)
+        plaintext_val = np.array([[5, 6], [7, 8]], dtype=np.int32)
+
+        # Encrypt 2D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply with 2D plaintext
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_val),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[5, 12], [21, 32]], dtype=np.int32
+        )  # [[1*5, 2*6], [3*7, 4*8]]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_mul_multidimensional_broadcast_scalar(self):
+        """Test multiplication with broadcasting: multi-dimensional ciphertext * scalar plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D ciphertext and scalar plaintext
+        ciphertext_val = np.array([[2, 4], [6, 8]], dtype=np.int32)
+        plaintext_scalar = np.array(3, dtype=np.int32)
+
+        # Encrypt 2D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply with scalar plaintext
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_scalar),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_scalar])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2)  # Result should have ciphertext shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[6, 12], [18, 24]], dtype=np.int32
+        )  # [[2*3, 4*3], [6*3, 8*3]]
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_mul_multidimensional_broadcast_vector(self):
+        """Test multiplication with broadcasting: 2D ciphertext * 1D plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2D ciphertext and 1D plaintext that broadcasts
+        ciphertext_val = np.array([[1, 2], [3, 4]], dtype=np.int32)
+        plaintext_vec = np.array([10, 20], dtype=np.int32)  # Should broadcast to (2, 2)
+
+        # Encrypt 2D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply with 1D plaintext (should broadcast)
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_vec),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_vec])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (
+            2,
+            2,
+        )  # Result should have broadcasted shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        # Broadcasting: [[1, 2], [3, 4]] * [[10, 20], [10, 20]] = [[10, 40], [30, 80]]
+        expected = np.array([[10, 40], [30, 80]], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_mul_multidimensional_broadcast_ciphertext(self):
+        """Test multiplication with broadcasting where ciphertext needs to be broadcasted."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 1D ciphertext and 2D plaintext
+        ciphertext_val = np.array([2, 3], dtype=np.int32)  # Shape (2,)
+        plaintext_val = np.array([[1, 4], [5, 6]], dtype=np.int32)  # Shape (2, 2)
+
+        # Encrypt 1D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply with 2D plaintext (ciphertext should broadcast)
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_val),
+            ),
+            outs_info=(
+                TensorType.from_obj(plaintext_val),
+            ),  # Result shape follows plaintext
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (
+            2,
+            2,
+        )  # Result should have broadcasted shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(plaintext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(plaintext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        # Broadcasting: [[2, 3], [2, 3]] * [[1, 4], [5, 6]] = [[2, 12], [10, 18]]
+        expected = np.array([[2, 12], [10, 18]], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted, expected)
+
+    def test_mul_multidimensional_broadcast_incompatible(self):
+        """Test multiplication with incompatible shapes for broadcasting."""
+        pk, _ = self._generate_keypair()
+
+        # Test with incompatible shapes
+        ciphertext_val = np.array([[1, 2, 3]], dtype=np.int32)  # Shape (1, 3)
+        plaintext_val = np.array([[1], [2]], dtype=np.int32)  # Shape (2, 1)
+
+        # Encrypt array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Try to multiply with incompatible shape
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_val),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+
+        # This should work with broadcasting, result shape should be (2, 3)
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])[0]
+        assert result_ct.semantic_shape == (2, 3)
+
+    def test_mul_multidimensional_3d_tensors(self):
+        """Test multiplication with 3D tensors."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 3D tensors
+        ciphertext_val = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+        plaintext_val = np.array(
+            [[[2, 1], [1, 2]], [[1, 2], [2, 1]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+
+        # Encrypt 3D array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply with 3D plaintext
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(plaintext_val),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = ciphertext_val * plaintext_val  # Element-wise multiplication
+        np.testing.assert_array_equal(decrypted, expected)
 
     def test_various_numeric_types(self):
         """Test encryption/decryption with various numeric types."""

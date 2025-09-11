@@ -26,7 +26,7 @@ from mplang.frontend.base import FEOp
 class QuoteGen(FEOp):
     """TEE quote generation FEOp binding the provided ephemeral public key.
 
-    API (mock): quote(pk[u8[32]]) -> quote[u8[33]]
+    API (mock): quote(pk: u8[32]) -> (quote: u8[33])
     The mock encodes a 1-byte header + 32-byte pk.
     """
 
@@ -45,7 +45,7 @@ class QuoteGen(FEOp):
 class QuoteVerifyAndExtract(FEOp):
     """TEE quote verification FEOp returning the attested TEE public key.
 
-    API (mock): attest(quote[u8[33]]) -> tee_pk[u8[32]]
+    API (mock): attest(quote: u8[33]) -> tee_pk: u8[32]
     """
 
     def __call__(self, quote: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:

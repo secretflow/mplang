@@ -111,8 +111,9 @@ def run_tee():
     print("z_t (at TEE):", z_t, mplang.fetch(sim, z_t))
     print("r_t (at P0):", r_t, mplang.fetch(sim, r_t))
 
-    compiled = mplang.compile(sim, millionaire, "TEE0")
-    print("TEE compiled:", compiled.compiler_ir())
+    # copts = mplang.CompileOptions(cluster_spec)
+    # compiled = mplang.compile(copts, millionaire, "TEE0")
+    # print("TEE compiled:", compiled.compiler_ir())
 
 
 if __name__ == "__main__":

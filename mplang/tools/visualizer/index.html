@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPIR Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@5/dist/tippy.css" />
+</head>
+<body>
+    <h1>MPIR Visualizer</h1>
+    <div id="controls">
+        <label for="ir-file-input">Load MPIR JSON:</label>
+        <input type="file" id="ir-file-input" accept=".json">
+        <div id="export-buttons">
+            <button id="export-png">Export as PNG</button>
+            <button id="export-svg">Export as SVG</button>
+            <button id="export-json">Export as JSON</button>
+        </div>
+    </div>
+    <div id="cy-container"></div>
+
+    <!-- Core Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.33.1/cytoscape.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/elkjs/lib/elk.bundled.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-elk@2.3.0/dist/cytoscape-elk.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@0.5.1/cytoscape-svg.min.js"></script>
+
+    <!-- Tooltip Libraries -->
+    <script src="https://unpkg.com/popper.js@1"></script>
+    <script src="https://unpkg.com/tippy.js@5"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape-popper/2.0.0/cytoscape-popper.min.js"></script>
+
+    <!-- Main Application Script -->
+    <script src="script.js"></script>
+</body>
+</html>

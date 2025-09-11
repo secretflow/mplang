@@ -1,0 +1,43 @@
+{
+  "nodes": [
+    {
+      "op_type": "prandint",
+      "name": "prandint_0",
+      "outs_info": [{ "pmask": "0" }]
+    },
+    {
+      "op_type": "prandint",
+      "name": "prandint_1",
+      "outs_info": [{ "pmask": "1" }]
+    },
+    {
+      "op_type": "tee.quote_gen",
+      "name": "quote_gen_2",
+      "outs_info": [{ "pmask": "2" }, { "pmask": "2" }]
+    },
+    {
+      "op_type": "p2p",
+      "name": "p2p_3",
+      "inputs": ["quote_gen_2:0"],
+      "outs_info": [{ "pmask": "0" }]
+    },
+    {
+      "op_type": "tee.quote_verify",
+      "name": "quote_verify_4",
+      "inputs": ["p2p_3:0"],
+      "outs_info": [{ "pmask": "0" }]
+    },
+    {
+      "op_type": "p2p",
+      "name": "p2p_5_risky",
+      "inputs": ["prandint_1:0"],
+      "outs_info": [{ "pmask": "2" }]
+    },
+    {
+      "op_type": "reveal",
+      "name": "reveal_6",
+      "inputs": ["p2p_5_risky:0"],
+      "outs_info": [{ "pmask": "0" }]
+    }
+  ]
+}

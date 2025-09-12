@@ -39,7 +39,21 @@ def get_free_port() -> int:
 
 
 def get_free_ports(n: int) -> list[int]:
-    return [get_free_port() for _ in range(n)]
+    """Return a list of n unique free ports.
+
+    Note: This function is not safe from race conditions. For spawning servers,
+    prefer a reservation strategy like the one in `spawn_http_servers`.
+    This is suitable for client-side ephemeral port suggestions where no
+    binding occurs.
+    """
+    ports = set()
+    for _ in range(n * 2):  # Try a few more times in case of collision
+        if len(ports) >= n:
+            break
+        ports.add(get_free_port())
+    if len(ports) < n:
+        raise RuntimeError(f"Could not get {n} unique free ports")
+    return list(ports)
 
 
 @dataclass
@@ -67,6 +81,25 @@ def _verbose() -> bool:
     }
 
 
+def _run_server_process(app, host, port, sock, log_level):
+    """The target function for the server process."""
+    import uvicorn
+
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level=log_level,
+        ws="none",
+    )
+    server = uvicorn.Server(config)
+    if _verbose():
+        print(f"[spawn_http_servers] starting server pid={os.getpid()} port={port}")
+    # The child process inherits the socket file descriptor. Uvicorn is
+    # instructed to use this existing socket instead of creating a new one.
+    server.run(sockets=[sock])
+
+
 def spawn_http_servers(
     app,
     n: int,
@@ -78,61 +111,81 @@ def spawn_http_servers(
     request_timeout: float = 0.25,
     log_level: str = "critical",
 ) -> SpawnResult:
-    """Spawn n uvicorn servers for the provided ASGI app.
+    """Spawn n uvicorn servers using a socket reservation strategy to avoid races.
 
-    Returns a SpawnResult that should be explicitly stopped (or wrapped by a fixture).
+    This approach involves:
+    1. Creating and binding sockets to ephemeral ports (port=0) in the parent.
+    2. Passing the socket file descriptors to child processes.
+    3. Uvicorn in the child process then uses the existing socket.
+    This avoids the time-of-check-to-time-of-use (TOCTOU) race condition.
     """
-    import uvicorn  # local import to avoid test collection side-effects
+    sockets = []
+    ports = []
+    for _ in range(n):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((host, 0))
+        sockets.append(sock)
+        ports.append(sock.getsockname()[1])
 
-    ports = get_free_ports(n)
     addresses = [f"http://{host}:{p}" for p in ports]
     processes: list[multiprocessing.Process] = []
 
-    def make_process(port: int) -> multiprocessing.Process:
-        def run():
-            config = uvicorn.Config(
-                app,
-                host=host,
-                port=port,
-                log_level=log_level,
-                ws="none",
-            )
-            server = uvicorn.Server(config)
-            if _verbose():
-                print(
-                    f"[spawn_http_servers] starting server pid={os.getpid()} port={port}"
-                )
-            server.run()
+    # Use 'fork' context if available, as it's more efficient for passing fds.
+    # 'spawn' would require more complex serialization.
+    ctx = multiprocessing.get_context("fork")
 
-        p = multiprocessing.Process(target=run, daemon=True)
-        return p
-
-    for port in ports:
-        p = make_process(port)
+    for port, sock in zip(ports, sockets, strict=True):
+        p = ctx.Process(
+            target=_run_server_process, args=(app, host, port, sock, log_level)
+        )
+        p.daemon = True
         p.start()
         processes.append(p)
+        # The socket can be closed in the parent process after the child has inherited it.
+        sock.close()
 
     # Health check loop
     attempts = int(max_wait / poll_interval)
     for port in ports:
         ready = False
-        for _ in range(attempts):
+        last_ex = None
+        for attempt in range(attempts):
             try:
+                if _verbose():
+                    print(
+                        f"[spawn_http_servers] health check for port {port} (attempt {attempt + 1}/{attempts})"
+                    )
                 r = httpx.get(
                     f"http://{host}:{port}{health_path}", timeout=request_timeout
                 )
+                # The flexible health check logic from test_communicator is now centralized here.
                 if r.status_code == 200:
-                    ready = True
-                    break
-            except Exception:
-                pass
+                    payload = r.json()
+                    if payload == {"status": "ok"} or (
+                        isinstance(payload.get("status"), dict)
+                        and payload["status"].get("code") == 404
+                    ):
+                        ready = True
+                        if _verbose() and payload != {"status": "ok"}:
+                            print(
+                                f"[spawn_http_servers] WARNING: health returned nested status form: {payload}"
+                            )
+                        break
+            except Exception as e:
+                last_ex = e
             time.sleep(poll_interval)
+
         if not ready:
             # Stop already started processes before raising
-            for proc in processes:
-                if proc.is_alive():
-                    proc.terminate()
-            raise RuntimeError(f"Server on port {port} failed to become healthy")
+            for p in processes:
+                if p.is_alive():
+                    p.terminate()
+            msg = f"Server on port {port} failed to become healthy in {max_wait}s."
+            if last_ex:
+                msg += f" Last exception: {last_ex}"
+            raise RuntimeError(msg)
+    if _verbose():
+        print(f"[spawn_http_servers] All {n} servers are healthy on ports: {ports}")
 
     return SpawnResult(ports=ports, addresses=addresses, processes=processes)
 

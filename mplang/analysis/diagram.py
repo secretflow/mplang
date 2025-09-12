@@ -140,7 +140,7 @@ def to_sequence_diagram(
             if pmask_attr and src_ranks_attr:
                 dst_ranks = _pmask_to_ranks(pmask_attr.i)
                 src_ranks = list(src_ranks_attr.ints)
-                for dst, src in zip(dst_ranks, src_ranks, strict=False):
+                for dst, src in zip(dst_ranks, src_ranks, strict=True):
                     emit("comm", f"P{src}->>P{dst}: {node.name}")
             else:
                 emit("comm", f"note over P0,P{wsize - 1}: send %${node.name}")

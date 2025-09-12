@@ -136,12 +136,12 @@ def to_sequence_diagram(
     participants: list[str] = [f"participant P{i}" for i in range(wsize)]
     events: list[Event] = []
 
-    def emit(kind: str, *lines: str):
+    def emit(kind: str, *lines: str) -> None:
         events.append(Event(kind=kind, lines=list(lines)))
 
     local_buffer: list[str] = []
 
-    def flush_local_buffer():
+    def flush_local_buffer() -> None:
         nonlocal local_buffer
         if not local_buffer:
             return

@@ -1590,14 +1590,16 @@ class TestPHEHandler:
             ),
             outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
         )
-        with pytest.raises(ValueError, match="Vector size mismatch"):
+        with pytest.raises(
+            ValueError, match="Shapes are not compatible for dot product"
+        ):
             self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])
 
-    def test_dot_non_vector_operands(self):
-        """Test dot product with non-vector operands."""
-        pk, _sk = self._generate_keypair()
+    def test_dot_scalar_operands(self):
+        """Test dot product with scalar operands (now supported)."""
+        pk, sk = self._generate_keypair()
 
-        # Test with scalar (should fail as dot product requires vectors)
+        # Test with scalar (should work as our implementation supports scalar * scalar)
         ciphertext_scalar = np.array(5, dtype=np.int32)
         plaintext_scalar = np.array(3, dtype=np.int32)
 
@@ -1616,10 +1618,20 @@ class TestPHEHandler:
             ),
             outs_info=(TensorType.from_obj(ciphertext_scalar),),
         )
-        with pytest.raises(
-            ValueError, match="Both operands must be 1-D vectors for dot product"
-        ):
-            self.handler.execute(dot_pfunc, [ciphertext, plaintext_scalar])
+        # This should work now (scalar * scalar)
+        result = self.handler.execute(dot_pfunc, [ciphertext, plaintext_scalar])[0]
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_scalar),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+
+        # Expected: 5 * 3 = 15
+        decrypted_value = np.asarray(decrypted)
+        assert decrypted_value.item() == 15
 
     def test_dot_non_ciphertext_first_arg(self):
         """Test dot product with non-CipherText as first argument."""
@@ -2270,3 +2282,369 @@ class TestPHEHandler:
         assert isinstance(decrypted, np.ndarray)
         assert decrypted.shape == (2, 3)
         np.testing.assert_array_equal(decrypted, [[-1, -2, -3], [4, -5, 6]])
+
+    def test_dot_multidimensional_scalar_scalar(self):
+        """Test dot product of scalar CipherText with scalar plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test scalar * scalar
+        ct_scalar = np.array(5, dtype=np.int32)
+        pt_scalar = np.array(3, dtype=np.int32)
+
+        # Encrypt scalar
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_scalar),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_scalar, pk])[0]
+
+        # Dot product
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_scalar), TensorType.from_obj(pt_scalar)),
+            outs_info=(TensorType.from_obj(ct_scalar),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_scalar])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ct_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_scalar),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.item() == 15  # 5 * 3
+
+    def test_dot_multidimensional_vector_vector(self):
+        """Test dot product of vector CipherText with vector plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test vector * vector (inner product)
+        ct_vector = np.array([1, 2, 3], dtype=np.int32)
+        pt_vector = np.array([4, 5, 6], dtype=np.int32)
+
+        # Encrypt vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_vector), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_vector),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_vector, pk])[0]
+
+        # Dot product
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_vector), TensorType.from_obj(pt_vector)),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_vector])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(np.array(0, dtype=np.int32)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert isinstance(decrypted, np.ndarray)
+        expected = np.dot(ct_vector, pt_vector)  # 1*4 + 2*5 + 3*6 = 32
+        assert decrypted.item() == expected
+
+    def test_dot_multidimensional_matrix_vector(self):
+        """Test dot product of matrix CipherText with vector plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test matrix * vector
+        ct_matrix = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32)  # 3x2 matrix
+        pt_vector = np.array([7, 8], dtype=np.int32)  # 2-element vector
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_matrix, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_matrix, pt_vector)  # Should be 3-element vector
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType.from_obj(pt_vector)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_vector])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == (3,)  # 3-element vector result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_array_equal(decrypted, expected_result)
+
+    def test_dot_multidimensional_vector_matrix(self):
+        """Test dot product of vector CipherText with matrix plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test vector * matrix
+        ct_vector = np.array([1, 2, 3], dtype=np.int32)  # 3-element vector
+        pt_matrix = np.array([[4, 5], [6, 7], [8, 9]], dtype=np.int32)  # 3x2 matrix
+
+        # Encrypt vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_vector), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_vector),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_vector, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_vector, pt_matrix)  # Should be 2-element vector
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_vector), TensorType.from_obj(pt_matrix)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_matrix])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == (2,)  # 2-element vector result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_array_equal(decrypted, expected_result)
+
+    def test_dot_multidimensional_matrix_matrix(self):
+        """Test dot product of matrix CipherText with matrix plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test matrix * matrix
+        ct_matrix = np.array([[1, 2], [3, 4]], dtype=np.int32)  # 2x2 matrix
+        pt_matrix = np.array([[5, 6], [7, 8]], dtype=np.int32)  # 2x2 matrix
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_matrix, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_matrix, pt_matrix)  # Should be 2x2 matrix
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType.from_obj(pt_matrix)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_matrix])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == (2, 2)  # 2x2 matrix result
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_array_equal(decrypted, expected_result)
+
+    def test_dot_multidimensional_3d_tensor_matrix(self):
+        """Test dot product of 3D tensor CipherText with matrix plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test 3D tensor * matrix
+        ct_tensor = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int32
+        )  # 2x2x2 tensor
+        pt_matrix = np.array([[9, 10], [11, 12]], dtype=np.int32)  # 2x2 matrix
+
+        # Encrypt tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_tensor, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_tensor, pt_matrix)  # Should be 2x2x2 tensor
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_tensor), TensorType.from_obj(pt_matrix)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_matrix])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == expected_result.shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_array_equal(decrypted, expected_result)
+
+    def test_dot_multidimensional_4d_tensor_vector(self):
+        """Test dot product of 4D tensor CipherText with vector plaintext."""
+        pk, sk = self._generate_keypair()
+
+        # Test 4D tensor * vector
+        ct_tensor = np.arange(24, dtype=np.int32).reshape(2, 3, 2, 2)  # 2x3x2x2 tensor
+        pt_vector = np.array([1, 2], dtype=np.int32)  # 2-element vector
+
+        # Encrypt tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_tensor, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_tensor, pt_vector)  # Should be 2x3x2 tensor
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_tensor), TensorType.from_obj(pt_vector)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_vector])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == expected_result.shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_array_equal(decrypted, expected_result)
+
+    def test_dot_multidimensional_float_types(self):
+        """Test dot product with floating point types."""
+        pk, sk = self._generate_keypair()
+
+        # Test with float64
+        ct_matrix = np.array([[1.5, 2.5], [3.5, 4.5]], dtype=np.float64)
+        pt_vector = np.array([2.0, 3.0], dtype=np.float64)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_matrix, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_matrix, pt_vector)
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType.from_obj(pt_vector)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_vector])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == expected_result.shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_allclose(decrypted, expected_result, rtol=1e-10)
+
+    def test_dot_multidimensional_shape_mismatch(self):
+        """Test dot product with incompatible shapes."""
+        pk, _ = self._generate_keypair()
+
+        # Test incompatible shapes
+        ct_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)  # 2x3 matrix
+        pt_vector = np.array([7, 8], dtype=np.int32)  # 2-element vector (incompatible)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_matrix, pk])[0]
+
+        # Try dot product - should fail
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType.from_obj(pt_vector)),
+            outs_info=(TensorType.from_obj(np.array([0, 0], dtype=np.int32)),),
+        )
+        with pytest.raises(
+            ValueError, match="Shapes are not compatible for dot product"
+        ):
+            self.handler.execute(dot_pfunc, [ciphertext, pt_vector])
+
+    def test_dot_multidimensional_large_tensors(self):
+        """Test dot product with larger tensors."""
+        pk, sk = self._generate_keypair()
+
+        # Test with larger matrices
+        ct_matrix = np.random.randint(0, 10, size=(4, 5), dtype=np.int32)
+        pt_matrix = np.random.randint(0, 10, size=(5, 3), dtype=np.int32)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ct_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ct_matrix, pk])[0]
+
+        # Dot product
+        expected_result = np.dot(ct_matrix, pt_matrix)  # Should be 4x3 matrix
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(TensorType.from_obj(ct_matrix), TensorType.from_obj(pt_matrix)),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_matrix])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_shape == (4, 3)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        np.testing.assert_array_equal(decrypted, expected_result)

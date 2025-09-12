@@ -651,6 +651,12 @@ class PHEHandler(TensorHandler):
     ) -> list[TensorLike]:
         """Execute homomorphic dot product.
 
+        Supports various dot product operations:
+        - Scalar * Scalar -> Scalar
+        - Vector * Vector -> Scalar (inner product)
+        - Matrix * Vector -> Vector
+        - N-D tensor * M-D tensor -> result based on numpy.dot semantics
+
         Args:
             pfunc: PFunction for dot product
             args: [ciphertext, plaintext] where ciphertext is CipherText and plaintext is TensorLike
@@ -671,45 +677,216 @@ class PHEHandler(TensorHandler):
             # Convert plaintext to numpy
             plaintext_np = self._convert_to_numpy(plaintext)
 
-            # Validate shape compatibility for dot product
-            if len(ciphertext.semantic_shape) != 1 or len(plaintext_np.shape) != 1:
-                raise ValueError("Both operands must be 1-D vectors for dot product")
-
-            if ciphertext.semantic_shape[0] != plaintext_np.shape[0]:
+            # Use numpy.dot to determine result shape and validate compatibility
+            # Create dummy arrays with same shapes to test dot product compatibility
+            try:
+                dummy_ct = np.zeros(ciphertext.semantic_shape)
+                dummy_pt = np.zeros(plaintext_np.shape)
+                dummy_result = np.dot(dummy_ct, dummy_pt)
+                result_shape = dummy_result.shape
+            except ValueError as e:
                 raise ValueError(
-                    f"Vector size mismatch: CipherText size {ciphertext.semantic_shape[0]} "
-                    f"vs plaintext size {plaintext_np.shape[0]}"
+                    f"Shapes are not compatible for dot product: CipherText shape {ciphertext.semantic_shape} "
+                    f"vs plaintext shape {plaintext_np.shape}: {e}"
                 )
 
-            # Flatten the plaintext data
+            # Perform dot product based on input dimensions
+            ct_shape = ciphertext.semantic_shape
+            pt_shape = plaintext_np.shape
             target_dtype = ciphertext.semantic_dtype
-            flat_data = plaintext_np.flatten()
 
             if target_dtype.is_floating:
-                multiplier = [float(x) for x in flat_data]
+                pt_data = plaintext_np.astype(float)
             else:  # integer types
-                multiplier = [int(x) for x in flat_data]
+                pt_data = plaintext_np.astype(int)
 
-            # Perform homomorphic dot product
-            # This is done by multiplying each element and summing up
-            intermediate_products = [
-                ciphertext.ct_data[i] * [multiplier[i]] for i in range(len(multiplier))
-            ]
+            if len(ct_shape) == 0 and len(pt_shape) == 0:
+                # Scalar * Scalar
+                result_ciphertext = ciphertext.ct_data[0] * [
+                    (
+                        float(pt_data.item())
+                        if target_dtype.is_floating
+                        else int(pt_data.item())
+                    )
+                ]
+                result_ct_data = [result_ciphertext]
 
-            # Sum up the intermediate products using lightPHE addition
-            # Start with the first product and add the rest
-            result_ciphertext = intermediate_products[0]
-            for i in range(1, len(intermediate_products)):
-                result_ciphertext = result_ciphertext + intermediate_products[i]
+            elif len(ct_shape) == 1 and len(pt_shape) == 1:
+                # Vector * Vector -> Scalar (inner product)
+                if ct_shape[0] != pt_shape[0]:
+                    raise ValueError(
+                        f"Vector size mismatch: CipherText size {ct_shape[0]} "
+                        f"vs plaintext size {pt_shape[0]}"
+                    )
 
-            # Create result CipherText with scalar shape
+                # Compute element-wise products and sum them
+                intermediate_products = [
+                    ciphertext.ct_data[i]
+                    * [
+                        (
+                            float(pt_data[i])
+                            if target_dtype.is_floating
+                            else int(pt_data[i])
+                        )
+                    ]
+                    for i in range(ct_shape[0])
+                ]
+
+                # Sum all products
+                result_ciphertext = intermediate_products[0]
+                for i in range(1, len(intermediate_products)):
+                    result_ciphertext = result_ciphertext + intermediate_products[i]
+
+                result_ct_data = [result_ciphertext]
+
+            elif len(ct_shape) == 2 and len(pt_shape) == 1:
+                # Matrix * Vector -> Vector
+                if ct_shape[1] != pt_shape[0]:
+                    raise ValueError(
+                        f"Matrix-vector dimension mismatch: Matrix shape {ct_shape} "
+                        f"vs vector shape {pt_shape}"
+                    )
+
+                result_ct_data = []
+                for i in range(ct_shape[0]):  # For each row of the matrix
+                    # Compute dot product of row i with the vector
+                    row_products = []
+                    for j in range(ct_shape[1]):  # For each column in the row
+                        ct_idx = i * ct_shape[1] + j
+                        product = ciphertext.ct_data[ct_idx] * [
+                            (
+                                float(pt_data[j])
+                                if target_dtype.is_floating
+                                else int(pt_data[j])
+                            )
+                        ]
+                        row_products.append(product)
+
+                    # Sum products for this row
+                    row_result = row_products[0]
+                    for k in range(1, len(row_products)):
+                        row_result = row_result + row_products[k]
+
+                    result_ct_data.append(row_result)
+
+            elif len(ct_shape) == 1 and len(pt_shape) == 2:
+                # Vector * Matrix -> Vector
+                if ct_shape[0] != pt_shape[0]:
+                    raise ValueError(
+                        f"Vector-matrix dimension mismatch: Vector shape {ct_shape} "
+                        f"vs matrix shape {pt_shape}"
+                    )
+
+                result_ct_data = []
+                for j in range(pt_shape[1]):  # For each column of the matrix
+                    # Compute dot product of vector with column j
+                    col_products = []
+                    for i in range(pt_shape[0]):  # For each row in the column
+                        product = ciphertext.ct_data[i] * [
+                            (
+                                float(pt_data[i, j])
+                                if target_dtype.is_floating
+                                else int(pt_data[i, j])
+                            )
+                        ]
+                        col_products.append(product)
+
+                    # Sum products for this column
+                    col_result = col_products[0]
+                    for k in range(1, len(col_products)):
+                        col_result = col_result + col_products[k]
+
+                    result_ct_data.append(col_result)
+
+            elif len(ct_shape) == 2 and len(pt_shape) == 2:
+                # Matrix * Matrix -> Matrix
+                if ct_shape[1] != pt_shape[0]:
+                    raise ValueError(
+                        f"Matrix dimension mismatch: First matrix shape {ct_shape} "
+                        f"vs second matrix shape {pt_shape}"
+                    )
+
+                result_ct_data = []
+                for i in range(ct_shape[0]):  # For each row of first matrix
+                    for j in range(pt_shape[1]):  # For each column of second matrix
+                        # Compute dot product of row i with column j
+                        products = []
+                        for k in range(ct_shape[1]):  # Sum over common dimension
+                            ct_idx = i * ct_shape[1] + k
+                            product = ciphertext.ct_data[ct_idx] * [
+                                (
+                                    float(pt_data[k, j])
+                                    if target_dtype.is_floating
+                                    else int(pt_data[k, j])
+                                )
+                            ]
+                            products.append(product)
+
+                        # Sum products for this element
+                        element_result = products[0]
+                        for p in range(1, len(products)):
+                            element_result = element_result + products[p]
+
+                        result_ct_data.append(element_result)
+
+            else:
+                # General N-D tensor dot product
+                # Flatten both tensors and perform generalized dot product
+                ct_flat = ciphertext.ct_data
+                pt_flat = pt_data.flatten()
+
+                # For general case, we implement numpy.dot semantics
+                # This is a simplified implementation for common cases
+                if len(ct_shape) >= 2 and len(pt_shape) >= 1:
+                    # Treat as matrix multiplication on the last axis of ct and first axis of pt
+                    last_dim_ct = ct_shape[-1]
+                    first_dim_pt = pt_shape[0]
+
+                    if last_dim_ct != first_dim_pt:
+                        raise ValueError(
+                            f"Tensor dimension mismatch: CipherText last dimension {last_dim_ct} "
+                            f"vs plaintext first dimension {first_dim_pt}"
+                        )
+
+                    # Reshape for matrix multiplication
+                    ct_reshaped_size = int(np.prod(ct_shape[:-1]))
+                    pt_reshaped_size = int(np.prod(pt_shape[1:]))
+
+                    result_ct_data = []
+                    for i in range(ct_reshaped_size):
+                        for j in range(pt_reshaped_size):
+                            # Compute dot product for element (i, j)
+                            products = []
+                            for k in range(last_dim_ct):
+                                ct_idx = i * last_dim_ct + k
+                                pt_idx = k * pt_reshaped_size + j
+                                product = ct_flat[ct_idx] * [
+                                    (
+                                        float(pt_flat[pt_idx])
+                                        if target_dtype.is_floating
+                                        else int(pt_flat[pt_idx])
+                                    )
+                                ]
+                                products.append(product)
+
+                            # Sum products
+                            if products:
+                                element_result = products[0]
+                                for p in range(1, len(products)):
+                                    element_result = element_result + products[p]
+                                result_ct_data.append(element_result)
+                else:
+                    raise ValueError(
+                        f"Unsupported tensor shapes for dot product: "
+                        f"CipherText shape {ct_shape}, plaintext shape {pt_shape}"
+                    )
+
+            # Create result CipherText with computed shape
             return [
                 CipherText(
-                    ct_data=[
-                        result_ciphertext
-                    ],  # Wrap single result in list for consistency
+                    ct_data=result_ct_data,
                     semantic_dtype=ciphertext.semantic_dtype,
-                    semantic_shape=(),  # Scalar result
+                    semantic_shape=result_shape,
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,

@@ -1797,6 +1797,360 @@ class TestPHEHandler:
         ):
             self.handler.execute(gather_pfunc, [plaintext_vec, indices])
 
+    def test_gather_multidimensional_2d_matrix_indices_1d(self):
+        """Test gather from 2D CipherText matrix using 1D indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D matrix: shape (3, 4)
+        ciphertext_matrix = np.array(
+            [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], dtype=np.int32
+        )
+
+        # Indices to gather rows 0 and 2
+        indices = np.array([0, 2], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_matrix, pk])[0]
+
+        # Expected result shape: (2, 4) - gathering 2 rows from the 3x4 matrix
+        expected_result = np.array(
+            [[1, 2, 3, 4], [9, 10, 11, 12]], dtype=np.int32  # Row 0  # Row 2
+        )
+
+        # Perform gather
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_matrix),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (2, 4)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_multidimensional_3d_tensor_indices_2d(self):
+        """Test gather from 3D CipherText tensor using 2D indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create 3D tensor: shape (4, 2, 3)
+        ciphertext_tensor = np.array(
+            [
+                [[1, 2, 3], [4, 5, 6]],  # Slice 0
+                [[7, 8, 9], [10, 11, 12]],  # Slice 1
+                [[13, 14, 15], [16, 17, 18]],  # Slice 2
+                [[19, 20, 21], [22, 23, 24]],  # Slice 3
+            ],
+            dtype=np.int32,
+        )
+
+        # 2D indices: shape (2, 3) - will result in shape (2, 3, 2, 3)
+        indices = np.array(
+            [
+                [0, 1, 3],  # First row: gather slices 0, 1, 3
+                [2, 0, 1],  # Second row: gather slices 2, 0, 1
+            ],
+            dtype=np.int32,
+        )
+
+        # Encrypt the tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_tensor, pk])[0]
+
+        # Expected result shape: (2, 3, 2, 3)
+        expected_result = np.array(
+            [
+                [  # Row 0 of indices
+                    [[1, 2, 3], [4, 5, 6]],  # Slice 0
+                    [[7, 8, 9], [10, 11, 12]],  # Slice 1
+                    [[19, 20, 21], [22, 23, 24]],  # Slice 3
+                ],
+                [  # Row 1 of indices
+                    [[13, 14, 15], [16, 17, 18]],  # Slice 2
+                    [[1, 2, 3], [4, 5, 6]],  # Slice 0
+                    [[7, 8, 9], [10, 11, 12]],  # Slice 1
+                ],
+            ],
+            dtype=np.int32,
+        )
+
+        # Perform gather
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_tensor),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (2, 3, 2, 3)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_multidimensional_scalar_indices(self):
+        """Test gather from multidimensional CipherText using scalar indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create 3D tensor: shape (3, 2, 4)
+        ciphertext_tensor = np.arange(24, dtype=np.int32).reshape(3, 2, 4)
+
+        # Scalar index: select slice 1
+        scalar_index = np.array(1, dtype=np.int32)
+
+        # Encrypt the tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_tensor, pk])[0]
+
+        # Expected result: shape (2, 4) - slice 1 from the 3x2x4 tensor
+        expected_result = ciphertext_tensor[1]  # Shape (2, 4)
+
+        # Perform gather
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_tensor),
+                TensorType.from_obj(scalar_index),
+            ),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result = self.handler.execute(gather_pfunc, [ciphertext, scalar_index])[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (2, 4)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_multidimensional_4d_tensor_indices_3d(self):
+        """Test gather from 4D CipherText tensor using 3D indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create 4D tensor: shape (2, 3, 2, 2)
+        ciphertext_tensor = np.arange(24, dtype=np.int32).reshape(2, 3, 2, 2)
+
+        # 3D indices: shape (2, 1, 2) - will result in shape (2, 1, 2, 3, 2, 2)
+        indices = np.array(
+            [
+                [[0, 1]],  # First "page": gather slices 0, 1
+                [[1, 0]],  # Second "page": gather slices 1, 0
+            ],
+            dtype=np.int32,
+        )
+
+        # Encrypt the tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_tensor, pk])[0]
+
+        # Expected result shape: (2, 1, 2, 3, 2, 2)
+        expected_result = np.array(
+            [
+                [  # Page 0
+                    [  # Row 0
+                        ciphertext_tensor[0],  # Slice 0: shape (3, 2, 2)
+                        ciphertext_tensor[1],  # Slice 1: shape (3, 2, 2)
+                    ]
+                ],
+                [  # Page 1
+                    [  # Row 0
+                        ciphertext_tensor[1],  # Slice 1: shape (3, 2, 2)
+                        ciphertext_tensor[0],  # Slice 0: shape (3, 2, 2)
+                    ]
+                ],
+            ]
+        )
+
+        # Perform gather
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_tensor),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (2, 1, 2, 3, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_multidimensional_float_types(self):
+        """Test gather with floating point types."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D float tensor: shape (3, 2)
+        ciphertext_matrix = np.array(
+            [[1.5, 2.5], [3.7, 4.8], [5.1, 6.9]], dtype=np.float64
+        )
+
+        # Indices to gather rows 2 and 0
+        indices = np.array([2, 0], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_matrix, pk])[0]
+
+        # Expected result: rows 2 and 0
+        expected_result = np.array(
+            [[5.1, 6.9], [1.5, 2.5]], dtype=np.float64  # Row 2  # Row 0
+        )
+
+        # Perform gather
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_matrix),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        result = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == FLOAT64
+        assert result.semantic_shape == (2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(expected_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+
+    def test_gather_multidimensional_out_of_bounds(self):
+        """Test gather with out of bounds indices in multidimensional context."""
+        pk, _sk = self._generate_keypair()
+
+        # Create 2D matrix: shape (3, 4)
+        ciphertext_matrix = np.array(
+            [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], dtype=np.int32
+        )
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_matrix, pk])[0]
+
+        # Out of bounds indices
+        bad_indices = np.array(
+            [0, 3, 1], dtype=np.int32
+        )  # Index 3 is out of bounds for axis 0 (size 3)
+
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_matrix),
+                TensorType.from_obj(bad_indices),
+            ),
+            outs_info=(TensorType.from_obj(np.zeros((3, 4), dtype=np.int32)),),
+        )
+        with pytest.raises(ValueError, match="Indices are out of bounds for axis 0"):
+            self.handler.execute(gather_pfunc, [ciphertext, bad_indices])
+
+    def test_gather_multidimensional_scalar_ciphertext(self):
+        """Test gather from scalar CipherText (should fail)."""
+        pk, _sk = self._generate_keypair()
+
+        # Create scalar ciphertext
+        ciphertext_scalar = np.array(42, dtype=np.int32)
+
+        # Encrypt the scalar
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_scalar),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_scalar, pk])[0]
+
+        # Attempt to gather from scalar (should fail)
+        indices = np.array([0], dtype=np.int32)
+
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(ciphertext_scalar),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType.from_obj(indices),),
+        )
+        with pytest.raises(ValueError, match="Cannot gather from scalar CipherText"):
+            self.handler.execute(gather_pfunc, [ciphertext, indices])
+
     def test_scatter_ciphertext_basic_int32(self):
         """Test scatter operation with basic int32 array."""
         pk, sk = self._generate_keypair()

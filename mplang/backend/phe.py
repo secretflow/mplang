@@ -904,6 +904,11 @@ class PHEHandler(TensorHandler):
     ) -> list[TensorLike]:
         """Execute gather operation on CipherText.
 
+        Supports gathering from multidimensional CipherText using multidimensional indices.
+        The operation follows numpy.take semantics:
+        - result.shape = indices.shape + ciphertext.shape[1:]
+        - Gathering is performed along axis 0 of ciphertext
+
         Args:
             pfunc: PFunction for gather
             args: [ciphertext, indices] where ciphertext is CipherText and indices is TensorLike of integers
@@ -924,30 +929,57 @@ class PHEHandler(TensorHandler):
             # Convert indices to numpy
             indices_np = self._convert_to_numpy(indices)
 
-            # indices should be 1-d or scalar
-            assert indices_np.ndim in (0, 1), "Indices must be a scalar or 1-D array"
-
             if not np.issubdtype(indices_np.dtype, np.integer):
                 raise ValueError("Indices must be of integer type")
 
-            # Validate indices are within bounds
-            if np.any(indices_np < 0) or np.any(
-                indices_np >= ciphertext.semantic_shape[0]
-            ):
-                raise ValueError("Indices are out of bounds")
+            # Validate that ciphertext has at least 1 dimension for indexing
+            if len(ciphertext.semantic_shape) == 0:
+                raise ValueError("Cannot gather from scalar CipherText")
+
+            # Validate indices are within bounds for axis 0
+            axis_size = ciphertext.semantic_shape[0]
+            if np.any(indices_np < 0) or np.any(indices_np >= axis_size):
+                raise ValueError(
+                    f"Indices are out of bounds for axis 0 with size {axis_size}. "
+                    f"Got indices in range [{np.min(indices_np)}, {np.max(indices_np)}]"
+                )
+
+            # Calculate result shape: indices.shape + ciphertext.shape[1:]
+            result_shape = indices_np.shape + ciphertext.semantic_shape[1:]
+
+            # TODO(zjj): maybe we can support the arbitrary axis later.
+            # For multidimensional ciphertext, we need to compute the stride for axis 0
+            if len(ciphertext.semantic_shape) > 1:
+                # Each element along axis 0 contains np.prod(ciphertext.semantic_shape[1:]) elements
+                axis0_stride = int(np.prod(ciphertext.semantic_shape[1:]))
+            else:
+                # 1D case: each element is just one ciphertext
+                axis0_stride = 1
 
             # Perform gather operation
-            gathered_ct_data = [ciphertext.ct_data[i] for i in indices_np.flatten()]
+            gathered_ct_data = []
+            for idx in indices_np.flatten():
+                # For each index, gather all elements belonging to that slice along axis 0
+                start_pos = int(idx) * axis0_stride
+                end_pos = start_pos + axis0_stride
 
-            # Determine new shape after gather
-            new_shape = indices_np.shape
+                # Collect all ciphertext elements for this index
+                slice_data = ciphertext.ct_data[start_pos:end_pos]
+                gathered_ct_data.extend(slice_data)
+
+            # Validate we got the expected number of elements
+            expected_size = int(np.prod(result_shape)) if result_shape else 1
+            if len(gathered_ct_data) != expected_size:
+                raise RuntimeError(
+                    f"Internal error: Expected {expected_size} elements, got {len(gathered_ct_data)}"
+                )
 
             # Create result CipherText
             return [
                 CipherText(
                     ct_data=gathered_ct_data,
                     semantic_dtype=ciphertext.semantic_dtype,
-                    semantic_shape=new_shape,
+                    semantic_shape=result_shape,
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,

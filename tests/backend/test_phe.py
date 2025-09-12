@@ -4416,3 +4416,419 @@ class TestPHEHandler:
         expected_result = original_matrix.T
         decrypted_array = np.asarray(decrypted)
         np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+
+    def test_gather_axis_parameter_2d_matrix_axis_1(self):
+        """Test gather along axis 1 for 2D matrix."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x3 matrix
+        original_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Gather along axis 1 with indices [0, 2]
+        indices = np.array([0, 2], dtype=np.int32)
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType(INT32, (2, 2)),),  # result shape: (2, 2)
+            axis=1,
+        )
+
+        result_ct = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (
+            2,
+            2,
+        )  # (2, 2) = original.shape[0], len(indices)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType(INT32, (2, 2)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType(INT32, (2, 2)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+
+        # Expected result: gather columns 0 and 2
+        expected_result = original_matrix[:, [0, 2]]  # [[1, 3], [4, 6]]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_axis_parameter_3d_tensor_axis_2(self):
+        """Test gather along axis 2 for 3D tensor."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x2x3 tensor
+        original_tensor = np.array(
+            [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=np.int32
+        )
+
+        # Encrypt the tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_tensor, pk])[0]
+
+        # Gather along axis 2 with indices [1, 0]
+        indices = np.array([1, 0], dtype=np.int32)
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(original_tensor),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType(INT32, (2, 2, 2)),),  # result shape: (2, 2, 2)
+            axis=2,
+        )
+
+        result_ct = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType(INT32, (2, 2, 2)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType(INT32, (2, 2, 2)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+
+        # Expected result: gather from last axis at indices [1, 0]
+        expected_result = original_tensor[
+            :, :, [1, 0]
+        ]  # Get elements 1, 0 from last axis
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_axis_parameter_negative_axis(self):
+        """Test gather with negative axis parameter."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x3 matrix
+        original_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Gather along axis -1 (equivalent to axis 1) with indices [0, 2]
+        indices = np.array([0, 2], dtype=np.int32)
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType(INT32, (2, 2)),),
+            axis=-1,  # negative axis
+        )
+
+        result_ct = self.handler.execute(gather_pfunc, [ciphertext, indices])[0]
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType(INT32, (2, 2)),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType(INT32, (2, 2)),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+
+        # Expected result: same as gather along axis 1
+        expected_result = original_matrix[:, [0, 2]]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_gather_axis_parameter_invalid_axis(self):
+        """Test gather with invalid axis parameter."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x3 matrix
+        original_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Try to gather along invalid axis 2 (matrix only has axes 0, 1)
+        indices = np.array([0, 1], dtype=np.int32)
+        gather_pfunc = PFunction(
+            fn_type="phe.gather",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+            ),
+            outs_info=(TensorType(INT32, (2, 2)),),
+            axis=2,  # invalid axis
+        )
+
+        with pytest.raises(ValueError, match="Axis 2 is out of bounds"):
+            self.handler.execute(gather_pfunc, [ciphertext, indices])
+
+    def test_scatter_axis_parameter_2d_matrix_axis_1(self):
+        """Test scatter along axis 1 for 2D matrix."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x3 matrix
+        original_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Create updates for scattering: 2x2 matrix (shape: indices.shape + remaining dims)
+        updates_data = np.array([[10, 30], [40, 60]], dtype=np.int32)
+        updates_ciphertext = self.handler.execute(
+            PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(updates_data), TensorType(BOOL, ())),
+                outs_info=(TensorType.from_obj(updates_data),),
+            ),
+            [updates_data, pk],
+        )[0]
+
+        # Scatter along axis 1 with indices [0, 2]
+        indices = np.array([0, 2], dtype=np.int32)
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updates_data),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+            axis=1,
+        )
+
+        result_ct = self.handler.execute(
+            scatter_pfunc, [ciphertext, indices, updates_ciphertext]
+        )[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == original_matrix.shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+
+        # Expected result: scatter updates into columns 0 and 2
+        expected_result = original_matrix.copy()
+        expected_result[:, [0, 2]] = updates_data  # [[10, 2, 30], [40, 5, 60]]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_scatter_axis_parameter_3d_tensor_axis_2(self):
+        """Test scatter along axis 2 for 3D tensor."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x2x3 tensor
+        original_tensor = np.array(
+            [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=np.int32
+        )
+
+        # Encrypt the tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_tensor, pk])[0]
+
+        # Create updates for scattering: 2x2x2 tensor (indices.shape + remaining dims)
+        updates_data = np.array(
+            [[[100, 300], [400, 600]], [[700, 900], [1000, 1200]]], dtype=np.int32
+        )
+        updates_ciphertext = self.handler.execute(
+            PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(updates_data), TensorType(BOOL, ())),
+                outs_info=(TensorType.from_obj(updates_data),),
+            ),
+            [updates_data, pk],
+        )[0]
+
+        # Scatter along axis 2 with indices [0, 2]
+        indices = np.array([0, 2], dtype=np.int32)
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_tensor),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updates_data),
+            ),
+            outs_info=(TensorType.from_obj(original_tensor),),
+            axis=2,
+        )
+
+        result_ct = self.handler.execute(
+            scatter_pfunc, [ciphertext, indices, updates_ciphertext]
+        )[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == original_tensor.shape
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(original_tensor),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+
+        # Expected result: scatter updates into positions [0, 2] along axis 2
+        expected_result = original_tensor.copy()
+        expected_result[:, :, [0, 2]] = updates_data
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_scatter_axis_parameter_negative_axis(self):
+        """Test scatter with negative axis parameter."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x3 matrix
+        original_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Create updates
+        updates_data = np.array([[10, 30], [40, 60]], dtype=np.int32)
+        updates_ciphertext = self.handler.execute(
+            PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(updates_data), TensorType(BOOL, ())),
+                outs_info=(TensorType.from_obj(updates_data),),
+            ),
+            [updates_data, pk],
+        )[0]
+
+        # Scatter along axis -1 (equivalent to axis 1) with indices [0, 2]
+        indices = np.array([0, 2], dtype=np.int32)
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updates_data),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+            axis=-1,  # negative axis
+        )
+
+        result_ct = self.handler.execute(
+            scatter_pfunc, [ciphertext, indices, updates_ciphertext]
+        )[0]
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+
+        # Expected result: same as scatter along axis 1
+        expected_result = original_matrix.copy()
+        expected_result[:, [0, 2]] = updates_data
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_scatter_axis_parameter_invalid_axis(self):
+        """Test scatter with invalid axis parameter."""
+        pk, sk = self._generate_keypair()
+
+        # Test with 2x3 matrix
+        original_matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+
+        # Encrypt the matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Create updates
+        updates_data = np.array([[10, 30], [40, 60]], dtype=np.int32)
+        updates_ciphertext = self.handler.execute(
+            PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(updates_data), TensorType(BOOL, ())),
+                outs_info=(TensorType.from_obj(updates_data),),
+            ),
+            [updates_data, pk],
+        )[0]
+
+        # Try to scatter along invalid axis 2
+        indices = np.array([0, 1], dtype=np.int32)
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updates_data),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+            axis=2,  # invalid axis
+        )
+
+        with pytest.raises(ValueError, match="Axis 2 is out of bounds"):
+            self.handler.execute(
+                scatter_pfunc, [ciphertext, indices, updates_ciphertext]
+            )

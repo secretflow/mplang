@@ -282,13 +282,14 @@ class Gather(FEOp):
     """Gather function class."""
 
     def __call__(
-        self, ciphertext: MPObject, indices: MPObject, **kwargs: Any
+        self, ciphertext: MPObject, indices: MPObject, axis: int = 0, **kwargs: Any
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """Gather elements from ciphertext using indices.
 
         Args:
             ciphertext: The ciphertext to gather from
             indices: The indices to gather
+            axis: The axis along which to gather (default: 0)
             **kwargs: Additional operation parameters
 
         Returns:
@@ -297,13 +298,24 @@ class Gather(FEOp):
         ct_ty = TensorType.from_obj(ciphertext)
         indices_ty = TensorType.from_obj(indices)
 
-        # Result shape is same as indices shape, but with ciphertext dtype
-        result_ty = TensorType(ct_ty.dtype, indices_ty.shape)
+        # Calculate result shape based on axis parameter
+        ct_shape = list(ct_ty.shape)
+        indices_shape = list(indices_ty.shape)
+
+        # Normalize negative axis
+        normalized_axis = axis if axis >= 0 else len(ct_shape) + axis
+
+        # Result shape: replace the axis dimension with indices shape
+        result_shape = (
+            ct_shape[:normalized_axis] + indices_shape + ct_shape[normalized_axis + 1 :]
+        )
+        result_ty = TensorType(ct_ty.dtype, tuple(result_shape))
 
         pfunc = PFunction(
             fn_type="phe.gather",
             ins_info=(ct_ty, indices_ty),
             outs_info=(result_ty,),
+            axis=axis,
             **kwargs,
         )
         _, treedef = tree_flatten(result_ty)
@@ -317,7 +329,12 @@ class Scatter(FEOp):
     """Scatter function class."""
 
     def __call__(
-        self, ciphertext: MPObject, indices: MPObject, updates: MPObject, **kwargs: Any
+        self,
+        ciphertext: MPObject,
+        indices: MPObject,
+        updates: MPObject,
+        axis: int = 0,
+        **kwargs: Any,
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """Scatter updates into ciphertext at specified indices.
 
@@ -325,6 +342,7 @@ class Scatter(FEOp):
             ciphertext: The ciphertext to scatter into
             indices: The indices to scatter at
             updates: The ciphertext updates to scatter
+            axis: The axis along which to scatter (default: 0)
             **kwargs: Additional operation parameters
 
         Returns:
@@ -341,6 +359,7 @@ class Scatter(FEOp):
             fn_type="phe.scatter",
             ins_info=(ct_ty, indices_ty, updates_ty),
             outs_info=(result_ty,),
+            axis=axis,
             **kwargs,
         )
         _, treedef = tree_flatten(result_ty)

@@ -192,6 +192,20 @@ def test_3d_tensor_operations():
     gather_indices = simp.runAt(0, create_3d_gather_indices)()
     gathered = simp.runAt(0, phe.gather)(reshaped_e0, gather_indices)
 
+    # Test multi-axis GATHER: demonstrate gathering along different axes
+    # For 3D tensor e0 with shape (2,2,3):
+
+    # Gather along axis=0 (default) - gather slices [0,1] -> shape (2,2,3)
+    indices_axis0 = simp.runAt(0, lambda: np.array([0, 1], dtype=np.int32))()
+    gathered_axis0 = simp.runAt(0, phe.gather)(e0, indices_axis0, axis=0)
+
+    # Gather along axis=1 - gather rows [0,1] from each slice -> shape (2,2,3)
+    gathered_axis1 = simp.runAt(0, phe.gather)(e0, indices_axis0, axis=1)
+
+    # Gather along axis=2 - gather columns [0,2] from each position -> shape (2,2,2)
+    indices_axis2 = simp.runAt(0, lambda: np.array([0, 2], dtype=np.int32))()
+    gathered_axis2 = simp.runAt(0, phe.gather)(e0, indices_axis2, axis=2)
+
     # Test CONCAT: concatenate e0 and e2 along axis 0 -> (4,2,3)
     concat_result = simp.runAt(0, phe.concat)([e0, e2], axis=0)
 
@@ -202,12 +216,59 @@ def test_3d_tensor_operations():
     scatter_indices = simp.runAt(0, create_3d_scatter_indices)()
     scattered = simp.runAt(0, phe.scatter)(reshaped_e0, scatter_indices, gathered)
 
+    # Test multi-axis SCATTER: demonstrate scattering along different axes
+    # For 3D tensor e0 with shape (2,2,3):
+
+    # Create update values for scatter operations
+    # For axis=1 scatter: update shape should match the indices shape plus remaining dims
+    def create_axis1_updates():
+        # Updates for scattering at positions [0,1] along axis=1: shape should be (2,2,3)
+        return np.array(
+            [[[100, 101, 102], [103, 104, 105]], [[106, 107, 108], [109, 110, 111]]],
+            dtype=np.int32,
+        )
+
+    axis1_updates = simp.runAt(0, create_axis1_updates)()
+    axis1_updates_encrypted = simp.runAt(0, phe.encrypt)(axis1_updates, pkey_bcasted)
+
+    # Scatter along axis=1 - scatter updates at rows [0,1] for each slice
+    scattered_axis1 = simp.runAt(0, phe.scatter)(
+        e0, indices_axis0, axis1_updates_encrypted, axis=1
+    )
+
+    # For axis=2 scatter: create smaller updates that match the gathered shape
+    def create_axis2_updates():
+        # Updates for scattering at positions [0,2] along axis=2: shape should be (2,2,2)
+        return np.array(
+            [[[200, 201], [202, 203]], [[204, 205], [206, 207]]], dtype=np.int32
+        )
+
+    axis2_updates = simp.runAt(0, create_axis2_updates)()
+    axis2_updates_encrypted = simp.runAt(0, phe.encrypt)(axis2_updates, pkey_bcasted)
+
+    # Scatter along axis=2 - scatter updates at columns [0,2] for each position
+    scattered_axis2 = simp.runAt(0, phe.scatter)(
+        e0, indices_axis2, axis2_updates_encrypted, axis=2
+    )
+
     # Decrypt results for verification
     dot_decrypted = simp.runAt(0, phe.decrypt)(dot_result, skey)
     gathered_decrypted = simp.runAt(0, phe.decrypt)(gathered, skey)
     concat_decrypted = simp.runAt(0, phe.decrypt)(concat_result, skey)
 
-    return dot_decrypted, gathered_decrypted, concat_decrypted
+    # Decrypt some multi-axis results for demonstration
+    gathered_axis0_decrypted = simp.runAt(0, phe.decrypt)(gathered_axis0, skey)
+    gathered_axis2_decrypted = simp.runAt(0, phe.decrypt)(gathered_axis2, skey)
+    scattered_axis1_decrypted = simp.runAt(0, phe.decrypt)(scattered_axis1, skey)
+
+    return (
+        dot_decrypted,
+        gathered_decrypted,
+        concat_decrypted,
+        gathered_axis0_decrypted,
+        gathered_axis2_decrypted,
+        scattered_axis1_decrypted,
+    )
 
 
 def run_simulation():
@@ -238,15 +299,34 @@ def run_simulation():
     print("\n=== Testing 3D Tensor Operations ===")
     result_3d = mplang.evaluate(sim, test_3d_tensor_operations)
     fetched_3d = mplang.fetch(sim, result_3d)
-    # Same format as 2D
-    dot_results_3d, gather_results_3d, concat_results_3d = fetched_3d
+    # New format with multi-axis results
+    (
+        dot_results_3d,
+        gather_results_3d,
+        concat_results_3d,
+        gathered_axis0_results,
+        gathered_axis2_results,
+        scattered_axis1_results,
+    ) = fetched_3d
+
     dot_3d = dot_results_3d[0]
     gathered_3d = gather_results_3d[0]
     concat_3d = concat_results_3d[0]
+    gathered_axis0_3d = gathered_axis0_results[0]
+    gathered_axis2_3d = gathered_axis2_results[0]
+    scattered_axis1_3d = scattered_axis1_results[0]
 
     print(f"3D DOT result shape: {dot_3d.shape}, values: \n{dot_3d}")
     print(f"3D GATHER result shape: {gathered_3d.shape}, values: {gathered_3d}")
     print(f"3D CONCAT result shape: {concat_3d.shape}")
+
+    # Display multi-axis results
+    print(f"\n=== Multi-axis Operations Results ===")
+    print(f"3D GATHER axis=0 result shape: {gathered_axis0_3d.shape}")
+    print(
+        f"3D GATHER axis=2 result shape: {gathered_axis2_3d.shape}, values: \n{gathered_axis2_3d}"
+    )
+    print(f"3D SCATTER axis=1 result shape: {scattered_axis1_3d.shape}")
 
     # Show compilation results
     compiled = mplang.compile(sim, three_party_phe_sum)

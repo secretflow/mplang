@@ -23,7 +23,6 @@ This tutorial demonstrates a three-party computation using PHE:
 6. Party 0 computes the sum and decrypts the result
 """
 
-import jax.numpy as jnp
 import mplang
 import mplang.mpi as mpi
 import mplang.simp as simp
@@ -75,8 +74,6 @@ def test_2d_matrix_operations():
 
     def create_2d_data():
         """Create 2D data based on party rank."""
-        rank = simp.prank()
-        # Use different shapes for different operations
         # We'll create fixed data for demonstration
         return np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)  # 2x3 for all parties
 
@@ -134,7 +131,19 @@ def test_2d_matrix_operations():
     gathered_decrypted = simp.runAt(0, phe.decrypt)(gathered, skey)
     concat_decrypted = simp.runAt(0, phe.decrypt)(concat_result, skey)
 
-    return dot_decrypted, gathered_decrypted, concat_decrypted
+    # Decrypt additional operations for verification
+    reshaped_decrypted = simp.runAt(0, phe.decrypt)(reshaped_e0, skey)
+    transposed_decrypted = simp.runAt(0, phe.decrypt)(transposed_e0, skey)
+    scattered_decrypted = simp.runAt(0, phe.decrypt)(scattered, skey)
+
+    return (
+        dot_decrypted,
+        gathered_decrypted,
+        concat_decrypted,
+        reshaped_decrypted,
+        transposed_decrypted,
+        scattered_decrypted,
+    )
 
 
 @mplang.function
@@ -261,6 +270,14 @@ def test_3d_tensor_operations():
     gathered_axis2_decrypted = simp.runAt(0, phe.decrypt)(gathered_axis2, skey)
     scattered_axis1_decrypted = simp.runAt(0, phe.decrypt)(scattered_axis1, skey)
 
+    # Decrypt additional operations for verification
+    reshaped_decrypted = simp.runAt(0, phe.decrypt)(reshaped_e0, skey)
+    transposed_decrypted = simp.runAt(0, phe.decrypt)(transposed_e0, skey)
+    reshaped_for_dot_decrypted = simp.runAt(0, phe.decrypt)(reshaped_for_dot_e0, skey)
+    scattered_decrypted = simp.runAt(0, phe.decrypt)(scattered, skey)
+    gathered_axis1_decrypted = simp.runAt(0, phe.decrypt)(gathered_axis1, skey)
+    scattered_axis2_decrypted = simp.runAt(0, phe.decrypt)(scattered_axis2, skey)
+
     return (
         dot_decrypted,
         gathered_decrypted,
@@ -268,6 +285,13 @@ def test_3d_tensor_operations():
         gathered_axis0_decrypted,
         gathered_axis2_decrypted,
         scattered_axis1_decrypted,
+        # Additional operations
+        reshaped_decrypted,
+        transposed_decrypted,
+        reshaped_for_dot_decrypted,
+        scattered_decrypted,
+        gathered_axis1_decrypted,
+        scattered_axis2_decrypted,
     )
 
 
@@ -284,22 +308,56 @@ def run_simulation():
     print("\n=== Testing 2D Matrix Operations ===")
     result_2d = mplang.evaluate(sim, test_2d_matrix_operations)
     fetched_2d = mplang.fetch(sim, result_2d)
-    # fetched_2d is a tuple of (dot_results, gather_results, concat_results)
-    # Each result is [party0_result, None, None]
-    dot_results, gather_results, concat_results = fetched_2d
+    # fetched_2d now includes additional operations: (dot, gather, concat, reshaped, transposed, scattered)
+    (
+        dot_results,
+        gather_results,
+        concat_results,
+        reshaped_results,
+        transposed_results,
+        scattered_results,
+    ) = fetched_2d
+
     dot_result = dot_results[0]  # Get Party 0's result
     gathered_result = gather_results[0]
     concat_result = concat_results[0]
+    reshaped_result = reshaped_results[0]
+    transposed_result = transposed_results[0]
+    scattered_result = scattered_results[0]
 
     print(f"2D DOT result shape: {dot_result.shape}, values: \n{dot_result}")
     print(f"2D GATHER result shape: {gathered_result.shape}, values: {gathered_result}")
     print(f"2D CONCAT result shape: {concat_result.shape}")
 
+    # Verify additional operations
+    print(f"\n=== 2D Additional Operations Verification ===")
+    print(
+        f"2D RESHAPE result shape: {reshaped_result.shape}, values: {reshaped_result}"
+    )
+    print(
+        f"2D TRANSPOSE result shape: {transposed_result.shape}, values: \n{transposed_result}"
+    )
+    print(
+        f"2D SCATTER result shape: {scattered_result.shape}, values: {scattered_result}"
+    )
+
+    # Verify correctness
+    expected_original = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    expected_reshaped = expected_original.flatten()  # [1, 2, 3, 4, 5, 6]
+    expected_transposed = expected_original.T  # [[1, 4], [2, 5], [3, 6]]
+
+    print(
+        f"✓ RESHAPE correctness: {np.array_equal(reshaped_result, expected_reshaped)}"
+    )
+    print(
+        f"✓ TRANSPOSE correctness: {np.array_equal(transposed_result, expected_transposed)}"
+    )
+
     # Test 3D tensor operations
     print("\n=== Testing 3D Tensor Operations ===")
     result_3d = mplang.evaluate(sim, test_3d_tensor_operations)
     fetched_3d = mplang.fetch(sim, result_3d)
-    # New format with multi-axis results
+    # New format with extended results
     (
         dot_results_3d,
         gather_results_3d,
@@ -307,6 +365,13 @@ def run_simulation():
         gathered_axis0_results,
         gathered_axis2_results,
         scattered_axis1_results,
+        # Additional operations
+        reshaped_results_3d,
+        transposed_results_3d,
+        reshaped_for_dot_results_3d,
+        scattered_results_3d,
+        gathered_axis1_results,
+        scattered_axis2_results,
     ) = fetched_3d
 
     dot_3d = dot_results_3d[0]
@@ -316,6 +381,14 @@ def run_simulation():
     gathered_axis2_3d = gathered_axis2_results[0]
     scattered_axis1_3d = scattered_axis1_results[0]
 
+    # Additional operations results
+    reshaped_3d = reshaped_results_3d[0]
+    transposed_3d = transposed_results_3d[0]
+    reshaped_for_dot_3d = reshaped_for_dot_results_3d[0]
+    scattered_3d = scattered_results_3d[0]
+    gathered_axis1_3d = gathered_axis1_results[0]
+    scattered_axis2_3d = scattered_axis2_results[0]
+
     print(f"3D DOT result shape: {dot_3d.shape}, values: \n{dot_3d}")
     print(f"3D GATHER result shape: {gathered_3d.shape}, values: {gathered_3d}")
     print(f"3D CONCAT result shape: {concat_3d.shape}")
@@ -323,10 +396,41 @@ def run_simulation():
     # Display multi-axis results
     print(f"\n=== Multi-axis Operations Results ===")
     print(f"3D GATHER axis=0 result shape: {gathered_axis0_3d.shape}")
+    print(f"3D GATHER axis=1 result shape: {gathered_axis1_3d.shape}")
     print(
         f"3D GATHER axis=2 result shape: {gathered_axis2_3d.shape}, values: \n{gathered_axis2_3d}"
     )
     print(f"3D SCATTER axis=1 result shape: {scattered_axis1_3d.shape}")
+    print(f"3D SCATTER axis=2 result shape: {scattered_axis2_3d.shape}")
+
+    # Display additional operations
+    print(f"\n=== 3D Additional Operations Verification ===")
+    print(f"3D RESHAPE result shape: {reshaped_3d.shape}, values: {reshaped_3d}")
+    print(f"3D TRANSPOSE result shape: {transposed_3d.shape}")
+    print(f"3D RESHAPE_FOR_DOT result shape: {reshaped_for_dot_3d.shape}")
+    print(f"3D SCATTER result shape: {scattered_3d.shape}")
+
+    # Verify correctness
+    expected_original_3d = np.array(
+        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=np.int32
+    )
+    expected_reshaped_3d = (
+        expected_original_3d.flatten()
+    )  # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    expected_transposed_3d = np.transpose(
+        expected_original_3d, axes=(2, 0, 1)
+    )  # (3, 2, 2)
+    expected_reshaped_for_dot_3d = expected_original_3d.reshape(3, 4)  # (3, 4)
+
+    print(
+        f"✓ 3D RESHAPE correctness: {np.array_equal(reshaped_3d, expected_reshaped_3d)}"
+    )
+    print(
+        f"✓ 3D TRANSPOSE correctness: {np.array_equal(transposed_3d, expected_transposed_3d)}"
+    )
+    print(
+        f"✓ 3D RESHAPE_FOR_DOT correctness: {np.array_equal(reshaped_for_dot_3d, expected_reshaped_for_dot_3d)}"
+    )
 
     # Show compilation results
     compiled = mplang.compile(sim, three_party_phe_sum)

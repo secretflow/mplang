@@ -488,11 +488,15 @@ class Transpose(FEOp):
 
         result_ty = TensorType(ct_ty.dtype, dummy_result.shape)
 
+        pfunc_kwargs = {}
+        if axes is not None:
+            pfunc_kwargs["axes"] = axes
+
         pfunc = PFunction(
             fn_type="phe.transpose",
             ins_info=(ct_ty,),
             outs_info=(result_ty,),
-            axes=axes,
+            **pfunc_kwargs,
             **kwargs,
         )
         _, treedef = tree_flatten(result_ty)

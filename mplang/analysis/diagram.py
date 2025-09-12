@@ -1,3 +1,17 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Diagram rendering (Mermaid) and markdown dump helpers.
 
 Moved from mplang.utils.mermaid to dedicated analysis namespace.
@@ -7,8 +21,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from mplang.core import TracedFunction
+from mplang.core.cluster import ClusterSpec
 from mplang.core.mask import Mask
 from mplang.core.mpir import Writer, get_graph_statistics
 from mplang.protos.v1alpha1 import mpir_pb2
@@ -55,11 +71,40 @@ def _value_producers(graph: mpir_pb2.GraphProto) -> dict[str, mpir_pb2.NodeProto
     return prod
 
 
+# ----------------------------- Option Types -----------------------------
+
+
+class SequenceDiagramOptions(TypedDict, total=False):
+    collapse_local: bool
+    show_compute: bool
+    max_local_batch: int
+    show_meta: bool
+
+
+class FlowchartOptions(TypedDict, total=False):
+    group_local: bool
+    world_size: int
+    show_meta: bool
+    direction: str
+    cross_edge_color: str
+    cluster_by_party: bool
+    shared_cluster_name: str
+
+
+@dataclass
+class DumpResult:
+    ir: str | None
+    stats: str
+    sequence: str | None
+    flow: str | None
+    markdown: str
+
+
 # ----------------------------- Public APIs -----------------------------
 
 
 def to_sequence_diagram(
-    traced: TracedFunction,
+    graph: mpir_pb2.GraphProto,
     *,
     world_size: int | None = None,
     collapse_local: bool = False,
@@ -67,9 +112,23 @@ def to_sequence_diagram(
     max_local_batch: int = 8,
     show_meta: bool = False,
 ) -> str:
-    """Render a traced function as a Mermaid sequenceDiagram."""
-    expr = traced.make_expr()
-    graph = Writer().dumps(expr)
+    """Render a MPIR graph as a Mermaid sequenceDiagram.
+
+    Parameters:
+        graph: The MPIR graph proto to visualize.
+        world_size: Optional explicit number of parties (participants). If None it
+            is inferred from the union of output pmasks in the graph.
+        collapse_local: If True, consecutive pure-local operations are batched into
+            a single note summarizing their op names (up to max_local_batch shown).
+        show_compute: When True and collapse_local is also True, local operations
+            are still listed individually (disable batching display logic).
+        max_local_batch: Maximum number of individual local op names to show inside
+            a collapsed note before summarizing with a "+N more" suffix.
+        show_meta: If True, include structural/meta ops (e.g. tuple, func_def).
+
+    Returns:
+        Mermaid sequenceDiagram text.
+    """
 
     wsize = _collect_world_size(graph, world_size)
     value_producer = _value_producers(graph)
@@ -179,7 +238,7 @@ def to_sequence_diagram(
 
 
 def to_flowchart(
-    traced: TracedFunction,
+    graph: mpir_pb2.GraphProto,
     *,
     group_local: bool = True,
     world_size: int | None = None,
@@ -189,9 +248,21 @@ def to_flowchart(
     cluster_by_party: bool = False,
     shared_cluster_name: str = "Shared",
 ) -> str:
-    """Render a traced function as a Mermaid flowchart (DAG view)."""
-    expr = traced.make_expr()
-    graph = Writer().dumps(expr)
+    """Render a MPIR graph as a Mermaid flowchart (DAG view).
+
+    Parameters:
+        graph: The MPIR graph proto to visualize.
+        group_local: (Reserved) placeholder for future local grouping in non-cluster view.
+        world_size: Optional explicit party count override (inferred if None).
+        show_meta: Include meta/structural nodes when True.
+        direction: Mermaid layout direction (LR, RL, TB, BT). Accepts TD synonym for TB.
+        cross_edge_color: CSS color used to highlight cross-party data edges.
+        cluster_by_party: If True, wrap nodes in per-party subgraphs plus a shared cluster.
+        shared_cluster_name: Title for the shared subgraph cluster when cluster_by_party=True.
+
+    Returns:
+        Mermaid flowchart text.
+    """
     value_to_node: dict[str, mpir_pb2.NodeProto] = {}
     for n in graph.nodes:
         base = n.name
@@ -336,84 +407,163 @@ def to_flowchart(
 def dump(
     traced: TracedFunction,
     *,
-    world_size: int | None = None,
+    cluster_spec: ClusterSpec | None = None,
     sequence: bool = True,
     flow: bool = True,
     include_ir: bool = True,
     report_path: str | Path | None = None,
     mpir_path: str | Path | None = None,
     title: str | None = None,
-    **diagram_kwargs,
-) -> str:
-    """Produce a composite analysis artifact (currently markdown).
+    seq_opts: SequenceDiagramOptions | None = None,
+    flow_opts: FlowchartOptions | None = None,
+) -> DumpResult:
+    """Generate a composite analysis report (markdown + structured fields).
 
-    Sections included:
-      * Title (optional)
-      * Compiler IR (plain text fenced block) if include_ir
-      * Mermaid sequenceDiagram (optional)
-      * Mermaid flowchart (optional)
+    Sections (conditionally) included in the markdown:
+        - Title (if provided)
+        - Cluster Specification (if cluster_spec provided)
+        - Compiler IR (if include_ir)
+        - Graph Structure Analysis (always)
+        - Mermaid Sequence Diagram (if sequence=True)
+        - Mermaid Flowchart (if flow=True)
 
-    Args:
-        traced: TracedFunction to visualize.
-        world_size: Override party count for diagrams.
-        sequence / flow: Toggle diagram kinds.
-        include_ir: Whether to embed textual IR.
-        report_path: If provided, write the markdown report here.
-        mpir_path: If provided, also write raw mpir text (graph proto text form).
-        title: Optional heading title.
-        **diagram_kwargs: Forwarded to diagram functions.
+    Parameters:
+        traced: TracedFunction object produced by the compilation pipeline.
+        cluster_spec: Optional cluster topology; when provided world size and a
+            JSON summary block are derived from it.
+        sequence: Whether to render a sequence diagram section.
+        flow: Whether to render a flowchart diagram section.
+        include_ir: Include textual compiler IR section when True.
+        report_path: If set, write the assembled markdown to this path.
+        mpir_path: If set, write the raw MPIR proto text to this path.
+        title: Optional top-level markdown title.
+        seq_opts: Options controlling sequence diagram rendering.
+        flow_opts: Options controlling flowchart rendering.
+
+    Returns:
+        DumpResult containing individual textual artifacts and the combined markdown.
     """
     if report_path is None and mpir_path is None:
-        raise ValueError("dump() requires at least one output path: report_path for markdown or mpir_path for raw IR")
+        raise ValueError(
+            "dump() requires at least one output path: report_path for markdown or mpir_path for raw IR"
+        )
+
+    # Build graph once
+    expr = traced.make_expr()
+    graph_proto = Writer().dumps(expr)
+
+    # Derive world_size from cluster_spec if provided
+    derived_world_size: int | None = None
+    if cluster_spec is not None:
+        # world_size defined as number of physical nodes (ranks)
+        derived_world_size = len(cluster_spec.nodes)
 
     parts: list[str] = []
     if title:
         parts.append(f"# {title}\n")
 
-    graph_proto = None
-    if include_ir:
-        parts.append("## Compiler IR (text)\n")
-        parts.append("```")
-        parts.append(traced.compiler_ir())
+    if cluster_spec is not None:
+        parts.append("## Cluster Specification\n")
+        parts.append("```json")
+        # Minimal JSON-ish representation (ordering may vary)
+        import json as _json
+
+        parts.append(
+            _json.dumps(
+                {
+                    "nodes": [
+                        {
+                            "name": n.name,
+                            "rank": n.rank,
+                            "endpoint": n.endpoint,
+                        }
+                        for n in sorted(
+                            cluster_spec.nodes.values(), key=lambda x: x.rank
+                        )
+                    ],
+                    "devices": {
+                        name: {
+                            "kind": dev.kind,
+                            "members": [m.name for m in dev.members],
+                        }
+                        for name, dev in sorted(cluster_spec.devices.items())
+                    },
+                },
+                indent=2,
+            )
+        )
         parts.append("```")
 
-    # Always include graph statistics section
-    if graph_proto is None:
-        expr = traced.make_expr()
-        graph_proto = Writer().dumps(expr)
+    ir_text: str | None = None
+    if include_ir:
+        ir_text = traced.compiler_ir()
+        parts.append("## Compiler IR (text)\n")
+        parts.append("```")
+        parts.append(ir_text)
+        parts.append("```")
+
     stats = get_graph_statistics(graph_proto)
     parts.append("## Graph Structure Analysis\n")
     parts.append("```")
     parts.append(stats)
     parts.append("```")
 
+    seq_text: str | None = None
     if sequence:
-        # Filter kwargs for sequence diagram (avoid passing flow-only args like direction/cluster_by_party)
-        seq_allowed = {"collapse_local", "show_compute", "max_local_batch", "show_meta"}
-        seq_kwargs = {k: v for k, v in diagram_kwargs.items() if k in seq_allowed}
-        seq = to_sequence_diagram(traced, world_size=world_size, **seq_kwargs)
+        seq_opts = seq_opts or {}
+        seq_text = to_sequence_diagram(
+            graph_proto,
+            world_size=derived_world_size,
+            **seq_opts,
+        )
         parts.append("## Mermaid Sequence Diagram")
         parts.append("```mermaid")
-        parts.append(seq)
+        parts.append(seq_text)
         parts.append("```")
+
+    flow_text: str | None = None
     if flow:
-        flw = to_flowchart(traced, world_size=world_size, **diagram_kwargs)
+        flow_opts = flow_opts or {}
+        effective_world_size = derived_world_size
+        if effective_world_size is None and "world_size" in flow_opts:
+            effective_world_size = flow_opts["world_size"]  # type: ignore[assignment]
+        flow_text = to_flowchart(
+            graph_proto,
+            world_size=effective_world_size,
+            group_local=flow_opts.get("group_local", True),
+            show_meta=flow_opts.get("show_meta", False),
+            direction=flow_opts.get("direction", "LR"),
+            cross_edge_color=flow_opts.get("cross_edge_color", "#ff6a00"),
+            cluster_by_party=flow_opts.get("cluster_by_party", False),
+            shared_cluster_name=flow_opts.get("shared_cluster_name", "Shared"),
+        )
         parts.append("## Mermaid Flowchart (DAG)")
         parts.append("```mermaid")
-        parts.append(flw)
+        if flow_text is not None:
+            parts.append(flow_text)
         parts.append("```")
 
-    content = "\n\n".join(parts) + "\n"
+    markdown = "\n\n".join(parts) + "\n"
 
     if mpir_path:
-        if graph_proto is None:
-            expr = traced.make_expr()
-            graph_proto = Writer().dumps(expr)
         Path(mpir_path).write_text(str(graph_proto), encoding="utf-8")
-
     if report_path:
-        Path(report_path).write_text(content, encoding="utf-8")
-    return content
+        Path(report_path).write_text(markdown, encoding="utf-8")
+
+    return DumpResult(
+        ir=ir_text,
+        stats=stats,
+        sequence=seq_text,
+        flow=flow_text,
+        markdown=markdown,
+    )
 
 
-__all__ = ["dump", "to_flowchart", "to_sequence_diagram"]
+__all__ = [
+    "DumpResult",
+    "FlowchartOptions",
+    "SequenceDiagramOptions",
+    "dump",
+    "to_flowchart",
+    "to_sequence_diagram",
+]

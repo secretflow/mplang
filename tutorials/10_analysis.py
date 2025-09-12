@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Tutorial 10: IR & Graph Analysis Report Generation.
 
 This tutorial demonstrates how to generate a unified analysis report for a
@@ -70,14 +71,19 @@ if __name__ == "__main__":
     traced_dev = mplang.compile(sim, millionaire_device)
     analysis.dump(
         traced_dev,
-        world_size=3,
+        cluster_spec=cluster_spec,
         sequence=True,
         flow=True,
         include_ir=True,
         report_path="simple.md",
         mpir_path="simple.mpir",
         title="Millionaire Device Analysis",
-        direction="TB",
-        cluster_by_party=True,
+        flow_opts={
+            "direction": "TB",
+            "cluster_by_party": True,
+        },
+        seq_opts={
+            "collapse_local": False,
+        },
     )
     print("Generated simple.mpir and simple.md")

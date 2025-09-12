@@ -22,13 +22,13 @@ import cloudpickle as pickle
 from fastapi.testclient import TestClient
 
 from mplang.runtime.server import app
-from tests.utils.server_fixtures import get_free_port
+from tests.utils.server_fixtures import get_free_ports
 
 client = TestClient(app)
 
 
 def _endpoints(n: int) -> list[str]:
-    return [f"http://localhost:{get_free_port()}" for _ in range(n)]
+    return [f"http://localhost:{port}" for port in get_free_ports(n)]
 
 
 def test_create_and_get_session():

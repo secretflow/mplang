@@ -364,7 +364,7 @@ def dump(
         **diagram_kwargs: Forwarded to diagram functions.
     """
     if report_path is None and mpir_path is None:
-        raise ValueError("must provide at least one of report_path or mpir_path")
+        raise ValueError("dump() requires at least one output path: report_path for markdown or mpir_path for raw IR")
 
     parts: list[str] = []
     if title:

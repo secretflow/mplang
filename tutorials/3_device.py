@@ -17,7 +17,6 @@ import random
 import mplang
 import mplang.device as mpd
 from mplang.core.cluster import ClusterSpec
-from mplang.core.context_mgr import set_ctx
 from mplang.runtime.simulation import Simulator
 
 cluster_spec = ClusterSpec.from_dict({
@@ -27,6 +26,7 @@ cluster_spec = ClusterSpec.from_dict({
         {"name": "node_2", "endpoint": "127.0.0.1:61922"},
         {"name": "node_3", "endpoint": "127.0.0.1:61923"},
         {"name": "node_4", "endpoint": "127.0.0.1:61924"},
+        {"name": "node_5", "endpoint": "127.0.0.1:61925"},
     ],
     "devices": {
         "SP0": {
@@ -40,6 +40,7 @@ cluster_spec = ClusterSpec.from_dict({
         },
         "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
         "P1": {"kind": "PPU", "members": ["node_4"], "config": {}},
+        "TEE0": {"kind": "TEE", "members": ["node_5"], "config": {}},
     },
 })
 
@@ -67,68 +68,54 @@ def myfun(x, y):
 
 
 @mpd.function
-def millionaire():
+def millionaire(dev_name):
     x = mpd.device("P0")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(x) == "P0", x
-
     y = mpd.device("P1")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(y) == "P1", y
-
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
-    assert mpd.Utils.get_devid(z) == "SP0", z
-
+    # Run comparison inside secure device.
+    z = mpd.device(dev_name)(lambda x, y: x < y)(x, y)
+    # Bring result back to P0
     r = mpd.put("P0", z)
     return x, y, z, r
 
 
-def main(ctx):
-    compiled = mplang.compile(ctx, millionaire)
-    print("millionaire compiled:", compiled.compiler_ir())
+def run_spu():
+    print("-" * 10, "millionaire (SPU)", "-" * 10)
 
-    x, y, z, r = mplang.evaluate(ctx, millionaire)
-    print("x:", x, mplang.fetch(ctx, x))
-    print("y:", y, mplang.fetch(ctx, y))
-    print("z:", z, mplang.fetch(ctx, z))
-    print("r:", r, mplang.fetch(ctx, r))
+    sim = Simulator(cluster_spec)
+    x, y, z, r = mplang.evaluate(sim, millionaire, "SP0")
+    print("x:", x, mplang.fetch(sim, x))
+    print("y:", y, mplang.fetch(sim, y))
+    print("z:", z, mplang.fetch(sim, z))
+    print("r:", r, mplang.fetch(sim, r))
 
-    print("-" * 10, "myfun", "-" * 10)
-    xx, [yy, _c0], res_dict = mplang.evaluate(ctx, myfun, x, y)
-    print("xx:", xx)
-    print("yy:", yy)
-    print("res_dict", res_dict)
+    compiled = mplang.compile(sim, millionaire, "SP0")
+    print("SPU compiled:", compiled.compiler_ir())
+
+    # ofcourse we can run other funcs in the same sim instance
+    # print("-" * 10, "myfun", "-" * 10)
+    # xx, [yy, _c0], res_dict = mplang.evaluate(sim, myfun, x, y)
+    # print("xx:", xx)
+    # print("yy:", yy)
+    # print("res_dict", res_dict)
 
 
-def main2(ctx):
-    set_ctx(ctx)
+def run_tee():
+    print("-" * 10, "millionaire (TEE)", "-" * 10)
 
-    # the function is evaluated immediately, on P0
-    x = mpd.device("P0")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(x) == "P0", x
+    sim = Simulator(cluster_spec)
+    x_t, y_t, z_t, r_t = mplang.evaluate(sim, millionaire, "TEE0")
+    print("x_t:", x_t, mplang.fetch(sim, x_t))
+    print("y_t:", y_t, mplang.fetch(sim, y_t))
+    print("z_t (at TEE):", z_t, mplang.fetch(sim, z_t))
+    print("r_t (at P0):", r_t, mplang.fetch(sim, r_t))
 
-    # the function is evaluated immediately, on P1
-    y = mpd.device("P1")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(y) == "P1", y
-
-    # compare the two numbers, on SP0
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
-    assert mpd.Utils.get_devid(z) == "SP0", z
-
-    print("x:", x)
-    print("y:", y)
-    print("z:", z)
-
-    # reveal the result to P0
-    u = mpd.put("P0", z)
-    print("w:", u)
-
-    # direct reveal a variable from P0 to P1
-    v = mpd.put("P1", x)
-    print("v:", v)
+    # copts = mplang.CompileOptions(cluster_spec)
+    # compiled = mplang.compile(copts, millionaire, "TEE0")
+    # print("TEE compiled:", compiled.compiler_ir())
 
 
 if __name__ == "__main__":
-    # Create a simple simulator with cluster_spec directly
-    simulator = Simulator(cluster_spec)
-
-    main(simulator)
-    main2(simulator)
+    # SPU version
+    run_spu()
+    # TEE version
+    run_tee()

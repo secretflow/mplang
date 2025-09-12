@@ -98,6 +98,7 @@ class TraceContext(MPContext):
         *,
         mask: Mask | None = None,
         capture_namer: VarNamer | None = None,
+        parent: MPContext | None = None,
     ):
         """Initialize TraceContext with a cluster specification.
 
@@ -110,6 +111,8 @@ class TraceContext(MPContext):
         super().__init__(cluster_spec)
 
         self._mask = mask or Mask.all(self.world_size())
+        # parent context (InterpContext typically) for per-stack shared state
+        self._parent = parent
         self._capture_namer = capture_namer or VarNamer()
 
         self._var_namer = VarNamer(prefix="%")
@@ -138,6 +141,7 @@ class TraceContext(MPContext):
         return TraceContext(
             cluster_spec=self.cluster_spec,
             mask=mask,
+            parent=self._parent,
             # capture_namer=self._capture_namer,
         )
 

@@ -99,7 +99,7 @@ def primitive(fn: Callable[P, R]) -> Callable[P, R]:
             args, kwargs = tree_map(partial(_switch_ctx, current_ctx), (args, kwargs))
             return fn(*args, **kwargs)
         elif isinstance(current_ctx, InterpContext):
-            trace_ctx = TraceContext(current_ctx.cluster_spec)
+            trace_ctx = TraceContext(current_ctx.cluster_spec, parent=current_ctx)
             # TODO(jint): should we add trace_and_apply to improve the performance?
             traced_fn = trace(trace_ctx, fn, *args, **kwargs)
             # Return back to the original context.

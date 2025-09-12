@@ -19,9 +19,6 @@ We implement the classic millionaire comparison in two styles and compare their 
 - Device-oriented: automatic PPU↔TEE attestation + session + bytes-only enc/dec.
 - Manual simp: explicit quote/attest, KEM(+HKDF), pack/enc/p2p/dec/unpack.
 
-We clear the device session cache before compiling so the device IR fully includes
-attestation and key derivation, ensuring an end-to-end view (not just the data hop).
-
 Security note: crypto is mock for demo; see backend/crypto warnings.
 """
 
@@ -130,10 +127,6 @@ def main():
     print("-" * 10, "TEE millionaire: device vs manual (end-to-end IR)", "-" * 10)
     sim = Simulator(cluster_spec)
 
-    # Clear device session cache so device IR includes handshake
-    mpd.clear_tee_session_cache()
-
-    # Compile before evaluate to avoid warming the session cache
     compiled_dev = mplang.compile(sim, millionaire_device)
     compiled_man = mplang.compile(sim, millionaire_manual)
     ir_dev = compiled_dev.compiler_ir()
@@ -154,9 +147,6 @@ def main():
         print("\n--- Device IR ---\n", ir_dev)
         print("\n--- Manual IR ---\n", ir_man)
     print("IR:", ir_dev)
-
-    # Clear cache again to avoid compile-time session objects leaking into runtime
-    mpd.clear_tee_session_cache()
 
     # Run both
     xd, yd, zd, rd = mplang.evaluate(sim, millionaire_device)

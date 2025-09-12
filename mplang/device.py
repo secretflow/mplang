@@ -33,6 +33,7 @@ import mplang.api as mapi
 from mplang import simp
 from mplang.core import InterpContext, MPObject, primitive
 from mplang.core.cluster import ClusterSpec
+from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
 from mplang.frontend import crypto, tee
 from mplang.simp import mpi, smpc
@@ -185,15 +186,6 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
 
 
-# Simple in-process cache for per-(from_dev,to_dev) TEE sessions within a program run
-_TEE_SESS_CACHE: dict[tuple[str, str], tuple[MPObject, MPObject]] = {}
-
-
-def clear_tee_session_cache() -> None:
-    """Clear the global TEE session cache. For testing purposes."""
-    _TEE_SESS_CACHE.clear()
-
-
 def _ensure_tee_session(
     frm_dev_id: str, to_dev_id: str, frm_rank: int, tee_rank: int
 ) -> tuple[MPObject, MPObject]:
@@ -201,9 +193,14 @@ def _ensure_tee_session(
 
     Returns (sess_p, sess_t).
     """
+    ctx = cur_ctx().root()
+    cache = getattr(ctx, "_tee_sessions", None)
+    if cache is None:
+        cache = {}
+        ctx._tee_sessions = cache  # type: ignore[attr-defined]
     key = (frm_dev_id, to_dev_id)
-    if key in _TEE_SESS_CACHE:
-        return _TEE_SESS_CACHE[key]
+    if key in cache:
+        return cache[key]
 
     # 1) TEE generates (sk, pk) and quote(pk)
     # TODO: The KEM suite identifier "x25519" is hardcoded. This should be
@@ -228,7 +225,7 @@ def _ensure_tee_session(
     sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_literal)
     sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_literal)
 
-    _TEE_SESS_CACHE[key] = (sess_p, sess_t)
+    cache[key] = (sess_p, sess_t)
     return sess_p, sess_t
 
 

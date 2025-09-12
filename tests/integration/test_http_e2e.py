@@ -28,6 +28,7 @@ import mplang
 import mplang.simp as simp
 from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
 from mplang.runtime.server import app
+from tests.conftest import get_free_ports
 
 # Global state for servers
 http_server_processes: dict[int, multiprocessing.Process] = {}
@@ -101,26 +102,27 @@ def run_e2e_server(port: int):
 
 @pytest.fixture(scope="module", autouse=True)
 def start_e2e_servers():
-    """Fixture to start servers for HttpDriver e2e testing."""
-    # Start servers for e2e tests - 5 parties: P0, P1, P2, P3, P4
-    # SPU mask = 01110, meaning P1, P2, P3 form the SPU
-    ports = [15001, 15002, 15003, 15004, 15005]
+    """Start 5 HTTP servers on dynamic ports and return node->addr mapping."""
+    ports = get_free_ports(5)
+    node_ids = ["P0", "P1", "P2", "P3", "P4"]
+    node_addrs = {
+        nid: f"http://localhost:{p}" for nid, p in zip(node_ids, ports, strict=True)
+    }
 
-    # Start servers in separate processes
-    for port in ports:
-        process = multiprocessing.Process(target=run_e2e_server, args=(port,))
+    for p in ports:
+        process = multiprocessing.Process(target=run_e2e_server, args=(p,))
         process.daemon = True
-        http_server_processes[port] = process
+        http_server_processes[p] = process
         process.start()
 
-    # Wait for servers to be ready via health check
+    # Wait for health
     import httpx
 
-    for port in ports:
+    for p in ports:
         ready = False
-        for _ in range(100):  # up to ~10s
+        for _ in range(120):  # up to ~12s
             try:
-                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
+                r = httpx.get(f"http://localhost:{p}/health", timeout=0.25)
                 if r.status_code == 200:
                     ready = True
                     break
@@ -128,31 +130,23 @@ def start_e2e_servers():
                 pass
             time.sleep(0.1)
         if not ready:
-            raise RuntimeError(f"Server on port {port} failed to start in time")
+            raise RuntimeError(f"Server on port {p} failed to start in time")
 
-    yield
+    yield node_addrs
 
-    # Teardown: stop all server processes
-    for port in ports:
-        if port in http_server_processes:
-            process = http_server_processes[port]
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=5)  # Wait up to 5 seconds
-                if process.is_alive():
-                    process.kill()  # Force kill if still alive
+    for p in ports:
+        proc = http_server_processes.get(p)
+        if proc and proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            if proc.is_alive():
+                proc.kill()
 
 
 @pytest.fixture
-def http_driver():
-    """Fixture to create HttpDriver for testing with 5 parties."""
-    node_addrs = {
-        "P0": "http://localhost:15001",  # P0 - plaintext party
-        "P1": "http://localhost:15002",  # P1 - SPU party
-        "P2": "http://localhost:15003",  # P2 - SPU party
-        "P3": "http://localhost:15004",  # P3 - SPU party
-        "P4": "http://localhost:15005",  # P4 - plaintext party
-    }
+def http_driver(start_e2e_servers):  # type: ignore
+    """Fixture to create HttpDriver for testing with 5 parties (dynamic ports)."""
+    node_addrs = start_e2e_servers
     cluster_spec = create_e2e_cluster_spec(node_addrs, ["P1", "P2", "P3"])
     return mplang.Driver(cluster_spec)
 

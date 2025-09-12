@@ -26,6 +26,7 @@ import uvicorn
 from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
 from mplang.runtime.driver import Driver
 from mplang.runtime.server import app
+from tests.conftest import get_free_ports
 
 # Global state for servers
 distributed_server_processes: dict[int, multiprocessing.Process] = {}
@@ -87,9 +88,13 @@ def run_distributed_server(port: int):
 
 @pytest.fixture(scope="module", autouse=True)
 def start_servers():
-    """Fixture to start servers for HttpDriver testing."""
-    # Start distributed servers for driver tests
-    ports = [9001, 9002, 9003]
+    """Start 3 HTTP servers on dynamic ports and return node address mapping."""
+    ports = get_free_ports(3)
+    node_ids = ["0", "1", "2"]
+    node_addrs = {
+        nid: f"http://localhost:{p}" for nid, p in zip(node_ids, ports, strict=True)
+    }
+
     for port in ports:
         process = multiprocessing.Process(target=run_distributed_server, args=(port,))
         process.daemon = True
@@ -99,9 +104,9 @@ def start_servers():
     # Wait for servers to be ready via health check
     for port in ports:
         ready = False
-        for _ in range(50):  # up to ~5s
+        for _ in range(60):  # up to ~6s
             try:
-                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
+                r = httpx.get(f"http://localhost:{port}/health", timeout=0.25)
                 if r.status_code == 200:
                     ready = True
                     break
@@ -111,26 +116,20 @@ def start_servers():
         if not ready:
             raise RuntimeError(f"Server on port {port} failed to start in time")
 
-    yield
+    yield node_addrs
 
-    # Teardown: stop all server processes
     for port in ports:
-        if port in distributed_server_processes:
-            process = distributed_server_processes[port]
+        process = distributed_server_processes.get(port)
+        if process and process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
             if process.is_alive():
-                process.terminate()
-                process.join(timeout=5)  # Wait up to 5 seconds
-                if process.is_alive():
-                    process.kill()  # Force kill if still alive
+                process.kill()
 
 
-def test_http_driver_initialization():
+def test_http_driver_initialization(start_servers):  # type: ignore
     """Test HttpDriver initialization and basic properties."""
-    node_addrs = {
-        "0": "http://localhost:9001",
-        "1": "http://localhost:9002",
-        "2": "http://localhost:9003",
-    }
+    node_addrs = start_servers
 
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)
@@ -152,12 +151,11 @@ def test_http_driver_initialization():
     asyncio.run(driver._close_clients(clients))
 
 
-def test_session_creation():
+def test_session_creation(start_servers):  # type: ignore
     """Test session creation across multiple HTTP servers."""
-    node_addrs = {
-        "0": "http://localhost:9001",
-        "1": "http://localhost:9002",
-    }
+    # Take only two nodes for this test
+    full_nodes = start_servers
+    node_addrs = {k: full_nodes[k] for k in list(full_nodes.keys())[:2]}
 
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)
@@ -174,9 +172,12 @@ def test_session_creation():
     assert session_id == session_id2
 
 
-def test_unique_name_generation():
+def test_unique_name_generation(start_servers):  # type: ignore
     """Test unique name generation for executions."""
-    node_addrs = {"0": "http://localhost:9001"}
+    # Use only one node
+    full_nodes = start_servers
+    first_key = next(iter(full_nodes.keys()))
+    node_addrs = {first_key: full_nodes[first_key]}
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)
 
@@ -192,12 +193,11 @@ def test_unique_name_generation():
     assert "exec_" in name2
 
 
-def test_driver_context_properties():
+def test_driver_context_properties(start_servers):  # type: ignore
     """Test HttpDriver as InterpContext."""
-    node_addrs = {
-        "0": "http://localhost:9001",
-        "1": "http://localhost:9002",
-    }
+    full_nodes = start_servers
+    node_keys = list(full_nodes.keys())[:2]
+    node_addrs = {k: full_nodes[k] for k in node_keys}
 
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)

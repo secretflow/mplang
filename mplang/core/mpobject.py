@@ -59,8 +59,8 @@ class MPContext:
         ctx: MPContext = self
         visited: set[int] = set()
         while ctx._parent is not None:
-            if id(ctx) in visited:  # cycle guard (should never happen)
-                break
+            if id(ctx) in visited:
+                raise RuntimeError("Cycle detected in MPContext parent chain")
             visited.add(id(ctx))
             ctx = ctx._parent
         return ctx

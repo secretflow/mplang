@@ -2840,7 +2840,7 @@ class TestPHEHandler:
             outs_info=(TensorType.from_obj(np.array([1, 2, 3, 4], dtype=np.int32)),),
         )
         with pytest.raises(
-            AssertionError, match="All arguments must be CipherText instances"
+            ValueError, match="All arguments must be CipherText instances"
         ):
             self.handler.execute(concat_pfunc, [vec1, vec2])
 
@@ -2876,6 +2876,444 @@ class TestPHEHandler:
         with pytest.raises(
             ValueError, match="All CipherTexts must have same semantic dtype"
         ):
+            self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])
+
+    def test_concat_multidimensional_axis0_2d_matrices(self):
+        """Test concat operation along axis 0 for 2D matrices."""
+        pk, sk = self._generate_keypair()
+
+        # Create two 2D matrices to concatenate along axis 0
+        matrix1 = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)  # Shape (2, 3)
+        matrix2 = np.array([[7, 8, 9]], dtype=np.int32)  # Shape (1, 3)
+
+        # Encrypt both matrices
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [matrix1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [matrix2, pk])[0]
+
+        # Perform concat operation along axis 0 (default)
+        concat_result_shape = np.zeros((3, 3), dtype=np.int32)  # Result shape (3, 3)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(matrix1),
+                TensorType.from_obj(matrix2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=0,  # Concatenate along axis 0
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (3, 3)  # (2+1, 3)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int32)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected)
+
+    def test_concat_multidimensional_axis1_2d_matrices(self):
+        """Test concat operation along axis 1 for 2D matrices."""
+        pk, sk = self._generate_keypair()
+
+        # Create two 2D matrices to concatenate along axis 1
+        matrix1 = np.array([[1, 2], [4, 5]], dtype=np.int32)  # Shape (2, 2)
+        matrix2 = np.array([[3], [6]], dtype=np.int32)  # Shape (2, 1)
+
+        # Encrypt both matrices
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [matrix1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [matrix2, pk])[0]
+
+        # Perform concat operation along axis 1
+        concat_result_shape = np.zeros((2, 3), dtype=np.int32)  # Result shape (2, 3)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(matrix1),
+                TensorType.from_obj(matrix2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=1,  # Concatenate along axis 1
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 3)  # (2, 2+1)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected)
+
+    def test_concat_multidimensional_3d_tensors_axis0(self):
+        """Test concat operation along axis 0 for 3D tensors."""
+        pk, sk = self._generate_keypair()
+
+        # Create two 3D tensors to concatenate along axis 0
+        tensor1 = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+        tensor2 = np.array([[[9, 10], [11, 12]]], dtype=np.int32)  # Shape (1, 2, 2)
+
+        # Encrypt both tensors
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(tensor1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(tensor1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [tensor1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(tensor2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(tensor2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [tensor2, pk])[0]
+
+        # Perform concat operation along axis 0
+        concat_result_shape = np.zeros(
+            (3, 2, 2), dtype=np.int32
+        )  # Result shape (3, 2, 2)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(tensor1),
+                TensorType.from_obj(tensor2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=0,  # Concatenate along axis 0
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (3, 2, 2)  # (2+1, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]]], dtype=np.int32
+        )
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected)
+
+    def test_concat_multidimensional_3d_tensors_axis2(self):
+        """Test concat operation along axis 2 for 3D tensors."""
+        pk, sk = self._generate_keypair()
+
+        # Create two 3D tensors to concatenate along axis 2
+        tensor1 = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+        tensor2 = np.array(
+            [[[10], [30]], [[50], [70]]], dtype=np.int32
+        )  # Shape (2, 2, 1)
+
+        # Encrypt both tensors
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(tensor1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(tensor1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [tensor1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(tensor2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(tensor2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [tensor2, pk])[0]
+
+        # Perform concat operation along axis 2
+        concat_result_shape = np.zeros(
+            (2, 2, 3), dtype=np.int32
+        )  # Result shape (2, 2, 3)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(tensor1),
+                TensorType.from_obj(tensor2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=2,  # Concatenate along axis 2
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2, 3)  # (2, 2, 2+1)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array(
+            [[[1, 2, 10], [3, 4, 30]], [[5, 6, 50], [7, 8, 70]]], dtype=np.int32
+        )
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected)
+
+    def test_concat_multidimensional_negative_axis(self):
+        """Test concat operation with negative axis."""
+        pk, sk = self._generate_keypair()
+
+        # Create two 2D matrices to concatenate along axis -1 (equivalent to axis 1)
+        matrix1 = np.array([[1, 2], [4, 5]], dtype=np.int32)  # Shape (2, 2)
+        matrix2 = np.array([[3], [6]], dtype=np.int32)  # Shape (2, 1)
+
+        # Encrypt both matrices
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [matrix1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [matrix2, pk])[0]
+
+        # Perform concat operation along axis -1
+        concat_result_shape = np.zeros((2, 3), dtype=np.int32)  # Result shape (2, 3)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(matrix1),
+                TensorType.from_obj(matrix2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=-1,  # Concatenate along axis -1 (last axis)
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 3)  # (2, 2+1)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected)
+
+    def test_concat_multidimensional_float_types(self):
+        """Test concat operation with floating point types."""
+        pk, sk = self._generate_keypair()
+
+        # Create two 2D float matrices to concatenate
+        matrix1 = np.array([[1.1, 2.2], [3.3, 4.4]], dtype=np.float64)  # Shape (2, 2)
+        matrix2 = np.array([[5.5, 6.6]], dtype=np.float64)  # Shape (1, 2)
+
+        # Encrypt both matrices
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [matrix1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [matrix2, pk])[0]
+
+        # Perform concat operation along axis 0
+        concat_result_shape = np.zeros((3, 2), dtype=np.float64)  # Result shape (3, 2)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(matrix1),
+                TensorType.from_obj(matrix2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=0,  # Concatenate along axis 0
+        )
+        result_ct = self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+        assert result_ct.semantic_shape == (3, 2)  # (2+1, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(concat_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected = np.array([[1.1, 2.2], [3.3, 4.4], [5.5, 6.6]], dtype=np.float64)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_allclose(decrypted_array, expected, rtol=1e-10)
+
+    def test_concat_multidimensional_invalid_axis(self):
+        """Test concat operation with invalid axis."""
+        pk, _sk = self._generate_keypair()
+
+        # Create two 2D matrices
+        matrix1 = np.array([[1, 2], [3, 4]], dtype=np.int32)  # Shape (2, 2)
+        matrix2 = np.array([[5, 6], [7, 8]], dtype=np.int32)  # Shape (2, 2)
+
+        # Encrypt both matrices
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [matrix1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [matrix2, pk])[0]
+
+        # Try concat with invalid axis (axis 2 for 2D tensors)
+        concat_result_shape = np.zeros((2, 2), dtype=np.int32)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(matrix1),
+                TensorType.from_obj(matrix2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=2,  # Invalid axis for 2D tensors
+        )
+        with pytest.raises(
+            ValueError, match="axis 2 is out of bounds for array of dimension 2"
+        ):
+            self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])
+
+    def test_concat_multidimensional_dimension_mismatch(self):
+        """Test concat operation with incompatible shapes."""
+        pk, _sk = self._generate_keypair()
+
+        # Create two matrices with incompatible shapes for concatenation
+        matrix1 = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)  # Shape (2, 3)
+        matrix2 = np.array(
+            [[7, 8]], dtype=np.int32
+        )  # Shape (1, 2) - incompatible for axis 0
+
+        # Encrypt both matrices
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [matrix1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(matrix2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(matrix2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [matrix2, pk])[0]
+
+        # Try concat along axis 0 - should fail due to dimension 1 mismatch (3 vs 2)
+        concat_result_shape = np.zeros((3, 3), dtype=np.int32)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(matrix1),
+                TensorType.from_obj(matrix2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=0,
+        )
+        with pytest.raises(
+            ValueError,
+            match="All CipherTexts must have same shape except along concatenation axis",
+        ):
+            self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])
+
+    def test_concat_multidimensional_scalar_ciphertext(self):
+        """Test concat operation with scalar CipherTexts (should fail)."""
+        pk, _sk = self._generate_keypair()
+
+        # Create scalar ciphertexts
+        scalar1 = np.array(42, dtype=np.int32)
+        scalar2 = np.array(100, dtype=np.int32)
+
+        # Encrypt both scalars
+        encrypt_pfunc1 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(scalar1), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(scalar1),),
+        )
+        ciphertext1 = self.handler.execute(encrypt_pfunc1, [scalar1, pk])[0]
+
+        encrypt_pfunc2 = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(scalar2), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(scalar2),),
+        )
+        ciphertext2 = self.handler.execute(encrypt_pfunc2, [scalar2, pk])[0]
+
+        # Try concat scalars - should fail
+        concat_result_shape = np.array([42, 100], dtype=np.int32)
+        concat_pfunc = PFunction(
+            fn_type="phe.concat",
+            ins_info=(
+                TensorType.from_obj(scalar1),
+                TensorType.from_obj(scalar2),
+            ),
+            outs_info=(TensorType.from_obj(concat_result_shape),),
+            axis=0,
+        )
+        with pytest.raises(ValueError, match="Cannot concatenate scalar CipherTexts"):
             self.handler.execute(concat_pfunc, [ciphertext1, ciphertext2])
 
     def test_decrypt_multidimensional_2d_matrix_int32(self):

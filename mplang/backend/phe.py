@@ -1114,8 +1114,11 @@ class PHEHandler(TensorHandler):
     ) -> list[TensorLike]:
         """Execute concat operation on multiple CipherTexts.
 
+        Supports concatenation along any axis of multidimensional CipherTexts.
+        The axis parameter is obtained from pfunc.attrs.
+
         Args:
-            pfunc: PFunction for concat
+            pfunc: PFunction for concat (with axis parameter in attrs)
             args: List of CipherText operands to concatenate
 
         Returns:
@@ -1126,53 +1129,103 @@ class PHEHandler(TensorHandler):
 
         c1, c2 = args
 
+        # Get axis parameter from pfunc.attrs, default to 0
+        axis = pfunc.attrs.get("axis", 0)
+
         # Validate that all arguments are CipherText
-        assert isinstance(c1, CipherText) and isinstance(
-            c2, CipherText
-        ), "All arguments must be CipherText instances"
+        if not isinstance(c1, CipherText) or not isinstance(c2, CipherText):
+            raise ValueError("All arguments must be CipherText instances")
 
-        # validate that all ciphertexts has the same key & scheme
-        for arg in (c2,):
-            if arg.scheme != c1.scheme or arg.key_size != c1.key_size:
-                raise ValueError("All CipherTexts must use same scheme and key size")
-            if arg.pk_data != c1.pk_data:
-                raise ValueError("All CipherTexts must be encrypted with same key")
-            if arg.semantic_dtype != c1.semantic_dtype:
-                raise ValueError(
-                    f"All CipherTexts must have same semantic dtype, got {c1.semantic_dtype} vs {arg.semantic_dtype}"
-                )
-            # Note: shapes don't need to be the same for concat, just dimension count should be the same
-            if len(arg.semantic_shape) != len(c1.semantic_shape):
-                raise ValueError(
-                    f"All CipherTexts must have same number of dimensions for concat, got {len(c1.semantic_shape)} vs {len(arg.semantic_shape)}"
-                )
+        # Validate that all ciphertexts have the same key & scheme
+        if c1.scheme != c2.scheme or c1.key_size != c2.key_size:
+            raise ValueError("All CipherTexts must use same scheme and key size")
+        if c1.pk_data != c2.pk_data:
+            raise ValueError("All CipherTexts must be encrypted with same key")
+        if c1.semantic_dtype != c2.semantic_dtype:
+            raise ValueError(
+                f"All CipherTexts must have same semantic dtype, got {c1.semantic_dtype} vs {c2.semantic_dtype}"
+            )
 
-        assert (
-            len(c1.semantic_shape) == 1
-        ), f"Only 1-D CipherTexts are supported for concat, got shape {c1.semantic_shape}"
+        # Validate dimensions and axis
+        if len(c1.semantic_shape) != len(c2.semantic_shape):
+            raise ValueError(
+                f"All CipherTexts must have same number of dimensions for concat, got {len(c1.semantic_shape)} vs {len(c2.semantic_shape)}"
+            )
+
+        # Handle scalar case
+        if len(c1.semantic_shape) == 0:
+            raise ValueError("Cannot concatenate scalar CipherTexts")
+
+        # Normalize axis (handle negative axis)
+        ndim = len(c1.semantic_shape)
+        if axis < 0:
+            axis = ndim + axis
+        if axis < 0 or axis >= ndim:
+            raise ValueError(
+                f"axis {pfunc.attrs.get('axis', 0)} is out of bounds for array of dimension {ndim}"
+            )
+
+        # Validate that all dimensions except the concat axis are the same
+        for i in range(ndim):
+            if i != axis and c1.semantic_shape[i] != c2.semantic_shape[i]:
+                raise ValueError(
+                    f"All CipherTexts must have same shape except along concatenation axis {axis}. "
+                    f"Shape mismatch at dimension {i}: {c1.semantic_shape[i]} vs {c2.semantic_shape[i]}"
+                )
 
         try:
-            # Validate compatibility and collect data
-            total_length = c1.semantic_shape[0] + c2.semantic_shape[0]
-            semantic_dtype = c1.semantic_dtype
-            scheme = c1.scheme
-            key_size = c1.key_size
-            pk_data = c1.pk_data
+            # Calculate result shape
+            result_shape = list(c1.semantic_shape)
+            result_shape[axis] = c1.semantic_shape[axis] + c2.semantic_shape[axis]
+            result_shape = tuple(result_shape)
 
-            # Concatenate the ciphertext data
+            # For multidimensional concatenation, we need to interleave the data properly
+            # Calculate strides for efficient indexing
+            def calculate_strides(shape: tuple[int, ...]) -> tuple[int, ...]:
+                strides = [1]
+                for dim in reversed(shape[1:]):
+                    strides.append(strides[-1] * dim)
+                return tuple(reversed(strides))
+
+            # Calculate the number of slices before the concatenation axis
+            pre_axis_size = int(np.prod(c1.semantic_shape[:axis])) if axis > 0 else 1
+            # Calculate the size of data along and after the concatenation axis
+            c1_post_axis_size = int(np.prod(c1.semantic_shape[axis:]))
+            c2_post_axis_size = int(np.prod(c2.semantic_shape[axis:]))
+
+            # Initialize result data
             concatenated_ct_data = []
-            for ct in [c1, c2]:
-                concatenated_ct_data.extend(ct.ct_data)
 
-            # Create result CipherText with new shape
+            # Perform concatenation
+            for pre_idx in range(pre_axis_size):
+                # For each slice before the concatenation axis
+
+                # Add data from c1 along the concatenation axis
+                c1_start = pre_idx * c1_post_axis_size
+                c1_end = c1_start + c1_post_axis_size
+                concatenated_ct_data.extend(c1.ct_data[c1_start:c1_end])
+
+                # Add data from c2 along the concatenation axis
+                c2_start = pre_idx * c2_post_axis_size
+                c2_end = c2_start + c2_post_axis_size
+                concatenated_ct_data.extend(c2.ct_data[c2_start:c2_end])
+
+            # Validate we got the expected number of elements
+            expected_size = int(np.prod(result_shape))
+            if len(concatenated_ct_data) != expected_size:
+                raise RuntimeError(
+                    f"Internal error: Expected {expected_size} elements, got {len(concatenated_ct_data)}"
+                )
+
+            # Create result CipherText
             return [
                 CipherText(
                     ct_data=concatenated_ct_data,
-                    semantic_dtype=semantic_dtype,
-                    semantic_shape=(total_length,),
-                    scheme=scheme,
-                    key_size=key_size,
-                    pk_data=pk_data,
+                    semantic_dtype=c1.semantic_dtype,
+                    semantic_shape=result_shape,
+                    scheme=c1.scheme,
+                    key_size=c1.key_size,
+                    pk_data=c1.pk_data,
                 )
             ]
 

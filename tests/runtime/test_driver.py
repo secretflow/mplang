@@ -12,23 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests for the HttpDriver.
-"""
+"""Tests for the HttpDriver."""
 
-import multiprocessing
-import time
+import asyncio
 
-import httpx
 import pytest
-import uvicorn
 
 from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
 from mplang.runtime.driver import Driver
-from mplang.runtime.server import app
-
-# Global state for servers
-distributed_server_processes: dict[int, multiprocessing.Process] = {}
+from tests.utils.server_fixtures import http_servers  # noqa: F401
 
 
 def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
@@ -72,65 +64,11 @@ def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
     return ClusterSpec(nodes=nodes, devices=devices)
 
 
-def run_distributed_server(port: int):
-    """Function to run a uvicorn server on a specific port for distributed testing."""
-    config = uvicorn.Config(
-        app,
-        host="localhost",
-        port=port,
-        log_level="critical",
-        ws="none",  # Disable websockets to avoid deprecation warnings
-    )
-    server = uvicorn.Server(config)
-    server.run()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def start_servers():
-    """Fixture to start servers for HttpDriver testing."""
-    # Start distributed servers for driver tests
-    ports = [9001, 9002, 9003]
-    for port in ports:
-        process = multiprocessing.Process(target=run_distributed_server, args=(port,))
-        process.daemon = True
-        distributed_server_processes[port] = process
-        process.start()
-
-    # Wait for servers to be ready via health check
-    for port in ports:
-        ready = False
-        for _ in range(50):  # up to ~5s
-            try:
-                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
-                if r.status_code == 200:
-                    ready = True
-                    break
-            except Exception:
-                pass
-            time.sleep(0.1)
-        if not ready:
-            raise RuntimeError(f"Server on port {port} failed to start in time")
-
-    yield
-
-    # Teardown: stop all server processes
-    for port in ports:
-        if port in distributed_server_processes:
-            process = distributed_server_processes[port]
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=5)  # Wait up to 5 seconds
-                if process.is_alive():
-                    process.kill()  # Force kill if still alive
-
-
-def test_http_driver_initialization():
+@pytest.mark.parametrize("http_servers", [3], indirect=True)
+def test_http_driver_initialization(http_servers):  # type: ignore  # noqa: F811
     """Test HttpDriver initialization and basic properties."""
-    node_addrs = {
-        "0": "http://localhost:9001",
-        "1": "http://localhost:9002",
-        "2": "http://localhost:9003",
-    }
+    # Build mapping 0..n-1 -> address
+    node_addrs = {str(i): addr for i, addr in enumerate(http_servers.addresses)}
 
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)
@@ -147,17 +85,14 @@ def test_http_driver_initialization():
     assert "node2" in clients
 
     # Clean up clients
-    import asyncio
-
     asyncio.run(driver._close_clients(clients))
 
 
-def test_session_creation():
+@pytest.mark.parametrize("http_servers", [3], indirect=True)
+def test_session_creation(http_servers):  # type: ignore  # noqa: F811
     """Test session creation across multiple HTTP servers."""
-    node_addrs = {
-        "0": "http://localhost:9001",
-        "1": "http://localhost:9002",
-    }
+    # Take only two nodes for this test
+    node_addrs = {str(i): addr for i, addr in enumerate(http_servers.addresses[:2])}
 
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)
@@ -174,9 +109,11 @@ def test_session_creation():
     assert session_id == session_id2
 
 
-def test_unique_name_generation():
+@pytest.mark.parametrize("http_servers", [1], indirect=True)
+def test_unique_name_generation(http_servers):  # type: ignore  # noqa: F811
     """Test unique name generation for executions."""
-    node_addrs = {"0": "http://localhost:9001"}
+    # Use only one node
+    node_addrs = {"0": http_servers.addresses[0]}
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)
 
@@ -192,12 +129,10 @@ def test_unique_name_generation():
     assert "exec_" in name2
 
 
-def test_driver_context_properties():
+@pytest.mark.parametrize("http_servers", [2], indirect=True)
+def test_driver_context_properties(http_servers):  # type: ignore  # noqa: F811
     """Test HttpDriver as InterpContext."""
-    node_addrs = {
-        "0": "http://localhost:9001",
-        "1": "http://localhost:9002",
-    }
+    node_addrs = {str(i): addr for i, addr in enumerate(http_servers.addresses)}
 
     cluster_spec = create_test_cluster_spec(node_addrs)
     driver = Driver(cluster_spec)

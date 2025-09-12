@@ -12,25 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-End-to-end functional tests for HttpDriver evaluate and fetch operations.
-"""
+"""End-to-end functional tests for HttpDriver evaluate and fetch operations.
 
-import multiprocessing
-import time
+This version uses the shared `http_servers` fixture for process management.
+"""
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
-import uvicorn
 
 import mplang
 import mplang.simp as simp
 from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
-from mplang.runtime.server import app
-
-# Global state for servers
-http_server_processes: dict[int, multiprocessing.Process] = {}
+from tests.utils.server_fixtures import http_servers  # noqa: F401
 
 
 def create_e2e_cluster_spec(
@@ -82,84 +76,16 @@ def create_e2e_cluster_spec(
     return ClusterSpec(nodes=nodes, devices=devices)
 
 
-# Global state for servers
-http_server_processes: dict[int, multiprocessing.Process] = {}
-
-
-def run_e2e_server(port: int):
-    """Function to run a uvicorn server on a specific port for e2e testing."""
-    config = uvicorn.Config(
-        app,
-        host="localhost",
-        port=port,
-        log_level="critical",
-        ws="none",  # Disable websockets to avoid deprecation warnings
-    )
-    server = uvicorn.Server(config)
-    server.run()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def start_e2e_servers():
-    """Fixture to start servers for HttpDriver e2e testing."""
-    # Start servers for e2e tests - 5 parties: P0, P1, P2, P3, P4
-    # SPU mask = 01110, meaning P1, P2, P3 form the SPU
-    ports = [15001, 15002, 15003, 15004, 15005]
-
-    # Start servers in separate processes
-    for port in ports:
-        process = multiprocessing.Process(target=run_e2e_server, args=(port,))
-        process.daemon = True
-        http_server_processes[port] = process
-        process.start()
-
-    # Wait for servers to be ready via health check
-    import httpx
-
-    for port in ports:
-        ready = False
-        for _ in range(100):  # up to ~10s
-            try:
-                r = httpx.get(f"http://localhost:{port}/health", timeout=0.2)
-                if r.status_code == 200:
-                    ready = True
-                    break
-            except Exception:
-                pass
-            time.sleep(0.1)
-        if not ready:
-            raise RuntimeError(f"Server on port {port} failed to start in time")
-
-    yield
-
-    # Teardown: stop all server processes
-    for port in ports:
-        if port in http_server_processes:
-            process = http_server_processes[port]
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=5)  # Wait up to 5 seconds
-                if process.is_alive():
-                    process.kill()  # Force kill if still alive
-
-
 @pytest.fixture
-def http_driver():
-    """Fixture to create HttpDriver for testing with 5 parties."""
-    node_addrs = {
-        "P0": "http://localhost:15001",  # P0 - plaintext party
-        "P1": "http://localhost:15002",  # P1 - SPU party
-        "P2": "http://localhost:15003",  # P2 - SPU party
-        "P3": "http://localhost:15004",  # P3 - SPU party
-        "P4": "http://localhost:15005",  # P4 - plaintext party
-    }
+def http_driver(http_servers):  # type: ignore  # noqa: F811
+    node_ids = ["P0", "P1", "P2", "P3", "P4"]
+    node_addrs = dict(zip(node_ids, http_servers.addresses, strict=True))
     cluster_spec = create_e2e_cluster_spec(node_addrs, ["P1", "P2", "P3"])
     return mplang.Driver(cluster_spec)
 
 
-@pytest.mark.skip(
-    reason="Works when run individually, but hangs when run with 'uv run pytest tests/runtime/'"
-)
+@pytest.mark.skip(reason="Known hang in combined suite; ok standalone")
+@pytest.mark.parametrize("http_servers", [5], indirect=True)
 def test_simple_addition_e2e(http_driver):
     """Test simple addition computation using HttpDriver with 5 parties."""
     # Create test data
@@ -186,6 +112,7 @@ def test_simple_addition_e2e(http_driver):
         )
 
 
+@pytest.mark.parametrize("http_servers", [5], indirect=True)
 def test_secure_comparison_e2e(http_driver):
     """Test secure comparison computation using HttpDriver with 5 parties."""
     # Create test data - data comes from different parties
@@ -227,6 +154,7 @@ def test_secure_comparison_e2e(http_driver):
         )
 
 
+@pytest.mark.parametrize("http_servers", [5], indirect=True)
 def test_three_way_comparison_e2e(http_driver):
     """Test multi-party comparison (millionaire problem) using HttpDriver with 5 parties."""
     # Create test data - wealth from different parties
@@ -286,6 +214,7 @@ def test_three_way_comparison_e2e(http_driver):
         assert fetched_c[i], f"P4 should be richest at rank {i}: {fetched_c[i]}"
 
 
+@pytest.mark.parametrize("http_servers", [5], indirect=True)
 def test_multiple_operations_e2e(http_driver):
     """Test multiple operations in sequence using HttpDriver with 5 parties."""
     # Test data - from different parties

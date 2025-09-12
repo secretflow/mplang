@@ -22,18 +22,24 @@ import cloudpickle as pickle
 from fastapi.testclient import TestClient
 
 from mplang.runtime.server import app
+from tests.utils.server_fixtures import get_free_ports
 
 client = TestClient(app)
+
+
+def _endpoints(n: int) -> list[str]:
+    return [f"http://localhost:{port}" for port in get_free_ports(n)]
 
 
 def test_create_and_get_session():
     """Test creating and retrieving a session."""
     # Create a session with a specific name, rank, and endpoints
+    eps = _endpoints(2)
     response = client.put(
         "/sessions/test_session_1",
         json={
             "rank": 0,
-            "endpoints": ["http://localhost:8000", "http://localhost:8001"],
+            "endpoints": eps,
             "spu_mask": -1,
             "spu_protocol": "SEMI2K",
             "spu_field": "FM64",
@@ -55,11 +61,12 @@ def test_create_and_get_session():
 def test_create_computation():
     """Test creating a computation within a session."""
     # First, create a session
+    eps = _endpoints(2)
     client.put(
         "/sessions/test_session_2",
         json={
             "rank": 0,
-            "endpoints": ["http://localhost:8000", "http://localhost:8001"],
+            "endpoints": eps,
             "spu_mask": -1,
             "spu_protocol": "SEMI2K",
             "spu_field": "FM64",
@@ -97,11 +104,12 @@ def test_create_computation():
 def test_create_and_get_symbol():
     """Test creating and retrieving a symbol."""
     # Create session first
+    eps = _endpoints(2)
     response = client.put(
         "/sessions/test_session_3",
         json={
             "rank": 0,
-            "endpoints": ["http://localhost:8000", "http://localhost:8001"],
+            "endpoints": eps,
             "spu_mask": -1,
             "spu_protocol": "SEMI2K",
             "spu_field": "FM64",

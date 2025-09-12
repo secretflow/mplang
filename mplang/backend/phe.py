@@ -119,6 +119,8 @@ class PHEHandler(TensorHandler):
             "phe.gather",
             "phe.scatter",
             "phe.concat",
+            "phe.reshape",
+            "phe.transpose",
         ]
 
     def execute(
@@ -145,6 +147,10 @@ class PHEHandler(TensorHandler):
             return self._execute_scatter(pfunc, args)
         elif pfunc.fn_type == "phe.concat":
             return self._execute_concat(pfunc, args)
+        elif pfunc.fn_type == "phe.reshape":
+            return self._execute_reshape(pfunc, args)
+        elif pfunc.fn_type == "phe.transpose":
+            return self._execute_transpose(pfunc, args)
         else:
             raise ValueError(f"Unsupported PHE function type: {pfunc.fn_type}")
 
@@ -1234,3 +1240,211 @@ class PHEHandler(TensorHandler):
             raise
         except Exception as e:
             raise RuntimeError(f"Failed to perform concat: {e}") from e
+
+    def _execute_reshape(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute reshape operation on CipherText.
+
+        Changes the shape of a CipherText without changing its encrypted data.
+        The new_shape parameter is obtained from pfunc.attrs.
+
+        Args:
+            pfunc: PFunction for reshape (with new_shape parameter in attrs)
+            args: [ciphertext] where ciphertext is CipherText to reshape
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText with new shape
+        """
+        if len(args) != 1:
+            raise ValueError("Reshape expects exactly one argument")
+
+        ciphertext = args[0]
+
+        # Validate that argument is a CipherText
+        if not isinstance(ciphertext, CipherText):
+            raise ValueError("Argument must be a CipherText instance")
+
+        # Get new_shape parameter from pfunc.attrs
+        new_shape = pfunc.attrs.get("new_shape")
+        if new_shape is None:
+            raise ValueError("new_shape parameter is required for reshape operation")
+
+        # Convert new_shape to tuple if it's a list
+        if isinstance(new_shape, list):
+            new_shape = tuple(new_shape)
+        elif not isinstance(new_shape, tuple):
+            raise ValueError("new_shape must be a tuple or list of integers")
+
+        try:
+            # Handle -1 dimension inference
+            old_size = (
+                int(np.prod(ciphertext.semantic_shape))
+                if ciphertext.semantic_shape
+                else 1
+            )
+
+            # Process new_shape to infer -1 dimensions
+            inferred_shape = list(new_shape)
+            negative_ones = [i for i, dim in enumerate(new_shape) if dim == -1]
+
+            if len(negative_ones) > 1:
+                raise ValueError("can only specify one unknown dimension")
+            elif len(negative_ones) == 1:
+                # Calculate the inferred dimension
+                known_size = 1
+                for dim in new_shape:
+                    if dim != -1:
+                        if dim <= 0:
+                            raise ValueError(
+                                f"negative dimensions not allowed (except -1): {dim}"
+                            )
+                        known_size *= dim
+
+                if old_size % known_size != 0:
+                    raise ValueError(
+                        f"cannot reshape array of size {old_size} into shape {new_shape}"
+                    )
+
+                inferred_dim = old_size // known_size
+                inferred_shape[negative_ones[0]] = inferred_dim
+            else:
+                # No -1 dimensions, validate that all dimensions are positive
+                for dim in new_shape:
+                    if dim <= 0:
+                        raise ValueError(f"negative dimensions not allowed: {dim}")
+
+            # Convert back to tuple
+            inferred_shape = tuple(inferred_shape)
+
+            # Validate that new shape has the same number of elements
+            new_size = int(np.prod(inferred_shape)) if inferred_shape else 1
+
+            if old_size != new_size:
+                raise ValueError(
+                    f"Cannot reshape CipherText with {old_size} elements to shape {inferred_shape} "
+                    f"with {new_size} elements"
+                )
+
+            # Create result CipherText with new shape (ct_data remains the same)
+            return [
+                CipherText(
+                    ct_data=ciphertext.ct_data,  # Same encrypted data
+                    semantic_dtype=ciphertext.semantic_dtype,
+                    semantic_shape=inferred_shape,  # Use the inferred shape
+                    scheme=ciphertext.scheme,
+                    key_size=ciphertext.key_size,
+                    pk_data=ciphertext.pk_data,
+                )
+            ]
+
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform reshape: {e}") from e
+
+    def _execute_transpose(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:
+        """Execute transpose operation on CipherText.
+
+        Permutes the dimensions of a CipherText according to the given axes.
+        The axes parameter is obtained from pfunc.attrs.
+
+        Args:
+            pfunc: PFunction for transpose (with axes parameter in attrs)
+            args: [ciphertext] where ciphertext is CipherText to transpose
+
+        Returns:
+            list[TensorLike]: [result] where result is a CipherText with transposed shape
+        """
+        if len(args) != 1:
+            raise ValueError("Transpose expects exactly one argument")
+
+        ciphertext = args[0]
+
+        # Validate that argument is a CipherText
+        if not isinstance(ciphertext, CipherText):
+            raise ValueError("Argument must be a CipherText instance")
+
+        # Handle scalar case
+        if len(ciphertext.semantic_shape) == 0:
+            # Transposing a scalar returns the same scalar
+            return [ciphertext]
+
+        # Get axes parameter from pfunc.attrs
+        axes = pfunc.attrs.get("axes")
+
+        # If axes is None, reverse all dimensions (default transpose behavior)
+        if axes is None:
+            axes = tuple(reversed(range(len(ciphertext.semantic_shape))))
+        elif isinstance(axes, list):
+            axes = tuple(axes)
+        elif not isinstance(axes, tuple):
+            raise ValueError("axes must be a tuple or list of integers, or None")
+
+        try:
+            # Validate axes
+            ndim = len(ciphertext.semantic_shape)
+            if len(axes) != ndim:
+                raise ValueError(
+                    f"axes length {len(axes)} does not match tensor dimensions {ndim}"
+                )
+
+            # Normalize negative axes and validate range
+            normalized_axes = []
+            for axis in axes:
+                if axis < 0:
+                    axis = ndim + axis
+                if axis < 0 or axis >= ndim:
+                    raise ValueError(
+                        f"axis {axis} is out of bounds for array of dimension {ndim}"
+                    )
+                normalized_axes.append(axis)
+            axes = tuple(normalized_axes)
+
+            # Check for duplicate axes
+            if len(set(axes)) != len(axes):
+                raise ValueError("axes cannot contain duplicate values")
+
+            # Calculate new shape
+            old_shape = ciphertext.semantic_shape
+            new_shape = tuple(old_shape[axis] for axis in axes)
+
+            # For multidimensional transpose, we need to rearrange the encrypted data
+            # Create mapping from old flat index to new flat index
+            def transpose_data(ct_data: list, old_shape: tuple, axes: tuple):
+                if len(old_shape) <= 1:
+                    # 1D or scalar case - no actual transposition needed
+                    return ct_data
+
+                # Create numpy array to help with index calculations
+                dummy_array = np.arange(len(ct_data)).reshape(old_shape)
+                transposed_dummy = np.transpose(dummy_array, axes)
+
+                # The new data should be arranged in the order that numpy.transpose would produce
+                new_ct_data = [ct_data[idx] for idx in transposed_dummy.flatten()]
+
+                return new_ct_data
+
+            # Rearrange the encrypted data according to transpose
+            transposed_ct_data = transpose_data(ciphertext.ct_data, old_shape, axes)
+
+            # Create result CipherText with transposed shape and rearranged data
+            return [
+                CipherText(
+                    ct_data=transposed_ct_data,
+                    semantic_dtype=ciphertext.semantic_dtype,
+                    semantic_shape=new_shape,
+                    scheme=ciphertext.scheme,
+                    key_size=ciphertext.key_size,
+                    pk_data=ciphertext.pk_data,
+                )
+            ]
+
+        except ValueError:
+            # Re-raise ValueError directly (validation errors)
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to perform transpose: {e}") from e

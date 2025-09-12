@@ -52,10 +52,13 @@ class TestPHEHandler:
             "phe.add",
             "phe.mul",
             "phe.decrypt",
+            # our extensions
             "phe.dot",
             "phe.concat",
             "phe.gather",
             "phe.scatter",
+            "phe.reshape",
+            "phe.transpose",
         ]
 
         for expected_fn in expected_functions:
@@ -3892,3 +3895,524 @@ class TestPHEHandler:
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
         np.testing.assert_array_equal(decrypted, expected_result)
+
+    def test_reshape_2d_to_1d(self):
+        """Test reshape operation from 2D to 1D."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D matrix
+        original_matrix = np.array(
+            [[1, 2, 3], [4, 5, 6]], dtype=np.int32
+        )  # Shape (2, 3)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Reshape to 1D
+        new_shape = (6,)
+        reshape_result_shape = np.zeros(new_shape, dtype=np.int32)
+        reshape_pfunc = PFunction(
+            fn_type="phe.reshape",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+            new_shape=new_shape,
+        )
+        result_ct = self.handler.execute(reshape_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (6,)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(reshape_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = original_matrix.flatten()  # [1, 2, 3, 4, 5, 6]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_reshape_1d_to_3d(self):
+        """Test reshape operation from 1D to 3D."""
+        pk, sk = self._generate_keypair()
+
+        # Create 1D array
+        original_array = np.array(
+            [1, 2, 3, 4, 5, 6, 7, 8], dtype=np.int32
+        )  # Shape (8,)
+
+        # Encrypt array
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_array), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_array),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_array, pk])[0]
+
+        # Reshape to 3D
+        new_shape = (2, 2, 2)
+        reshape_result_shape = np.zeros(new_shape, dtype=np.int32)
+        reshape_pfunc = PFunction(
+            fn_type="phe.reshape",
+            ins_info=(TensorType.from_obj(original_array),),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+            new_shape=new_shape,
+        )
+        result_ct = self.handler.execute(reshape_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(reshape_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = original_array.reshape(2, 2, 2)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_reshape_with_inferred_dimension(self):
+        """Test reshape operation with -1 (inferred dimension)."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D matrix
+        original_matrix = np.array(
+            [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], dtype=np.int32
+        )  # Shape (3, 4)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Reshape to (2, -1) - should infer dimension as 6
+        new_shape = (2, -1)
+        expected_shape = (2, 6)
+        reshape_result_shape = np.zeros(expected_shape, dtype=np.int32)
+        reshape_pfunc = PFunction(
+            fn_type="phe.reshape",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+            new_shape=new_shape,
+        )
+        result_ct = self.handler.execute(reshape_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 6)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(reshape_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = original_matrix.reshape(2, 6)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_reshape_invalid_size(self):
+        """Test reshape operation with incompatible size."""
+        pk, _sk = self._generate_keypair()
+
+        # Create 2D matrix
+        original_matrix = np.array(
+            [[1, 2, 3], [4, 5, 6]], dtype=np.int32
+        )  # Shape (2, 3), 6 elements
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Try to reshape to incompatible size (5 elements instead of 6)
+        new_shape = (5,)
+        reshape_result_shape = np.zeros(new_shape, dtype=np.int32)
+        reshape_pfunc = PFunction(
+            fn_type="phe.reshape",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+            new_shape=new_shape,
+        )
+        with pytest.raises(
+            ValueError, match="Cannot reshape CipherText with 6 elements to shape"
+        ):
+            self.handler.execute(reshape_pfunc, [ciphertext])
+
+    def test_reshape_float_types(self):
+        """Test reshape operation with floating point types."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D float matrix
+        original_matrix = np.array(
+            [[1.1, 2.2], [3.3, 4.4]], dtype=np.float64
+        )  # Shape (2, 2)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Reshape to 1D
+        new_shape = (4,)
+        reshape_result_shape = np.zeros(new_shape, dtype=np.float64)
+        reshape_pfunc = PFunction(
+            fn_type="phe.reshape",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+            new_shape=new_shape,
+        )
+        result_ct = self.handler.execute(reshape_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+        assert result_ct.semantic_shape == (4,)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(reshape_result_shape), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(reshape_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = original_matrix.flatten()
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+
+    def test_transpose_2d_matrix(self):
+        """Test transpose operation on 2D matrix."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D matrix
+        original_matrix = np.array(
+            [[1, 2, 3], [4, 5, 6]], dtype=np.int32
+        )  # Shape (2, 3)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Transpose (default behavior - reverse all axes)
+        expected_shape = (3, 2)
+        transpose_result_shape = np.zeros(expected_shape, dtype=np.int32)
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+            # No axes specified - default transpose
+        )
+        result_ct = self.handler.execute(transpose_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (3, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(transpose_result_shape),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = original_matrix.T  # [[1, 4], [2, 5], [3, 6]]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_transpose_3d_tensor_with_axes(self):
+        """Test transpose operation on 3D tensor with specific axes."""
+        pk, sk = self._generate_keypair()
+
+        # Create 3D tensor
+        original_tensor = np.array(
+            [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int32
+        )  # Shape (2, 2, 2)
+
+        # Encrypt tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_tensor, pk])[0]
+
+        # Transpose with axes (2, 0, 1) - move last axis to first
+        axes = (2, 0, 1)
+        expected_shape = (2, 2, 2)  # Still (2, 2, 2) but rearranged
+        transpose_result_shape = np.zeros(expected_shape, dtype=np.int32)
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_tensor),),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+            axes=axes,
+        )
+        result_ct = self.handler.execute(transpose_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (2, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(transpose_result_shape),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = np.transpose(original_tensor, axes)
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_transpose_1d_vector(self):
+        """Test transpose operation on 1D vector (should return same vector)."""
+        pk, sk = self._generate_keypair()
+
+        # Create 1D vector
+        original_vector = np.array([1, 2, 3, 4], dtype=np.int32)  # Shape (4,)
+
+        # Encrypt vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_vector), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_vector),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_vector, pk])[0]
+
+        # Transpose 1D vector
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_vector),),
+            outs_info=(TensorType.from_obj(original_vector),),
+        )
+        result_ct = self.handler.execute(transpose_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (4,)
+
+        # Decrypt and verify (should be unchanged)
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_vector), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_vector),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, original_vector)
+
+    def test_transpose_scalar(self):
+        """Test transpose operation on scalar (should return same scalar)."""
+        pk, sk = self._generate_keypair()
+
+        # Create scalar
+        original_scalar = np.array(42, dtype=np.int32)
+
+        # Encrypt scalar
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_scalar),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_scalar, pk])[0]
+
+        # Transpose scalar
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_scalar),),
+            outs_info=(TensorType.from_obj(original_scalar),),
+        )
+        result_ct = self.handler.execute(transpose_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == ()
+
+        # Decrypt and verify (should be unchanged)
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_scalar),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        decrypted_val = (
+            np.asarray(decrypted).item()
+            if hasattr(decrypted, "shape") and decrypted.shape == ()
+            else np.asarray(decrypted)[()]
+        )
+        assert decrypted_val == 42
+
+    def test_transpose_negative_axes(self):
+        """Test transpose operation with negative axes."""
+        pk, sk = self._generate_keypair()
+
+        # Create 3D tensor
+        original_tensor = np.array(
+            [[[1, 2, 3], [4, 5, 6]]], dtype=np.int32
+        )  # Shape (1, 2, 3)
+
+        # Encrypt tensor
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_tensor, pk])[0]
+
+        # Transpose with negative axes (-1, -2, -3) - equivalent to (2, 1, 0)
+        axes = (-1, -2, -3)
+        expected_shape = (3, 2, 1)
+        transpose_result_shape = np.zeros(expected_shape, dtype=np.int32)
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_tensor),),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+            axes=axes,
+        )
+        result_ct = self.handler.execute(transpose_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == (3, 2, 1)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(transpose_result_shape),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = np.transpose(original_tensor, (2, 1, 0))
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_transpose_invalid_axes(self):
+        """Test transpose operation with invalid axes."""
+        pk, _sk = self._generate_keypair()
+
+        # Create 2D matrix
+        original_matrix = np.array([[1, 2], [3, 4]], dtype=np.int32)  # Shape (2, 2)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Try transpose with out-of-bounds axis
+        axes = (0, 2)  # axis 2 is out of bounds for 2D tensor
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(original_matrix),),
+            axes=axes,
+        )
+        with pytest.raises(
+            ValueError, match="axis 2 is out of bounds for array of dimension 2"
+        ):
+            self.handler.execute(transpose_pfunc, [ciphertext])
+
+    def test_transpose_duplicate_axes(self):
+        """Test transpose operation with duplicate axes."""
+        pk, _sk = self._generate_keypair()
+
+        # Create 2D matrix
+        original_matrix = np.array([[1, 2], [3, 4]], dtype=np.int32)  # Shape (2, 2)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Try transpose with duplicate axes
+        axes = (0, 0)  # Duplicate axes
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(original_matrix),),
+            axes=axes,
+        )
+        with pytest.raises(ValueError, match="axes cannot contain duplicate values"):
+            self.handler.execute(transpose_pfunc, [ciphertext])
+
+    def test_transpose_float_types(self):
+        """Test transpose operation with floating point types."""
+        pk, sk = self._generate_keypair()
+
+        # Create 2D float matrix
+        original_matrix = np.array(
+            [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]], dtype=np.float64
+        )  # Shape (2, 3)
+
+        # Encrypt matrix
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [original_matrix, pk])[0]
+
+        # Transpose
+        expected_shape = (3, 2)
+        transpose_result_shape = np.zeros(expected_shape, dtype=np.float64)
+        transpose_pfunc = PFunction(
+            fn_type="phe.transpose",
+            ins_info=(TensorType.from_obj(original_matrix),),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+        )
+        result_ct = self.handler.execute(transpose_pfunc, [ciphertext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT64
+        assert result_ct.semantic_shape == (3, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(
+                TensorType.from_obj(transpose_result_shape),
+                TensorType(BOOL, ()),
+            ),
+            outs_info=(TensorType.from_obj(transpose_result_shape),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        expected_result = original_matrix.T
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)

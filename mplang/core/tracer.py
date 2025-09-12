@@ -104,15 +104,13 @@ class TraceContext(MPContext):
 
         Args:
             cluster_spec: The cluster specification defining the physical nodes
-                            and logical devices available for computation.
+                          and logical devices available for computation.
             mask: The default mask for this context. If None, defaults to all parties.
             capture_namer: Optional VarNamer for naming captured variables.
         """
-        super().__init__(cluster_spec)
+        super().__init__(cluster_spec, parent=parent)
 
         self._mask = mask or Mask.all(self.world_size())
-        # parent context (InterpContext typically) for per-stack shared state
-        self._parent = parent
         self._capture_namer = capture_namer or VarNamer()
 
         self._var_namer = VarNamer(prefix="%")

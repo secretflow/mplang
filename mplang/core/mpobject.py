@@ -36,14 +36,14 @@ class MPContext:
     external features on the root context).
     """
 
-    def __init__(self, cluster_spec: ClusterSpec):
+    def __init__(self, cluster_spec: ClusterSpec, *, parent: MPContext | None = None):
         if cluster_spec is None:
             raise ValueError("cluster_spec cannot be None")
         self.cluster_spec = cluster_spec
         # Parent link enables stack-scoped state sharing: ephemeral child contexts
         # (e.g. short-lived tracing) can delegate to a stable root without relying
         # on process-wide globals.
-        self._parent: MPContext | None = None
+        self._parent: MPContext | None = parent
 
     # Basic topology helpers
     def world_size(self) -> int:

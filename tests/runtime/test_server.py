@@ -22,7 +22,7 @@ import cloudpickle as pickle
 from fastapi.testclient import TestClient
 
 from mplang.runtime.server import app
-from tests.conftest import get_free_port
+from tests.utils.server_fixtures import get_free_port
 
 client = TestClient(app)
 

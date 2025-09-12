@@ -12,14 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests for the HttpCommunicator.
-"""
+"""Tests for the HttpCommunicator."""
 
 import multiprocessing
-import socket
 import time
-from typing import Any
 
 import httpx
 import pytest
@@ -28,18 +24,7 @@ import uvicorn
 from mplang.runtime import resource
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.server import app
-
-# Global state for servers
-distributed_servers: dict[int, Any] = {}
-distributed_server_processes: dict[int, multiprocessing.Process] = {}
-# Dynamically chosen server ports (populated by fixture)
-TEST_SERVER_PORTS: list[int] = []
-
-
-def _get_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("localhost", 0))
-        return s.getsockname()[1]
+from tests.utils.server_fixtures import http_servers  # noqa: F401 (fixture)
 
 
 def run_distributed_server(port: int):
@@ -52,52 +37,11 @@ def run_distributed_server(port: int):
         ws="none",  # Disable websockets to avoid deprecation warnings
     )
     server = uvicorn.Server(config)
-    distributed_servers[port] = server
     server.run()
 
 
-@pytest.fixture(scope="module", autouse=True)
-def start_servers():
-    """Fixture to start servers for testing using dynamic free ports to avoid collisions."""
-    # Choose 3 dynamic ports
-    ports = [_get_free_port() for _ in range(3)]
-    TEST_SERVER_PORTS[:] = ports
-    for port in ports:
-        process = multiprocessing.Process(
-            target=run_distributed_server, args=(port,), daemon=True
-        )
-        distributed_server_processes[port] = process
-        process.start()
-
-    # Wait for servers to be ready via health check
-    for port in ports:
-        ready = False
-        for _ in range(60):  # up to ~6s
-            try:
-                r = httpx.get(f"http://localhost:{port}/health", timeout=0.25)
-                # Accept canonical success or fallback nested error wrapper (treat as up)
-                if r.status_code == 200:
-                    ready = True
-                    break
-            except Exception:
-                pass
-            time.sleep(0.1)
-        if not ready:
-            raise RuntimeError(f"Server on port {port} failed to start in time")
-
-    yield
-
-    # Teardown: stop all servers
-    for port in ports:
-        process = distributed_server_processes.get(port)
-        if process:
-            process.terminate()
-            process.join(timeout=5)
-            if process.is_alive():
-                process.kill()
-
-
-def test_distributed_send_recv():
+@pytest.mark.parametrize("http_servers", [3], indirect=True)
+def test_distributed_send_recv(http_servers):  # noqa: F811
     """
     Test distributed communication where each party has its own server.
     This uses a simple HTTP validation approach since proper single-process-per-party
@@ -108,7 +52,7 @@ def test_distributed_send_recv():
 
     # Test that we can call the health endpoint on all servers
 
-    endpoints = [f"http://localhost:{p}" for p in TEST_SERVER_PORTS[:2]]
+    endpoints = http_servers.addresses[:2]
 
     for endpoint in endpoints:
         response = httpx.get(f"{endpoint}/health")
@@ -152,13 +96,14 @@ def test_distributed_send_recv():
     # For full bidirectional communication testing, see single_process_party.py
 
 
-def test_distributed_multiple_messages():
+@pytest.mark.parametrize("http_servers", [3], indirect=True)
+def test_distributed_multiple_messages(http_servers):  # noqa: F811
     """Test multiple messages validation by ensuring HTTP endpoints respond correctly."""
     # This test validates that the HTTP server can handle multiple session creation requests
     # without interfering with each other
 
     # Test multiple independent sessions can be created
-    base_endpoints = [f"http://localhost:{p}" for p in TEST_SERVER_PORTS[:2]]
+    base_endpoints = http_servers.addresses[:2]
 
     # Create multiple sessions on the servers to test isolation
     for session_idx in range(3):
@@ -179,10 +124,11 @@ def test_distributed_multiple_messages():
             assert response.json()["name"] == session_name
 
 
-def test_communicator_properties():
+@pytest.mark.parametrize("http_servers", [3], indirect=True)
+def test_communicator_properties(http_servers):  # noqa: F811
     """Test the communicator properties and interface compliance."""
     session_name = "properties_test"
-    endpoints = [f"http://localhost:{p}" for p in TEST_SERVER_PORTS[:2]]
+    endpoints = http_servers.addresses[:2]
 
     comm = HttpCommunicator(session_name, rank=0, endpoints=endpoints)
 
@@ -328,7 +274,7 @@ def test_end_to_end_communication():
     # No log file cleanup needed
 
     # Use multiprocessing to run two party processes
-    from tests.conftest import get_free_ports  # type: ignore
+    from tests.utils.server_fixtures import get_free_ports  # type: ignore
 
     with multiprocessing.Manager() as manager:
         return_dict = manager.dict()

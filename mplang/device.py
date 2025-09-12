@@ -194,10 +194,10 @@ def _ensure_tee_session(
     Returns (sess_p, sess_t).
     """
     ctx = cur_ctx().root()
-    cache = getattr(ctx, "_tee_sessions", None)
-    if cache is None:
-        cache = {}
-        ctx._tee_sessions = cache  # type: ignore[attr-defined]
+    if not hasattr(ctx, "_tee_sessions"):
+        ctx._tee_sessions = {}  # type: ignore[attr-defined]
+    cache = ctx._tee_sessions
+
     key = (frm_dev_id, to_dev_id)
     if key in cache:
         return cache[key]

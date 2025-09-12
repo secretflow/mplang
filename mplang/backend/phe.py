@@ -899,6 +899,7 @@ class PHEHandler(TensorHandler):
         except Exception as e:
             raise RuntimeError(f"Failed to perform dot product: {e}") from e
 
+    # TODO(zjj): maybe we can support the arbitrary axis later.
     def _execute_gather(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
@@ -947,7 +948,6 @@ class PHEHandler(TensorHandler):
             # Calculate result shape: indices.shape + ciphertext.shape[1:]
             result_shape = indices_np.shape + ciphertext.semantic_shape[1:]
 
-            # TODO(zjj): maybe we can support the arbitrary axis later.
             # For multidimensional ciphertext, we need to compute the stride for axis 0
             if len(ciphertext.semantic_shape) > 1:
                 # Each element along axis 0 contains np.prod(ciphertext.semantic_shape[1:]) elements
@@ -992,10 +992,18 @@ class PHEHandler(TensorHandler):
         except Exception as e:
             raise RuntimeError(f"Failed to perform gather: {e}") from e
 
+    # TODO(zjj): maybe we can support the arbitrary axis later.
     def _execute_scatter(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
         """Execute scatter operation on CipherText.
+
+        Supports scattering into multidimensional CipherText using multidimensional indices.
+        The operation follows numpy scatter semantics:
+        - Scattering is performed along axis 0 of ciphertext
+        - indices.shape must equal updated.shape[:len(indices.shape)]
+        - updated.shape must be indices.shape + ciphertext.shape[1:]
+        - Result shape is same as original ciphertext.shape
 
         Args:
             pfunc: PFunction for scatter
@@ -1010,11 +1018,11 @@ class PHEHandler(TensorHandler):
 
         ciphertext, indices, updated = args
 
-        # Validate that first argument is a CipherText
+        # Validate that first and third arguments are CipherTexts
         if not isinstance(ciphertext, CipherText) or not isinstance(
             updated, CipherText
         ):
-            raise ValueError("First and third argument must be a CipherText instance")
+            raise ValueError("First and third arguments must be CipherText instances")
 
         # Validate that both ciphertexts use same scheme/key_size
         if (
@@ -1023,9 +1031,8 @@ class PHEHandler(TensorHandler):
         ):
             raise ValueError("Both CipherTexts must use same scheme and key size")
 
-        assert (
-            ciphertext.pk_data == updated.pk_data
-        ), "Both CipherTexts must be encrypted with same key"
+        if ciphertext.pk_data != updated.pk_data:
+            raise ValueError("Both CipherTexts must be encrypted with same key")
 
         try:
             # Convert indices to numpy
@@ -1034,30 +1041,58 @@ class PHEHandler(TensorHandler):
             if not np.issubdtype(indices_np.dtype, np.integer):
                 raise ValueError("Indices must be of integer type")
 
-            # Validate shape
-            if len(indices_np.shape) != 1:
+            # Validate that ciphertext has at least 1 dimension for indexing
+            if len(ciphertext.semantic_shape) == 0:
+                raise ValueError("Cannot scatter into scalar CipherText")
+
+            # Validate indices are within bounds for axis 0
+            axis_size = ciphertext.semantic_shape[0]
+            if np.any(indices_np < 0) or np.any(indices_np >= axis_size):
                 raise ValueError(
-                    f"Indices must be a 1-D array, got shape {indices_np.shape}"
-                )
-            assert (
-                len(updated.semantic_shape) == 1
-            ), f"Updated values must be 1-D CipherText, got shape {updated.semantic_shape}"
-            if len(indices_np) != updated.semantic_shape[0]:
-                raise ValueError(
-                    f"Number of indices must match number of updated values, got {len(indices_np)} vs {updated.semantic_shape[0]}"
+                    f"Indices are out of bounds for axis 0 with size {axis_size}. "
+                    f"Got indices in range [{np.min(indices_np)}, {np.max(indices_np)}]"
                 )
 
-            # Create an empty list for scattered data
+            # Validate shape compatibility
+            # Expected updated shape: indices.shape + ciphertext.shape[1:]
+            expected_updated_shape = indices_np.shape + ciphertext.semantic_shape[1:]
+            if updated.semantic_shape != expected_updated_shape:
+                raise ValueError(
+                    f"Updated CipherText shape mismatch. Expected {expected_updated_shape}, "
+                    f"got {updated.semantic_shape}. "
+                    f"Updated shape must be indices.shape + ciphertext.shape[1:]"
+                )
+
+            # For multidimensional ciphertext, we need to compute the stride for axis 0
+            if len(ciphertext.semantic_shape) > 1:
+                # Each element along axis 0 contains np.prod(ciphertext.semantic_shape[1:]) elements
+                axis0_stride = int(np.prod(ciphertext.semantic_shape[1:]))
+            else:
+                # 1D case: each element is just one ciphertext
+                axis0_stride = 1
+
+            # Create a copy of the original ciphertext data for scattering
             scattered_ct_data = ciphertext.ct_data.copy()
+
+            # Perform scatter operation
+            indices_flat = indices_np.flatten()
             updated_ct_data = updated.ct_data
 
-            # Scatter the ciphertext data according to indices
-            for i, idx in enumerate(indices_np.flatten()):
-                if idx < 0 or idx >= len(ciphertext.ct_data):
-                    raise ValueError(f"Index {idx} is out of bounds")
-                scattered_ct_data[idx] = updated_ct_data[i]
+            for i, idx in enumerate(indices_flat):
+                # For each index, scatter the corresponding slice from updated
+                start_pos_updated = i * axis0_stride
 
-            # Create result CipherText
+                # Position in the original ciphertext where we scatter
+                start_pos_original = int(idx) * axis0_stride
+
+                # Update the ciphertext data
+                for j in range(axis0_stride):
+                    if start_pos_updated + j < len(updated_ct_data):
+                        scattered_ct_data[start_pos_original + j] = updated_ct_data[
+                            start_pos_updated + j
+                        ]
+
+            # Create result CipherText with same shape as original
             return [
                 CipherText(
                     ct_data=scattered_ct_data,

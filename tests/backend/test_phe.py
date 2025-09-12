@@ -2249,9 +2249,461 @@ class TestPHEHandler:
             outs_info=(TensorType.from_obj(original_vec),),
         )
         with pytest.raises(
-            ValueError, match="First and third argument must be a CipherText instance"
+            ValueError, match="First and third arguments must be CipherText instances"
         ):
             self.handler.execute(scatter_pfunc, [original_vec, indices, updated_values])
+
+    def test_scatter_multidimensional_2d_matrix_indices_1d(self):
+        """Test scatter into 2D CipherText matrix using 1D indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create original 2D matrix: shape (4, 3)
+        original_matrix = np.array(
+            [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]], dtype=np.int32
+        )
+
+        # Indices to scatter into rows 0 and 2
+        indices = np.array([0, 2], dtype=np.int32)
+
+        # Updated values: shape (2, 3) - same as indices.shape + original.shape[1:]
+        updated_values = np.array(
+            [[100, 200, 300], [700, 800, 900]], dtype=np.int32  # New row 0  # New row 2
+        )
+
+        # Encrypt the original matrix and updated values
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_matrix, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [updated_values, pk]
+        )[0]
+
+        # Expected result: original matrix with rows 0 and 2 replaced
+        expected_result = np.array(
+            [
+                [100, 200, 300],  # Row 0 updated
+                [4, 5, 6],  # Row 1 unchanged
+                [700, 800, 900],  # Row 2 updated
+                [10, 11, 12],  # Row 3 unchanged
+            ],
+            dtype=np.int32,
+        )
+
+        # Perform scatter
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        result = self.handler.execute(
+            scatter_pfunc, [original_ciphertext, indices, updated_ciphertext]
+        )[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (4, 3)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_scatter_multidimensional_3d_tensor_indices_2d(self):
+        """Test scatter into 3D CipherText tensor using 2D indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create original 3D tensor: shape (3, 2, 2)
+        original_tensor = np.arange(12, dtype=np.int32).reshape(3, 2, 2)
+
+        # 2D indices: shape (2, 2) - will update 4 slices total
+        indices = np.array(
+            [
+                [0, 1],  # First row: update slices 0, 1
+                [2, 0],  # Second row: update slices 2, 0 (0 gets updated twice)
+            ],
+            dtype=np.int32,
+        )
+
+        # Updated values: shape (2, 2, 2, 2) - indices.shape + original.shape[1:]
+        updated_values = np.array(
+            [
+                [  # First row of indices
+                    [[100, 101], [102, 103]],  # For slice 0
+                    [[110, 111], [112, 113]],  # For slice 1
+                ],
+                [  # Second row of indices
+                    [[200, 201], [202, 203]],  # For slice 2
+                    [
+                        [210, 211],
+                        [212, 213],
+                    ],  # For slice 0 (will overwrite first update)
+                ],
+            ],
+            dtype=np.int32,
+        )
+
+        # Encrypt the original tensor and updated values
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_tensor, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [updated_values, pk]
+        )[0]
+
+        # Expected result: original with slices updated
+        expected_result = np.array(
+            [
+                [[210, 211], [212, 213]],  # Slice 0 (final update)
+                [[110, 111], [112, 113]],  # Slice 1
+                [[200, 201], [202, 203]],  # Slice 2
+            ],
+            dtype=np.int32,
+        )
+
+        # Perform scatter
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_tensor),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        result = self.handler.execute(
+            scatter_pfunc, [original_ciphertext, indices, updated_ciphertext]
+        )[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (3, 2, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_scatter_multidimensional_scalar_indices(self):
+        """Test scatter into multidimensional CipherText using scalar indices."""
+        pk, sk = self._generate_keypair()
+
+        # Create original 3D tensor: shape (4, 2, 3)
+        original_tensor = np.arange(24, dtype=np.int32).reshape(4, 2, 3)
+
+        # Scalar index: update slice 1
+        scalar_index = np.array(1, dtype=np.int32)
+
+        # Updated values: shape (2, 3) - scalar indices.shape + original.shape[1:]
+        updated_values = np.array([[100, 101, 102], [103, 104, 105]], dtype=np.int32)
+
+        # Encrypt the original tensor and updated values
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_tensor, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [updated_values, pk]
+        )[0]
+
+        # Expected result: original with slice 1 updated
+        expected_result = original_tensor.copy()
+        expected_result[1] = updated_values
+
+        # Perform scatter
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_tensor),
+                TensorType.from_obj(scalar_index),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        result = self.handler.execute(
+            scatter_pfunc, [original_ciphertext, scalar_index, updated_ciphertext]
+        )[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == INT32
+        assert result.semantic_shape == (4, 2, 3)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_tensor), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_tensor),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_array_equal(decrypted_array, expected_result)
+
+    def test_scatter_multidimensional_float_types(self):
+        """Test scatter with floating point types."""
+        pk, sk = self._generate_keypair()
+
+        # Create original 2D float matrix: shape (3, 2)
+        original_matrix = np.array(
+            [[1.1, 2.2], [3.3, 4.4], [5.5, 6.6]], dtype=np.float64
+        )
+
+        # Indices to scatter into rows 0 and 2
+        indices = np.array([0, 2], dtype=np.int32)
+
+        # Updated values: shape (2, 2)
+        updated_values = np.array(
+            [[10.1, 20.2], [50.5, 60.6]], dtype=np.float64  # New row 0  # New row 2
+        )
+
+        # Encrypt the original matrix and updated values
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_matrix, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [updated_values, pk]
+        )[0]
+
+        # Expected result
+        expected_result = np.array(
+            [
+                [10.1, 20.2],  # Row 0 updated
+                [3.3, 4.4],  # Row 1 unchanged
+                [50.5, 60.6],  # Row 2 updated
+            ],
+            dtype=np.float64,
+        )
+
+        # Perform scatter
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        result = self.handler.execute(
+            scatter_pfunc, [original_ciphertext, indices, updated_ciphertext]
+        )[0]
+
+        # Verify result properties
+        assert isinstance(result, CipherText)
+        assert result.semantic_dtype == FLOAT64
+        assert result.semantic_shape == (3, 2)
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
+        decrypted_array = np.asarray(decrypted)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+
+    def test_scatter_multidimensional_out_of_bounds(self):
+        """Test scatter with out of bounds indices in multidimensional context."""
+        pk, _sk = self._generate_keypair()
+
+        # Create original 2D matrix: shape (3, 2)
+        original_matrix = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.int32)
+
+        # Updated values: shape (2, 2)
+        updated_values = np.array([[10, 20], [30, 40]], dtype=np.int32)
+
+        # Encrypt the matrices
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_matrix, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [updated_values, pk]
+        )[0]
+
+        # Out of bounds indices (index 3 is out of bounds for axis 0 with size 3)
+        bad_indices = np.array([0, 3], dtype=np.int32)
+
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(bad_indices),
+                TensorType.from_obj(updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        with pytest.raises(ValueError, match="Indices are out of bounds for axis 0"):
+            self.handler.execute(
+                scatter_pfunc, [original_ciphertext, bad_indices, updated_ciphertext]
+            )
+
+    def test_scatter_multidimensional_shape_mismatch(self):
+        """Test scatter with incompatible updated shape."""
+        pk, _sk = self._generate_keypair()
+
+        # Create original 2D matrix: shape (3, 4)
+        original_matrix = np.array(
+            [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], dtype=np.int32
+        )
+
+        # Indices: shape (2,)
+        indices = np.array([0, 2], dtype=np.int32)
+
+        # Wrong updated values shape: (2, 3) instead of (2, 4)
+        wrong_updated_values = np.array(
+            [
+                [100, 200, 300],  # Wrong: should be 4 elements
+                [900, 1000, 1100],  # Wrong: should be 4 elements
+            ],
+            dtype=np.int32,
+        )
+
+        # Encrypt the matrices
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_matrix, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(wrong_updated_values), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(wrong_updated_values),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [wrong_updated_values, pk]
+        )[0]
+
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_matrix),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(wrong_updated_values),
+            ),
+            outs_info=(TensorType.from_obj(original_matrix),),
+        )
+        with pytest.raises(ValueError, match="Updated CipherText shape mismatch"):
+            self.handler.execute(
+                scatter_pfunc, [original_ciphertext, indices, updated_ciphertext]
+            )
+
+    def test_scatter_multidimensional_scalar_ciphertext(self):
+        """Test scatter into scalar CipherText (should fail)."""
+        pk, _sk = self._generate_keypair()
+
+        # Create scalar ciphertext
+        original_scalar = np.array(42, dtype=np.int32)
+        updated_scalar = np.array(100, dtype=np.int32)
+
+        # Encrypt the scalars
+        encrypt_pfunc_orig = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(original_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(original_scalar),),
+        )
+        original_ciphertext = self.handler.execute(
+            encrypt_pfunc_orig, [original_scalar, pk]
+        )[0]
+
+        encrypt_pfunc_upd = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(updated_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(updated_scalar),),
+        )
+        updated_ciphertext = self.handler.execute(
+            encrypt_pfunc_upd, [updated_scalar, pk]
+        )[0]
+
+        # Attempt to scatter into scalar (should fail)
+        indices = np.array([0], dtype=np.int32)
+
+        scatter_pfunc = PFunction(
+            fn_type="phe.scatter",
+            ins_info=(
+                TensorType.from_obj(original_scalar),
+                TensorType.from_obj(indices),
+                TensorType.from_obj(updated_scalar),
+            ),
+            outs_info=(TensorType.from_obj(original_scalar),),
+        )
+        with pytest.raises(ValueError, match="Cannot scatter into scalar CipherText"):
+            self.handler.execute(
+                scatter_pfunc, [original_ciphertext, indices, updated_ciphertext]
+            )
 
     def test_concat_ciphertext_basic_int32(self):
         """Test concat operation with basic int32 arrays."""

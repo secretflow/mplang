@@ -98,16 +98,17 @@ class TraceContext(MPContext):
         *,
         mask: Mask | None = None,
         capture_namer: VarNamer | None = None,
+        parent: MPContext | None = None,
     ):
         """Initialize TraceContext with a cluster specification.
 
         Args:
             cluster_spec: The cluster specification defining the physical nodes
-                            and logical devices available for computation.
+                          and logical devices available for computation.
             mask: The default mask for this context. If None, defaults to all parties.
             capture_namer: Optional VarNamer for naming captured variables.
         """
-        super().__init__(cluster_spec)
+        super().__init__(cluster_spec, parent=parent)
 
         self._mask = mask or Mask.all(self.world_size())
         self._capture_namer = capture_namer or VarNamer()
@@ -138,6 +139,7 @@ class TraceContext(MPContext):
         return TraceContext(
             cluster_spec=self.cluster_spec,
             mask=mask,
+            parent=self._parent,
             # capture_namer=self._capture_namer,
         )
 

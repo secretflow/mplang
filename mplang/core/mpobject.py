@@ -30,25 +30,40 @@ if TYPE_CHECKING:
 class MPContext:
     """The context of an MPObject.
 
-    MPContext is the base class for all execution contexts in MPLang.
-    It holds the cluster specification that defines the physical and logical
-    structure of the computation environment.
+    MPContext is the abstract base class for all execution contexts.
+    It only holds the immutable cluster_spec plus lightweight parent/root
+    helpers used to support stack-scoped extension state (attached lazily by
+    external features on the root context).
     """
 
-    def __init__(self, cluster_spec: ClusterSpec):
-        """Initialize MPContext with a cluster specification.
-
-        Args:
-            cluster_spec: The cluster specification defining the physical nodes
-                         and logical devices available for computation.
-        """
+    def __init__(self, cluster_spec: ClusterSpec, *, parent: MPContext | None = None):
         if cluster_spec is None:
             raise ValueError("cluster_spec cannot be None")
         self.cluster_spec = cluster_spec
+        # Parent link enables stack-scoped state sharing: ephemeral child contexts
+        # (e.g. short-lived tracing) can delegate to a stable root without relying
+        # on process-wide globals.
+        self._parent: MPContext | None = parent
 
+    # Basic topology helpers
     def world_size(self) -> int:
-        """Return the world size (number of physical nodes)."""
         return len(self.cluster_spec.nodes)
+
+    @property
+    def parent(self) -> MPContext | None:
+        """Direct parent context or None if this is root."""
+        return self._parent
+
+    def root(self) -> MPContext:
+        """Return the root context (follow parent chain)."""
+        ctx: MPContext = self
+        visited: set[int] = set()
+        while ctx._parent is not None:
+            if id(ctx) in visited:
+                raise RuntimeError("Cycle detected in MPContext parent chain")
+            visited.add(id(ctx))
+            ctx = ctx._parent
+        return ctx
 
 
 class MPObject(ABC):

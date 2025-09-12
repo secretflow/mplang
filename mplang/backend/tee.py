@@ -61,7 +61,7 @@ class MockTeeHandler(TensorHandler):
         seed = int(os.environ.get("MPLANG_TEE_SEED", "0")) + rank * 10007
         self._rng = np.random.default_rng(seed)
 
-        logging.warning(
+        logging.info(
             f"*** WARNING: Using MockTeeHandler (not secure) on rank {rank} ***"
         )
 

@@ -678,6 +678,8 @@ class PHEHandler(TensorHandler):
         # Validate that first argument is a CipherText
         if not isinstance(ciphertext, CipherText):
             raise ValueError("First argument must be a CipherText instance")
+        if isinstance(plaintext, CipherText):
+            raise ValueError("Second argument must be a plaintext TensorLike")
 
         try:
             # Convert plaintext to numpy

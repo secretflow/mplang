@@ -196,7 +196,7 @@ def _ensure_tee_session(
     ctx = cur_ctx().root()
     if not hasattr(ctx, "_tee_sessions"):
         ctx._tee_sessions = {}  # type: ignore[attr-defined]
-    cache = ctx._tee_sessions
+    cache: dict[tuple[str, str], tuple[MPObject, MPObject]] = ctx._tee_sessions  # type: ignore
 
     key = (frm_dev_id, to_dev_id)
     if key in cache:

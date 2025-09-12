@@ -128,13 +128,13 @@ def device_func():
     # Use the custom randint function instead of random.randint
     # to avoid the random state capture issue
     x = mpd.device("P0")(randint)(0, 10)
-    assert mpd.Utils.get_devid(x) == "P0", x
+    assert mpd._get_devid(x) == "P0", x
 
     y = mpd.device("P1")(randint)(0, 10)
-    assert mpd.Utils.get_devid(y) == "P1", y
+    assert mpd._get_devid(y) == "P1", y
 
     z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
-    assert mpd.Utils.get_devid(z) == "SP0", z
+    assert mpd._get_devid(z) == "SP0", z
 
     return x, y, z
 

@@ -48,29 +48,28 @@ _HKDF_INFO_LITERAL: bytes = b"mplang/device/tee/v1"
 # `function` decorator could also compile device-level apis.
 function = primitive.function
 
+# magic attribute name to mark a MPObject as a device object
+DEVICE_ATTR_NAME = "_devid_"
 
-class Utils:
-    DEV_ID = "_devid_"
 
-    @classmethod
-    def is_device_obj(cls, obj: MPObject) -> bool:
-        if not isinstance(obj, MPObject):
-            return False
-        return cls.DEV_ID in obj.attrs
+def _is_device_obj(obj: MPObject) -> bool:
+    if not isinstance(obj, MPObject):
+        return False
+    return DEVICE_ATTR_NAME in obj.attrs
 
-    @classmethod
-    def set_devid(cls, obj: MPObject, dev_id: str) -> MPObject:
-        if not isinstance(obj, MPObject):
-            raise TypeError(f"Input must be an instance of Object, {obj}")
-        obj.attrs[cls.DEV_ID] = dev_id
-        return obj
 
-    @classmethod
-    def get_devid(cls, obj: MPObject) -> str:
-        if not isinstance(obj, MPObject):
-            raise TypeError("Input must be an instance of Object")
+def _set_devid(obj: MPObject, dev_id: str) -> MPObject:
+    if not isinstance(obj, MPObject):
+        raise TypeError(f"Input must be an instance of Object, {obj}")
+    obj.attrs[DEVICE_ATTR_NAME] = dev_id
+    return obj
 
-        return obj.attrs[cls.DEV_ID]  # type: ignore[no-any-return]
+
+def _get_devid(obj: MPObject) -> str:
+    if not isinstance(obj, MPObject):
+        raise TypeError("Input must be an instance of Object")
+
+    return obj.attrs[DEVICE_ATTR_NAME]  # type: ignore[no-any-return]
 
 
 def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
@@ -92,29 +91,29 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
             nfn, args_flat = normalize_fn(
                 fn, args, kwargs, lambda x: isinstance(x, MPObject)
             )
-            if not all(Utils.is_device_obj(arg) for arg in args_flat):
+            if not all(_is_device_obj(arg) for arg in args_flat):
                 raise ValueError(f"All arguments must be device objects. {args_flat}")
 
             cluster_spec = mapi.cur_ctx().cluster_spec
             if g_auto_trans:
                 args_flat = [_d2d(dev_id, arg) for arg in args_flat]
 
-            assert all(Utils.get_devid(arg) == dev_id for arg in args_flat)
+            assert all(_get_devid(arg) == dev_id for arg in args_flat)
             dev_info = cluster_spec.devices[dev_id]
             if dev_info.kind.upper() == "SPU":
                 var = smpc.srun(nfn, fe_type=fe_type)(args_flat)
-                return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
+                return tree_map(partial(_set_devid, dev_id=dev_id), var)
             elif dev_info.kind.upper() == "PPU":
                 assert len(dev_info.members) == 1
                 rank = dev_info.members[0].rank
                 var = simp.runAt(rank, nfn)(args_flat)
-                return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
+                return tree_map(partial(_set_devid, dev_id=dev_id), var)
             elif dev_info.kind.upper() == "TEE":
                 # Execute on TEE device (single member expected)
                 assert len(dev_info.members) == 1
                 rank = dev_info.members[0].rank
                 var = simp.runAt(rank, nfn)(args_flat)
-                return tree_map(partial(Utils.set_devid, dev_id=dev_id), var)
+                return tree_map(partial(_set_devid, dev_id=dev_id), var)
             else:
                 raise ValueError(f"Unknown device type: {dev_info.kind}")
 
@@ -125,7 +124,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
 
 def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
     assert isinstance(obj, MPObject)
-    frm_dev_id = Utils.get_devid(obj)
+    frm_dev_id = _get_devid(obj)
 
     if frm_dev_id == to_dev_id:
         return obj
@@ -141,18 +140,18 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(to_dev.members) == 1
         to_rank = to_dev.members[0].rank
         var = smpc.revealTo(obj, to_rank)
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
+        return tree_map(partial(_set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "SPU"):
         assert len(frm_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         var = smpc.sealFrom(obj, frm_rank)
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
+        return tree_map(partial(_set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "PPU"):
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         to_rank = to_dev.members[0].rank
         var = mpi.p2p(frm_rank, to_rank, obj)
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
+        return tree_map(partial(_set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "TEE"):
         # Transparent handshake + encryption for the first transfer; reuse thereafter
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
@@ -167,7 +166,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
         b_at_tee = simp.runAt(tee_rank, crypto.dec)(ct_at_tee, sess_t)
         pt_at_tee = simp.runAt(tee_rank, crypto.unpack)(b_at_tee, obj_ty)
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
+        return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEE", "PPU"):
         # Transparent encryption from TEE to a specific PPU using the reverse-direction session key
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
@@ -181,7 +180,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
         b_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_p)
         pt_at_ppu = simp.runAt(ppu_rank, crypto.unpack)(b_at_ppu, obj_ty)
-        return tree_map(partial(Utils.set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
+        return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
 
@@ -237,7 +236,7 @@ def put(to_dev_id: str, obj: Any) -> MPObject:
 
 
 def _fetch(interp: InterpContext, obj: MPObject) -> Any:
-    dev_id = Utils.get_devid(obj)
+    dev_id = _get_devid(obj)
     cluster_spec = interp.cluster_spec
     dev_kind = cluster_spec.devices[dev_id].kind.upper()
 

@@ -140,7 +140,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
 
     Args:
         dev_id: The device id.
-        fe_type: The frontend type of the device, currently only "jax" is supported.
+        fe_type: The frontend type of the device, could be "jax" or "ibis".
 
     Example:
         >>> @device("P0")
@@ -154,13 +154,14 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
             if isinstance(fn, FEOp):
                 return _device_run(dev_id, fn, *args, **kwargs)
             else:
-                if ibis_cc.is_ibis_function(fn):
+                if fe_type == "jax":
+                    return _device_run(dev_id, jax_cc.jax_compile, fn, *args, **kwargs)
+                elif fe_type == "ibis":
                     return _device_run(
                         dev_id, ibis_cc.ibis_compile, fn, *args, **kwargs
                     )
                 else:
-                    # unknown python callable, treat it as jax function
-                    return _device_run(dev_id, jax_cc.jax_compile, fn, *args, **kwargs)
+                    raise ValueError(f"Unsupported frontend type: {fe_type}")
 
         return wrapped
 

@@ -52,7 +52,7 @@ function = primitive.function
 DEVICE_ATTR_NAME = "_devid_"
 
 
-def _is_device_obj(obj: MPObject) -> bool:
+def _is_device_obj(obj: Any) -> bool:
     if not isinstance(obj, MPObject):
         return False
     return DEVICE_ATTR_NAME in obj.attrs

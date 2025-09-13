@@ -104,7 +104,7 @@ class TestTutorialConditionalExamples:
             x = simp.constant(5)
             y = simp.constant(10)
             pred = simp.run(lambda rank: rank < 2)(simp.prank())
-            z = simp.cond(
+            z = simp.uniform_cond(
                 pred,
                 simp.run(jnp.add),
                 simp.run(jnp.subtract),

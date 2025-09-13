@@ -206,16 +206,26 @@ class TupleExpr(Expr):
 
 
 class CondExpr(Expr):
-    """Expression for conditional execution."""
+    """Expression for conditional execution.
+
+    Added fields:
+        verify_uniform: whether runtime should assert the predicate is uniform across parties.
+    """
 
     def __init__(
-        self, pred: Expr, then_fn: FuncDefExpr, else_fn: FuncDefExpr, args: list[Expr]
+        self,
+        pred: Expr,
+        then_fn: FuncDefExpr,
+        else_fn: FuncDefExpr,
+        args: list[Expr],
+        verify_uniform: bool = False,
     ):
         super().__init__()
         self.pred = pred
         self.then_fn = then_fn
         self.else_fn = else_fn
         self.args = args
+        self.verify_uniform = verify_uniform
 
     def _compute_mptypes(self) -> list[MPType]:
         for t_type, e_type in zip(

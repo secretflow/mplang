@@ -163,7 +163,7 @@ class TestSMPCComplexScenarios:
             def else_branch(x):
                 return simp.run(lambda x: x + 10)(x)
 
-            result = simp.cond(condition, then_branch, else_branch, x)
+            result = simp.uniform_cond(condition, then_branch, else_branch, x)
 
             return x, condition, result
 

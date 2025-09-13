@@ -142,6 +142,8 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
         dev_id: The device id.
         fe_type: The frontend type of the device, could be "jax" or "ibis".
 
+    Note: 'fe_type' is not needed if the decorated function is already a FEOp.
+
     Example:
         >>> @device("P0")
         ... def foo(x, y):

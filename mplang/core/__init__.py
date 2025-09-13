@@ -42,7 +42,6 @@ from mplang.core.pfunc import PFunction
 
 # Primitive operations
 from mplang.core.primitive import (
-    cond,
     constant,
     function,
     pconv,
@@ -53,6 +52,7 @@ from mplang.core.primitive import (
     pshfl_s,
     psize,
     set_mask,
+    uniform_cond,
     while_loop,
 )
 from mplang.core.table import TableLike, TableType
@@ -86,7 +86,6 @@ __all__ = [
     "TraceVar",
     "TracedFunction",
     "VarNamer",
-    "cond",
     "constant",
     "function",
     "pconv",
@@ -98,5 +97,6 @@ __all__ = [
     "psize",
     "set_mask",
     "trace",
+    "uniform_cond",
     "while_loop",
 ]

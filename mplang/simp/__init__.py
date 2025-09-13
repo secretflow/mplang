@@ -22,7 +22,6 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import Rank
 from mplang.core.primitive import (
-    cond,
     constant,
     pconv,
     peval,
@@ -30,6 +29,7 @@ from mplang.core.primitive import (
     prank,
     pshfl,
     pshfl_s,
+    uniform_cond,
     while_loop,
 )
 from mplang.frontend import ibis_cc, jax_cc
@@ -39,7 +39,7 @@ from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
 from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
 
 __reexport__ = [
-    cond,
+    uniform_cond,
     constant,
     MPObject,
     pconv,

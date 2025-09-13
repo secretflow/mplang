@@ -169,6 +169,32 @@ class EvalSemantic:
             return int(val.item())
         return int(val)
 
+    def _simple_allgather(self, value: Any) -> list[Any]:
+        """All-gather emulation using only ICommunicator send/recv.
+
+        This implements an O(P^2) pairwise exchange (each rank sends its value to all
+        other ranks) and collects values in rank order. Suitable for small P (typical
+        controller / simulation sizes) and control metadata like a single bool.
+
+        Returns a list of length world_size with entries ordered by rank.
+        """
+        ws = self.comm.world_size
+        # Trivial fast-path
+        if ws == 1:
+            return [value]
+        cid = self.comm.new_id()
+        gathered: list[Any] = [None] * ws  # type: ignore
+        gathered[self.comm.rank] = value
+        # Fan-out
+        for dst in range(ws):
+            if dst != self.comm.rank:
+                self.comm.send(dst, cid, value)
+        # Fan-in
+        for src in range(ws):
+            if src != self.comm.rank:
+                gathered[src] = self.comm.recv(src, cid)
+        return gathered
+
 
 class RecursiveEvaluator(EvalSemantic, ExprVisitor):
     """Recursive visitor-based evaluator."""
@@ -234,20 +260,38 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         return results
 
     def visit_cond(self, expr: CondExpr) -> Any:
-        """Evaluate conditional expression."""
-        pred = self._value(expr.pred)
+        """Evaluate conditional expression (uniform/global semantics).
 
-        # Execute then_fn if party local pred is True, else execute else_fn
+        Current behavior:
+          * Assumes predicate is already uniform (same value on every enabled party).
+          * Only the selected branch is executed locally.
+          * If this party is masked out for outputs, returns [None] placeholders.
+
+        TODO(jint): add explicit runtime uniform verification (all-reduce OR gather)
+        once communicator exposes a lightweight boolean consensus primitive.
+        """
+        pred = self._value(expr.pred)
         if pred is None:
-            # self party is masked out, just return None
             return [None] * len(expr.mptypes)
+
+        # Optional runtime uniform verification using manual all-gather emulation.
+        # We intentionally avoid relying on a richer collective interface so this works
+        # on any ICommunicator implementation.
+        if expr.verify_uniform:
+            vals = self._simple_allgather(bool(pred))
+            if len(vals) == 0:
+                raise ValueError("manual allgather returned empty list for predicate")
+            first = vals[0]
+            if any(v != first for v in vals[1:]):
+                raise ValueError("uniform_cond predicate is not uniform across parties")
+
+        # Only evaluate selected branch locally
+        if pred:
+            then_call = CallExpr(expr.then_fn, expr.args)
+            return self._values(then_call)
         else:
-            if pred:
-                then_call = CallExpr(expr.then_fn, expr.args)
-                return self._values(then_call)
-            else:
-                else_call = CallExpr(expr.else_fn, expr.args)
-                return self._values(else_call)
+            else_call = CallExpr(expr.else_fn, expr.args)
+            return self._values(else_call)
 
     def visit_call(self, expr: CallExpr) -> Any:
         args = [self._value(arg) for arg in expr.args]
@@ -371,14 +415,31 @@ class IterativeEvaluator(EvalSemantic):
                 arg_vals = [self._first(symbols[id(a)]) for a in node.args]
                 if pred_v is None:
                     symbols[id(node)] = [None] * len(node.mptypes)
-                elif bool(pred_v):
-                    sub_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
-                    res = self._iter_eval_graph(node.then_fn.body, {**env, **sub_env})
-                    symbols[id(node)] = res
                 else:
-                    sub_env = dict(zip(node.else_fn.params, arg_vals, strict=True))
-                    res = self._iter_eval_graph(node.else_fn.body, {**env, **sub_env})
-                    symbols[id(node)] = res
+                    # Optional uniform verification identical to recursive evaluator.
+                    if node.verify_uniform and pred_v is not None:
+                        vals = self._simple_allgather(bool(pred_v))
+                        if len(vals) == 0:
+                            raise ValueError(
+                                "manual allgather returned empty list for predicate"
+                            )
+                        first = vals[0]
+                        if any(v != first for v in vals[1:]):
+                            raise ValueError(
+                                "uniform_cond predicate is not uniform across parties"
+                            )
+                    if bool(pred_v):
+                        sub_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
+                        res = self._iter_eval_graph(
+                            node.then_fn.body, {**env, **sub_env}
+                        )
+                        symbols[id(node)] = res
+                    else:
+                        sub_env = dict(zip(node.else_fn.params, arg_vals, strict=True))
+                        res = self._iter_eval_graph(
+                            node.else_fn.body, {**env, **sub_env}
+                        )
+                        symbols[id(node)] = res
             elif isinstance(node, WhileExpr):
                 state = [self._first(symbols[id(a)]) for a in node.args]
                 while True:

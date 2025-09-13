@@ -83,13 +83,13 @@ def run_spu():
 
     sim = Simulator(cluster_spec)
     x, y, z, r = mplang.evaluate(sim, millionaire, "SP0")
-    print("x:", x, mplang.fetch(sim, x))
-    print("y:", y, mplang.fetch(sim, y))
-    print("z:", z, mplang.fetch(sim, z))
-    print("r:", r, mplang.fetch(sim, r))
+    print("x:", x, mpd.fetch(sim, x))
+    print("y:", y, mpd.fetch(sim, y))
+    print("z:", z, mpd.fetch(sim, z))
+    print("r:", r, mpd.fetch(sim, r))
 
-    compiled = mplang.compile(sim, millionaire, "SP0")
-    print("SPU compiled:", compiled.compiler_ir())
+    # compiled = mplang.compile(sim, millionaire, "SP0")
+    # print("SPU compiled:", compiled.compiler_ir())
 
     # ofcourse we can run other funcs in the same sim instance
     # print("-" * 10, "myfun", "-" * 10)
@@ -103,11 +103,11 @@ def run_tee():
     print("-" * 10, "millionaire (TEE)", "-" * 10)
 
     sim = Simulator(cluster_spec)
-    x_t, y_t, z_t, r_t = mplang.evaluate(sim, millionaire, "TEE0")
-    print("x_t:", x_t, mplang.fetch(sim, x_t))
-    print("y_t:", y_t, mplang.fetch(sim, y_t))
-    print("z_t (at TEE):", z_t, mplang.fetch(sim, z_t))
-    print("r_t (at P0):", r_t, mplang.fetch(sim, r_t))
+    x_p0, y_p1, z_t, r_p0 = mplang.evaluate(sim, millionaire, "TEE0")
+    print("x_p0:", x_p0, mpd.fetch(sim, x_p0))
+    print("y_p1:", y_p1, mpd.fetch(sim, y_p1))
+    print("z_t:", z_t, mpd.fetch(sim, z_t))
+    print("r_p0:", r_p0, mpd.fetch(sim, r_p0))
 
     # copts = mplang.CompileOptions(cluster_spec)
     # compiled = mplang.compile(copts, millionaire, "TEE0")

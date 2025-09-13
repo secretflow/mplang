@@ -67,7 +67,6 @@ def millionaire_device():
 
 if __name__ == "__main__":
     sim = mplang.Simulator(cluster_spec)
-    mpd.clear_tee_session_cache()
     traced_dev = mplang.compile(sim, millionaire_device)
     analysis.dump(
         traced_dev,

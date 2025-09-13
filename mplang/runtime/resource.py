@@ -26,10 +26,12 @@ from urllib.parse import urlparse
 import cloudpickle as pickle
 
 from mplang.backend.builtin import BuiltinHandler
+from mplang.backend.crypto import CryptoHandler
 from mplang.backend.phe import PHEHandler
 from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
+from mplang.backend.tee import MockTeeHandler
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
@@ -252,6 +254,8 @@ def execute_computation(
             spu_handler,
             DuckDBHandler(),
             PHEHandler(),
+            CryptoHandler(),
+            MockTeeHandler(),
         ],
     )
 

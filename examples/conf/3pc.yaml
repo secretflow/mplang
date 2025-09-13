@@ -26,3 +26,7 @@ devices:
     kind: "PPU"
     members: ["node_3"]
     config: {}
+  TEE0:
+    kind: "TEE"
+    members: ["node_1"]
+    config: {}

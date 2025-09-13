@@ -62,7 +62,7 @@ class MockTeeHandler(TensorHandler):
         self._rng = np.random.default_rng(seed)
 
         logging.info(
-            f"*** WARNING: Using MockTeeHandler (not secure) on rank {rank} ***"
+            f"Using MockTeeHandler (not secure) on rank {rank}"
         )
 
     def teardown(self) -> None:  # override

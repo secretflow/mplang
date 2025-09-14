@@ -44,7 +44,9 @@ from mplang.simp import mpi, smpc
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
 
-_HKDF_INFO_LITERAL: bytes = b"mplang/device/tee/v1"
+_HKDF_INFO_LITERAL: str = "mplang/device/tee/v1"
+# Default KEM suite for TEE session establishment; make configurable via ClusterSpec in future.
+_TEE_KEM_SUITE: str = "x25519"
 
 
 # `function` decorator could also compile device-level apis.
@@ -230,7 +232,16 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         pt_at_ppu = simp.runAt(ppu_rank, crypto.unpack)(b_at_ppu, obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
-        raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
+        supported = [
+            ("SPU", "PPU"),
+            ("PPU", "SPU"),
+            ("PPU", "PPU"),
+            ("PPU", "TEE"),
+            ("TEE", "PPU"),
+        ]
+        raise ValueError(
+            f"Unsupported device transfer: {frm_to_pair}. Supported pairs: {supported}."
+        )
 
 
 def _ensure_tee_session(
@@ -250,10 +261,8 @@ def _ensure_tee_session(
         return cache[key]
 
     # 1) TEE generates (sk, pk) and quote(pk)
-    # TODO: The KEM suite identifier "x25519" is hardcoded. This should be
-    # configurable, for example, by reading it from the TEE device's
-    # configuration in the ClusterSpec.
-    tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)("x25519")
+    # KEM suite currently constant; future: read from tee device config (e.g. cluster_spec.devices[dev_id].config)
+    tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
     quote = simp.runAt(tee_rank, tee.quote)(tee_pk)
 
     # 2) Send quote to sender and attest to obtain TEE pk
@@ -261,16 +270,19 @@ def _ensure_tee_session(
     tee_pk_at_sender = simp.runAt(frm_rank, tee.attest)(quote_at_sender)
 
     # 3) Sender generates its ephemeral keypair and sends its pk to TEE
-    v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)("x25519")
+    v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
     v_pk_at_tee = mpi.p2p(frm_rank, tee_rank, v_pk)
 
     # 4) Both sides derive the shared secret and session key
-    shared_p = simp.runAt(frm_rank, crypto.kem_derive)(v_sk, tee_pk_at_sender, "x25519")
-    shared_t = simp.runAt(tee_rank, crypto.kem_derive)(tee_sk, v_pk_at_tee, "x25519")
-    # Use a fixed string literal for HKDF info on both sides
-    info_literal = _HKDF_INFO_LITERAL.decode("utf-8")
-    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_literal)
-    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_literal)
+    shared_p = simp.runAt(frm_rank, crypto.kem_derive)(
+        v_sk, tee_pk_at_sender, _TEE_KEM_SUITE
+    )
+    shared_t = simp.runAt(tee_rank, crypto.kem_derive)(
+        tee_sk, v_pk_at_tee, _TEE_KEM_SUITE
+    )
+    # Use a fixed ASCII string literal for HKDF info on both sides
+    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, _HKDF_INFO_LITERAL)
+    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, _HKDF_INFO_LITERAL)
 
     cache[key] = (sess_p, sess_t)
     return sess_p, sess_t
@@ -292,6 +304,7 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
     if dev_kind == "SPU":
         revealed = mapi.evaluate(interp, smpc.reveal, obj)
         result = mapi.fetch(interp, revealed)
+        # now all members have the same value, return the one at rank 0
         return result[dev_info.members[0].rank]
     elif dev_kind == "PPU":
         assert len(dev_info.members) == 1

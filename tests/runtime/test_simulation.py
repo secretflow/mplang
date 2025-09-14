@@ -1790,14 +1790,16 @@ class TestPShflS:
             rank = prank()
             pred = simp.run(lambda r: r == 0)(rank)
 
-            def then_fn(r):
+            def then_fn(r):  # local cheap
                 return constant(100)
 
-            def else_fn(r):
+            def else_fn(r):  # local cheap
                 return constant(200)
 
-            # Conditional determines the data to shuffle
-            cond_result = uniform_cond(pred, then_fn, else_fn, rank)
+            # Divergent predicate (rank==0) → use elementwise selection instead of uniform_cond
+            t_val = then_fn(rank)
+            f_val = else_fn(rank)
+            cond_result = simp.run(jnp.where)(pred, t_val, f_val)
 
             # Shuffle the conditional result
             pmask = Mask(3)

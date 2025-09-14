@@ -442,8 +442,8 @@ class TestConditional:
         expr_str = printer.print_expr(func_expr)
         assert "pcond" in expr_str
 
-    def test_cond_verify_uniform_raises(self, trace_context):
-        """verify_uniform=True now performs runtime check; should trace successfully with bool predicate."""
+    def test_uniform_cond_traces_with_verify(self, trace_context):
+        """uniform_cond with verify_uniform=True traces successfully for uniform bool predicate."""
 
         def cond_func():
             pred = constant(True)
@@ -1597,22 +1597,4 @@ class TestUniformCondValidation:
             return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
 
         traced = trace(trace_context, divergent_predicate)
-        assert traced.make_expr() is not None
-
-    def test_uniform_cond_verify_uniform_placeholder(self, trace_context):
-        """verify_uniform=True succeeds (placeholder removed); ensure branch types align."""
-
-        def cond_func():
-            pred = constant(True)
-            x = constant(1)
-
-            def then_fn(a):  # type: ignore
-                return a
-
-            def else_fn(a):  # type: ignore
-                return a
-
-            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=True)
-
-        traced = trace(trace_context, cond_func)
         assert traced.make_expr() is not None

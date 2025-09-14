@@ -18,11 +18,11 @@ import jax.numpy as jnp
 import mplang
 import mplang.simp as simp
 
-# Quick decision guide:
-# 1) Per-element / per-party data mux (both sides cheap)      -> jax.where (local_elementwise_select)
-# 2) Local lazy control (pure compute, may diverge by party)  -> jax.lax.cond (see local_lazy_cond example below)
-# 3) Uniform predicate + expensive multi-party side effects   -> uniform_cond (uniform_multi_party_cond)
-# Anti-pattern: using uniform_cond with divergent predicate (shown for contrast)
+# TL;DR / Quick Patterns:
+# - Elementwise / per-party divergent predicate & both sides cheap -> jax.where
+# - Pure local lazy control (no multi-party side-effects) -> jax.lax.cond (via simp.run)
+# - Uniform predicate + expensive multi-party side-effects -> uniform_cond
+# - Divergent structural branching you wish were uniform -> aggregate/reduce to uniform or fallback to elementwise where
 
 
 @mplang.function
@@ -71,8 +71,10 @@ def uniform_multi_party_cond():
     def else_branch(v):
         return simp.run(lambda t: -t)(v)
 
-    # NOTE: verify_uniform placeholder not implemented yet → set False.
-    out = simp.uniform_cond(pred, then_branch, else_branch, x, verify_uniform=False)
+    # Runtime uniform verification here to catch accidental divergence. If you have a
+    # provably uniform predicate and want to skip the O(P^2) tiny boolean gather, you
+    # could pass verify_uniform=False.
+    out = simp.uniform_cond(pred, then_branch, else_branch, x, verify_uniform=True)
     return x, out
 
 

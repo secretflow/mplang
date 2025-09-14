@@ -38,7 +38,7 @@ Start
          └─ No (Structural):
              ├─ Both branches pure local & light? → Yes: lax.cond / expr → End
              └─ No → uniform_cond
-                 ├─ predicate may diverge? → Yes: all-reduce aggregate → uniform_cond
+                 ├─ predicate may diverge? → Yes: aggregate (all-reduce) to uniform then uniform_cond
                  └─ No → End
 ```
 
@@ -96,7 +96,7 @@ Lightweight local difference (anti-pattern for uniform_cond):
 ```python
 res = uniform_cond(pred, lambda v: v + 1, lambda v: v - 1, x)  # anti-pattern
 # Better:
-res = peval(jax.lax.cond)(pred, lambda _: x + 1, lambda _: x - 1, operand=None)
+res = peval(jax.lax.cond, [pred, lambda _: x + 1, lambda _: x - 1, None])
 ```
 
 Elementwise blending:

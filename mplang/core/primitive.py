@@ -553,7 +553,6 @@ def uniform_cond(
 
     # Step 4: Create final conditional and return values
     assert then_fn_expr is not None and else_fn_expr is not None
-    # TODO(jint): extend CondExpr with a mode flag ("global") & attach verify_uniform hint.
     fn_expr = CondExpr(
         pred_expr,
         then_fn_expr,
@@ -561,8 +560,6 @@ def uniform_cond(
         in_exprs,
         verify_uniform=verify_uniform,
     )
-    # NOTE: runtime uniform verification currently not encoded in IR; evaluator layer
-    # should interpret predicate uniformly. A future change can add metadata here.
 
     rets_expr = [AccessExpr(fn_expr, idx) for idx in range(fn_expr.num_outputs)]
     out_vars = [TraceVar(cur_tracer, res) for res in rets_expr]

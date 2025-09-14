@@ -267,8 +267,11 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
           * Only the selected branch is executed locally.
           * If this party is masked out for outputs, returns [None] placeholders.
 
-        TODO(jint): add explicit runtime uniform verification (all-reduce OR gather)
-        once communicator exposes a lightweight boolean consensus primitive.
+        Future optimization notes:
+          * Current uniform verification uses an O(P^2) manual all-gather. Replace
+            with a communicator-level boolean all-reduce (AND + broadcast) when available.
+          * Add optional static uniform inference (data provenance) to elide the
+            runtime check when predicate uniformity is provable at trace time.
         """
         pred = self._value(expr.pred)
         if pred is None:

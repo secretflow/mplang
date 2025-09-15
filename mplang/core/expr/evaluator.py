@@ -195,6 +195,18 @@ class EvalSemantic:
                 gathered[src] = self.comm.recv(src, cid)
         return gathered
 
+    def _verify_uniform_predicate(self, pred: Any) -> None:
+        # Runtime uniformity check (O(P^2) send/recv emulation).
+        vals = self._simple_allgather(bool(pred))
+        if not vals:
+            raise ValueError("uniform_cond: empty gather for predicate")
+        first = vals[0]
+        for v in vals[1:]:
+            if v != first:
+                raise ValueError(
+                    "uniform_cond: predicate is not uniform across parties"
+                )
+
 
 class RecursiveEvaluator(EvalSemantic, ExprVisitor):
     """Recursive visitor-based evaluator."""
@@ -277,16 +289,8 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         if pred is None:
             return [None] * len(expr.mptypes)
 
-        # Optional runtime uniform verification using manual all-gather emulation.
-        # We intentionally avoid relying on a richer collective interface so this works
-        # on any ICommunicator implementation.
         if expr.verify_uniform:
-            vals = self._simple_allgather(bool(pred))
-            if len(vals) == 0:
-                raise ValueError("manual allgather returned empty list for predicate")
-            first = vals[0]
-            if any(v != first for v in vals[1:]):
-                raise ValueError("uniform_cond predicate is not uniform across parties")
+            self._verify_uniform_predicate(pred)
 
         # Only evaluate selected branch locally
         if pred:
@@ -419,18 +423,9 @@ class IterativeEvaluator(EvalSemantic):
                 if pred_v is None:
                     symbols[id(node)] = [None] * len(node.mptypes)
                 else:
-                    # Optional uniform verification identical to recursive evaluator.
-                    if node.verify_uniform and pred_v is not None:
-                        vals = self._simple_allgather(bool(pred_v))
-                        if len(vals) == 0:
-                            raise ValueError(
-                                "manual allgather returned empty list for predicate"
-                            )
-                        first = vals[0]
-                        if any(v != first for v in vals[1:]):
-                            raise ValueError(
-                                "uniform_cond predicate is not uniform across parties"
-                            )
+                    # Optional uniform verification identical to recursive evaluator (DRY helper).
+                    if node.verify_uniform:
+                        self._verify_uniform_predicate(pred_v)
                     if bool(pred_v):
                         sub_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
                         res = self._iter_eval_graph(

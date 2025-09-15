@@ -118,6 +118,7 @@ def train(
                     def secure_update_model(opt_state):
                         p1_batch_images = mpd.device("P0")(identity)(batch_images)
                         p2_batch_labels = mpd.device("P1")(identity)(batch_labels)
+                        # return mpd.device("TEE0")(update_model)(
                         return mpd.device("SP0")(update_model)(
                             opt_state, p1_batch_images, p2_batch_labels, it
                         )

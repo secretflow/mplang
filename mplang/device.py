@@ -32,17 +32,21 @@ from jax.tree_util import tree_map
 import mplang.api as mapi
 from mplang import simp
 from mplang.core import InterpContext, MPObject, primitive
-from mplang.core.cluster import ClusterSpec
+from mplang.core.cluster import ClusterSpec, LogicalDevice
 from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
-from mplang.frontend import crypto, tee
+from mplang.frontend import crypto, ibis_cc, jax_cc, tee
+from mplang.frontend.base import FEOp
+from mplang.frontend.ibis_cc import IbisCompiler
+from mplang.frontend.jax_cc import JaxCompiler
 from mplang.simp import mpi, smpc
-from mplang.utils.func_utils import normalize_fn
 
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
 
-_HKDF_INFO_LITERAL: bytes = b"mplang/device/tee/v1"
+_HKDF_INFO_LITERAL: str = "mplang/device/tee/v1"
+# Default KEM suite for TEE session establishment; make configurable via ClusterSpec in future.
+_TEE_KEM_SUITE: str = "x25519"
 
 
 # `function` decorator could also compile device-level apis.
@@ -72,12 +76,75 @@ def _get_devid(obj: MPObject) -> str:
     return obj.attrs[DEVICE_ATTR_NAME]  # type: ignore[no-any-return]
 
 
+_is_mpobj = lambda x: isinstance(x, MPObject)
+
+
+def _device_run_spu(
+    dev_info: LogicalDevice, op: FEOp, *args: Any, **kwargs: Any
+) -> Any:
+    if not isinstance(op, JaxCompiler):
+        raise ValueError("SPU device only supports JAX frontend.")
+    fn, *aargs = args
+    var = smpc.srun(fn)(*aargs, **kwargs)
+    return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
+
+
+def _device_run_tee(
+    dev_info: LogicalDevice, op: FEOp, *args: Any, **kwargs: Any
+) -> Any:
+    if not isinstance(op, JaxCompiler) and not isinstance(op, IbisCompiler):
+        raise ValueError("TEE device only supports JAX and Ibis frontend.")
+    assert len(dev_info.members) == 1
+    rank = dev_info.members[0].rank
+    var = simp.runAt(rank, op)(*args, **kwargs)
+    return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
+
+
+def _device_run_ppu(
+    dev_info: LogicalDevice, op: FEOp, *args: Any, **kwargs: Any
+) -> Any:
+    assert len(dev_info.members) == 1
+    rank = dev_info.members[0].rank
+    var = simp.runAt(rank, op)(*args, **kwargs)
+    return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
+
+
+def _device_run(dev_id: str, op: FEOp, *args: Any, **kwargs: Any) -> Any:
+    assert isinstance(op, FEOp)
+    cluster_spec = mapi.cur_ctx().cluster_spec
+    if dev_id not in cluster_spec.devices:
+        raise ValueError(f"Device {dev_id} not found in cluster spec.")
+
+    if g_auto_trans:
+
+        def trans(obj: Any) -> Any:
+            if _is_mpobj(obj):
+                assert _is_device_obj(obj)
+                return _d2d(dev_id, obj)
+            else:
+                return obj
+
+        args, kwargs = tree_map(trans, (args, kwargs))
+
+    dev_info = cluster_spec.devices[dev_id]
+    if dev_info.kind.upper() == "SPU":
+        return _device_run_spu(dev_info, op, *args, **kwargs)
+    elif dev_info.kind.upper() == "TEE":
+        return _device_run_tee(dev_info, op, *args, **kwargs)
+    elif dev_info.kind.upper() == "PPU":
+        return _device_run_ppu(dev_info, op, *args, **kwargs)
+    else:
+        raise ValueError(f"Unknown device type: {dev_info.kind}")
+
+
 def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
     """Decorator to mark a function to be executed on a specific device.
 
     Args:
         dev_id: The device id.
-        fe_type: The frontend type of the device, currently only "jax" is supported.
+        fe_type: The frontend type of the device, could be "jax" or "ibis".
+
+    Note: 'fe_type' is not needed if the decorated function is already a FEOp.
 
     Example:
         >>> @device("P0")
@@ -88,34 +155,17 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
     def deco(fn: Callable) -> Callable:
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            nfn, args_flat = normalize_fn(
-                fn, args, kwargs, lambda x: isinstance(x, MPObject)
-            )
-            if not all(_is_device_obj(arg) for arg in args_flat):
-                raise ValueError(f"All arguments must be device objects. {args_flat}")
-
-            cluster_spec = mapi.cur_ctx().cluster_spec
-            if g_auto_trans:
-                args_flat = [_d2d(dev_id, arg) for arg in args_flat]
-
-            assert all(_get_devid(arg) == dev_id for arg in args_flat)
-            dev_info = cluster_spec.devices[dev_id]
-            if dev_info.kind.upper() == "SPU":
-                var = smpc.srun(nfn, fe_type=fe_type)(args_flat)
-                return tree_map(partial(_set_devid, dev_id=dev_id), var)
-            elif dev_info.kind.upper() == "PPU":
-                assert len(dev_info.members) == 1
-                rank = dev_info.members[0].rank
-                var = simp.runAt(rank, nfn)(args_flat)
-                return tree_map(partial(_set_devid, dev_id=dev_id), var)
-            elif dev_info.kind.upper() == "TEE":
-                # Execute on TEE device (single member expected)
-                assert len(dev_info.members) == 1
-                rank = dev_info.members[0].rank
-                var = simp.runAt(rank, nfn)(args_flat)
-                return tree_map(partial(_set_devid, dev_id=dev_id), var)
+            if isinstance(fn, FEOp):
+                return _device_run(dev_id, fn, *args, **kwargs)
             else:
-                raise ValueError(f"Unknown device type: {dev_info.kind}")
+                if fe_type == "jax":
+                    return _device_run(dev_id, jax_cc.jax_compile, fn, *args, **kwargs)
+                elif fe_type == "ibis":
+                    return _device_run(
+                        dev_id, ibis_cc.ibis_compile, fn, *args, **kwargs
+                    )
+                else:
+                    raise ValueError(f"Unsupported frontend type: {fe_type}")
 
         return wrapped
 
@@ -182,7 +232,16 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         pt_at_ppu = simp.runAt(ppu_rank, crypto.unpack)(b_at_ppu, obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
-        raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
+        supported = [
+            ("SPU", "PPU"),
+            ("PPU", "SPU"),
+            ("PPU", "PPU"),
+            ("PPU", "TEE"),
+            ("TEE", "PPU"),
+        ]
+        raise ValueError(
+            f"Unsupported device transfer: {frm_to_pair}. Supported pairs: {supported}."
+        )
 
 
 def _ensure_tee_session(
@@ -202,10 +261,8 @@ def _ensure_tee_session(
         return cache[key]
 
     # 1) TEE generates (sk, pk) and quote(pk)
-    # TODO: The KEM suite identifier "x25519" is hardcoded. This should be
-    # configurable, for example, by reading it from the TEE device's
-    # configuration in the ClusterSpec.
-    tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)("x25519")
+    # KEM suite currently constant; future: read from tee device config (e.g. cluster_spec.devices[dev_id].config)
+    tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
     quote = simp.runAt(tee_rank, tee.quote)(tee_pk)
 
     # 2) Send quote to sender and attest to obtain TEE pk
@@ -213,16 +270,19 @@ def _ensure_tee_session(
     tee_pk_at_sender = simp.runAt(frm_rank, tee.attest)(quote_at_sender)
 
     # 3) Sender generates its ephemeral keypair and sends its pk to TEE
-    v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)("x25519")
+    v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
     v_pk_at_tee = mpi.p2p(frm_rank, tee_rank, v_pk)
 
     # 4) Both sides derive the shared secret and session key
-    shared_p = simp.runAt(frm_rank, crypto.kem_derive)(v_sk, tee_pk_at_sender, "x25519")
-    shared_t = simp.runAt(tee_rank, crypto.kem_derive)(tee_sk, v_pk_at_tee, "x25519")
-    # Use a fixed string literal for HKDF info on both sides
-    info_literal = _HKDF_INFO_LITERAL.decode("utf-8")
-    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, info_literal)
-    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, info_literal)
+    shared_p = simp.runAt(frm_rank, crypto.kem_derive)(
+        v_sk, tee_pk_at_sender, _TEE_KEM_SUITE
+    )
+    shared_t = simp.runAt(tee_rank, crypto.kem_derive)(
+        tee_sk, v_pk_at_tee, _TEE_KEM_SUITE
+    )
+    # Use a fixed ASCII string literal for HKDF info on both sides
+    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, _HKDF_INFO_LITERAL)
+    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, _HKDF_INFO_LITERAL)
 
     cache[key] = (sess_p, sess_t)
     return sess_p, sess_t
@@ -240,18 +300,18 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
     cluster_spec = interp.cluster_spec
     dev_kind = cluster_spec.devices[dev_id].kind.upper()
 
+    dev_info = cluster_spec.devices[dev_id]
     if dev_kind == "SPU":
-        revealed = smpc.reveal(obj)
+        revealed = mapi.evaluate(interp, smpc.reveal, obj)
         result = mapi.fetch(interp, revealed)
-        return result[0]
+        # now all members have the same value, return the one at rank 0
+        return result[dev_info.members[0].rank]
     elif dev_kind == "PPU":
-        dev_info = cluster_spec.devices[dev_id]
         assert len(dev_info.members) == 1
         rank = dev_info.members[0].rank
         result = mapi.fetch(interp, obj)
         return result[rank]
     elif dev_kind == "TEE":
-        dev_info = cluster_spec.devices[dev_id]
         assert len(dev_info.members) == 1
         rank = dev_info.members[0].rank
         result = mapi.fetch(interp, obj)
@@ -260,7 +320,7 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
         raise ValueError(f"Unknown device id: {dev_id}")
 
 
-def fetch(interp: InterpContext, objs: Any) -> list[Any]:
+def fetch(interp: InterpContext, objs: Any) -> Any:
     ctx = interp or mapi.cur_ctx()
     assert isinstance(ctx, InterpContext), f"Expect InterpContext, got {ctx}"
-    return list(tree_map(partial(_fetch, ctx), objs))
+    return tree_map(partial(_fetch, ctx), objs)

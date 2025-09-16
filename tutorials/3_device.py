@@ -16,10 +16,8 @@ import random
 
 import mplang
 import mplang.device as mpd
-from mplang.core.cluster import ClusterSpec
-from mplang.runtime.simulation import Simulator
 
-cluster_spec = ClusterSpec.from_dict({
+cluster_spec = mplang.ClusterSpec.from_dict({
     "nodes": [
         {"name": "node_0", "endpoint": "127.0.0.1:61920"},
         {"name": "node_1", "endpoint": "127.0.0.1:61921"},
@@ -81,7 +79,7 @@ def millionaire(dev_name):
 def run_spu():
     print("-" * 10, "millionaire (SPU)", "-" * 10)
 
-    sim = Simulator(cluster_spec)
+    sim = mplang.Simulator(cluster_spec)
     x, y, z, r = mplang.evaluate(sim, millionaire, "SP0")
     print("x:", x, mpd.fetch(sim, x))
     print("y:", y, mpd.fetch(sim, y))
@@ -102,7 +100,7 @@ def run_spu():
 def run_tee():
     print("-" * 10, "millionaire (TEE)", "-" * 10)
 
-    sim = Simulator(cluster_spec)
+    sim = mplang.Simulator(cluster_spec)
     x_p0, y_p1, z_t, r_p0 = mplang.evaluate(sim, millionaire, "TEE0")
     print("x_p0:", x_p0, mpd.fetch(sim, x_p0))
     print("y_p1:", y_p1, mpd.fetch(sim, y_p1))

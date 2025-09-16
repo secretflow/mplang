@@ -29,10 +29,8 @@ import random
 import mplang
 import mplang.device as mpd
 import mplang.simp as simp
-from mplang.core.cluster import ClusterSpec
-from mplang.core.tensor import TensorType
+from mplang import ClusterSpec, Simulator, TensorType
 from mplang.frontend import crypto, tee
-from mplang.runtime.simulation import Simulator
 
 cluster_spec = ClusterSpec.from_dict({
     "nodes": [

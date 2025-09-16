@@ -164,3 +164,24 @@ def test_table_to_tensor_negative_rows():
     table_obj = TableMP(df)
     with pytest.raises(ValueError):
         table_to_tensor(table=table_obj, number_rows=-1)
+
+
+def test_tensor_to_table_duplicate_names_failure():
+    arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
+    tensor_obj = TensorMP(arr, DType.from_any("int64"))
+    with pytest.raises(ValueError):
+        tensor_to_table(tensor=tensor_obj, column_names=["a", "a"])  # duplicate
+
+
+def test_tensor_to_table_empty_name_failure():
+    arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
+    tensor_obj = TensorMP(arr, DType.from_any("int64"))
+    with pytest.raises(ValueError):
+        tensor_to_table(tensor=tensor_obj, column_names=["", "b"])  # empty name
+
+
+def test_tensor_to_table_whitespace_name_failure():
+    arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
+    tensor_obj = TensorMP(arr, DType.from_any("int64"))
+    with pytest.raises(ValueError):
+        tensor_to_table(tensor=tensor_obj, column_names=["  ", "b"])  # whitespace only

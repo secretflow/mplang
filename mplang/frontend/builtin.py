@@ -356,6 +356,23 @@ class TensorToTable(FEOp):
             raise ValueError("column_names required (non-empty)")
         if len(column_names) != n_cols:
             raise ValueError("column_names length must match tensor second dim")
+        # Validate column names: non-empty, not purely whitespace, unique.
+        for i, name in enumerate(column_names):
+            if not isinstance(name, str):
+                raise TypeError(
+                    f"column_names[{i}] must be str, got {type(name).__name__}"
+                )
+            if name == "" or name.strip() == "":
+                raise ValueError(
+                    "column names must be non-empty and not whitespace-only"
+                )
+        # Uniqueness check (preserve order; fail fast on first duplicate)
+        seen: set[str] = set()
+        for name in column_names:
+            if name in seen:
+                raise ValueError(f"duplicate column name: {name!r}")
+            seen.add(name)
+
         col_types = [t_ty.dtype] * n_cols
         schema = TableType.from_pairs(list(zip(column_names, col_types, strict=True)))
 

@@ -36,7 +36,7 @@ from mplang.core import (
     TensorType,
     function,
 )
-from mplang.core.cluster import ClusterSpec
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
@@ -46,12 +46,15 @@ __all__ = [
     "ClusterSpec",
     "CompileOptions",
     "DType",
+    "Device",
     "Driver",
     "InterpContext",
     "MPContext",
     "MPObject",
     "MPType",
     "Mask",
+    "Node",
+    "RuntimeInfo",
     "Simulator",
     "TableType",
     "TensorType",

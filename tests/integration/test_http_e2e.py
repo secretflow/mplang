@@ -23,7 +23,7 @@ import pytest
 
 import mplang
 import mplang.simp as simp
-from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from tests.utils.server_fixtures import http_servers  # noqa: F401
 
 
@@ -37,7 +37,7 @@ def create_e2e_cluster_spec(
     for node_id, addr in node_addrs.items():
         # Extract rank from node_id (e.g., "P0" -> 0)
         rank = int(node_id[1:])
-        nodes[f"node{rank}"] = PhysicalNode(
+        nodes[f"node{rank}"] = Node(
             name=f"node{rank}",
             rank=rank,
             endpoint=addr,
@@ -51,7 +51,7 @@ def create_e2e_cluster_spec(
     # Create local devices for each node
     local_devices = {}
     for _node_name, node in nodes.items():
-        local_devices[f"local_{node.rank}"] = LogicalDevice(
+        local_devices[f"local_{node.rank}"] = Device(
             name=f"local_{node.rank}",
             kind="local",
             members=[node],
@@ -61,7 +61,7 @@ def create_e2e_cluster_spec(
     spu_node_ranks = [int(node_id[1:]) for node_id in spu_nodes]
     spu_members = [nodes[f"node{rank}"] for rank in spu_node_ranks]
 
-    spu_device = LogicalDevice(
+    spu_device = Device(
         name="SPU_0",
         kind="SPU",
         members=spu_members,

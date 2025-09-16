@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -24,8 +25,10 @@ import spu.utils.frontend as spu_fe
 from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef, tree_flatten
 
+from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction, get_fn_name
-from mplang.core.tensor import TensorLike, TensorType
+from mplang.core.tensor import TensorType
+from mplang.frontend.base import FEOp
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -37,166 +40,127 @@ class Visibility(Enum):
     PRIVATE = libspu.Visibility.VIS_PRIVATE
 
 
-class SpuFE:
-    """SPU Frontend for input/output operations."""
+@dataclass(slots=True)
+class SpuConfig:
+    """Configuration for SPU frontend operations.
 
-    def __init__(
+    Attributes:
+        world_size: Number of parties whose shares are produced/consumed.
+        enable_private: Whether PRIVATE visibility is allowed.
+        copts: Optional libspu.CompilerOptions instance; if None a new one is created.
+    """
+
+    world_size: int
+    enable_private: bool = False
+    copts: Any | None = None
+
+    def ensure(self) -> None:
+        if self.world_size <= 0:
+            raise ValueError("world_size must be positive")
+        if self.copts is None:
+            # Fresh options to avoid cross-jax contamination.
+            self.copts = libspu.CompilerOptions()
+
+
+class SpuMakeShares(FEOp):
+    """Create SPU shares from a plaintext tensor.
+
+    Returns (PFunction, [data], treedef(shares)).
+    Output shares count equals world_size.
+    """
+
+    def __init__(self, config: SpuConfig):
+        self.config = config
+        self.config.ensure()
+
+    def __call__(
         self,
-        world_size: int,
-        enable_private: bool = False,
-        copts: Any = None,
-    ) -> None:
-        """Initialize the SPU frontend."""
-        self.world_size = world_size
-        self.enable_private = enable_private
-        # Create a fresh CompilerOptions instance to avoid JAX compatibility issues
-        self.copts = copts or libspu.CompilerOptions()
-
-        # The (num_parties, protocol, field) are frontend transparency settings
-        # The backend could change them on demand and the behavior does not change.
-
-    def makeshares(
-        self,
-        data: TensorLike,
+        data: MPObject,
         visibility: Visibility = Visibility.SECRET,
         owner_rank: int = -1,
-    ) -> PFunction:
-        """Create a PFunction that generates SPU shares from input data.
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        if not isinstance(data, MPObject):
+            raise TypeError("data must be an MPObject (Tensor) for SpuMakeShares")
 
-        This function creates a PFunction that wraps the SPU share generation process,
-        allowing input data to be converted into secret shares for secure computation.
+        if visibility == Visibility.PRIVATE:
+            if not self.config.enable_private:
+                raise ValueError("PRIVATE visibility disabled in SpuConfig")
+            if owner_rank < 0 or owner_rank >= self.config.world_size:
+                raise ValueError(
+                    f"owner_rank {owner_rank} out of range [0,{self.config.world_size})"
+                )
 
-        Args:
-            data: Input tensor to be shared
-            visibility: Visibility type for the shares (SECRET, PUBLIC, PRIVATE)
-            owner_rank: Owner rank for PRIVATE visibility (-1 for all parties)
-
-        Returns:
-            PFunction that generates SPU shares when executed
-
-        Example:
-            >>> import jax.numpy as jnp
-            >>> data = jnp.array([1.0, 2.0, 3.0])
-            >>> share_fn = SpuFrontend.makeshares(data, Visibility.SECRET)
-            >>> # This PFunction can be executed by SPU runtime to create shares
-        """
-        # Create input info for the data
-        ins_info = [TensorType.from_obj(data)]
-
-        # For makeshares, the output will be SPU shares - one for each party
-        # Create one output tensor info for each party's share
-        outs_info = [ins_info[0] for _ in range(self.world_size)]
-
-        # Create the PFunction
+        in_ty = TensorType.from_obj(data)
+        ins_info = (in_ty,)
+        outs_info = tuple(in_ty for _ in range(self.config.world_size))
         pfunc = PFunction(
             fn_type="spu.makeshares",
             ins_info=ins_info,
             outs_info=outs_info,
             fn_name="makeshares",
-            visibility=visibility.value,  # Use the libspu enum value
+            visibility=visibility.value,
             owner_rank=owner_rank,
             operation="makeshares",
-            world_size=self.world_size,  # Add world_size to metadata
+            world_size=self.config.world_size,
         )
+        _, treedef = tree_flatten(list(outs_info))
+        return pfunc, [data], treedef
 
-        return pfunc
 
-    def reconstruct(
-        self,
-        shares: Sequence[TensorLike],
-    ) -> PFunction:
-        """Create a PFunction that reconstructs plaintext data from SPU shares.
+class SpuReconstruct(FEOp):
+    """Reconstruct plaintext tensor from world_size shares."""
 
-        This function creates a PFunction that wraps the SPU reconstruction process,
-        allowing secret shares to be converted back into plaintext values.
+    def __init__(self, config: SpuConfig):
+        self.config = config
+        self.config.ensure()
 
-        Args:
-            shares: List of SPU shares to be reconstructed
+    def __call__(
+        self, *shares: MPObject
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        if len(shares) == 0:
+            raise ValueError("SpuReconstruct requires at least one share")
+        if len(shares) != self.config.world_size:
+            # We allow reconstruct fewer? keep strict for now.
+            raise ValueError(
+                f"Expected {self.config.world_size} shares, got {len(shares)}"
+            )
 
-        Returns:
-            PFunction that reconstructs plaintext data when executed
-
-        Example:
-            >>> # Assuming we have SPU shares from previous computation
-            >>> share_list = [share1, share2, share3]  # from different parties
-            >>> reconstruct_fn = SpuFrontend.reconstruct(share_list)
-            >>> # This PFunction can be executed by SPU runtime to get plaintext
-        """
-        # Create input info for the shares
-        ins_info = [TensorType.from_obj(share) for share in shares]
-
-        # Output will be a single plaintext tensor
-        outs_info = [ins_info[0]] if ins_info else []
-
+        ins_info = tuple(TensorType.from_obj(s) for s in shares)
+        # Assume all identical type; output is first.
+        outs_info = (ins_info[0],)
         pfunc = PFunction(
             fn_type="spu.reconstruct",
             ins_info=ins_info,
             outs_info=outs_info,
             fn_name="reconstruct",
         )
+        _, treedef = tree_flatten(outs_info[0])
+        return pfunc, list(shares), treedef
 
-        return pfunc
 
-    def compile_jax(
-        self,
-        is_variable: Callable[[Any], bool],
-        jax_fn: Callable,
-        *args: Any,
-        **kwargs: Any,
-    ) -> tuple[PFunction, list, PyTreeDef]:
-        """Compile JAX function to SPU executable format for secure execution.
+class SpuJaxCompile(FEOp):
+    """Compile a JAX function into SPU pphlo MLIR representation."""
 
-        This function translates high-level JAX functions into SPU-compatible
-        representations, enabling secure multi-party computation.
+    def __init__(self, config: SpuConfig):
+        self.config = config
+        self.config.ensure()
 
-        Args:
-            is_variable: Predicate function to classify parameters as variables vs. constants.
-                        Returns True for parameters that should be treated as PFunction inputs.
-            flat_fn: JAX function to be compiled into SPU format
-            *args: Positional arguments passed to the function during compilation
-            **kwargs: Keyword arguments passed to the function during compilation
+    def __call__(
+        self, fn: Callable, *args: Any, **kwargs: Any
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        def is_variable(arg: Any) -> bool:
+            return isinstance(arg, MPObject)
 
-        Returns:
-            tuple[PFunction, list, PyTreeDef]: Compilation artifacts containing:
-                - PFunction: Serialized function with embedded SPU executable and metadata
-                - list: Extracted variable parameters (those satisfying is_variable predicate).
-                       Non-variable parameters are captured as compile-time constants within
-                       the PFunction body, while variables become runtime input parameters.
-                - PyTreeDef: Tree structure template for reconstructing nested output values
+        normalized_fn, in_vars = normalize_fn(fn, args, kwargs, is_variable)
 
-        Rationale:
-            SPU Compilation Pipeline:
-            1. Convert function inputs to JAX ShapeDtypeStruct for tracing
-            2. Use spu.utils.frontend to compile the function with JAX frontend
-            3. Serialize the executable and metadata for remote execution
-            4. Handle visibility information for secure computation
-
-            Key Components:
-            - spu_fe.compile(): Compiles JAX functions to SPU executable format
-            - Visibility handling: Determines which inputs are secret vs public
-            - Executable serialization: Uses protobuf for cross-language transmission
-
-            Technical Pipeline:
-            function → jax tracing → spu_fe.compile → ExecutableProto → protobuf serialization
-        """
-        # Flatten (args, kwargs) and capture immediates using normalize_fn
-        normalized_fn, in_vars = normalize_fn(jax_fn, args, kwargs, is_variable)
-
-        # Convert TensorType in_vars to ShapeDtypeStruct for JAX tracing
         jax_params = [
             ShapeDtypeStruct(arg.shape, jnp.dtype(arg.dtype.name)) for arg in in_vars
         ]
-
-        # Set up SPU compilation parameters
         in_vis = [libspu.Visibility.VIS_SECRET for _ in in_vars]
-
-        # Note: in/out names are temporary within SPU runtime API lifecycle
-        # Runtime uses setVar/run/getVar/clearVar as atomic transaction
-        # where variable names exist only during the execution context
         in_names = [f"in{idx}" for idx in range(len(in_vars))]
         out_names_gen = lambda outs: [f"out{idx}" for idx in range(len(outs))]
 
-        # Compile using SPU frontend
+        assert self.config.copts is not None
         executable, out_info = spu_fe.compile(
             spu_fe.Kind.JAX,
             normalized_fn,
@@ -207,33 +171,39 @@ class SpuFE:
             out_names_gen,
             static_argnums=(),
             static_argnames=None,
-            copts=self.copts,
+            copts=self.config.copts,
         )
-
-        # Extract output information
         out_info_flat, out_tree = tree_flatten(out_info)
         output_tensor_infos = [TensorType.from_obj(out) for out in out_info_flat]
 
-        # Use MLIR code directly instead of protobuf serialization
-        # This is more readable, compact, and closer to SPU's native representation
         executable_code = executable.code
-
-        # Convert bytes to string for MLIR text
         assert isinstance(executable_code, bytes), (
             f"Expected bytes, got {type(executable_code)}"
         )
         executable_code = executable_code.decode("utf-8")
 
-        pfn = PFunction(
+        pfunc = PFunction(
             fn_type="mlir.pphlo",
             ins_info=tuple(TensorType.from_obj(x) for x in in_vars),
             outs_info=tuple(output_tensor_infos),
-            fn_name=get_fn_name(jax_fn),
+            fn_name=get_fn_name(fn),
             fn_text=executable_code,
             input_visibilities=in_vis,
             input_names=list(executable.input_names),
             output_names=list(executable.output_names),
             executable_name=executable.name,
         )
+        return pfunc, in_vars, out_tree
 
-        return pfn, in_vars, out_tree
+
+# Convenience factory helpers (optional public API)
+def make_shares_op(config: SpuConfig) -> SpuMakeShares:  # pragma: no cover - trivial
+    return SpuMakeShares(config)
+
+
+def reconstruct_op(config: SpuConfig) -> SpuReconstruct:  # pragma: no cover - trivial
+    return SpuReconstruct(config)
+
+
+def jax_compile_op(config: SpuConfig) -> SpuJaxCompile:  # pragma: no cover - trivial
+    return SpuJaxCompile(config)

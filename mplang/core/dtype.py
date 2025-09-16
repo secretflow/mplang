@@ -34,6 +34,7 @@ __all__ = [
     "COMPLEX128",
     "DATE",
     "DECIMAL",
+    "DTYPE_CAN_CAST",
     "FLOAT16",
     "FLOAT32",
     "FLOAT64",
@@ -52,6 +53,7 @@ __all__ = [
     "UINT64",
     "UUID",
     "DType",
+    "can_cast",
     "from_numpy",
     "to_numpy",
 ]
@@ -291,3 +293,74 @@ def from_numpy(np_dtype: Any) -> DType:
 def to_numpy(dtype: DType) -> np.dtype:
     """Convert custom DType to NumPy dtype."""
     return dtype.to_numpy()
+
+
+# ---------------------------------------------------------------------------
+# Casting capability matrix
+# ---------------------------------------------------------------------------
+
+_DTYPE_INDEX: dict[DType, int] = {
+    BOOL: 0,
+    INT8: 1,
+    INT16: 2,
+    INT32: 3,
+    INT64: 4,
+    UINT8: 5,
+    UINT16: 6,
+    UINT32: 7,
+    UINT64: 8,
+    FLOAT16: 9,
+    FLOAT32: 10,
+    FLOAT64: 11,
+    COMPLEX64: 12,
+    COMPLEX128: 13,
+    STRING: 14,
+    DATE: 15,
+    TIME: 16,
+    TIMESTAMP: 17,
+    DECIMAL: 18,
+    BINARY: 19,
+    JSON: 20,
+    UUID: 21,
+    INTERVAL: 22,
+}
+
+# DTYPE_CAN_CAST[row][col] answers: can dtype(row) safely cast to dtype(col).
+# TODO(jint): refine this according to backend capabilities.
+# fmt: off
+DTYPE_CAN_CAST: list[list[int]] = [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # bool
+    [0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # int8
+    [0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # int16
+    [0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # int32
+    [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # int64
+    [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # uint8
+    [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # uint16
+    [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # uint32
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # uint64
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # float16
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # float32
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # float64
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # complex64
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # complex128
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # string
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # date
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # time
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],  # timestamp
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # decimal
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # binary
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # json
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # uuid
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],  # interval
+]
+# fmt: on
+
+
+def can_cast(src: DType, dst: DType) -> bool:
+    """Return True if src dtype can be safely cast to dst dtype under static policy."""
+    try:
+        i = _DTYPE_INDEX[src]
+        j = _DTYPE_INDEX[dst]
+    except KeyError:
+        return False
+    return bool(DTYPE_CAN_CAST[i][j])

@@ -155,7 +155,7 @@ class Constant(FEOp):
             if hasattr(data, "tobytes"):
                 # For numpy arrays and other TensorLike objects with tobytes method
                 out_type = TensorType.from_obj(data)
-                data_bytes = data.tobytes()  # type: ignore
+                data_bytes = data.tobytes()  # type: ignore[attr-defined]
             else:
                 # For other TensorLike objects, convert to numpy first
                 np_data = np.array(data)
@@ -175,11 +175,16 @@ class Constant(FEOp):
         return pfunc, [], treedef
 
 
+# Public instance for convenience (mirrors other FEOp usages)
 constant = Constant()
 
 
 class Rank(FEOp):
-    """Rank function class."""
+    """Produce the local party's rank as a UINT64 scalar tensor.
+
+    Frontend wrapper emitting a PFunction with fn_type="builtin.rank" and no inputs.
+    Runtime semantics: each participating party obtains its own rank in [0, world_size).
+    """
 
     def __call__(self) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """Multi-party get the rank (party identifier) of each party.
@@ -203,7 +208,10 @@ rank = Rank()
 
 
 class PRand(FEOp):
-    """PRand function class."""
+    """Produce a private random UINT64 tensor of the given shape.
+
+    Each party generates its own random contents independently; shape is structural only.
+    """
 
     def __call__(
         self, shape: Shape = ()
@@ -231,3 +239,134 @@ class PRand(FEOp):
 
 
 prand = PRand()
+
+
+class TableToTensor(FEOp):
+    """Pack all columns of a homogeneous table into a 2-D tensor.
+
+    WHY this exists:
+        * Provide a purely structural bridge Table -> Tensor without any semantic transforms.
+        * Keep feature dimension ordering identical to the table schema to avoid hidden reordering.
+        * Enforce homogeneity early so downstream tensor backends see a single element dtype.
+
+    Non-goals (handled upstream in preprocessing layers such as ibis / pandas):
+        * Column selection / projection
+        * Per-column casting, encoding, null filling
+        * Reordering or feature engineering
+
+    Resulting tensor shape: (N, F) where N is provided explicitly (no implicit row counting) and
+    F is the number of columns in the table schema.
+    """
+
+    def __call__(
+        self,
+        table: MPObject,
+        number_rows: int,
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        """Symbolically pack table columns into a rank-2 tensor MPObject.
+
+        Args:
+            table: Table-typed MPObject whose *entire* schema is to be packed.
+            number_rows: Mandatory total row count (N). Caller supplies authoritative value (catalog / prior compute). Must be >= 0.
+
+        Returns:
+            A tuple (pfunc, inputs, treedef):
+              pfunc: PFunction describing the structural conversion (fn_type="builtin.table_to_tensor").
+              inputs: Single-element list containing the original table MPObject (captured for graph wiring).
+              treedef: PyTreeDef corresponding to the resulting TensorType so outer tracing can rebuild structure.
+
+        Raises:
+            TypeError: If input object is not a table MPObject; or if table columns are heterogeneous.
+            ValueError: If ``number_rows`` < 0.
+        """
+        # Basic validations on table type
+        if not isinstance(table.mptype._type, TableType):  # type: ignore[attr-defined]
+            raise TypeError("table_to_tensor expects a Table MPObject")
+        schema: TableType = table.mptype._type  # type: ignore[assignment]
+        if schema.num_columns() == 0:
+            raise ValueError("Cannot pack empty table")
+
+        col_dtypes = list(schema.column_types())
+        first = col_dtypes[0]
+        if not all(dt == first for dt in col_dtypes[1:]):
+            raise TypeError(
+                "Heterogeneous dtypes; perform casting upstream before table_to_tensor"
+            )
+        final_dtype = first
+
+        # Row dimension is now explicitly provided by caller.
+        if not isinstance(number_rows, int):  # type: ignore[unreachable]
+            raise TypeError("number_rows must be an int")
+        if number_rows < 0:
+            raise ValueError("number_rows must be >= 0")
+        shape = (number_rows, schema.num_columns())
+        tensor_type = TensorType(final_dtype, shape)  # type: ignore[arg-type]
+
+        pfunc = PFunction(
+            fn_type="builtin.table_to_tensor",
+            ins_info=(schema,),
+            outs_info=(tensor_type,),
+        )
+        _, treedef = tree_flatten(tensor_type)
+        return pfunc, [table], treedef
+
+
+table_to_tensor = TableToTensor()
+
+
+class TensorToTable(FEOp):
+    """Unpack a rank-2 tensor (N, F) into a homogeneous table schema.
+
+    WHY this exists:
+        * Provide the inverse structural mapping of TableToTensor with explicit, stable column names.
+        * Avoid implicit naming or synthetic dtype heterogenization which could hide mismatches.
+
+    Constraints / design rationale:
+        * Caller must supply column_names explicitly to make schema intent unambiguous.
+        * All columns inherit the single tensor element dtype (no per-column overrides to prevent silent casts).
+        * No data materialization or copying; only IR-level structural metadata is emitted.
+    """
+
+    def __call__(
+        self,
+        tensor: MPObject,
+        column_names: list[str],
+    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+        """Symbolically convert a rank-2 tensor into a table schema.
+
+        Args:
+            tensor: Tensor-typed MPObject of shape (N, F)
+            column_names: Required list of names; length must equal F.
+
+        Returns:
+            pfunc, inputs, treedef triple as usual.
+
+        Raises:
+            TypeError: If not tensor or rank != 2.
+            ValueError: If column_names length mismatches F or empty.
+        """
+        if not isinstance(tensor.mptype._type, TensorType):  # type: ignore[attr-defined]
+            raise TypeError("tensor_to_table expects a Tensor MPObject")
+
+        t_ty: TensorType = tensor.mptype._type  # type: ignore[assignment]
+        if len(t_ty.shape) != 2:
+            raise TypeError("tensor_to_table expects a rank-2 tensor (N,F)")
+        n_cols = t_ty.shape[1]
+        if not column_names:
+            raise ValueError("column_names required (non-empty)")
+        if len(column_names) != n_cols:
+            raise ValueError("column_names length must match tensor second dim")
+        col_types = [t_ty.dtype] * n_cols
+        schema = TableType.from_pairs(list(zip(column_names, col_types, strict=True)))
+
+        pfunc = PFunction(
+            fn_type="builtin.tensor_to_table",
+            ins_info=(t_ty,),
+            outs_info=(schema,),
+            column_names=tuple(column_names),  # duplicated with outs_info
+        )
+        _, treedef = tree_flatten(schema)
+        return pfunc, [tensor], treedef
+
+
+tensor_to_table = TensorToTable()

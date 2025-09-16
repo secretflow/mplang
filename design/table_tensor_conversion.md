@@ -1,8 +1,3 @@
-<!--
-    This document describes the FINAL minimal structural contract for converting between a logical Table
-    (ordered, homogeneous columns) and a rank‑2 Tensor in MPLang. Historical iterations intentionally removed.
--->
-
 # Table ↔ Tensor Structural Conversion (Final Contract)
 
 ## Overview

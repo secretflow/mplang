@@ -20,9 +20,38 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.backend.spu import SpuHandler, SpuValue
-from mplang.core.tensor import TensorType
-from mplang.frontend.spu import SpuFE
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
+from mplang.core.dtype import DType
+from mplang.core.mpobject import MPContext, MPObject
+from mplang.core.mptype import MPType
+from mplang.frontend.spu import SpuConfig, SpuJaxCompile
 from mplang.runtime.link_comm import LinkCommunicator
+
+
+class DummyContext(MPContext):
+    def __init__(self):
+        runtime = RuntimeInfo(version="dev", platform="local", backends=[])
+        node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
+        device = Device(name="p0_local", kind="local", members=[node])
+        spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})
+        super().__init__(spec)
+
+
+class DummyTensor(MPObject):
+    """Minimal MPObject representing a tensor for compilation tests."""
+
+    def __init__(self, shape: tuple[int, ...], dtype: jnp.dtype):  # type: ignore[valid-type]
+        # Pass dtype object directly so DType.from_any can handle jax/np dtypes
+        self._mptype = MPType.tensor(DType.from_any(dtype), shape)
+        self._ctx = DummyContext()
+
+    @property
+    def mptype(self) -> MPType:
+        return self._mptype
+
+    @property
+    def ctx(self) -> MPContext:
+        return self._ctx
 
 
 def create_mem_link_contexts(world_size: int = 2):
@@ -73,14 +102,12 @@ class TestSpuHandler:
         def add_fn(x, y):
             return x + y
 
-        args = [
-            TensorType(shape=(3,), dtype=jnp.float32),
-            TensorType(shape=(3,), dtype=jnp.float32),
-        ]
+        args = [DummyTensor((3,), jnp.float32), DummyTensor((3,), jnp.float32)]
 
         # Compile the function
-        is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, _ = SpuFE(world_size=2).compile_jax(is_var, add_fn, *args)
+        cfg = SpuConfig(world_size=2)
+        compiler = SpuJaxCompile(cfg)
+        cfunc, _, _ = compiler(add_fn, *args)
 
         # Verify the compiled function format
         assert cfunc.fn_type == "mlir.pphlo"
@@ -112,14 +139,12 @@ class TestSpuHandler:
         def add_fn(x, y):
             return x + y
 
-        args = [
-            TensorType(shape=(3,), dtype=jnp.float32),
-            TensorType(shape=(3,), dtype=jnp.float32),
-        ]
+        args = [DummyTensor((3,), jnp.float32), DummyTensor((3,), jnp.float32)]
 
         # Compile the function (this should always work)
-        is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, _ = SpuFE(world_size=1).compile_jax(is_var, add_fn, *args)
+        cfg = SpuConfig(world_size=1)
+        compiler = SpuJaxCompile(cfg)
+        cfunc, _, _ = compiler(add_fn, *args)
 
         # Create test data
         x_data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -224,14 +249,12 @@ class TestSpuHandler:
         def add_fn(x, y):
             return x + y
 
-        args = [
-            TensorType(shape=(3,), dtype=jnp.float32),
-            TensorType(shape=(3,), dtype=jnp.float32),
-        ]
+        args = [DummyTensor((3,), jnp.float32), DummyTensor((3,), jnp.float32)]
 
         # Compile the function
-        is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, _ = SpuFE(world_size=2).compile_jax(is_var, add_fn, *args)
+        cfg = SpuConfig(world_size=2)
+        compiler = SpuJaxCompile(cfg)
+        cfunc, _, _ = compiler(add_fn, *args)
 
         # Create test data
         x_data = np.array([1.0, 2.0, 3.0], dtype=np.float32)

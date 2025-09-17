@@ -672,14 +672,10 @@ def while_loop(
             "while_loop init must be a PyTree of MPObjects (no Python/immediate leaves)"
         )
 
-    # Use current context mask for tracing cond/body; do not shrink at trace time.
-    fork_mask = cur_tracer.mask
-
-    # Trace cond/body in separate forked contexts using the deduced mask
-    cond_tracer = cur_tracer.fork(fork_mask)
+    cond_tracer = cur_tracer.fork()
     cond_tfn = trace(cond_tracer, cond_fn, init)
 
-    body_tracer = cur_tracer.fork(fork_mask)
+    body_tracer = cur_tracer.fork()
     body_tfn = trace(body_tracer, body_fn, init)
 
     # Validate cond returns single value

@@ -20,8 +20,8 @@ import pytest
 
 from mplang.core.cluster import (
     ClusterSpec,
-    LogicalDevice,
-    PhysicalNode,
+    Device,
+    Node,
     RuntimeInfo,
 )
 
@@ -80,7 +80,7 @@ class TestPhysicalNode:
     def test_basic_creation(self):
         """Test basic PhysicalNode creation."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node = PhysicalNode(
+        node = Node(
             name="alice_node",
             rank=0,
             endpoint="127.0.0.1:9001",
@@ -94,7 +94,7 @@ class TestPhysicalNode:
     def test_to_dict(self):
         """Test PhysicalNode.to_dict() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node = PhysicalNode(
+        node = Node(
             name="alice_node",
             rank=0,
             endpoint="127.0.0.1:9001",
@@ -114,7 +114,7 @@ class TestPhysicalNode:
     def test_immutability(self):
         """Test that PhysicalNode is immutable."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node = PhysicalNode(
+        node = Node(
             name="alice_node",
             rank=0,
             endpoint="127.0.0.1:9001",
@@ -130,10 +130,10 @@ class TestLogicalDevice:
     def test_basic_creation(self):
         """Test basic LogicalDevice creation."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node1 = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        node2 = PhysicalNode("bob_node", 1, "127.0.0.1:9002", runtime)
+        node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
-        device = LogicalDevice(
+        device = Device(
             name="spu_device",
             kind="spu",
             members=[node1, node2],
@@ -147,11 +147,11 @@ class TestLogicalDevice:
     def test_member_ranks_property(self):
         """Test LogicalDevice.member_ranks property."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node1 = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        node2 = PhysicalNode("bob_node", 1, "127.0.0.1:9002", runtime)
-        node3 = PhysicalNode("carol_node", 2, "127.0.0.1:9003", runtime)
+        node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
+        node3 = Node("carol_node", 2, "127.0.0.1:9003", runtime)
 
-        device = LogicalDevice(
+        device = Device(
             name="spu_device",
             kind="spu",
             members=[node3, node1, node2],  # Unordered
@@ -161,10 +161,10 @@ class TestLogicalDevice:
     def test_to_dict(self):
         """Test LogicalDevice.to_dict() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node1 = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        node2 = PhysicalNode("bob_node", 1, "127.0.0.1:9002", runtime)
+        node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
-        device = LogicalDevice(
+        device = Device(
             name="spu_device",
             kind="spu",
             members=[node1, node2],
@@ -180,9 +180,9 @@ class TestLogicalDevice:
     def test_empty_config_default(self):
         """Test LogicalDevice with default empty config."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
+        node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
 
-        device = LogicalDevice(name="alice", kind="local", members=[node])
+        device = Device(name="alice", kind="local", members=[node])
         assert device.config == {}
 
 
@@ -192,10 +192,10 @@ class TestClusterSpec:
     def test_basic_creation(self):
         """Test basic ClusterSpec creation."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node1 = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        node2 = PhysicalNode("bob_node", 1, "127.0.0.1:9002", runtime)
+        node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
-        device = LogicalDevice("alice", "local", [node1])
+        device = Device("alice", "local", [node1])
 
         cluster = ClusterSpec(
             nodes={"alice_node": node1, "bob_node": node2},
@@ -207,7 +207,7 @@ class TestClusterSpec:
     def test_get_node(self):
         """Test ClusterSpec.get_node() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
+        node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
 
         cluster = ClusterSpec(nodes={"alice_node": node}, devices={})
         retrieved_node = cluster.get_node("alice_node")
@@ -222,8 +222,8 @@ class TestClusterSpec:
     def test_get_device(self):
         """Test ClusterSpec.get_device() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        device = LogicalDevice("alice", "local", [node])
+        node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        device = Device("alice", "local", [node])
 
         cluster = ClusterSpec(nodes={"alice_node": node}, devices={"alice": device})
         retrieved_device = cluster.get_device("alice")
@@ -238,8 +238,8 @@ class TestClusterSpec:
     def test_get_node_by_rank(self):
         """Test ClusterSpec.get_node_by_rank() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node1 = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        node2 = PhysicalNode("bob_node", 1, "127.0.0.1:9002", runtime)
+        node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
         cluster = ClusterSpec(
             nodes={"alice_node": node1, "bob_node": node2}, devices={}
@@ -256,9 +256,9 @@ class TestClusterSpec:
     def test_to_dict(self):
         """Test ClusterSpec.to_dict() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
-        node1 = PhysicalNode("alice_node", 0, "127.0.0.1:9001", runtime)
-        node2 = PhysicalNode("bob_node", 1, "127.0.0.1:9002", runtime)
-        device = LogicalDevice("alice", "local", [node1])
+        node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
+        node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
+        device = Device("alice", "local", [node1])
 
         cluster = ClusterSpec(
             nodes={"alice_node": node1, "bob_node": node2},
@@ -489,7 +489,7 @@ class TestFromDict:
         runtime = RuntimeInfo(version="1.0", platform="cpu", backends=[])
 
         # Test node name mismatch
-        node = PhysicalNode(
+        node = Node(
             name="correct_name",
             rank=0,
             endpoint="localhost:5000",
@@ -506,7 +506,7 @@ class TestFromDict:
             )
 
         # Test device name mismatch
-        device = LogicalDevice(
+        device = Device(
             name="correct_device_name",
             kind="SPU",
             members=[node],

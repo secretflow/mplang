@@ -32,7 +32,7 @@ from jax.tree_util import tree_map
 import mplang.api as mapi
 from mplang import simp
 from mplang.core import InterpContext, MPObject, primitive
-from mplang.core.cluster import ClusterSpec, LogicalDevice
+from mplang.core.cluster import ClusterSpec, Device
 from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
 from mplang.frontend import crypto, ibis_cc, jax_cc, tee
@@ -79,9 +79,7 @@ def _get_devid(obj: MPObject) -> str:
 _is_mpobj = lambda x: isinstance(x, MPObject)
 
 
-def _device_run_spu(
-    dev_info: LogicalDevice, op: FEOp, *args: Any, **kwargs: Any
-) -> Any:
+def _device_run_spu(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> Any:
     if not isinstance(op, JaxCompiler):
         raise ValueError("SPU device only supports JAX frontend.")
     fn, *aargs = args
@@ -89,9 +87,7 @@ def _device_run_spu(
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
-def _device_run_tee(
-    dev_info: LogicalDevice, op: FEOp, *args: Any, **kwargs: Any
-) -> Any:
+def _device_run_tee(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> Any:
     if not isinstance(op, JaxCompiler) and not isinstance(op, IbisCompiler):
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
@@ -100,9 +96,7 @@ def _device_run_tee(
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
-def _device_run_ppu(
-    dev_info: LogicalDevice, op: FEOp, *args: Any, **kwargs: Any
-) -> Any:
+def _device_run_ppu(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> Any:
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
     var = simp.runAt(rank, op)(*args, **kwargs)

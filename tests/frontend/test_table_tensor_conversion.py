@@ -18,8 +18,8 @@ import pytest
 
 from mplang.core.cluster import (
     ClusterSpec,
-    LogicalDevice,
-    PhysicalNode,
+    Device,
+    Node,
     RuntimeInfo,
 )
 from mplang.core.dtype import DType
@@ -34,8 +34,8 @@ class DummyContext(MPContext):
     def __init__(self):
         # Build minimal single-node, single-device spec
         runtime = RuntimeInfo(version="dev", platform="local", backends=[])
-        node = PhysicalNode(name="p0", rank=0, endpoint="local", runtime_info=runtime)
-        device = LogicalDevice(name="p0_local", kind="local", members=[node])
+        node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
+        device = Device(name="p0_local", kind="local", members=[node])
         spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})
         super().__init__(spec)
 

@@ -29,6 +29,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
+from mplang.core.dtype import BOOL
 from mplang.core.expr.ast import (
     AccessExpr,
     CondExpr,
@@ -286,11 +287,11 @@ def peval(
     ctx = _tracer()
 
     if rmask is None and len(args) == 0:
-        # If no rmask is provided and no args, use full mask
-        rmask = Mask.all(ctx.world_size())
+        # Zero-arg call: default to current context mask (do not implicitly widen)
+        rmask = ctx.mask
     if rmask is not None and not Mask(rmask).is_subset(ctx.mask):
         raise ValueError(
-            f"Specified rmask {rmask} is not a subset of deduced pmask {ctx.mask}"
+            f"Specified rmask {rmask} must be a subset of current context mask {ctx.mask}"
         )
 
     arg_exprs = [arg.expr for arg in cast(list[TraceVar], args)]
@@ -460,26 +461,20 @@ def uniform_cond(
     cur_tracer = _tracer()
 
     # Predicate static shape/dtype check
-    pred_var = cast(TraceVar, pred)
-    pred_mpt = pred_var.mptype
-    if len(pred_mpt.shape) != 0:
+    pred_ty = pred.mptype
+    if len(pred_ty.shape) != 0:
         raise TypeError(
-            f"uniform_cond predicate must be scalar, got shape {pred_mpt.shape}"
+            f"uniform_cond predicate must be scalar, got shape {pred_ty.shape}"
         )
     # dtype naming depends on dtype system; assume name property or eq compare
-    if getattr(pred_mpt.dtype, "name", str(pred_mpt.dtype)).lower() not in (
-        "bool",
-        "boolean",
-    ):
-        raise TypeError(
-            f"uniform_cond predicate must be boolean, got dtype {pred_mpt.dtype}"
-        )
+    if pred_ty != BOOL:
+        raise TypeError(f"uniform_cond predicate must be boolean, got {pred_ty.dtype}")
 
     # Step 1: Trace both branches in separate contexts
-    then_tracer = cur_tracer.fork(pred.pmask)
+    then_tracer = cur_tracer.fork()
     then_tfn = trace(then_tracer, then_fn, *args)
 
-    else_tracer = cur_tracer.fork(pred.pmask)
+    else_tracer = cur_tracer.fork()
     else_tfn = trace(else_tracer, else_fn, *args)
 
     if not then_tfn.is_signature_match(else_tfn, check_captures=False):
@@ -655,14 +650,13 @@ def while_loop(
         (plain ``jax.while_loop`` cannot express it).
 
     Note:
-        Control-flow execution mask (who runs cond/body) is derived from the union of
-        the init state's leaf pmasks (when known) intersected with the outer context
-        mask. If any init leaf has dynamic/unknown pmask at trace time, the current
-        context mask is used. Value-level visibility is still enforced per-op by
-        argument pmask intersection. The loop state MPType (including pmask) must
-        remain identical across iterations. Both functions can capture variables from
-        outer scopes. This implementation is similar to JAX while_loop but adapted
-        for multi-party computation.
+        Control-flow execution domain (who runs cond/body) follows the outer context's
+        mask; we do not shrink the tracer at trace time based on state pmasks. Value
+        visibility and real participation are enforced per-op by argument pmask
+        intersection (and optional rmask). The loop state MPType (including pmask)
+        must remain identical across iterations. Both functions can capture variables
+        from outer scopes. This implementation is similar to JAX while_loop but
+        adapted for multi-party computation.
     """
     cur_tracer = _tracer()
 
@@ -677,13 +671,8 @@ def while_loop(
             "while_loop init must be a PyTree of MPObjects (no Python/immediate leaves)"
         )
 
-    # Decide execution mask for tracing cond/body.
-    def get_mask(x: MPObject) -> Mask:
-        return x.mptype.pmask if x.mptype.pmask is not None else cur_tracer.mask
-
-    fork_mask = Mask.none()
-    for v in init_vars:
-        fork_mask = fork_mask.union(get_mask(v))
+    # Use current context mask for tracing cond/body; do not shrink at trace time.
+    fork_mask = cur_tracer.mask
 
     # Trace cond/body in separate forked contexts using the deduced mask
     cond_tracer = cur_tracer.fork(fork_mask)
@@ -701,6 +690,11 @@ def while_loop(
     if len(cond_out_var.mptype.shape) != 0:
         raise TypeError(
             f"Condition function must return a scalar, but got shape {cond_out_var.mptype.shape}"
+        )
+    # Enforce boolean dtype for condition
+    if cond_out_var.mptype != BOOL:
+        raise TypeError(
+            f"Condition function must return a boolean scalar, got dtype {cond_out_var.mptype.dtype}"
         )
 
     # Validate body returns same number of leaves and same dtype/shape per leaf

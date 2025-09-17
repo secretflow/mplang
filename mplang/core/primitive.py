@@ -38,7 +38,6 @@ from mplang.core.expr.ast import (
     ShflSExpr,
     WhileExpr,
 )
-from mplang.core.expr.utils import deduce_mask
 from mplang.core.interp import InterpContext, InterpVar, apply
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
@@ -656,9 +655,14 @@ def while_loop(
         (plain ``jax.while_loop`` cannot express it).
 
     Note:
-        The output pmask is set conservatively if the body function changes the pmask
-        during iteration. Both functions can capture variables from outer scopes.
-        This implementation is similar to JAX while_loop but adapted for multi-party computation.
+        Control-flow execution mask (who runs cond/body) is derived from the union of
+        the init state's leaf pmasks (when known) intersected with the outer context
+        mask. If any init leaf has dynamic/unknown pmask at trace time, the current
+        context mask is used. Value-level visibility is still enforced per-op by
+        argument pmask intersection. The loop state MPType (including pmask) must
+        remain identical across iterations. Both functions can capture variables from
+        outer scopes. This implementation is similar to JAX while_loop but adapted
+        for multi-party computation.
     """
     cur_tracer = _tracer()
 
@@ -673,9 +677,13 @@ def while_loop(
             "while_loop init must be a PyTree of MPObjects (no Python/immediate leaves)"
         )
 
-    # Deduce execution mask from init leaves; fallback to current context mask if unknown
-    init_pmasks = [cast(TraceVar, v).mptype.pmask for v in init_vars]
-    fork_mask = deduce_mask(*init_pmasks) or cur_tracer.mask
+    # Decide execution mask for tracing cond/body.
+    def get_mask(x: MPObject) -> Mask:
+        return x.mptype.pmask if x.mptype.pmask is not None else cur_tracer.mask
+
+    fork_mask = Mask.none()
+    for v in init_vars:
+        fork_mask = fork_mask.union(get_mask(v))
 
     # Trace cond/body in separate forked contexts using the deduced mask
     cond_tracer = cur_tracer.fork(fork_mask)

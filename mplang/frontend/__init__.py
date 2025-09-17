@@ -28,12 +28,7 @@ from mplang.frontend import tee as tee
 from mplang.frontend.base import FEOp as FEOp
 from mplang.frontend.ibis_cc import ibis_compile as ibis_compile
 from mplang.frontend.jax_cc import jax_compile as jax_compile
-from mplang.frontend.spu import (
-    SpuConfig,
-    jax_compile_op,
-    make_shares_op,
-    reconstruct_op,
-)
+from mplang.frontend.spu import SpuConfig
 from mplang.frontend.sql import sql_run as sql_run
 
 __all__ = [
@@ -45,11 +40,7 @@ __all__ = [
     "ibis_compile",
     "jax_cc",
     "jax_compile",
-    "jax_compile_op",
-    "jax_compile_op",
-    "make_shares_op",
     "phe",
-    "reconstruct_op",
     "sql_run",
     "tee",
 ]

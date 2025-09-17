@@ -194,16 +194,3 @@ class SpuJaxCompile(FEOp):
             executable_name=executable.name,
         )
         return pfunc, in_vars, out_tree
-
-
-# Convenience factory helpers (optional public API)
-def make_shares_op(config: SpuConfig) -> SpuMakeShares:  # pragma: no cover - trivial
-    return SpuMakeShares(config)
-
-
-def reconstruct_op(config: SpuConfig) -> SpuReconstruct:  # pragma: no cover - trivial
-    return SpuReconstruct(config)
-
-
-def jax_compile_op(config: SpuConfig) -> SpuJaxCompile:  # pragma: no cover - trivial
-    return SpuJaxCompile(config)

@@ -290,8 +290,9 @@ def peval(
         # Zero-arg call: default to current context mask (do not implicitly widen)
         rmask = ctx.mask
     if rmask is not None and not Mask(rmask).is_subset(ctx.mask):
+        # Keep error wording for backward-compatibility with existing tests/docs
         raise ValueError(
-            f"Specified rmask {rmask} must be a subset of current context mask {ctx.mask}"
+            f"Specified rmask {rmask} is not a subset of deduced pmask {ctx.mask}"
         )
 
     arg_exprs = [arg.expr for arg in cast(list[TraceVar], args)]
@@ -467,7 +468,7 @@ def uniform_cond(
             f"uniform_cond predicate must be scalar, got shape {pred_ty.shape}"
         )
     # dtype naming depends on dtype system; assume name property or eq compare
-    if pred_ty != BOOL:
+    if pred_ty.dtype != BOOL:
         raise TypeError(f"uniform_cond predicate must be boolean, got {pred_ty.dtype}")
 
     # Step 1: Trace both branches in separate contexts
@@ -692,7 +693,7 @@ def while_loop(
             f"Condition function must return a scalar, but got shape {cond_out_var.mptype.shape}"
         )
     # Enforce boolean dtype for condition
-    if cond_out_var.mptype != BOOL:
+    if cond_out_var.mptype.dtype != BOOL:
         raise TypeError(
             f"Condition function must return a boolean scalar, got dtype {cond_out_var.mptype.dtype}"
         )

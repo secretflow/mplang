@@ -1,0 +1,1879 @@
+version {
+  major: 1
+}
+nodes {
+  op_type: "eval"
+  name: "%0"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "mlir.stablehlo"
+        name: "randint"
+        body: "module @jit_randint attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {\n  func.func public @main() -> (tensor<i64> {mhlo.layout_mode = \"default\"}) {\n    %c = stablehlo.constant dense<70> : tensor<i64>\n    return %c : tensor<i64>\n  }\n}\n"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%1"
+  inputs: "%0"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%2"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "mlir.stablehlo"
+        name: "randint"
+        body: "module @jit_randint attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {\n  func.func public @main() -> (tensor<i64> {mhlo.layout_mode = \"default\"}) {\n    %c = stablehlo.constant dense<56> : tensor<i64>\n    return %c : tensor<i64>\n  }\n}\n"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%3"
+  inputs: "%2"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%4"
+  inputs: "%1"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.pack"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%5"
+  inputs: "%4"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%6"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_keygen"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%7"
+  inputs: "%6:0"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%8"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_keygen"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%9"
+  inputs: "%8:1"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%10"
+  inputs: "%9"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "tee.quote"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 33
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%11"
+  inputs: "%10"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 33
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%12"
+  inputs: "%11"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 2
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 33
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%13"
+  inputs: "%12"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "tee.attest"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%14"
+  inputs: "%13"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%15"
+  inputs: "%7"
+  inputs: "%14"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_derive"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%16"
+  inputs: "%15"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%17"
+  inputs: "%16"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.hkdf"
+        attrs {
+          key: "info"
+          value {
+            type: STRING
+            s: "mplang/device/tee/v1"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%18"
+  inputs: "%17"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%19"
+  inputs: "%5"
+  inputs: "%18"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.enc"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 20
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%20"
+  inputs: "%19"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 20
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%21"
+  inputs: "%20"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 0
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 20
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%22"
+  inputs: "%8:0"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%23"
+  inputs: "%6:1"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%24"
+  inputs: "%23"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 0
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%25"
+  inputs: "%22"
+  inputs: "%24"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_derive"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%26"
+  inputs: "%25"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%27"
+  inputs: "%26"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.hkdf"
+        attrs {
+          key: "info"
+          value {
+            type: STRING
+            s: "mplang/device/tee/v1"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%28"
+  inputs: "%27"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%29"
+  inputs: "%21"
+  inputs: "%28"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.dec"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%30"
+  inputs: "%29"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%31"
+  inputs: "%30"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.unpack"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%32"
+  inputs: "%31"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%33"
+  inputs: "%3"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.pack"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%34"
+  inputs: "%33"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%35"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_keygen"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%36"
+  inputs: "%35:0"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%37"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_keygen"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%38"
+  inputs: "%37:1"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%39"
+  inputs: "%38"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "tee.quote"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 33
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%40"
+  inputs: "%39"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 33
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%41"
+  inputs: "%40"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 2
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 33
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%42"
+  inputs: "%41"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "tee.attest"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%43"
+  inputs: "%42"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%44"
+  inputs: "%36"
+  inputs: "%43"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_derive"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%45"
+  inputs: "%44"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%46"
+  inputs: "%45"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.hkdf"
+        attrs {
+          key: "info"
+          value {
+            type: STRING
+            s: "mplang/device/tee/v1"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%47"
+  inputs: "%46"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%48"
+  inputs: "%34"
+  inputs: "%47"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 2
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.enc"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 20
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%49"
+  inputs: "%48"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 20
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%50"
+  inputs: "%49"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 1
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 20
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%51"
+  inputs: "%37:0"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%52"
+  inputs: "%35:1"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 2
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%53"
+  inputs: "%52"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 1
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%54"
+  inputs: "%51"
+  inputs: "%53"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.kem_derive"
+        attrs {
+          key: "suite"
+          value {
+            type: STRING
+            s: "x25519"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%55"
+  inputs: "%54"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%56"
+  inputs: "%55"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.hkdf"
+        attrs {
+          key: "info"
+          value {
+            type: STRING
+            s: "mplang/device/tee/v1"
+          }
+        }
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%57"
+  inputs: "%56"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 32
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%58"
+  inputs: "%50"
+  inputs: "%57"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.dec"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%59"
+  inputs: "%58"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 8
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%60"
+  inputs: "%59"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.unpack"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%61"
+  inputs: "%60"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%62"
+  inputs: "%32"
+  inputs: "%61"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "mlir.stablehlo"
+        name: "<lambda>"
+        body: "module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {\n  func.func public @main(%arg0: tensor<i64> {mhlo.layout_mode = \"default\"}, %arg1: tensor<i64> {mhlo.layout_mode = \"default\"}) -> (tensor<i1> {mhlo.layout_mode = \"default\"}) {\n    %0 = stablehlo.compare  LT, %arg0, %arg1,  SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>\n    return %0 : tensor<i1>\n  }\n}\n"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%63"
+  inputs: "%62"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%64"
+  inputs: "%63"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.pack"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 1
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%65"
+  inputs: "%64"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 1
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%66"
+  inputs: "%65"
+  inputs: "%28"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 4
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.enc"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 13
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%67"
+  inputs: "%66"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 13
+    }
+    pmask: 4
+  }
+}
+nodes {
+  op_type: "shfl_s"
+  name: "%68"
+  inputs: "%67"
+  attrs {
+    key: "src_ranks"
+    value {
+      type: INTS
+      ints: 2
+    }
+  }
+  attrs {
+    key: "pmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 13
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%69"
+  inputs: "%68"
+  inputs: "%18"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.dec"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 1
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%70"
+  inputs: "%69"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: U8
+      shape_dims: 1
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "eval"
+  name: "%71"
+  inputs: "%70"
+  attrs {
+    key: "rmask"
+    value {
+      type: INT
+      i: 1
+    }
+  }
+  attrs {
+    key: "pfunc"
+    value {
+      type: FUNCTION
+      func {
+        type: "crypto.unpack"
+      }
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "access"
+  name: "%72"
+  inputs: "%71"
+  attrs {
+    key: "index"
+    value {
+      type: INT
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "tuple"
+  name: "%73"
+  inputs: "%1"
+  inputs: "%3"
+  inputs: "%63"
+  inputs: "%72"
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 1
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 2
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 4
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 1
+  }
+}
+nodes {
+  op_type: "func_def"
+  name: "%74"
+  inputs: "%73:0"
+  inputs: "%73:1"
+  inputs: "%73:2"
+  inputs: "%73:3"
+  attrs {
+    key: "params"
+    value {
+      type: INTS
+    }
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 1
+  }
+  outs_info {
+    tensor_type {
+      dtype: I64
+    }
+    pmask: 2
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 4
+  }
+  outs_info {
+    tensor_type {
+      dtype: BOOL
+    }
+    pmask: 1
+  }
+}
+outputs: "%74:0"
+outputs: "%74:1"
+outputs: "%74:2"
+outputs: "%74:3"
+attrs {
+  key: "name"
+  value {
+    type: STRING
+    s: "function_136893094903184"
+  }
+}

@@ -84,7 +84,6 @@ def http_driver(http_servers):  # type: ignore  # noqa: F811
     return mplang.Driver(cluster_spec)
 
 
-@pytest.mark.skip(reason="Known hang in combined suite; ok standalone")
 @pytest.mark.parametrize("http_servers", [5], indirect=True)
 def test_simple_addition_e2e(http_driver):
     """Test simple addition computation using HttpDriver with 5 parties."""

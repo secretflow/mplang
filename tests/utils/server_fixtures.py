@@ -81,9 +81,18 @@ def _verbose() -> bool:
     }
 
 
-def _run_server_process(app, host, port, sock, log_level):
-    """The target function for the server process."""
+def _run_server_process(host, write_conn, log_level):
+    """The target function for the server process using spawn context."""
     import uvicorn
+
+    from mplang.runtime.server import app
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((host, 0))
+    port = sock.getsockname()[1]
+
+    write_conn.send(port)
+    write_conn.close()
 
     config = uvicorn.Config(
         app,
@@ -95,13 +104,11 @@ def _run_server_process(app, host, port, sock, log_level):
     server = uvicorn.Server(config)
     if _verbose():
         print(f"[spawn_http_servers] starting server pid={os.getpid()} port={port}")
-    # The child process inherits the socket file descriptor. Uvicorn is
-    # instructed to use this existing socket instead of creating a new one.
+
     server.run(sockets=[sock])
 
 
 def spawn_http_servers(
-    app,
     n: int,
     *,
     host: str = DEFAULT_HOST,
@@ -111,39 +118,79 @@ def spawn_http_servers(
     request_timeout: float = 0.25,
     log_level: str = "critical",
 ) -> SpawnResult:
-    """Spawn n uvicorn servers using a socket reservation strategy to avoid races.
+    """Spawn n uvicorn servers using spawn context (safe for JAX/multithreaded environments).
 
     This approach involves:
-    1. Creating and binding sockets to ephemeral ports (port=0) in the parent.
-    2. Passing the socket file descriptors to child processes.
+    1. Creating and binding sockets to ephemeral ports (port=0) in the child process.
+    2. Passing the port number to the parent process via pipe.
     3. Uvicorn in the child process then uses the existing socket.
-    This avoids the time-of-check-to-time-of-use (TOCTOU) race condition.
+    This avoids port conflicts and race conditions.
     """
-    sockets = []
-    ports = []
-    for _ in range(n):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind((host, 0))
-        sockets.append(sock)
-        ports.append(sock.getsockname()[1])
 
-    addresses = [f"http://{host}:{p}" for p in ports]
+    ports = []
     processes: list[multiprocessing.Process] = []
 
-    # Use 'fork' context if available, as it's more efficient for passing fds.
-    # 'spawn' would require more complex serialization.
-    ctx = multiprocessing.get_context("fork")
+    # Use 'spawn' context to avoid deadlocks with JAX and other multithreaded libraries
+    ctx = multiprocessing.get_context("spawn")
 
-    for port, sock in zip(ports, sockets, strict=True):
-        p = ctx.Process(
-            target=_run_server_process, args=(app, host, port, sock, log_level)
-        )
-        p.daemon = True
-        p.start()
-        processes.append(p)
-        # The socket can be closed in the parent process after the child has inherited it.
-        sock.close()
+    try:
+        for _ in range(n):
+            read_conn, write_conn = ctx.Pipe(duplex=False)
+            p = ctx.Process(
+                target=_run_server_process,
+                args=(host, write_conn, log_level),
+            )
+            p.daemon = True
+            p.start()
+            processes.append(p)
 
+            write_conn.close()  # Close the write end in the parent process
+            try:
+                port = read_conn.recv()  # Expect the child to send back the port
+                ports.append(port)
+            except EOFError:
+                p.terminate()
+                p.join(timeout=5)
+                raise RuntimeError(
+                    "Failed to start server process, no port received"
+                ) from None
+            finally:
+                read_conn.close()
+    except Exception:
+        # If any part of the loop fails, clean up all processes started so far
+        for p in processes:
+            if p.is_alive():
+                p.terminate()
+                p.join(timeout=1)
+                if p.is_alive():
+                    p.kill()
+        raise
+
+    addresses = [f"http://{host}:{p}" for p in ports]
+    # Health check and cleanup
+    return _wait_for_servers(
+        ports,
+        processes,
+        host,
+        health_path,
+        max_wait,
+        poll_interval,
+        request_timeout,
+        addresses,
+    )
+
+
+def _wait_for_servers(
+    ports,
+    processes,
+    host,
+    health_path,
+    max_wait,
+    poll_interval,
+    request_timeout,
+    addresses,
+):
+    """Common logic to wait for servers to become healthy."""
     # Health check loop
     attempts = int(max_wait / poll_interval)
     for port in ports:
@@ -185,7 +232,9 @@ def spawn_http_servers(
                 msg += f" Last exception: {last_ex}"
             raise RuntimeError(msg)
     if _verbose():
-        print(f"[spawn_http_servers] All {n} servers are healthy on ports: {ports}")
+        print(
+            f"[spawn_http_servers] All {len(ports)} servers are healthy on ports: {ports}"
+        )
 
     return SpawnResult(ports=ports, addresses=addresses, processes=processes)
 
@@ -201,9 +250,7 @@ try:  # pragma: no cover - import guard for non-pytest contexts
         Usage: @pytest.mark.parametrize('http_servers', [3], indirect=True)
         """
         n = getattr(request, "param", 1)
-        from mplang.runtime.server import app as runtime_app
-
-        result = spawn_http_servers(runtime_app, n)
+        result = spawn_http_servers(n)
         try:
             yield result
         finally:

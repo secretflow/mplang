@@ -24,7 +24,8 @@ _SQL_MOD = femod("sql")
 
 class SqlFE(FeOperation):
     def __init__(self, dialect: str = "duckdb"):
-        # Note: FeOperation ctor requires (module,name); we'll bind concrete instances below
+        # Bind to sql module with a stable op name for registry/dispatch
+        super().__init__(_SQL_MOD, "run")
         self._dialect = dialect
 
     def trace(

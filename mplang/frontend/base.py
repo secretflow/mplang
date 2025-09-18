@@ -174,20 +174,20 @@ class FeModule(ABC):
             def add_kernel(x: MPObject, y: MPObject) -> TensorType:
                 return x.mptype._type  # same shape/type as x
 
-                Bad vs Good (signatures and calls):
-                - Bad:  def op(x: MPObject, **kwargs): ...               # disallowed: **kwargs
-                    Good: def op(x: MPObject, *, attr: int): ...
+            Bad vs Good (signatures and calls):
+            - Bad:  def op(x: MPObject, **kwargs): ...               # disallowed: **kwargs
+                Good: def op(x: MPObject, *, attr: int): ...
 
-                - Bad:  def op(*args, **kwargs): ...                     # disallowed: *args/**kwargs
-                    Good: def op(x: MPObject, y: MPObject, *, k: str): ...
+            - Bad:  def op(*args, **kwargs): ...                     # disallowed: *args/**kwargs
+                Good: def op(x: MPObject, y: MPObject, *, k: str): ...
 
-                - Bad:  enc(plaintext=pt, key=mp_key)                    # MPObject via kwargs (disallowed)
-                    Good: enc(pt, mp_key)                                  # pass MPObjects positionally
+            - Bad:  enc(plaintext=pt, key=mp_key)                    # MPObject via kwargs (disallowed)
+                Good: enc(pt, mp_key)                                  # pass MPObjects positionally
 
-                - Good: hkdf(secret, "info")                            # data-like positional mapped to kw-only attr
-                    Also good: hkdf(secret, info="info")
+            - Good: hkdf(secret, "info")                            # data-like positional mapped to kw-only attr
+                Also good: hkdf(secret, info="info")
 
-                - Good: phe.mul(jnp.array(...), jnp.array(...))          # data-like positionals allowed for type inference
+            - Good: phe.mul(jnp.array(...), jnp.array(...))          # data-like positionals allowed for type inference
         """
 
         def _decorator(ret_type_builder: Callable[..., Any]) -> FeOperation:

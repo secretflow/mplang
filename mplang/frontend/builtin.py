@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
@@ -27,27 +26,30 @@ from mplang.utils import table_utils
 _BUILTIN_MOD = femod("builtin")
 
 
-@_BUILTIN_MOD.typed_op(pfunc_name="builtin.identity")
+@_BUILTIN_MOD.typed_op()
 def identity(obj: MPObject) -> TensorType:
     return TensorType.from_obj(obj)
 
 
-@_BUILTIN_MOD.feop()
-def read(
-    path: str, ty: TensorType, **kwargs: Any
-) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    pfunc = PFunction(
-        fn_type="builtin.read",
-        ins_info=(),
-        outs_info=(ty,),
-        path=path,
-        **kwargs,
-    )
-    _, treedef = tree_flatten(ty)
-    return pfunc, [], treedef
+@_BUILTIN_MOD.typed_op()
+def read(*, path: str, ty: TensorType) -> TensorType:
+    """Type-only kernel for reading a tensor/table from a path.
+
+    Attributes:
+      - path: str destination to read from (carried as PFunction attr)
+      - ty:   TensorType/TableType describing the expected output type
+
+    Returns: ty (shape/dtype/schema), no inputs captured.
+    """
+    if not isinstance(path, str) or path == "":
+        raise ValueError("path must be a non-empty string")
+    if not isinstance(ty, (TensorType, TableType)):
+        raise TypeError("ty must be a TensorType or TableType")
+    # typed_op will attach 'path' as an attribute and build the PFunction
+    return ty
 
 
-@_BUILTIN_MOD.typed_op(pfunc_name="builtin.write")
+@_BUILTIN_MOD.typed_op()
 def write(obj: MPObject, *, path: str) -> TensorType:
     if obj is None:
         raise ValueError("builtin.write requires an object to write")
@@ -118,7 +120,7 @@ def prand(shape: Shape = ()) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.typed_op(pfunc_name="builtin.table_to_tensor")
+@_BUILTIN_MOD.typed_op()
 def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
     if not isinstance(table.mptype._type, TableType):  # type: ignore[attr-defined]
         raise TypeError("table_to_tensor expects a Table MPObject")
@@ -139,7 +141,7 @@ def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
     return TensorType(first, shape)  # type: ignore[arg-type]
 
 
-@_BUILTIN_MOD.typed_op(pfunc_name="builtin.tensor_to_table")
+@_BUILTIN_MOD.typed_op()
 def tensor_to_table(tensor: MPObject, *, column_names: list[str]) -> TableType:
     if not isinstance(tensor.mptype._type, TensorType):  # type: ignore[attr-defined]
         raise TypeError("tensor_to_table expects a Tensor MPObject")

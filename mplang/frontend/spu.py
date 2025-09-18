@@ -47,7 +47,7 @@ class Visibility:
 _SPU_MOD = femod("spu")
 
 
-@_SPU_MOD.typed_op("spu.makeshares")
+@_SPU_MOD.typed_op()
 def makeshares(
     data: MPObject,
     *,

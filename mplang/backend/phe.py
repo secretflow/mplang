@@ -567,6 +567,31 @@ class PHEHandler(TensorHandler):
             pk_data=ciphertext.pk_data,
         )
 
+    def _create_encrypted_zero(self, ciphertext: CipherText) -> Any:
+        """Create an encrypted zero value with the same scheme and key as the given ciphertext.
+
+        Args:
+            ciphertext: Reference CipherText to get scheme and key information
+
+        Returns:
+            Encrypted zero value compatible with the ciphertext
+        """
+        # Create lightPHE instance with the same configuration
+        phe = LightPHE(
+            algorithm_name=ciphertext.scheme,
+            key_size=ciphertext.key_size,
+            precision=PRECISION,
+        )
+        phe.cs.keys["public_key"] = ciphertext.pk_data
+
+        # Encrypt zero value of appropriate type
+        if ciphertext.semantic_dtype.is_floating:
+            zero_val = 0.0
+        else:
+            zero_val = 0
+
+        return phe.encrypt([zero_val])
+
     def _execute_decrypt(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
@@ -655,13 +680,16 @@ class PHEHandler(TensorHandler):
     def _execute_dot(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
-        """Execute homomorphic dot product.
+        """Execute homomorphic dot product with zero-value optimization.
 
         Supports various dot product operations:
         - Scalar * Scalar -> Scalar
         - Vector * Vector -> Scalar (inner product)
         - Matrix * Vector -> Vector
         - N-D tensor * M-D tensor -> result based on numpy.dot semantics
+
+        Optimization: Skip multiplication when plaintext value is 0, and handle
+        the special case where all plaintext values are 0.
 
         Args:
             pfunc: PFunction for dot product
@@ -705,18 +733,26 @@ class PHEHandler(TensorHandler):
 
             if target_dtype.is_floating:
                 pt_data = plaintext_np.astype(float)
+                # Use a small epsilon for floating point zero comparison
+                epsilon = 1e-15
+                is_zero_func = lambda x: abs(x) < epsilon
             else:  # integer types
                 pt_data = plaintext_np.astype(int)
+                is_zero_func = lambda x: x == 0
+
+            # Helper function to create encrypted zero when needed
+            def get_encrypted_zero():
+                return self._create_encrypted_zero(ciphertext)
 
             if len(ct_shape) == 0 and len(pt_shape) == 0:
                 # Scalar * Scalar
-                result_ciphertext = ciphertext.ct_data[0] * [
-                    (
-                        float(pt_data.item())
-                        if target_dtype.is_floating
-                        else int(pt_data.item())
-                    )
-                ]
+                pt_val = pt_data.item()
+                if is_zero_func(pt_val):
+                    result_ciphertext = get_encrypted_zero()
+                else:
+                    result_ciphertext = ciphertext.ct_data[0] * [
+                        float(pt_val) if target_dtype.is_floating else int(pt_val)
+                    ]
                 result_ct_data = [result_ciphertext]
 
             elif len(ct_shape) == 1 and len(pt_shape) == 1:
@@ -727,23 +763,25 @@ class PHEHandler(TensorHandler):
                         f"vs plaintext size {pt_shape[0]}"
                     )
 
-                # Compute element-wise products and sum them
-                intermediate_products = [
-                    ciphertext.ct_data[i]
-                    * [
-                        (
-                            float(pt_data[i])
-                            if target_dtype.is_floating
-                            else int(pt_data[i])
-                        )
-                    ]
-                    for i in range(ct_shape[0])
-                ]
+                # Compute element-wise products, skipping zeros
+                non_zero_products = []
+                for i in range(ct_shape[0]):
+                    pt_val = pt_data[i]
+                    if not is_zero_func(pt_val):
+                        product = ciphertext.ct_data[i] * [
+                            float(pt_val) if target_dtype.is_floating else int(pt_val)
+                        ]
+                        non_zero_products.append(product)
 
-                # Sum all products
-                result_ciphertext = intermediate_products[0]
-                for i in range(1, len(intermediate_products)):
-                    result_ciphertext = result_ciphertext + intermediate_products[i]
+                # Handle result
+                if not non_zero_products:
+                    # All plaintext values are zero
+                    result_ciphertext = get_encrypted_zero()
+                else:
+                    # Sum all non-zero products
+                    result_ciphertext = non_zero_products[0]
+                    for i in range(1, len(non_zero_products)):
+                        result_ciphertext = result_ciphertext + non_zero_products[i]
 
                 result_ct_data = [result_ciphertext]
 
@@ -757,23 +795,30 @@ class PHEHandler(TensorHandler):
 
                 result_ct_data = []
                 for i in range(ct_shape[0]):  # For each row of the matrix
-                    # Compute dot product of row i with the vector
+                    # Compute dot product of row i with the vector, skipping zeros
                     row_products = []
                     for j in range(ct_shape[1]):  # For each column in the row
-                        ct_idx = i * ct_shape[1] + j
-                        product = ciphertext.ct_data[ct_idx] * [
-                            (
-                                float(pt_data[j])
-                                if target_dtype.is_floating
-                                else int(pt_data[j])
-                            )
-                        ]
-                        row_products.append(product)
+                        pt_val = pt_data[j]
+                        if not is_zero_func(pt_val):
+                            ct_idx = i * ct_shape[1] + j
+                            product = ciphertext.ct_data[ct_idx] * [
+                                (
+                                    float(pt_val)
+                                    if target_dtype.is_floating
+                                    else int(pt_val)
+                                )
+                            ]
+                            row_products.append(product)
 
-                    # Sum products for this row
-                    row_result = row_products[0]
-                    for k in range(1, len(row_products)):
-                        row_result = row_result + row_products[k]
+                    # Handle row result
+                    if not row_products:
+                        # All plaintext values in this row are zero
+                        row_result = get_encrypted_zero()
+                    else:
+                        # Sum non-zero products for this row
+                        row_result = row_products[0]
+                        for k in range(1, len(row_products)):
+                            row_result = row_result + row_products[k]
 
                     result_ct_data.append(row_result)
 
@@ -787,22 +832,29 @@ class PHEHandler(TensorHandler):
 
                 result_ct_data = []
                 for j in range(pt_shape[1]):  # For each column of the matrix
-                    # Compute dot product of vector with column j
+                    # Compute dot product of vector with column j, skipping zeros
                     col_products = []
                     for i in range(pt_shape[0]):  # For each row in the column
-                        product = ciphertext.ct_data[i] * [
-                            (
-                                float(pt_data[i, j])
-                                if target_dtype.is_floating
-                                else int(pt_data[i, j])
-                            )
-                        ]
-                        col_products.append(product)
+                        pt_val = pt_data[i, j]
+                        if not is_zero_func(pt_val):
+                            product = ciphertext.ct_data[i] * [
+                                (
+                                    float(pt_val)
+                                    if target_dtype.is_floating
+                                    else int(pt_val)
+                                )
+                            ]
+                            col_products.append(product)
 
-                    # Sum products for this column
-                    col_result = col_products[0]
-                    for k in range(1, len(col_products)):
-                        col_result = col_result + col_products[k]
+                    # Handle column result
+                    if not col_products:
+                        # All plaintext values in this column are zero
+                        col_result = get_encrypted_zero()
+                    else:
+                        # Sum non-zero products for this column
+                        col_result = col_products[0]
+                        for k in range(1, len(col_products)):
+                            col_result = col_result + col_products[k]
 
                     result_ct_data.append(col_result)
 
@@ -817,23 +869,30 @@ class PHEHandler(TensorHandler):
                 result_ct_data = []
                 for i in range(ct_shape[0]):  # For each row of first matrix
                     for j in range(pt_shape[1]):  # For each column of second matrix
-                        # Compute dot product of row i with column j
+                        # Compute dot product of row i with column j, skipping zeros
                         products = []
                         for k in range(ct_shape[1]):  # Sum over common dimension
-                            ct_idx = i * ct_shape[1] + k
-                            product = ciphertext.ct_data[ct_idx] * [
-                                (
-                                    float(pt_data[k, j])
-                                    if target_dtype.is_floating
-                                    else int(pt_data[k, j])
-                                )
-                            ]
-                            products.append(product)
+                            pt_val = pt_data[k, j]
+                            if not is_zero_func(pt_val):
+                                ct_idx = i * ct_shape[1] + k
+                                product = ciphertext.ct_data[ct_idx] * [
+                                    (
+                                        float(pt_val)
+                                        if target_dtype.is_floating
+                                        else int(pt_val)
+                                    )
+                                ]
+                                products.append(product)
 
-                        # Sum products for this element
-                        element_result = products[0]
-                        for p in range(1, len(products)):
-                            element_result = element_result + products[p]
+                        # Handle element result
+                        if not products:
+                            # All plaintext values for this element are zero
+                            element_result = get_encrypted_zero()
+                        else:
+                            # Sum non-zero products for this element
+                            element_result = products[0]
+                            for p in range(1, len(products)):
+                                element_result = element_result + products[p]
 
                         result_ct_data.append(element_result)
 
@@ -863,26 +922,32 @@ class PHEHandler(TensorHandler):
                     result_ct_data = []
                     for i in range(ct_reshaped_size):
                         for j in range(pt_reshaped_size):
-                            # Compute dot product for element (i, j)
+                            # Compute dot product for element (i, j), skipping zeros
                             products = []
                             for k in range(last_dim_ct):
-                                ct_idx = i * last_dim_ct + k
                                 pt_idx = k * pt_reshaped_size + j
-                                product = ct_flat[ct_idx] * [
-                                    (
-                                        float(pt_flat[pt_idx])
-                                        if target_dtype.is_floating
-                                        else int(pt_flat[pt_idx])
-                                    )
-                                ]
-                                products.append(product)
+                                pt_val = pt_flat[pt_idx]
+                                if not is_zero_func(pt_val):
+                                    ct_idx = i * last_dim_ct + k
+                                    product = ct_flat[ct_idx] * [
+                                        (
+                                            float(pt_val)
+                                            if target_dtype.is_floating
+                                            else int(pt_val)
+                                        )
+                                    ]
+                                    products.append(product)
 
-                            # Sum products
-                            if products:
+                            # Handle element result
+                            if not products:
+                                # All plaintext values for this element are zero
+                                element_result = get_encrypted_zero()
+                            else:
+                                # Sum non-zero products
                                 element_result = products[0]
                                 for p in range(1, len(products)):
                                     element_result = element_result + products[p]
-                                result_ct_data.append(element_result)
+                            result_ct_data.append(element_result)
                 else:
                     raise ValueError(
                         f"Unsupported tensor shapes for dot product: "

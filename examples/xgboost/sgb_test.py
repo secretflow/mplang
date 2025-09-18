@@ -13,19 +13,22 @@
 # limitations under the License.
 
 import time
-import unittest
 from typing import List
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from sklearn.metrics import accuracy_score, roc_auc_score
 from xgboost import XGBClassifier
 
 import mplang
+import mplang.mpi as mpi
 import mplang.simp as simp
+from mplang.frontend import phe
 from examples.xgboost.sgb import (
     SecureBoost,
     pretty_print_ensemble,
+    batch_feature_wise_bucket_sum_mplang,
 )
 
 
@@ -151,191 +154,460 @@ def run_sgb(
     return model.trees, pred, leaves
 
 
-class TestJitSgb(unittest.TestCase):
+@pytest.fixture(scope="module")
+def test_setup():
+    """Setup fixture for all tests"""
+    print(" ========= start test of jit_sgb package ========= \n")
 
-    @classmethod
-    def setUpClass(cls):
-        print(" ========= start test of jit_sgb package ========= \n")
+    sim2 = mplang.Simulator(2)
+    sim3 = mplang.Simulator(3)
 
-        cls.sim2 = mplang.Simulator(2)
-        cls.sim3 = mplang.Simulator(3)
+    # fixed dataset params
+    n_samples = 1_0
+    n_total_features = 2
+    n_features_ap = 1
+    random_state = 42
 
-        # fixed dataset params
-        cls.n_samples = 1_00
-        cls.n_total_features = 10
-        cls.n_features_ap = 4
-        cls.random_state = 42
+    # fixed xgboost params
+    XGB_PARAMS = {
+        "n_estimators": 1,
+        "learning_rate": 0.1,
+        "max_depth": 1,
+        "max_bin": 2,
+        "reg_lambda": 0.1,
+        "gamma": 0.1,
+        "min_child_weight": 1.0,
+    }
 
-        # fixed xgboost params
-        cls.XGB_PARAMS = {
-            "n_estimators": 1,
-            "learning_rate": 0.1,
-            "max_depth": 3,
-            "max_bin": 8,
-            "reg_lambda": 0.1,
-            "gamma": 0.1,
-            "min_child_weight": 1.0,
-        }
+    # fixed debug params
+    DEBUG_SAMPLES = 10
 
-        # fixed debug params
-        cls.DEBUG_SAMPLES = 10
+    yield {
+        "sim2": sim2,
+        "sim3": sim3,
+        "n_samples": n_samples,
+        "n_total_features": n_total_features,
+        "n_features_ap": n_features_ap,
+        "random_state": random_state,
+        "XGB_PARAMS": XGB_PARAMS,
+        "DEBUG_SAMPLES": DEBUG_SAMPLES,
+    }
 
-    @classmethod
-    def tearDownClass(cls):
-        print(" ========= end test of jit_sgb package ========= \n")
+    print(" ========= end test of jit_sgb package ========= \n")
 
-    def _sgb_run_main(self, world_size: int, need_debug_leaves: bool):
-        print(
-            f"========= start test of jit_sgb package with world_size {world_size}, need_debug_leaves {need_debug_leaves} ========= \n"
-        )
-        assert world_size in [2, 3], "world_size must be 2 or 3"
 
-        # Step 1: setup phase
-        sim = self.sim2 if world_size == 2 else self.sim3
-        params = self.XGB_PARAMS.copy()
-        # if need debug leaves, set n_estimators to 1 to avoid too many trees
-        if need_debug_leaves:
-            params["n_estimators"] = 1
+def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
+    print(
+        f"========= start test of jit_sgb package with world_size {world_size}, need_debug_leaves {need_debug_leaves} ========= \n"
+    )
+    assert world_size in [2, 3], "world_size must be 2 or 3"
 
-        # Step 2: load dataset
-        (
-            all_party_ids_list,
-            X_parts,
-            y_jax,
-            X_plaintext,
-            y_plaintext,
-        ) = load_dataset(
-            n_samples=self.n_samples,
-            n_total_features=self.n_total_features,
-            n_features_ap=self.n_features_ap,
-            pp_parties=world_size - 1,
-            random_state=self.random_state,
-        )
-        self.assertEqual(all_party_ids_list, list(range(world_size)))
+    # Step 1: setup phase
+    sim = test_setup["sim2"] if world_size == 2 else test_setup["sim3"]
+    params = test_setup["XGB_PARAMS"].copy()
+    # if need debug leaves, set n_estimators to 1 to avoid too many trees
+    if need_debug_leaves:
+        params["n_estimators"] = 1
 
-        # Step 3: run plaintext xgboost benchmark
-        start_time = time.time()
-        xgb_acc, xgb_auc = run_plaintext_xgboost_benchmark(
-            X_plaintext, y_plaintext, params
-        )
-        end_time = time.time()
-        print(f"Plaintext XGBoost Benchmark Time: {end_time - start_time:.2f} seconds")
+    # Step 2: load dataset
+    (
+        all_party_ids_list,
+        X_parts,
+        y_jax,
+        X_plaintext,
+        y_plaintext,
+    ) = load_dataset(
+        n_samples=test_setup["n_samples"],
+        n_total_features=test_setup["n_total_features"],
+        n_features_ap=test_setup["n_features_ap"],
+        pp_parties=world_size - 1,
+        random_state=test_setup["random_state"],
+    )
+    assert all_party_ids_list == list(range(world_size))
 
-        # Step 4: run secureboost
-        print("=" * 100)
-        ap_id = 0
-        pp_ids = list(range(1, world_size))
-        secure_boost = SecureBoost(
-            active_party_id=ap_id,
-            passive_party_ids=pp_ids,
-            **params,
-        )
-        start_time = time.time()
-        out = mplang.evaluate(
-            sim,
-            run_sgb,
-            secure_boost,
-            X_parts,
-            y_jax,
-            all_party_ids_list,
-            need_debug_leaves,
-        )
-        ret = mplang.fetch(sim, out)
-        assert len(ret) == 3  # trees, pred, leaves (if need)
+    # Step 3: run plaintext xgboost benchmark
+    start_time = time.time()
+    xgb_acc, xgb_auc = run_plaintext_xgboost_benchmark(X_plaintext, y_plaintext, params)
+    end_time = time.time()
+    print(f"Plaintext XGBoost Benchmark Time: {end_time - start_time:.2f} seconds")
 
-        # Calculate and print accuracy metrics
-        pred_results = ret[1][0]
-        prob = pred_results[0]  # Extract probabilities from AP
-        predictions = (prob > 0.5).astype(int)
-        sgb_acc = accuracy_score(y_plaintext, predictions)
-        sgb_auc = roc_auc_score(y_plaintext, prob)
-        print(f"- SecureBoost {world_size}PC Train Accuracy: {sgb_acc:.4f}")
-        print(f"- SecureBoost {world_size}PC Train AUC: {sgb_auc:.4f}")
-        end_time = time.time()
-        print(f"SecureBoost 2PC Benchmark Time: {end_time - start_time:.2f} seconds")
+    # Step 4: run secureboost
+    print("=" * 100)
+    ap_id = 0
+    pp_ids = list(range(1, world_size))
+    secure_boost = SecureBoost(
+        active_party_id=ap_id,
+        passive_party_ids=pp_ids,
+        **params,
+    )
+    start_time = time.time()
+    out = mplang.evaluate(
+        sim,
+        run_sgb,
+        secure_boost,
+        X_parts,
+        y_jax,
+        all_party_ids_list,
+        need_debug_leaves,
+    )
+    ret = mplang.fetch(sim, out)
+    assert len(ret) == 3  # trees, pred, leaves (if need)
 
-        # xgb and sgb should have similar accuracy and auc
-        self.assertAlmostEqual(sgb_acc, xgb_acc, delta=2e-2)
-        self.assertAlmostEqual(sgb_auc, xgb_auc, delta=2e-2)
+    # Calculate and print accuracy metrics
+    pred_results = ret[1][0]
+    prob = pred_results[0]  # Extract probabilities from AP
+    predictions = (prob > 0.5).astype(int)
+    sgb_acc = accuracy_score(y_plaintext, predictions)
+    sgb_auc = roc_auc_score(y_plaintext, prob)
+    print(f"- SecureBoost {world_size}PC Train Accuracy: {sgb_acc:.4f}")
+    print(f"- SecureBoost {world_size}PC Train AUC: {sgb_auc:.4f}")
+    end_time = time.time()
+    print(f"SecureBoost 2PC Benchmark Time: {end_time - start_time:.2f} seconds")
 
-        # step 5: debug phase (if need)
-        if need_debug_leaves:
-            pretty_print_ensemble(ret[0][0], all_party_ids_list)
-            pred_leaves = ret[2][0]
-            leaves_data = pred_leaves[0]  # Shape: (n_samples * n_parties, n_nodes)
-            n_parties = world_size
+    # xgb and sgb should have similar accuracy and auc
+    assert abs(sgb_acc - xgb_acc) < 2e-2
+    assert abs(sgb_auc - xgb_auc) < 2e-2
 
-            print(f"\n📊 Leaf Node Predictions (Shape: {leaves_data.shape}):")
-            print("=" * 80)
+    # step 5: debug phase (if need)
+    if need_debug_leaves:
+        pretty_print_ensemble(ret[0][0], all_party_ids_list)
+        pred_leaves = ret[2][0]
+        leaves_data = pred_leaves[0]  # Shape: (n_samples * n_parties, n_nodes)
+        n_parties = world_size
 
-            wrong_nodes = 0
+        print(f"\n📊 Leaf Node Predictions (Shape: {leaves_data.shape}):")
+        print("=" * 80)
 
-            for sample_idx in range(self.DEBUG_SAMPLES):
-                ap_row_idx = sample_idx * n_parties + 0  # AP row
-                pp1_row_idx = sample_idx * n_parties + 1  # PP1 row
-                if n_parties == 3:
-                    pp2_row_idx = sample_idx * n_parties + 2  # PP2 row
+        wrong_nodes = 0
 
-                ap_leaves = leaves_data[ap_row_idx]
-                pp1_leaves = leaves_data[pp1_row_idx]
-                if n_parties == 3:
-                    pp2_leaves = leaves_data[pp2_row_idx]
+        for sample_idx in range(test_setup["DEBUG_SAMPLES"]):
+            ap_row_idx = sample_idx * n_parties + 0  # AP row
+            pp1_row_idx = sample_idx * n_parties + 1  # PP1 row
+            if n_parties == 3:
+                pp2_row_idx = sample_idx * n_parties + 2  # PP2 row
 
-                # Find non-zero leaf nodes for each party
-                ap_active_nodes = [i for i, val in enumerate(ap_leaves) if val > 0]
-                pp1_active_nodes = [i for i, val in enumerate(pp1_leaves) if val > 0]
-                if n_parties == 3:
-                    pp2_active_nodes = [
-                        i for i, val in enumerate(pp2_leaves) if val > 0
-                    ]
+            ap_leaves = leaves_data[ap_row_idx]
+            pp1_leaves = leaves_data[pp1_row_idx]
+            if n_parties == 3:
+                pp2_leaves = leaves_data[pp2_row_idx]
 
-                # Get ground truth and prediction for context
-                gt = int(y_plaintext[sample_idx])
-                pred = predictions[sample_idx]
-                prob_val = prob[sample_idx]
+            # Find non-zero leaf nodes for each party
+            ap_active_nodes = [i for i, val in enumerate(ap_leaves) if val > 0]
+            pp1_active_nodes = [i for i, val in enumerate(pp1_leaves) if val > 0]
+            if n_parties == 3:
+                pp2_active_nodes = [i for i, val in enumerate(pp2_leaves) if val > 0]
 
-                print(
-                    f"Sample {sample_idx:2d} │ GT:{gt} Pred:{pred} Prob:{prob_val:.3f}"
-                )
-                print(f"         │ AP  → Nodes: {ap_active_nodes}")
-                print(f"         │ PP1 → Nodes: {pp1_active_nodes}")
-                if n_parties == 3:
-                    print(f"         │ PP2 → Nodes: {pp2_active_nodes}")
+            # Get ground truth and prediction for context
+            gt = int(y_plaintext[sample_idx])
+            pred = predictions[sample_idx]
+            prob_val = prob[sample_idx]
 
-                # Show consensus (nodes where both parties agree)
-                consensus_nodes = [i for i in ap_active_nodes if i in pp1_active_nodes]
-                if n_parties == 3:
-                    consensus_nodes = [
-                        i for i in consensus_nodes if i in pp2_active_nodes
-                    ]
-                if consensus_nodes:
-                    print(f"         │ 🤝  → Consensus: {consensus_nodes}")
-                else:
-                    print(f"         │ ❌  → No consensus")
+            print(f"Sample {sample_idx:2d} │ GT:{gt} Pred:{pred} Prob:{prob_val:.3f}")
+            print(f"         │ AP  → Nodes: {ap_active_nodes}")
+            print(f"         │ PP1 → Nodes: {pp1_active_nodes}")
+            if n_parties == 3:
+                print(f"         │ PP2 → Nodes: {pp2_active_nodes}")
 
-                if len(consensus_nodes) != 1:
-                    wrong_nodes += 1
+            # Show consensus (nodes where both parties agree)
+            consensus_nodes = [i for i in ap_active_nodes if i in pp1_active_nodes]
+            if n_parties == 3:
+                consensus_nodes = [i for i in consensus_nodes if i in pp2_active_nodes]
+            if consensus_nodes:
+                print(f"         │ 🤝  → Consensus: {consensus_nodes}")
+            else:
+                print(f"         │ ❌  → No consensus")
 
-                print("─" * 50)
+            if len(consensus_nodes) != 1:
+                wrong_nodes += 1
 
-            self.assertEqual(wrong_nodes, 0, f"wrong nodes: {wrong_nodes}")
+            print("─" * 50)
 
-        print(
-            f"========= end test of jit_sgb package with world_size {world_size}, need_debug_leaves {need_debug_leaves} ========= \n"
-        )
+        assert wrong_nodes == 0, f"wrong nodes: {wrong_nodes}"
 
-    def test_sgb_2pc(self):
-        self._sgb_run_main(world_size=2, need_debug_leaves=False)
+    print(
+        f"========= end test of jit_sgb package with world_size {world_size}, need_debug_leaves {need_debug_leaves} ========= \n"
+    )
 
-    # def test_sgb_2pc_debug_leaves(self):
-    #     self._sgb_run_main(world_size=2, need_debug_leaves=True)
 
-    # def test_sgb_3pc(self):
-    #     self._sgb_run_main(world_size=3, need_debug_leaves=False)
+def test_sgb_2pc(test_setup):
+    _sgb_run_main(test_setup, world_size=2, need_debug_leaves=False)
 
-    # def test_sgb_3pc_debug_leaves(self):
-    #     self._sgb_run_main(world_size=3, need_debug_leaves=True)
+
+# def test_sgb_2pc_debug_leaves(test_setup):
+#     _sgb_run_main(test_setup, world_size=2, need_debug_leaves=True)
+
+# def test_sgb_3pc(test_setup):
+#     _sgb_run_main(test_setup, world_size=3, need_debug_leaves=False)
+
+# def test_sgb_3pc_debug_leaves(test_setup):
+#     _sgb_run_main(test_setup, world_size=3, need_debug_leaves=True)
+
+
+# @mplang.function
+# def run_bucket_sum_2_groups():
+#     """Test batch feature-wise bucket sum with 2 groups"""
+#     sample_size = 6
+#     feature_size = 2
+#     gh_size = 2
+#     bucket_num = 3
+#     group_size = 2
+
+#     # shape: (sample_size, gh_size)
+#     m1_np = np.array(
+#         [
+#             [1, 10],  # sample 0
+#             [2, 20],  # sample 1
+#             [3, 30],  # sample 2
+#             [4, 40],  # sample 3
+#             [5, 50],  # sample 4
+#             [6, 60],  # sample 5
+#         ]
+#     )
+#     # Subgroup 0: samples 0, 1, 2
+#     # Subgroup 1: samples 3, 4, 5
+#     subgroup0_mask = np.array([1, 1, 1, 0, 0, 0], dtype=np.int8)
+#     subgroup1_mask = np.array([0, 0, 0, 1, 1, 1], dtype=np.int8)
+#     subgroup_map = np.array([subgroup0_mask, subgroup1_mask])
+
+#     # shape: (sample_size, feature_size)
+#     order_map = np.array(
+#         [
+#             # f0, f1
+#             [0, 1],  # sample 0
+#             [1, 2],  # sample 1
+#             [0, 0],  # sample 2
+#             [2, 1],  # sample 3
+#             [1, 0],  # sample 4
+#             [0, 2],  # sample 5
+#         ],
+#         dtype=np.int8,
+#     )
+
+#     pkey, skey = simp.runAt(0, phe.keygen)()
+#     world_mask = mplang.Mask.all(2)
+#     pkey_bcasted = mpi.bcast_m(world_mask, 0, pkey)
+
+#     m1 = simp.runAt(0, lambda x: x)(m1_np)
+
+#     encrypted_arr = simp.runAt(0, phe.encrypt)(m1, pkey_bcasted)
+#     encrypted_arr = mpi.p2p(0, 1, encrypted_arr)
+
+#     subgroup_map = simp.runAt(1, lambda x: x)(subgroup_map)
+#     order_map = simp.runAt(1, lambda x: x)(order_map)
+
+#     bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
+#         encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
+#     )
+
+#     # Decrypt each group result separately
+#     decrypted_results = []
+#     for group_idx in range(group_size):
+#         decrypted_group = simp.runAt(0, phe.decrypt)(
+#             mpi.p2p(1, 0, bucket_sum_list[group_idx]), skey
+#         )
+#         decrypted_results.append(decrypted_group)
+
+#     return decrypted_results
+
+
+# @mplang.function
+# def run_bucket_sum_3_groups():
+#     """Test batch feature-wise bucket sum with 3 groups"""
+#     sample_size = 9
+#     feature_size = 2
+#     gh_size = 2
+#     bucket_num = 3
+#     group_size = 3
+
+#     # shape: (sample_size, gh_size)
+#     m1_np = np.array(
+#         [
+#             [1, 10],  # sample 0 - group 0
+#             [2, 20],  # sample 1 - group 1
+#             [3, 30],  # sample 2 - group 0
+#             [4, 40],  # sample 3 - group 1
+#             [5, 50],  # sample 4 - group 2
+#             [6, 60],  # sample 5 - group 0
+#             [7, 70],  # sample 6 - group 1
+#             [8, 80],  # sample 7 - group 2
+#             [9, 90],  # sample 8 - group 2
+#         ]
+#     )
+#     # Subgroup 0: samples 0, 2, 5
+#     # Subgroup 1: samples 1, 3, 6
+#     # Subgroup 2: samples 4, 7, 8
+#     subgroup0_mask = np.array([1, 0, 1, 0, 0, 1, 0, 0, 0], dtype=np.int8)
+#     subgroup1_mask = np.array([0, 1, 0, 1, 0, 0, 1, 0, 0], dtype=np.int8)
+#     subgroup2_mask = np.array([0, 0, 0, 0, 1, 0, 0, 1, 1], dtype=np.int8)
+#     subgroup_map = np.array([subgroup0_mask, subgroup1_mask, subgroup2_mask])
+
+#     # shape: (sample_size, feature_size)
+#     order_map = np.array(
+#         [
+#             # f0, f1
+#             [0, 1],  # sample 0 - group 0
+#             [1, 2],  # sample 1 - group 1
+#             [0, 0],  # sample 2 - group 0
+#             [2, 1],  # sample 3 - group 1
+#             [1, 0],  # sample 4 - group 2
+#             [0, 2],  # sample 5 - group 0
+#             [1, 0],  # sample 6 - group 1
+#             [2, 1],  # sample 7 - group 2
+#             [0, 2],  # sample 8 - group 2
+#         ],
+#         dtype=np.int8,
+#     )
+
+#     pkey, skey = simp.runAt(0, phe.keygen)()
+#     world_mask = mplang.Mask.all(2)
+#     pkey_bcasted = mpi.bcast_m(world_mask, 0, pkey)
+
+#     m1 = simp.runAt(0, lambda x: x)(m1_np)
+
+#     encrypted_arr = simp.runAt(0, phe.encrypt)(m1, pkey_bcasted)
+#     encrypted_arr = mpi.p2p(0, 1, encrypted_arr)
+
+#     subgroup_map = simp.runAt(1, lambda x: x)(subgroup_map)
+#     order_map = simp.runAt(1, lambda x: x)(order_map)
+
+#     bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
+#         encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
+#     )
+
+#     # Decrypt each group result separately
+#     decrypted_results = []
+#     for group_idx in range(group_size):
+#         decrypted_group = simp.runAt(0, phe.decrypt)(
+#             mpi.p2p(1, 0, bucket_sum_list[group_idx]), skey
+#         )
+#         decrypted_results.append(decrypted_group)
+
+#     return decrypted_results
+
+
+# def test_batch_feature_wise_bucket_sum_2_groups(test_setup):
+#     """Test batch feature-wise bucket sum implementation with 2 groups"""
+#     print("=== Testing batch_feature_wise_bucket_sum with 2 groups ===")
+
+#     sim = test_setup["sim2"]
+#     result_2_groups = mplang.evaluate(sim, run_bucket_sum_2_groups)
+#     fetched_2_groups = mplang.fetch(sim, result_2_groups)
+
+#     # fetched_2_groups is [[group0_from_rank0, None], [group1_from_rank0, None]]
+#     print(f"2-group PHE sum completed. Number of groups: {len(fetched_2_groups)}")
+#     for i, group_item in enumerate(fetched_2_groups):
+#         group_result = group_item[0] if group_item[0] is not None else group_item[1]
+#         if group_result is not None:
+#             print(f"Group {i} shape: {group_result.shape}")
+#         else:
+#             raise ValueError(f"Group {i} result is None")
+
+#     # Extract group results
+#     out_2_0 = fetched_2_groups[0][0]  # First group's result
+#     out_2_1 = fetched_2_groups[1][0]  # Second group's result
+
+#     print(f"group 0 sum: {out_2_0}")
+#     print(f"group 1 sum: {out_2_1}")
+
+#     # Verify 2-group test correctness
+#     expected_2_0 = np.array(
+#         [
+#             [4, 40],  # bucket 0 for feature 0: samples 0,2 (buckets <=0)
+#             [6, 60],  # bucket 1 for feature 0: samples 0,1,2 (buckets <=1)
+#             [6, 60],  # bucket 2 for feature 0: samples 0,1,2 (buckets <=2)
+#             [3, 30],  # bucket 0 for feature 1: sample 2 (bucket <=0)
+#             [4, 40],  # bucket 1 for feature 1: samples 0,2 (buckets <=1)
+#             [6, 60],  # bucket 2 for feature 1: samples 0,1,2 (buckets <=2)
+#         ]
+#     )
+
+#     expected_2_1 = np.array(
+#         [
+#             [6, 60],  # bucket 0 for feature 0: sample 5 (bucket <=0)
+#             [11, 110],  # bucket 1 for feature 0: samples 4,5 (buckets <=1)
+#             [15, 150],  # bucket 2 for feature 0: samples 3,4,5 (buckets <=2)
+#             [5, 50],  # bucket 0 for feature 1: sample 4 (bucket <=0)
+#             [9, 90],  # bucket 1 for feature 1: samples 3,4 (buckets <=1)
+#             [15, 150],  # bucket 2 for feature 1: samples 3,4,5 (buckets <=2)
+#         ]
+#     )
+
+#     np.testing.assert_array_equal(out_2_0, expected_2_0)
+#     np.testing.assert_array_equal(out_2_1, expected_2_1)
+#     print("✓ 2-group test passed!")
+
+
+# def test_batch_feature_wise_bucket_sum_3_groups(test_setup):
+#     """Test batch feature-wise bucket sum implementation with 3 groups"""
+#     print("=== Testing batch_feature_wise_bucket_sum with 3 groups ===")
+
+#     sim = test_setup["sim2"]
+#     result_3_groups = mplang.evaluate(sim, run_bucket_sum_3_groups)
+#     fetched_3_groups = mplang.fetch(sim, result_3_groups)
+
+#     # fetched_3_groups is [[group0_from_rank0, None], [group1_from_rank0, None], [group2_from_rank0, None]]
+#     print(f"3-group PHE sum completed. Number of groups: {len(fetched_3_groups)}")
+#     for i, group_item in enumerate(fetched_3_groups):
+#         group_result = group_item[0] if group_item[0] is not None else group_item[1]
+#         if group_result is not None:
+#             print(f"Group {i} shape: {group_result.shape}")
+#         else:
+#             raise ValueError(f"Group {i} result is None")
+
+#     # Extract group results
+#     out_3_0 = fetched_3_groups[0][0]  # First group's result
+#     out_3_1 = fetched_3_groups[1][0]  # Second group's result
+#     out_3_2 = fetched_3_groups[2][0]  # Third group's result
+
+#     print(f"group 0 sum: {out_3_0}")
+#     print(f"group 1 sum: {out_3_1}")
+#     print(f"group 2 sum: {out_3_2}")
+
+#     # Verify 3-group test correctness
+#     # Group 0: samples 0,2,5 with values [1,10], [3,30], [6,60]
+#     # order_map: [0,1], [0,0], [0,2]
+#     expected_3_0 = np.array(
+#         [
+#             [10, 100],  # bucket 0 for feature 0: samples 0,2,5 (buckets <=0)
+#             [10, 100],  # bucket 1 for feature 0: samples 0,2,5 (buckets <=1)
+#             [10, 100],  # bucket 2 for feature 0: samples 0,2,5 (buckets <=2)
+#             [3, 30],  # bucket 0 for feature 1: sample 2 (bucket <=0)
+#             [4, 40],  # bucket 1 for feature 1: samples 0,2 (buckets <=1)
+#             [10, 100],  # bucket 2 for feature 1: samples 0,2,5 (buckets <=2)
+#         ]
+#     )
+
+#     # Group 1: samples 1,3,6 with values [2,20], [4,40], [7,70]
+#     # order_map: [1,2], [2,1], [1,0]
+#     expected_3_1 = np.array(
+#         [
+#             [0, 0],  # bucket 0 for feature 0: no samples (no buckets <=0)
+#             [9, 90],  # bucket 1 for feature 0: samples 1,6 (buckets <=1)
+#             [13, 130],  # bucket 2 for feature 0: samples 1,3,6 (buckets <=2)
+#             [7, 70],  # bucket 0 for feature 1: sample 6 (bucket <=0)
+#             [11, 110],  # bucket 1 for feature 1: samples 3,6 (buckets <=1)
+#             [13, 130],  # bucket 2 for feature 1: samples 1,3,6 (buckets <=2)
+#         ]
+#     )
+
+#     # Group 2: samples 4,7,8 with values [5,50], [8,80], [9,90]
+#     # order_map: [1,0], [2,1], [0,2]
+#     expected_3_2 = np.array(
+#         [
+#             [9, 90],  # bucket 0 for feature 0: sample 8 (bucket <=0)
+#             [14, 140],  # bucket 1 for feature 0: samples 4,8 (buckets <=1)
+#             [22, 220],  # bucket 2 for feature 0: samples 4,7,8 (buckets <=2)
+#             [5, 50],  # bucket 0 for feature 1: sample 4 (bucket <=0)
+#             [13, 130],  # bucket 1 for feature 1: samples 4,7 (buckets <=1)
+#             [22, 220],  # bucket 2 for feature 1: samples 4,7,8 (buckets <=2)
+#         ]
+#     )
+
+#     np.testing.assert_array_equal(out_3_0, expected_3_0)
+#     np.testing.assert_array_equal(out_3_1, expected_3_1)
+#     np.testing.assert_array_equal(out_3_2, expected_3_2)
+#     print("✓ 3-group test passed!")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    pytest.main([__file__, "-v"])

@@ -22,7 +22,7 @@ from mplang.frontend.base import femod
 _TEE_MOD = femod("tee")
 
 
-@_TEE_MOD.typed_op(name="quote", pfunc_name="tee.quote")
+@_TEE_MOD.typed_op(pfunc_name="tee.quote")
 def quote(pk: MPObject) -> TensorType:
     """TEE quote generation binding the provided ephemeral public key.
 
@@ -33,7 +33,7 @@ def quote(pk: MPObject) -> TensorType:
     return TensorType(UINT8, (33,))
 
 
-@_TEE_MOD.typed_op(name="attest", pfunc_name="tee.attest")
+@_TEE_MOD.typed_op(pfunc_name="tee.attest")
 def attest(quote: MPObject) -> TensorType:
     """TEE quote verification returning the attested TEE public key.
 

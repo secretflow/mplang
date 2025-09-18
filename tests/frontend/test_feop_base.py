@@ -58,19 +58,19 @@ class DummyTensor(MPObject):
 def test_simple_decorator_builds_triad():
     mod = femod("ut_mod_simple_add")
 
-    @mod.simple(name="add", pfunc_name="builtin.add")
-    def add_kernel(x: MPObject, y: MPObject, *, alpha: int):  # returns TensorType
+    @mod.simple(pfunc_name="builtin.add")
+    def add(x: MPObject, y: MPObject, *, alpha: int):  # returns TensorType
         # Return the same type as x
         return x.mptype._type
 
-    assert is_feop(add_kernel)
-    assert isinstance(add_kernel, FeOperation)
-    assert isinstance(add_kernel, SimpleFeOperation)
+    assert is_feop(add)
+    assert isinstance(add, FeOperation)
+    assert isinstance(add, SimpleFeOperation)
 
     x = DummyTensor((2,), np.float32)
     y = DummyTensor((2,), np.float32)
 
-    pfunc, args, out_tree = add_kernel(x, y, alpha=1)
+    pfunc, args, out_tree = add(x, y, alpha=1)
 
     assert isinstance(pfunc, PFunction)
     assert pfunc.fn_type == "builtin.add"
@@ -87,7 +87,7 @@ def test_simple_decorator_builds_triad():
     # registry checks
     reg = get_registry()
     fetched = reg.get_op(mod.name, "add")
-    assert fetched is add_kernel
+    assert fetched is add
     ops = list_feops(mod.name)
     assert (mod.name, "add") in ops
 
@@ -125,24 +125,24 @@ def test_feop_decorator_inline():
 def test_simple_rejects_invalid_kwargs():
     mod = femod("ut_mod_badkw")
 
-    @mod.simple(name="echo", pfunc_name="builtin.echo")
-    def echo_kernel(x: MPObject):  # returns TensorType
+    @mod.simple(pfunc_name="builtin.echo")
+    def echo(x: MPObject):  # returns TensorType
         return x.mptype._type
 
     # invalid: passing an MPObject as attribute value
     x = DummyTensor((1,), np.int32)
     with pytest.raises(TypeError):
-        echo_kernel(x, bad_attr=x)
+        echo(x, bad_attr=x)
 
 
 def test_simple_rejects_invalid_return_type():
     mod = femod("ut_mod_badret")
 
-    @mod.simple(name="bad", pfunc_name="builtin.bad")
-    def bad_kernel(x: MPObject):  # missing explicit TensorType/TableType return
+    @mod.simple(pfunc_name="builtin.bad")
+    def bad(x: MPObject):  # missing explicit TensorType/TableType return
         # Returning a python int should trigger a TypeError in SimpleFeOperation.trace
         return 42
 
     x = DummyTensor((1,), np.float32)
     with pytest.raises(TypeError):
-        bad_kernel(x)
+        bad(x)

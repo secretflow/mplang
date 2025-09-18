@@ -22,7 +22,7 @@ from mplang.frontend.base import femod
 _PHE_MOD = femod("phe")
 
 
-@_PHE_MOD.typed_op(name="keygen", pfunc_name="phe.keygen")
+@_PHE_MOD.typed_op(pfunc_name="phe.keygen")
 def keygen(
     *, scheme: str = "paillier", key_size: int = 2048
 ) -> tuple[TensorType, TensorType]:
@@ -34,7 +34,7 @@ def keygen(
     return public_key_ty, private_key_ty
 
 
-@_PHE_MOD.typed_op(name="encrypt", pfunc_name="phe.encrypt")
+@_PHE_MOD.typed_op(pfunc_name="phe.encrypt")
 def encrypt(plaintext: MPObject, public_key: MPObject) -> TensorType:
     """Encrypt plaintext using PHE public key: returns ciphertext with same semantic type as plaintext."""
     plaintext_ty = TensorType.from_obj(plaintext)
@@ -42,7 +42,7 @@ def encrypt(plaintext: MPObject, public_key: MPObject) -> TensorType:
     return plaintext_ty
 
 
-@_PHE_MOD.typed_op(name="add", pfunc_name="phe.add")
+@_PHE_MOD.typed_op(pfunc_name="phe.add")
 def add(operand1: MPObject, operand2: MPObject) -> TensorType:
     """Add two PHE operands (semantics depend on backend representation)."""
     op1_ty = TensorType.from_obj(operand1)
@@ -50,7 +50,7 @@ def add(operand1: MPObject, operand2: MPObject) -> TensorType:
     return op1_ty
 
 
-@_PHE_MOD.typed_op(name="mul", pfunc_name="phe.mul")
+@_PHE_MOD.typed_op(pfunc_name="phe.mul")
 def mul(ciphertext: MPObject, plaintext: MPObject) -> TensorType:
     """Multiply a PHE ciphertext with a plaintext value (ciphertext dtype preserved)."""
     ct_ty = TensorType.from_obj(ciphertext)
@@ -63,7 +63,7 @@ def mul(ciphertext: MPObject, plaintext: MPObject) -> TensorType:
     return ct_ty
 
 
-@_PHE_MOD.typed_op(name="decrypt", pfunc_name="phe.decrypt")
+@_PHE_MOD.typed_op(pfunc_name="phe.decrypt")
 def decrypt(ciphertext: MPObject, private_key: MPObject) -> TensorType:
     """Decrypt ciphertext using PHE private key: returns plaintext with same semantic type as ciphertext."""
     ciphertext_ty = TensorType.from_obj(ciphertext)

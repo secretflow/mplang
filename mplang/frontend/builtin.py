@@ -27,7 +27,7 @@ from mplang.utils import table_utils
 _BUILTIN_MOD = femod("builtin")
 
 
-@_BUILTIN_MOD.typed_op(name="identity", pfunc_name="builtin.identity")
+@_BUILTIN_MOD.typed_op(pfunc_name="builtin.identity")
 def identity(obj: MPObject) -> TensorType:
     return TensorType.from_obj(obj)
 
@@ -47,7 +47,7 @@ def read(
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.typed_op(name="write", pfunc_name="builtin.write")
+@_BUILTIN_MOD.typed_op(pfunc_name="builtin.write")
 def write(obj: MPObject, *, path: str) -> TensorType:
     if obj is None:
         raise ValueError("builtin.write requires an object to write")
@@ -118,7 +118,7 @@ def prand(shape: Shape = ()) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.typed_op(name="table_to_tensor", pfunc_name="builtin.table_to_tensor")
+@_BUILTIN_MOD.typed_op(pfunc_name="builtin.table_to_tensor")
 def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
     if not isinstance(table.mptype._type, TableType):  # type: ignore[attr-defined]
         raise TypeError("table_to_tensor expects a Table MPObject")
@@ -139,7 +139,7 @@ def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
     return TensorType(first, shape)  # type: ignore[arg-type]
 
 
-@_BUILTIN_MOD.typed_op(name="tensor_to_table", pfunc_name="builtin.tensor_to_table")
+@_BUILTIN_MOD.typed_op(pfunc_name="builtin.tensor_to_table")
 def tensor_to_table(tensor: MPObject, *, column_names: list[str]) -> TableType:
     if not isinstance(tensor.mptype._type, TensorType):  # type: ignore[attr-defined]
         raise TypeError("tensor_to_table expects a Tensor MPObject")

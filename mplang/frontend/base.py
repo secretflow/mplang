@@ -159,9 +159,7 @@ class FeModule(ABC):
 
         return _decorator
 
-    def typed_op(
-        self, name: str, pfunc_name: str
-    ) -> Callable[[Callable[..., Any]], FeOperation]:
+    def typed_op(self, pfunc_name: str) -> Callable[[Callable[..., Any]], FeOperation]:
         """Decorator for type-driven ops that return only types/schemas.
 
         The decorated kernel should compute and return a TensorType/TableType (or PyTree thereof).
@@ -169,39 +167,42 @@ class FeModule(ABC):
         used for type inference/validation. Keyword arguments are PFunction attributes and must be plain
         Python values (int/float/str/bytes/tuples/lists of primitives). Passing MPObjects via kwargs is not allowed.
 
+        SSOT naming: The operation name is derived from the kernel function name (kernel.__name__),
+        ensuring there's a single source of truth and improving readability. Use clear, concise
+        function names to define the public op names.
+
         Example:
-            @mymod.typed_op(name="add", pfunc_name="builtin.add")
+            @mymod.typed_op(pfunc_name="builtin.add")
             def add_kernel(x: MPObject, y: MPObject) -> TensorType:
                 return x.mptype._type  # same shape/type as x
 
-            Bad vs Good (signatures and calls):
-            - Bad:  def op(x: MPObject, **kwargs): ...               # disallowed: **kwargs
-                Good: def op(x: MPObject, *, attr: int): ...
+        Bad vs Good (signatures and calls):
+        - Bad:  def op(x: MPObject, **kwargs): ...               # disallowed: **kwargs
+          Good: def op(x: MPObject, *, attr: int): ...
 
-            - Bad:  def op(*args, **kwargs): ...                     # disallowed: *args/**kwargs
-                Good: def op(x: MPObject, y: MPObject, *, k: str): ...
+        - Bad:  def op(*args, **kwargs): ...                     # disallowed: *args/**kwargs
+          Good: def op(x: MPObject, y: MPObject, *, k: str): ...
 
-            - Bad:  enc(plaintext=pt, key=mp_key)                    # MPObject via kwargs (disallowed)
-                Good: enc(pt, mp_key)                                  # pass MPObjects positionally
+        - Bad:  enc(plaintext=pt, key=mp_key)                    # MPObject via kwargs (disallowed)
+          Good: enc(pt, mp_key)                                  # pass MPObjects positionally
 
-            - Good: hkdf(secret, "info")                            # data-like positional mapped to kw-only attr
-                Also good: hkdf(secret, info="info")
+        - Good: hkdf(secret, "info")                             # data-like positional mapped to kw-only attr
+          Also good: hkdf(secret, info="info")
 
-            - Good: phe.mul(jnp.array(...), jnp.array(...))          # data-like positionals allowed for type inference
+        - Good: phe.mul(jnp.array(...), jnp.array(...))          # data-like positionals allowed for type inference
         """
 
         def _decorator(ret_type_builder: Callable[..., Any]) -> FeOperation:
-            op = SimpleFeOperation(self, name, pfunc_name, ret_type_builder)
-            get_registry().register_op(self.name, name, op)
+            op = SimpleFeOperation(self, pfunc_name, ret_type_builder)
+            # Use kernel function name as SSOT for op name
+            get_registry().register_op(self.name, op.name, op)
             return op
 
         return _decorator
 
     # Backward-compatible alias
-    def simple(
-        self, name: str, pfunc_name: str
-    ) -> Callable[[Callable[..., Any]], FeOperation]:
-        return self.typed_op(name, pfunc_name)
+    def simple(self, pfunc_name: str) -> Callable[[Callable[..., Any]], FeOperation]:
+        return self.typed_op(pfunc_name)
 
 
 class StatelessFeModule(FeModule):
@@ -266,11 +267,11 @@ class SimpleFeOperation(FeOperation):
     def __init__(
         self,
         module: FeModule,
-        name: str,
         pfunc_name: str,
         kernel: Callable[..., Any],
     ):
-        super().__init__(module, name)
+        # Derive operation name from kernel function name for SSOT
+        super().__init__(module, kernel.__name__)
         self.pfunc_name = pfunc_name
         self._kernel = kernel
 
@@ -281,11 +282,11 @@ class SimpleFeOperation(FeOperation):
         for p in sig.parameters.values():
             if p.kind == inspect.Parameter.VAR_KEYWORD:
                 raise TypeError(
-                    f"typed_op kernel '{module.name}.{name}' must not use **kwargs; define explicit keywords instead"
+                    f"typed_op kernel '{module.name}.{kernel.__name__}' must not use **kwargs; define explicit keywords instead"
                 )
             if p.kind == inspect.Parameter.VAR_POSITIONAL:
                 raise TypeError(
-                    f"typed_op kernel '{module.name}.{name}' must not use *args; define explicit parameters instead"
+                    f"typed_op kernel '{module.name}.{kernel.__name__}' must not use *args; define explicit parameters instead"
                 )
 
         # Cache signature and kw-only parameter names for fast path in trace
@@ -409,7 +410,7 @@ def list_feops(module: str | None = None) -> dict[tuple[str, str], FeOperation]:
 # - Replace any isinstance(FEOp)/metadata checks with isinstance(x, FeOperation).
 # - Define a FeModule via femod("module_name") and register it in FeRegistry automatically.
 # - For inline ops that already produce a triad, use @module.feop(name)(trace_fn).
-# - For simple type-only kernels, use @module.simple(name, pfunc_name)(kernel).
+# - For simple type-only kernels, use @module.simple(pfunc_name)(kernel). The op name is derived from the kernel function name.
 # - For complex ops (with Python callables/closures), subclass FeOperation and register
 #   using get_registry().register_op(module, name, op_instance) or use @module.feop with InlineFeOperation.
 # - Ensure PFunction.fn_type is set as the routing key (e.g., "mlir.stablehlo", "sql.duckdb").

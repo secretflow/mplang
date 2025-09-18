@@ -28,7 +28,7 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.core.tensor import TensorType
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import FeOperation
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -62,7 +62,7 @@ class SpuConfig:
             self.copts = libspu.CompilerOptions()
 
 
-class SpuMakeShares(FEOp):
+class SpuMakeShares(FeOperation):
     """Create SPU shares from a plaintext tensor.
 
     Returns (PFunction, [data], treedef(shares)).
@@ -73,7 +73,7 @@ class SpuMakeShares(FEOp):
         self.config = config
         self.config.ensure()
 
-    def __call__(
+    def trace(
         self,
         data: MPObject,
         visibility: Visibility = Visibility.SECRET,
@@ -107,16 +107,14 @@ class SpuMakeShares(FEOp):
         return pfunc, [data], treedef
 
 
-class SpuReconstruct(FEOp):
+class SpuReconstruct(FeOperation):
     """Reconstruct plaintext tensor from world_size shares."""
 
     def __init__(self, config: SpuConfig):
         self.config = config
         self.config.ensure()
 
-    def __call__(
-        self, *shares: MPObject
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    def trace(self, *shares: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         if len(shares) == 0:
             raise ValueError("SpuReconstruct requires at least one share")
         if len(shares) != self.config.world_size:
@@ -138,14 +136,14 @@ class SpuReconstruct(FEOp):
         return pfunc, list(shares), treedef
 
 
-class SpuJaxCompile(FEOp):
+class SpuJaxCompile(FeOperation):
     """Compile a JAX function into SPU pphlo MLIR representation."""
 
     def __init__(self, config: SpuConfig):
         self.config = config
         self.config.ensure()
 
-    def __call__(
+    def trace(
         self, fn: Callable, *args: Any, **kwargs: Any
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         def is_variable(arg: Any) -> bool:

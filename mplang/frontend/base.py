@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
@@ -44,24 +44,8 @@ from mplang.core.tensor import TensorType
 Triad = tuple[PFunction, list[MPObject], PyTreeDef]
 
 
-class FEOp(ABC):
-    """Base class for all frontend operations.
-
-    This class provides a common interface for all frontend operations
-    that can be compiled and executed by the mplang system.
-    """
-
-    @abstractmethod
-    def __call__(self, *args: Any, **kwargs: Any) -> Triad:
-        """Compile the function with given arguments.
-
-        Returns:
-            Triad: The compiled function, input arguments, and output tree definition.
-        """
-
-
 # -----------------------------------------------------------------------------
-# Lightweight fe module/feop system (drop-in alongside FEOp)
+# Lightweight fe module/feop system (new FeOperation based)
 # -----------------------------------------------------------------------------
 
 
@@ -131,7 +115,23 @@ def is_feop(x: Any) -> bool:
 
 
 class FeModule(ABC):
-    """Frontend module handle with ctx-level state, init lifecycle, and feop/simple decorators."""
+    """Frontend module handle with ctx-level state, init lifecycle, and feop/typed_op decorators.
+
+    Choosing between typed_op and feop:
+    - typed_op: Use when your kernel can determine output types purely from input MPObjects and simple attrs.
+        - Kernel returns TensorType/TableType or a PyTree thereof.
+        - Positional MPObject args and any MPObject kwargs become inputs to PFunction (order: positionals then kwargs).
+        - Non-MPObject kwargs become attributes on PFunction.
+        - PFunction is assembled automatically with fn_type = pfunc_name and ins/outs inferred.
+    - feop: Use when you need full control over PFunction construction (multiple outputs, special attrs, custom packing).
+        - Kernel directly returns (PFunction, list[MPObject], PyTreeDef).
+    - Subclass FeOperation if you need persistent state or complex compilation flows.
+
+    Tips:
+    - Keep routing information in PFunction.fn_type (e.g., "builtin.read", "sql[duckdb]", "mlir.stablehlo").
+    - Avoid backend-specific logic in kernels; only validate and shape types.
+    - For deterministic input ordering with many MPObject kwargs, prefer passing them positionally or sort by key upstream.
+    """
 
     def __init__(self, name: str):
         self.name = name
@@ -158,14 +158,14 @@ class FeModule(ABC):
 
         return _decorator
 
-    def simple(self, name: str, pfunc_name: str):
-        """Decorator to create a SimpleFeOperation from a type-only kernel.
+    def typed_op(self, name: str, pfunc_name: str):
+        """Decorator for type-driven ops that return only types/schemas.
 
-        The decorated function should return a pytree of TensorType/TableType
-        describing outputs; keyword arguments are treated as attributes.
+        The decorated kernel should compute and return a TensorType/TableType (or PyTree thereof).
+        Positional MPObject args and MPObject kwargs become inputs. Non-MPObject kwargs are attributes.
 
         Example:
-            @mymod.simple(name="add", pfunc_name="builtin.add")
+            @mymod.typed_op(name="add", pfunc_name="builtin.add")
             def add_kernel(x: MPObject, y: MPObject) -> TensorType:
                 return x.mptype._type  # same shape/type as x
         """
@@ -177,6 +177,10 @@ class FeModule(ABC):
 
         return _decorator
 
+    # Backward-compatible alias
+    def simple(self, name: str, pfunc_name: str):
+        return self.typed_op(name, pfunc_name)
+
 
 class StatelessFeModule(FeModule):
     """Stateless frontend module with no ctx-level state."""
@@ -186,7 +190,7 @@ class StatelessFeModule(FeModule):
 
 
 # -----------------------------------------------------------------------------
-# Optional class-based contracts and adapter
+# Class-based contracts and adapters
 # -----------------------------------------------------------------------------
 
 
@@ -240,21 +244,52 @@ class SimpleFeOperation(FeOperation):
 
     # override
     def trace(self, *args: MPObject, **kwargs: Any) -> Triad:
-        # ensure all args are MPObject
-        for a in args:
-            if not isinstance(a, MPObject):
-                raise TypeError(
-                    f"simple op expects positional args to be MPObject, got {type(a).__name__}"
-                )
-        # ensure all kwargs are non-MPObject (attributes)
-        for k, v in kwargs.items():
-            if isinstance(v, MPObject):
-                raise TypeError(
-                    f"simple op expects keyword args as attributes, but {k} is MPObject"
-                )
+        # Split inputs: positional/keyword MPObjects as inputs; others as attributes
+        pos_mp_inputs: list[MPObject] = [a for a in args if isinstance(a, MPObject)]
+        kw_mp_inputs: list[MPObject] = [
+            v for v in kwargs.values() if isinstance(v, MPObject)
+        ]
 
-        # Call kernel to get output type tree (and optional extra attrs)
-        result = self.ret_type_builder(*args, **kwargs)
+        # Prepare kernel call: map non-MPObject positional args to keyword-only params by order
+        import inspect
+
+        sig = inspect.signature(self.ret_type_builder)
+
+        non_mp_positional = [a for a in args if not isinstance(a, MPObject)]
+        kwargs_for_kernel = dict(kwargs)
+
+        kwonly_names = [
+            p.name
+            for p in sig.parameters.values()
+            if p.kind == inspect.Parameter.KEYWORD_ONLY
+        ]
+        for i, val in enumerate(non_mp_positional):
+            if i < len(kwonly_names) and kwonly_names[i] not in kwargs_for_kernel:
+                kwargs_for_kernel[kwonly_names[i]] = val
+
+        # Attributes for PFunction: non-MPObject kwargs, excluding TensorType/TableType
+        from mplang.core.table import TableType as _TableType
+        from mplang.core.tensor import TensorType as _TensorType
+
+        attr_kwargs: dict[str, Any] = {
+            k: v
+            for k, v in kwargs_for_kernel.items()
+            if not isinstance(v, MPObject)
+            and not isinstance(v, (_TensorType, _TableType))
+        }
+
+        # Decide call strategy: if original args bind to the signature, use them; else use mapped kwargs
+        binding_ok = True
+        try:
+            sig.bind_partial(*args, **kwargs)
+        except TypeError:
+            binding_ok = False
+
+        if binding_ok:
+            result = self.ret_type_builder(*args, **kwargs)
+        else:
+            # Call kernel with positional MPObjects and merged kwargs
+            result = self.ret_type_builder(*pos_mp_inputs, **kwargs_for_kernel)
 
         outs_info, out_tree = tree_flatten(result)
 
@@ -265,28 +300,18 @@ class SimpleFeOperation(FeOperation):
                 raise TypeError(
                     f"simple op kernel must return TensorType or TableType, got {type(o).__name__}"
                 )
-
-        ins_info = [a.mptype._type for a in args]
+        # Build input types from positional MPObjects followed by keyword MPObject values
+        all_inputs: list[MPObject] = pos_mp_inputs + kw_mp_inputs
+        ins_info = [a.mptype._type for a in all_inputs]
 
         # Compose PFunction and return triad
         pfunc = PFunction(
             fn_type=self.pfunc_name,
             ins_info=tuple(ins_info),
             outs_info=tuple(outs_info),
-            **kwargs,
+            **attr_kwargs,
         )
-        return pfunc, list(args), out_tree
-
-
-def as_feop(
-    module: str, name: str, op: FeOperation, *, replace: bool = False
-) -> FeOperation:
-    """Register an FeOperation instance into the global registry and return it.
-
-    Useful when constructing FeOperation subclasses programmatically.
-    """
-    get_registry().register_op(module, name, op, replace=replace)
-    return op
+        return pfunc, all_inputs, out_tree
 
 
 def femod(mod_name: str) -> FeModule:
@@ -296,25 +321,6 @@ def femod(mod_name: str) -> FeModule:
 def list_feops(module: str | None = None) -> dict[tuple[str, str], FeOperation]:
     """Return a view of registered feops, optionally filtered by module name."""
     return get_registry().list_ops(module)
-
-
-# -----------------------------------------------------------------------------
-# FeCompiler protocol (sketch)
-# -----------------------------------------------------------------------------
-
-
-@runtime_checkable
-class FeCompiler(Protocol):
-    """Compiler protocol: turns a kernel/definition into a Triad.
-
-    This is a light-weight protocol to prepare for a future compile_any entry.
-    Implementations should set a stable fn_type on the emitted PFunction.
-    """
-
-    def compile(
-        self, target: Any, /, *args: Any, **kwargs: Any
-    ) -> Triad:  # pragma: no cover - interface
-        ...
 
 
 # -----------------------------------------------------------------------------
@@ -343,12 +349,12 @@ class FeCompiler(Protocol):
 # Migration notes (checklist)
 # -----------------------------------------------------------------------------
 
-# - Replace ad-hoc isinstance(FEOp)/metadata checks with isinstance(x, FeOperation).
+# - Replace any isinstance(FEOp)/metadata checks with isinstance(x, FeOperation).
 # - Define a FeModule via femod("module_name") and register it in FeRegistry automatically.
 # - For inline ops that already produce a triad, use @module.feop(name)(trace_fn).
 # - For simple type-only kernels, use @module.simple(name, pfunc_name)(kernel).
 # - For complex ops (with Python callables/closures), subclass FeOperation and register
-#   via as_feop(module, name, op_instance) or use @module.feop with an InlineFeOperation.
+#   using get_registry().register_op(module, name, op_instance) or use @module.feop with InlineFeOperation.
 # - Ensure PFunction.fn_type is set as the routing key (e.g., "mlir.stablehlo", "sql.duckdb").
 # - Keep device selection/routing out of frontend code; only set fn_type and attributes.
 # - Avoid moving MPObjects across contexts directly; capture within current ctx in trace().

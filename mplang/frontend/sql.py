@@ -17,14 +17,17 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import FeOperation, femod
+
+_SQL_MOD = femod("sql")
 
 
-class SqlFE(FEOp):
+class SqlFE(FeOperation):
     def __init__(self, dialect: str = "duckdb"):
+        # Note: FeOperation ctor requires (module,name); we'll bind concrete instances below
         self._dialect = dialect
 
-    def __call__(
+    def trace(
         self,
         sql: str,
         out_type: TableType,
@@ -53,4 +56,4 @@ class SqlFE(FEOp):
         return pfn, in_vars, treedef
 
 
-sql_run = SqlFE()
+sql_run = SqlFE("duckdb")

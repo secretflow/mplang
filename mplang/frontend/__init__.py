@@ -25,7 +25,7 @@ from mplang.frontend import ibis_cc as ibis_cc
 from mplang.frontend import jax_cc as jax_cc
 from mplang.frontend import phe as phe
 from mplang.frontend import tee as tee
-from mplang.frontend.base import FEOp as FEOp
+from mplang.frontend.base import FeOperation as FeOperation
 from mplang.frontend.ibis_cc import ibis_compile as ibis_compile
 from mplang.frontend.jax_cc import jax_compile as jax_compile
 from mplang.frontend.spu import (
@@ -37,7 +37,7 @@ from mplang.frontend.spu import (
 from mplang.frontend.sql import sql_run as sql_run
 
 __all__ = [
-    "FEOp",
+    "FeOperation",
     "SpuConfig",
     "SpuJaxCompile",
     "SpuMakeShares",

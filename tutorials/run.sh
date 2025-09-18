@@ -19,3 +19,7 @@ uv run python tutorials/3_device.py
 uv run python tutorials/4_simulation.py sim
 uv run python tutorials/5_ir_dump.py
 uv run python tutorials/6_advanced.py
+uv run python tutorials/7_stdio.py
+uv run python tutorials/8_phe.py
+uv run python tutorials/9_tee.py
+uv run python tutorials/10_analysis.py

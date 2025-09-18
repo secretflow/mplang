@@ -58,7 +58,7 @@ class DummyTensor(MPObject):
 def test_simple_decorator_builds_triad():
     mod = femod("ut_mod_simple_add")
 
-    @mod.simple(pfunc_name="builtin.add")
+    @mod.typed_op(pfunc_name="builtin.add")
     def add(x: MPObject, y: MPObject, *, alpha: int):  # returns TensorType
         # Return the same type as x
         return x.mptype._type
@@ -95,7 +95,7 @@ def test_simple_decorator_builds_triad():
 def test_feop_decorator_inline():
     mod = femod("ut_mod_inline_scale")
 
-    @mod.feop(name="scale")
+    @mod.feop()
     def scale_trace(x: MPObject, factor: int):
         # Build outs info from x type
         leaves, out_tree = tree_flatten(x.mptype._type)
@@ -125,7 +125,7 @@ def test_feop_decorator_inline():
 def test_simple_rejects_invalid_kwargs():
     mod = femod("ut_mod_badkw")
 
-    @mod.simple(pfunc_name="builtin.echo")
+    @mod.typed_op(pfunc_name="builtin.echo")
     def echo(x: MPObject):  # returns TensorType
         return x.mptype._type
 
@@ -138,7 +138,7 @@ def test_simple_rejects_invalid_kwargs():
 def test_simple_rejects_invalid_return_type():
     mod = femod("ut_mod_badret")
 
-    @mod.simple(pfunc_name="builtin.bad")
+    @mod.typed_op(pfunc_name="builtin.bad")
     def bad(x: MPObject):  # missing explicit TensorType/TableType return
         # Returning a python int should trigger a TypeError in SimpleFeOperation.trace
         return 42

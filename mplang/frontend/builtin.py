@@ -32,7 +32,7 @@ def identity(obj: MPObject) -> TensorType:
     return TensorType.from_obj(obj)
 
 
-@_BUILTIN_MOD.feop(name="read")
+@_BUILTIN_MOD.feop()
 def read(
     path: str, ty: TensorType, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -54,7 +54,7 @@ def write(obj: MPObject, *, path: str) -> TensorType:
     return TensorType.from_obj(obj)
 
 
-@_BUILTIN_MOD.feop(name="constant")
+@_BUILTIN_MOD.feop()
 def constant(
     data: TensorLike | ScalarType | TableLike,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -93,7 +93,7 @@ def constant(
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.feop(name="rank")
+@_BUILTIN_MOD.feop()
 def rank() -> tuple[PFunction, list[MPObject], PyTreeDef]:
     tensor_type = TensorType(UINT64, ())
     pfunc = PFunction(
@@ -105,7 +105,7 @@ def rank() -> tuple[PFunction, list[MPObject], PyTreeDef]:
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.feop(name="prand")
+@_BUILTIN_MOD.feop()
 def prand(shape: Shape = ()) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     tensor_type = TensorType(UINT64, shape)
     pfunc = PFunction(

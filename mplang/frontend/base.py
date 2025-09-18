@@ -141,11 +141,11 @@ class FeModule(ABC):
     @abstractmethod
     def initialize(self, ctx: MPContext) -> None: ...
 
-    def feop(self, name: str) -> Callable[[Callable[..., Triad]], FeOperation]:
+    def feop(self) -> Callable[[Callable[..., Triad]], FeOperation]:
         """Decorator for inline/complex ops which already return a Triad.
 
         Usage:
-            @mymod.feop(name="scale")
+            @mymod.feop()
             def scale(x: MPObject, factor: int) -> Triad:
                 # build PFunction and return triad directly
                 ...
@@ -153,6 +153,7 @@ class FeModule(ABC):
         """
 
         def _decorator(trace_fn: Callable[..., Triad]) -> FeOperation:
+            name = trace_fn.__name__
             op = InlineFeOperation(self, name, trace_fn)
             get_registry().register_op(self.name, name, op)
             return op
@@ -199,10 +200,6 @@ class FeModule(ABC):
             return op
 
         return _decorator
-
-    # Backward-compatible alias
-    def simple(self, pfunc_name: str) -> Callable[[Callable[..., Any]], FeOperation]:
-        return self.typed_op(pfunc_name)
 
 
 class StatelessFeModule(FeModule):
@@ -409,8 +406,8 @@ def list_feops(module: str | None = None) -> dict[tuple[str, str], FeOperation]:
 
 # - Replace any isinstance(FEOp)/metadata checks with isinstance(x, FeOperation).
 # - Define a FeModule via femod("module_name") and register it in FeRegistry automatically.
-# - For inline ops that already produce a triad, use @module.feop(name)(trace_fn).
-# - For simple type-only kernels, use @module.simple(pfunc_name)(kernel). The op name is derived from the kernel function name.
+# - For inline ops that already produce a triad, use @module.feop()(trace_fn). The op name is derived from the function name.
+# - For type-only kernels, use @module.typed_op(pfunc_name)(kernel). The op name is derived from the kernel function name.
 # - For complex ops (with Python callables/closures), subclass FeOperation and register
 #   using get_registry().register_op(module, name, op_instance) or use @module.feop with InlineFeOperation.
 # - Ensure PFunction.fn_type is set as the routing key (e.g., "mlir.stablehlo", "sql.duckdb").

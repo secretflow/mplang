@@ -101,7 +101,7 @@ def _run_server_process(app, host, port, sock, log_level):
     server.run(sockets=[sock])
 
 
-def _run_server_process_spawn(app_module, app_name, host, port, log_level):
+def _run_server_process_spawn(app_module, app_name, host, write_conn, log_level):
     """The target function for the server process using spawn context (without socket)."""
     import importlib
 
@@ -110,6 +110,13 @@ def _run_server_process_spawn(app_module, app_name, host, port, log_level):
     # Import the app dynamically to avoid pickling issues
     module = importlib.import_module(app_module)
     app = getattr(module, app_name)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((host, 0))
+    port = sock.getsockname()[1]
+
+    write_conn.send(port)
+    write_conn.close()
 
     config = uvicorn.Config(
         app,
@@ -122,7 +129,7 @@ def _run_server_process_spawn(app_module, app_name, host, port, log_level):
     if _verbose():
         print(f"[spawn_http_servers] starting server pid={os.getpid()} port={port}")
     # Child process binds to the port directly (spawn doesn't inherit sockets)
-    server.run()
+    server.run(sockets=[sock])
 
 
 def spawn_http_servers(
@@ -242,33 +249,36 @@ def _spawn_http_servers_spawn(
     if app is mplang.runtime.server.app:
         # Reserve ports by binding and releasing them
         ports = []
-        temp_sockets = []
-        for _ in range(n):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.bind((host, 0))
-            ports.append(sock.getsockname()[1])
-            temp_sockets.append(sock)
-
-        # Close the temporary sockets to release the ports for use by child processes
-        for sock in temp_sockets:
-            sock.close()
-
-        addresses = [f"http://{host}:{p}" for p in ports]
         processes: list[multiprocessing.Process] = []
 
         # Use 'spawn' context to avoid deadlocks with JAX and other multithreaded libraries
         ctx = multiprocessing.get_context("spawn")
 
         # Hardcoded approach for mplang runtime server
-        for port in ports:
+        for _ in range(n):
+            read_conn, write_conn = ctx.Pipe(duplex=False)
             p = ctx.Process(
                 target=_run_server_process_spawn,
-                args=("mplang.runtime.server", "app", host, port, log_level),
+                args=("mplang.runtime.server", "app", host, write_conn, log_level),
             )
             p.daemon = True
             p.start()
             processes.append(p)
 
+            write_conn.close()  # Close the write end in the parent process
+            try:
+                port = read_conn.recv()  # Expect the child to send back the port
+                ports.append(port)
+            except EOFError:
+                p.terminate()
+                p.join()
+                raise RuntimeError(
+                    "Failed to start server process, no port received"
+                ) from None
+            finally:
+                read_conn.close()
+
+        addresses = [f"http://{host}:{p}" for p in ports]
         # Health check and cleanup
         return _wait_for_servers(
             ports,

@@ -23,6 +23,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 import socket
+import sys
 import time
 from dataclasses import dataclass
 
@@ -82,7 +83,7 @@ def _verbose() -> bool:
 
 
 def _run_server_process(app, host, port, sock, log_level):
-    """The target function for the server process."""
+    """The target function for the server process using fork context (with socket)."""
     import uvicorn
 
     config = uvicorn.Config(
@@ -100,6 +101,30 @@ def _run_server_process(app, host, port, sock, log_level):
     server.run(sockets=[sock])
 
 
+def _run_server_process_spawn(app_module, app_name, host, port, log_level):
+    """The target function for the server process using spawn context (without socket)."""
+    import importlib
+
+    import uvicorn
+
+    # Import the app dynamically to avoid pickling issues
+    module = importlib.import_module(app_module)
+    app = getattr(module, app_name)
+
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level=log_level,
+        ws="none",
+    )
+    server = uvicorn.Server(config)
+    if _verbose():
+        print(f"[spawn_http_servers] starting server pid={os.getpid()} port={port}")
+    # Child process binds to the port directly (spawn doesn't inherit sockets)
+    server.run()
+
+
 def spawn_http_servers(
     app,
     n: int,
@@ -111,14 +136,55 @@ def spawn_http_servers(
     request_timeout: float = 0.25,
     log_level: str = "critical",
 ) -> SpawnResult:
-    """Spawn n uvicorn servers using a socket reservation strategy to avoid races.
+    """Spawn n uvicorn servers, choosing between fork and spawn contexts based on safety.
 
-    This approach involves:
-    1. Creating and binding sockets to ephemeral ports (port=0) in the parent.
-    2. Passing the socket file descriptors to child processes.
-    3. Uvicorn in the child process then uses the existing socket.
-    This avoids the time-of-check-to-time-of-use (TOCTOU) race condition.
+    This function automatically detects whether JAX or other multithreaded libraries
+    are in use and chooses the appropriate multiprocessing context:
+    - fork: More efficient, works with file descriptors, but incompatible with multithreaded code
+    - spawn: Safer for multithreaded environments like JAX, but requires different approach
     """
+    # Check if JAX is imported (indicating potential multithreading issues)
+    # Also check if we're dealing with the runtime server app
+    use_spawn = (
+        "jax" in sys.modules or "jaxlib" in sys.modules or "mplang" in sys.modules
+    )  # mplang includes JAX functionality
+
+    if use_spawn:
+        return _spawn_http_servers_spawn(
+            app,
+            n,
+            host=host,
+            health_path=health_path,
+            max_wait=max_wait,
+            poll_interval=poll_interval,
+            request_timeout=request_timeout,
+            log_level=log_level,
+        )
+    else:
+        return _spawn_http_servers_fork(
+            app,
+            n,
+            host=host,
+            health_path=health_path,
+            max_wait=max_wait,
+            poll_interval=poll_interval,
+            request_timeout=request_timeout,
+            log_level=log_level,
+        )
+
+
+def _spawn_http_servers_fork(
+    app,
+    n: int,
+    *,
+    host: str = DEFAULT_HOST,
+    health_path: str = DEFAULT_HEALTH_PATH,
+    max_wait: float = 10.0,
+    poll_interval: float = 0.1,
+    request_timeout: float = 0.25,
+    log_level: str = "critical",
+) -> SpawnResult:
+    """Spawn n uvicorn servers using fork context (original implementation)."""
     sockets = []
     ports = []
     for _ in range(n):
@@ -130,8 +196,7 @@ def spawn_http_servers(
     addresses = [f"http://{host}:{p}" for p in ports]
     processes: list[multiprocessing.Process] = []
 
-    # Use 'fork' context if available, as it's more efficient for passing fds.
-    # 'spawn' would require more complex serialization.
+    # Use 'fork' context for efficiency when multithreading isn't a concern
     ctx = multiprocessing.get_context("fork")
 
     for port, sock in zip(ports, sockets, strict=True):
@@ -144,6 +209,108 @@ def spawn_http_servers(
         # The socket can be closed in the parent process after the child has inherited it.
         sock.close()
 
+    # Health check and cleanup logic remains the same
+    return _wait_for_servers(
+        ports,
+        processes,
+        host,
+        health_path,
+        max_wait,
+        poll_interval,
+        request_timeout,
+        addresses,
+    )
+
+
+def _spawn_http_servers_spawn(
+    app,
+    n: int,
+    *,
+    host: str = DEFAULT_HOST,
+    health_path: str = DEFAULT_HEALTH_PATH,
+    max_wait: float = 10.0,
+    poll_interval: float = 0.1,
+    request_timeout: float = 0.25,
+    log_level: str = "critical",
+) -> SpawnResult:
+    """Spawn n uvicorn servers using spawn context (safe for JAX/multithreaded environments)."""
+    # For spawn context with the runtime server, we use a hardcoded approach
+    # since the FastAPI app can't be pickled and socket inheritance doesn't work
+    # Check if this is the runtime server app by examining where it was imported from
+    import mplang.runtime.server
+
+    if app is mplang.runtime.server.app:
+        # Reserve ports by binding and releasing them
+        ports = []
+        temp_sockets = []
+        for _ in range(n):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind((host, 0))
+            ports.append(sock.getsockname()[1])
+            temp_sockets.append(sock)
+
+        # Close the temporary sockets to release the ports for use by child processes
+        for sock in temp_sockets:
+            sock.close()
+
+        addresses = [f"http://{host}:{p}" for p in ports]
+        processes: list[multiprocessing.Process] = []
+
+        # Use 'spawn' context to avoid deadlocks with JAX and other multithreaded libraries
+        ctx = multiprocessing.get_context("spawn")
+
+        # Hardcoded approach for mplang runtime server
+        for port in ports:
+            p = ctx.Process(
+                target=_run_server_process_spawn,
+                args=("mplang.runtime.server", "app", host, port, log_level),
+            )
+            p.daemon = True
+            p.start()
+            processes.append(p)
+
+        # Health check and cleanup
+        return _wait_for_servers(
+            ports,
+            processes,
+            host,
+            health_path,
+            max_wait,
+            poll_interval,
+            request_timeout,
+            addresses,
+        )
+    else:
+        # For other apps, fall back to fork context with a warning
+        import warnings
+
+        warnings.warn(
+            f"Spawn context not implemented for app module {app.__module__}, falling back to fork",
+            stacklevel=2,
+        )
+        return _spawn_http_servers_fork(
+            app,
+            n,
+            host=host,
+            health_path=health_path,
+            max_wait=max_wait,
+            poll_interval=poll_interval,
+            request_timeout=request_timeout,
+            log_level=log_level,
+        )
+
+
+def _wait_for_servers(
+    ports,
+    processes,
+    host,
+    health_path,
+    max_wait,
+    poll_interval,
+    request_timeout,
+    addresses,
+):
+    """Common logic to wait for servers to become healthy."""
     # Health check loop
     attempts = int(max_wait / poll_interval)
     for port in ports:
@@ -185,7 +352,9 @@ def spawn_http_servers(
                 msg += f" Last exception: {last_ex}"
             raise RuntimeError(msg)
     if _verbose():
-        print(f"[spawn_http_servers] All {n} servers are healthy on ports: {ports}")
+        print(
+            f"[spawn_http_servers] All {len(ports)} servers are healthy on ports: {ports}"
+        )
 
     return SpawnResult(ports=ports, addresses=addresses, processes=processes)
 

@@ -14,8 +14,6 @@
 
 """PHE (Partially Homomorphic Encryption) frontend operations."""
 
-from typing import Any
-
 from mplang.core.dtype import COMPLEX128
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import TensorType
@@ -26,7 +24,7 @@ _PHE_MOD = femod("phe")
 
 @_PHE_MOD.typed_op(name="keygen", pfunc_name="phe.keygen")
 def keygen(
-    *, scheme: str = "paillier", key_size: int = 2048, **_kwargs: Any
+    *, scheme: str = "paillier", key_size: int = 2048
 ) -> tuple[TensorType, TensorType]:
     """Generate a PHE key pair: returns (public_key, private_key)."""
     # For keys, dtype is meaningless as they shouldn't be used for computation,
@@ -37,7 +35,7 @@ def keygen(
 
 
 @_PHE_MOD.typed_op(name="encrypt", pfunc_name="phe.encrypt")
-def encrypt(plaintext: MPObject, public_key: MPObject, **_kwargs: Any) -> TensorType:
+def encrypt(plaintext: MPObject, public_key: MPObject) -> TensorType:
     """Encrypt plaintext using PHE public key: returns ciphertext with same semantic type as plaintext."""
     plaintext_ty = TensorType.from_obj(plaintext)
     _ = TensorType.from_obj(public_key)
@@ -45,7 +43,7 @@ def encrypt(plaintext: MPObject, public_key: MPObject, **_kwargs: Any) -> Tensor
 
 
 @_PHE_MOD.typed_op(name="add", pfunc_name="phe.add")
-def add(operand1: MPObject, operand2: MPObject, **_kwargs: Any) -> TensorType:
+def add(operand1: MPObject, operand2: MPObject) -> TensorType:
     """Add two PHE operands (semantics depend on backend representation)."""
     op1_ty = TensorType.from_obj(operand1)
     _ = TensorType.from_obj(operand2)
@@ -53,7 +51,7 @@ def add(operand1: MPObject, operand2: MPObject, **_kwargs: Any) -> TensorType:
 
 
 @_PHE_MOD.typed_op(name="mul", pfunc_name="phe.mul")
-def mul(ciphertext: MPObject, plaintext: MPObject, **_kwargs: Any) -> TensorType:
+def mul(ciphertext: MPObject, plaintext: MPObject) -> TensorType:
     """Multiply a PHE ciphertext with a plaintext value (ciphertext dtype preserved)."""
     ct_ty = TensorType.from_obj(ciphertext)
     pt_ty = TensorType.from_obj(plaintext)
@@ -66,7 +64,7 @@ def mul(ciphertext: MPObject, plaintext: MPObject, **_kwargs: Any) -> TensorType
 
 
 @_PHE_MOD.typed_op(name="decrypt", pfunc_name="phe.decrypt")
-def decrypt(ciphertext: MPObject, private_key: MPObject, **_kwargs: Any) -> TensorType:
+def decrypt(ciphertext: MPObject, private_key: MPObject) -> TensorType:
     """Decrypt ciphertext using PHE private key: returns plaintext with same semantic type as ciphertext."""
     ciphertext_ty = TensorType.from_obj(ciphertext)
     _ = TensorType.from_obj(private_key)

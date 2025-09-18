@@ -59,7 +59,7 @@ def test_simple_decorator_builds_triad():
     mod = femod("ut_mod_simple_add")
 
     @mod.simple(name="add", pfunc_name="builtin.add")
-    def add_kernel(x: MPObject, y: MPObject, **attrs):  # returns TensorType
+    def add_kernel(x: MPObject, y: MPObject, *, alpha: int):  # returns TensorType
         # Return the same type as x
         return x.mptype._type
 

@@ -84,7 +84,7 @@ def test_table_to_tensor_happy_path_all_columns():
     df = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
     table_obj = TableMP(df)
     pfunc, _inputs, _treedef = table_to_tensor(
-        table=table_obj,
+        table_obj,
         number_rows=len(df),
     )
     assert pfunc.fn_type == "builtin.table_to_tensor"
@@ -98,7 +98,7 @@ def test_table_to_tensor_hetero_dtype_failure():
     table_obj = TableMP(df)
     with pytest.raises(TypeError):
         table_to_tensor(
-            table=table_obj,
+            table_obj,
             number_rows=len(df),
         )
 
@@ -107,7 +107,7 @@ def test_table_to_tensor_homogeneous_dtype_infers():
     df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
     table_obj = TableMP(df)
     pfunc, _, _ = table_to_tensor(
-        table=table_obj,
+        table_obj,
         number_rows=len(df),
     )
     out_type = pfunc.outs_info[0]
@@ -120,7 +120,7 @@ def test_table_to_tensor_string_numeric_hetero_failure():
     table_obj = TableMP(df)
     with pytest.raises(TypeError):
         table_to_tensor(
-            table=table_obj,
+            table_obj,
             number_rows=len(df),
         )
 
@@ -129,7 +129,7 @@ def test_table_to_tensor_no_subset_projection():
     # Ensure op packs all columns (cannot subset); create 3-column table
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
     table_obj = TableMP(df)
-    pfunc, _, _ = table_to_tensor(table=table_obj, number_rows=len(df))
+    pfunc, _, _ = table_to_tensor(table_obj, number_rows=len(df))
     out_type = pfunc.outs_info[0]
     assert isinstance(out_type, TensorType)
     assert out_type.shape == (2, 3)
@@ -142,14 +142,14 @@ def test_table_to_tensor_hetero_numeric_failure():
     })
     table_obj = TableMP(df)
     with pytest.raises(TypeError):
-        table_to_tensor(table=table_obj, number_rows=len(df))
+        table_to_tensor(table_obj, number_rows=len(df))
 
 
 def test_tensor_to_table_round_trip_schema():
     arr = np.array([[1, 4], [2, 5], [3, 6]], dtype=np.int64)
     tensor_obj = TensorMP(arr, DType.from_any("int64"))
     pfunc_tbl, _inputs, _treedef = tensor_to_table(
-        tensor=tensor_obj,
+        tensor_obj,
         column_names=["a", "b"],
     )
     assert pfunc_tbl.fn_type == "builtin.tensor_to_table"
@@ -162,7 +162,7 @@ def test_tensor_to_table_rank_error():
     arr = np.array([1, 2, 3], dtype=np.int64)  # rank 1
     tensor_obj = TensorMP(arr, DType.from_any("int64"))
     with pytest.raises(TypeError):
-        tensor_to_table(tensor=tensor_obj, column_names=["c"])  # rank mismatch
+        tensor_to_table(tensor_obj, column_names=["c"])  # rank mismatch
 
 
 def test_tensor_to_table_missing_column_names_param():
@@ -170,32 +170,32 @@ def test_tensor_to_table_missing_column_names_param():
     tensor_obj = TensorMP(arr, DType.from_any("int64"))
     # Python will raise TypeError because column_names is now required positional argument
     with pytest.raises(TypeError):  # signature enforcement
-        tensor_to_table(tensor=tensor_obj)  # type: ignore[call-arg]
+        tensor_to_table(tensor_obj)  # type: ignore[call-arg]
 
 
 def test_table_to_tensor_negative_rows():
     df = pd.DataFrame({"a": [1]})
     table_obj = TableMP(df)
     with pytest.raises(ValueError):
-        table_to_tensor(table=table_obj, number_rows=-1)
+        table_to_tensor(table_obj, number_rows=-1)
 
 
 def test_tensor_to_table_duplicate_names_failure():
     arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
     tensor_obj = TensorMP(arr, DType.from_any("int64"))
     with pytest.raises(ValueError):
-        tensor_to_table(tensor=tensor_obj, column_names=["a", "a"])  # duplicate
+        tensor_to_table(tensor_obj, column_names=["a", "a"])  # duplicate
 
 
 def test_tensor_to_table_empty_name_failure():
     arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
     tensor_obj = TensorMP(arr, DType.from_any("int64"))
     with pytest.raises(ValueError):
-        tensor_to_table(tensor=tensor_obj, column_names=["", "b"])  # empty name
+        tensor_to_table(tensor_obj, column_names=["", "b"])  # empty name
 
 
 def test_tensor_to_table_whitespace_name_failure():
     arr = np.array([[1, 2], [3, 4]], dtype=np.int64)
     tensor_obj = TensorMP(arr, DType.from_any("int64"))
     with pytest.raises(ValueError):
-        tensor_to_table(tensor=tensor_obj, column_names=["  ", "b"])  # whitespace only
+        tensor_to_table(tensor_obj, column_names=["  ", "b"])  # whitespace only

@@ -115,22 +115,22 @@ def is_feop(x: Any) -> bool:
 
 
 class FeModule(ABC):
-    """Frontend module handle with ctx-level state, init lifecycle, and feop/typed_op decorators.
+    """Frontend module with feop/typed_op decorators.
 
-    Choosing between typed_op and feop:
-    - typed_op: Use when your kernel can determine output types purely from input MPObjects and simple attrs.
-        - Kernel returns TensorType/TableType or a PyTree thereof.
-        - Positional MPObject args and any MPObject kwargs become inputs to PFunction (order: positionals then kwargs).
-        - Non-MPObject kwargs become attributes on PFunction.
-        - PFunction is assembled automatically with fn_type = pfunc_name and ins/outs inferred.
-    - feop: Use when you need full control over PFunction construction (multiple outputs, special attrs, custom packing).
-        - Kernel directly returns (PFunction, list[MPObject], PyTreeDef).
-    - Subclass FeOperation if you need persistent state or complex compilation flows.
+    When to use which:
+    - Use typed_op (SimpleFeOperation) when:
+        - You know the backend routing key up front via pfunc_name, and the kernel is pure type logic.
+        - Inputs are MPObjects (positional/kwargs). Attributes are simple Python values (int/float/str/bytes/tuples/lists of primitives) passed as keywords.
+        - The kernel returns TensorType/TableType (or a PyTree thereof); no IR construction inside.
+    - Use feop (InlineFeOperation) when:
+        - You already build and return the Triad explicitly, or need custom packing/attrs/multi-output composition.
+    - Subclass FeOperation when:
+        - You need compilation/stateful behavior/dynamic routing, multiple PFunctions, or complex capture flows.
 
     Tips:
     - Keep routing information in PFunction.fn_type (e.g., "builtin.read", "sql[duckdb]", "mlir.stablehlo").
     - Avoid backend-specific logic in kernels; only validate and shape types.
-    - For deterministic input ordering with many MPObject kwargs, prefer passing them positionally or sort by key upstream.
+    - Prefer keyword-only attributes in typed_op kernels for clarity (def op(x: MPObject, *, attr: int)).
     """
 
     def __init__(self, name: str):
@@ -162,12 +162,29 @@ class FeModule(ABC):
         """Decorator for type-driven ops that return only types/schemas.
 
         The decorated kernel should compute and return a TensorType/TableType (or PyTree thereof).
-        Positional MPObject args and MPObject kwargs become inputs. Non-MPObject kwargs are attributes.
+        Positional inputs may be MPObjects (captured as inputs) or data-like values (TableLike/TensorLike)
+        used for type inference/validation. Keyword arguments are PFunction attributes and must be plain
+        Python values (int/float/str/bytes/tuples/lists of primitives). Passing MPObjects via kwargs is not allowed.
 
         Example:
             @mymod.typed_op(name="add", pfunc_name="builtin.add")
             def add_kernel(x: MPObject, y: MPObject) -> TensorType:
                 return x.mptype._type  # same shape/type as x
+
+                Bad vs Good (signatures and calls):
+                - Bad:  def op(x: MPObject, **kwargs): ...               # disallowed: **kwargs
+                    Good: def op(x: MPObject, *, attr: int): ...
+
+                - Bad:  def op(*args, **kwargs): ...                     # disallowed: *args/**kwargs
+                    Good: def op(x: MPObject, y: MPObject, *, k: str): ...
+
+                - Bad:  enc(plaintext=pt, key=mp_key)                    # MPObject via kwargs (disallowed)
+                    Good: enc(pt, mp_key)                                  # pass MPObjects positionally
+
+                - Good: hkdf(secret, "info")                            # data-like positional mapped to kw-only attr
+                    Also good: hkdf(secret, info="info")
+
+                - Good: phe.mul(jnp.array(...), jnp.array(...))          # data-like positionals allowed for type inference
         """
 
         def _decorator(ret_type_builder: Callable[..., Any]) -> FeOperation:
@@ -229,7 +246,17 @@ class InlineFeOperation(FeOperation):
 
 
 class SimpleFeOperation(FeOperation):
-    """FeOperation that builds Triad from a kernel returning type tree + attrs."""
+    """FeOperation that builds Triad from a type-only kernel.
+
+    Contract (keep it simple):
+    - Kernel computes and returns TensorType/TableType or a PyTree thereof.
+    - Positional inputs may be MPObjects (captured as inputs) or data-like values (TableLike/TensorLike)
+        used for type inference/validation. Keyword arguments are attributes and must be plain Python
+        values (TensorType/TableType are also excluded from attrs). MPObject kwargs are disallowed.
+    - Prefer keyword-only attributes in the kernel signature for explicitness. For convenience, non-MPObject
+        positional values that are not data-like will be mapped to keyword-only parameters by order when possible.
+    - No IR building inside the kernel; PFunction is assembled here with fn_type=pfunc_name.
+    """
 
     def __init__(
         self,
@@ -240,56 +267,81 @@ class SimpleFeOperation(FeOperation):
     ):
         super().__init__(module, name)
         self.pfunc_name = pfunc_name
-        self.ret_type_builder = kernel
+        self._kernel = kernel
 
-    # override
-    def trace(self, *args: MPObject, **kwargs: Any) -> Triad:
-        # Split inputs: positional/keyword MPObjects as inputs; others as attributes
-        pos_mp_inputs: list[MPObject] = [a for a in args if isinstance(a, MPObject)]
-        kw_mp_inputs: list[MPObject] = [
-            v for v in kwargs.values() if isinstance(v, MPObject)
-        ]
-
-        # Prepare kernel call: map non-MPObject positional args to keyword-only params by order
+        # Validate kernel signature: typed_op kernels must not use *args/**kwargs.
         import inspect
 
-        sig = inspect.signature(self.ret_type_builder)
+        sig = inspect.signature(kernel)
+        for p in sig.parameters.values():
+            if p.kind == inspect.Parameter.VAR_KEYWORD:
+                raise TypeError(
+                    f"typed_op kernel '{module.name}.{name}' must not use **kwargs; define explicit keywords instead"
+                )
+            if p.kind == inspect.Parameter.VAR_POSITIONAL:
+                raise TypeError(
+                    f"typed_op kernel '{module.name}.{name}' must not use *args; define explicit parameters instead"
+                )
 
-        non_mp_positional = [a for a in args if not isinstance(a, MPObject)]
-        kwargs_for_kernel = dict(kwargs)
-
-        kwonly_names = [
+        # Cache signature and kw-only parameter names for fast path in trace
+        self._kernel_sig = sig
+        self._kwonly_names = [
             p.name
             for p in sig.parameters.values()
             if p.kind == inspect.Parameter.KEYWORD_ONLY
         ]
-        for i, val in enumerate(non_mp_positional):
-            if i < len(kwonly_names) and kwonly_names[i] not in kwargs_for_kernel:
-                kwargs_for_kernel[kwonly_names[i]] = val
 
-        # Attributes for PFunction: non-MPObject kwargs, excluding TensorType/TableType
-        from mplang.core.table import TableType as _TableType
-        from mplang.core.tensor import TensorType as _TensorType
+    # override
+    def trace(self, *args: MPObject, **kwargs: Any) -> Triad:
+        # Actual params may not match kernel signature exactly, so we do flexible binding.
+        sig = self._kernel_sig
 
-        attr_kwargs: dict[str, Any] = {
-            k: v
-            for k, v in kwargs_for_kernel.items()
-            if not isinstance(v, MPObject)
-            and not isinstance(v, (_TensorType, _TableType))
-        }
+        # Inputs at PFunction layer are MPObjects captured from positional args only.
+        pos_mp_inputs: list[MPObject] = [a for a in args if isinstance(a, MPObject)]
 
-        # Decide call strategy: if original args bind to the signature, use them; else use mapped kwargs
-        binding_ok = True
+        # Enforce: no MPObject kwargs per simplified contract
+        for k, v in kwargs.items():
+            if isinstance(v, MPObject):
+                raise TypeError(
+                    f"typed_op does not accept MPObject kwargs: {k}; pass MPObjects positionally"
+                )
+
+        # Try original call; if it binds, keep it as-is to support data-like positionals
         try:
             sig.bind_partial(*args, **kwargs)
-        except TypeError:
-            binding_ok = False
+            call_pos = args
+            call_kwargs = kwargs
+        except TypeError as _bind_err:
+            # Fallback: For convenience, map non-MPObject positional arguments to
+            # keyword-only parameters by order. This allows ergonomic calls like
+            # `crypto.keygen(32)` where the kernel is `def keygen(*, length: int)`.
+            # The direct binding `sig.bind_partial(32)` would fail, so we manually
+            # map the positional `32` to the `length` keyword.
+            non_mp_positional = [a for a in args if not isinstance(a, MPObject)]
+            call_kwargs = dict(kwargs)
+            filled = 0
+            for _i, name in enumerate(self._kwonly_names):
+                if filled < len(non_mp_positional) and name not in call_kwargs:
+                    call_kwargs[name] = non_mp_positional[filled]
+                    filled += 1
+            if filled < len(non_mp_positional):
+                leftover = non_mp_positional[filled:]
+                raise TypeError(
+                    f"too many non-MPObject positional values for typed_op '{self.module.name}.{self.name}': {leftover}. "
+                    "Pass attributes explicitly by keyword (e.g., foo(x, *, attr=...))."
+                ) from None
+            call_pos = tuple(pos_mp_inputs)
 
-        if binding_ok:
-            result = self.ret_type_builder(*args, **kwargs)
-        else:
-            # Call kernel with positional MPObjects and merged kwargs
-            result = self.ret_type_builder(*pos_mp_inputs, **kwargs_for_kernel)
+        # Compute PFunction attrs from the call kwargs (exclude MPObject and type objects)
+        attr_kwargs: dict[str, Any] = {
+            k: v
+            for k, v in call_kwargs.items()
+            if not isinstance(v, MPObject)
+            and not isinstance(v, (TensorType, TableType))
+        }
+
+        # Execute kernel to compute return types
+        result = self._kernel(*call_pos, **call_kwargs)
 
         outs_info, out_tree = tree_flatten(result)
 
@@ -300,9 +352,9 @@ class SimpleFeOperation(FeOperation):
                 raise TypeError(
                     f"simple op kernel must return TensorType or TableType, got {type(o).__name__}"
                 )
-        # Build input types from positional MPObjects followed by keyword MPObject values
-        all_inputs: list[MPObject] = pos_mp_inputs + kw_mp_inputs
-        ins_info = [a.mptype._type for a in all_inputs]
+
+        # Build input types from positional MPObjects only
+        ins_info = [a.mptype._type for a in pos_mp_inputs]
 
         # Compose PFunction and return triad
         pfunc = PFunction(
@@ -311,7 +363,7 @@ class SimpleFeOperation(FeOperation):
             outs_info=tuple(outs_info),
             **attr_kwargs,
         )
-        return pfunc, all_inputs, out_tree
+        return pfunc, pos_mp_inputs, out_tree
 
 
 def femod(mod_name: str) -> FeModule:

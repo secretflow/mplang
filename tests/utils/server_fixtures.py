@@ -162,6 +162,8 @@ def spawn_http_servers(
             if p.is_alive():
                 p.terminate()
                 p.join(timeout=1)
+                if p.is_alive():
+                    p.kill()
         raise
 
     addresses = [f"http://{host}:{p}" for p in ports]

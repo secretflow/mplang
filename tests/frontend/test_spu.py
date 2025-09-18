@@ -20,13 +20,7 @@ from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
-from mplang.frontend.spu import (
-    SpuConfig,
-    SpuJaxCompile,
-    SpuMakeShares,
-    SpuReconstruct,
-    Visibility,
-)
+from mplang.frontend import spu
 
 
 class DummyContext(MPContext):
@@ -60,10 +54,8 @@ class Tensor(MPObject):
 
 
 def test_make_shares_basic() -> None:
-    cfg = SpuConfig(world_size=3)
-    op = SpuMakeShares(cfg)
     t = Tensor(jnp.array([1, 2, 3], dtype=jnp.float32))
-    pfunc, ins, _out_tree = op(t)
+    pfunc, ins, _out_tree = spu.makeshares(t, world_size=3)
     assert pfunc.fn_type == "spu.makeshares"
     assert len(ins) == 1
     assert len(pfunc.outs_info) == 3
@@ -71,44 +63,39 @@ def test_make_shares_basic() -> None:
 
 
 def test_make_shares_private_validation() -> None:
-    cfg = SpuConfig(world_size=3, enable_private=True)
-    op = SpuMakeShares(cfg)
     t = Tensor(jnp.array([0], dtype=jnp.int32))
-    pfunc, _, _ = op(t, visibility=Visibility.PRIVATE, owner_rank=2)
+    pfunc, _, _ = spu.makeshares(
+        t,
+        world_size=3,
+        visibility=spu.Visibility.PRIVATE,
+        owner_rank=2,
+        enable_private=True,
+    )
     assert pfunc.attrs["owner_rank"] == 2
     assert pfunc.attrs["visibility"] == libspu.Visibility.VIS_PRIVATE
 
 
 def test_reconstruct_basic() -> None:
-    cfg = SpuConfig(world_size=2)
-    recon = SpuReconstruct(cfg)
     s1 = Tensor(jnp.array([1, 2]))
     s2 = Tensor(jnp.array([3, 4]))
-    pfunc, ins, _tree = recon(s1, s2)
+    pfunc, ins, _tree = spu.reconstruct(s1, s2)
     assert pfunc.fn_type == "spu.reconstruct"
     assert len(ins) == 2
     assert len(pfunc.outs_info) == 1
 
 
 def test_reconstruct_world_size_mismatch() -> None:
-    cfg = SpuConfig(world_size=3)
-    recon = SpuReconstruct(cfg)
-    s1 = Tensor(jnp.array([1]))
-    s2 = Tensor(jnp.array([2]))
     with pytest.raises(ValueError):
-        recon(s1, s2)  # only 2 shares, expect 3
+        spu.reconstruct()  # no shares provided
 
 
 def test_jax_compile_simple_add() -> None:
-    cfg = SpuConfig(world_size=3)
-    compiler = SpuJaxCompile(cfg)
-
     def fn(a, b):  # type: ignore[no-untyped-def]
         return a + b
 
     a = Tensor(jnp.array([1.0, 2.0], dtype=jnp.float32))
     b = Tensor(jnp.array([3.0, 4.0], dtype=jnp.float32))
-    pfunc, ins, _out_tree = compiler(fn, a, b)
+    pfunc, ins, _out_tree = spu.jax_compile(fn, a, b)
     assert pfunc.fn_type == "mlir.pphlo"
     assert len(ins) == 2
     assert len(pfunc.outs_info) == 1
@@ -116,24 +103,18 @@ def test_jax_compile_simple_add() -> None:
 
 
 def test_jax_compile_multiple_outputs() -> None:
-    cfg = SpuConfig(world_size=3)
-    compiler = SpuJaxCompile(cfg)
-
     def fn(a):  # type: ignore[no-untyped-def]
         return a + 1, a * 2
 
     a = Tensor(jnp.array([1, 2, 3], dtype=jnp.int32))
-    pfunc, _ins, _out_tree = compiler(fn, a)
+    pfunc, _ins, _out_tree = spu.jax_compile(fn, a)
     assert len(pfunc.outs_info) == 2
 
 
 def test_jax_compile_visibility_metadata_secret() -> None:
-    cfg = SpuConfig(world_size=3)
-    compiler = SpuJaxCompile(cfg)
-
     def fn(a):  # type: ignore[no-untyped-def]
         return a * 2
 
     a = Tensor(jnp.array([1, 2], dtype=jnp.float32))
-    pfunc, _ins, _ = compiler(fn, a)
+    pfunc, _ins, _ = spu.jax_compile(fn, a)
     assert pfunc.attrs["input_visibilities"] == [libspu.Visibility.VIS_SECRET]

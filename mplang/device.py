@@ -36,7 +36,7 @@ from mplang.core.cluster import ClusterSpec, Device
 from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
 from mplang.frontend import crypto, ibis_cc, jax_cc, tee
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import FeOperation
 from mplang.frontend.ibis_cc import IbisCompiler
 from mplang.frontend.jax_cc import JaxCompiler
 from mplang.simp import mpi, smpc
@@ -79,7 +79,9 @@ def _get_devid(obj: MPObject) -> str:
 _is_mpobj = lambda x: isinstance(x, MPObject)
 
 
-def _device_run_spu(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> Any:
+def _device_run_spu(
+    dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
+) -> Any:
     if not isinstance(op, JaxCompiler):
         raise ValueError("SPU device only supports JAX frontend.")
     fn, *aargs = args
@@ -87,7 +89,9 @@ def _device_run_spu(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> An
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
-def _device_run_tee(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> Any:
+def _device_run_tee(
+    dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
+) -> Any:
     if not isinstance(op, JaxCompiler) and not isinstance(op, IbisCompiler):
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
@@ -96,15 +100,17 @@ def _device_run_tee(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> An
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
-def _device_run_ppu(dev_info: Device, op: FEOp, *args: Any, **kwargs: Any) -> Any:
+def _device_run_ppu(
+    dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
+) -> Any:
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
     var = simp.runAt(rank, op)(*args, **kwargs)
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
-def _device_run(dev_id: str, op: FEOp, *args: Any, **kwargs: Any) -> Any:
-    assert isinstance(op, FEOp)
+def _device_run(dev_id: str, op: FeOperation, *args: Any, **kwargs: Any) -> Any:
+    assert isinstance(op, FeOperation)
     cluster_spec = mapi.cur_ctx().cluster_spec
     if dev_id not in cluster_spec.devices:
         raise ValueError(f"Device {dev_id} not found in cluster spec.")
@@ -138,7 +144,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
         dev_id: The device id.
         fe_type: The frontend type of the device, could be "jax" or "ibis".
 
-    Note: 'fe_type' is not needed if the decorated function is already a FEOp.
+    Note: 'fe_type' is not needed if the decorated function is already a FeOperation.
 
     Example:
         >>> @device("P0")
@@ -149,7 +155,7 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
     def deco(fn: Callable) -> Callable:
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            if isinstance(fn, FEOp):
+            if isinstance(fn, FeOperation):
                 return _device_run(dev_id, fn, *args, **kwargs)
             else:
                 if fe_type == "jax":

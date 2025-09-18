@@ -277,9 +277,8 @@ def test_end_to_end_communication():
     from tests.utils.server_fixtures import get_free_ports  # type: ignore
 
     # Set multiprocessing start method to spawn to avoid fork-related issues
-    multiprocessing.set_start_method("spawn", force=True)
-
-    with multiprocessing.Manager() as manager:
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Manager() as manager:
         return_dict = manager.dict()
         assigned_ports = manager.dict()
         p0, p1 = get_free_ports(2)
@@ -289,7 +288,7 @@ def test_end_to_end_communication():
         # Start both party processes
         processes = []
         for rank in [0, 1]:
-            process = multiprocessing.Process(
+            process = ctx.Process(
                 target=run_party_e2e_process, args=(rank, return_dict, assigned_ports)
             )
             process.start()

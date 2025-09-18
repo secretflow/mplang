@@ -150,7 +150,7 @@ def spawn_http_servers(
                 ports.append(port)
             except EOFError:
                 p.terminate()
-                p.join()
+                p.join(timeout=5)
                 raise RuntimeError(
                     "Failed to start server process, no port received"
                 ) from None

@@ -23,13 +23,7 @@ from jax.tree_util import tree_unflatten
 
 from mplang.core import Mask, MPObject, Rank, peval, psize
 from mplang.core.context_mgr import cur_ctx
-from mplang.frontend.spu import (
-    SpuConfig,
-    SpuJaxCompile,
-    SpuMakeShares,
-    SpuReconstruct,
-    Visibility,
-)
+from mplang.frontend import spu
 from mplang.simp import mpi
 
 
@@ -106,9 +100,9 @@ class SPU(SecureAPI):
 
         # Get the world_size from spu_mask (number of parties in SPU computation)
         world_size = Mask(spu_mask).num_parties()
-        spu_cfg = SpuConfig(world_size=world_size)
-        make_shares = SpuMakeShares(spu_cfg)
-        pfunc, ins, _ = make_shares(obj, visibility=Visibility.SECRET)
+        pfunc, ins, _ = spu.makeshares(
+            obj, world_size=world_size, visibility=spu.Visibility.SECRET
+        )
         assert len(ins) == 1
         shares = peval(pfunc, ins, frm_mask)
 
@@ -125,13 +119,8 @@ class SPU(SecureAPI):
             raise ValueError(f"Unsupported fe_type: {fe_type}")
 
         spu_mask = self.get_spu_mask()
-
-        world_size = Mask(spu_mask).num_parties()
-        spu_cfg = SpuConfig(world_size=world_size)
-        compiler = SpuJaxCompile(spu_cfg)
-        pfunc, in_vars, out_tree = compiler(pyfn, *args, **kwargs)
+        pfunc, in_vars, out_tree = spu.jax_compile(pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
-
         out_flat = peval(pfunc, in_vars, spu_mask)
         return tree_unflatten(out_tree, out_flat)
 
@@ -147,9 +136,7 @@ class SPU(SecureAPI):
 
         # Reconstruct the original object from shares
         world_size = Mask(spu_mask).num_parties()
-        spu_cfg = SpuConfig(world_size=world_size)
-        reconstruct = SpuReconstruct(spu_cfg)
-        pfunc, ins, _ = reconstruct(*shares)
+        pfunc, ins, _ = spu.reconstruct(*shares, world_size=world_size)
         return peval(pfunc, ins, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:

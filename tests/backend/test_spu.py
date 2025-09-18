@@ -24,7 +24,7 @@ from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
-from mplang.frontend.spu import SpuConfig, SpuJaxCompile
+from mplang.frontend import spu
 from mplang.runtime.link_comm import LinkCommunicator
 
 
@@ -105,9 +105,7 @@ class TestSpuHandler:
         args = [DummyTensor((3,), jnp.float32), DummyTensor((3,), jnp.float32)]
 
         # Compile the function
-        cfg = SpuConfig(world_size=2)
-        compiler = SpuJaxCompile(cfg)
-        cfunc, _, _ = compiler(add_fn, *args)
+        cfunc, _, _ = spu.jax_compile(add_fn, *args)
 
         # Verify the compiled function format
         assert cfunc.fn_type == "mlir.pphlo"
@@ -142,9 +140,7 @@ class TestSpuHandler:
         args = [DummyTensor((3,), jnp.float32), DummyTensor((3,), jnp.float32)]
 
         # Compile the function (this should always work)
-        cfg = SpuConfig(world_size=1)
-        compiler = SpuJaxCompile(cfg)
-        cfunc, _, _ = compiler(add_fn, *args)
+        cfunc, _, _ = spu.jax_compile(add_fn, *args)
 
         # Create test data
         x_data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -252,9 +248,7 @@ class TestSpuHandler:
         args = [DummyTensor((3,), jnp.float32), DummyTensor((3,), jnp.float32)]
 
         # Compile the function
-        cfg = SpuConfig(world_size=2)
-        compiler = SpuJaxCompile(cfg)
-        cfunc, _, _ = compiler(add_fn, *args)
+        cfunc, _, _ = spu.jax_compile(add_fn, *args)
 
         # Create test data
         x_data = np.array([1.0, 2.0, 3.0], dtype=np.float32)

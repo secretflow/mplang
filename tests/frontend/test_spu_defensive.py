@@ -16,7 +16,7 @@
 Defensive tests for the SPU frontend (contract-level checks).
 
 Scope:
-- Validate MPLang's SPU frontend operators (e.g., SpuJaxCompile) without relying on a
+- Validate MPLang's SPU frontend operators (e.g., jax_compile) without relying on a
     real SPU runtime: shapes/dtypes, number of outputs, visibility metadata, and
     determinism of compilation results.
 - Do NOT test SPU runtime/protocol correctness or performance; those are covered by
@@ -32,7 +32,7 @@ from mplang.core.dtype import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.tensor import TensorType
-from mplang.frontend.spu import SpuConfig, SpuJaxCompile
+from mplang.frontend import spu
 
 
 class DummyContext(MPContext):
@@ -77,10 +77,8 @@ class Tensor(MPObject):
     ],
 )
 def test_basic_and_multi_outputs(func, input_shapes, expected_outputs):
-    cfg = SpuConfig(world_size=2)
-    compiler = SpuJaxCompile(cfg)
     args = [Tensor(jnp.zeros(shape, dtype=jnp.float32)) for shape in input_shapes]
-    pfunc, _ins, _tree = compiler(func, *args)
+    pfunc, _ins, _tree = spu.jax_compile(func, *args)
     assert pfunc.fn_type == "mlir.pphlo"
     assert len(pfunc.outs_info) == expected_outputs
 
@@ -97,13 +95,11 @@ def test_different_dtypes(dtype1, dtype2):
     def fn(x, y):
         return x + y
 
-    cfg = SpuConfig(world_size=2)
-    compiler = SpuJaxCompile(cfg)
     args = [
         Tensor(jnp.zeros((2,), dtype=dtype1)),
         Tensor(jnp.zeros((2,), dtype=dtype2)),
     ]
-    pfunc, _ins, _tree = compiler(fn, *args)
+    pfunc, _ins, _tree = spu.jax_compile(fn, *args)
     assert isinstance(pfunc.ins_info[0], TensorType)
     assert isinstance(pfunc.ins_info[1], TensorType)
     assert pfunc.ins_info[0].dtype.name == dtype1.__name__
@@ -116,11 +112,9 @@ def test_complex_function_deterministic():
         result = temp * z
         return jnp.sum(result, axis=0)
 
-    cfg = SpuConfig(world_size=2)
-    compiler = SpuJaxCompile(cfg)
     args = [Tensor(jnp.zeros((3, 4), dtype=jnp.float32)) for _ in range(3)]
-    p1, _i1, _t1 = compiler(complex_fn, *args)
-    p2, _i2, _t2 = compiler(complex_fn, *args)
+    p1, _i1, _t1 = spu.jax_compile(complex_fn, *args)
+    p2, _i2, _t2 = spu.jax_compile(complex_fn, *args)
     assert p1.fn_type == p2.fn_type
     assert p1.fn_name == p2.fn_name
     assert p1.ins_info == p2.ins_info
@@ -149,13 +143,11 @@ def test_complex_function_deterministic():
 def test_tensor_operations_parametrized(
     test_name, func_def, input_shape, expected_output_shape
 ):
-    cfg = SpuConfig(world_size=2)
-    compiler = SpuJaxCompile(cfg)
     if isinstance(input_shape[0], tuple):
         args = [Tensor(jnp.zeros(shape, dtype=jnp.float32)) for shape in input_shape]
     else:
         args = [Tensor(jnp.zeros(input_shape, dtype=jnp.float32))]
-    pfunc, _ins, _ = compiler(func_def, *args)
+    pfunc, _ins, _ = spu.jax_compile(func_def, *args)
     assert len(pfunc.ins_info) == len(args)
     assert len(pfunc.outs_info) >= 1
 
@@ -168,10 +160,8 @@ def test_visibility_settings_all_secret(n_inputs):
             result = result + args[i]
         return result
 
-    cfg = SpuConfig(world_size=2)
-    compiler = SpuJaxCompile(cfg)
     args = [Tensor(jnp.zeros((2,), dtype=jnp.float32)) for _ in range(n_inputs)]
-    pfunc, _ins, _ = compiler(multi_input_fn, *args)
+    pfunc, _ins, _ = spu.jax_compile(multi_input_fn, *args)
     vis = pfunc.attrs["input_visibilities"]
     assert len(vis) == n_inputs
     assert all(v == libspu.Visibility.VIS_SECRET for v in vis)

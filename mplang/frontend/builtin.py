@@ -121,6 +121,19 @@ def prand(shape: Shape = ()) -> tuple[PFunction, list[MPObject], PyTreeDef]:
 
 
 @_BUILTIN_MOD.typed_op()
+def debug_print(obj: MPObject, *, prefix: str = "") -> TableType | TensorType:
+    """Debug-print pass-through: return the same type as the input.
+
+    Keyword-only:
+        - prefix: forwarded as PFunction attr for backend printing.
+    """
+    # Return the original underlying type (tensor or table) to make this op
+    # an identity on the dataflow while still carrying side effects.
+    # typed_op will attach `prefix` into PFunction attrs and capture obj.
+    return obj.mptype._type
+
+
+@_BUILTIN_MOD.typed_op()
 def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
     if not isinstance(table.mptype._type, TableType):  # type: ignore[attr-defined]
         raise TypeError("table_to_tensor expects a Table MPObject")

@@ -4988,7 +4988,7 @@ class TestPHEHandlerNegativeNumbers:
 
         # Test values with negatives, zero, positives
         cipher_values = np.array([-4.0, 0.0, 2.0], dtype=np.float64)
-        plain_values = np.array([2.0, -3.0, 0.0], dtype=np.float64)
+        plain_values = np.array([2, -3, 0], dtype=np.int32)
         expected = cipher_values * plain_values  # [-8.0, 0.0, 0.0]
 
         # Encrypt
@@ -5025,10 +5025,10 @@ class TestPHEHandlerNegativeNumbers:
 
         # Test values: ciphertext vector and plaintext vector with negatives, zero, positives
         cipher_vector = np.array([-2.0, 0.0, 3.0], dtype=np.float64)
-        plain_vector = np.array([1.5, -2.0, 0.0], dtype=np.float64)
+        plain_vector = np.array([1, -2, 0], dtype=np.int32)
         expected = np.dot(
             cipher_vector, plain_vector
-        )  # -2.0*1.5 + 0.0*(-2.0) + 3.0*0.0 = -3.0
+        )  # -2.0*1 + 0.0*(-2) + 3.0*0 = -2.0
 
         # Encrypt vector
         encrypt_pfunc = PFunction(

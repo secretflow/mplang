@@ -342,7 +342,6 @@ class SimpleFeOperation(FeOperation):
             if not isinstance(v, MPObject)
             and not isinstance(v, (TensorType, TableType))
         }
-
         # Execute kernel to compute return types
         result = self._kernel(*call_pos, **call_kwargs)
 

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from enum import Enum
 from typing import Any
 
 import jax.numpy as jnp
@@ -31,8 +30,14 @@ from mplang.frontend.base import femod
 from mplang.utils.func_utils import normalize_fn
 
 
-class Visibility(Enum):
-    """Visibility types for SPU shares."""
+class Visibility:
+    """Frontend visibility constants mapping to libspu.Visibility.
+
+    Note: these are direct aliases to libspu.Visibility members so that
+    downstream serialization and backends receive the exact enum type
+    they expect. Keep the friendly names (SECRET/PUBLIC/PRIVATE) for
+    frontend ergonomics.
+    """
 
     SECRET = libspu.Visibility.VIS_SECRET
     PUBLIC = libspu.Visibility.VIS_PUBLIC
@@ -42,18 +47,19 @@ class Visibility(Enum):
 _SPU_MOD = femod("spu")
 
 
-@_SPU_MOD.feop()
+@_SPU_MOD.typed_op("spu.makeshares")
 def makeshares(
     data: MPObject,
     *,
     world_size: int,
-    visibility: Visibility = Visibility.SECRET,
+    visibility: libspu.Visibility = Visibility.SECRET,
     owner_rank: int = -1,
     enable_private: bool = False,
-) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    """Create SPU shares from a plaintext tensor.
+) -> tuple:
+    """Create SPU shares from a plaintext tensor (type-only kernel).
 
-    SSOT module-function version. Output shares count equals world_size.
+    Returns a PyTree of TensorType repeated `world_size` times.
+    Validation only; PFunction assembly handled by typed_op decorator.
     """
     if not isinstance(data, MPObject):
         raise TypeError("data must be an MPObject (Tensor) for makeshares")
@@ -66,35 +72,14 @@ def makeshares(
             raise ValueError(f"owner_rank {owner_rank} out of range [0,{world_size})")
 
     in_ty = TensorType.from_obj(data)
-    ins_info = (in_ty,)
-    outs_info = tuple(in_ty for _ in range(world_size))
-    pfunc = PFunction(
-        fn_type="spu.makeshares",
-        ins_info=ins_info,
-        outs_info=outs_info,
-        fn_name="makeshares",
-        visibility=visibility.value,
-        owner_rank=owner_rank,
-        operation="makeshares",
-        world_size=world_size,
-    )
-    _, treedef = tree_flatten(list(outs_info))
-    return pfunc, [data], treedef
+    return tuple(in_ty for _ in range(world_size))
 
 
 @_SPU_MOD.feop()
-def reconstruct(
-    *shares: MPObject,
-    world_size: int | None = None,
-) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    """Reconstruct plaintext tensor from shares.
-
-    If world_size is provided, enforce matching share count; otherwise infer from inputs.
-    """
+def reconstruct(*shares: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Reconstruct plaintext tensor from shares."""
     if len(shares) == 0:
         raise ValueError("reconstruct requires at least one share")
-    if world_size is not None and len(shares) != world_size:
-        raise ValueError(f"Expected {world_size} shares, got {len(shares)}")
 
     ins_info = tuple(TensorType.from_obj(s) for s in shares)
     outs_info = (ins_info[0],)
@@ -102,16 +87,19 @@ def reconstruct(
         fn_type="spu.reconstruct",
         ins_info=ins_info,
         outs_info=outs_info,
-        fn_name="reconstruct",
     )
     _, treedef = tree_flatten(outs_info[0])
     return pfunc, list(shares), treedef
 
 
-@_SPU_MOD.feop()
-def jax_compile(
-    fn: Callable, *args: Any, copts: Any | None = None, **kwargs: Any
+def _compile_jax(
+    copts: libspu.CompilerOptions,
+    fn: Callable,
+    *args: Any,
+    **kwargs: Any,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Compile a JAX function into SPU pphlo MLIR representation."""
+
     """Compile a JAX function into SPU pphlo MLIR representation."""
 
     def is_variable(arg: Any) -> bool:
@@ -125,9 +113,6 @@ def jax_compile(
     in_vis = [libspu.Visibility.VIS_SECRET for _ in in_vars]
     in_names = [f"in{idx}" for idx in range(len(in_vars))]
     out_names_gen = lambda outs: [f"out{idx}" for idx in range(len(outs))]
-
-    if copts is None:
-        copts = libspu.CompilerOptions()
 
     executable, out_info = spu_fe.compile(
         spu_fe.Kind.JAX,
@@ -162,3 +147,10 @@ def jax_compile(
         executable_name=executable.name,
     )
     return pfunc, in_vars, out_tree
+
+
+@_SPU_MOD.feop()
+def jax_compile(
+    fn: Callable, *args: Any, **kwargs: Any
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    return _compile_jax(libspu.CompilerOptions(), fn, *args, **kwargs)

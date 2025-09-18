@@ -135,8 +135,7 @@ class SPU(SecureAPI):
         assert all(share.pmask == to_mask for share in shares)
 
         # Reconstruct the original object from shares
-        world_size = Mask(spu_mask).num_parties()
-        pfunc, ins, _ = spu.reconstruct(*shares, world_size=world_size)
+        pfunc, ins, _ = spu.reconstruct(*shares)
         return peval(pfunc, ins, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:

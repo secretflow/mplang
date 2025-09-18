@@ -78,17 +78,15 @@ def test_make_shares_private_validation() -> None:
 def test_reconstruct_basic() -> None:
     s1 = Tensor(jnp.array([1, 2]))
     s2 = Tensor(jnp.array([3, 4]))
-    pfunc, ins, _tree = spu.reconstruct(s1, s2, world_size=2)
+    pfunc, ins, _tree = spu.reconstruct(s1, s2)
     assert pfunc.fn_type == "spu.reconstruct"
     assert len(ins) == 2
     assert len(pfunc.outs_info) == 1
 
 
 def test_reconstruct_world_size_mismatch() -> None:
-    s1 = Tensor(jnp.array([1]))
-    s2 = Tensor(jnp.array([2]))
     with pytest.raises(ValueError):
-        spu.reconstruct(s1, s2, world_size=3)  # only 2 shares, expect 3
+        spu.reconstruct()  # no shares provided
 
 
 def test_jax_compile_simple_add() -> None:

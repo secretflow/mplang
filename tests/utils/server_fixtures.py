@@ -133,28 +133,36 @@ def spawn_http_servers(
     # Use 'spawn' context to avoid deadlocks with JAX and other multithreaded libraries
     ctx = multiprocessing.get_context("spawn")
 
-    for _ in range(n):
-        read_conn, write_conn = ctx.Pipe(duplex=False)
-        p = ctx.Process(
-            target=_run_server_process,
-            args=(host, write_conn, log_level),
-        )
-        p.daemon = True
-        p.start()
-        processes.append(p)
+    try:
+        for _ in range(n):
+            read_conn, write_conn = ctx.Pipe(duplex=False)
+            p = ctx.Process(
+                target=_run_server_process,
+                args=(host, write_conn, log_level),
+            )
+            p.daemon = True
+            p.start()
+            processes.append(p)
 
-        write_conn.close()  # Close the write end in the parent process
-        try:
-            port = read_conn.recv()  # Expect the child to send back the port
-            ports.append(port)
-        except EOFError:
-            p.terminate()
-            p.join()
-            raise RuntimeError(
-                "Failed to start server process, no port received"
-            ) from None
-        finally:
-            read_conn.close()
+            write_conn.close()  # Close the write end in the parent process
+            try:
+                port = read_conn.recv()  # Expect the child to send back the port
+                ports.append(port)
+            except EOFError:
+                p.terminate()
+                p.join()
+                raise RuntimeError(
+                    "Failed to start server process, no port received"
+                ) from None
+            finally:
+                read_conn.close()
+    except Exception:
+        # If any part of the loop fails, clean up all processes started so far
+        for p in processes:
+            if p.is_alive():
+                p.terminate()
+                p.join(timeout=1)
+        raise
 
     addresses = [f"http://{host}:{p}" for p in ports]
     # Health check and cleanup

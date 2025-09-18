@@ -61,8 +61,9 @@ class FeRegistry:
     __slots__ = ("_modules", "_ops")
 
     def __init__(self) -> None:
-        self._modules = {}
-        self._ops = {}
+        # Typed registries
+        self._modules: dict[str, FeModule] = {}
+        self._ops: dict[tuple[str, str], FeOperation] = {}
 
     # ----------------------------- Modules -----------------------------
     def register_module(self, mod: FeModule, *, replace: bool = False) -> None:
@@ -140,7 +141,7 @@ class FeModule(ABC):
     @abstractmethod
     def initialize(self, ctx: MPContext) -> None: ...
 
-    def feop(self, name: str):
+    def feop(self, name: str) -> Callable[[Callable[..., Triad]], FeOperation]:
         """Decorator for inline/complex ops which already return a Triad.
 
         Usage:
@@ -158,7 +159,9 @@ class FeModule(ABC):
 
         return _decorator
 
-    def typed_op(self, name: str, pfunc_name: str):
+    def typed_op(
+        self, name: str, pfunc_name: str
+    ) -> Callable[[Callable[..., Any]], FeOperation]:
         """Decorator for type-driven ops that return only types/schemas.
 
         The decorated kernel should compute and return a TensorType/TableType (or PyTree thereof).
@@ -195,7 +198,9 @@ class FeModule(ABC):
         return _decorator
 
     # Backward-compatible alias
-    def simple(self, name: str, pfunc_name: str):
+    def simple(
+        self, name: str, pfunc_name: str
+    ) -> Callable[[Callable[..., Any]], FeOperation]:
         return self.typed_op(name, pfunc_name)
 
 

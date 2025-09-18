@@ -23,7 +23,13 @@ from jax.tree_util import tree_unflatten
 
 from mplang.core import Mask, MPObject, Rank, peval, psize
 from mplang.core.context_mgr import cur_ctx
-from mplang.frontend.spu import SpuFE, Visibility
+from mplang.frontend.spu import (
+    SpuConfig,
+    SpuJaxCompile,
+    SpuMakeShares,
+    SpuReconstruct,
+    Visibility,
+)
 from mplang.simp import mpi
 
 
@@ -99,11 +105,12 @@ class SPU(SecureAPI):
                     raise ValueError(f"Cannot seal from {frm_mask} to {obj.pmask}, ")
 
         # Get the world_size from spu_mask (number of parties in SPU computation)
-        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
-
-        # make shares on each party.
-        pfunc = spu.makeshares(obj, visibility=Visibility.SECRET)
-        shares = peval(pfunc, [obj], frm_mask)
+        world_size = Mask(spu_mask).num_parties()
+        spu_cfg = SpuConfig(world_size=world_size)
+        make_shares = SpuMakeShares(spu_cfg)
+        pfunc, ins, _ = make_shares(obj, visibility=Visibility.SECRET)
+        assert len(ins) == 1
+        shares = peval(pfunc, ins, frm_mask)
 
         # scatter the shares to each party.
         return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
@@ -119,13 +126,13 @@ class SPU(SecureAPI):
 
         spu_mask = self.get_spu_mask()
 
-        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
-        is_mpobject = lambda x: isinstance(x, MPObject)
-        pfunc, in_vars, out_tree = spu.compile_jax(is_mpobject, pyfn, *args, **kwargs)
+        world_size = Mask(spu_mask).num_parties()
+        spu_cfg = SpuConfig(world_size=world_size)
+        compiler = SpuJaxCompile(spu_cfg)
+        pfunc, in_vars, out_tree = compiler(pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
 
         out_flat = peval(pfunc, in_vars, spu_mask)
-
         return tree_unflatten(out_tree, out_flat)
 
     def reveal(self, obj: MPObject, to_mask: Mask) -> MPObject:
@@ -139,9 +146,11 @@ class SPU(SecureAPI):
         assert all(share.pmask == to_mask for share in shares)
 
         # Reconstruct the original object from shares
-        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
-        pfunc = spu.reconstruct(shares)
-        return peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
+        world_size = Mask(spu_mask).num_parties()
+        spu_cfg = SpuConfig(world_size=world_size)
+        reconstruct = SpuReconstruct(spu_cfg)
+        pfunc, ins, _ = reconstruct(*shares)
+        return peval(pfunc, ins, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
         return self.reveal(obj, to_mask=Mask.from_ranks(to_rank))

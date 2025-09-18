@@ -160,7 +160,9 @@ class FeModule(ABC):
 
         return _decorator
 
-    def typed_op(self, pfunc_name: str) -> Callable[[Callable[..., Any]], FeOperation]:
+    def typed_op(
+        self, pfunc_name: str | None = None
+    ) -> Callable[[Callable[..., Any]], FeOperation]:
         """Decorator for type-driven ops that return only types/schemas.
 
         The decorated kernel should compute and return a TensorType/TableType (or PyTree thereof).
@@ -193,8 +195,10 @@ class FeModule(ABC):
         - Good: phe.mul(jnp.array(...), jnp.array(...))          # data-like positionals allowed for type inference
         """
 
-        def _decorator(ret_type_builder: Callable[..., Any]) -> FeOperation:
-            op = SimpleFeOperation(self, pfunc_name, ret_type_builder)
+        def _decorator(kernel: Callable[..., Any]) -> FeOperation:
+            # Default PFunction routing when not provided: "<module>.<kernel_name>"
+            final_pfunc_name = pfunc_name or f"{self.name}.{kernel.__name__}"
+            op = SimpleFeOperation(self, final_pfunc_name, kernel)
             # Use kernel function name as SSOT for op name
             get_registry().register_op(self.name, op.name, op)
             return op

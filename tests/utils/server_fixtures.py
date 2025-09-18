@@ -239,7 +239,7 @@ def _spawn_http_servers_spawn(
     # Check if this is the runtime server app by examining where it was imported from
     import mplang.runtime.server
 
-    if getattr(app, "__module__", None) == "mplang.runtime.server":
+    if app is mplang.runtime.server.app:
         # Reserve ports by binding and releasing them
         ports = []
         temp_sockets = []

@@ -81,7 +81,7 @@ def _verbose() -> bool:
     }
 
 
-def _run_server_process_spawn(host, write_conn, log_level):
+def _run_server_process(host, write_conn, log_level):
     """The target function for the server process using spawn context."""
     import uvicorn
 
@@ -104,7 +104,7 @@ def _run_server_process_spawn(host, write_conn, log_level):
     server = uvicorn.Server(config)
     if _verbose():
         print(f"[spawn_http_servers] starting server pid={os.getpid()} port={port}")
-    # Child process binds to the port directly (spawn doesn't inherit sockets)
+
     server.run(sockets=[sock])
 
 
@@ -118,7 +118,14 @@ def spawn_http_servers(
     request_timeout: float = 0.25,
     log_level: str = "critical",
 ) -> SpawnResult:
-    """Spawn n uvicorn servers using spawn context (safe for JAX/multithreaded environments)."""
+    """Spawn n uvicorn servers using spawn context (safe for JAX/multithreaded environments).
+
+    This approach involves:
+    1. Creating and binding sockets to ephemeral ports (port=0) in the child process.
+    2. Passing the port number to the parent process via pipe.
+    3. Uvicorn in the child process then uses the existing socket.
+    This avoids port conflicts and race conditions.
+    """
 
     ports = []
     processes: list[multiprocessing.Process] = []
@@ -126,11 +133,10 @@ def spawn_http_servers(
     # Use 'spawn' context to avoid deadlocks with JAX and other multithreaded libraries
     ctx = multiprocessing.get_context("spawn")
 
-    # Hardcoded approach for mplang runtime server
     for _ in range(n):
         read_conn, write_conn = ctx.Pipe(duplex=False)
         p = ctx.Process(
-            target=_run_server_process_spawn,
+            target=_run_server_process,
             args=(host, write_conn, log_level),
         )
         p.daemon = True

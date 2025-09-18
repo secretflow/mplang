@@ -53,7 +53,6 @@ def p2p_list(frm: Rank, to: Rank, objs: list[MPObject]) -> list[MPObject]:
     return [mpi.p2p(frm, to, obj) for obj in objs]
 
 
-@mplang.function
 def batch_feature_wise_bucket_sum_mplang(
     arr: mplang.MPObject,  # encrypted
     subgroup_map: mplang.MPObject,  # plaintext

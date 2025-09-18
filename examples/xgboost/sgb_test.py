@@ -122,7 +122,7 @@ def run_plaintext_xgboost_benchmark(X_np: np.ndarray, y_np: np.ndarray, params: 
     return accuracy, auc
 
 
-@mplang.function
+# @mplang.function
 def run_sgb(
     model: SecureBoost,
     X_parts: dict,

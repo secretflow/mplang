@@ -203,7 +203,7 @@ class Simulator(InterpContext):
             # Collect results with proper exception handling
             for i, future in enumerate(futures):
                 try:
-                    result = future.result()  # 100 second timeout
+                    result = future.result(100)  # 100 second timeout
                     pts_results.append(result)
                 except concurrent.futures.TimeoutError:
                     faulthandler.dump_traceback(file=sys.stderr, all_threads=True)

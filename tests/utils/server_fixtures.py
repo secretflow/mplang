@@ -146,8 +146,8 @@ def spawn_http_servers(
     # Check if JAX is imported (indicating potential multithreading issues)
     # Also check if we're dealing with the runtime server app
     use_spawn = (
-        "jax" in sys.modules or "jaxlib" in sys.modules
-    )  # Use spawn if JAX or JAXlib is imported (multithreaded context)
+        "jax" in sys.modules or "jaxlib" in sys.modules or "mplang" in sys.modules
+    )  # mplang includes JAX functionality
 
     if use_spawn:
         return _spawn_http_servers_spawn(

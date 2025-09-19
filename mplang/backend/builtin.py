@@ -44,6 +44,7 @@ class BuiltinHandler(HybridHandler):
     PRAND = "builtin.prand"
     TABLE_TO_TENSOR = "builtin.table_to_tensor"
     TENSOR_TO_TABLE = "builtin.tensor_to_table"
+    DEBUG_PRINT = "builtin.debug_print"
 
     # override
     def setup(self, rank: int) -> None:
@@ -64,6 +65,7 @@ class BuiltinHandler(HybridHandler):
             self.PRAND,
             self.TABLE_TO_TENSOR,
             self.TENSOR_TO_TABLE,
+            self.DEBUG_PRINT,
         ]
 
     def _convert_to_numpy(self, obj: TensorLike) -> np.ndarray:
@@ -267,6 +269,49 @@ class BuiltinHandler(HybridHandler):
         df = pd.DataFrame(np_arr, columns=list(column_names))
         return [df]
 
+    def _summarize_value(self, val: TensorLike | TableLike) -> str:
+        """Create a concise string representation for debug output."""
+        try:
+            if isinstance(val, pd.DataFrame):
+                preview_rows = 8
+                # pandas stubs may type to_string as Any; coerce to str explicitly
+                return str(val.head(preview_rows).to_string(index=False))
+            else:
+                arr = self._convert_to_numpy(val)  # type: ignore
+                # Limit printing to avoid huge outputs
+                return str(
+                    np.array2string(
+                        arr,
+                        threshold=64,
+                        edgeitems=3,
+                        precision=6,
+                        suppress_small=True,
+                    )
+                )
+        except Exception as e:
+            return f"<unprintable: {type(val).__name__}: {e}>"
+
+    def _debug_print(
+        self, pfunc: PFunction, args: list[TensorLike | TableLike]
+    ) -> list[TensorLike | TableLike]:
+        """Execute builtin.debug_print: print local value and pass it through.
+
+        Contract: one input, one output (identity) so that graph won't DCE it.
+        Ranks without a value will not reach execute (EvalSemantic.should_run).
+        """
+        if len(args) != 1:
+            raise ValueError("debug_print expects exactly one argument.")
+        val = args[0]
+        prefix = pfunc.attrs.get("prefix", "")
+        try:
+            summary = self._summarize_value(val)
+        except Exception as e:
+            summary = f"<error summarizing value: {e}>"
+
+        # Print with rank tag
+        print(f"[debug_print][rank={self._my_rank}] {prefix}{summary}")
+        return [val]
+
     # override
     def execute(
         self,
@@ -302,5 +347,7 @@ class BuiltinHandler(HybridHandler):
             return self._table_to_tensor(pfunc, args)
         elif pfunc.fn_type == self.TENSOR_TO_TABLE:
             return self._tensor_to_table(pfunc, args)
+        elif pfunc.fn_type == self.DEBUG_PRINT:
+            return self._debug_print(pfunc, args)
         else:
             raise ValueError(f"Unsupported function type: {pfunc.fn_type}")

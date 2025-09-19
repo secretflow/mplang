@@ -239,6 +239,18 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
 
 
 @primitive
+def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
+    """Print local value of obj on owning parties and pass it through.
+
+    Returns the same MPObject value to keep it alive against DCE and to
+    support usage like: x = debug_print(x, prefix="x=").
+    """
+    pfunc, eval_args, out_tree = builtin.debug_print(obj, prefix=prefix)
+    results = peval(pfunc, eval_args)
+    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+
+
+@primitive
 def peval(
     pfunc: PFunction,
     args: list[MPObject],

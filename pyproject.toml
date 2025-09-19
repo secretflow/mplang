@@ -21,13 +21,16 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "protobuf>=5.0,<6.0",
+    #"protobuf>=5.0,<6.0",
     "typing_extensions",
     # both FE & BE
     "spu==0.9.4.dev20250827",         # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
     "ibis-framework[duckdb]==10.8.0",
     # runtime only
-    "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
+    "trustflow-tdx-generation>=0.3.0.dev20250409", # for TEE attestation report generation
+    "trustflow-verification>=0.3.0.dev20250409",   # for TEE attestation verification
+    "sdc-apis>=0.3.0.dev20241202",                 # for UnifiedAttestationReport and related proto definitions
+    "lightphe>=0.0.15,<0.1.0",                     # for PHE backend implementation
     "pandas>=2.0.0",
     "duckdb>=1.0.0",
     "httpx>=0.27.0",

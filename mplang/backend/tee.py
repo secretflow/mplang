@@ -19,6 +19,12 @@ import os
 from dataclasses import dataclass
 
 import numpy as np
+import trustflow.attestation.verification as verification
+from google.protobuf.json_format import MessageToJson
+from secretflowapis.v2.sdc.ual_pb2 import (
+    UnifiedAttestationAttributes,
+    UnifiedAttestationPolicy,
+)
 
 from mplang.core.pfunc import PFunction, TensorHandler
 from mplang.core.tensor import TensorLike
@@ -105,5 +111,110 @@ class MockTeeHandler(TensorHandler):
             return self._execute_quote_gen(args, pfunc)
         elif pfunc.fn_type == self.QUOTE_VERIFY_AND_EXTRACT:
             return self._execute_quote_verify_and_extract(pfunc, args)
+        else:
+            raise ValueError(f"Unsupported function type: {pfunc.fn_type}")
+
+
+class TdxHandler(TensorHandler):
+    """TDX Handler with a real TEE(tdx) implementation using TrustFlow Attestation Library.
+
+    PFunctions:
+    - tee.quote(pk): returns quote binding the provided public key
+    - tee.attest(quote): verifies and returns a gating byte
+
+    This implementation base on Intel TDX platform and requires TrustFlow Attestation Library.
+    """
+
+    QUOTE_GEN = "tee.quote"
+    QUOTE_VERIFY_AND_EXTRACT = "tee.attest"
+
+    def setup(self, rank: int) -> None:  # override
+        self._rank = rank
+
+        logging.info(f"Using TdxHandler on rank {rank}")
+
+    def teardown(self) -> None:  # override
+        ...
+
+    def list_fn_names(self) -> list[str]:  # override
+        return [self.QUOTE_GEN, self.QUOTE_VERIFY_AND_EXTRACT]
+
+    def _build_quote(self, pk: np.ndarray, report_json: str) -> np.ndarray:
+        # quote structure: 1-byte header + 32-byte pk + report json bytes
+        header = np.array([2], dtype=np.uint8)
+        pk32 = np.asarray(pk, dtype=np.uint8).reshape(32)
+        ret: np.ndarray = np.concatenate([
+            header,
+            pk32,
+            report_json.encode("utf-8"),
+        ]).astype(np.uint8)
+        return ret
+
+    def _execute_quote_gen(
+        self, args: list[TensorLike], pfunc: PFunction
+    ) -> list[TensorLike]:
+        import trustflow.attestation.generation as tdx_generation
+        from secretflowapis.v2.sdc.ual_pb2 import (
+            UnifiedAttestationGenerationParams,
+            UnifiedAttestationReportParams,
+        )
+
+        # Expect one arg (pk: u8[32]);
+        if len(args) != 1:
+            raise ValueError("tee.quote expects exactly one argument (pk)")
+        pk = np.asarray(args[0], dtype=np.uint8)
+        if pk.size != 32:
+            raise ValueError("pk must be 32 bytes")
+
+        # Generate TDX attestation report binding the provided pk
+        params = UnifiedAttestationGenerationParams()
+        params.tee_identity = "tdx_instance"
+        params.report_type = "Passport"
+        params.report_params = UnifiedAttestationReportParams()
+        params.report_params.hex_user_data = blake2b(pk.tobytes()).hex()
+        generator = tdx_generation.create_attestation_generator()
+        report_json = generator.generate_report_json(MessageToJson(params))
+
+        return [self._build_quote(pk, report_json)]
+
+    def _execute_quote_verify_and_extract(
+        self, args: list[TensorLike], pfunc: PFunction
+    ) -> list[TensorLike]:
+        # Verify and extract pk from quote
+        if len(args) != 1:
+            raise ValueError("tee.attest expects exactly one argument (quote)")
+        quote = np.asarray(args[0], dtype=np.uint8)
+        if quote.size < 33:
+            raise ValueError(
+                "quote must be at least 33 bytes (1 header + 32 pk + report)"
+            )
+        if quote[0] != 2:
+            raise ValueError("invalid quote header")
+        pk = quote[1:33].astype(np.uint8)
+        report_json = quote[33:].tobytes().decode("utf-8")
+
+        # Verify the attestation report
+        attrs = UnifiedAttestationAttributes()
+        attrs.str_tee_platform = "TDX"
+        attrs.hex_user_data = blake2b(pk.tobytes()).hex()
+        attrs.bool_debug_disabled = "true"  # require non-debug for real use
+        status = verification.attestation_report_verify(
+            report_json,
+            UnifiedAttestationPolicy(main_attributes=[attrs]),
+        )
+        if status.code != 0:
+            raise ValueError(
+                f"Attestation verification failed: {status.message}, detail: {status.detail}"
+            )
+
+        return [pk]
+
+    def execute(
+        self, pfunc: PFunction, args: list[TensorLike]
+    ) -> list[TensorLike]:  # override
+        if pfunc.fn_type == self.QUOTE_GEN:
+            return self._execute_quote_gen(args, pfunc)
+        elif pfunc.fn_type == self.QUOTE_VERIFY_AND_EXTRACT:
+            return self._execute_quote_verify_and_extract(args, pfunc)
         else:
             raise ValueError(f"Unsupported function type: {pfunc.fn_type}")

@@ -95,29 +95,23 @@ def constant(
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.feop()
-def rank() -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    tensor_type = TensorType(UINT64, ())
-    pfunc = PFunction(
-        fn_type="builtin.rank",
-        ins_info=(),
-        outs_info=(tensor_type,),
-    )
-    _, treedef = tree_flatten(tensor_type)
-    return pfunc, [], treedef
+@_BUILTIN_MOD.typed_op()
+def rank() -> TensorType:
+    """Type-only kernel: returns the UINT64 scalar tensor type for current rank.
+
+    Runtime provides the concrete rank value per party during execution; here we
+    only declare the output type with no inputs captured and no attributes.
+    """
+    return TensorType(UINT64, ())
 
 
-@_BUILTIN_MOD.feop()
-def prand(shape: Shape = ()) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    tensor_type = TensorType(UINT64, shape)
-    pfunc = PFunction(
-        fn_type="builtin.prand",
-        ins_info=(),
-        outs_info=(tensor_type,),
-        shape=shape,
-    )
-    _, treedef = tree_flatten(tensor_type)
-    return pfunc, [], treedef
+@_BUILTIN_MOD.typed_op()
+def prand(*, shape: Shape = ()) -> TensorType:
+    """Type-only kernel: private random UINT64 tensor of given shape.
+
+    Shape is attached as a PFunction attribute via typed_op; no inputs.
+    """
+    return TensorType(UINT64, shape)
 
 
 @_BUILTIN_MOD.typed_op()

@@ -31,6 +31,7 @@ import mplang.device as mpd
 import mplang.simp as simp
 from mplang import ClusterSpec, Simulator, TensorType
 from mplang.frontend import crypto, tee
+from mplang.simp import P0, P1, P2, P2P  # sugar: party execution + P2P transfer helper
 
 cluster_spec = ClusterSpec.from_dict({
     "nodes": [
@@ -65,58 +66,52 @@ def millionaire_device():
 
 @mpd.function
 def millionaire_manual():
-    P0, P1, P2 = 0, 1, 2
-
     # Inputs at data parties
     x = mpd.device("P0")(random.randint)(0, 100)
     y = mpd.device("P1")(random.randint)(0, 100)
 
     info = "mplang/device/tee/v1"
 
-    # P0 <-> TEE handshake and transfer x
-    tee_sk0, tee_pk0 = simp.runAt(P2, crypto.kem_keygen)("x25519")
-    quote0 = simp.runAt(P2, tee.quote)(tee_pk0)
-    tee_pk0_at_p0 = simp.runAt(P0, tee.attest)(simp.p2p(P2, P0, quote0))
-    v_sk0, v_pk0 = simp.runAt(P0, crypto.kem_keygen)("x25519")
-    shared0_p = simp.runAt(P0, crypto.kem_derive)(v_sk0, tee_pk0_at_p0, "x25519")
-    shared0_t = simp.runAt(P2, crypto.kem_derive)(
-        tee_sk0, simp.p2p(P0, P2, v_pk0), "x25519"
-    )
-    sess0_p = simp.runAt(P0, crypto.hkdf)(shared0_p, info)
-    sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info)
+    # P0 <-> TEE handshake and transfer x (using sugar)
+    tee_sk0, tee_pk0 = P2.crypto.kem_keygen("x25519")
+    quote0 = P2.tee.quote(tee_pk0)
+    tee_pk0_at_p0 = P0.tee.attest(P2P(P2, P0, quote0))
+    v_sk0, v_pk0 = P0.crypto.kem_keygen("x25519")
+    shared0_p = P0.crypto.kem_derive(v_sk0, tee_pk0_at_p0, "x25519")
+    shared0_t = P2.crypto.kem_derive(tee_sk0, P2P(P0, P2, v_pk0), "x25519")
+    sess0_p = P0.crypto.hkdf(shared0_p, info)
+    sess0_t = P2.crypto.hkdf(shared0_t, info)
     out_ty_x = TensorType.from_obj(x)
-    bx = simp.runAt(P0, crypto.pack)(x)
-    cx = simp.runAt(P0, crypto.enc)(bx, sess0_p)
-    cx_at_tee = simp.p2p(P0, P2, cx)
-    bx_at_tee = simp.runAt(P2, crypto.dec)(cx_at_tee, sess0_t)
-    x_at_tee = simp.runAt(P2, crypto.unpack)(bx_at_tee, out_ty_x)
+    bx = P0.crypto.pack(x)
+    cx = P0.crypto.enc(bx, sess0_p)
+    cx_at_tee = P2P(P0, P2, cx)
+    bx_at_tee = P2.crypto.dec(cx_at_tee, sess0_t)
+    x_at_tee = P2.crypto.unpack(bx_at_tee, out_ty_x)
 
-    # P1 <-> TEE handshake and transfer y
-    tee_sk1, tee_pk1 = simp.runAt(P2, crypto.kem_keygen)("x25519")
-    quote1 = simp.runAt(P2, tee.quote)(tee_pk1)
-    tee_pk1_at_p1 = simp.runAt(P1, tee.attest)(simp.p2p(P2, P1, quote1))
-    v_sk1, v_pk1 = simp.runAt(P1, crypto.kem_keygen)("x25519")
-    shared1_p = simp.runAt(P1, crypto.kem_derive)(v_sk1, tee_pk1_at_p1, "x25519")
-    shared1_t = simp.runAt(P2, crypto.kem_derive)(
-        tee_sk1, simp.p2p(P1, P2, v_pk1), "x25519"
-    )
-    sess1_p = simp.runAt(P1, crypto.hkdf)(shared1_p, info)
-    sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info)
+    # P1 <-> TEE handshake and transfer y (still show original style for contrast)
+    tee_sk1, tee_pk1 = simp.runAt(2, crypto.kem_keygen)("x25519")
+    quote1 = simp.runAt(2, tee.quote)(tee_pk1)
+    tee_pk1_at_p1 = P1.tee.attest(P2P(P2, P1, quote1))
+    v_sk1, v_pk1 = P1.crypto.kem_keygen("x25519")
+    shared1_p = P1.crypto.kem_derive(v_sk1, tee_pk1_at_p1, "x25519")
+    shared1_t = simp.runAt(2, crypto.kem_derive)(tee_sk1, P2P(P1, P2, v_pk1), "x25519")
+    sess1_p = P1.crypto.hkdf(shared1_p, info)
+    sess1_t = simp.runAt(2, crypto.hkdf)(shared1_t, info)
     out_ty_y = TensorType.from_obj(y)
-    by = simp.runAt(P1, crypto.pack)(y)
-    cy = simp.runAt(P1, crypto.enc)(by, sess1_p)
-    cy_at_tee = simp.p2p(P1, P2, cy)
-    by_at_tee = simp.runAt(P2, crypto.dec)(cy_at_tee, sess1_t)
-    y_at_tee = simp.runAt(P2, crypto.unpack)(by_at_tee, out_ty_y)
+    by = P1.crypto.pack(y)
+    cy = P1.crypto.enc(by, sess1_p)
+    cy_at_tee = P2P(P1, P2, cy)
+    by_at_tee = P2.crypto.dec(cy_at_tee, sess1_t)
+    y_at_tee = P2.crypto.unpack(by_at_tee, out_ty_y)
 
     # Compute at TEE and send result back to P0
-    z_at_tee = simp.runAt(P2, lambda a, b: a < b)(x_at_tee, y_at_tee)
+    z_at_tee = P2(lambda a, b: a < b, x_at_tee, y_at_tee)
     out_ty_z = TensorType.from_obj(z_at_tee)
-    bz = simp.runAt(P2, crypto.pack)(z_at_tee)
-    cz = simp.runAt(P2, crypto.enc)(bz, sess0_t)
-    cz_at_p0 = simp.p2p(P2, P0, cz)
-    bz_at_p0 = simp.runAt(P0, crypto.dec)(cz_at_p0, sess0_p)
-    r_at_p0 = simp.runAt(P0, crypto.unpack)(bz_at_p0, out_ty_z)
+    bz = P2.crypto.pack(z_at_tee)
+    cz = P2.crypto.enc(bz, sess0_t)
+    cz_at_p0 = P2P(P2, P0, cz)
+    bz_at_p0 = P0.crypto.dec(cz_at_p0, sess0_p)
+    r_at_p0 = P0.crypto.unpack(bz_at_p0, out_ty_z)
 
     return x, y, z_at_tee, r_at_p0
 

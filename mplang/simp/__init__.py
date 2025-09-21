@@ -241,7 +241,14 @@ class _PartyModuleProxy:
             return run_impl(Mask.from_ranks(self._party.rank), target, *args, **kw)
 
         # Provide a party-qualified name for debugging / logs without losing original metadata.
-        _wrapped.__name__ = f"{target.__name__}@P{self._party.rank}"
+        base_name = getattr(target, "__name__", None)
+        if base_name is None:
+            # Frontend FeOperation or object without __name__; try .name attribute (FeOperation contract) or fallback to repr
+            base_name = getattr(target, "name", None) or type(target).__name__
+        try:
+            _wrapped.__name__ = f"{base_name}@P{self._party.rank}"
+        except Exception:  # pragma: no cover - assignment may fail for exotic wrappers
+            pass
         return _wrapped
 
 

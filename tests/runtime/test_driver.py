@@ -18,7 +18,7 @@ import asyncio
 
 import pytest
 
-from mplang.core.cluster import ClusterSpec, LogicalDevice, PhysicalNode, RuntimeInfo
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.runtime.driver import Driver
 from tests.utils.server_fixtures import http_servers  # noqa: F401
 
@@ -28,7 +28,7 @@ def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
     nodes = {}
     for node_id, addr in node_addrs.items():
         rank = int(node_id)
-        nodes[f"node{rank}"] = PhysicalNode(
+        nodes[f"node{rank}"] = Node(
             name=f"node{rank}",
             rank=rank,
             endpoint=addr,  # Keep the full HTTP URL as endpoint
@@ -42,14 +42,14 @@ def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
     # Create local devices for each node
     local_devices = {}
     for _node_name, node in nodes.items():
-        local_devices[f"local_{node.rank}"] = LogicalDevice(
+        local_devices[f"local_{node.rank}"] = Device(
             name=f"local_{node.rank}",
             kind="local",
             members=[node],
         )
 
     # Create SPU device with all nodes
-    spu_device = LogicalDevice(
+    spu_device = Device(
         name="SPU_0",
         kind="SPU",
         members=list(nodes.values()),

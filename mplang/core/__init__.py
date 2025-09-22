@@ -43,6 +43,7 @@ from mplang.core.pfunc import PFunction
 # Primitive operations
 from mplang.core.primitive import (
     constant,
+    debug_print,
     function,
     pconv,
     peval,
@@ -87,6 +88,7 @@ __all__ = [
     "TracedFunction",
     "VarNamer",
     "constant",
+    "debug_print",
     "function",
     "pconv",
     "peval",

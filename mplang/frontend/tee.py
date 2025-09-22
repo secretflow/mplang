@@ -14,52 +14,30 @@
 
 from __future__ import annotations
 
-from jax.tree_util import PyTreeDef, tree_flatten
-
 from mplang.core.dtype import UINT8
 from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import femod
+
+_TEE_MOD = femod("tee")
 
 
-class QuoteGen(FEOp):
-    """TEE quote generation FEOp binding the provided ephemeral public key.
+@_TEE_MOD.typed_op()
+def quote(pk: MPObject) -> TensorType:
+    """TEE quote generation binding the provided ephemeral public key.
 
     API (mock): quote(pk: u8[32]) -> (quote: u8[33])
     The mock encodes a 1-byte header + 32-byte pk.
     """
-
-    def __call__(self, pk: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        pk_ty = TensorType.from_obj(pk)
-        quote_ty = TensorType(UINT8, (33,))
-        pfunc = PFunction(
-            fn_type="tee.quote",
-            ins_info=(pk_ty,),
-            outs_info=(quote_ty,),
-        )
-        _, treedef = tree_flatten(quote_ty)
-        return pfunc, [pk], treedef
+    _ = TensorType.from_obj(pk)
+    return TensorType(UINT8, (33,))
 
 
-class QuoteVerifyAndExtract(FEOp):
-    """TEE quote verification FEOp returning the attested TEE public key.
+@_TEE_MOD.typed_op()
+def attest(quote: MPObject) -> TensorType:
+    """TEE quote verification returning the attested TEE public key.
 
     API (mock): attest(quote: u8[33]) -> tee_pk: u8[32]
     """
-
-    def __call__(self, quote: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        quote_ty = TensorType.from_obj(quote)
-        pk_ty = TensorType(UINT8, (32,))
-        pfunc = PFunction(
-            fn_type="tee.attest",
-            ins_info=(quote_ty,),
-            outs_info=(pk_ty,),
-        )
-        _, treedef = tree_flatten(pk_ty)
-        return pfunc, [quote], treedef
-
-
-# Public instances (similar to frontend.builtin pattern)
-quote = QuoteGen()
-attest = QuoteVerifyAndExtract()
+    _ = TensorType.from_obj(quote)
+    return TensorType(UINT8, (32,))

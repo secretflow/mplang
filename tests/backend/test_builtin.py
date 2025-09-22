@@ -40,6 +40,9 @@ class TestBuiltinHandler:
             "builtin.constant",
             "builtin.rank",
             "builtin.prand",
+            "builtin.table_to_tensor",
+            "builtin.tensor_to_table",
+            "builtin.debug_print",
         ]
 
         for expected_fn in expected_functions:

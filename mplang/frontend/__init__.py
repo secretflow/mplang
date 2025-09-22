@@ -24,8 +24,23 @@ from mplang.frontend import crypto as crypto
 from mplang.frontend import ibis_cc as ibis_cc
 from mplang.frontend import jax_cc as jax_cc
 from mplang.frontend import phe as phe
+from mplang.frontend import spu as spu
 from mplang.frontend import tee as tee
-from mplang.frontend.base import FEOp as FEOp
+from mplang.frontend.base import FeOperation as FeOperation
 from mplang.frontend.ibis_cc import ibis_compile as ibis_compile
 from mplang.frontend.jax_cc import jax_compile as jax_compile
 from mplang.frontend.sql import sql_run as sql_run
+
+__all__ = [
+    "FeOperation",
+    "builtin",
+    "crypto",
+    "ibis_cc",
+    "ibis_compile",
+    "jax_cc",
+    "jax_compile",
+    "phe",
+    "spu",
+    "sql_run",
+    "tee",
+]

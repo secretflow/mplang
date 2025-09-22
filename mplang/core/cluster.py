@@ -48,7 +48,7 @@ class RuntimeInfo:
 
 
 @dataclass(frozen=True)
-class PhysicalNode:
+class Node:
     """
     Represents a single physical node (PN) in the cluster.
     This is an immutable description of a compute resource.
@@ -69,7 +69,7 @@ class PhysicalNode:
 
 
 @dataclass(frozen=True)
-class LogicalDevice:
+class Device:
     """
     Represents a logical device (LD), which is a user-facing computational entity.
     It is composed of one or more Physical Nodes.
@@ -77,7 +77,7 @@ class LogicalDevice:
 
     name: str
     kind: str
-    members: list[PhysicalNode]
+    members: list[Node]
     config: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -101,8 +101,8 @@ class ClusterSpec:
     This object is the "first-class citizen" representing the cluster topology.
     """
 
-    nodes: dict[str, PhysicalNode]
-    devices: dict[str, LogicalDevice]
+    nodes: dict[str, Node]
+    devices: dict[str, Device]
 
     def __post_init__(self) -> None:
         for key, node in self.nodes.items():
@@ -134,20 +134,20 @@ class ClusterSpec:
                     f"Local device '{device.name}' must have exactly one member"
                 )
 
-    def get_node(self, name: str) -> PhysicalNode:
+    def get_node(self, name: str) -> Node:
         """Get a Physical Node by its unique name."""
         return self.nodes[name]
 
-    def get_device(self, name: str) -> LogicalDevice:
+    def get_device(self, name: str) -> Device:
         """Get a Logical Device by its unique name."""
         return self.devices[name]
 
-    def get_devices_by_kind(self, kind: str) -> list[LogicalDevice]:
+    def get_devices_by_kind(self, kind: str) -> list[Device]:
         """Get all Logical Devices of a specific kind."""
         lowered = kind.lower()
         return [dev for dev in self.devices.values() if dev.kind.lower() == lowered]
 
-    def get_node_by_rank(self, rank: int) -> PhysicalNode:
+    def get_node_by_rank(self, rank: int) -> Node:
         """Get a Physical Node by its unique rank."""
         # This might require an internal mapping for efficiency if called often
         for node in self.nodes.values():
@@ -174,7 +174,7 @@ class ClusterSpec:
             )
 
         # 2. Parse Physical Nodes, using the list index as the rank
-        nodes_map: dict[str, PhysicalNode] = {}
+        nodes_map: dict[str, Node] = {}
         known_runtime_fields = {"version", "platform", "backends"}
         for i, node_cfg in enumerate(config["nodes"]):
             if "rank" in node_cfg:
@@ -195,7 +195,7 @@ class ClusterSpec:
                 extra=extra_runtime_info,
             )
 
-            node = PhysicalNode(
+            node = Node(
                 name=node_cfg["name"],
                 rank=i,  # Implicit rank assignment
                 endpoint=node_cfg["endpoint"],
@@ -207,7 +207,7 @@ class ClusterSpec:
             nodes_map[node.name] = node
 
         # 3. Parse Logical Devices
-        devices_map: dict[str, LogicalDevice] = {}
+        devices_map: dict[str, Device] = {}
         for dev_name, dev_cfg in config["devices"].items():
             member_nodes = []
             for member_name in dev_cfg["members"]:
@@ -217,7 +217,7 @@ class ClusterSpec:
                     )
                 member_nodes.append(nodes_map[member_name])
 
-            devices_map[dev_name] = LogicalDevice(
+            devices_map[dev_name] = Device(
                 name=dev_name,
                 kind=dev_cfg["kind"],
                 members=member_nodes,
@@ -230,7 +230,7 @@ class ClusterSpec:
     def simple(cls, world_size: int) -> ClusterSpec:
         """Creates a simple cluster spec for simulation with the given number of parties."""
         nodes = {
-            f"node{i}": PhysicalNode(
+            f"node{i}": Node(
                 name=f"node{i}",
                 rank=i,
                 endpoint=f"localhost:{5000 + i}",
@@ -244,7 +244,7 @@ class ClusterSpec:
         }
 
         devices = {
-            "SP0": LogicalDevice(
+            "SP0": Device(
                 name="SP0",
                 kind="SPU",
                 members=list(nodes.values()),

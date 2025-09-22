@@ -19,7 +19,6 @@ import yaml
 import mplang
 import mplang.device as mpd
 import mplang.simp as simp
-from mplang.core.cluster import ClusterSpec
 
 
 def randint(lo, hi):
@@ -181,7 +180,7 @@ def cmd_main(main_func) -> None:
     # load ClusterSpec from yaml file
     with open(args.config) as file:
         conf = yaml.safe_load(file)
-    cluster_spec = ClusterSpec.from_dict(conf)
+    cluster_spec = mplang.ClusterSpec.from_dict(conf)
 
     if args.command == "sim":
         sim = mplang.Simulator(cluster_spec)

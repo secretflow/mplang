@@ -33,7 +33,7 @@ from mplang.core.primitive import (
     while_loop,
 )
 from mplang.frontend import ibis_cc, jax_cc
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import FeOperation
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
 from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
 from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
@@ -119,7 +119,7 @@ def run_impl(
         >>> stats = run_impl(compute_statistics, dataset)
     """
 
-    if isinstance(func, FEOp):
+    if isinstance(func, FeOperation):
         pfunc, eval_args, out_tree = func(*args, **kwargs)
     else:
         if ibis_cc.is_ibis_function(func):

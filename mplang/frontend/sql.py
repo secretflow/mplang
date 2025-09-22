@@ -17,9 +17,9 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
-from mplang.frontend.base import FeOperation, femod
+from mplang.frontend.base import FeOperation, stateless_mod
 
-_SQL_MOD = femod("sql")
+_SQL_MOD = stateless_mod("sql")
 
 
 class SqlFE(FeOperation):

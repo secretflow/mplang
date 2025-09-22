@@ -16,12 +16,12 @@
 
 from mplang.core.dtype import COMPLEX128
 from mplang.core.mptype import TensorType
-from mplang.frontend.base import femod
+from mplang.frontend.base import stateless_mod
 
-_PHE_MOD = femod("phe")
+_PHE_MOD = stateless_mod("phe")
 
 
-@_PHE_MOD.typed_op()
+@_PHE_MOD.simple_op()
 def keygen(
     *, scheme: str = "paillier", key_size: int = 2048
 ) -> tuple[TensorType, TensorType]:
@@ -33,21 +33,21 @@ def keygen(
     return public_key_ty, private_key_ty
 
 
-@_PHE_MOD.typed_op()
+@_PHE_MOD.simple_op()
 def encrypt(plaintext: TensorType, public_key: TensorType) -> TensorType:
     """Encrypt plaintext using PHE public key: returns ciphertext with same semantic type as plaintext."""
     _ = public_key
     return plaintext
 
 
-@_PHE_MOD.typed_op()
+@_PHE_MOD.simple_op()
 def add(operand1: TensorType, operand2: TensorType) -> TensorType:
     """Add two PHE operands (semantics depend on backend representation)."""
     _ = operand2
     return operand1
 
 
-@_PHE_MOD.typed_op()
+@_PHE_MOD.simple_op()
 def mul(ciphertext: TensorType, plaintext: TensorType) -> TensorType:
     """Multiply a PHE ciphertext with a plaintext value (ciphertext dtype preserved)."""
     if ciphertext.dtype.is_floating and plaintext.dtype.is_floating:
@@ -58,7 +58,7 @@ def mul(ciphertext: TensorType, plaintext: TensorType) -> TensorType:
     return ciphertext
 
 
-@_PHE_MOD.typed_op()
+@_PHE_MOD.simple_op()
 def decrypt(ciphertext: TensorType, private_key: TensorType) -> TensorType:
     """Decrypt ciphertext using PHE private key: returns plaintext with same semantic type as ciphertext."""
     _ = private_key

@@ -141,7 +141,7 @@ class FeModule(ABC):
     @abstractmethod
     def initialize(self, ctx: MPContext) -> None: ...
 
-    def feop(self) -> Callable[[Callable[..., Triad]], FeOperation]:
+    def op_def(self) -> Callable[[Callable[..., Triad]], FeOperation]:
         """Decorator for inline/complex ops which already return a Triad.
 
         Usage:
@@ -160,7 +160,7 @@ class FeModule(ABC):
 
         return _decorator
 
-    def typed_op(
+    def simple_op(
         self, pfunc_name: str | None = None
     ) -> Callable[[Callable[..., Any]], FeOperation]:
         """Decorator for type-driven ops that return only types/schemas.
@@ -381,11 +381,11 @@ class SimpleFeOperation(FeOperation):
         return pfunc, pos_mp_inputs, out_tree
 
 
-def femod(mod_name: str) -> FeModule:
+def stateless_mod(mod_name: str) -> FeModule:
     return StatelessFeModule(mod_name)
 
 
-def list_feops(module: str | None = None) -> dict[tuple[str, str], FeOperation]:
+def list_ops(module: str | None = None) -> dict[tuple[str, str], FeOperation]:
     """Return a view of registered feops, optionally filtered by module name."""
     return get_registry().list_ops(module)
 

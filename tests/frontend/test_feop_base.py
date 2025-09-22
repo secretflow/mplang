@@ -25,18 +25,18 @@ from mplang.frontend.base import (
     FeOperation,
     InlineFeOperation,
     SimpleFeOperation,
-    femod,
     get_registry,
     is_feop,
-    list_feops,
+    list_ops,
+    stateless_mod,
 )
 from tests.frontend.dummy import DummyTensor
 
 
 def test_simple_decorator_builds_triad():
-    mod = femod("ut_mod_simple_add")
+    mod = stateless_mod("ut_mod_simple_add")
 
-    @mod.typed_op(pfunc_name="builtin.add")
+    @mod.simple_op(pfunc_name="builtin.add")
     def add(
         x: TensorType, y: TensorType, *, alpha: int
     ):  # kernel now receives TensorType specs
@@ -68,14 +68,14 @@ def test_simple_decorator_builds_triad():
     reg = get_registry()
     fetched = reg.get_op(mod.name, "add")
     assert fetched is add
-    ops = list_feops(mod.name)
+    ops = list_ops(mod.name)
     assert (mod.name, "add") in ops
 
 
 def test_feop_decorator_inline():
-    mod = femod("ut_mod_inline_scale")
+    mod = stateless_mod("ut_mod_inline_scale")
 
-    @mod.feop()
+    @mod.op_def()
     def scale_trace(x: MPObject, factor: int):
         # Build outs info from x type
         leaves, out_tree = tree_flatten(x.mptype._type)
@@ -103,9 +103,9 @@ def test_feop_decorator_inline():
 
 
 def test_simple_rejects_invalid_kwargs():
-    mod = femod("ut_mod_badkw")
+    mod = stateless_mod("ut_mod_badkw")
 
-    @mod.typed_op(pfunc_name="builtin.echo")
+    @mod.simple_op(pfunc_name="builtin.echo")
     def echo(x: TensorType):  # returns TensorType
         return x
 
@@ -116,9 +116,9 @@ def test_simple_rejects_invalid_kwargs():
 
 
 def test_simple_rejects_invalid_return_type():
-    mod = femod("ut_mod_badret")
+    mod = stateless_mod("ut_mod_badret")
 
-    @mod.typed_op(pfunc_name="builtin.bad")
+    @mod.simple_op(pfunc_name="builtin.bad")
     def bad(
         x: TensorType,
     ):  # missing explicit TensorType/TableType return (returns int instead)

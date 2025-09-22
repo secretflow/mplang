@@ -26,7 +26,7 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.core.tensor import TensorType
-from mplang.frontend.base import femod
+from mplang.frontend.base import stateless_mod
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -44,10 +44,10 @@ class Visibility:
     PRIVATE = libspu.Visibility.VIS_PRIVATE
 
 
-_SPU_MOD = femod("spu")
+_SPU_MOD = stateless_mod("spu")
 
 
-@_SPU_MOD.typed_op()
+@_SPU_MOD.simple_op()
 def makeshares(
     data: TensorType,
     *,
@@ -71,7 +71,7 @@ def makeshares(
     return tuple(data for _ in range(world_size))
 
 
-@_SPU_MOD.feop()
+@_SPU_MOD.op_def()
 def reconstruct(*shares: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """Reconstruct plaintext tensor from shares."""
     if len(shares) == 0:
@@ -145,7 +145,7 @@ def _compile_jax(
     return pfunc, in_vars, out_tree
 
 
-@_SPU_MOD.feop()
+@_SPU_MOD.op_def()
 def jax_compile(
     fn: Callable, *args: Any, **kwargs: Any
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:

@@ -793,13 +793,13 @@ class TestPHEHandler:
 
     def test_mul_float_x_float_not_supported(self):
         """Test that float x float multiplication raises an error in frontend."""
-        import jax.numpy as jnp
-
+        from mplang.core.dtype import FLOAT32, INT32
+        from mplang.core.tensor import TensorType
         from mplang.frontend import phe
 
-        # Test that float x float is blocked
-        float_ct = jnp.array(5.5, dtype=jnp.float32)
-        float_pt = jnp.array(3.2, dtype=jnp.float32)
+        # Use TensorType placeholders to test frontend validation strictly at type layer.
+        float_ct = TensorType(FLOAT32, ())
+        float_pt = TensorType(FLOAT32, ())
 
         with pytest.raises(
             ValueError,
@@ -807,25 +807,25 @@ class TestPHEHandler:
         ):
             phe.mul(float_ct, float_pt)
 
-        # Test that float x int is allowed (should not raise validation error)
-        int_pt = jnp.array(3, dtype=jnp.int32)
+        # float x int should not trigger the float-float validation error
+        int_pt = TensorType(INT32, ())
         try:
-            phe.mul(float_ct, int_pt)  # Should not raise float x float error
+            phe.mul(float_ct, int_pt)
         except ValueError as e:
             if "float x float operations" in str(e):
                 pytest.fail("float x int should be allowed")
         except Exception:
-            pass  # Other exceptions are acceptable
+            pass
 
-        # Test that int x float is allowed (should not raise validation error)
-        int_ct = jnp.array(5, dtype=jnp.int32)
+        # int x float should not trigger the float-float validation error
+        int_ct = TensorType(INT32, ())
         try:
-            phe.mul(int_ct, float_pt)  # Should not raise float x float error
+            phe.mul(int_ct, float_pt)
         except ValueError as e:
             if "float x float operations" in str(e):
                 pytest.fail("int x float should be allowed")
         except Exception:
-            pass  # Other exceptions are acceptable
+            pass
 
     def test_various_numeric_types(self):
         """Test encryption/decryption with various numeric types."""

@@ -100,11 +100,16 @@ class StablehloHandler(TensorHandler):
         client = xla_bridge.get_backend(backend)
         compile_options = xc.CompileOptions()
 
-        compiled_executable = client.compile(mlir_text, compile_options)
+        try:
+            compiled_executable = client.compile(mlir_text, compile_options)
+        except Exception as e:  # pragma: no cover - backend specific failures
+            raise RuntimeError(f"StableHLO compile failed: {e}") from e
 
         # Convert input args to JAX arrays and put on device
-        # This is the correct input format discovered in research
-        # TODO(jint): Do we have a data copy issue here?
+        # This is the correct input format discovered in research.
+        # NOTE: Potential optimization: zero-copy pathway if arg already lives
+        # on the correct backend device. For now we always materialize a JAX
+        # DeviceArray to ensure downstream invariants.
         jax_args = []
         for arg in args:
             if hasattr(arg, "numpy"):
@@ -137,5 +142,5 @@ class StablehloHandler(TensorHandler):
 
             return output_tensors  # type: ignore[return-value]
 
-        except Exception as e:
-            raise RuntimeError(f"Failed to execute compiled function: {e}") from e
+        except Exception as e:  # pragma: no cover - device runtime errors
+            raise RuntimeError(f"StableHLO execute failed: {e}") from e

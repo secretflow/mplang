@@ -16,45 +16,12 @@ import jax.numpy as jnp
 import pytest
 import spu.libspu as libspu
 
-from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
-from mplang.core.dtype import DType
-from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import MPType
 from mplang.frontend import spu
-
-
-class DummyContext(MPContext):
-    def __init__(self) -> None:
-        runtime = RuntimeInfo(version="dev", platform="local", backends=[])
-        node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
-        device = Device(name="p0_local", kind="local", members=[node])
-        spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})
-        super().__init__(spec)
-
-
-class Tensor(MPObject):
-    """Minimal tensor MPObject for SPU frontend tests."""
-
-    def __init__(self, arr: jnp.ndarray) -> None:  # type: ignore[valid-type]
-        # jax arrays expose .dtype and .shape
-        self._arr = arr
-        self._mptype = MPType.tensor(DType.from_any(str(arr.dtype)), tuple(arr.shape))
-        self._ctx = DummyContext()
-
-    @property
-    def mptype(self) -> MPType:
-        return self._mptype
-
-    @property
-    def ctx(self) -> MPContext:
-        return self._ctx
-
-    def runtime_obj(self) -> jnp.ndarray:  # type: ignore[valid-type]
-        return self._arr
+from tests.frontend.dummy import DummyTensor
 
 
 def test_make_shares_basic() -> None:
-    t = Tensor(jnp.array([1, 2, 3], dtype=jnp.float32))
+    t = DummyTensor(jnp.float32, (3,))
     pfunc, ins, _out_tree = spu.makeshares(t, world_size=3)
     assert pfunc.fn_type == "spu.makeshares"
     assert len(ins) == 1
@@ -63,7 +30,7 @@ def test_make_shares_basic() -> None:
 
 
 def test_make_shares_private_validation() -> None:
-    t = Tensor(jnp.array([0], dtype=jnp.int32))
+    t = DummyTensor(jnp.int32, (1,))
     pfunc, _, _ = spu.makeshares(
         t,
         world_size=3,
@@ -76,8 +43,8 @@ def test_make_shares_private_validation() -> None:
 
 
 def test_reconstruct_basic() -> None:
-    s1 = Tensor(jnp.array([1, 2]))
-    s2 = Tensor(jnp.array([3, 4]))
+    s1 = DummyTensor(jnp.int64, (2,))
+    s2 = DummyTensor(jnp.int64, (2,))
     pfunc, ins, _tree = spu.reconstruct(s1, s2)
     assert pfunc.fn_type == "spu.reconstruct"
     assert len(ins) == 2
@@ -93,8 +60,8 @@ def test_jax_compile_simple_add() -> None:
     def fn(a, b):  # type: ignore[no-untyped-def]
         return a + b
 
-    a = Tensor(jnp.array([1.0, 2.0], dtype=jnp.float32))
-    b = Tensor(jnp.array([3.0, 4.0], dtype=jnp.float32))
+    a = DummyTensor(jnp.float32, (2,))
+    b = DummyTensor(jnp.float32, (2,))
     pfunc, ins, _out_tree = spu.jax_compile(fn, a, b)
     assert pfunc.fn_type == "mlir.pphlo"
     assert len(ins) == 2
@@ -106,7 +73,7 @@ def test_jax_compile_multiple_outputs() -> None:
     def fn(a):  # type: ignore[no-untyped-def]
         return a + 1, a * 2
 
-    a = Tensor(jnp.array([1, 2, 3], dtype=jnp.int32))
+    a = DummyTensor(jnp.int32, (3,))
     pfunc, _ins, _out_tree = spu.jax_compile(fn, a)
     assert len(pfunc.outs_info) == 2
 
@@ -115,6 +82,6 @@ def test_jax_compile_visibility_metadata_secret() -> None:
     def fn(a):  # type: ignore[no-untyped-def]
         return a * 2
 
-    a = Tensor(jnp.array([1, 2], dtype=jnp.float32))
+    a = DummyTensor(jnp.float32, (2,))
     pfunc, _ins, _ = spu.jax_compile(fn, a)
     assert pfunc.attrs["input_visibilities"] == [libspu.Visibility.VIS_SECRET]

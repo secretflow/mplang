@@ -27,39 +27,9 @@ import jax.numpy as jnp
 import pytest
 import spu.libspu as libspu
 
-from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
-from mplang.core.dtype import DType
-from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import MPType
 from mplang.core.tensor import TensorType
 from mplang.frontend import spu
-
-
-class DummyContext(MPContext):
-    def __init__(self) -> None:
-        runtime = RuntimeInfo(version="dev", platform="local", backends=[])
-        node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
-        device = Device(name="p0_local", kind="local", members=[node])
-        spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})
-        super().__init__(spec)
-
-
-class Tensor(MPObject):
-    def __init__(self, arr: jnp.ndarray) -> None:  # type: ignore[valid-type]
-        self._arr = arr
-        self._mptype = MPType.tensor(DType.from_any(str(arr.dtype)), tuple(arr.shape))
-        self._ctx = DummyContext()
-
-    @property
-    def mptype(self) -> MPType:
-        return self._mptype
-
-    @property
-    def ctx(self) -> MPContext:
-        return self._ctx
-
-    def runtime_obj(self):
-        return self._arr
+from tests.frontend.dummy import DummyTensor
 
 
 @pytest.mark.parametrize(
@@ -77,7 +47,7 @@ class Tensor(MPObject):
     ],
 )
 def test_basic_and_multi_outputs(func, input_shapes, expected_outputs):
-    args = [Tensor(jnp.zeros(shape, dtype=jnp.float32)) for shape in input_shapes]
+    args = [DummyTensor(jnp.float32, shape) for shape in input_shapes]
     pfunc, _ins, _tree = spu.jax_compile(func, *args)
     assert pfunc.fn_type == "mlir.pphlo"
     assert len(pfunc.outs_info) == expected_outputs
@@ -95,10 +65,7 @@ def test_different_dtypes(dtype1, dtype2):
     def fn(x, y):
         return x + y
 
-    args = [
-        Tensor(jnp.zeros((2,), dtype=dtype1)),
-        Tensor(jnp.zeros((2,), dtype=dtype2)),
-    ]
+    args = [DummyTensor(dtype1, (2,)), DummyTensor(dtype2, (2,))]
     pfunc, _ins, _tree = spu.jax_compile(fn, *args)
     assert isinstance(pfunc.ins_info[0], TensorType)
     assert isinstance(pfunc.ins_info[1], TensorType)
@@ -112,7 +79,7 @@ def test_complex_function_deterministic():
         result = temp * z
         return jnp.sum(result, axis=0)
 
-    args = [Tensor(jnp.zeros((3, 4), dtype=jnp.float32)) for _ in range(3)]
+    args = [DummyTensor(jnp.float32, (3, 4)) for _ in range(3)]
     p1, _i1, _t1 = spu.jax_compile(complex_fn, *args)
     p2, _i2, _t2 = spu.jax_compile(complex_fn, *args)
     assert p1.fn_type == p2.fn_type
@@ -144,9 +111,9 @@ def test_tensor_operations_parametrized(
     test_name, func_def, input_shape, expected_output_shape
 ):
     if isinstance(input_shape[0], tuple):
-        args = [Tensor(jnp.zeros(shape, dtype=jnp.float32)) for shape in input_shape]
+        args = [DummyTensor(jnp.float32, shape) for shape in input_shape]
     else:
-        args = [Tensor(jnp.zeros(input_shape, dtype=jnp.float32))]
+        args = [DummyTensor(jnp.float32, input_shape)]
     pfunc, _ins, _ = spu.jax_compile(func_def, *args)
     assert len(pfunc.ins_info) == len(args)
     assert len(pfunc.outs_info) >= 1
@@ -160,7 +127,7 @@ def test_visibility_settings_all_secret(n_inputs):
             result = result + args[i]
         return result
 
-    args = [Tensor(jnp.zeros((2,), dtype=jnp.float32)) for _ in range(n_inputs)]
+    args = [DummyTensor(jnp.float32, (2,)) for _ in range(n_inputs)]
     pfunc, _ins, _ = spu.jax_compile(multi_input_fn, *args)
     vis = pfunc.attrs["input_visibilities"]
     assert len(vis) == n_inputs

@@ -791,42 +791,6 @@ class TestPHEHandler:
         with pytest.raises(ValueError, match="operands must have same shape"):
             self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])
 
-    def test_mul_float_x_float_not_supported(self):
-        """Test that float x float multiplication raises an error in frontend."""
-        from mplang.core.dtype import FLOAT32, INT32
-        from mplang.core.tensor import TensorType
-        from mplang.frontend import phe
-
-        # Use TensorType placeholders to test frontend validation strictly at type layer.
-        float_ct = TensorType(FLOAT32, ())
-        float_pt = TensorType(FLOAT32, ())
-
-        with pytest.raises(
-            ValueError,
-            match="PHE multiplication does not support float x float operations",
-        ):
-            phe.mul(float_ct, float_pt)
-
-        # float x int should not trigger the float-float validation error
-        int_pt = TensorType(INT32, ())
-        try:
-            phe.mul(float_ct, int_pt)
-        except ValueError as e:
-            if "float x float operations" in str(e):
-                pytest.fail("float x int should be allowed")
-        except Exception:
-            pass
-
-        # int x float should not trigger the float-float validation error
-        int_ct = TensorType(INT32, ())
-        try:
-            phe.mul(int_ct, float_pt)
-        except ValueError as e:
-            if "float x float operations" in str(e):
-                pytest.fail("int x float should be allowed")
-        except Exception:
-            pass
-
     def test_various_numeric_types(self):
         """Test encryption/decryption with various numeric types."""
         pk, sk = self._generate_keypair()

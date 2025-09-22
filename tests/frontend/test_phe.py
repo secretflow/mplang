@@ -17,8 +17,8 @@
 import pytest
 
 from mplang.core.dtype import FLOAT32, INT32
-from mplang.core.tensor import TensorType
 from mplang.frontend import phe
+from tests.frontend.dummy import DummyTensor
 
 
 def test_mul_validation():
@@ -27,8 +27,8 @@ def test_mul_validation():
     # Test that float x float is blocked (requires truncation)
     # Under strict typed_op semantics positional args must be MPObject or TypeSpecs.
     # We validate purely at type level here using scalar TensorType placeholders.
-    float_ct = TensorType(FLOAT32, ())
-    float_pt = TensorType(FLOAT32, ())
+    float_ct = DummyTensor(FLOAT32, ())
+    float_pt = DummyTensor(FLOAT32, ())
 
     with pytest.raises(
         ValueError,
@@ -37,7 +37,7 @@ def test_mul_validation():
         phe.mul(float_ct, float_pt)
 
     # Test that float x int is allowed (no truncation required)
-    int_pt = TensorType(INT32, ())
+    int_pt = DummyTensor(INT32, ())
 
     # This should not raise a validation error (may fail for other reasons like missing keys)
     try:
@@ -50,7 +50,7 @@ def test_mul_validation():
         pass
 
     # Test that int x float is allowed (no truncation required)
-    int_ct = TensorType(INT32, ())
+    int_ct = DummyTensor(INT32, ())
 
     try:
         phe.mul(int_ct, float_pt)

@@ -346,8 +346,17 @@ class SimpleFeOperation(FeOperation):
             if not isinstance(v, MPObject)
             and not isinstance(v, (TensorType, TableType))
         }
+
+        # Prepare kernel positional arguments: replace MPObject with its underlying type so
+        # the kernel always sees TensorType/TableType (never TraceVar/InterpVar).
+        call_pos_types = tuple(a.mptype._type for a in call_pos)
+
+        # Sanity: no MPObject should appear in kwargs (enforced earlier), but be safe.
+        if any(isinstance(v, MPObject) for v in call_kwargs.values()):
+            raise TypeError("kernel kwargs should not be MPObject")
+
         # Execute kernel to compute return types
-        result = self._kernel(*call_pos, **call_kwargs)
+        result = self._kernel(*call_pos_types, **call_kwargs)
 
         outs_info, out_tree = tree_flatten(result)
 

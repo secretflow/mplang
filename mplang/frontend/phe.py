@@ -15,7 +15,6 @@
 """PHE (Partially Homomorphic Encryption) frontend operations."""
 
 from mplang.core.dtype import COMPLEX128
-from mplang.core.mpobject import MPObject
 from mplang.core.mptype import TensorType
 from mplang.frontend.base import femod
 
@@ -35,37 +34,32 @@ def keygen(
 
 
 @_PHE_MOD.typed_op()
-def encrypt(plaintext: MPObject, public_key: MPObject) -> TensorType:
+def encrypt(plaintext: TensorType, public_key: TensorType) -> TensorType:
     """Encrypt plaintext using PHE public key: returns ciphertext with same semantic type as plaintext."""
-    plaintext_ty = TensorType.from_obj(plaintext)
-    _ = TensorType.from_obj(public_key)
-    return plaintext_ty
+    _ = public_key
+    return plaintext
 
 
 @_PHE_MOD.typed_op()
-def add(operand1: MPObject, operand2: MPObject) -> TensorType:
+def add(operand1: TensorType, operand2: TensorType) -> TensorType:
     """Add two PHE operands (semantics depend on backend representation)."""
-    op1_ty = TensorType.from_obj(operand1)
-    _ = TensorType.from_obj(operand2)
-    return op1_ty
+    _ = operand2
+    return operand1
 
 
 @_PHE_MOD.typed_op()
-def mul(ciphertext: MPObject, plaintext: MPObject) -> TensorType:
+def mul(ciphertext: TensorType, plaintext: TensorType) -> TensorType:
     """Multiply a PHE ciphertext with a plaintext value (ciphertext dtype preserved)."""
-    ct_ty = TensorType.from_obj(ciphertext)
-    pt_ty = TensorType.from_obj(plaintext)
-    if ct_ty.dtype.is_floating and pt_ty.dtype.is_floating:
+    if ciphertext.dtype.is_floating and plaintext.dtype.is_floating:
         raise ValueError(
             "PHE multiplication does not support float x float operations due to truncation requirements. "
             "Consider using mixed types (float x int) or integer types instead."
         )
-    return ct_ty
+    return ciphertext
 
 
 @_PHE_MOD.typed_op()
-def decrypt(ciphertext: MPObject, private_key: MPObject) -> TensorType:
+def decrypt(ciphertext: TensorType, private_key: TensorType) -> TensorType:
     """Decrypt ciphertext using PHE private key: returns plaintext with same semantic type as ciphertext."""
-    ciphertext_ty = TensorType.from_obj(ciphertext)
-    _ = TensorType.from_obj(private_key)
-    return ciphertext_ty
+    _ = private_key
+    return ciphertext

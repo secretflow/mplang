@@ -29,7 +29,6 @@ from __future__ import annotations
 import math
 
 from mplang.core.dtype import UINT8
-from mplang.core.mpobject import MPObject
 from mplang.core.tensor import TensorType
 from mplang.frontend.base import femod
 
@@ -52,12 +51,12 @@ def keygen(*, length: int = 32) -> TensorType:
 
 
 @_CRYPTO_MOD.typed_op()
-def enc(plaintext: MPObject, key: MPObject) -> TensorType:
+def enc(plaintext: TensorType, key: TensorType) -> TensorType:
     """Symmetric encryption.
 
     API: enc(plaintext: u8[N], key: u8[M]) -> ciphertext: u8[N + 12]
     """
-    pt_ty = TensorType.from_obj(plaintext)
+    pt_ty = plaintext
     if pt_ty.dtype != UINT8:
         raise TypeError("enc expects UINT8 plaintext")
     if len(pt_ty.shape) != 1:
@@ -66,12 +65,12 @@ def enc(plaintext: MPObject, key: MPObject) -> TensorType:
 
 
 @_CRYPTO_MOD.typed_op()
-def dec(ciphertext: MPObject, key: MPObject) -> TensorType:
+def dec(ciphertext: TensorType, key: TensorType) -> TensorType:
     """Symmetric decryption.
 
     API: dec(ciphertext: u8[N + 12], key: u8[M]) -> plaintext: u8[N]
     """
-    ct_ty = TensorType.from_obj(ciphertext)
+    ct_ty = ciphertext
     if ct_ty.dtype != UINT8:
         raise TypeError("dec expects UINT8 ciphertext")
     if len(ct_ty.shape) != 1 or ct_ty.shape[0] < 12:
@@ -80,25 +79,23 @@ def dec(ciphertext: MPObject, key: MPObject) -> TensorType:
 
 
 @_CRYPTO_MOD.typed_op()
-def pack(x: MPObject) -> TensorType:
+def pack(x: TensorType) -> TensorType:
     """Pack any tensor into a contiguous byte vector (C-order).
 
     API: pack(x: T[...]) -> bytes: u8[P], where P = sizeof(T) * prod(shape or (1,)).
     """
-    x_ty = TensorType.from_obj(x)
-    elem_count = 1 if len(x_ty.shape) == 0 else math.prod(x_ty.shape)
-    itemsize = x_ty.dtype.numpy_dtype().itemsize
+    elem_count = 1 if len(x.shape) == 0 else math.prod(x.shape)
+    itemsize = x.dtype.numpy_dtype().itemsize
     return TensorType(UINT8, (int(elem_count) * int(itemsize),))
 
 
 @_CRYPTO_MOD.typed_op()
-def unpack(b: MPObject, *, out_ty: TensorType) -> TensorType:
+def unpack(b: TensorType, *, out_ty: TensorType) -> TensorType:
     """Unpack a byte vector into a tensor specified by a TensorType.
 
     API: unpack(bytes: u8[P], out_ty: TensorType) -> T[...]
     """
-    b_ty = TensorType.from_obj(b)
-    if b_ty.dtype != UINT8 or len(b_ty.shape) != 1:
+    if b.dtype != UINT8 or len(b.shape) != 1:
         raise TypeError("unpack expects UINT8 1-D byte vector")
     return out_ty
 
@@ -112,15 +109,17 @@ def kem_keygen(*, suite: str = "x25519") -> tuple[TensorType, TensorType]:
 
 
 @_CRYPTO_MOD.typed_op()
-def kem_derive(sk: MPObject, peer_pk: MPObject, *, suite: str = "x25519") -> TensorType:
+def kem_derive(
+    sk: TensorType, peer_pk: TensorType, *, suite: str = "x25519"
+) -> TensorType:
     """KEM-style shared secret derivation: returns secret bytes."""
-    _ = TensorType.from_obj(sk)
-    _ = TensorType.from_obj(peer_pk)
+    _ = sk
+    _ = peer_pk
     return TensorType(UINT8, (32,))
 
 
 @_CRYPTO_MOD.typed_op()
-def hkdf(secret: MPObject, *, info: str) -> TensorType:
+def hkdf(secret: TensorType, *, info: str) -> TensorType:
     """HKDF-style key derivation: returns a 32-byte key."""
-    _ = TensorType.from_obj(secret)
+    _ = secret
     return TensorType(UINT8, (32,))

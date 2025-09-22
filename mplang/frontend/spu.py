@@ -49,7 +49,7 @@ _SPU_MOD = femod("spu")
 
 @_SPU_MOD.typed_op()
 def makeshares(
-    data: MPObject,
+    data: TensorType,
     *,
     world_size: int,
     visibility: libspu.Visibility = Visibility.SECRET,
@@ -61,8 +61,6 @@ def makeshares(
     Returns a PyTree of TensorType repeated `world_size` times.
     Validation only; PFunction assembly handled by typed_op decorator.
     """
-    if not isinstance(data, MPObject):
-        raise TypeError("data must be an MPObject (Tensor) for makeshares")
     if world_size <= 0:
         raise ValueError("world_size must be positive")
     if visibility == Visibility.PRIVATE:
@@ -70,9 +68,7 @@ def makeshares(
             raise ValueError("PRIVATE visibility disabled; set enable_private=True")
         if owner_rank < 0 or owner_rank >= world_size:
             raise ValueError(f"owner_rank {owner_rank} out of range [0,{world_size})")
-
-    in_ty = TensorType.from_obj(data)
-    return tuple(in_ty for _ in range(world_size))
+    return tuple(data for _ in range(world_size))
 
 
 @_SPU_MOD.feop()

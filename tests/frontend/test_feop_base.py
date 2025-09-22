@@ -23,6 +23,7 @@ from mplang.core.dtype import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.frontend.base import (
     FeOperation,
     InlineFeOperation,
@@ -59,9 +60,11 @@ def test_simple_decorator_builds_triad():
     mod = femod("ut_mod_simple_add")
 
     @mod.typed_op(pfunc_name="builtin.add")
-    def add(x: MPObject, y: MPObject, *, alpha: int):  # returns TensorType
-        # Return the same type as x
-        return x.mptype._type
+    def add(
+        x: TensorType, y: TensorType, *, alpha: int
+    ):  # kernel now receives TensorType specs
+        # Return the same spec as first arg
+        return x
 
     assert is_feop(add)
     assert isinstance(add, FeOperation)
@@ -126,8 +129,8 @@ def test_simple_rejects_invalid_kwargs():
     mod = femod("ut_mod_badkw")
 
     @mod.typed_op(pfunc_name="builtin.echo")
-    def echo(x: MPObject):  # returns TensorType
-        return x.mptype._type
+    def echo(x: TensorType):  # returns TensorType
+        return x
 
     # invalid: passing an MPObject as attribute value
     x = DummyTensor((1,), np.int32)
@@ -139,7 +142,9 @@ def test_simple_rejects_invalid_return_type():
     mod = femod("ut_mod_badret")
 
     @mod.typed_op(pfunc_name="builtin.bad")
-    def bad(x: MPObject):  # missing explicit TensorType/TableType return
+    def bad(
+        x: TensorType,
+    ):  # missing explicit TensorType/TableType return (returns int instead)
         # Returning a python int should trigger a TypeError in SimpleFeOperation.trace
         return 42
 

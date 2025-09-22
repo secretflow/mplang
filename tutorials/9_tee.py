@@ -28,10 +28,8 @@ import random
 
 import mplang
 import mplang.device as mpd
-import mplang.simp as simp
 from mplang import ClusterSpec, Simulator, TensorType
-from mplang.frontend import crypto, tee
-from mplang.simp import P0, P1, P2, P2P  # sugar: party execution + P2P transfer helper
+from mplang.simp import P0, P1, P2, P2P
 
 cluster_spec = ClusterSpec.from_dict({
     "nodes": [
@@ -89,14 +87,14 @@ def millionaire_manual():
     x_at_tee = P2.crypto.unpack(bx_at_tee, out_ty_x)
 
     # P1 <-> TEE handshake and transfer y (still show original style for contrast)
-    tee_sk1, tee_pk1 = simp.runAt(2, crypto.kem_keygen)("x25519")
-    quote1 = simp.runAt(2, tee.quote)(tee_pk1)
+    tee_sk1, tee_pk1 = P2.crypto.kem_keygen("x25519")
+    quote1 = P2.tee.quote(tee_pk1)
     tee_pk1_at_p1 = P1.tee.attest(P2P(P2, P1, quote1))
     v_sk1, v_pk1 = P1.crypto.kem_keygen("x25519")
     shared1_p = P1.crypto.kem_derive(v_sk1, tee_pk1_at_p1, "x25519")
-    shared1_t = simp.runAt(2, crypto.kem_derive)(tee_sk1, P2P(P1, P2, v_pk1), "x25519")
+    shared1_t = P2.crypto.kem_derive(tee_sk1, P2P(P1, P2, v_pk1), "x25519")
     sess1_p = P1.crypto.hkdf(shared1_p, info)
-    sess1_t = simp.runAt(2, crypto.hkdf)(shared1_t, info)
+    sess1_t = P2.crypto.hkdf(shared1_t, info)
     out_ty_y = TensorType.from_obj(y)
     by = P1.crypto.pack(y)
     cy = P1.crypto.enc(by, sess1_p)

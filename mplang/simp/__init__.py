@@ -45,12 +45,13 @@ from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
 # Public exports of the simplified party execution API.
 # NOTE: Replaces previous internal __reexport__ (not a Python convention)
 # to make star-imports explicit and tooling-friendly.
-__all__ = [  # noqa: RUF022 (ASCII-sorted with capitals first)
+__all__ = [  # noqa: RUF022
     "MPObject",
     "P",
     "P0",
     "P1",
     "P2",
+    "P2P",
     "Party",
     "allgather_m",
     "bcast_m",
@@ -58,7 +59,6 @@ __all__ = [  # noqa: RUF022 (ASCII-sorted with capitals first)
     "gather_m",
     "key_split",
     "load_module",
-    "P2P",
     "p2p",
     "pconv",
     "peval",
@@ -280,9 +280,18 @@ class _PartyIndex:
 
 
 def _load_prelude_modules() -> None:
+    """Auto-register public frontend submodules for party namespace access.
+
+    Implementation detail: we treat every non-underscore immediate child of
+    ``mplang.frontend`` as public and make it available as ``P0.<name>``.
+    This keeps user ergonomics high (no manual load_module calls for core
+    frontends) but slightly increases implicit surface area. If this grows
+    unwieldy we can switch to an allowlist.
+    """
     try:
         import mplang.frontend as _fe  # type: ignore
-    except Exception:  # pragma: no cover
+    except (ImportError, ModuleNotFoundError):  # pragma: no cover
+        # Frontend package not present (minimal install); safe to skip.
         return
 
     pkg_path = pathlib.Path(_fe.__file__).parent

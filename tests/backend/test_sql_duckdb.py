@@ -19,39 +19,42 @@ import pytest
 
 import mplang
 from mplang import simp
-from mplang.backend.sql_duckdb import DuckDBHandler
+from mplang.backend.base import create_runtime
+from mplang.core.pfunc import PFunction
+from mplang.core.table import TableType
 from mplang.frontend import ibis_cc
 
 
-class TestDuckDBHandler:
+class TestDuckDBKernel:
     def test_duckdb_run(self):
-        # ibis_fe
+        runtime = create_runtime(0, 1)
         tbl_name = "table"
         schema = {"a": "int", "b": "int", "c": "float"}
         in_tbl = ibis.table(schema=schema, name=tbl_name)
-        result_expr = in_tbl["a"] + in_tbl["b"]
+        # Use explicit add to keep static analyzers happy (ibis Column supports + at runtime)
+        result_expr = in_tbl["a"].add(in_tbl["b"])  # type: ignore[attr-defined]
         new_table = in_tbl.mutate(d=result_expr)
         pfn = ibis_cc.ibis2sql(new_table, [in_tbl.schema()], [tbl_name])
 
-        # duckdb run
-        dh = DuckDBHandler()
+        # Build PFunction for duckdb kernel is already done by ibis2sql (fn_type sql[duckdb])
+        assert isinstance(pfn, PFunction) and pfn.fn_type == "sql[duckdb]"
+        # outs_info produced from ibis schema; sanity
+        assert len(pfn.outs_info) == 1
+        assert isinstance(pfn.outs_info[0], TableType)
 
-        in_tbl = pd.DataFrame({
+        in_df = pd.DataFrame({
             "a": [1, 2, 3],
             "b": [4, 5, 6],
             "c": [7.1, 8.1, 9.1],
         })
-        ep_tbl = pd.DataFrame({
+        expected = pd.DataFrame({
             "a": [1, 2, 3],
             "b": [4, 5, 6],
             "c": [7.1, 8.1, 9.1],
             "d": [5, 7, 9],
         })
-        ot_tbls = dh.execute(pfn, [in_tbl])
-        assert len(ot_tbls) == 1
-        ot_tbl = ot_tbls[0]
-
-        npt.assert_allclose(ot_tbl, ep_tbl, rtol=1e-7, atol=1e-8)
+        (out_df,) = runtime.run_kernel(pfn, [in_df])
+        npt.assert_allclose(out_df, expected, rtol=1e-7, atol=1e-8)
 
     @pytest.mark.parametrize("op", ["+", "-", "*", "/"])
     @pytest.mark.parametrize(

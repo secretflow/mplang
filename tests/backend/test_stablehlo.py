@@ -19,7 +19,9 @@ import jax.numpy as jnp
 import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
-from mplang.backend.stablehlo import StablehloHandler
+from mplang.backend import stablehlo  # noqa: F401
+from mplang.backend.base import create_runtime
+from mplang.core.expr.evaluator import create_evaluator
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.frontend import jax_cc
@@ -28,16 +30,23 @@ from mplang.frontend import jax_cc
 jax.config.update("jax_enable_x64", True)
 
 
-class TestStablehloHandler:
-    """Test suite for StableHLO MLIR execution runtime functionality."""
+class TestStablehloKernel:
+    """Tests for mlir.stablehlo flat backend kernel."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        """Initialize and cleanup StableHLO runtime for each test case."""
-        self.runtime = StablehloHandler()
-        self.runtime.setup(0)  # Use rank 0 for test
+    def _evaluator(self):
+        # Minimal single-rank communicator (no actual messaging needed for local kernel)
+        from mplang.core.comm import CommunicatorBase
+
+        class _SingleComm(CommunicatorBase):  # type: ignore[misc]
+            def send(self, to: int, key: str, data):  # pragma: no cover - unused
+                raise RuntimeError("send should not be called in single-rank test")
+
+        comm = _SingleComm(rank=0, world_size=1)
+        runtime = create_runtime(rank=0, world_size=1)
+        ev = create_evaluator(rank=0, env={}, comm=comm, runtime=runtime)
+        self.ev = ev
         yield
-        self.runtime.teardown()
 
     @pytest.mark.parametrize(
         "test_function, inputs",
@@ -114,8 +123,8 @@ class TestStablehloHandler:
         is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
         cfunc, _, out_tree = jax_cc.jax2stablehlo(is_var, test_function, *inputs)
 
-        # Execute compiled function on StableHLO runtime
-        result_flat = self.runtime.execute(cfunc, inputs)
+        # Execute via evaluator (dispatches kernel by fn_type)
+        result_flat = self.ev._exec_pfunc(cfunc, list(inputs))  # type: ignore[attr-defined]
 
         # Reconstruct nested output structure from flattened results
         result = tree_unflatten(out_tree, result_flat)
@@ -128,8 +137,6 @@ class TestStablehloHandler:
             assert jnp.allclose(jnp.asarray(res), jnp.asarray(exp), rtol=1e-5)
 
     def test_invalid_format_execution(self):
-        """Verify runtime error handling for unsupported PFunction format types."""
-        # Construct malformed PFunction with unsupported format identifier
         invalid_pfunc = PFunction(
             fn_type="invalid_format",
             ins_info=(),
@@ -137,7 +144,16 @@ class TestStablehloHandler:
             fn_name="test",
             fn_text="invalid_text",
         )
+        from mplang.core.comm import CommunicatorBase
 
-        # Assert runtime rejects invalid format with descriptive error
-        with pytest.raises(ValueError, match="Unsupported format"):
-            self.runtime.execute(invalid_pfunc, [])
+        class _SingleComm(CommunicatorBase):  # type: ignore[misc]
+            def send(self, to: int, key: str, data):  # pragma: no cover - unused
+                raise RuntimeError("send should not be called in single-rank test")
+
+        comm = _SingleComm(rank=0, world_size=1)
+        runtime = create_runtime(rank=0, world_size=1)
+        ev = create_evaluator(0, {}, comm, runtime)
+        with pytest.raises(NotImplementedError):
+            ev._exec_pfunc(invalid_pfunc, [])  # type: ignore[attr-defined]
+
+        # No legacy handler path anymore; only NotImplementedError is expected.

@@ -30,12 +30,12 @@ import math
 
 from mplang.core.dtype import UINT8
 from mplang.core.tensor import TensorType
-from mplang.frontend.base import femod
+from mplang.frontend.base import stateless_mod
 
-_CRYPTO_MOD = femod("crypto")
+_CRYPTO_MOD = stateless_mod("crypto")
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def keygen(*, length: int = 32) -> TensorType:
     """Generate random bytes for symmetric keys or generic randomness.
 
@@ -50,7 +50,7 @@ def keygen(*, length: int = 32) -> TensorType:
     return TensorType(UINT8, (length,))
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def enc(plaintext: TensorType, key: TensorType) -> TensorType:
     """Symmetric encryption.
 
@@ -64,7 +64,7 @@ def enc(plaintext: TensorType, key: TensorType) -> TensorType:
     return TensorType(UINT8, (pt_ty.shape[0] + 12,))
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def dec(ciphertext: TensorType, key: TensorType) -> TensorType:
     """Symmetric decryption.
 
@@ -78,7 +78,7 @@ def dec(ciphertext: TensorType, key: TensorType) -> TensorType:
     return TensorType(UINT8, (ct_ty.shape[0] - 12,))
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def pack(x: TensorType) -> TensorType:
     """Pack any tensor into a contiguous byte vector (C-order).
 
@@ -89,7 +89,7 @@ def pack(x: TensorType) -> TensorType:
     return TensorType(UINT8, (int(elem_count) * int(itemsize),))
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def unpack(b: TensorType, *, out_ty: TensorType) -> TensorType:
     """Unpack a byte vector into a tensor specified by a TensorType.
 
@@ -100,7 +100,7 @@ def unpack(b: TensorType, *, out_ty: TensorType) -> TensorType:
     return out_ty
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def kem_keygen(*, suite: str = "x25519") -> tuple[TensorType, TensorType]:
     """KEM-style keypair generation: returns (sk, pk) bytes."""
     sk_ty = TensorType(UINT8, (32,))
@@ -108,7 +108,7 @@ def kem_keygen(*, suite: str = "x25519") -> tuple[TensorType, TensorType]:
     return sk_ty, pk_ty
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def kem_derive(
     sk: TensorType, peer_pk: TensorType, *, suite: str = "x25519"
 ) -> TensorType:
@@ -118,7 +118,7 @@ def kem_derive(
     return TensorType(UINT8, (32,))
 
 
-@_CRYPTO_MOD.typed_op()
+@_CRYPTO_MOD.simple_op()
 def hkdf(secret: TensorType, *, info: str) -> TensorType:
     """HKDF-style key derivation: returns a 32-byte key."""
     _ = secret

@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from mplang.core.dtype import UINT8
 from mplang.core.tensor import TensorType
-from mplang.frontend.base import femod
+from mplang.frontend.base import stateless_mod
 
-_TEE_MOD = femod("tee")
+_TEE_MOD = stateless_mod("tee")
 
 
-@_TEE_MOD.typed_op()
+@_TEE_MOD.simple_op()
 def quote(pk: TensorType) -> TensorType:
     """TEE quote generation binding the provided ephemeral public key.
 
@@ -32,7 +32,7 @@ def quote(pk: TensorType) -> TensorType:
     return TensorType(UINT8, (33,))
 
 
-@_TEE_MOD.typed_op()
+@_TEE_MOD.simple_op()
 def attest(quote: TensorType) -> TensorType:
     """TEE quote verification returning the attested TEE public key.
 

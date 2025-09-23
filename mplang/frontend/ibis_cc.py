@@ -24,7 +24,7 @@ from mplang.core import dtype
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
-from mplang.frontend.base import FeOperation, femod
+from mplang.frontend.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -90,7 +90,7 @@ def is_ibis_function(func: Callable) -> bool:
     return False
 
 
-_IBIS_MOD = femod("ibis")
+_IBIS_MOD = stateless_mod("ibis")
 
 
 class IbisCompiler(FeOperation):

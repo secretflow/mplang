@@ -24,14 +24,20 @@ from typing import Any
 from urllib.parse import urlparse
 
 import cloudpickle as pickle
+import spu.libspu as libspu
 
-from mplang.backend.builtin import BuiltinHandler
-from mplang.backend.crypto import CryptoHandler
-from mplang.backend.phe import PHEHandler
-from mplang.backend.spu import SpuHandler
-from mplang.backend.sql_duckdb import DuckDBHandler
-from mplang.backend.stablehlo import StablehloHandler
-from mplang.backend.tee import MockTeeHandler
+# Import backends (side-effect: kernel registration)
+from mplang.backend import (  # noqa: F401
+    builtin,
+    crypto,
+    phe,
+    spu,  # registers flat SPU kernels
+    sql_duckdb,
+    stablehlo,
+    tee,
+)
+from mplang.backend.base import create_runtime
+from mplang.backend.spu import PFunction  # type: ignore
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
@@ -208,56 +214,53 @@ def execute_computation(
             )
         bindings[input_name] = symbol.data
 
-    import spu.libspu as libspu
-
-    # This config is misleading, it configs the runtime as well as spu IO.
-    spu_config = libspu.RuntimeConfig(
-        protocol=parse_protocol(session.spu_protocol),
-        field=parse_field(session.spu_field),
-        fxp_fraction_bits=18,
-    )
-
-    spu_comm: LinkCommunicator | None = None
     spu_mask = (
         Mask(session.spu_mask)
         if session.spu_mask != -1
         else Mask.all(session.communicator.world_size)
     )
 
+    # Build evaluator
+    # Explicit per-rank backend runtime (deglobalized)
+    runtime = create_runtime(rank, session.communicator.world_size)
+    evaluator: IEvaluator = create_evaluator(
+        rank=rank, env=bindings, comm=session.communicator, runtime=runtime
+    )
+
+    # Initialize SPU runtime state for flat kernels (once per evaluator invocation)
     if rank in spu_mask:
+        # Build SPU address list (only once per rank; consistent ordering of participating ranks)
         spu_addrs: list[str] = []
         for r, addr in enumerate(session.communicator.endpoints):
             if r in spu_mask:
                 if "://" not in addr:
-                    # without schema, add dummy schema for parsing
                     addr = f"//{addr}"
                 parsed = urlparse(addr)
                 assert isinstance(parsed.port, int)
                 new_addr = f"{parsed.hostname}:{parsed.port + 100}"
                 spu_addrs.append(new_addr)
-        spu_rank = spu_mask.global_to_relative_rank(rank)
-        spu_comm = g_link_factory.create_link(spu_rank, spu_addrs)
-
-    # Use the world size from the communicator
-    spu_handler = SpuHandler(spu_mask.num_parties(), spu_config)
-    if spu_comm is not None:
-        spu_handler.set_link_context(spu_comm)
-
-    # Build evaluator with bindings as environment and execute
-    evaluator: IEvaluator = create_evaluator(
-        rank=rank,
-        env=bindings,
-        comm=session.communicator,
-        pfunc_handles=[
-            BuiltinHandler(),
-            StablehloHandler(),
-            spu_handler,
-            DuckDBHandler(),
-            PHEHandler(),
-            CryptoHandler(),
-            MockTeeHandler(),
-        ],
+        # Determine this rank's relative index among participating ranks
+        rel_index = sum(1 for r in range(rank) if r in spu_mask)
+        link_ctx = g_link_factory.create_link(rel_index, spu_addrs)
+    else:
+        link_ctx = None
+    # Always seed config/world; provide per-rank link (may be None if not participating)
+    spu_config = libspu.RuntimeConfig(
+        protocol=parse_protocol(session.spu_protocol),
+        field=parse_field(session.spu_field),
+        fxp_fraction_bits=18,
     )
+    # Seed SPU env via backend kernel (inside evaluator's kernel context)
+    seed_pfunc = PFunction(
+        fn_type="spu.seed_env",
+        ins_info=(),
+        outs_info=(),
+        config=spu_config,
+        world=spu_mask.num_parties(),
+        link=link_ctx,
+    )
+    # Run seeding kernel with evaluator (no inputs, no outputs)
+    evaluator.runtime.run_kernel(seed_pfunc, [])
 
     results = evaluator.evaluate(computation.expr)
 

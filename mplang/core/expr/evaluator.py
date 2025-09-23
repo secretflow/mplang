@@ -24,8 +24,10 @@ Expression evaluation engines for MPLang expressions.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol
 
+from mplang.backend.base import BackendRuntime
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -44,43 +46,33 @@ from mplang.core.expr.ast import (
 from mplang.core.expr.visitor import ExprVisitor
 from mplang.core.expr.walk import walk_dataflow
 from mplang.core.mask import Mask
-from mplang.core.pfunc import PFunction, PFunctionHandler
+from mplang.core.pfunc import PFunction
 
 
 class IEvaluator(Protocol):
+    """Public evaluator protocol.
+
+    Added 'runtime' attribute so callers (simulation/resource) can seed
+    backend state via evaluator.runtime.run_kernel(...).
+    """
+
+    runtime: BackendRuntime
+
     def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]: ...
 
 
+@dataclass
 class EvalSemantic:
-    """Shared evaluation semantics and utilities for evaluators."""
+    """Shared evaluation semantics and utilities for evaluators.
 
-    def __init__(
-        self,
-        rank: int,
-        env: dict[str, Any],
-        comm: ICommunicator,
-        pfunc_handles: list[PFunctionHandler] | None = None,
-    ) -> None:
-        self.rank = rank
-        self.comm = comm
-        self.env = env
-        self._pfunc_handles: list[PFunctionHandler] = pfunc_handles or []
+    Minimal dataclass carrying runtime execution context (rank/env/comm/runtime).
+    Legacy handler-based execution (pfunc_handles) has been fully removed.
+    """
 
-        # setup pfunction dispatch table
-        self._dispatch_table: dict[str, PFunctionHandler] = {}
-        for handler in self._pfunc_handles:
-            for pfunc_name in handler.list_fn_names():
-                if pfunc_name not in self._dispatch_table:
-                    self._dispatch_table[pfunc_name] = handler
-                else:
-                    raise ValueError(
-                        f"Duplicate PFunction handler for type {pfunc_name}: "
-                        f"{self._dispatch_table[pfunc_name]} and {handler}"
-                    )
-
-        # setup handlers for PFunction execution
-        for handler in self._pfunc_handles:
-            handler.setup(self.rank)
+    rank: int
+    env: dict[str, Any]
+    comm: ICommunicator
+    runtime: BackendRuntime
 
     # ------------------------------ Shared helpers (semantics) ------------------------------
     def _should_run(self, rmask: Mask | None, args: list[Any]) -> bool:
@@ -89,10 +81,7 @@ class EvalSemantic:
         return all(arg is not None for arg in args)
 
     def _exec_pfunc(self, pfunc: PFunction, args: list[Any]) -> list[Any]:
-        if pfunc.fn_type in self._dispatch_table:
-            handler = self._dispatch_table[pfunc.fn_type]
-            return handler.execute(pfunc, args)
-        raise NotImplementedError(f"PFunction type {pfunc.fn_type} not supported")
+        return self.runtime.run_kernel(pfunc, args)
 
     def _eval_eval_node(self, expr: EvalExpr, arg_vals: list[Any]) -> list[Any]:
         assert isinstance(expr.pfunc, PFunction)
@@ -216,9 +205,9 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         rank: int,
         env: dict[str, Any],
         comm: ICommunicator,
-        pfunc_handles: list[PFunctionHandler] | None = None,
+        runtime: BackendRuntime,
     ) -> None:
-        super().__init__(rank, env, comm, pfunc_handles)
+        super().__init__(rank, env, comm, runtime)
         self._cache: dict[int, Any] = {}  # Cache based on expr id
 
     def _get_var(self, name: str) -> Any:
@@ -249,7 +238,8 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
     # Internal helper to create a new evaluator with extended env for nested regions
     def _fork(self, sub_bindings: dict[str, Any]) -> RecursiveEvaluator:
         merged_env = {**self.env, **sub_bindings}
-        return RecursiveEvaluator(self.rank, merged_env, self.comm, self._pfunc_handles)
+        # Create a child evaluator sharing the same runtime (no new backend state).
+        return RecursiveEvaluator(self.rank, merged_env, self.comm, self.runtime)
 
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Evaluate function call expression."""
@@ -373,8 +363,9 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         if env is None:
             res = root.accept(self)
         else:
+            # Spawn a sibling evaluator with override env but same runtime.
             res = root.accept(
-                RecursiveEvaluator(self.rank, env, self.comm, self._pfunc_handles)
+                RecursiveEvaluator(self.rank, env, self.comm, self.runtime)
             )
         if not isinstance(res, list):
             raise ValueError(f"got {type(res)} for expression {root}")
@@ -383,6 +374,15 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
 
 class IterativeEvaluator(EvalSemantic):
     """Iterative (non-recursive) evaluator using dataflow traversal."""
+
+    def __init__(
+        self,
+        rank: int,
+        env: dict[str, Any],
+        comm: ICommunicator,
+        runtime: BackendRuntime,
+    ) -> None:
+        super().__init__(rank, env, comm, runtime)
 
     @staticmethod
     def _first(vals: list[Any]) -> Any:
@@ -501,8 +501,8 @@ def create_evaluator(
     rank: int,
     env: dict[str, Any],
     comm: ICommunicator,
-    pfunc_handles: list[PFunctionHandler] | None = None,
-    kind: str = "iterative",
+    runtime: BackendRuntime,
+    kind: str | None = "iterative",
 ) -> IEvaluator:
     """Factory to create an evaluator engine.
 
@@ -510,15 +510,14 @@ def create_evaluator(
         rank: Party rank.
         env: Initial variable environment.
         comm: Communicator for this party.
-        pfunc_handles: Backend handlers.
-        kind: "iterative" or "recursive".
+        kind: Evaluator implementation ("iterative" or "recursive").
 
     Returns:
         An IEvaluator instance of the requested kind.
     """
-    if kind == "iterative":
-        return IterativeEvaluator(rank, env, comm, pfunc_handles)
-    elif kind == "recursive":
-        return RecursiveEvaluator(rank, env, comm, pfunc_handles)
-    else:
-        raise ValueError(f"Unknown evaluator kind: {kind}")
+    # Backward compatibility: treat kind=None as default iterative implementation.
+    if kind is None or kind == "iterative":
+        return IterativeEvaluator(rank, env, comm, runtime)
+    if kind == "recursive":
+        return RecursiveEvaluator(rank, env, comm, runtime)
+    raise ValueError(f"Unknown evaluator kind: {kind}")

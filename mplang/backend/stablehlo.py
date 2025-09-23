@@ -14,133 +14,60 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
-from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import PFunction, TensorHandler
+from mplang.backend.base import cur_kctx, kernel_def
+from mplang.core.pfunc import PFunction
 
 
-class StablehloHandler(TensorHandler):
-    """StableHLO Handler for remote execution.
+@kernel_def("mlir.stablehlo")
+def _stablehlo_exec(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+    if pfunc.fn_type != "mlir.stablehlo":
+        raise ValueError("stablehlo kernel received wrong fn_type")
 
-    Runtime for loading and executing JAX functions serialized by jax_cc using
-    StableHLO MLIR intermediate representation.
+    mlir_text = pfunc.fn_text
+    if mlir_text is None:
+        raise ValueError("StableHLO kernel missing fn_text")
+    if isinstance(mlir_text, bytes):
+        mlir_text = mlir_text.decode("utf-8")
 
-    Together with jax_cc, provides complete StableHLO compilation and
-    execution solution.
-    """
-
-    # override
-    def setup(self, rank: int) -> None:
-        """Set up the runtime environment."""
-        # StableHLO handler doesn't need special setup
-
-    # override
-    def teardown(self) -> None:
-        """Clean up the runtime environment."""
-        # StableHLO handler doesn't need special teardown
-
-    def list_fn_names(self) -> list[str]:
-        """List function names that this handler can execute."""
-        return ["mlir.stablehlo"]
-
-    # override
-    def execute(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike],
-    ) -> list[TensorLike]:
-        """Execute compiled function containing StableHLO MLIR.
-
-        Implementation Notes:
-        Uses the following verified execution pipeline:
-        1. Extract MLIR text from PFunction
-        2. Compile MLIR text to LoadedExecutable via XLA client
-        3. Convert inputs to JAX device arrays
-        4. Execute using execute_sharded
-        5. Extract results using disassemble_into_single_device_arrays
-
-        Key Findings:
-        - XLA client.compile() accepts MLIR strings directly
-        - execute_sharded() more stable than execute()
-        - Results must be properly extracted from ExecuteResults
-
-        Args:
-            pfunc: PFunction containing MLIR StableHLO text
-            args: Input arguments as TensorLike objects
-
-        Returns:
-            List of output tensors
-
-        Raises:
-            ValueError: Unsupported format
-            RuntimeError: Compilation or execution failure
-        """
-        # Validate format: only StableHLO MLIR supported
-        if pfunc.fn_type != "mlir.stablehlo":
-            raise ValueError(
-                f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.stablehlo'"
-            )
-
-        # Extract MLIR text from compiled function
-        mlir_text = pfunc.fn_text
-        if mlir_text is None:
-            raise ValueError("PFunction does not contain MLIR text")
-
-        # Convert to string if it's bytes
-        if isinstance(mlir_text, bytes):
-            mlir_text = mlir_text.decode("utf-8")
-
-        # Get JAX backend and compile MLIR
-        # Key finding: XLA client.compile() accepts MLIR strings directly
+    # Simple compile cache per runtime (state pocket per backend namespace)
+    ctx = cur_kctx()
+    pocket = ctx.state.setdefault("stablehlo", {})
+    cache = pocket.setdefault("compile_cache", {})
+    compiled = cache.get(mlir_text)
+    if compiled is None:
         backend = jax.default_backend()
         client = xla_bridge.get_backend(backend)
         compile_options = xc.CompileOptions()
-
         try:
-            compiled_executable = client.compile(mlir_text, compile_options)
-        except Exception as e:  # pragma: no cover - backend specific failures
+            compiled = client.compile(mlir_text, compile_options)
+        except Exception as e:  # pragma: no cover
             raise RuntimeError(f"StableHLO compile failed: {e}") from e
+        cache[mlir_text] = compiled
 
-        # Convert input args to JAX arrays and put on device
-        # This is the correct input format discovered in research.
-        # NOTE: Potential optimization: zero-copy pathway if arg already lives
-        # on the correct backend device. For now we always materialize a JAX
-        # DeviceArray to ensure downstream invariants.
-        jax_args = []
-        for arg in args:
-            if hasattr(arg, "numpy"):
-                # Convert from MPLang tensor to numpy then to JAX
-                jax_arg = jnp.array(arg.numpy())  # type: ignore
+    jax_args = []
+    for arg in args:
+        if hasattr(arg, "numpy"):
+            jax_arg = jnp.array(arg.numpy())  # type: ignore
+        else:
+            jax_arg = jnp.array(arg)
+        jax_args.append(jax.device_put(jax_arg))
+
+    try:
+        result = compiled.execute_sharded(jax_args)
+        arrays = result.disassemble_into_single_device_arrays()
+        flat = []
+        for lst in arrays:
+            if isinstance(lst, list) and len(lst) == 1:
+                flat.append(jnp.array(lst[0]))
             else:
-                # Assume it's already array-like
-                jax_arg = jnp.array(arg)
-            jax_args.append(jax.device_put(jax_arg))
-
-        # Execute compiled function
-        # Key finding: execute_sharded is the most stable execution method
-        try:
-            result = compiled_executable.execute_sharded(jax_args)
-
-            # Extract results
-            # Key finding: must use disassemble_into_single_device_arrays() to extract results
-            arrays = result.disassemble_into_single_device_arrays()
-
-            # Convert back to expected format
-            # Note: arrays is nested list, need to flatten appropriately
-            output_tensors = []
-            for array_list in arrays:
-                if isinstance(array_list, list) and len(array_list) == 1:
-                    # Single output case - extract the array
-                    output_tensors.append(jnp.array(array_list[0]))
-                else:
-                    # Multiple outputs or other cases
-                    output_tensors.extend([jnp.array(arr) for arr in array_list])
-
-            return output_tensors  # type: ignore[return-value]
-
-        except Exception as e:  # pragma: no cover - device runtime errors
-            raise RuntimeError(f"StableHLO execute failed: {e}") from e
+                flat.extend([jnp.array(a) for a in lst])
+        return tuple(flat)
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError(f"StableHLO execute failed: {e}") from e

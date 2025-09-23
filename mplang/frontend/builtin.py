@@ -20,13 +20,13 @@ from mplang.core.mpobject import MPObject  # Needed for constant() triad return 
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
-from mplang.frontend.base import femod
+from mplang.frontend.base import stateless_mod
 from mplang.utils import table_utils
 
-_BUILTIN_MOD = femod("builtin")
+_BUILTIN_MOD = stateless_mod("builtin")
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def identity(x: TensorType) -> TensorType:
     """Identity on type: captures the underlying MPObject (if any) but kernel sees only the type.
 
@@ -35,7 +35,7 @@ def identity(x: TensorType) -> TensorType:
     return x
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def read(*, path: str, ty: TensorType) -> TensorType:
     """Type-only kernel for reading a tensor/table from a path.
 
@@ -53,7 +53,7 @@ def read(*, path: str, ty: TensorType) -> TensorType:
     return ty
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def write(x: TensorType, *, path: str) -> TensorType:
     """Write op: returns same type it consumes; runtime handles side effect.
 
@@ -62,7 +62,7 @@ def write(x: TensorType, *, path: str) -> TensorType:
     return x
 
 
-@_BUILTIN_MOD.feop()
+@_BUILTIN_MOD.op_def()
 def constant(
     data: TensorLike | ScalarType | TableLike,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -101,7 +101,7 @@ def constant(
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def rank() -> TensorType:
     """Type-only kernel: returns the UINT64 scalar tensor type for current rank.
 
@@ -111,7 +111,7 @@ def rank() -> TensorType:
     return TensorType(UINT64, ())
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def prand(*, shape: Shape = ()) -> TensorType:
     """Type-only kernel: private random UINT64 tensor of given shape.
 
@@ -120,7 +120,7 @@ def prand(*, shape: Shape = ()) -> TensorType:
     return TensorType(UINT64, shape)
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def debug_print(
     x: TensorType | TableType, *, prefix: str = ""
 ) -> TableType | TensorType:
@@ -131,7 +131,7 @@ def debug_print(
     return x
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
     if table.num_columns() == 0:
         raise ValueError("Cannot pack empty table")
@@ -149,7 +149,7 @@ def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
     return TensorType(first, shape)  # type: ignore[arg-type]
 
 
-@_BUILTIN_MOD.typed_op()
+@_BUILTIN_MOD.simple_op()
 def tensor_to_table(tensor: TensorType, *, column_names: list[str]) -> TableType:
     if len(tensor.shape) != 2:
         raise TypeError("tensor_to_table expects a rank-2 tensor (N,F)")

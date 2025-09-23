@@ -24,7 +24,7 @@ from jax.tree_util import PyTreeDef, tree_flatten
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction, get_fn_name
 from mplang.core.tensor import TensorType
-from mplang.frontend.base import FeOperation, femod
+from mplang.frontend.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 
 # Enable 64-bit precision for JAX to match tensor types
@@ -145,6 +145,6 @@ class JaxCompiler(FeOperation):
         return pfunc, in_vars, out_tree
 
 
-_JAX_MOD = femod("jax")
+_JAX_MOD = stateless_mod("jax")
 
 jax_compile = JaxCompiler(_JAX_MOD, "compile")

@@ -1,15 +1,23 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Flat backend kernel registry & per-participant runtime.
 
 Design revision:
-    - Global, stateless kernel function catalog (fn_type -> callable).
-    - BackendRuntime: per-rank state & cache; executes kernels.
-    - Legacy global helpers removed after full migration to explicit runtimes.
-
-Benefits:
-        * No cross-rank state leakage (each runtime isolates state pockets).
-        * Simplifies backend kernels (e.g. SPU) by removing indirections like
-            links_by_rank; each rank stores its own link.
-        * Enables future multi-backend or multi-device runtimes per evaluator.
+- Global, stateless kernel function catalog (fn_type -> callable).
+- BackendRuntime: per-rank state & cache; executes kernels.
+- Legacy global helpers removed after full migration to explicit runtimes.
 """
 
 from __future__ import annotations

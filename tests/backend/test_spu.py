@@ -255,8 +255,8 @@ class TestSpuKernels:
 
         mkx = _makeshares_pfunc(x, world)
         mky = _makeshares_pfunc(y, world)
-        x_shares: tuple[SpuValue, ...] = tuple(runtimes[0].run_kernel(mkx, [x]))  # type: ignore[assignment]
-        y_shares: tuple[SpuValue, ...] = tuple(runtimes[0].run_kernel(mky, [y]))  # type: ignore[assignment]
+        x_shares: list[SpuValue] = runtimes[0].run_kernel(mkx, [x])
+        y_shares: list[SpuValue] = runtimes[0].run_kernel(mky, [y])
 
         # Run mlir.pphlo concurrently per rank to satisfy interactive protocol
         def party(rank: int, xs: SpuValue, ys: SpuValue):

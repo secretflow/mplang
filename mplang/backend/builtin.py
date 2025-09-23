@@ -82,7 +82,7 @@ def _write(pfunc: PFunction, args: tuple):
         dir_name = os.path.dirname(path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
-        if hasattr(obj, "__dataframe__") or str(type(obj)).endswith("DataFrame'>"):
+        if hasattr(obj, "__dataframe__") or isinstance(obj, pd.DataFrame):
             csv_bytes = table_utils.dataframe_to_csv(obj)  # type: ignore
             with open(path, "wb") as f:
                 f.write(csv_bytes)

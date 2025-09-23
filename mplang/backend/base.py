@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import contextvars
 from collections.abc import Callable
+from collections.abc import Callable as TypingCallable
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,21 +66,20 @@ def cur_kctx() -> KernelContext:
 
 # ---------------- Registry ----------------
 
-_KERNELS: dict[str, Callable[[PFunction, tuple], tuple]] = {}
+# Canonical kernel callable signature: (pfunc, args_tuple) -> tuple(outputs)
+KernelFn = TypingCallable[[PFunction, tuple[Any, ...]], tuple[Any, ...]]
+
+_KERNELS: dict[str, KernelFn] = {}
 
 
-def backend_kernel(
-    fn_type: str,
-) -> Callable[
-    [Callable[[PFunction, tuple], tuple]], Callable[[PFunction, tuple], tuple]
-]:
+def backend_kernel(fn_type: str) -> TypingCallable[[KernelFn], KernelFn]:
     """Decorator to register a flat backend kernel.
 
     Kernel signature:  fn(pfunc: PFunction, args: tuple) -> tuple
     Return value length must equal len(pfunc.outs_info).
     """
 
-    def _decorator(fn: Callable[[PFunction, tuple], tuple]):
+    def _decorator(fn: KernelFn) -> KernelFn:
         if fn_type in _KERNELS:
             raise ValueError(f"duplicate backend kernel fn_type={fn_type}")
         _KERNELS[fn_type] = fn
@@ -139,6 +139,7 @@ class BackendRuntime:
 
 
 def create_runtime(rank: int, world_size: int) -> BackendRuntime:
+    """Factory for BackendRuntime (allows future policy injection)."""
     return BackendRuntime(rank, world_size)
 
 

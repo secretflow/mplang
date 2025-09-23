@@ -17,14 +17,15 @@ from __future__ import annotations
 import os
 
 import numpy as np
+from numpy.typing import NDArray
 
 from mplang.backend.base import backend_kernel, cur_kctx
 from mplang.core.pfunc import PFunction
 
-__all__ = []
+__all__: list[str] = []
 
 
-def _rng():
+def _rng() -> np.random.Generator:
     kctx = cur_kctx()
     pocket = kctx.state.setdefault("tee", {})
     r = pocket.get("rng")
@@ -35,14 +36,17 @@ def _rng():
     return r
 
 
-def _quote_from_pk(pk: np.ndarray) -> np.ndarray:
+def _quote_from_pk(pk: np.ndarray) -> NDArray[np.uint8]:
     header = np.array([1], dtype=np.uint8)
     pk32 = np.asarray(pk, dtype=np.uint8).reshape(32)
-    return np.concatenate([header, pk32]).astype(np.uint8)
+    out: NDArray[np.uint8] = np.concatenate([header, pk32]).astype(np.uint8)  # type: ignore[assignment]
+    return out
 
 
 @backend_kernel("tee.quote")
-def _tee_quote(pfunc: PFunction, args: tuple) -> tuple:
+def _tee_quote(
+    pfunc: PFunction, args: tuple[object, ...]
+) -> tuple[NDArray[np.uint8], ...]:
     if len(args) != 1:
         raise ValueError("tee.quote expects exactly one argument (pk)")
     pk = np.asarray(args[0], dtype=np.uint8)
@@ -53,7 +57,9 @@ def _tee_quote(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("tee.attest")
-def _tee_attest(pfunc: PFunction, args: tuple) -> tuple:
+def _tee_attest(
+    pfunc: PFunction, args: tuple[object, ...]
+) -> tuple[NDArray[np.uint8], ...]:
     if len(args) != 1:
         raise ValueError("tee.attest expects exactly one argument (quote)")
     quote = np.asarray(args[0], dtype=np.uint8)

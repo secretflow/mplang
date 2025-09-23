@@ -50,6 +50,14 @@ from mplang.core.pfunc import PFunction
 
 
 class IEvaluator(Protocol):
+    """Public evaluator protocol.
+
+    Added 'runtime' attribute so callers (simulation/resource) can seed
+    backend state via evaluator.runtime.run_kernel(...).
+    """
+
+    runtime: BackendRuntime
+
     def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]: ...
 
 

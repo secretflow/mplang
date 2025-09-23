@@ -112,7 +112,7 @@ def _to_numpy(obj: TensorLike) -> np.ndarray:
 
 
 @backend_kernel("phe.keygen")
-def _phe_keygen(pfunc: PFunction, args: tuple):
+def _phe_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if args:
         raise ValueError("phe.keygen expects 0 args")
     scheme = pfunc.attrs.get("scheme", "paillier")
@@ -136,7 +136,7 @@ def _phe_keygen(pfunc: PFunction, args: tuple):
 
 
 @backend_kernel("phe.encrypt")
-def _phe_encrypt(pfunc: PFunction, args: tuple):
+def _phe_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.encrypt expects (plaintext, public_key)")
     plaintext, public_key = args
@@ -172,7 +172,7 @@ def _phe_encrypt(pfunc: PFunction, args: tuple):
 
 
 @backend_kernel("phe.mul")
-def _phe_mul(pfunc: PFunction, args: tuple):
+def _phe_mul(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.mul expects (ciphertext, plaintext)")
     ciphertext, plaintext = args
@@ -206,7 +206,7 @@ def _phe_mul(pfunc: PFunction, args: tuple):
 
 
 @backend_kernel("phe.add")
-def _phe_add(pfunc: PFunction, args: tuple):
+def _phe_add(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.add expects 2 args")
     lhs, rhs = args
@@ -274,7 +274,7 @@ def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
 
 
 @backend_kernel("phe.decrypt")
-def _phe_decrypt(pfunc: PFunction, args: tuple):
+def _phe_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.decrypt expects (ciphertext, private_key)")
     ciphertext, private_key = args

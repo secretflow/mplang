@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import numpy as np
 
@@ -23,12 +24,10 @@ from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.utils.crypto import blake2b
 
-__all__ = [
-    # flat kernels only; handler shim below for backward compatibility errors
-]
+__all__: list[str] = []  # flat kernels only
 
 
-def _get_rng():
+def _get_rng() -> np.random.Generator:
     """Get (and lazily create) per-rank RNG for crypto kernels.
 
     Seed rule matches legacy handler: MPLANG_CRYPTO_SEED + rank*7919
@@ -55,7 +54,7 @@ def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
 
 
 @backend_kernel("crypto.keygen")
-def _crypto_keygen(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     length = int(pfunc.attrs.get("length", 32))
     rng = _get_rng()
     key = rng.integers(0, 256, size=(length,), dtype=np.uint8)
@@ -63,7 +62,7 @@ def _crypto_keygen(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.enc")
-def _crypto_encrypt(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     # args: (pt_bytes, key)
     if len(args) != 2:
         raise ValueError("crypto.enc expects (pt_bytes, key)")
@@ -80,7 +79,7 @@ def _crypto_encrypt(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.dec")
-def _crypto_decrypt(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("crypto.dec expects (ct_with_nonce, key)")
     ct_with_nonce = np.asarray(args[0], dtype=np.uint8)
@@ -95,7 +94,7 @@ def _crypto_decrypt(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.pack")
-def _crypto_pack(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_pack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("crypto.pack expects a single argument")
     x_any = np.asarray(args[0])
@@ -104,7 +103,7 @@ def _crypto_pack(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.unpack")
-def _crypto_unpack(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_unpack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("crypto.unpack expects a single byte tensor argument")
     b = np.asarray(args[0], dtype=np.uint8)
@@ -129,7 +128,7 @@ def _crypto_unpack(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.kem_keygen")
-def _crypto_kem_keygen(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_kem_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     rng = _get_rng()
     sk = rng.integers(0, 256, size=(32,), dtype=np.uint8)
     pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
@@ -137,7 +136,7 @@ def _crypto_kem_keygen(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.kem_derive")
-def _crypto_kem_derive(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_kem_derive(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("crypto.kem_derive expects (sk, peer_pk)")
     sk = np.asarray(args[0], dtype=np.uint8)
@@ -149,7 +148,7 @@ def _crypto_kem_derive(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @backend_kernel("crypto.hkdf")
-def _crypto_hkdf(pfunc: PFunction, args: tuple) -> tuple:
+def _crypto_hkdf(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("crypto.hkdf expects (secret,)")
     secret = np.asarray(args[0], dtype=np.uint8)

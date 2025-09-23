@@ -102,8 +102,8 @@ def _constant(pfunc: PFunction) -> Any:
         df = table_utils.csv_to_dataframe(data_bytes)
         return df
     # tensor path
-    shape = out_t.shape  # type: ignore[attr-defined]
-    dtype = out_t.dtype.numpy_dtype()  # type: ignore[attr-defined]
+    shape = out_t.shape  # type: ignore[attr-defined,union-attr]
+    dtype = out_t.dtype.numpy_dtype()  # type: ignore[attr-defined,union-attr]
     arr = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
     return arr
 

@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from mplang.core.dtype import DType
+from mplang.core.opaque import OpaqueType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
@@ -181,14 +182,15 @@ class BackendRuntime:
                 continue
             elif isinstance(spec, TensorType):
                 if isinstance(val, (int, float, bool, complex)) and spec.shape == ():
-                    val_shape = ()
-                    val_dtype_any = type(val)
+                    val_shape: tuple[Any, ...] = ()
+                    val_dtype_any: Any = type(val)
                 else:
                     if not isinstance(val, (np.ndarray, TensorLike)):
                         raise TypeError(
                             f"kernel {fn_type} input[{idx}] expects TensorLike, got {type(val).__name__}"
                         )
                     val_shape = getattr(val, "shape", ())
+                    # some tensor likes may return None for dtype -> treat as unknown
                     val_dtype_any = getattr(val, "dtype", None)
                 if tuple(spec.shape) != tuple(val_shape):
                     raise ValueError(
@@ -206,7 +208,12 @@ class BackendRuntime:
                             f"kernel {fn_type} input[{idx}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
                         )
                 continue
-            # Unknown spec type: skip
+            elif isinstance(spec, OpaqueType):
+                # Explicitly skip validation for opaque specs
+                continue
+            else:
+                # Unknown spec type: silently skip validation
+                continue
 
         kctx = KernelContext(
             rank=self.rank,

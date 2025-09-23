@@ -27,7 +27,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from mplang.core.dtype import DType
 from mplang.core.pfunc import PFunction
+from mplang.core.table import TableLike, TableType
+from mplang.core.tensor import TensorLike, TensorType
 
 __all__ = [
     "BackendRuntime",
@@ -96,17 +99,31 @@ def cur_kctx() -> KernelContext:
 
 # ---------------- Registry ----------------
 
-# Canonical kernel callable signature: (pfunc, args_tuple) -> tuple(outputs)
-KernelFn = Callable[[PFunction, tuple[Any, ...]], tuple[Any, ...]]
+# Canonical kernel callable signature (new style): (pfunc, *args) -> Any | sequence
+# - No **kwargs (explicitly disallowed)
+# - Return normalization handled by BackendRuntime.run_kernel
+KernelFn = Callable[..., Any]
 
 _KERNELS: dict[str, KernelFn] = {}
 
 
 def kernel_def(fn_type: str) -> Callable[[KernelFn], KernelFn]:
-    """Decorator to register a flat backend kernel.
+    """Decorator to register a backend kernel (new signature).
 
-    Kernel signature:  fn(pfunc: PFunction, args: tuple) -> tuple
-    Return value length must equal len(pfunc.outs_info).
+    Expected Python signature form:
+
+        @kernel_def("namespace.op")
+        def _op(pfunc: PFunction, *args): ...
+
+    Rules:
+      * First parameter MUST be the PFunction object.
+      * Positional arguments correspond 1:1 to pfunc.ins_info order.
+      * **kwargs are NOT supported (will raise at call site if used).
+      * Return value forms accepted (n = len(pfunc.outs_info)):
+          - n == 0: return None / () / []
+          - n == 1: return scalar/object OR (value,) / [value]
+          - n > 1 : return tuple/list of length n
+        Anything else raises a ValueError.
     """
 
     def _decorator(fn: KernelFn) -> KernelFn:
@@ -141,6 +158,58 @@ class BackendRuntime:
         fn = _KERNELS.get(fn_type)
         if fn is None:
             raise NotImplementedError(f"no backend kernel registered for {fn_type}")
+
+        # Validate arg count first (strict positional mapping)
+        if len(arg_list) != len(pfunc.ins_info):
+            raise ValueError(
+                f"kernel {fn_type} arg count mismatch: got {len(arg_list)}, expect {len(pfunc.ins_info)}"
+            )
+
+        import numpy as np  # used only for isinstance check with ndarray
+
+        for idx, (spec, val) in enumerate(zip(pfunc.ins_info, arg_list, strict=True)):
+            # Table type path
+            if isinstance(spec, TableType):
+                if not isinstance(val, TableLike):
+                    raise TypeError(
+                        f"kernel {fn_type} input[{idx}] expects TableLike, got {type(val).__name__}"
+                    )
+                if len(val.columns) != len(spec.columns):
+                    raise ValueError(
+                        f"kernel {fn_type} input[{idx}] column count mismatch: got {len(val.columns)}, expected {len(spec.columns)}"
+                    )
+                continue
+
+            # Tensor type path
+            if isinstance(spec, TensorType):
+                if not isinstance(val, (np.ndarray, TensorLike)):
+                    raise TypeError(
+                        f"kernel {fn_type} input[{idx}] expects TensorLike, got {type(val).__name__}"
+                    )
+                # Shape check directly
+                val_shape = getattr(val, "shape", ())
+                if tuple(spec.shape) != tuple(val_shape):
+                    raise ValueError(
+                        f"kernel {fn_type} input[{idx}] shape mismatch: got {val_shape}, expected {spec.shape}"
+                    )
+                # DType check using DType.from_any
+                val_dtype_any = getattr(val, "dtype", None)
+                if val_dtype_any is not None:
+                    try:
+                        val_dtype = DType.from_any(val_dtype_any)
+                    except Exception:  # pragma: no cover - defensive
+                        raise TypeError(
+                            f"kernel {fn_type} input[{idx}] has unsupported dtype object {val_dtype_any!r}"
+                        ) from None
+                    if val_dtype != spec.dtype:
+                        raise ValueError(
+                            f"kernel {fn_type} input[{idx}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
+                        )
+                continue
+
+            # Unknown spec type: skip strict validation (could be future extension)
+            # Intentional no-op
+
         kctx = KernelContext(
             rank=self.rank,
             world_size=self.world_size,
@@ -149,18 +218,40 @@ class BackendRuntime:
         )
         token = _CTX_VAR.set(kctx)
         try:
-            result = fn(pfunc, tuple(arg_list))
-            if not isinstance(result, tuple):
-                raise TypeError(
-                    f"backend kernel {fn_type} must return tuple, got {type(result).__name__}"
-                )
-            if len(result) != len(pfunc.outs_info):
-                raise ValueError(
-                    f"backend kernel {fn_type} produced {len(result)} outputs, expected {len(pfunc.outs_info)}"
-                )
-            return list(result)
+            raw = fn(pfunc, *arg_list)
         finally:
             _CTX_VAR.reset(token)
+
+        # Normalize return values
+        expected = len(pfunc.outs_info)
+        if expected == 0:
+            if raw in (None, (), []):
+                return []
+            raise ValueError(
+                f"kernel {fn_type} should return no values; got {type(raw).__name__}"
+            )
+
+        # If multi-output expected, raw must be sequence of right length
+        if expected == 1:
+            if isinstance(raw, (tuple, list)):
+                if len(raw) != 1:
+                    raise ValueError(
+                        f"kernel {fn_type} produced {len(raw)} outputs, expected 1"
+                    )
+                return [raw[0]]
+            # Single object
+            return [raw]
+
+        # expected > 1
+        if not isinstance(raw, (tuple, list)):
+            raise TypeError(
+                f"kernel {fn_type} must return sequence (len={expected}), got {type(raw).__name__}"
+            )
+        if len(raw) != expected:
+            raise ValueError(
+                f"kernel {fn_type} produced {len(raw)} outputs, expected {expected}"
+            )
+        return list(raw)
 
     # Optional helper
     def reset(self) -> None:  # pragma: no cover - simple

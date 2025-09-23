@@ -123,7 +123,7 @@ def millionaire_manual():
 
 def main():
     print("-" * 10, "TEE millionaire: device vs manual (end-to-end IR)", "-" * 10)
-    sim = Simulator(cluster_spec)
+    sim = Simulator(cluster_spec, use_real_tee=True)
 
     compiled_dev = mplang.compile(sim, millionaire_device)
     compiled_man = mplang.compile(sim, millionaire_manual)

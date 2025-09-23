@@ -237,6 +237,8 @@ class Simulator(InterpContext):
 
     # override
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
+        print("Evaluating expression:", expr)
+
         # sanity check for bindings.
         for name, var in bindings.items():
             if var.ctx is not self:

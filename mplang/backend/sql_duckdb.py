@@ -12,51 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from mplang.core.pfunc import PFunction, TableHandler
-from mplang.core.table import TableLike
+from __future__ import annotations
+
+from mplang.backend.base import backend_kernel
+from mplang.core.pfunc import PFunction
 
 
-class DuckDBHandler(TableHandler):
-    def __init__(self) -> None:
-        super().__init__()
+@backend_kernel("sql[duckdb]")
+def _duckdb_sql(pfunc: PFunction, args: tuple):
+    import duckdb
+    import pandas as pd
 
-    def setup(self, rank: int) -> None: ...
-    def teardown(self) -> None: ...
-    def list_fn_names(self) -> list[str]:
-        return ["sql[duckdb]"]
+    conn = duckdb.connect(":memory:")
+    if args:
+        in_names = pfunc.attrs.get("in_names")
+        if in_names is None:
+            raise ValueError("duckdb sql missing in_names attr")
+        for arg, name in zip(args, in_names, strict=True):
+            if isinstance(arg, pd.DataFrame):
+                df = arg
+            elif isinstance(arg, list):  # const list-of-dict for tests
+                df = pd.DataFrame.from_records(arg)
+            else:
+                raise ValueError(f"unsupported duckdb input type {type(arg)}")
+            conn.register(name, df)
+    res_df = conn.execute(pfunc.fn_text).fetchdf()
+    return (res_df,)
 
-    def execute(self, pfunc: PFunction, args: list[TableLike]) -> list[TableLike]:
-        if pfunc.fn_type == "sql[duckdb]":
-            return self.do_run(pfunc, args)
-        else:
-            raise ValueError(f"unsupported fn_type, {pfunc.fn_type}")
 
-    def do_run(
-        self,
-        pfunc: PFunction,
-        args: list[TableLike],
-    ) -> list[TableLike]:
-        import duckdb
-        import pandas as pd
-
-        conn = duckdb.connect(":memory:")
-
-        if len(args) > 0:
-            assert "in_names" in pfunc.attrs, (
-                f"cannot find in_names in attrs while having {len(args)} inputs"
-            )
-            in_names = pfunc.attrs["in_names"]
-            # register input tables
-            for arg, name in zip(args, in_names, strict=True):
-                # assert isinstance(arg, pd.DataFrame)
-                if isinstance(arg, pd.DataFrame):
-                    df = arg
-                elif isinstance(arg, list):
-                    # const df, only for test
-                    df = pd.DataFrame.from_records(arg)
-                else:
-                    raise ValueError(f"unsupport type, {type(arg)}")
-                conn.register(name, df)
-
-        res_df = conn.execute(pfunc.fn_text).fetchdf()
-        return [res_df]
+class DuckDBHandler:  # pragma: no cover - transitional
+    def __init__(self, *_, **__):
+        raise RuntimeError("DuckDBHandler deprecated; use sql[duckdb] kernel")

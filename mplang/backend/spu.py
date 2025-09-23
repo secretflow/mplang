@@ -21,8 +21,9 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
+from mplang.backend.base import backend_kernel, cur_kctx
 from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import PFunction, TensorHandler
+from mplang.core.pfunc import PFunction
 from mplang.runtime.link_comm import LinkCommunicator
 
 
@@ -62,297 +63,160 @@ class SpuValue:
         return f"SpuValue({self.shape},{self.dtype},{self.vtype})"
 
 
-class SpuHandler(TensorHandler):
-    """SPU (Secure Processing Unit) Handler for secure computation.
+# SpuHandler removed (legacy handler API deprecated)
 
-    Handler for loading and executing SPU functions compiled by SpuFrontend for
-    secure multi-party computation.
 
-    Together with SpuFrontend, provides complete SPU compilation and execution
-    solution for privacy-preserving computations.
+def _get_spu_config_and_world() -> tuple[libspu.RuntimeConfig, int]:
+    kctx = cur_kctx()
+    pocket = kctx.kernel_state.setdefault("spu", {})
+    cfg = pocket.get("config")
+    world = pocket.get("world")
+    if cfg is None or world is None:
+        raise RuntimeError("SPU kernel state not initialized (config/world)")
+    return cfg, int(world)
+
+
+def initialize_spu_runtime(
+    config: libspu.RuntimeConfig,
+    world_size: int,
+    link_ctxs: list[LinkCommunicator] | None,
+) -> None:
+    """Seed SPU kernel state.
+
+    If called inside a backend kernel execution, we use the active KernelContext.
+    If called outside (e.g., test setup), we fall back to global kernel_state so
+    that later kernel invocations see the config/world/link info.
     """
+    try:
+        kctx = cur_kctx()
+        pocket = kctx.kernel_state.setdefault("spu", {})
+    except RuntimeError:  # outside kernel execution
+        from mplang.backend import base as _base  # local import to avoid cycle
 
-    def __init__(
-        self,
-        world_size: int,
-        spu_config: libspu.RuntimeConfig,
-        link_comm: LinkCommunicator | None = None,
-    ):
-        """Initialize SPU handler for secure computation.
+        pocket = _base._KERNEL_STATE.setdefault("spu", {})  # type: ignore[attr-defined]
+    # Always override to ensure clean test isolation
+    pocket["config"] = config
+    pocket["world"] = world_size
+    if link_ctxs is not None:
+        pocket["links"] = link_ctxs
 
-        Args:
-            world_size: Total number of parties in the computation
-            spu_config: SPU runtime configuration (protocol, field type, etc.)
-            link_comm: Link communicator for this party. If None, indicates that
-                      the current party is not participating in the SPU computation.
-                      Note: Even without link_comm, the handler can still execute
-                      IO operations (makeshares and reconstruct) using SPU IO.
-        """
-        self._world_size = world_size
-        self._spu_config = spu_config
-        self._link_comm = link_comm
 
-    def set_link_context(self, link_context: Any) -> None:
-        """Set the link communicator context for this party.
+@backend_kernel("spu.makeshares")
+def _spu_makeshares(pfunc: PFunction, args: tuple) -> tuple:
+    """Create SPU shares from input data.
 
-        This method allows flexible configuration of the link context,
-        particularly useful for testing scenarios. Must be called before setup().
+    Args:
+        pfunc: PFunction containing makeshares metadata
+        args: Input data to be shared (single tensor)
 
-        Args:
-            link_context: Link communicator context. If None, indicates this
-                         party is not participating in the SPU computation.
-        """
-        # More flexible for testing, this should be called before setup()
-        self._link_comm = link_context
+    Returns:
+        Tuple of SPU shares (SpuValue), one for each party.
+    """
+    assert len(args) == 1
 
-    # override
-    def setup(self, rank: int) -> None:
-        """Set up the SPU runtime environment.
+    visibility_value = pfunc.attrs.get("visibility", libspu.Visibility.VIS_SECRET.value)
+    if isinstance(visibility_value, int):
+        visibility = libspu.Visibility(visibility_value)
+    else:
+        visibility = visibility_value
 
-        Creates the actual SPU runtime using the configuration and link context
-        provided during initialization.
-
-        Args:
-            rank: The rank/ID of the current party.
-
-        Raises:
-            RuntimeError: If SPU runtime creation fails
-        """
-        if self._link_comm is None:
-            # This party may not be part of the SPU computation
-            return
-        else:
-            # TODO(jint): setup the communicator
-            pass
-
-    # override
-    def teardown(self) -> None:
-        """Clean up the SPU runtime environment."""
-
-    def list_fn_names(self) -> list[str]:
-        """List function names that this handler can execute."""
-        return [
-            "mlir.pphlo",
-            "spu.makeshares",
-            "spu.reconstruct",
-        ]
-
-    # override
-    def execute(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike],
-    ) -> list[TensorLike]:
-        if pfunc.fn_type == "mlir.pphlo":
-            return self.do_run(pfunc, args)
-        elif pfunc.fn_type == "spu.makeshares":
-            return self.do_makeshares(pfunc, args)
-        elif pfunc.fn_type == "spu.reconstruct":
-            return self.do_reconstruct(pfunc, args)
-        else:
-            raise ValueError(f"Unsupported function type: {pfunc.fn_type}")
-
-    def do_makeshares(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike],
-    ) -> list[TensorLike]:
-        """Create SPU shares from input data.
-
-        Args:
-            pfunc: PFunction containing makeshares metadata
-            args: Input data to be shared (single tensor)
-
-        Returns:
-            List of SPU shares, one for each party
-
-        Note:
-            This operation can be performed even without link_comm (i.e., without runtime),
-            as it only requires SPU IO for share generation.
-        """
-        assert len(args) == 1
-
-        # Extract metadata from pfunc.attrs
-        visibility_value = pfunc.attrs.get(
-            "visibility", libspu.Visibility.VIS_SECRET.value
+    arg = np.array(args[0], copy=False)
+    cfg, world = _get_spu_config_and_world()
+    spu_io = spu_api.Io(world, cfg)
+    shares = spu_io.make_shares(arg, visibility)
+    assert len(shares) == world, f"Expected {world} shares, got {len(shares)}"
+    return tuple(
+        SpuValue(
+            shape=arg.shape,
+            dtype=arg.dtype,
+            vtype=visibility,
+            share=share,
         )
-        if isinstance(visibility_value, int):
-            # Convert from integer value to enum
-            visibility = libspu.Visibility(visibility_value)
-        else:
-            visibility = visibility_value
+        for share in shares
+    )
 
-        # Convert input to numpy array (SPU make_shares expects np.array)
-        arg = np.array(args[0], copy=False)
 
-        # Create SPU IO - can be done without runtime/link_comm
-        spu_io = spu_api.Io(self._world_size, self._spu_config)
-
-        # Generate shares
-        shares = spu_io.make_shares(arg, visibility)
-        assert len(shares) == self._world_size, (
-            f"Expected {self._world_size} shares, got {len(shares)}"
-        )
-
-        # Return list of SpuValue objects (one per party)
-        return [
-            SpuValue(
-                shape=arg.shape,
-                dtype=arg.dtype,
-                vtype=visibility,
-                share=share,
-            )
-            for share in shares
-        ]
-
-    def do_reconstruct(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike],
-    ) -> list[TensorLike]:
-        """Reconstruct plaintext data from SPU shares.
-
-        Args:
-            pfunc: PFunction containing reconstruction metadata
-            args: List of SPU shares to be reconstructed
-
-        Returns:
-            List containing the reconstructed plaintext tensor
-
-        Note:
-            This operation can be performed even without link_comm (i.e., without runtime),
-            as it only requires SPU IO for reconstruction.
-        """
-        # Validate that we have the expected number of shares (should equal world_size)
-        assert len(args) == self._world_size, (
-            f"Expected {self._world_size} shares, got {len(args)}"
-        )
-
-        # Validate that all inputs are SpuValue objects
-        for i, arg in enumerate(args):
-            if not isinstance(arg, SpuValue):
-                raise ValueError(
-                    f"Input {i} must be SpuValue, got {type(arg)}. "
-                    f"Reconstruction requires SPU shares as input."
-                )
-
-        # Cast for type checking (we've validated above)
-        spu_args: list[SpuValue] = args  # type: ignore
-
-        # Extract shares from SpuValue objects
-        shares = [spu_arg.share for spu_arg in spu_args]
-
-        # Create SPU IO - can be done without runtime/link_comm
-        spu_io = spu_api.Io(self._world_size, self._spu_config)
-
-        # Reconstruct the plaintext data
-        reconstructed = spu_io.reconstruct(shares)
-
-        # Return as a list (consistent with PFunction interface)
-        return [reconstructed]
-
-    def do_run(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike],
-    ) -> list[TensorLike]:
-        """Execute compiled SPU function for secure computation.
-
-        Implementation Notes:
-        Uses the following SPU execution pipeline:
-        1. Deserialize the SPU executable from PFunction
-        2. Set input SPU values as variables in SPU runtime
-        3. Execute using SPU runtime
-        4. Retrieve output SPU values
-
-        Note: In real SPU environments, all inputs must be SpuValue objects.
-
-        Key Components:
-        - SpuValue: SPU tensor data with metadata (shape, dtype, visibility, share)
-        - spu_runtime.set_var/get_var: Variable management in SPU context
-        - spu_runtime.run: Execute the compiled SPU code
-
-        Args:
-            pfunc: PFunction containing SPU executable
-            args: Input arguments as SpuValue objects (TensorLike compatible)
-
-        Returns:
-            List of output SpuValue objects from secure computation
-
-        Raises:
-            ValueError: Unsupported format or invalid input types
-            RuntimeError: Execution failure
-            RuntimeError: Missing SPU runtime setup
-        """
-        # Validate format: only SPU protobuf supported
-        if pfunc.fn_type != "mlir.pphlo":
+@backend_kernel("spu.reconstruct")
+def _spu_reconstruct(pfunc: PFunction, args: tuple) -> tuple:
+    """Reconstruct plaintext data from SPU shares."""
+    cfg, world = _get_spu_config_and_world()
+    assert len(args) == world, f"Expected {world} shares, got {len(args)}"
+    for i, arg in enumerate(args):
+        if not isinstance(arg, SpuValue):
             raise ValueError(
-                f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.pphlo'"
+                f"Input {i} must be SpuValue, got {type(arg)}. Reconstruction requires SPU shares as input."
             )
+    spu_args: list[SpuValue] = list(args)  # type: ignore
+    shares = [spu_arg.share for spu_arg in spu_args]
+    spu_io = spu_api.Io(world, cfg)
+    reconstructed = spu_io.reconstruct(shares)
+    return (reconstructed,)
 
-        if self._link_comm is None:
-            raise RuntimeError(
-                "Link context not set, please check if this party is part of the SPU computation."
-            )
+
+@backend_kernel("mlir.pphlo")
+def _spu_run_mlir(pfunc: PFunction, args: tuple) -> tuple:
+    """Execute compiled SPU function (mlir.pphlo) and return SpuValue outputs."""
+    if pfunc.fn_type != "mlir.pphlo":
+        raise ValueError(f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.pphlo'")
+
+    cfg, _ = _get_spu_config_and_world()
+    pocket = cur_kctx().kernel_state.setdefault("spu", {})
+    link_ctxs: list[LinkCommunicator] | None = pocket.get("links")
+    rank = cur_kctx().rank
+    link_ctx = None if link_ctxs is None or rank >= len(link_ctxs) else link_ctxs[rank]
+    if link_ctx is None:
+        raise RuntimeError(
+            "Link context not set for this rank; cannot execute mlir.pphlo"
+        )
 
         # Create the real SPU runtime
-        spu_rt = spu_api.Runtime(self._link_comm.get_lctx(), self._spu_config)
-
-        # Check runtime setup
-        if spu_rt is None:
-            raise RuntimeError("SPU runtime not set up. Call setup() first.")
+    spu_rt = spu_api.Runtime(link_ctx.get_lctx(), cfg)
+    if spu_rt is None:  # pragma: no cover - defensive
+        raise RuntimeError("SPU runtime not set up. Call setup() first.")
 
         # Validate that all inputs are SpuValue objects
-        for i, arg in enumerate(args):
-            if not isinstance(arg, SpuValue):
-                raise ValueError(
-                    f"Input {i} must be SpuValue, got {type(arg)}. "
-                    f"In real SPU environments, all inputs must be SpuValue objects."
-                )
+    for i, arg in enumerate(args):
+        if not isinstance(arg, SpuValue):
+            raise ValueError(
+                f"Input {i} must be SpuValue, got {type(arg)}. In real SPU environments, all inputs must be SpuValue objects."
+            )
 
         # Cast for type checking (we've validated above)
-        spu_args: list[SpuValue] = args  # type: ignore
+    spu_args: list[SpuValue] = list(args)  # type: ignore
 
-        # Reconstruct SPU executable from MLIR code and metadata
-        if pfunc.fn_text is None:
-            raise ValueError("PFunction does not contain executable data")
-        if not isinstance(pfunc.fn_text, str):
-            raise ValueError(f"Expected str, got {type(pfunc.fn_text)}")
+    # Reconstruct SPU executable from MLIR code and metadata
+    if pfunc.fn_text is None:
+        raise ValueError("PFunction does not contain executable data")
+    if not isinstance(pfunc.fn_text, str):
+        raise ValueError(f"Expected str, got {type(pfunc.fn_text)}")
 
         # Extract metadata for executable reconstruction
-        attrs: dict[str, Any] = dict(pfunc.attrs or {})
-        input_names = attrs.get("input_names", [])
-        output_names = attrs.get("output_names", [])
-        executable_name = attrs.get("executable_name", pfunc.fn_name)
+    attrs: dict[str, Any] = dict(pfunc.attrs or {})
+    input_names = attrs.get("input_names", [])
+    output_names = attrs.get("output_names", [])
+    executable_name = attrs.get("executable_name", pfunc.fn_name)
 
-        # Create executable from MLIR code and metadata
-        executable = libspu.Executable(
-            name=executable_name,
-            input_names=input_names,
-            output_names=output_names,
-            code=pfunc.fn_text,
+    # Create executable from MLIR code and metadata
+    executable = libspu.Executable(
+        name=executable_name,
+        input_names=input_names,
+        output_names=output_names,
+        code=pfunc.fn_text,
+    )
+
+    # Set input variables in SPU runtime
+    for idx, spu_arg in enumerate(spu_args):
+        spu_rt.set_var(input_names[idx], spu_arg.share)
+    spu_rt.run(executable)
+    shares = [spu_rt.get_var(out_name) for out_name in output_names]
+    metas = [spu_rt.get_var_meta(out_name) for out_name in output_names]
+    results: list[TensorLike] = [
+        SpuValue(
+            shape=shape_spu_to_np(meta.shape),
+            dtype=dtype_spu_to_np(meta.data_type),
+            vtype=meta.visibility,
+            share=shares[idx],
         )
-
-        # Set input variables in SPU runtime
-        for idx, spu_arg in enumerate(spu_args):
-            spu_rt.set_var(input_names[idx], spu_arg.share)
-
-        # Execute the compiled function
-        spu_rt.run(executable)
-
-        # Retrieve output variables
-        shares = [spu_rt.get_var(out_name) for out_name in output_names]
-        metas = [spu_rt.get_var_meta(out_name) for out_name in output_names]
-
-        # Create result SpuValues
-        results: list[TensorLike] = [
-            SpuValue(
-                shape=shape_spu_to_np(meta.shape),
-                dtype=dtype_spu_to_np(meta.data_type),
-                vtype=meta.visibility,
-                share=shares[idx],
-            )
-            for idx, meta in enumerate(metas)
-        ]
-
-        return results
+        for idx, meta in enumerate(metas)
+    ]
+    return tuple(results)

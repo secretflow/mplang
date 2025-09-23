@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import contextvars
 from collections.abc import Callable
-from collections.abc import Callable as TypingCallable
 from dataclasses import dataclass
 from typing import Any
 
@@ -67,12 +66,12 @@ def cur_kctx() -> KernelContext:
 # ---------------- Registry ----------------
 
 # Canonical kernel callable signature: (pfunc, args_tuple) -> tuple(outputs)
-KernelFn = TypingCallable[[PFunction, tuple[Any, ...]], tuple[Any, ...]]
+KernelFn = Callable[[PFunction, tuple[Any, ...]], tuple[Any, ...]]
 
 _KERNELS: dict[str, KernelFn] = {}
 
 
-def backend_kernel(fn_type: str) -> TypingCallable[[KernelFn], KernelFn]:
+def backend_kernel(fn_type: str) -> Callable[[KernelFn], KernelFn]:
     """Decorator to register a flat backend kernel.
 
     Kernel signature:  fn(pfunc: PFunction, args: tuple) -> tuple

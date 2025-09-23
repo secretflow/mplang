@@ -31,6 +31,13 @@ from mplang.backend.spu import SpuHandler
 from mplang.backend.sql_duckdb import DuckDBHandler
 from mplang.backend.stablehlo import StablehloHandler
 from mplang.backend.tee import MockTeeHandler
+
+try:
+    from mplang.backend.tee import TeeHandler
+
+    HAS_REAL_TEE = True
+except ImportError:
+    HAS_REAL_TEE = False
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
@@ -91,12 +98,14 @@ class Simulator(InterpContext):
         cluster_spec: ClusterSpec,
         *,
         trace_ranks: list[int] | None = None,
+        use_real_tee: bool = False,
     ) -> None:
         """Initialize a simulator with the given cluster specification.
 
         Args:
             cluster_spec: The cluster specification defining the simulation environment.
             trace_ranks: List of ranks to trace execution for debugging.
+            use_real_tee: If True, use real TeeHandler instead of MockTeeHandler.
         """
         super().__init__(cluster_spec)
         self._trace_ranks = trace_ranks or []
@@ -145,6 +154,15 @@ class Simulator(InterpContext):
 
         # TODO(jint): add backends according to cluster_spec.
         # Setup backend handlers per rank and evaluators (iterative by default)
+        if use_real_tee:
+            if not HAS_REAL_TEE:
+                raise ImportError(
+                    "Real TEE support is not available. Please install trustflow dependencies."
+                )
+            tee_handler = TeeHandler()
+        else:
+            tee_handler = MockTeeHandler()
+
         self._handlers: list[list[Any]] = [
             [
                 BuiltinHandler(),
@@ -153,7 +171,7 @@ class Simulator(InterpContext):
                 DuckDBHandler(),
                 PHEHandler(),
                 CryptoHandler(),
-                MockTeeHandler(),
+                tee_handler,
             ]
             for rank in range(self.world_size())
         ]
@@ -172,6 +190,7 @@ class Simulator(InterpContext):
     def simple(
         cls,
         world_size: int,
+        use_real_tee: bool = False,
         **kwargs: Any,
     ) -> Simulator:
         """Create a simple simulator with the given number of parties.
@@ -181,13 +200,14 @@ class Simulator(InterpContext):
 
         Args:
             world_size: Number of simulated parties.
+            use_real_tee: If True, use real TeeHandler instead of MockTeeHandler.
             **kwargs: Additional arguments passed to the Simulator constructor.
 
         Returns:
             A Simulator instance with a simple cluster configuration.
         """
         cluster_spec = ClusterSpec.simple(world_size)
-        return cls(cluster_spec, **kwargs)
+        return cls(cluster_spec, use_real_tee=use_real_tee, **kwargs)
 
     def _do_evaluate(self, expr: Expr, evaluator_engine: IEvaluator) -> Any:
         """

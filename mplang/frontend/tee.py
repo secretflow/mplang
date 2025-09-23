@@ -28,6 +28,7 @@ def quote(pk: TensorType) -> TensorType:
     API (mock): quote(pk: u8[32]) -> (quote: u8[33])
     The mock encodes a 1-byte header + 32-byte pk.
     """
+    _ = pk  # Mark as used for the decorator
     return TensorType(UINT8, (33,))
 
 

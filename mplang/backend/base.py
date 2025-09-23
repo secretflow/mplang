@@ -199,7 +199,7 @@ class BackendRuntime:
                 if val_dtype_any is not None:
                     try:
                         val_dtype = DType.from_any(val_dtype_any)
-                    except Exception:  # pragma: no cover
+                    except (ValueError, TypeError):  # pragma: no cover
                         raise TypeError(
                             f"kernel {fn_type} input[{idx}] has unsupported dtype object {val_dtype_any!r}"
                         ) from None

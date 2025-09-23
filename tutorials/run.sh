@@ -1,3 +1,5 @@
+#!/bin/bash
+#
 # Copyright 2025 Ant Group Co., Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+set -e
 
 uv run python tutorials/0_basic.py
 uv run python tutorials/1_condition.py

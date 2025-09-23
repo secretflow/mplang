@@ -18,11 +18,9 @@ import numpy as np
 import pytest
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.cluster import ClusterSpec
-from mplang.core.dtype import DType
-from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import MPType
+from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
+from mplang.core.tensor import TensorType
 from mplang.frontend.base import (
     FeOperation,
     InlineFeOperation,
@@ -32,43 +30,25 @@ from mplang.frontend.base import (
     is_feop,
     list_feops,
 )
-
-
-class DummyContext(MPContext):
-    def __init__(self) -> None:
-        super().__init__(ClusterSpec.simple(world_size=1))
-
-
-class DummyTensor(MPObject):
-    """Minimal MPObject representing a tensor for frontend tests."""
-
-    def __init__(self, shape: tuple[int, ...], dtype):  # dtype: Any for flexibility
-        self._mptype = MPType.tensor(DType.from_any(dtype), shape)
-        self._ctx = DummyContext()
-
-    @property
-    def mptype(self) -> MPType:
-        return self._mptype
-
-    @property
-    def ctx(self) -> MPContext:
-        return self._ctx
+from tests.frontend.dummy import DummyTensor
 
 
 def test_simple_decorator_builds_triad():
     mod = femod("ut_mod_simple_add")
 
     @mod.typed_op(pfunc_name="builtin.add")
-    def add(x: MPObject, y: MPObject, *, alpha: int):  # returns TensorType
-        # Return the same type as x
-        return x.mptype._type
+    def add(
+        x: TensorType, y: TensorType, *, alpha: int
+    ):  # kernel now receives TensorType specs
+        # Return the same spec as first arg
+        return x
 
     assert is_feop(add)
     assert isinstance(add, FeOperation)
     assert isinstance(add, SimpleFeOperation)
 
-    x = DummyTensor((2,), np.float32)
-    y = DummyTensor((2,), np.float32)
+    x = DummyTensor(np.float32, (2,))
+    y = DummyTensor(np.float32, (2,))
 
     pfunc, args, out_tree = add(x, y, alpha=1)
 
@@ -111,7 +91,7 @@ def test_feop_decorator_inline():
     assert isinstance(scale_trace, FeOperation)
     assert isinstance(scale_trace, InlineFeOperation)
 
-    x = DummyTensor((3,), np.float32)
+    x = DummyTensor(np.float32, (3,))
     pfunc, args, out_tree = scale_trace(x, factor=10)
 
     assert pfunc.fn_type == "builtin.scale"
@@ -126,11 +106,11 @@ def test_simple_rejects_invalid_kwargs():
     mod = femod("ut_mod_badkw")
 
     @mod.typed_op(pfunc_name="builtin.echo")
-    def echo(x: MPObject):  # returns TensorType
-        return x.mptype._type
+    def echo(x: TensorType):  # returns TensorType
+        return x
 
     # invalid: passing an MPObject as attribute value
-    x = DummyTensor((1,), np.int32)
+    x = DummyTensor(np.int32, (1,))
     with pytest.raises(TypeError):
         echo(x, bad_attr=x)
 
@@ -139,10 +119,12 @@ def test_simple_rejects_invalid_return_type():
     mod = femod("ut_mod_badret")
 
     @mod.typed_op(pfunc_name="builtin.bad")
-    def bad(x: MPObject):  # missing explicit TensorType/TableType return
+    def bad(
+        x: TensorType,
+    ):  # missing explicit TensorType/TableType return (returns int instead)
         # Returning a python int should trigger a TypeError in SimpleFeOperation.trace
         return 42
 
-    x = DummyTensor((1,), np.float32)
+    x = DummyTensor(np.float32, (1,))
     with pytest.raises(TypeError):
         bad(x)

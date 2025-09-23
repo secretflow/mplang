@@ -64,7 +64,7 @@ def three_party_phe_sum():
 def run_simulation():
     """Run the PHE simulation locally."""
     # Set up 3-party simulation with PHE support
-    sim = mplang.Simulator(3)
+    sim = mplang.Simulator.simple(3)
     result = mplang.evaluate(sim, three_party_phe_sum)
     print(f"Simulation completed. Final sum: {mplang.fetch(sim, result)}")
 

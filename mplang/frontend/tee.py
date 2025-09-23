@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from mplang.core.dtype import UINT8
-from mplang.core.mpobject import MPObject
 from mplang.core.tensor import TensorType
 from mplang.frontend.base import femod
 
@@ -23,21 +22,21 @@ _TEE_MOD = femod("tee")
 
 
 @_TEE_MOD.typed_op()
-def quote(pk: MPObject) -> TensorType:
+def quote(pk: TensorType) -> TensorType:
     """TEE quote generation binding the provided ephemeral public key.
 
     API (mock): quote(pk: u8[32]) -> (quote: u8[33])
     The mock encodes a 1-byte header + 32-byte pk.
     """
-    _ = TensorType.from_obj(pk)
+    _ = pk  # Mark as used for the decorator
     return TensorType(UINT8, (33,))
 
 
 @_TEE_MOD.typed_op()
-def attest(quote: MPObject) -> TensorType:
+def attest(quote: TensorType) -> TensorType:
     """TEE quote verification returning the attested TEE public key.
 
     API (mock): attest(quote: u8[33]) -> tee_pk: u8[32]
     """
-    _ = TensorType.from_obj(quote)
+    _ = quote  # Mark as used for the decorator
     return TensorType(UINT8, (32,))

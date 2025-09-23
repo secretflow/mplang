@@ -16,7 +16,7 @@
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core.dtype import UINT64
-from mplang.core.mpobject import MPObject
+from mplang.core.mpobject import MPObject  # Needed for constant() triad return typing
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
@@ -27,8 +27,12 @@ _BUILTIN_MOD = femod("builtin")
 
 
 @_BUILTIN_MOD.typed_op()
-def identity(obj: MPObject) -> TensorType:
-    return TensorType.from_obj(obj)
+def identity(x: TensorType) -> TensorType:
+    """Identity on type: captures the underlying MPObject (if any) but kernel sees only the type.
+
+    Under strict typed_op semantics positional MPObject is converted to its TensorType before entering.
+    """
+    return x
 
 
 @_BUILTIN_MOD.typed_op()
@@ -50,10 +54,12 @@ def read(*, path: str, ty: TensorType) -> TensorType:
 
 
 @_BUILTIN_MOD.typed_op()
-def write(obj: MPObject, *, path: str) -> TensorType:
-    if obj is None:
-        raise ValueError("builtin.write requires an object to write")
-    return TensorType.from_obj(obj)
+def write(x: TensorType, *, path: str) -> TensorType:
+    """Write op: returns same type it consumes; runtime handles side effect.
+
+    Positional MPObject (tensor/table) will be captured; kernel sees only its type.
+    """
+    return x
 
 
 @_BUILTIN_MOD.feop()
@@ -115,26 +121,21 @@ def prand(*, shape: Shape = ()) -> TensorType:
 
 
 @_BUILTIN_MOD.typed_op()
-def debug_print(obj: MPObject, *, prefix: str = "") -> TableType | TensorType:
-    """Debug-print pass-through: return the same type as the input.
+def debug_print(
+    x: TensorType | TableType, *, prefix: str = ""
+) -> TableType | TensorType:
+    """Debug-print pass-through: type identity with side-effect attribute.
 
-    Keyword-only:
-        - prefix: forwarded as PFunction attr for backend printing.
+    Accepts tensor/table type; MPObject positional (if provided) is captured automatically.
     """
-    # Return the original underlying type (tensor or table) to make this op
-    # an identity on the dataflow while still carrying side effects.
-    # typed_op will attach `prefix` into PFunction attrs and capture obj.
-    return obj.mptype._type
+    return x
 
 
 @_BUILTIN_MOD.typed_op()
-def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
-    if not isinstance(table.mptype._type, TableType):  # type: ignore[attr-defined]
-        raise TypeError("table_to_tensor expects a Table MPObject")
-    schema: TableType = table.mptype._type  # type: ignore[assignment]
-    if schema.num_columns() == 0:
+def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
+    if table.num_columns() == 0:
         raise ValueError("Cannot pack empty table")
-    col_dtypes = list(schema.column_types())
+    col_dtypes = list(table.column_types())
     first = col_dtypes[0]
     if not all(dt == first for dt in col_dtypes[1:]):
         raise TypeError(
@@ -144,18 +145,15 @@ def table_to_tensor(table: MPObject, *, number_rows: int) -> TensorType:
         raise TypeError("number_rows must be an int")
     if number_rows < 0:
         raise ValueError("number_rows must be >= 0")
-    shape = (number_rows, schema.num_columns())
+    shape = (number_rows, table.num_columns())
     return TensorType(first, shape)  # type: ignore[arg-type]
 
 
 @_BUILTIN_MOD.typed_op()
-def tensor_to_table(tensor: MPObject, *, column_names: list[str]) -> TableType:
-    if not isinstance(tensor.mptype._type, TensorType):  # type: ignore[attr-defined]
-        raise TypeError("tensor_to_table expects a Tensor MPObject")
-    t_ty: TensorType = tensor.mptype._type  # type: ignore[assignment]
-    if len(t_ty.shape) != 2:
+def tensor_to_table(tensor: TensorType, *, column_names: list[str]) -> TableType:
+    if len(tensor.shape) != 2:
         raise TypeError("tensor_to_table expects a rank-2 tensor (N,F)")
-    n_cols = t_ty.shape[1]
+    n_cols = tensor.shape[1]
     if not column_names:
         raise ValueError("column_names required (non-empty)")
     if len(column_names) != n_cols:
@@ -170,5 +168,5 @@ def tensor_to_table(tensor: MPObject, *, column_names: list[str]) -> TableType:
         if name in seen:
             raise ValueError(f"duplicate column name: {name!r}")
         seen.add(name)
-    col_types = [t_ty.dtype] * n_cols
+    col_types = [tensor.dtype] * n_cols
     return TableType.from_pairs(list(zip(column_names, col_types, strict=True)))

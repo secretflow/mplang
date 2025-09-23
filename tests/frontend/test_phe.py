@@ -14,18 +14,21 @@
 
 """Unit tests for PHE frontend."""
 
-import jax.numpy as jnp
 import pytest
 
+from mplang.core.dtype import FLOAT32, INT32
 from mplang.frontend import phe
+from tests.frontend.dummy import DummyTensor
 
 
 def test_mul_validation():
     """Test PHE multiplication validation logic."""
 
     # Test that float x float is blocked (requires truncation)
-    float_ct = jnp.array(5.5, dtype=jnp.float32)
-    float_pt = jnp.array(3.2, dtype=jnp.float32)
+    # Under strict typed_op semantics positional args must be MPObject or TypeSpecs.
+    # We validate purely at type level here using scalar TensorType placeholders.
+    float_ct = DummyTensor(FLOAT32, ())
+    float_pt = DummyTensor(FLOAT32, ())
 
     with pytest.raises(
         ValueError,
@@ -34,7 +37,7 @@ def test_mul_validation():
         phe.mul(float_ct, float_pt)
 
     # Test that float x int is allowed (no truncation required)
-    int_pt = jnp.array(3, dtype=jnp.int32)
+    int_pt = DummyTensor(INT32, ())
 
     # This should not raise a validation error (may fail for other reasons like missing keys)
     try:
@@ -47,7 +50,7 @@ def test_mul_validation():
         pass
 
     # Test that int x float is allowed (no truncation required)
-    int_ct = jnp.array(5, dtype=jnp.int32)
+    int_ct = DummyTensor(INT32, ())
 
     try:
         phe.mul(int_ct, float_pt)

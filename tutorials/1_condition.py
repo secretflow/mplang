@@ -88,17 +88,21 @@ def local_lazy_cond():
     require truly skipping the other branch's communication, migrate to ``uniform_cond``.
     """
     x = simp.prandint(0, 20)
+    # Compute predicate locally (pure value) so that we do not leak TraceVars into JAX tracing.
     pred = simp.run(lambda v: v % 2 == 0)(x)  # may diverge per party
 
-    def t_fn(v):  # local pure compute
-        return simp.run(lambda z: z * 2)(v)
+    # Wrap the entire lax.cond invocation in a single local run so that the JAX tracer
+    # only ever sees concrete numpy/jax arrays, not TraceVar wrappers.
+    def _lazy_branch(pred_val, v_val):
+        def t_fn(z):
+            return z * 2
 
-    def f_fn(v):
-        return simp.run(lambda z: z + 3)(v)
+        def f_fn(z):
+            return z + 3
 
-    # Express local lazy branching via jax.lax.cond compiled through peval.
-    # Note: We stage the shape by passing v; both branches are local pure transforms.
-    res = simp.run(jax.lax.cond)(pred, t_fn, f_fn, x)
+        return jax.lax.cond(pred_val, t_fn, f_fn, v_val)
+
+    res = simp.run(_lazy_branch)(pred, x)
     return x, res
 
 

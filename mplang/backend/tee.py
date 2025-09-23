@@ -44,24 +44,16 @@ def _quote_from_pk(pk: np.ndarray) -> NDArray[np.uint8]:
 
 
 @kernel_def("tee.quote")
-def _tee_quote(pfunc: PFunction, *args: object) -> NDArray[np.uint8]:
-    if len(args) != 1:
-        raise ValueError("tee.quote expects exactly one argument (pk)")
-    (pk,) = args
+def _tee_quote(pfunc: PFunction, pk: object) -> NDArray[np.uint8]:
     pk = np.asarray(pk, dtype=np.uint8)
     # rng access ensures deterministic seeding per rank even if unused now
     _rng()
-    q = _quote_from_pk(pk)
-    return q
+    return _quote_from_pk(pk)
 
 
 @kernel_def("tee.attest")
-def _tee_attest(pfunc: PFunction, *args: object) -> NDArray[np.uint8]:
-    if len(args) != 1:
-        raise ValueError("tee.attest expects exactly one argument (quote)")
-    (quote,) = args
+def _tee_attest(pfunc: PFunction, quote: object) -> NDArray[np.uint8]:
     quote = np.asarray(quote, dtype=np.uint8)
     if quote.size != 33:
         raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")
-    pk = quote[1:33].astype(np.uint8)
-    return pk
+    return quote[1:33].astype(np.uint8)

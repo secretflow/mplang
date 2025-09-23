@@ -17,7 +17,8 @@ import pytest
 
 from mplang.backend.base import create_runtime, list_registered_kernels
 from mplang.backend.phe import CipherText, PrivateKey, PublicKey
-from mplang.core.dtype import BOOL, INT32
+from mplang.core.dtype import INT32
+from mplang.core.opaque import OpaqueType
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 
@@ -37,7 +38,7 @@ class TestPHEKernels:
         p = PFunction(
             fn_type="phe.keygen",
             ins_info=(),
-            outs_info=(TensorType(BOOL, ()), TensorType(BOOL, ())),
+            outs_info=(OpaqueType("public_key"), OpaqueType("private_key")),
             scheme=self.scheme,
             key_size=self.key_size,
         )
@@ -57,7 +58,7 @@ class TestPHEKernels:
         p = PFunction(
             fn_type="phe.keygen",
             ins_info=(),
-            outs_info=(TensorType(BOOL, ()), TensorType(BOOL, ())),
+            outs_info=(OpaqueType("public_key"), OpaqueType("private_key")),
             scheme="bogus",
         )
         with pytest.raises(ValueError, match="Unsupported PHE scheme"):
@@ -68,13 +69,13 @@ class TestPHEKernels:
         pt = np.array(42, dtype=np.int32)
         enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(pt), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(pt),),
+            ins_info=(TensorType.from_obj(pt), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ct = self._exec(enc, [pt, pk])[0]
         dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(pt), TensorType(BOOL, ())),
+            ins_info=(OpaqueType("ciphertext"), OpaqueType("private_key")),
             outs_info=(TensorType.from_obj(pt),),
         )
         out = self._exec(dec, [ct, sk])[0]
@@ -85,13 +86,13 @@ class TestPHEKernels:
         pt = np.array(3.14, dtype=np.float32)
         enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(pt), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(pt),),
+            ins_info=(TensorType.from_obj(pt), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ct = self._exec(enc, [pt, pk])[0]
         dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(pt), TensorType(BOOL, ())),
+            ins_info=(OpaqueType("ciphertext"), OpaqueType("private_key")),
             outs_info=(TensorType.from_obj(pt),),
         )
         out = self._exec(dec, [ct, sk])[0]
@@ -103,8 +104,8 @@ class TestPHEKernels:
         b = np.array(5, dtype=np.int32)
         enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(a),),
+            ins_info=(TensorType.from_obj(a), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ca = self._exec(enc, [a, pk])[0]
         cb = self._exec(enc, [b, pk])[0]
@@ -116,7 +117,7 @@ class TestPHEKernels:
         cr = self._exec(add, [ca, cb])[0]
         dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
+            ins_info=(OpaqueType("ciphertext"), OpaqueType("private_key")),
             outs_info=(TensorType.from_obj(a),),
         )
         out = self._exec(dec, [cr, sk])[0]
@@ -128,8 +129,8 @@ class TestPHEKernels:
         b = np.array([4, 5, 6], dtype=np.int32)
         enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(a),),
+            ins_info=(TensorType.from_obj(a), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ca = self._exec(enc, [a, pk])[0]
         add = PFunction(
@@ -140,7 +141,7 @@ class TestPHEKernels:
         cr = self._exec(add, [ca, b])[0]
         dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
+            ins_info=(OpaqueType("ciphertext"), OpaqueType("private_key")),
             outs_info=(TensorType.from_obj(a),),
         )
         out = self._exec(dec, [cr, sk])[0]
@@ -152,8 +153,8 @@ class TestPHEKernels:
         b = np.array([5, 7], dtype=np.int32)
         enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(a),),
+            ins_info=(TensorType.from_obj(a), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ca = self._exec(enc, [a, pk])[0]
         mul = PFunction(
@@ -164,7 +165,7 @@ class TestPHEKernels:
         cr = self._exec(mul, [ca, b])[0]
         dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
+            ins_info=(OpaqueType("ciphertext"), OpaqueType("private_key")),
             outs_info=(TensorType.from_obj(a),),
         )
         out = self._exec(dec, [cr, sk])[0]
@@ -187,13 +188,13 @@ class TestPHEKernels:
         b = np.array([1, 2, 3], dtype=np.int32)
         enc_a = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(a),),
+            ins_info=(TensorType.from_obj(a), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         enc_b = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(b), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(b),),
+            ins_info=(TensorType.from_obj(b), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ca = self._exec(enc_a, [a, pk])[0]
         cb = self._exec(enc_b, [b, pk])[0]
@@ -211,8 +212,8 @@ class TestPHEKernels:
         b = np.array([1, 2], dtype=np.int32)
         enc_a = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(a),),
+            ins_info=(TensorType.from_obj(a), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ca = self._exec(enc_a, [a, pk])[0]
         mul = PFunction(
@@ -228,8 +229,8 @@ class TestPHEKernels:
         a = np.array(10, dtype=np.int32)
         enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(a), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(a),),
+            ins_info=(TensorType.from_obj(a), OpaqueType("public_key")),
+            outs_info=(OpaqueType("ciphertext"),),
         )
         ct = self._exec(enc, [a, pk])[0]
         fake = CipherText(
@@ -261,13 +262,13 @@ class TestPHEKernels:
         for pt in samples:
             enc = PFunction(
                 fn_type="phe.encrypt",
-                ins_info=(TensorType.from_obj(pt), TensorType(BOOL, ())),
-                outs_info=(TensorType.from_obj(pt),),
+                ins_info=(TensorType.from_obj(pt), OpaqueType("public_key")),
+                outs_info=(OpaqueType("ciphertext"),),
             )
             ct = self._exec(enc, [pt, pk])[0]
             dec = PFunction(
                 fn_type="phe.decrypt",
-                ins_info=(TensorType.from_obj(pt), TensorType(BOOL, ())),
+                ins_info=(OpaqueType("ciphertext"), OpaqueType("private_key")),
                 outs_info=(TensorType.from_obj(pt),),
             )
             out = self._exec(dec, [ct, sk])[0]

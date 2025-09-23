@@ -54,7 +54,7 @@ def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
 
 
 @kernel_def("crypto.keygen")
-def _crypto_keygen(pfunc: PFunction, *args: Any) -> Any:
+def _crypto_keygen(pfunc: PFunction) -> Any:
     length = int(pfunc.attrs.get("length", 32))
     rng = _get_rng()
     key = rng.integers(0, 256, size=(length,), dtype=np.uint8)
@@ -62,12 +62,9 @@ def _crypto_keygen(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("crypto.enc")
-def _crypto_encrypt(pfunc: PFunction, *args: Any) -> Any:
-    # args: (pt_bytes, key)
-    if len(args) != 2:
-        raise ValueError("crypto.enc expects (pt_bytes, key)")
-    pt_bytes = np.asarray(args[0], dtype=np.uint8)
-    key = np.asarray(args[1], dtype=np.uint8)
+def _crypto_encrypt(pfunc: PFunction, pt_bytes: Any, key: Any) -> Any:
+    pt_bytes = np.asarray(pt_bytes, dtype=np.uint8)
+    key = np.asarray(key, dtype=np.uint8)
     rng = _get_rng()
     nonce = rng.integers(0, 256, size=(12,), dtype=np.uint8)
     stream = np.frombuffer(
@@ -79,11 +76,9 @@ def _crypto_encrypt(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("crypto.dec")
-def _crypto_decrypt(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 2:
-        raise ValueError("crypto.dec expects (ct_with_nonce, key)")
-    ct_with_nonce = np.asarray(args[0], dtype=np.uint8)
-    key = np.asarray(args[1], dtype=np.uint8)
+def _crypto_decrypt(pfunc: PFunction, ct_with_nonce: Any, key: Any) -> Any:
+    ct_with_nonce = np.asarray(ct_with_nonce, dtype=np.uint8)
+    key = np.asarray(key, dtype=np.uint8)
     nonce = ct_with_nonce[:12]
     ct = ct_with_nonce[12:]
     stream = np.frombuffer(
@@ -94,19 +89,15 @@ def _crypto_decrypt(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("crypto.pack")
-def _crypto_pack(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("crypto.pack expects a single argument")
-    x_any = np.asarray(args[0])
+def _crypto_pack(pfunc: PFunction, value: Any) -> Any:
+    x_any = np.asarray(value)
     out = np.frombuffer(x_any.tobytes(order="C"), dtype=np.uint8)
     return out
 
 
 @kernel_def("crypto.unpack")
-def _crypto_unpack(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("crypto.unpack expects a single byte tensor argument")
-    b = np.asarray(args[0], dtype=np.uint8)
+def _crypto_unpack(pfunc: PFunction, packed: Any) -> Any:
+    b = np.asarray(packed, dtype=np.uint8)
     assert len(pfunc.outs_info) == 1
     out_ty_any = pfunc.outs_info[0]
     if not isinstance(out_ty_any, TensorType):
@@ -128,7 +119,7 @@ def _crypto_unpack(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("crypto.kem_keygen")
-def _crypto_kem_keygen(pfunc: PFunction, *args: Any) -> Any:
+def _crypto_kem_keygen(pfunc: PFunction) -> Any:
     rng = _get_rng()
     sk = rng.integers(0, 256, size=(32,), dtype=np.uint8)
     pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
@@ -136,11 +127,9 @@ def _crypto_kem_keygen(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("crypto.kem_derive")
-def _crypto_kem_derive(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 2:
-        raise ValueError("crypto.kem_derive expects (sk, peer_pk)")
-    sk = np.asarray(args[0], dtype=np.uint8)
-    peer_pk = np.asarray(args[1], dtype=np.uint8)
+def _crypto_kem_derive(pfunc: PFunction, sk: Any, peer_pk: Any) -> Any:
+    sk = np.asarray(sk, dtype=np.uint8)
+    peer_pk = np.asarray(peer_pk, dtype=np.uint8)
     self_pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
     xored = (self_pk ^ peer_pk).astype(np.uint8)
     secret = np.frombuffer(blake2b(xored.tobytes())[:32], dtype=np.uint8)
@@ -148,10 +137,8 @@ def _crypto_kem_derive(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("crypto.hkdf")
-def _crypto_hkdf(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("crypto.hkdf expects (secret,)")
-    secret = np.asarray(args[0], dtype=np.uint8)
+def _crypto_hkdf(pfunc: PFunction, secret: Any) -> Any:
+    secret = np.asarray(secret, dtype=np.uint8)
     info_str = str(pfunc.attrs.get("info", ""))
     info = info_str.encode("utf-8")
     out = np.frombuffer(blake2b(secret.tobytes() + info)[:32], dtype=np.uint8)

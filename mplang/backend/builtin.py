@@ -45,16 +45,13 @@ def _to_numpy(obj: Any) -> np.ndarray:  # minimal helper to avoid duplicating lo
 
 
 @kernel_def("builtin.identity")
-def _identity(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("builtin.identity expects 1 arg")
-    return args[0]
+def _identity(pfunc: PFunction, value: Any) -> Any:
+    # Runtime guarantees exactly one argument; no extra arity checks here.
+    return value
 
 
 @kernel_def("builtin.read")
-def _read(pfunc: PFunction, *args: Any) -> Any:
-    if args:
-        raise ValueError("builtin.read expects 0 args")
+def _read(pfunc: PFunction) -> Any:
     path = pfunc.attrs.get("path")
     if path is None:
         raise ValueError("missing path attr for builtin.read")
@@ -73,13 +70,10 @@ def _read(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("builtin.write")
-def _write(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("builtin.write expects 1 arg")
+def _write(pfunc: PFunction, obj: Any) -> Any:
     path = pfunc.attrs.get("path")
     if path is None:
         raise ValueError("missing path attr for builtin.write")
-    obj = args[0]
     try:
         dir_name = os.path.dirname(path)
         if dir_name:
@@ -96,9 +90,7 @@ def _write(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("builtin.constant")
-def _constant(pfunc: PFunction, *args: Any) -> Any:
-    if args:
-        raise ValueError("builtin.constant expects 0 args")
+def _constant(pfunc: PFunction) -> Any:
     data_bytes = pfunc.attrs.get("data_bytes")
     if data_bytes is None:
         raise ValueError("missing data_bytes attr for builtin.constant")
@@ -117,17 +109,13 @@ def _constant(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("builtin.rank")
-def _rank(pfunc: PFunction, *args: Any) -> Any:
-    if args:
-        raise ValueError("builtin.rank expects 0 args")
+def _rank(pfunc: PFunction) -> Any:
     ctx = cur_kctx()
     return np.array(ctx.rank, dtype=np.uint64)
 
 
 @kernel_def("builtin.prand")
-def _prand(pfunc: PFunction, *args: Any) -> Any:
-    if args:
-        raise ValueError("builtin.prand expects 0 args")
+def _prand(pfunc: PFunction) -> Any:
     shape = pfunc.attrs.get("shape", ())
     rng = np.random.default_rng()
     info = np.iinfo(np.uint64)
@@ -138,10 +126,7 @@ def _prand(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("builtin.table_to_tensor")
-def _table_to_tensor(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("builtin.table_to_tensor expects 1 arg")
-    (table,) = args
+def _table_to_tensor(pfunc: PFunction, table: Any) -> Any:
     if not isinstance(table, pd.DataFrame):
         raise TypeError("expected pandas DataFrame")
     if table.shape[1] == 0:
@@ -151,10 +136,7 @@ def _table_to_tensor(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("builtin.tensor_to_table")
-def _tensor_to_table(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("builtin.tensor_to_table expects 1 arg")
-    (tensor,) = args
+def _tensor_to_table(pfunc: PFunction, tensor: Any) -> Any:
     arr = _to_numpy(tensor)
     if arr.ndim != 2:
         raise ValueError("tensor_to_table expects rank-2 array")
@@ -180,10 +162,7 @@ def _summ(v: Any) -> str:
 
 
 @kernel_def("builtin.debug_print")
-def _debug_print(pfunc: PFunction, *args: Any) -> Any:
-    if len(args) != 1:
-        raise ValueError("builtin.debug_print expects 1 arg")
-    (val,) = args
+def _debug_print(pfunc: PFunction, val: Any) -> Any:
     prefix = pfunc.attrs.get("prefix", "")
     ctx = cur_kctx()
     print(f"[debug_print][rank={ctx.rank}] {prefix}{_summ(val)}")

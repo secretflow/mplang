@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from mplang.backend.base import backend_kernel, cur_kctx
+from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.utils import table_utils
@@ -43,14 +43,14 @@ def _to_numpy(obj: Any) -> np.ndarray:  # minimal helper to avoid duplicating lo
     return np.asarray(obj)
 
 
-@backend_kernel("builtin.identity")
+@kernel_def("builtin.identity")
 def _identity(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("builtin.identity expects 1 arg")
     return (args[0],)
 
 
-@backend_kernel("builtin.read")
+@kernel_def("builtin.read")
 def _read(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if args:
         raise ValueError("builtin.read expects 0 args")
@@ -71,7 +71,7 @@ def _read(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         raise RuntimeError(f"builtin.read failed: {e}") from e
 
 
-@backend_kernel("builtin.write")
+@kernel_def("builtin.write")
 def _write(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("builtin.write expects 1 arg")
@@ -94,7 +94,7 @@ def _write(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         raise RuntimeError(f"builtin.write failed: {e}") from e
 
 
-@backend_kernel("builtin.constant")
+@kernel_def("builtin.constant")
 def _constant(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if args:
         raise ValueError("builtin.constant expects 0 args")
@@ -115,7 +115,7 @@ def _constant(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (arr,)
 
 
-@backend_kernel("builtin.rank")
+@kernel_def("builtin.rank")
 def _rank(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if args:
         raise ValueError("builtin.rank expects 0 args")
@@ -123,7 +123,7 @@ def _rank(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (np.array(ctx.rank, dtype=np.uint64),)
 
 
-@backend_kernel("builtin.prand")
+@kernel_def("builtin.prand")
 def _prand(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if args:
         raise ValueError("builtin.prand expects 0 args")
@@ -136,7 +136,7 @@ def _prand(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (data,)
 
 
-@backend_kernel("builtin.table_to_tensor")
+@kernel_def("builtin.table_to_tensor")
 def _table_to_tensor(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("builtin.table_to_tensor expects 1 arg")
@@ -149,7 +149,7 @@ def _table_to_tensor(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]
     return (mat,)
 
 
-@backend_kernel("builtin.tensor_to_table")
+@kernel_def("builtin.tensor_to_table")
 def _tensor_to_table(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("builtin.tensor_to_table expects 1 arg")
@@ -178,7 +178,7 @@ def _summ(v: Any) -> str:
         return f"<unprintable {type(v).__name__}: {e}>"
 
 
-@backend_kernel("builtin.debug_print")
+@kernel_def("builtin.debug_print")
 def _debug_print(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("builtin.debug_print expects 1 arg")

@@ -32,9 +32,9 @@ from mplang.core.pfunc import PFunction
 __all__ = [
     "BackendRuntime",
     "KernelContext",
-    "backend_kernel",
     "create_runtime",
     "cur_kctx",
+    "kernel_def",
     "list_registered_kernels",
 ]
 
@@ -71,7 +71,7 @@ KernelFn = Callable[[PFunction, tuple[Any, ...]], tuple[Any, ...]]
 _KERNELS: dict[str, KernelFn] = {}
 
 
-def backend_kernel(fn_type: str) -> Callable[[KernelFn], KernelFn]:
+def kernel_def(fn_type: str) -> Callable[[KernelFn], KernelFn]:
     """Decorator to register a flat backend kernel.
 
     Kernel signature:  fn(pfunc: PFunction, args: tuple) -> tuple
@@ -140,9 +140,3 @@ class BackendRuntime:
 def create_runtime(rank: int, world_size: int) -> BackendRuntime:
     """Factory for BackendRuntime (allows future policy injection)."""
     return BackendRuntime(rank, world_size)
-
-
-# Convenience alias for future import stability (keep old name references harmless)
-Kernel = Callable  # type: ignore
-BackendModule = None  # type: ignore
-backend_module = None  # type: ignore

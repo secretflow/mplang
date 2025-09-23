@@ -21,7 +21,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.backend.base import backend_kernel, cur_kctx
+from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction
 from mplang.runtime.link_comm import LinkCommunicator
@@ -108,7 +108,7 @@ def _register_spu_env(
         pocket["link"] = link_ctx
 
 
-@backend_kernel("spu.seed_env")
+@kernel_def("spu.seed_env")
 def _spu_seed_env(pfunc: PFunction, args: tuple) -> tuple:
     """Backend kernel to seed SPU environment.
 
@@ -134,7 +134,7 @@ def _spu_seed_env(pfunc: PFunction, args: tuple) -> tuple:
     return ()
 
 
-@backend_kernel("spu.makeshares")
+@kernel_def("spu.makeshares")
 def _spu_makeshares(pfunc: PFunction, args: tuple) -> tuple:
     """Create SPU shares from input data.
 
@@ -169,7 +169,7 @@ def _spu_makeshares(pfunc: PFunction, args: tuple) -> tuple:
     )
 
 
-@backend_kernel("spu.reconstruct")
+@kernel_def("spu.reconstruct")
 def _spu_reconstruct(pfunc: PFunction, args: tuple) -> tuple:
     """Reconstruct plaintext data from SPU shares."""
     cfg, world = _get_spu_config_and_world()
@@ -186,7 +186,7 @@ def _spu_reconstruct(pfunc: PFunction, args: tuple) -> tuple:
     return (reconstructed,)
 
 
-@backend_kernel("mlir.pphlo")
+@kernel_def("mlir.pphlo")
 def _spu_run_mlir(pfunc: PFunction, args: tuple) -> tuple:
     """Execute compiled SPU function (mlir.pphlo) and return SpuValue outputs.
 

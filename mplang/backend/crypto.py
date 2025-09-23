@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from mplang.backend.base import backend_kernel, cur_kctx
+from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.utils.crypto import blake2b
@@ -53,7 +53,7 @@ def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
     return bytes(out[:length])
 
 
-@backend_kernel("crypto.keygen")
+@kernel_def("crypto.keygen")
 def _crypto_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     length = int(pfunc.attrs.get("length", 32))
     rng = _get_rng()
@@ -61,7 +61,7 @@ def _crypto_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (key,)
 
 
-@backend_kernel("crypto.enc")
+@kernel_def("crypto.enc")
 def _crypto_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     # args: (pt_bytes, key)
     if len(args) != 2:
@@ -78,7 +78,7 @@ def _crypto_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (out,)
 
 
-@backend_kernel("crypto.dec")
+@kernel_def("crypto.dec")
 def _crypto_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("crypto.dec expects (ct_with_nonce, key)")
@@ -93,7 +93,7 @@ def _crypto_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (pt_bytes,)
 
 
-@backend_kernel("crypto.pack")
+@kernel_def("crypto.pack")
 def _crypto_pack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("crypto.pack expects a single argument")
@@ -102,7 +102,7 @@ def _crypto_pack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (out,)
 
 
-@backend_kernel("crypto.unpack")
+@kernel_def("crypto.unpack")
 def _crypto_unpack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("crypto.unpack expects a single byte tensor argument")
@@ -127,7 +127,7 @@ def _crypto_unpack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     return (arr,)
 
 
-@backend_kernel("crypto.kem_keygen")
+@kernel_def("crypto.kem_keygen")
 def _crypto_kem_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     rng = _get_rng()
     sk = rng.integers(0, 256, size=(32,), dtype=np.uint8)
@@ -135,7 +135,7 @@ def _crypto_kem_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ..
     return (sk, pk)
 
 
-@backend_kernel("crypto.kem_derive")
+@kernel_def("crypto.kem_derive")
 def _crypto_kem_derive(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("crypto.kem_derive expects (sk, peer_pk)")
@@ -147,7 +147,7 @@ def _crypto_kem_derive(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ..
     return (secret,)
 
 
-@backend_kernel("crypto.hkdf")
+@kernel_def("crypto.hkdf")
 def _crypto_hkdf(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 1:
         raise ValueError("crypto.hkdf expects (secret,)")

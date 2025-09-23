@@ -19,7 +19,7 @@ import os
 import numpy as np
 from numpy.typing import NDArray
 
-from mplang.backend.base import backend_kernel, cur_kctx
+from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
 
 __all__: list[str] = []
@@ -43,7 +43,7 @@ def _quote_from_pk(pk: np.ndarray) -> NDArray[np.uint8]:
     return out
 
 
-@backend_kernel("tee.quote")
+@kernel_def("tee.quote")
 def _tee_quote(
     pfunc: PFunction, args: tuple[object, ...]
 ) -> tuple[NDArray[np.uint8], ...]:
@@ -56,7 +56,7 @@ def _tee_quote(
     return (q,)
 
 
-@backend_kernel("tee.attest")
+@kernel_def("tee.attest")
 def _tee_attest(
     pfunc: PFunction, args: tuple[object, ...]
 ) -> tuple[NDArray[np.uint8], ...]:

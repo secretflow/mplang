@@ -21,11 +21,11 @@ import jax.numpy as jnp
 from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
-from mplang.backend.base import backend_kernel, cur_kctx
+from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
 
 
-@backend_kernel("mlir.stablehlo")
+@kernel_def("mlir.stablehlo")
 def _stablehlo_exec(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if pfunc.fn_type != "mlir.stablehlo":
         raise ValueError("stablehlo kernel received wrong fn_type")

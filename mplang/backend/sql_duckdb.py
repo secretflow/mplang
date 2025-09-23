@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.backend.base import backend_kernel
+from mplang.backend.base import kernel_def
 from mplang.core.pfunc import PFunction
 
 
-@backend_kernel("sql[duckdb]")
+@kernel_def("sql[duckdb]")
 def _duckdb_sql(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     import duckdb
     import pandas as pd

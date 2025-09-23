@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 from lightphe import LightPHE
 
-from mplang.backend.base import backend_kernel
+from mplang.backend.base import kernel_def
 from mplang.core.dtype import DType
 from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction
@@ -111,7 +111,7 @@ def _to_numpy(obj: TensorLike) -> np.ndarray:
     return np.asarray(obj)
 
 
-@backend_kernel("phe.keygen")
+@kernel_def("phe.keygen")
 def _phe_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if args:
         raise ValueError("phe.keygen expects 0 args")
@@ -135,7 +135,7 @@ def _phe_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         raise RuntimeError(f"Failed to generate PHE keys: {e}") from e
 
 
-@backend_kernel("phe.encrypt")
+@kernel_def("phe.encrypt")
 def _phe_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.encrypt expects (plaintext, public_key)")
@@ -171,7 +171,7 @@ def _phe_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         raise RuntimeError(f"Failed to encrypt data: {e}") from e
 
 
-@backend_kernel("phe.mul")
+@kernel_def("phe.mul")
 def _phe_mul(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.mul expects (ciphertext, plaintext)")
@@ -205,7 +205,7 @@ def _phe_mul(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         raise RuntimeError(f"Failed to perform multiplication: {e}") from e
 
 
-@backend_kernel("phe.add")
+@kernel_def("phe.add")
 def _phe_add(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.add expects 2 args")
@@ -273,7 +273,7 @@ def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
     )
 
 
-@backend_kernel("phe.decrypt")
+@kernel_def("phe.decrypt")
 def _phe_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     if len(args) != 2:
         raise ValueError("phe.decrypt expects (ciphertext, private_key)")

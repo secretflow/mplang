@@ -38,4 +38,5 @@ def attest(quote: TensorType) -> TensorType:
 
     API (mock): attest(quote: u8[33]) -> tee_pk: u8[32]
     """
+    _ = quote  # Mark as used for the decorator
     return TensorType(UINT8, (32,))

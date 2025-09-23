@@ -21,7 +21,7 @@ from mplang.core.pfunc import PFunction
 
 
 @kernel_def("sql[duckdb]")
-def _duckdb_sql(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _duckdb_sql(pfunc: PFunction, *args: Any) -> Any:
     import duckdb
     import pandas as pd
 
@@ -39,4 +39,4 @@ def _duckdb_sql(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
                 raise ValueError(f"unsupported duckdb input type {type(arg)}")
             conn.register(name, df)
     res_df = conn.execute(pfunc.fn_text).fetchdf()
-    return (res_df,)
+    return res_df

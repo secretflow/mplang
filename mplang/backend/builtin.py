@@ -14,8 +14,9 @@
 
 """Flat builtin backend kernels.
 
-Each kernel adheres to signature: fn(pfunc: PFunction, args: tuple) -> tuple.
-Registration performed via @backend_kernel with explicit fn_type.
+Updated to new kernel signature style: fn(pfunc: PFunction, *args) -> Any | tuple.
+Return normalization handled centrally by BackendRuntime.run_kernel.
+Legacy tuple(args) style removed for clarity.
 """
 
 from __future__ import annotations
@@ -44,14 +45,14 @@ def _to_numpy(obj: Any) -> np.ndarray:  # minimal helper to avoid duplicating lo
 
 
 @kernel_def("builtin.identity")
-def _identity(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _identity(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("builtin.identity expects 1 arg")
-    return (args[0],)
+    return args[0]
 
 
 @kernel_def("builtin.read")
-def _read(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _read(pfunc: PFunction, *args: Any) -> Any:
     if args:
         raise ValueError("builtin.read expects 0 args")
     path = pfunc.attrs.get("path")
@@ -63,16 +64,16 @@ def _read(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
             with open(path, "rb") as f:
                 csv_bytes = f.read()
             df = table_utils.csv_to_dataframe(csv_bytes)
-            return (df,)
+            return df
         else:
             data = np.load(path)
-            return (data,)
+            return data
     except Exception as e:  # pragma: no cover - filesystem errors
         raise RuntimeError(f"builtin.read failed: {e}") from e
 
 
 @kernel_def("builtin.write")
-def _write(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _write(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("builtin.write expects 1 arg")
     path = pfunc.attrs.get("path")
@@ -89,13 +90,13 @@ def _write(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
                 f.write(csv_bytes)
         else:
             np.save(path, _to_numpy(obj))
-        return (obj,)
+        return obj
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"builtin.write failed: {e}") from e
 
 
 @kernel_def("builtin.constant")
-def _constant(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _constant(pfunc: PFunction, *args: Any) -> Any:
     if args:
         raise ValueError("builtin.constant expects 0 args")
     data_bytes = pfunc.attrs.get("data_bytes")
@@ -107,24 +108,24 @@ def _constant(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         if fmt != "bytes[csv]":
             raise ValueError(f"unsupported table constant format {fmt}")
         df = table_utils.csv_to_dataframe(data_bytes)
-        return (df,)
+        return df
     # tensor path
     shape = out_t.shape  # type: ignore[attr-defined]
     dtype = out_t.dtype.numpy_dtype()  # type: ignore[attr-defined]
     arr = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
-    return (arr,)
+    return arr
 
 
 @kernel_def("builtin.rank")
-def _rank(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _rank(pfunc: PFunction, *args: Any) -> Any:
     if args:
         raise ValueError("builtin.rank expects 0 args")
     ctx = cur_kctx()
-    return (np.array(ctx.rank, dtype=np.uint64),)
+    return np.array(ctx.rank, dtype=np.uint64)
 
 
 @kernel_def("builtin.prand")
-def _prand(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _prand(pfunc: PFunction, *args: Any) -> Any:
     if args:
         raise ValueError("builtin.prand expects 0 args")
     shape = pfunc.attrs.get("shape", ())
@@ -133,27 +134,27 @@ def _prand(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     data = rng.integers(
         low=info.min, high=info.max, size=shape, dtype=np.uint64, endpoint=True
     )
-    return (data,)
+    return data
 
 
 @kernel_def("builtin.table_to_tensor")
-def _table_to_tensor(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _table_to_tensor(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("builtin.table_to_tensor expects 1 arg")
-    table = args[0]
+    (table,) = args
     if not isinstance(table, pd.DataFrame):
         raise TypeError("expected pandas DataFrame")
     if table.shape[1] == 0:
         raise ValueError("cannot pack empty table")
     mat = np.column_stack([table[col].to_numpy() for col in table.columns])
-    return (mat,)
+    return mat
 
 
 @kernel_def("builtin.tensor_to_table")
-def _tensor_to_table(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _tensor_to_table(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("builtin.tensor_to_table expects 1 arg")
-    tensor = args[0]
+    (tensor,) = args
     arr = _to_numpy(tensor)
     if arr.ndim != 2:
         raise ValueError("tensor_to_table expects rank-2 array")
@@ -161,7 +162,7 @@ def _tensor_to_table(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]
     if col_names is None:
         raise ValueError("missing column_names attr")
     df = pd.DataFrame(arr, columns=list(col_names))
-    return (df,)
+    return df
 
 
 def _summ(v: Any) -> str:
@@ -179,11 +180,11 @@ def _summ(v: Any) -> str:
 
 
 @kernel_def("builtin.debug_print")
-def _debug_print(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _debug_print(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("builtin.debug_print expects 1 arg")
-    val = args[0]
+    (val,) = args
     prefix = pfunc.attrs.get("prefix", "")
     ctx = cur_kctx()
     print(f"[debug_print][rank={ctx.rank}] {prefix}{_summ(val)}")
-    return (val,)
+    return val

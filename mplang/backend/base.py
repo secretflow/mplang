@@ -159,7 +159,7 @@ class BackendRuntime:
         if fn is None:
             raise NotImplementedError(f"no backend kernel registered for {fn_type}")
 
-        # Validate arg count first (strict positional mapping)
+        # Strict positional arg count validation (no kernel-managed arity bypass)
         if len(arg_list) != len(pfunc.ins_info):
             raise ValueError(
                 f"kernel {fn_type} arg count mismatch: got {len(arg_list)}, expect {len(pfunc.ins_info)}"
@@ -179,25 +179,25 @@ class BackendRuntime:
                         f"kernel {fn_type} input[{idx}] column count mismatch: got {len(val.columns)}, expected {len(spec.columns)}"
                     )
                 continue
-
-            # Tensor type path
-            if isinstance(spec, TensorType):
-                if not isinstance(val, (np.ndarray, TensorLike)):
-                    raise TypeError(
-                        f"kernel {fn_type} input[{idx}] expects TensorLike, got {type(val).__name__}"
-                    )
-                # Shape check directly
-                val_shape = getattr(val, "shape", ())
+            elif isinstance(spec, TensorType):
+                if isinstance(val, (int, float, bool, complex)) and spec.shape == ():
+                    val_shape = ()
+                    val_dtype_any = type(val)
+                else:
+                    if not isinstance(val, (np.ndarray, TensorLike)):
+                        raise TypeError(
+                            f"kernel {fn_type} input[{idx}] expects TensorLike, got {type(val).__name__}"
+                        )
+                    val_shape = getattr(val, "shape", ())
+                    val_dtype_any = getattr(val, "dtype", None)
                 if tuple(spec.shape) != tuple(val_shape):
                     raise ValueError(
                         f"kernel {fn_type} input[{idx}] shape mismatch: got {val_shape}, expected {spec.shape}"
                     )
-                # DType check using DType.from_any
-                val_dtype_any = getattr(val, "dtype", None)
                 if val_dtype_any is not None:
                     try:
                         val_dtype = DType.from_any(val_dtype_any)
-                    except Exception:  # pragma: no cover - defensive
+                    except Exception:  # pragma: no cover
                         raise TypeError(
                             f"kernel {fn_type} input[{idx}] has unsupported dtype object {val_dtype_any!r}"
                         ) from None
@@ -206,9 +206,7 @@ class BackendRuntime:
                             f"kernel {fn_type} input[{idx}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
                         )
                 continue
-
-            # Unknown spec type: skip strict validation (could be future extension)
-            # Intentional no-op
+            # Unknown spec type: skip
 
         kctx = KernelContext(
             rank=self.rank,

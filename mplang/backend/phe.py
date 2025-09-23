@@ -112,7 +112,7 @@ def _to_numpy(obj: TensorLike) -> np.ndarray:
 
 
 @kernel_def("phe.keygen")
-def _phe_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _phe_keygen(pfunc: PFunction, *args: Any) -> Any:
     if args:
         raise ValueError("phe.keygen expects 0 args")
     scheme = pfunc.attrs.get("scheme", "paillier")
@@ -136,7 +136,7 @@ def _phe_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
 
 
 @kernel_def("phe.encrypt")
-def _phe_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _phe_encrypt(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 2:
         raise ValueError("phe.encrypt expects (plaintext, public_key)")
     plaintext, public_key = args
@@ -166,13 +166,13 @@ def _phe_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
             key_size=public_key.key_size,
             pk_data=public_key.key_data,
         )
-        return (ciphertext,)
+        return ciphertext
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"Failed to encrypt data: {e}") from e
 
 
 @kernel_def("phe.mul")
-def _phe_mul(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _phe_mul(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 2:
         raise ValueError("phe.mul expects (ciphertext, plaintext)")
     ciphertext, plaintext = args
@@ -189,15 +189,13 @@ def _phe_mul(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         else:
             mult = [int(x) for x in flat]
         res_ct = ciphertext.ct_data * mult
-        return (
-            CipherText(
-                ct_data=res_ct,
-                semantic_dtype=ciphertext.semantic_dtype,
-                semantic_shape=ciphertext.semantic_shape,
-                scheme=ciphertext.scheme,
-                key_size=ciphertext.key_size,
-                pk_data=ciphertext.pk_data,
-            ),
+        return CipherText(
+            ct_data=res_ct,
+            semantic_dtype=ciphertext.semantic_dtype,
+            semantic_shape=ciphertext.semantic_shape,
+            scheme=ciphertext.scheme,
+            key_size=ciphertext.key_size,
+            pk_data=ciphertext.pk_data,
         )
     except ValueError:
         raise
@@ -206,19 +204,19 @@ def _phe_mul(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
 
 
 @kernel_def("phe.add")
-def _phe_add(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _phe_add(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 2:
         raise ValueError("phe.add expects 2 args")
     lhs, rhs = args
     try:
         if isinstance(lhs, CipherText) and isinstance(rhs, CipherText):
-            return (_phe_add_ct2ct(lhs, rhs),)
+            return _phe_add_ct2ct(lhs, rhs)
         elif isinstance(lhs, CipherText):
-            return (_phe_add_ct2pt(lhs, rhs),)
+            return _phe_add_ct2pt(lhs, rhs)
         elif isinstance(rhs, CipherText):
-            return (_phe_add_ct2pt(rhs, lhs),)
+            return _phe_add_ct2pt(rhs, lhs)
         else:
-            return (_to_numpy(lhs) + _to_numpy(rhs),)
+            return _to_numpy(lhs) + _to_numpy(rhs)
     except ValueError:
         raise
     except Exception as e:  # pragma: no cover
@@ -274,7 +272,7 @@ def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
 
 
 @kernel_def("phe.decrypt")
-def _phe_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _phe_decrypt(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 2:
         raise ValueError("phe.decrypt expects (ciphertext, private_key)")
     ciphertext, private_key = args
@@ -312,6 +310,6 @@ def _phe_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         plaintext_np = np.array(processed, dtype=target_dtype).reshape(
             ciphertext.semantic_shape
         )
-        return (plaintext_np,)
+        return plaintext_np
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"Failed to decrypt data: {e}") from e

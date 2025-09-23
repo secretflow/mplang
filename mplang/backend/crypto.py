@@ -54,15 +54,15 @@ def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
 
 
 @kernel_def("crypto.keygen")
-def _crypto_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_keygen(pfunc: PFunction, *args: Any) -> Any:
     length = int(pfunc.attrs.get("length", 32))
     rng = _get_rng()
     key = rng.integers(0, 256, size=(length,), dtype=np.uint8)
-    return (key,)
+    return key
 
 
 @kernel_def("crypto.enc")
-def _crypto_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_encrypt(pfunc: PFunction, *args: Any) -> Any:
     # args: (pt_bytes, key)
     if len(args) != 2:
         raise ValueError("crypto.enc expects (pt_bytes, key)")
@@ -75,11 +75,11 @@ def _crypto_encrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     )
     ct = (pt_bytes ^ stream).astype(np.uint8)
     out = np.concatenate([nonce, ct]).astype(np.uint8)
-    return (out,)
+    return out
 
 
 @kernel_def("crypto.dec")
-def _crypto_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_decrypt(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 2:
         raise ValueError("crypto.dec expects (ct_with_nonce, key)")
     ct_with_nonce = np.asarray(args[0], dtype=np.uint8)
@@ -90,20 +90,20 @@ def _crypto_decrypt(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
         _keystream(key.tobytes(), nonce.tobytes(), len(ct)), dtype=np.uint8
     )
     pt_bytes = (ct ^ stream).astype(np.uint8)
-    return (pt_bytes,)
+    return pt_bytes
 
 
 @kernel_def("crypto.pack")
-def _crypto_pack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_pack(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("crypto.pack expects a single argument")
     x_any = np.asarray(args[0])
     out = np.frombuffer(x_any.tobytes(order="C"), dtype=np.uint8)
-    return (out,)
+    return out
 
 
 @kernel_def("crypto.unpack")
-def _crypto_unpack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_unpack(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("crypto.unpack expects a single byte tensor argument")
     b = np.asarray(args[0], dtype=np.uint8)
@@ -124,11 +124,11 @@ def _crypto_unpack(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
             f"unpack size mismatch: got {b.size} bytes, expect {expected} for {np_dtype} {shape}"
         )
     arr = np.frombuffer(b.tobytes(), dtype=np_dtype).reshape(shape)
-    return (arr,)
+    return arr
 
 
 @kernel_def("crypto.kem_keygen")
-def _crypto_kem_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_kem_keygen(pfunc: PFunction, *args: Any) -> Any:
     rng = _get_rng()
     sk = rng.integers(0, 256, size=(32,), dtype=np.uint8)
     pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
@@ -136,7 +136,7 @@ def _crypto_kem_keygen(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ..
 
 
 @kernel_def("crypto.kem_derive")
-def _crypto_kem_derive(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_kem_derive(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 2:
         raise ValueError("crypto.kem_derive expects (sk, peer_pk)")
     sk = np.asarray(args[0], dtype=np.uint8)
@@ -144,15 +144,15 @@ def _crypto_kem_derive(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ..
     self_pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
     xored = (self_pk ^ peer_pk).astype(np.uint8)
     secret = np.frombuffer(blake2b(xored.tobytes())[:32], dtype=np.uint8)
-    return (secret,)
+    return secret
 
 
 @kernel_def("crypto.hkdf")
-def _crypto_hkdf(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _crypto_hkdf(pfunc: PFunction, *args: Any) -> Any:
     if len(args) != 1:
         raise ValueError("crypto.hkdf expects (secret,)")
     secret = np.asarray(args[0], dtype=np.uint8)
     info_str = str(pfunc.attrs.get("info", ""))
     info = info_str.encode("utf-8")
     out = np.frombuffer(blake2b(secret.tobytes() + info)[:32], dtype=np.uint8)
-    return (out,)
+    return out

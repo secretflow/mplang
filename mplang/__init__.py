@@ -23,7 +23,7 @@ except PackageNotFoundError:
     # Fallback for development/editable installs when package is not installed
     __version__ = "0.0.0-dev"
 
-# Core API functions
+from mplang import analysis
 from mplang.api import CompileOptions, compile, evaluate, fetch
 from mplang.core import (
     DType,
@@ -59,6 +59,7 @@ __all__ = [
     "TableType",
     "TensorType",
     "__version__",
+    "analysis",
     "compile",
     "cur_ctx",
     "evaluate",

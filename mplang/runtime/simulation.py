@@ -29,11 +29,12 @@ from mplang.backend import (
     builtin,  # noqa: F401
     crypto,  # noqa: F401
     phe,  # noqa: F401
+    spu,  # noqa: F401  # ensure SPU kernels (spu.seed_env etc.) registered
     sql_duckdb,  # noqa: F401
     stablehlo,  # noqa: F401
     tee,  # noqa: F401
 )
-from mplang.backend.spu import initialize_spu_runtime  # flat kernel init
+from mplang.backend.base import create_runtime  # explicit per-rank backend runtime
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
@@ -43,6 +44,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
+from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
 from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol
 
@@ -148,15 +150,17 @@ class Simulator(InterpContext):
         # No per-backend handlers needed anymore (all flat kernels)
         self._handlers: list[list[Any]] = [[] for _ in range(self.world_size())]
 
-        self._evaluators: list[IEvaluator] = [
-            create_evaluator(
+        self._evaluators: list[IEvaluator] = []
+        for rank in range(self.world_size()):
+            runtime = create_runtime(rank, self.world_size())
+            ev = create_evaluator(
                 rank,
                 {},  # the global environment for this rank
                 self._comms[rank],
-                self._handlers[rank],
+                runtime,
+                None,
             )
-            for rank in range(self.world_size())
-        ]
+            self._evaluators.append(ev)
 
     @classmethod
     def simple(
@@ -220,27 +224,25 @@ class Simulator(InterpContext):
         # Build per-rank evaluators with the per-party environment
         pts_evaluators: list[IEvaluator] = []
         for rank in range(self.world_size()):
+            runtime = create_runtime(rank, self.world_size())
             ev = create_evaluator(
                 rank,
                 pts_env[rank],
                 self._comms[rank],
-                self._handlers[rank],
+                runtime,
+                None,
             )
-            # Initialize SPU kernel state once per rank inside evaluator context
-            # so that subsequent spu.* kernels have config/world/link info.
             link_ctx = self._spu_link_ctxs[rank]
-            if link_ctx is not None:
-                # collect link ctxs ordered by relative rank for parties, else None
-                active_links = [
-                    self._spu_link_ctxs[g]
-                    for g in range(self.world_size())
-                    if g in self._spu_mask
-                ]
-                initialize_spu_runtime(
-                    self._spu_runtime_cfg,
-                    self._spu_world,
-                    active_links,  # type: ignore[arg-type]
-                )
+            seed_fn = PFunction(
+                fn_type="spu.seed_env",
+                ins_info=(),
+                outs_info=(),
+                config=self._spu_runtime_cfg,
+                world=self._spu_world,
+                link=link_ctx,
+            )
+            # Seed SPU backend environment explicitly via runtime (no evaluator fast-path)
+            ev.runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
             pts_evaluators.append(ev)
 
         # Collect evaluation results from all parties

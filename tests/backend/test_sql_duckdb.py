@@ -19,7 +19,7 @@ import pytest
 
 import mplang
 from mplang import simp
-from mplang.backend.base import initialize_backend, run_kernel
+from mplang.backend.base import create_runtime
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.frontend import ibis_cc
@@ -27,7 +27,7 @@ from mplang.frontend import ibis_cc
 
 class TestDuckDBKernel:
     def test_duckdb_run(self):
-        initialize_backend(0, 1)
+        runtime = create_runtime(0, 1)
         tbl_name = "table"
         schema = {"a": "int", "b": "int", "c": "float"}
         in_tbl = ibis.table(schema=schema, name=tbl_name)
@@ -53,7 +53,7 @@ class TestDuckDBKernel:
             "c": [7.1, 8.1, 9.1],
             "d": [5, 7, 9],
         })
-        (out_df,) = run_kernel(pfn, [in_df])
+        (out_df,) = runtime.run_kernel(pfn, [in_df])
         npt.assert_allclose(out_df, expected, rtol=1e-7, atol=1e-8)
 
     @pytest.mark.parametrize("op", ["+", "-", "*", "/"])

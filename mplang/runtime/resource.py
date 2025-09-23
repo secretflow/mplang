@@ -36,7 +36,8 @@ from mplang.backend import (  # noqa: F401
     stablehlo,
     tee,
 )
-from mplang.backend.spu import initialize_spu_runtime
+from mplang.backend.base import create_runtime
+from mplang.backend.spu import PFunction  # type: ignore
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
@@ -220,12 +221,15 @@ def execute_computation(
     )
 
     # Build evaluator
+    # Explicit per-rank backend runtime (deglobalized)
+    runtime = create_runtime(rank, session.communicator.world_size)
     evaluator: IEvaluator = create_evaluator(
-        rank=rank, env=bindings, comm=session.communicator, pfunc_handles=None
+        rank=rank, env=bindings, comm=session.communicator, runtime=runtime
     )
 
     # Initialize SPU runtime state for flat kernels (once per evaluator invocation)
     if rank in spu_mask:
+        # Build SPU address list (only once per rank; consistent ordering of participating ranks)
         spu_addrs: list[str] = []
         for r, addr in enumerate(session.communicator.endpoints):
             if r in spu_mask:
@@ -235,17 +239,28 @@ def execute_computation(
                 assert isinstance(parsed.port, int)
                 new_addr = f"{parsed.hostname}:{parsed.port + 100}"
                 spu_addrs.append(new_addr)
-        # Construct link communicators ordered by relative rank
-        link_ctxs = [
-            g_link_factory.create_link(idx, spu_addrs)
-            for idx in range(spu_mask.num_parties())
-        ]
-        spu_config = libspu.RuntimeConfig(
-            protocol=parse_protocol(session.spu_protocol),
-            field=parse_field(session.spu_field),
-            fxp_fraction_bits=18,
-        )
-        initialize_spu_runtime(spu_config, spu_mask.num_parties(), link_ctxs)
+        # Determine this rank's relative index among participating ranks
+        rel_index = sum(1 for r in range(rank) if r in spu_mask)
+        link_ctx = g_link_factory.create_link(rel_index, spu_addrs)
+    else:
+        link_ctx = None
+    # Always seed config/world; provide per-rank link (may be None if not participating)
+    spu_config = libspu.RuntimeConfig(
+        protocol=parse_protocol(session.spu_protocol),
+        field=parse_field(session.spu_field),
+        fxp_fraction_bits=18,
+    )
+    # Seed SPU env via backend kernel (inside evaluator's kernel context)
+    seed_pfunc = PFunction(
+        fn_type="spu.seed_env",
+        ins_info=(),
+        outs_info=(),
+        config=spu_config,
+        world=spu_mask.num_parties(),
+        link=link_ctx,
+    )
+    # Run seeding kernel with evaluator (no inputs, no outputs)
+    evaluator.runtime.run_kernel(seed_pfunc, [])  # type: ignore[attr-defined]
 
     results = evaluator.evaluate(computation.expr)
 

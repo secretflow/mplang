@@ -34,11 +34,10 @@ import numpy as np
 import spu.libspu as libspu
 
 from mplang.backend.base import (
-    initialize_backend,
+    create_runtime,
     list_registered_kernels,
-    run_kernel,
 )
-from mplang.backend.spu import SpuValue, initialize_spu_runtime
+from mplang.backend.spu import SpuValue
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
 from mplang.core.mpobject import MPContext, MPObject
@@ -77,7 +76,11 @@ class DummyTensor(MPObject):
 
 
 def create_mem_link_contexts(world_size: int) -> list[LinkCommunicator]:
-    """Create memory link communicators for each party."""
+    """Create memory link communicators for each party.
+
+    Returns a list so tests can still iterate, but initialize_spu_runtime will
+    now be called per-rank with a single link instance.
+    """
     addrs = [f"P{i}" for i in range(world_size)]
     return [LinkCommunicator(rank, addrs, mem_link=True) for rank in range(world_size)]
 
@@ -94,7 +97,7 @@ def _compile_add(shape: tuple[int, ...] = (3,), dtype=jnp.float32):  # type: ign
 def _makeshares_pfunc(arr: np.ndarray, world_size: int) -> PFunction:
     """Create makeshares PFunction with outs matching expected party world size.
 
-    We rely on caller providing world_size consistent with initialize_backend / runtime config.
+    We rely on caller providing world_size consistent with runtime creation config.
     """
     tensor_type = TensorType.from_obj(arr)
     outs = tuple(tensor_type for _ in range(world_size))
@@ -131,16 +134,25 @@ class TestSpuKernels:
             protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        initialize_backend(0, world)
-        initialize_spu_runtime(cfg, world, link_ctxs)
+        runtime = create_runtime(0, world)
+        # Seed SPU env via kernel
+        seed_fn = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[0],
+        )
+        runtime.run_kernel(seed_fn, [])
 
         x = np.array([1, 2, 3], dtype=np.int32)
         mk = _makeshares_pfunc(x, world)
-        shares = run_kernel(mk, [x])
+        shares = runtime.run_kernel(mk, [x])
         assert len(shares) == 1 and isinstance(shares[0], SpuValue)
         rc = _reconstruct_pfunc(x, world)
         # run_kernel expects outs length=1; we call reconstruct with the share list
-        out = run_kernel(rc, shares)[0]
+        out = runtime.run_kernel(rc, shares)[0]
         np.testing.assert_array_equal(out, x)
 
     def test_makeshares_reconstruct_multiparty(self):
@@ -149,15 +161,35 @@ class TestSpuKernels:
             protocol=libspu.ProtocolKind.SEMI2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        initialize_backend(0, world)
-        initialize_spu_runtime(cfg, world, link_ctxs)
+        # seed rank0 state
+        runtime0 = create_runtime(0, world)
+        seed0 = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[0],
+        )
+        runtime0.run_kernel(seed0, [])
+        # seed rank1 state to simulate multi-rank kernel contexts
+        runtime1 = create_runtime(1, world)
+        seed1 = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[1],
+        )
+        runtime1.run_kernel(seed1, [])
 
         x = np.array([10, 20], dtype=np.int32)
         mk = _makeshares_pfunc(x, world)
-        shares = run_kernel(mk, [x])
+        shares = runtime0.run_kernel(mk, [x])
         assert len(shares) == world and all(isinstance(s, SpuValue) for s in shares)
         rc = _reconstruct_pfunc(x, world)
-        out = run_kernel(rc, list(shares))[0]
+        out = runtime0.run_kernel(rc, list(shares))[0]
         np.testing.assert_array_equal(out, x)
 
     def test_mlir_pphlo_single_party(self):
@@ -166,8 +198,16 @@ class TestSpuKernels:
             protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        initialize_backend(0, world)
-        initialize_spu_runtime(cfg, world, link_ctxs)
+        runtime = create_runtime(0, world)
+        seed = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[0],
+        )
+        runtime.run_kernel(seed, [])
 
         pfunc = _compile_add((3,), jnp.float32)
         x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -176,14 +216,14 @@ class TestSpuKernels:
 
         mkx = _makeshares_pfunc(x, world)
         mky = _makeshares_pfunc(y, world)
-        x_shares = run_kernel(mkx, [x])
-        y_shares = run_kernel(mky, [y])
+        x_shares = runtime.run_kernel(mkx, [x])
+        y_shares = runtime.run_kernel(mky, [y])
 
         # Single-party run (rank=0)
-        result_share = run_kernel(pfunc, [x_shares[0], y_shares[0]])[0]
+        result_share = runtime.run_kernel(pfunc, [x_shares[0], y_shares[0]])[0]
         assert isinstance(result_share, SpuValue)
         rc = _reconstruct_pfunc(expected, world)
-        out = run_kernel(rc, [result_share])[0]
+        out = runtime.run_kernel(rc, [result_share])[0]
         np.testing.assert_allclose(out, expected, rtol=1e-5)
 
     def test_mlir_pphlo_multiparty(self):
@@ -193,9 +233,20 @@ class TestSpuKernels:
         )
         link_ctxs = create_mem_link_contexts(world)
 
-        # Initialize once (rank 0 context sufficient for shared kernel_state)
-        initialize_backend(0, world)
-        initialize_spu_runtime(cfg, world, link_ctxs)
+        # Initialize per-rank runtime & seed (store explicit runtimes)
+        runtimes = {}
+        for r in range(world):
+            rt = create_runtime(r, world)
+            runtimes[r] = rt
+            seed_fn = PFunction(
+                fn_type="spu.seed_env",
+                ins_info=(),
+                outs_info=(),
+                config=cfg,
+                world=world,
+                link=link_ctxs[r],
+            )
+            rt.run_kernel(seed_fn, [])  # use explicit runtime
 
         pfunc = _compile_add((3,), jnp.float32)
         x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
@@ -204,16 +255,13 @@ class TestSpuKernels:
 
         mkx = _makeshares_pfunc(x, world)
         mky = _makeshares_pfunc(y, world)
-        x_shares: tuple[SpuValue, ...] = tuple(run_kernel(mkx, [x]))  # type: ignore[assignment]
-        y_shares: tuple[SpuValue, ...] = tuple(run_kernel(mky, [y]))  # type: ignore[assignment]
+        x_shares: tuple[SpuValue, ...] = tuple(runtimes[0].run_kernel(mkx, [x]))  # type: ignore[assignment]
+        y_shares: tuple[SpuValue, ...] = tuple(runtimes[0].run_kernel(mky, [y]))  # type: ignore[assignment]
 
         # Run mlir.pphlo concurrently per rank to satisfy interactive protocol
         def party(rank: int, xs: SpuValue, ys: SpuValue):
-            initialize_backend(
-                rank, world
-            )  # set current rank (shared state for kernel)
-            # Runtime state (config/world/links) already set in kernel_state
-            return run_kernel(pfunc, [xs, ys])[0]
+            rt = runtimes[rank]
+            return rt.run_kernel(pfunc, [xs, ys])[0]
 
         with ThreadPoolExecutor(max_workers=world) as pool:
             futures = [
@@ -223,5 +271,5 @@ class TestSpuKernels:
 
         assert len(results) == world and all(isinstance(r, SpuValue) for r in results)
         rc = _reconstruct_pfunc(expected, world)
-        out = run_kernel(rc, results)[0]
+        out = runtimes[0].run_kernel(rc, results)[0]
         np.testing.assert_allclose(out, expected, rtol=1e-5)

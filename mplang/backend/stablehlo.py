@@ -34,9 +34,10 @@ def _stablehlo_exec(pfunc: PFunction, args: tuple):
     if isinstance(mlir_text, bytes):
         mlir_text = mlir_text.decode("utf-8")
 
-    # Simple compile cache per process (kernel_state lives per evaluator rank)
+    # Simple compile cache per runtime (state pocket per backend namespace)
     ctx = cur_kctx()
-    cache = ctx.kernel_state.setdefault("stablehlo_cache", {})
+    pocket = ctx.state.setdefault("stablehlo", {})
+    cache = pocket.setdefault("compile_cache", {})
     compiled = cache.get(mlir_text)
     if compiled is None:
         backend = jax.default_backend()

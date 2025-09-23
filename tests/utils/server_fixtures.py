@@ -60,7 +60,7 @@ def get_free_ports(n: int) -> list[int]:
 class SpawnResult:
     ports: list[int]
     addresses: list[str]
-    processes: list[multiprocessing.Process]
+    processes: list
 
     def stop(self) -> None:
         for proc in self.processes:
@@ -142,7 +142,7 @@ def spawn_http_servers(
             )
             p.daemon = True
             p.start()
-            processes.append(p)
+            processes.append(p)  # type: ignore[arg-type]
 
             write_conn.close()  # Close the write end in the parent process
             try:
@@ -243,7 +243,7 @@ def _wait_for_servers(
 try:  # pragma: no cover - import guard for non-pytest contexts
     import pytest
 
-    @pytest.fixture
+    @pytest.fixture(scope="module")
     def http_servers(request):  # type: ignore
         """Generic parametrized fixture.
 

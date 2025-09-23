@@ -26,7 +26,7 @@ __all__ = []
 
 def _rng():
     kctx = cur_kctx()
-    pocket = kctx.kernel_state.setdefault("tee", {})
+    pocket = kctx.state.setdefault("tee", {})
     r = pocket.get("rng")
     if r is None:
         seed = int(os.environ.get("MPLANG_TEE_SEED", "0")) + kctx.rank * 10007

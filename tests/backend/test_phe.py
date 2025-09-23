@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from mplang.backend.base import initialize_backend, list_registered_kernels, run_kernel
+from mplang.backend.base import create_runtime, list_registered_kernels
 from mplang.backend.phe import CipherText, PublicKey, PrivateKey
 from mplang.core.dtype import BOOL, INT32
 from mplang.core.pfunc import PFunction
@@ -13,12 +13,12 @@ class TestPHEKernels:
     """Compact PHE kernel tests (clean rewrite)."""
 
     def setup_method(self):
-        initialize_backend(0, 1)
+        self.runtime = create_runtime(0, 1)
         self.scheme = "paillier"
         self.key_size = 512
 
     def _exec(self, p: PFunction, args: list):
-        return run_kernel(p, args)
+        return self.runtime.run_kernel(p, args)
 
     def _keygen(self):
         p = PFunction(

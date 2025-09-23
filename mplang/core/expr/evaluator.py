@@ -24,9 +24,10 @@ Expression evaluation engines for MPLang expressions.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol
 
-from mplang.backend.base import initialize_backend, run_kernel
+from mplang.backend.base import BackendRuntime
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -52,22 +53,19 @@ class IEvaluator(Protocol):
     def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]: ...
 
 
+@dataclass
 class EvalSemantic:
-    """Shared evaluation semantics and utilities for evaluators."""
+    """Shared evaluation semantics and utilities for evaluators.
 
-    def __init__(
-        self,
-        rank: int,
-        env: dict[str, Any],
-        comm: ICommunicator,
-        pfunc_handles: list[Any]
-        | None = None,  # legacy arg ignored (kept for API compat)
-    ) -> None:
-        self.rank = rank
-        self.comm = comm
-        self.env = env
-        # Initialize flat backend context (idempotent if called multiple times per rank)
-        initialize_backend(rank, comm.world_size)
+    Dataclass used only for attribute boilerplate; behavioral methods below.
+    pfunc_handles retained (ignored) for backward compatibility of signatures.
+    """
+
+    rank: int
+    env: dict[str, Any]
+    comm: ICommunicator
+    runtime: BackendRuntime
+    pfunc_handles: list[Any] | None = None
 
     # ------------------------------ Shared helpers (semantics) ------------------------------
     def _should_run(self, rmask: Mask | None, args: list[Any]) -> bool:
@@ -76,7 +74,7 @@ class EvalSemantic:
         return all(arg is not None for arg in args)
 
     def _exec_pfunc(self, pfunc: PFunction, args: list[Any]) -> list[Any]:
-        return run_kernel(pfunc, args)
+        return self.runtime.run_kernel(pfunc, args)
 
     def _eval_eval_node(self, expr: EvalExpr, arg_vals: list[Any]) -> list[Any]:
         assert isinstance(expr.pfunc, PFunction)
@@ -200,9 +198,11 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         rank: int,
         env: dict[str, Any],
         comm: ICommunicator,
-        pfunc_handles: list[Any] | None = None,
+        runtime: BackendRuntime,
+        pfunc_handles: list[Any] | None = None,  # legacy arg (ignored)
     ) -> None:
-        super().__init__(rank, env, comm, pfunc_handles)
+        # Pass explicit runtime to base semantic; pfunc_handles retained for compatibility.
+        super().__init__(rank, env, comm, runtime, pfunc_handles)
         self._cache: dict[int, Any] = {}  # Cache based on expr id
 
     def _get_var(self, name: str) -> Any:
@@ -233,8 +233,8 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
     # Internal helper to create a new evaluator with extended env for nested regions
     def _fork(self, sub_bindings: dict[str, Any]) -> RecursiveEvaluator:
         merged_env = {**self.env, **sub_bindings}
-        # pfunc_handles kept for compatibility though unused now
-        return RecursiveEvaluator(self.rank, merged_env, self.comm, None)
+        # Create a child evaluator sharing the same runtime (no new backend state).
+        return RecursiveEvaluator(self.rank, merged_env, self.comm, self.runtime, None)
 
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Evaluate function call expression."""
@@ -358,8 +358,9 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         if env is None:
             res = root.accept(self)
         else:
+            # Spawn a sibling evaluator with override env but same runtime.
             res = root.accept(
-                RecursiveEvaluator(self.rank, env, self.comm, self._pfunc_handles)
+                RecursiveEvaluator(self.rank, env, self.comm, self.runtime, None)
             )
         if not isinstance(res, list):
             raise ValueError(f"got {type(res)} for expression {root}")
@@ -368,6 +369,16 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
 
 class IterativeEvaluator(EvalSemantic):
     """Iterative (non-recursive) evaluator using dataflow traversal."""
+
+    def __init__(
+        self,
+        rank: int,
+        env: dict[str, Any],
+        comm: ICommunicator,
+        runtime: BackendRuntime,
+        pfunc_handles: list[Any] | None = None,  # legacy arg
+    ) -> None:
+        super().__init__(rank, env, comm, runtime, pfunc_handles)
 
     @staticmethod
     def _first(vals: list[Any]) -> Any:
@@ -486,6 +497,7 @@ def create_evaluator(
     rank: int,
     env: dict[str, Any],
     comm: ICommunicator,
+    runtime: BackendRuntime,
     pfunc_handles: list[Any] | None = None,  # legacy param (ignored)
     kind: str = "iterative",
 ) -> IEvaluator:
@@ -502,8 +514,8 @@ def create_evaluator(
         An IEvaluator instance of the requested kind.
     """
     if kind == "iterative":
-        return IterativeEvaluator(rank, env, comm, None)
+        return IterativeEvaluator(rank, env, comm, runtime, None)
     elif kind == "recursive":
-        return RecursiveEvaluator(rank, env, comm, None)
+        return RecursiveEvaluator(rank, env, comm, runtime, None)
     else:
         raise ValueError(f"Unknown evaluator kind: {kind}")

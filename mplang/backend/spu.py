@@ -66,9 +66,12 @@ class SpuValue:
 # SpuHandler removed (legacy handler API deprecated)
 
 
+def _get_spu_pocket() -> dict[str, Any]:
+    return cur_kctx().state.setdefault("spu", {})
+
+
 def _get_spu_config_and_world() -> tuple[libspu.RuntimeConfig, int]:
-    kctx = cur_kctx()
-    pocket = kctx.kernel_state.setdefault("spu", {})
+    pocket = _get_spu_pocket()
     cfg = pocket.get("config")
     world = pocket.get("world")
     if cfg is None or world is None:
@@ -76,29 +79,65 @@ def _get_spu_config_and_world() -> tuple[libspu.RuntimeConfig, int]:
     return cfg, int(world)
 
 
-def initialize_spu_runtime(
-    config: libspu.RuntimeConfig,
-    world_size: int,
-    link_ctxs: list[LinkCommunicator] | None,
+def _register_spu_env(
+    config: libspu.RuntimeConfig, world_size: int, link_ctx: LinkCommunicator | None
 ) -> None:
-    """Seed SPU kernel state.
+    """Register SPU config/world/link inside current kernel context.
 
-    If called inside a backend kernel execution, we use the active KernelContext.
-    If called outside (e.g., test setup), we fall back to global kernel_state so
-    that later kernel invocations see the config/world/link info.
+    Idempotent: if config/world already set, they must match; link is recorded per rank.
+    This replaces previous global fallback seeding logic.
     """
-    try:
-        kctx = cur_kctx()
-        pocket = kctx.kernel_state.setdefault("spu", {})
-    except RuntimeError:  # outside kernel execution
-        from mplang.backend import base as _base  # local import to avoid cycle
+    pocket = _get_spu_pocket()
+    prev_cfg = pocket.get("config")
+    prev_world = pocket.get("world")
+    if prev_cfg is None:
+        pocket["config"] = config
+        pocket["world"] = world_size
+    else:
+        # libspu RuntimeConfig may not implement __eq__; compare serialized repr
+        same_cfg = (
+            prev_cfg.SerializeToString() == config.SerializeToString()  # type: ignore[attr-defined]
+            if hasattr(prev_cfg, "SerializeToString")
+            and hasattr(config, "SerializeToString")
+            else prev_cfg == config
+        )
+        if not (same_cfg and prev_world == world_size):
+            raise RuntimeError("Conflicting SPU env registration")
+    # Store single link per runtime (one runtime per rank)
+    if link_ctx is not None:
+        pocket["link"] = link_ctx
 
-        pocket = _base._KERNEL_STATE.setdefault("spu", {})  # type: ignore[attr-defined]
-    # Always override to ensure clean test isolation
-    pocket["config"] = config
-    pocket["world"] = world_size
-    if link_ctxs is not None:
-        pocket["links"] = link_ctxs
+
+@backend_kernel("spu.seed_env")
+def _spu_seed_env(pfunc: PFunction, args: tuple) -> tuple:
+    """Backend kernel to seed SPU environment.
+
+    NOTE: This is a control-plane style operation (side-effect: installs SPU
+    config/link into the per-runtime state pocket) rather than a pure data
+    transformation. It remains a kernel temporarily for minimal surface
+    changes during the backend deglobalization refactor. Callers MUST invoke
+    it explicitly via `runtime.run_kernel(seed_pfunc, [])`, never through
+    `Evaluator.evaluate` (fast-path removed) to keep IR evaluation semantics
+    clean. A future cleanup may promote this to a dedicated runtime helper
+    (e.g. `seed_spu_env(runtime, config, world, link)`), at which point this
+    kernel can be deprecated.
+
+    Required attrs: config (RuntimeConfig), world (int)
+    Optional attr: link (LinkCommunicator or None)
+    """
+    cfg = pfunc.attrs.get("config")
+    world = pfunc.attrs.get("world")
+    link_ctx = pfunc.attrs.get("link", None)
+    if cfg is None or world is None:
+        raise ValueError("spu.seed_env requires 'config' and 'world' attrs")
+    _register_spu_env(cfg, int(world), link_ctx)
+    return ()
+
+
+def initialize_spu_runtime(*_a, **_kw):  # pragma: no cover - deprecated external API
+    raise RuntimeError(
+        "initialize_spu_runtime deprecated; invoke 'spu.seed_env' kernel instead"
+    )
 
 
 @backend_kernel("spu.makeshares")
@@ -155,26 +194,28 @@ def _spu_reconstruct(pfunc: PFunction, args: tuple) -> tuple:
 
 @backend_kernel("mlir.pphlo")
 def _spu_run_mlir(pfunc: PFunction, args: tuple) -> tuple:
-    """Execute compiled SPU function (mlir.pphlo) and return SpuValue outputs."""
+    """Execute compiled SPU function (mlir.pphlo) and return SpuValue outputs.
+
+    Participation rule: a rank participates iff its entry in the stored
+    link_ctx list is non-None. This allows us to allocate a world-sized list
+    (indexed by global rank) and simply assign None for non-SPU parties.
+    """
     if pfunc.fn_type != "mlir.pphlo":
         raise ValueError(f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.pphlo'")
 
     cfg, _ = _get_spu_config_and_world()
-    pocket = cur_kctx().kernel_state.setdefault("spu", {})
-    link_ctxs: list[LinkCommunicator] | None = pocket.get("links")
-    rank = cur_kctx().rank
-    link_ctx = None if link_ctxs is None or rank >= len(link_ctxs) else link_ctxs[rank]
+    pocket = _get_spu_pocket()
+    link_ctx: LinkCommunicator | None = pocket.get("link")
     if link_ctx is None:
-        raise RuntimeError(
-            "Link context not set for this rank; cannot execute mlir.pphlo"
-        )
+        raise RuntimeError("Rank not participating in SPU; no link set via seed_env")
 
-        # Create the real SPU runtime
-    spu_rt = spu_api.Runtime(link_ctx.get_lctx(), cfg)
-    if spu_rt is None:  # pragma: no cover - defensive
-        raise RuntimeError("SPU runtime not set up. Call setup() first.")
+    # Lazy runtime cache
+    spu_rt = pocket.get("runtime")
+    if spu_rt is None:
+        spu_rt = spu_api.Runtime(link_ctx.get_lctx(), cfg)
+        pocket["runtime"] = spu_rt
 
-        # Validate that all inputs are SpuValue objects
+    # Validate that all inputs are SpuValue objects
     for i, arg in enumerate(args):
         if not isinstance(arg, SpuValue):
             raise ValueError(

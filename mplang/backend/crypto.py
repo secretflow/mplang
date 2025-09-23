@@ -34,7 +34,7 @@ def _get_rng():
     Seed rule matches legacy handler: MPLANG_CRYPTO_SEED + rank*7919
     """
     kctx = cur_kctx()
-    pocket = kctx.kernel_state.setdefault("crypto", {})
+    pocket = kctx.state.setdefault("crypto", {})
     rng = pocket.get("rng")
     if rng is None:
         seed = int(os.environ.get("MPLANG_CRYPTO_SEED", "0")) + kctx.rank * 7919

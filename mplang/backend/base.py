@@ -1,8 +1,15 @@
-"""Flat backend kernel registry.
+"""Flat backend kernel registry & per-participant runtime.
 
-This supersedes the earlier BackendModule abstraction. Kernels are registered
-globally via @backend_kernel(fn_type="<namespace>.<op>") and executed by the
-evaluator through fn_type lookup.
+Design revision:
+    - Global, stateless kernel function catalog (fn_type -> callable).
+    - BackendRuntime: per-rank state & cache; executes kernels.
+    - Legacy global helpers removed after full migration to explicit runtimes.
+
+Benefits:
+        * No cross-rank state leakage (each runtime isolates state pockets).
+        * Simplifies backend kernels (e.g. SPU) by removing indirections like
+            links_by_rank; each rank stores its own link.
+        * Enables future multi-backend or multi-device runtimes per evaluator.
 """
 
 from __future__ import annotations
@@ -15,10 +22,11 @@ from typing import Any
 from mplang.core.pfunc import PFunction
 
 __all__ = [
+    "BackendRuntime",
     "KernelContext",
     "backend_kernel",
+    "create_runtime",
     "cur_kctx",
-    "initialize_backend",
     "list_registered_kernels",
 ]
 
@@ -27,11 +35,12 @@ __all__ = [
 
 @dataclass
 class KernelContext:
+    """Ephemeral call context set via contextvar while a kernel runs."""
+
     rank: int
     world_size: int
-    global_state: dict[str, Any]
-    kernel_state: dict[str, dict[str, Any]]  # per fn_type mutable pocket
-    cache: dict[str, Any]
+    state: dict[str, dict[str, Any]]  # backend namespace -> pocket
+    cache: dict[str, Any]  # runtime-level shared cache (per BackendRuntime)
 
 
 _CTX_VAR: contextvars.ContextVar[KernelContext | None] = contextvars.ContextVar(
@@ -49,8 +58,6 @@ def cur_kctx() -> KernelContext:
 # ---------------- Registry ----------------
 
 _KERNELS: dict[str, Callable[[PFunction, tuple], tuple]] = {}
-_KERNEL_STATE: dict[str, dict[str, Any]] = {}
-_GLOBAL_STATE: dict[str, Any] = {}
 _HANDLERS: list[object] = []  # deprecated; kept to avoid import errors
 
 
@@ -80,47 +87,58 @@ def register_handler_as_kernels(_handler):  # pragma: no cover - deprecated
     )
 
 
-def list_registered_kernels() -> list[str]:
+def list_registered_kernels() -> list[str]:  # public API unchanged
     return sorted(_KERNELS.keys())
 
 
-def initialize_backend(rank: int, world_size: int) -> None:
-    """Initialize global backend context (idempotent per rank).
+class BackendRuntime:
+    """Per-rank backend execution environment.
 
-    (Legacy handler.setup removed.)
+    Holds mutable backend state (namespaced pockets) and a cache. Stateless
+    kernel implementations look up their state through cur_kctx().
     """
 
-    _GLOBAL_STATE["rank"] = rank
-    _GLOBAL_STATE["world_size"] = world_size
-    # legacy handlers no longer supported
+    def __init__(self, rank: int, world_size: int):
+        self.rank = rank
+        self.world_size = world_size
+        self.state: dict[str, dict[str, Any]] = {}
+        self.cache: dict[str, Any] = {}
+
+    # Main entry
+    def run_kernel(self, pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
+        fn_type = pfunc.fn_type
+        fn = _KERNELS.get(fn_type)
+        if fn is None:
+            raise NotImplementedError(f"no backend kernel registered for {fn_type}")
+        kctx = KernelContext(
+            rank=self.rank,
+            world_size=self.world_size,
+            state=self.state,
+            cache=self.cache,
+        )
+        token = _CTX_VAR.set(kctx)
+        try:
+            result = fn(pfunc, tuple(arg_list))
+            if not isinstance(result, tuple):
+                raise TypeError(
+                    f"backend kernel {fn_type} must return tuple, got {type(result).__name__}"
+                )
+            if len(result) != len(pfunc.outs_info):
+                raise ValueError(
+                    f"backend kernel {fn_type} produced {len(result)} outputs, expected {len(pfunc.outs_info)}"
+                )
+            return list(result)
+        finally:
+            _CTX_VAR.reset(token)
+
+    # Optional helper
+    def reset(self) -> None:  # pragma: no cover - simple
+        self.state.clear()
+        self.cache.clear()
 
 
-def run_kernel(pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
-    fn_type = pfunc.fn_type
-    if fn_type not in _KERNELS:
-        raise NotImplementedError(f"no backend kernel registered for {fn_type}")
-    fn = _KERNELS[fn_type]
-    kctx = KernelContext(
-        rank=_GLOBAL_STATE.get("rank", -1),
-        world_size=_GLOBAL_STATE.get("world_size", -1),
-        global_state=_GLOBAL_STATE,
-        kernel_state=_KERNEL_STATE,
-        cache={},  # placeholder for future shared cache
-    )
-    token = _CTX_VAR.set(kctx)
-    try:
-        result = fn(pfunc, tuple(arg_list))
-        if not isinstance(result, tuple):
-            raise TypeError(
-                f"backend kernel {fn_type} must return tuple, got {type(result).__name__}"
-            )
-        if len(result) != len(pfunc.outs_info):
-            raise ValueError(
-                f"backend kernel {fn_type} produced {len(result)} outputs, expected {len(pfunc.outs_info)}"
-            )
-        return list(result)
-    finally:
-        _CTX_VAR.reset(token)
+def create_runtime(rank: int, world_size: int) -> BackendRuntime:
+    return BackendRuntime(rank, world_size)
 
 
 # Convenience alias for future import stability (keep old name references harmless)

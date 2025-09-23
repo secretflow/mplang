@@ -60,7 +60,7 @@ def get_free_ports(n: int) -> list[int]:
 class SpawnResult:
     ports: list[int]
     addresses: list[str]
-    processes: list
+    processes: list[multiprocessing.Process]
 
     def stop(self) -> None:
         for proc in self.processes:

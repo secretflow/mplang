@@ -22,7 +22,7 @@ class DummyTensor(MPObject):
     """Minimal tensor MPObject used for type-only frontend operations."""
 
     def __init__(
-        self, dtype, shape: tuple[int, ...]
+        self, dtype: Any, shape: tuple[int, ...]
     ):  # dtype may be np.dtype, DType, etc.
         self._mptype = MPType.tensor(DType.from_any(dtype), shape)
         self._ctx = DummyContext()

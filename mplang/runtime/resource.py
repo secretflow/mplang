@@ -260,7 +260,7 @@ def execute_computation(
         link=link_ctx,
     )
     # Run seeding kernel with evaluator (no inputs, no outputs)
-    evaluator.runtime.run_kernel(seed_pfunc, [])  # type: ignore[attr-defined]
+    evaluator.runtime.run_kernel(seed_pfunc, [])
 
     results = evaluator.evaluate(computation.expr)
 

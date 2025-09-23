@@ -157,10 +157,3 @@ def _crypto_hkdf(pfunc: PFunction, args: tuple) -> tuple:
     info = info_str.encode("utf-8")
     out = np.frombuffer(blake2b(secret.tobytes() + info)[:32], dtype=np.uint8)
     return (out,)
-
-
-class CryptoHandler:  # pragma: no cover - deprecated shim
-    def __init__(self, *_, **__):
-        raise RuntimeError(
-            "CryptoHandler removed; use flat crypto.* kernels via @backend_kernel"
-        )

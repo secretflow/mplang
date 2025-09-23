@@ -58,7 +58,6 @@ def cur_kctx() -> KernelContext:
 # ---------------- Registry ----------------
 
 _KERNELS: dict[str, Callable[[PFunction, tuple], tuple]] = {}
-_HANDLERS: list[object] = []  # deprecated; kept to avoid import errors
 
 
 def backend_kernel(
@@ -79,12 +78,6 @@ def backend_kernel(
         return fn
 
     return _decorator
-
-
-def register_handler_as_kernels(_handler):  # pragma: no cover - deprecated
-    raise RuntimeError(
-        "register_handler_as_kernels deprecated; rewrite backend with @backend_kernel"
-    )
 
 
 def list_registered_kernels() -> list[str]:  # public API unchanged

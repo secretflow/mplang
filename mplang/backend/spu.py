@@ -134,12 +134,6 @@ def _spu_seed_env(pfunc: PFunction, args: tuple) -> tuple:
     return ()
 
 
-def initialize_spu_runtime(*_a, **_kw):  # pragma: no cover - deprecated external API
-    raise RuntimeError(
-        "initialize_spu_runtime deprecated; invoke 'spu.seed_env' kernel instead"
-    )
-
-
 @backend_kernel("spu.makeshares")
 def _spu_makeshares(pfunc: PFunction, args: tuple) -> tuple:
     """Create SPU shares from input data.

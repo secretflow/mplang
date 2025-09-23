@@ -38,8 +38,3 @@ def _duckdb_sql(pfunc: PFunction, args: tuple):
             conn.register(name, df)
     res_df = conn.execute(pfunc.fn_text).fetchdf()
     return (res_df,)
-
-
-class DuckDBHandler:  # pragma: no cover - transitional
-    def __init__(self, *_, **__):
-        raise RuntimeError("DuckDBHandler deprecated; use sql[duckdb] kernel")

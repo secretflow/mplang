@@ -315,8 +315,3 @@ def _phe_decrypt(pfunc: PFunction, args: tuple):
         return (plaintext_np,)
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"Failed to decrypt data: {e}") from e
-
-
-class PHEHandler:  # pragma: no cover - transitional
-    def __init__(self, *_, **__):
-        raise RuntimeError("PHEHandler deprecated; use phe.* kernels")

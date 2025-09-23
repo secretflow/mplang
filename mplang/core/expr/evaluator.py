@@ -57,15 +57,14 @@ class IEvaluator(Protocol):
 class EvalSemantic:
     """Shared evaluation semantics and utilities for evaluators.
 
-    Dataclass used only for attribute boilerplate; behavioral methods below.
-    pfunc_handles retained (ignored) for backward compatibility of signatures.
+    Minimal dataclass carrying runtime execution context (rank/env/comm/runtime).
+    Legacy handler-based execution (pfunc_handles) has been fully removed.
     """
 
     rank: int
     env: dict[str, Any]
     comm: ICommunicator
     runtime: BackendRuntime
-    pfunc_handles: list[Any] | None = None
 
     # ------------------------------ Shared helpers (semantics) ------------------------------
     def _should_run(self, rmask: Mask | None, args: list[Any]) -> bool:
@@ -199,10 +198,8 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         env: dict[str, Any],
         comm: ICommunicator,
         runtime: BackendRuntime,
-        pfunc_handles: list[Any] | None = None,  # legacy arg (ignored)
     ) -> None:
-        # Pass explicit runtime to base semantic; pfunc_handles retained for compatibility.
-        super().__init__(rank, env, comm, runtime, pfunc_handles)
+        super().__init__(rank, env, comm, runtime)
         self._cache: dict[int, Any] = {}  # Cache based on expr id
 
     def _get_var(self, name: str) -> Any:
@@ -234,7 +231,7 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
     def _fork(self, sub_bindings: dict[str, Any]) -> RecursiveEvaluator:
         merged_env = {**self.env, **sub_bindings}
         # Create a child evaluator sharing the same runtime (no new backend state).
-        return RecursiveEvaluator(self.rank, merged_env, self.comm, self.runtime, None)
+        return RecursiveEvaluator(self.rank, merged_env, self.comm, self.runtime)
 
     def visit_eval(self, expr: EvalExpr) -> Any:
         """Evaluate function call expression."""
@@ -360,7 +357,7 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         else:
             # Spawn a sibling evaluator with override env but same runtime.
             res = root.accept(
-                RecursiveEvaluator(self.rank, env, self.comm, self.runtime, None)
+                RecursiveEvaluator(self.rank, env, self.comm, self.runtime)
             )
         if not isinstance(res, list):
             raise ValueError(f"got {type(res)} for expression {root}")
@@ -376,9 +373,8 @@ class IterativeEvaluator(EvalSemantic):
         env: dict[str, Any],
         comm: ICommunicator,
         runtime: BackendRuntime,
-        pfunc_handles: list[Any] | None = None,  # legacy arg
     ) -> None:
-        super().__init__(rank, env, comm, runtime, pfunc_handles)
+        super().__init__(rank, env, comm, runtime)
 
     @staticmethod
     def _first(vals: list[Any]) -> Any:
@@ -498,8 +494,7 @@ def create_evaluator(
     env: dict[str, Any],
     comm: ICommunicator,
     runtime: BackendRuntime,
-    pfunc_handles: list[Any] | None = None,  # legacy param (ignored)
-    kind: str = "iterative",
+    kind: str | None = "iterative",
 ) -> IEvaluator:
     """Factory to create an evaluator engine.
 
@@ -507,15 +502,14 @@ def create_evaluator(
         rank: Party rank.
         env: Initial variable environment.
         comm: Communicator for this party.
-        pfunc_handles: Backend handlers.
-        kind: "iterative" or "recursive".
+        kind: Evaluator implementation ("iterative" or "recursive").
 
     Returns:
         An IEvaluator instance of the requested kind.
     """
-    if kind == "iterative":
-        return IterativeEvaluator(rank, env, comm, runtime, None)
-    elif kind == "recursive":
-        return RecursiveEvaluator(rank, env, comm, runtime, None)
-    else:
-        raise ValueError(f"Unknown evaluator kind: {kind}")
+    # Backward compatibility: treat kind=None as default iterative implementation.
+    if kind is None or kind == "iterative":
+        return IterativeEvaluator(rank, env, comm, runtime)
+    if kind == "recursive":
+        return RecursiveEvaluator(rank, env, comm, runtime)
+    raise ValueError(f"Unknown evaluator kind: {kind}")

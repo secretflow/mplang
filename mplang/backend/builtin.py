@@ -186,9 +186,3 @@ def _debug_print(pfunc: PFunction, args: tuple):
     ctx = cur_kctx()
     print(f"[debug_print][rank={ctx.rank}] {prefix}{_summ(val)}")
     return (val,)
-
-
-# Backwards compatibility placeholder (old code may import BuiltinHandler)
-class BuiltinHandler:  # pragma: no cover - transitional
-    def __init__(self, *_, **__):
-        raise RuntimeError("BuiltinHandler deprecated; builtin kernels auto-registered")

@@ -44,9 +44,7 @@ class TestStablehloKernel:
 
         comm = _SingleComm(rank=0, world_size=1)
         runtime = create_runtime(rank=0, world_size=1)
-        ev = create_evaluator(
-            rank=0, env={}, comm=comm, runtime=runtime, pfunc_handles=[]
-        )
+        ev = create_evaluator(rank=0, env={}, comm=comm, runtime=runtime)
         self.ev = ev
         yield
 

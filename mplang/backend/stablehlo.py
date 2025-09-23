@@ -69,8 +69,3 @@ def _stablehlo_exec(pfunc: PFunction, args: tuple):
         return tuple(flat)
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"StableHLO execute failed: {e}") from e
-
-
-class StablehloHandler:  # pragma: no cover - transitional shim
-    def __init__(self, *_, **__):
-        raise RuntimeError("StablehloHandler deprecated; use mlir.stablehlo kernel")

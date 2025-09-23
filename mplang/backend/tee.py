@@ -61,10 +61,3 @@ def _tee_attest(pfunc: PFunction, args: tuple) -> tuple:
         raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")
     pk = quote[1:33].astype(np.uint8)
     return (pk,)
-
-
-class MockTeeHandler:  # pragma: no cover - deprecated shim
-    def __init__(self, *_, **__):
-        raise RuntimeError(
-            "MockTeeHandler removed; use flat tee.* kernels via @backend_kernel"
-        )

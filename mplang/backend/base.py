@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from mplang.core.dtype import DType
+from mplang.core.dtype import UINT8, DType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
@@ -107,6 +107,54 @@ KernelFn = Callable[..., Any]
 _KERNELS: dict[str, KernelFn] = {}
 
 
+def _validate_table_arg(
+    fn_type: str, arg_index: int, spec: TableType, value: Any
+) -> None:
+    if not isinstance(value, TableLike):
+        raise TypeError(
+            f"kernel {fn_type} input[{arg_index}] expects TableLike, got {type(value).__name__}"
+        )
+    if len(value.columns) != len(spec.columns):
+        raise ValueError(
+            f"kernel {fn_type} input[{arg_index}] column count mismatch: got {len(value.columns)}, expected {len(spec.columns)}"
+        )
+
+
+def _validate_tensor_arg(
+    fn_type: str, arg_index: int, spec: TensorType, value: Any
+) -> None:
+    # Backend-only handle sentinel (e.g., PHE keys) bypasses all structural checks
+    if tuple(spec.shape) == (-1, 0) and spec.dtype == UINT8:
+        return
+
+    if isinstance(value, (int, float, bool, complex)):
+        val_shape: tuple[Any, ...] = ()
+        duck_dtype: Any = type(value)
+    else:
+        if not isinstance(value, TensorLike):
+            raise TypeError(
+                f"kernel {fn_type} input[{arg_index}] expects TensorLike, got {type(value).__name__}"
+            )
+        val_shape = getattr(value, "shape", ())
+        duck_dtype = getattr(value, "dtype", None)
+
+    if tuple(spec.shape) != tuple(val_shape):
+        raise ValueError(
+            f"kernel {fn_type} input[{arg_index}] shape mismatch: got {val_shape}, expected {spec.shape}"
+        )
+
+    try:
+        val_dtype = DType.from_any(duck_dtype)
+    except (ValueError, TypeError):  # pragma: no cover
+        raise TypeError(
+            f"kernel {fn_type} input[{arg_index}] has unsupported dtype object {duck_dtype!r}"
+        ) from None
+    if val_dtype != spec.dtype:
+        raise ValueError(
+            f"kernel {fn_type} input[{arg_index}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
+        )
+
+
 def kernel_def(fn_type: str) -> Callable[[KernelFn], KernelFn]:
     """Decorator to register a backend kernel (new signature).
 
@@ -165,56 +213,17 @@ class BackendRuntime:
                 f"kernel {fn_type} arg count mismatch: got {len(arg_list)}, expect {len(pfunc.ins_info)}"
             )
 
-        import numpy as np  # used only for isinstance check with ndarray
-
         for idx, (spec, val) in enumerate(zip(pfunc.ins_info, arg_list, strict=True)):
-            # Table type path
             if isinstance(spec, TableType):
-                if not isinstance(val, TableLike):
-                    raise TypeError(
-                        f"kernel {fn_type} input[{idx}] expects TableLike, got {type(val).__name__}"
-                    )
-                if len(val.columns) != len(spec.columns):
-                    raise ValueError(
-                        f"kernel {fn_type} input[{idx}] column count mismatch: got {len(val.columns)}, expected {len(spec.columns)}"
-                    )
-                continue
-            elif isinstance(spec, TensorType):
-                # Sentinel for backend-only opaque handles (e.g., PHE keys): UINT8[(-1, 0)]
-                if tuple(spec.shape) == (-1, 0) and str(spec.dtype) == "uint8":
-                    # Skip structural validation for this input
-                    continue
-                if isinstance(val, (int, float, bool, complex)) and spec.shape == ():
-                    val_shape: tuple[Any, ...] = ()
-                    val_dtype_any: Any = type(val)
-                else:
-                    if not isinstance(val, (np.ndarray, TensorLike)):
-                        raise TypeError(
-                            f"kernel {fn_type} input[{idx}] expects TensorLike, got {type(val).__name__}"
-                        )
-                    val_shape = getattr(val, "shape", ())
-                    # some tensor likes may return None for dtype -> treat as unknown
-                    val_dtype_any = getattr(val, "dtype", None)
-                if tuple(spec.shape) != tuple(val_shape):
-                    raise ValueError(
-                        f"kernel {fn_type} input[{idx}] shape mismatch: got {val_shape}, expected {spec.shape}"
-                    )
-                if val_dtype_any is not None:
-                    try:
-                        val_dtype = DType.from_any(val_dtype_any)
-                    except (ValueError, TypeError):  # pragma: no cover
-                        raise TypeError(
-                            f"kernel {fn_type} input[{idx}] has unsupported dtype object {val_dtype_any!r}"
-                        ) from None
-                    if val_dtype != spec.dtype:
-                        raise ValueError(
-                            f"kernel {fn_type} input[{idx}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
-                        )
+                _validate_table_arg(fn_type, idx, spec, val)
                 continue
 
-            else:
-                # Unknown spec type: silently skip validation
+            if isinstance(spec, TensorType):
+                _validate_tensor_arg(fn_type, idx, spec, val)
                 continue
+
+            # Unknown spec type: silently skip validation (legacy behavior)
+            continue
 
         kctx = KernelContext(
             rank=self.rank,

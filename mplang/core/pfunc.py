@@ -36,8 +36,11 @@ class PFunction:
     1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
     2. User-defined programmable functions with custom code
 
-    The PFunction accepts a list of TensorLike or TableLike inputs and produces
-    TensorLike or TableLike outputs, and can be:
+    The PFunction accepts a list of typed inputs (TensorType/TableType). For
+    backend-only handles (e.g., crypto keys), use a sentinel TensorType
+    of UINT8 with shape (-1, 0) to indicate the argument should bypass
+    structural validation at runtime. Outputs should likewise use concrete
+    TensorType/TableType specs. PFunction can be:
     - Expressed and defined in the mplang frontend
     - Serialized for transmission between components
     - Interpreted and executed by backend runtime engines

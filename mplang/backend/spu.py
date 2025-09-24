@@ -109,7 +109,7 @@ def _register_spu_env(
 
 
 @kernel_def("spu.seed_env")
-def _spu_seed_env(pfunc: PFunction, args: tuple) -> tuple:
+def _spu_seed_env(pfunc: PFunction, *args: Any) -> Any:
     """Backend kernel to seed SPU environment.
 
     NOTE: This is a control-plane style operation (side-effect: installs SPU
@@ -131,11 +131,11 @@ def _spu_seed_env(pfunc: PFunction, args: tuple) -> tuple:
     if cfg is None or world is None:
         raise ValueError("spu.seed_env requires 'config' and 'world' attrs")
     _register_spu_env(cfg, int(world), link_ctx)
-    return ()
+    return None
 
 
 @kernel_def("spu.makeshares")
-def _spu_makeshares(pfunc: PFunction, args: tuple) -> tuple:
+def _spu_makeshares(pfunc: PFunction, *args: Any) -> Any:
     """Create SPU shares from input data.
 
     Args:
@@ -170,7 +170,7 @@ def _spu_makeshares(pfunc: PFunction, args: tuple) -> tuple:
 
 
 @kernel_def("spu.reconstruct")
-def _spu_reconstruct(pfunc: PFunction, args: tuple) -> tuple:
+def _spu_reconstruct(pfunc: PFunction, *args: Any) -> Any:
     """Reconstruct plaintext data from SPU shares."""
     cfg, world = _get_spu_config_and_world()
     assert len(args) == world, f"Expected {world} shares, got {len(args)}"
@@ -183,11 +183,11 @@ def _spu_reconstruct(pfunc: PFunction, args: tuple) -> tuple:
     shares = [spu_arg.share for spu_arg in spu_args]
     spu_io = spu_api.Io(world, cfg)
     reconstructed = spu_io.reconstruct(shares)
-    return (reconstructed,)
+    return reconstructed
 
 
 @kernel_def("mlir.pphlo")
-def _spu_run_mlir(pfunc: PFunction, args: tuple) -> tuple:
+def _spu_run_mlir(pfunc: PFunction, *args: Any) -> Any:
     """Execute compiled SPU function (mlir.pphlo) and return SpuValue outputs.
 
     Participation rule: a rank participates iff its entry in the stored

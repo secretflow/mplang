@@ -189,15 +189,16 @@ class TestBuiltinHandler:
 
     def test_identity_wrong_args(self):
         """Test identity with wrong number of arguments."""
+        # Declare expected single input so runtime enforces arity directly.
         identity_pfunc = PFunction(
             fn_type="builtin.identity",
-            ins_info=(),
-            outs_info=(),
+            ins_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
+            outs_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             fn_name="Identity",
         )
-        with pytest.raises(ValueError, match=r"builtin.identity expects 1 arg"):
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 0, expect 1"):
             self._exec(identity_pfunc, [])
-        with pytest.raises(ValueError, match=r"builtin.identity expects 1 arg"):
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 2, expect 1"):
             self._exec(identity_pfunc, [1, 2])
 
     def test_read_missing_path(self):
@@ -220,7 +221,7 @@ class TestBuiltinHandler:
             fn_name="Read",
             path="dummy.npy",
         )
-        with pytest.raises(ValueError, match=r"builtin.read expects 0 args"):
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 1, expect 0"):
             self._exec(read_pfunc, [np.array([1])])
 
     def test_write_missing_path(self):
@@ -239,14 +240,14 @@ class TestBuiltinHandler:
         """Test write with wrong number of arguments."""
         write_pfunc = PFunction(
             fn_type="builtin.write",
-            ins_info=(),
-            outs_info=(),
+            ins_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
+            outs_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             fn_name="Write",
             path="dummy.npy",
         )
-        with pytest.raises(ValueError, match=r"builtin.write expects 1 arg"):
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 0, expect 1"):
             self._exec(write_pfunc, [])
-        with pytest.raises(ValueError, match=r"builtin.write expects 1 arg"):
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 2, expect 1"):
             self._exec(write_pfunc, [1, 2])
 
     def test_read_nonexistent_file(self):

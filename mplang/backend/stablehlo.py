@@ -26,7 +26,7 @@ from mplang.core.pfunc import PFunction
 
 
 @kernel_def("mlir.stablehlo")
-def _stablehlo_exec(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
+def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     if pfunc.fn_type != "mlir.stablehlo":
         raise ValueError("stablehlo kernel received wrong fn_type")
 
@@ -62,7 +62,7 @@ def _stablehlo_exec(pfunc: PFunction, args: tuple[Any, ...]) -> tuple[Any, ...]:
     try:
         result = compiled.execute_sharded(jax_args)
         arrays = result.disassemble_into_single_device_arrays()
-        flat = []
+        flat: list[Any] = []
         for lst in arrays:
             if isinstance(lst, list) and len(lst) == 1:
                 flat.append(jnp.array(lst[0]))

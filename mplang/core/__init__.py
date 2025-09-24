@@ -20,7 +20,7 @@ including type systems, tracing mechanisms, and interpreter contexts.
 """
 
 # Core type system
-# Communication interfaces
+# Communication interfaces & core symbols
 from mplang.core.comm import (
     CollectiveMixin,
     CommunicatorBase,
@@ -28,19 +28,11 @@ from mplang.core.comm import (
     ICommunicator,
 )
 from mplang.core.dtype import DType
-
-# Interpreter system
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
-
-# Core object model
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType, Rank, Shape
-
-# Function handling
 from mplang.core.pfunc import PFunction
-
-# Primitive operations
 from mplang.core.primitive import (
     constant,
     debug_print,
@@ -57,11 +49,7 @@ from mplang.core.primitive import (
     while_loop,
 )
 from mplang.core.table import TableLike, TableType
-
-# Protocol types
 from mplang.core.tensor import TensorLike, TensorType
-
-# Tracing system
 from mplang.core.tracer import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 
 __all__ = [

@@ -21,7 +21,6 @@ import numpy as np
 
 from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
-from mplang.core.tensor import TensorType
 from mplang.utils.crypto import blake2b
 
 __all__: list[str] = []  # flat kernels only
@@ -86,36 +85,6 @@ def _crypto_decrypt(pfunc: PFunction, ct_with_nonce: Any, key: Any) -> Any:
     )
     pt_bytes = (ct ^ stream).astype(np.uint8)
     return pt_bytes
-
-
-@kernel_def("crypto.pack")
-def _crypto_pack(pfunc: PFunction, value: Any) -> Any:
-    x_any = np.asarray(value)
-    out = np.frombuffer(x_any.tobytes(order="C"), dtype=np.uint8)
-    return out
-
-
-@kernel_def("crypto.unpack")
-def _crypto_unpack(pfunc: PFunction, packed: Any) -> Any:
-    b = np.asarray(packed, dtype=np.uint8)
-    assert len(pfunc.outs_info) == 1
-    out_ty_any = pfunc.outs_info[0]
-    if not isinstance(out_ty_any, TensorType):
-        raise TypeError("unpack outs_info must be TensorType")
-    out_ty = out_ty_any
-    np_dtype = out_ty.dtype.numpy_dtype()
-    shape = tuple(out_ty.shape)
-    expected = (
-        int(np.prod(shape)) * np.dtype(np_dtype).itemsize
-        if len(shape) > 0
-        else np.dtype(np_dtype).itemsize
-    )
-    if b.size != expected:
-        raise ValueError(
-            f"unpack size mismatch: got {b.size} bytes, expect {expected} for {np_dtype} {shape}"
-        )
-    arr = np.frombuffer(b.tobytes(), dtype=np_dtype).reshape(shape)
-    return arr
 
 
 @kernel_def("crypto.kem_keygen")

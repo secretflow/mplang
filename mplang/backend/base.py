@@ -138,10 +138,18 @@ def _validate_tensor_arg(
         val_shape = getattr(value, "shape", ())
         duck_dtype = getattr(value, "dtype", None)
 
-    if tuple(spec.shape) != tuple(val_shape):
+    if len(spec.shape) != len(val_shape):
         raise ValueError(
-            f"kernel {fn_type} input[{arg_index}] shape mismatch: got {val_shape}, expected {spec.shape}"
+            f"kernel {fn_type} input[{arg_index}] rank mismatch: got {val_shape}, expected {spec.shape}"
         )
+
+    for dim_idx, (spec_dim, val_dim) in enumerate(
+        zip(spec.shape, val_shape, strict=True)
+    ):
+        if spec_dim >= 0 and spec_dim != val_dim:
+            raise ValueError(
+                f"kernel {fn_type} input[{arg_index}] shape mismatch at dim {dim_idx}: got {val_dim}, expected {spec_dim}"
+            )
 
     try:
         val_dtype = DType.from_any(duck_dtype)

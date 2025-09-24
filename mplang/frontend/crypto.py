@@ -26,8 +26,6 @@ Scope and contracts:
 
 from __future__ import annotations
 
-import math
-
 from mplang.core.dtype import UINT8
 from mplang.core.tensor import TensorType
 from mplang.frontend.base import stateless_mod
@@ -61,7 +59,10 @@ def enc(plaintext: TensorType, key: TensorType) -> TensorType:
         raise TypeError("enc expects UINT8 plaintext")
     if len(pt_ty.shape) != 1:
         raise TypeError("enc expects 1-D plaintext")
-    return TensorType(UINT8, (pt_ty.shape[0] + 12,))
+    length = pt_ty.shape[0]
+    if length >= 0:
+        return TensorType(UINT8, (length + 12,))
+    return TensorType(UINT8, (-1,))
 
 
 @_CRYPTO_MOD.simple_op()
@@ -73,31 +74,14 @@ def dec(ciphertext: TensorType, key: TensorType) -> TensorType:
     ct_ty = ciphertext
     if ct_ty.dtype != UINT8:
         raise TypeError("dec expects UINT8 ciphertext")
-    if len(ct_ty.shape) != 1 or ct_ty.shape[0] < 12:
+    if len(ct_ty.shape) != 1:
         raise TypeError("dec expects 1-D ciphertext with nonce")
-    return TensorType(UINT8, (ct_ty.shape[0] - 12,))
-
-
-@_CRYPTO_MOD.simple_op()
-def pack(x: TensorType) -> TensorType:
-    """Pack any tensor into a contiguous byte vector (C-order).
-
-    API: pack(x: T[...]) -> bytes: u8[P], where P = sizeof(T) * prod(shape or (1,)).
-    """
-    elem_count = 1 if len(x.shape) == 0 else math.prod(x.shape)
-    itemsize = x.dtype.numpy_dtype().itemsize
-    return TensorType(UINT8, (int(elem_count) * int(itemsize),))
-
-
-@_CRYPTO_MOD.simple_op()
-def unpack(b: TensorType, *, out_ty: TensorType) -> TensorType:
-    """Unpack a byte vector into a tensor specified by a TensorType.
-
-    API: unpack(bytes: u8[P], out_ty: TensorType) -> T[...]
-    """
-    if b.dtype != UINT8 or len(b.shape) != 1:
-        raise TypeError("unpack expects UINT8 1-D byte vector")
-    return out_ty
+    length = ct_ty.shape[0]
+    if length >= 0 and length < 12:
+        raise TypeError("dec expects 1-D ciphertext with nonce")
+    if length >= 0:
+        return TensorType(UINT8, (length - 12,))
+    return TensorType(UINT8, (-1,))
 
 
 @_CRYPTO_MOD.simple_op()

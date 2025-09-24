@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Flat builtin backend kernels.
-
-Updated to new kernel signature style: fn(pfunc: PFunction, *args) -> Any | tuple.
-Return normalization handled centrally by BackendRuntime.run_kernel.
-Legacy tuple(args) style removed for clarity.
-"""
-
 from __future__ import annotations
 
 import os

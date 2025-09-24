@@ -43,6 +43,8 @@ dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
 
 examples = ["scikit-learn", "tensorflow"]
 
+[tool.hatch.metadata.hooks.custom]
+
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
 

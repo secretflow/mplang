@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from mplang.core.dtype import DType
-from mplang.core.opaque import OpaqueType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
@@ -181,6 +180,10 @@ class BackendRuntime:
                     )
                 continue
             elif isinstance(spec, TensorType):
+                # Sentinel for backend-only opaque handles (e.g., PHE keys): UINT8[(-1, 0)]
+                if tuple(spec.shape) == (-1, 0) and str(spec.dtype) == "uint8":
+                    # Skip structural validation for this input
+                    continue
                 if isinstance(val, (int, float, bool, complex)) and spec.shape == ():
                     val_shape: tuple[Any, ...] = ()
                     val_dtype_any: Any = type(val)
@@ -208,9 +211,7 @@ class BackendRuntime:
                             f"kernel {fn_type} input[{idx}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
                         )
                 continue
-            elif isinstance(spec, OpaqueType):
-                # Explicitly skip validation for opaque specs
-                continue
+
             else:
                 # Unknown spec type: silently skip validation
                 continue

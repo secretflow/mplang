@@ -32,7 +32,6 @@ from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType, Rank, Shape
-from mplang.core.opaque import OpaqueType
 from mplang.core.pfunc import PFunction
 from mplang.core.primitive import (
     constant,
@@ -65,7 +64,6 @@ __all__ = [
     "MPObject",
     "MPType",
     "Mask",
-    "OpaqueType",
     "PFunction",
     "Rank",
     "Shape",

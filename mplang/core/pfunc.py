@@ -19,7 +19,6 @@ from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Any
 
-from mplang.core.opaque import OpaqueType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
 
@@ -37,10 +36,11 @@ class PFunction:
     1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
     2. User-defined programmable functions with custom code
 
-    The PFunction accepts a list of typed inputs (TensorType/TableType) and may also
-    include opaque semantic parameters (OpaqueType) for arguments that should bypass
-    structural validation (e.g. crypto keys, handles). It produces typed outputs or
-    opaque outputs correspondingly, and can be:
+    The PFunction accepts a list of typed inputs (TensorType/TableType). For
+    backend-only handles (e.g., crypto keys), use a sentinel TensorType
+    of UINT8 with shape (-1, 0) to indicate the argument should bypass
+    structural validation at runtime. Outputs should likewise use concrete
+    TensorType/TableType specs. PFunction can be:
     - Expressed and defined in the mplang frontend
     - Serialized for transmission between components
     - Interpreted and executed by backend runtime engines
@@ -64,8 +64,8 @@ class PFunction:
 
     # Required fields - these define the core execution context
     fn_type: str  # Unique identifier for backend routing
-    ins_info: tuple[TensorType | TableType | OpaqueType, ...]
-    outs_info: tuple[TensorType | TableType | OpaqueType, ...]
+    ins_info: tuple[TensorType | TableType, ...]
+    outs_info: tuple[TensorType | TableType, ...]
 
     # Optional fields for programmable functions
     fn_name: str | None  # Function name (for programmable functions)
@@ -77,8 +77,8 @@ class PFunction:
     def __init__(
         self,
         fn_type: str,
-        ins_info: Sequence[TensorType | TableType | OpaqueType],
-        outs_info: Sequence[TensorType | TableType | OpaqueType],
+        ins_info: Sequence[TensorType | TableType],
+        outs_info: Sequence[TensorType | TableType],
         *,
         fn_name: str | None = None,
         fn_text: str | None = None,

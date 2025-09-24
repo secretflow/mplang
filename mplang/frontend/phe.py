@@ -14,8 +14,8 @@
 
 """PHE (Partially Homomorphic Encryption) frontend operations."""
 
-from mplang.core.dtype import COMPLEX128
-from mplang.core.mptype import TensorType
+from mplang.core.dtype import UINT8
+from mplang.core.tensor import TensorType
 from mplang.frontend.base import stateless_mod
 
 _PHE_MOD = stateless_mod("phe")
@@ -25,12 +25,14 @@ _PHE_MOD = stateless_mod("phe")
 def keygen(
     *, scheme: str = "paillier", key_size: int = 2048
 ) -> tuple[TensorType, TensorType]:
-    """Generate a PHE key pair: returns (public_key, private_key)."""
-    # For keys, dtype is meaningless as they shouldn't be used for computation,
-    # so we choose a relatively uncommon dtype to satisfy the type system
-    public_key_ty = TensorType(COMPLEX128, (1,))
-    private_key_ty = TensorType(COMPLEX128, (1,))
-    return public_key_ty, private_key_ty
+    """Generate a PHE key pair: returns (public_key, private_key).
+
+    Keys are represented with a sentinel TensorType UINT8[(-1, 0)] to indicate
+    non-structural, backend-only handles. Runtime validation will treat this
+    shape as an opaque placeholder and skip dtype/shape checks.
+    """
+    key_spec = TensorType(UINT8, (-1, 0))
+    return key_spec, key_spec
 
 
 @_PHE_MOD.simple_op()

@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import numpy as np
@@ -24,6 +23,7 @@ from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
+from mplang.runtime.data_providers import get_provider, resolve_uri
 from mplang.utils import table_utils
 
 
@@ -50,16 +50,14 @@ def _read(pfunc: PFunction) -> Any:
     if path is None:
         raise ValueError("missing path attr for builtin.read")
     out_t = pfunc.outs_info[0]
+    uri = resolve_uri(str(path))
+    prov = get_provider(uri.scheme)
+    if prov is None:
+        raise NotImplementedError(f"no resource provider for scheme: {uri.scheme}")
     try:
-        if isinstance(out_t, TableType):
-            with open(path, "rb") as f:
-                csv_bytes = f.read()
-            df = table_utils.csv_to_dataframe(csv_bytes)
-            return df
-        else:
-            data = np.load(path)
-            return data
-    except Exception as e:  # pragma: no cover - filesystem errors
+        ctx = cur_kctx()
+        return prov.read(uri, out_t, ctx=ctx)
+    except Exception as e:  # pragma: no cover - provider errors
         raise RuntimeError(f"builtin.read failed: {e}") from e
 
 
@@ -68,16 +66,13 @@ def _write(pfunc: PFunction, obj: Any) -> Any:
     path = pfunc.attrs.get("path")
     if path is None:
         raise ValueError("missing path attr for builtin.write")
+    uri = resolve_uri(str(path))
+    prov = get_provider(uri.scheme)
+    if prov is None:
+        raise NotImplementedError(f"no resource provider for scheme: {uri.scheme}")
     try:
-        dir_name = os.path.dirname(path)
-        if dir_name:
-            os.makedirs(dir_name, exist_ok=True)
-        if hasattr(obj, "__dataframe__") or isinstance(obj, pd.DataFrame):
-            csv_bytes = table_utils.dataframe_to_csv(obj)  # type: ignore
-            with open(path, "wb") as f:
-                f.write(csv_bytes)
-        else:
-            np.save(path, _to_numpy(obj))
+        ctx = cur_kctx()
+        prov.write(uri, obj, ctx=ctx)
         return obj
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"builtin.write failed: {e}") from e

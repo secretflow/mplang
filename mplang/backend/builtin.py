@@ -196,7 +196,7 @@ def _unpack(pfunc: PFunction, packed: Any) -> Any:
         shape = tuple(out_ty.shape)
         if any(dim < 0 for dim in shape):
             raise ValueError("builtin.unpack does not support dynamic tensor shapes")
-        elem_count = int(np.prod(shape)) if len(shape) > 0 else 1
+        elem_count = int(np.prod(shape))
         expected = elem_count * np.dtype(np_dtype).itemsize
         if b.size != expected:
             raise ValueError(

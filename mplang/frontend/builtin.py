@@ -28,22 +28,32 @@ _BUILTIN_MOD = stateless_mod("builtin")
 
 @_BUILTIN_MOD.simple_op()
 def identity(x: TensorType) -> TensorType:
-    """Identity on type: captures the underlying MPObject (if any) but kernel sees only the type.
+    """Return the input type unchanged.
 
-    Under strict typed_op semantics positional MPObject is converted to its TensorType before entering.
+    Args:
+        x: The input tensor type. If called with an MPObject, the value is
+            captured positionally; the kernel sees only the type.
+
+    Returns:
+        The same type as ``x``.
     """
     return x
 
 
 @_BUILTIN_MOD.simple_op()
 def read(*, path: str, ty: TensorType) -> TensorType:
-    """Type-only kernel for reading a tensor/table from a path.
+    """Declare reading a value of type ``ty`` from ``path`` (type-only).
 
-    Attributes:
-      - path: str destination to read from (carried as PFunction attr)
-      - ty:   TensorType/TableType describing the expected output type
+    Args:
+        path: Non-empty path or URI to read from (stored as an attribute).
+        ty: The expected output type/schema.
 
-    Returns: ty (shape/dtype/schema), no inputs captured.
+    Returns:
+        Exactly ``ty``.
+
+    Raises:
+        ValueError: If ``path`` is empty.
+        TypeError: If ``ty`` is not a TensorType or TableType.
     """
     if not isinstance(path, str) or path == "":
         raise ValueError("path must be a non-empty string")
@@ -55,9 +65,14 @@ def read(*, path: str, ty: TensorType) -> TensorType:
 
 @_BUILTIN_MOD.simple_op()
 def write(x: TensorType, *, path: str) -> TensorType:
-    """Write op: returns same type it consumes; runtime handles side effect.
+    """Declare writing the input value to ``path`` and return the same type.
 
-    Positional MPObject (tensor/table) will be captured; kernel sees only its type.
+    Args:
+        x: The value's type to be written; values are captured positionally.
+        path: Destination path or URI (attribute).
+
+    Returns:
+        The same type as ``x``.
     """
     return x
 
@@ -66,6 +81,20 @@ def write(x: TensorType, *, path: str) -> TensorType:
 def constant(
     data: TensorLike | ScalarType | TableLike,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Embed a literal tensor/table and return the full triad.
+
+    Args:
+        data: Constant payload. Supports scalars, array-like tensors, or
+            table-like dataframes.
+
+    Returns:
+        Tuple[PFunction, list[MPObject], PyTreeDef]:
+        - PFunction: ``fn_type='builtin.constant'`` with one output whose type
+            matches ``data``; payload serialized via ``data_bytes`` with
+            ``data_format`` ('bytes[numpy]' or 'bytes[csv]').
+        - list[MPObject]: Empty (no inputs captured).
+        - PyTreeDef: Output tree (single leaf).
+    """
     import numpy as np
 
     data_bytes: bytes
@@ -103,19 +132,23 @@ def constant(
 
 @_BUILTIN_MOD.simple_op()
 def rank() -> TensorType:
-    """Type-only kernel: returns the UINT64 scalar tensor type for current rank.
+    """Return the scalar UINT64 tensor type for the current party rank.
 
-    Runtime provides the concrete rank value per party during execution; here we
-    only declare the output type with no inputs captured and no attributes.
+    Returns:
+        A scalar ``UINT64`` tensor type (shape ``()``).
     """
     return TensorType(UINT64, ())
 
 
 @_BUILTIN_MOD.simple_op()
 def prand(*, shape: Shape = ()) -> TensorType:
-    """Type-only kernel: private random UINT64 tensor of given shape.
+    """Declare a private random UINT64 tensor with the given shape.
 
-    Shape is attached as a PFunction attribute via typed_op; no inputs.
+    Args:
+        shape: Output tensor shape. Defaults to ``()``.
+
+    Returns:
+        A ``UINT64`` tensor type with the specified shape.
     """
     return TensorType(UINT64, shape)
 
@@ -124,21 +157,30 @@ def prand(*, shape: Shape = ()) -> TensorType:
 def debug_print(
     x: TensorType | TableType, *, prefix: str = ""
 ) -> TableType | TensorType:
-    """Debug-print pass-through: type identity with side-effect attribute.
+    """Print a value at runtime and return the same type.
 
-    Accepts tensor/table type; MPObject positional (if provided) is captured automatically.
+    Args:
+        x: The value to print (captured positionally; kernel sees only type).
+        prefix: Optional text prefix for the printed output.
+
+    Returns:
+        The same type as ``x``.
     """
     return x
 
 
 @_BUILTIN_MOD.simple_op()
 def pack(x: TensorType | TableType) -> TensorType:
-    """Type-only pack operator: models serialization into a byte vector.
+    """Serialize a tensor/table into a byte vector (type-only).
 
-    The frontend only declares the type transformation; the runtime decides
-    whether any actual serialization takes place. The result is always a
-    one-dimensional UINT8 tensor with unknown length (-1 means runtime
-    determined).
+    Args:
+        x: Input type to pack.
+
+    Returns:
+        A ``UINT8`` tensor type with shape ``(-1,)`` (length decided at runtime).
+
+    Raises:
+        TypeError: If ``x`` is not a TensorType or TableType.
     """
 
     if not isinstance(x, (TensorType, TableType)):
@@ -149,10 +191,19 @@ def pack(x: TensorType | TableType) -> TensorType:
 
 @_BUILTIN_MOD.simple_op()
 def unpack(b: TensorType, *, out_ty: TensorType | TableType) -> TensorType | TableType:
-    """Type-only unpack operator: inverse of `pack`.
+    """Deserialize a byte vector into the explicit output type.
 
-    Requires a one-dimensional UINT8 tensor input (length can be -1) and
-    returns the explicit `out_ty` type description.
+    Args:
+        b: Byte vector type. Must be ``UINT8`` with shape ``(N,)`` (``N`` may be
+            ``-1``).
+        out_ty: Resulting type/schema after unpacking.
+
+    Returns:
+        Exactly ``out_ty``.
+
+    Raises:
+        TypeError: If ``out_ty`` is not a TensorType/TableType, or if ``b`` is
+            not a 1-D UINT8 tensor.
     """
 
     if not isinstance(out_ty, (TensorType, TableType)):
@@ -166,6 +217,21 @@ def unpack(b: TensorType, *, out_ty: TensorType | TableType) -> TensorType | Tab
 
 @_BUILTIN_MOD.simple_op()
 def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
+    """Convert a homogeneous-typed table to a dense 2D tensor.
+
+    Args:
+        table: Input table whose columns all share the same dtype.
+        number_rows: Number of rows in the resulting tensor. Must be ``>= 0``.
+
+    Returns:
+        A rank-2 tensor with dtype equal to the table column dtype and shape
+        ``(number_rows, table.num_columns())``.
+
+    Raises:
+        ValueError: If the table is empty or ``number_rows < 0``.
+        TypeError: If the table has heterogeneous column dtypes or ``number_rows``
+            is not an int.
+    """
     if table.num_columns() == 0:
         raise ValueError("Cannot pack empty table")
     col_dtypes = list(table.column_types())
@@ -184,6 +250,21 @@ def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
 
 @_BUILTIN_MOD.simple_op()
 def tensor_to_table(tensor: TensorType, *, column_names: list[str]) -> TableType:
+    """Convert a rank-2 tensor into a table with named columns.
+
+    Args:
+        tensor: Rank-2 tensor with shape ``(N, F)``.
+        column_names: List of unique, non-whitespace column names of length ``F``.
+
+    Returns:
+        A table with ``F`` columns named as provided, each with dtype
+        ``tensor.dtype``.
+
+    Raises:
+        TypeError: If ``tensor`` is not rank-2, or if any column name is not a
+            string.
+        ValueError: If names are empty/whitespace, duplicated, or length != ``F``.
+    """
     if len(tensor.shape) != 2:
         raise TypeError("tensor_to_table expects a rank-2 tensor (N,F)")
     n_cols = tensor.shape[1]

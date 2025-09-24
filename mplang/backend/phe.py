@@ -24,16 +24,22 @@ from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction, TensorHandler
 
 # This controls the decimal precision used in lightPHE for float operations
-PRECISION = 12
+# we force it to 0 to only support integer operations
+# we will support negative and floating-point with our own encoding/decoding
+PRECISION = 0
 
 
 class PublicKey:
     """PHE Public Key that implements TensorLike protocol."""
 
-    def __init__(self, key_data: Any, scheme: str, key_size: int):
+    def __init__(self, key_data: Any, scheme: str, key_size: int, 
+                 max_value: int = 2**100, fxp_bits: int = 12, modulus: int | None = None):
         self.key_data = key_data
         self.scheme = scheme
         self.key_size = key_size
+        self.max_value = max_value  # Maximum absolute value B for range encoding
+        self.fxp_bits = fxp_bits    # Fixed-point precision bits for float encoding
+        self.modulus = modulus      # Paillier modulus N for range encoding
 
     @property
     def dtype(self) -> Any:
@@ -43,18 +49,27 @@ class PublicKey:
     def shape(self) -> tuple[int, ...]:
         return ()
 
+    @property
+    def max_float_value(self) -> float:
+        """Maximum float value that can be encoded."""
+        return self.max_value / (2 ** self.fxp_bits)
+
     def __repr__(self) -> str:
-        return f"PublicKey(scheme={self.scheme}, key_size={self.key_size})"
+        return f"PublicKey(scheme={self.scheme}, key_size={self.key_size}, max_value={self.max_value}, fxp_bits={self.fxp_bits})"
 
 
 class PrivateKey:
     """PHE Private Key that implements TensorLike protocol."""
 
-    def __init__(self, sk_data: Any, pk_data: Any, scheme: str, key_size: int):
+    def __init__(self, sk_data: Any, pk_data: Any, scheme: str, key_size: int,
+                 max_value: int = 2**100, fxp_bits: int = 12, modulus: int | None = None):
         self.sk_data = sk_data  # Store private key data
         self.pk_data = pk_data  # Store public key data as well
         self.scheme = scheme
         self.key_size = key_size
+        self.max_value = max_value  # Maximum absolute value B for range encoding
+        self.fxp_bits = fxp_bits    # Fixed-point precision bits for float encoding
+        self.modulus = modulus      # Paillier modulus N for range encoding
 
     @property
     def dtype(self) -> Any:
@@ -64,8 +79,13 @@ class PrivateKey:
     def shape(self) -> tuple[int, ...]:
         return ()
 
+    @property
+    def max_float_value(self) -> float:
+        """Maximum float value that can be encoded."""
+        return self.max_value / (2 ** self.fxp_bits)
+
     def __repr__(self) -> str:
-        return f"PrivateKey(scheme={self.scheme}, key_size={self.key_size})"
+        return f"PrivateKey(scheme={self.scheme}, key_size={self.key_size}, max_value={self.max_value}, fxp_bits={self.fxp_bits})"
 
 
 class CipherText:
@@ -79,6 +99,9 @@ class CipherText:
         scheme: str,
         key_size: int,
         pk_data: Any = None,  # Store public key for operations
+        max_value: int = 2**100,
+        fxp_bits: int = 12,
+        modulus: int | None = None,
     ):
         self.ct_data = ct_data
         self.semantic_dtype = semantic_dtype
@@ -86,6 +109,9 @@ class CipherText:
         self.scheme = scheme
         self.key_size = key_size
         self.pk_data = pk_data
+        self.max_value = max_value
+        self.fxp_bits = fxp_bits
+        self.modulus = modulus
 
     @property
     def dtype(self) -> Any:
@@ -94,6 +120,11 @@ class CipherText:
     @property
     def shape(self) -> tuple[int, ...]:
         return self.semantic_shape
+
+    @property
+    def max_float_value(self) -> float:
+        """Maximum float value that can be encoded."""
+        return self.max_value / (2 ** self.fxp_bits)
 
     def __repr__(self) -> str:
         return f"CipherText(dtype={self.semantic_dtype}, shape={self.semantic_shape}, scheme={self.scheme})"
@@ -107,6 +138,93 @@ class PHEHandler(TensorHandler):
 
     def setup(self, rank: int) -> None: ...
     def teardown(self) -> None: ...
+    
+    # Range-based encoding functions for negative numbers and floats
+    def _range_encode_integer(self, value: int, max_value: int, modulus: int) -> int:
+        """
+        Range encoding function for integers.
+        - Positive numbers: encode(m) = m
+        - Negative numbers: encode(m) = N + m
+        """
+        if not (-max_value <= value <= max_value):
+            raise ValueError(f"Integer value {value} out of range [-{max_value}, {max_value}]")
+        
+        if value >= 0:
+            return value
+        else:
+            return modulus + value
+
+    def _range_encode_float(self, value: float, max_value: int, fxp_bits: int, modulus: int) -> int:
+        """
+        Range encoding function for floats.
+        1. Fixed-point conversion: scaled_int = round(value * 2^fxp_bits)
+        2. Integer encoding rules
+        """
+        max_float = max_value / (2 ** fxp_bits)
+        if not (-max_float <= value <= max_float):
+            raise ValueError(f"Float value {value} out of range [-{max_float}, {max_float}]")
+        
+        # Fixed-point encoding: float → scaled integer
+        scaled_int = round(value * (2 ** fxp_bits))
+        
+        # Use integer encoding rules
+        return self._range_encode_integer(scaled_int, max_value, modulus)
+
+    def _range_encode_mixed(self, value, max_value: int, fxp_bits: int, modulus: int, semantic_dtype: DType) -> int:
+        """
+        Mixed encoding function - automatically handle integers and floats based on semantic type.
+        Use semantic_dtype to choose between integer and float encoding.
+        """
+        if semantic_dtype.is_floating:
+            # For floating semantic types, always use float encoding
+            return self._range_encode_float(float(value), max_value, fxp_bits, modulus)
+        else:
+            # For integer semantic types, use integer encoding
+            return self._range_encode_integer(int(value), max_value, modulus)
+
+    def _range_decode_integer(self, encoded_value: int, max_value: int, modulus: int) -> int:
+        """
+        Range decoding function for integers.
+        - If r <= max_value: decode(r) = r
+        - If r >= N - max_value: decode(r) = r - N
+        - If max_value < r < N - max_value: overflow error
+        """
+        # Ensure handling integer
+        if isinstance(encoded_value, (list, tuple)):
+            encoded_value = encoded_value[0]
+        encoded_value = int(encoded_value) % modulus
+
+        if encoded_value <= max_value:
+            return encoded_value
+        elif encoded_value >= modulus - max_value:
+            return encoded_value - modulus
+        else:
+            raise ValueError(f"Decoded value {encoded_value} is in overflow region")
+
+    def _range_decode_float(self, encoded_value: int, max_value: int, fxp_bits: int, modulus: int) -> float:
+        """
+        Range decoding function for floats.
+        1. Integer decoding: decoded_int = range_decode_integer(encoded_value)
+        2. Fixed-point conversion: value = decoded_int / 2^fxp_bits
+        """
+        # First decode as integer
+        decoded_int = self._range_decode_integer(encoded_value, max_value, modulus)
+        
+        # Fixed-point decoding: scaled integer → float
+        return decoded_int / (2 ** fxp_bits)
+
+    def _range_decode_mixed(self, encoded_value: int, max_value: int, fxp_bits: int, modulus: int, semantic_dtype: DType):
+        """
+        Mixed decoding function - decode based on semantic type.
+        Use semantic_dtype to choose between integer and float decoding.
+        """
+        if semantic_dtype.is_floating:
+            # For floating semantic types, decode as float
+            return self._range_decode_float(encoded_value, max_value, fxp_bits, modulus)
+        else:
+            # For integer semantic types, decode as integer
+            return self._range_decode_integer(encoded_value, max_value, modulus)
+
     def list_fn_names(self) -> list[str]:
         return [
             "phe.keygen",
@@ -178,6 +296,8 @@ class PHEHandler(TensorHandler):
 
         scheme = pfunc.attrs.get("scheme", "paillier")
         key_size = pfunc.attrs.get("key_size", 2048)
+        max_value = pfunc.attrs.get("max_value", 2**100)  # Use larger range to avoid overflow
+        fxp_bits = pfunc.attrs.get("fxp_bits", 12)
 
         # Validate scheme
         if scheme.lower() not in ["paillier", "elgamal"]:
@@ -195,14 +315,34 @@ class PHEHandler(TensorHandler):
 
             pk_data = phe.cs.keys["public_key"]
             sk_data = phe.cs.keys["private_key"]
+            modulus = phe.cs.plaintext_modulo  # Get Paillier modulus N
 
-            public_key = PublicKey(key_data=pk_data, scheme=scheme, key_size=key_size)
+            # Validate safety: N should be much larger than 3*max_value
+            if modulus <= 3 * max_value:
+                raise ValueError(f"Modulus {modulus} is too small for max_value {max_value}. Require N >> 3*B")
+
+            public_key = PublicKey(
+                key_data=pk_data, 
+                scheme=scheme, 
+                key_size=key_size,
+                max_value=max_value,
+                fxp_bits=fxp_bits,
+                modulus=modulus
+            )
             private_key = PrivateKey(
                 sk_data=sk_data,
                 pk_data=pk_data,
                 scheme=scheme,
                 key_size=key_size,
+                max_value=max_value,
+                fxp_bits=fxp_bits,
+                modulus=modulus
             )
+
+            return [public_key, private_key]
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to generate PHE keys: {e}") from e
 
             return [public_key, private_key]
 
@@ -239,7 +379,6 @@ class PHEHandler(TensorHandler):
             semantic_shape = plaintext_np.shape
 
             # Create lightPHE instance with the same scheme/key_size as the key
-            # Use higher precision for better float accuracy
             phe = LightPHE(
                 algorithm_name=public_key.scheme,
                 key_size=public_key.key_size,
@@ -248,24 +387,34 @@ class PHEHandler(TensorHandler):
             # Set the public key
             phe.cs.keys["public_key"] = public_key.key_data
 
-            # Always use list encryption for consistent behavior and to handle negative numbers
+            # Prepare data for encryption using range encoding
             flat_data = plaintext_np.flatten()
+            
+            # Use mixed encoding for consistent handling of integers and floats
+            encoded_data_list = []
+            for val in flat_data:
+                # Use mixed encoding to handle both integers and floats uniformly
+                if public_key.modulus is None:
+                    raise ValueError("Public key modulus is None, key generation may have failed")
+                encoded_val = self._range_encode_mixed(
+                    val, public_key.max_value, public_key.fxp_bits, public_key.modulus, semantic_dtype
+                )
+                encoded_data_list.append(encoded_val)
 
-            if semantic_dtype.is_floating:
-                data_list = [float(x) for x in flat_data]
-            else:  # integer types
-                data_list = [int(x) for x in flat_data]
+            # Encrypt the encoded values (note: not passing as list, just the value)
+            lightphe_ciphertext = [phe.encrypt(val) for val in encoded_data_list]
 
-            lightphe_ciphertext = [phe.encrypt([val]) for val in data_list]
-
-            # Create CipherText object
+            # Create CipherText object with encoding parameters
             ciphertext = CipherText(
                 ct_data=lightphe_ciphertext,
                 semantic_dtype=semantic_dtype,
                 semantic_shape=semantic_shape,
                 scheme=public_key.scheme,
                 key_size=public_key.key_size,
-                pk_data=public_key.key_data,  # Store public key for later operations
+                pk_data=public_key.key_data,
+                max_value=public_key.max_value,
+                fxp_bits=public_key.fxp_bits,
+                modulus=public_key.modulus,
             )
 
             return [ciphertext]
@@ -340,18 +489,24 @@ class PHEHandler(TensorHandler):
             target_dtype = ciphertext.semantic_dtype
             flat_data = plaintext_broadcasted.flatten()
 
-            if target_dtype.is_floating:
-                multiplier = [float(x) for x in flat_data]
-            else:  # integer types
-                multiplier = [int(x) for x in flat_data]
+            # For multiplication, plaintext multipliers should NOT be encoded
+            # The ciphertext already contains the encoded value, multiplying by raw plaintext preserves semantics
+            raw_multipliers = []
+            for val in flat_data:
+                # Convert to appropriate numeric type but don't apply any encoding
+                if target_dtype.is_floating:
+                    raw_val = float(val)
+                else:
+                    raw_val = int(val)
+                raw_multipliers.append(raw_val)
 
             # Perform homomorphic multiplication
             # In Paillier, ciphertext * plaintext is supported
             result_ciphertext = [
-                broadcasted_ct_data[i] * [multiplier[i]] for i in range(len(multiplier))
+                broadcasted_ct_data[i] * raw_multipliers[i] for i in range(len(raw_multipliers))
             ]
 
-            # Create result CipherText with the broadcasted shape
+            # Create result CipherText with the broadcasted shape and encoding parameters
             return [
                 CipherText(
                     ct_data=result_ciphertext,
@@ -360,6 +515,9 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
                 )
             ]
 
@@ -469,7 +627,7 @@ class PHEHandler(TensorHandler):
             for i in range(len(broadcasted_ct1_data))
         ]
 
-        # Create result CipherText with broadcasted shape
+        # Create result CipherText with broadcasted shape and encoding parameters
         return CipherText(
             ct_data=result_ciphertext,
             semantic_dtype=ct1.semantic_dtype,
@@ -477,6 +635,9 @@ class PHEHandler(TensorHandler):
             scheme=ct1.scheme,
             key_size=ct1.key_size,
             pk_data=ct1.pk_data,
+            max_value=ct1.max_value,
+            fxp_bits=ct1.fxp_bits,
+            modulus=ct1.modulus,
         )
 
     def _execute_add_ct2pt(
@@ -544,12 +705,17 @@ class PHEHandler(TensorHandler):
         target_dtype = ciphertext.semantic_dtype
         flat_data = plaintext_broadcasted.flatten()
 
-        if target_dtype.is_floating:
-            data_list = [float(x) for x in flat_data]
-        else:  # integer types
-            data_list = [int(x) for x in flat_data]
+        # Use range encoding for consistency with encryption
+        encoded_data_list = []
+        for val in flat_data:
+            if ciphertext.modulus is None:
+                raise ValueError("Ciphertext modulus is None, encryption may have failed")
+            encoded_val = self._range_encode_mixed(
+                val, ciphertext.max_value, ciphertext.fxp_bits, ciphertext.modulus, target_dtype
+            )
+            encoded_data_list.append(encoded_val)
 
-        encrypted_plaintext = [phe.encrypt([val]) for val in data_list]
+        encrypted_plaintext = [phe.encrypt(val) for val in encoded_data_list]
 
         # Perform addition
         result_ciphertext = [
@@ -557,7 +723,7 @@ class PHEHandler(TensorHandler):
             for i in range(len(encrypted_plaintext))
         ]
 
-        # Create result CipherText with broadcasted shape
+        # Create result CipherText with broadcasted shape and encoding parameters
         return CipherText(
             ct_data=result_ciphertext,
             semantic_dtype=ciphertext.semantic_dtype,
@@ -565,6 +731,9 @@ class PHEHandler(TensorHandler):
             scheme=ciphertext.scheme,
             key_size=ciphertext.key_size,
             pk_data=ciphertext.pk_data,
+            max_value=ciphertext.max_value,
+            fxp_bits=ciphertext.fxp_bits,
+            modulus=ciphertext.modulus,
         )
 
     def _create_encrypted_zero(self, ciphertext: CipherText) -> Any:
@@ -584,13 +753,15 @@ class PHEHandler(TensorHandler):
         )
         phe.cs.keys["public_key"] = ciphertext.pk_data
 
-        # Encrypt zero value of appropriate type
-        if ciphertext.semantic_dtype.is_floating:
-            zero_val = 0.0
-        else:
-            zero_val = 0
+        # Encrypt zero value using range encoding for consistency
+        if ciphertext.modulus is None:
+            raise ValueError("Ciphertext modulus is None, encryption may have failed")
+        
+        zero_encoded = self._range_encode_mixed(
+            0, ciphertext.max_value, ciphertext.fxp_bits, ciphertext.modulus, ciphertext.semantic_dtype
+        )
 
-        return phe.encrypt([zero_val])
+        return phe.encrypt(zero_encoded)
 
     def _execute_decrypt(
         self, pfunc: PFunction, args: list[TensorLike]
@@ -641,33 +812,42 @@ class PHEHandler(TensorHandler):
             target_dtype = ciphertext.semantic_dtype.to_numpy()
             decrypted_raw = [phe.decrypt(ct) for ct in ciphertext.ct_data]
 
-            # Since we always use list encryption, decrypted_raw is always a list
-            if not isinstance(decrypted_raw, list):
-                raise RuntimeError(
-                    f"Expected list from decryption, got {type(decrypted_raw)}"
+            # Decode using range decoding
+            if ciphertext.modulus is None:
+                raise ValueError("Ciphertext modulus is None, encryption may have failed")
+            
+            decoded_data = []
+            for encrypted_val in decrypted_raw:
+                # Extract numeric value from lightPHE result
+                if isinstance(encrypted_val, (int, float)):
+                    raw_val = encrypted_val
+                elif hasattr(encrypted_val, '__getitem__') and len(encrypted_val) > 0:
+                    raw_val = encrypted_val[0]
+                else:
+                    raise ValueError(f"Cannot extract numeric value from {encrypted_val}")
+                
+                # Convert to int for decoding
+                int_val = int(raw_val)
+                
+                # Use mixed decoding which returns values based on semantic type
+                decoded_val = self._range_decode_mixed(
+                    int_val, ciphertext.max_value, ciphertext.fxp_bits, ciphertext.modulus, ciphertext.semantic_dtype
                 )
+                decoded_data.append(decoded_val)
 
-            # Validate expected number of elements
-            expected_size = (
-                int(np.prod(ciphertext.semantic_shape))
-                if ciphertext.semantic_shape
-                else 1
-            )
-            if len(decrypted_raw) != expected_size:
-                raise RuntimeError(
-                    f"Expected {expected_size} values, got {len(decrypted_raw)} values"
-                )
-
-            # Handle overflow for smaller integer types
+            # Convert to target dtype
             if target_dtype.kind in "iu":  # integer types
+                # Convert floats back to integers for integer semantic types
+                processed_data = [int(round(val)) for val in decoded_data]
+                # Handle overflow for smaller integer types
                 info = np.iinfo(target_dtype)
                 processed_data = [
-                    max(info.min, min(info.max, val[0])) for val in decrypted_raw
+                    max(info.min, min(info.max, val)) for val in processed_data
                 ]
-            else:
-                processed_data = decrypted_raw
+            else:  # float types
+                processed_data = decoded_data
 
-            # Unified approach: create array from list, then reshape to target shape
+            # Create array and reshape to target shape
             plaintext_np = np.array(processed_data, dtype=target_dtype).reshape(
                 ciphertext.semantic_shape
             )
@@ -750,9 +930,9 @@ class PHEHandler(TensorHandler):
                 if is_zero_func(pt_val):
                     result_ciphertext = get_encrypted_zero()
                 else:
-                    result_ciphertext = ciphertext.ct_data[0] * [
-                        float(pt_val) if target_dtype.is_floating else int(pt_val)
-                    ]
+                    # Use single value (not list) for multiplication
+                    val = float(pt_val) if target_dtype.is_floating else int(pt_val)
+                    result_ciphertext = ciphertext.ct_data[0] * val
                 result_ct_data = [result_ciphertext]
 
             elif len(ct_shape) == 1 and len(pt_shape) == 1:
@@ -768,9 +948,9 @@ class PHEHandler(TensorHandler):
                 for i in range(ct_shape[0]):
                     pt_val = pt_data[i]
                     if not is_zero_func(pt_val):
-                        product = ciphertext.ct_data[i] * [
-                            float(pt_val) if target_dtype.is_floating else int(pt_val)
-                        ]
+                        # Convert to appropriate type and use single value (not list)
+                        val = float(pt_val) if target_dtype.is_floating else int(pt_val)
+                        product = ciphertext.ct_data[i] * val
                         non_zero_products.append(product)
 
                 # Handle result
@@ -801,13 +981,9 @@ class PHEHandler(TensorHandler):
                         pt_val = pt_data[j]
                         if not is_zero_func(pt_val):
                             ct_idx = i * ct_shape[1] + j
-                            product = ciphertext.ct_data[ct_idx] * [
-                                (
-                                    float(pt_val)
-                                    if target_dtype.is_floating
-                                    else int(pt_val)
-                                )
-                            ]
+                            # Use single value (not list) for multiplication
+                            val = float(pt_val) if target_dtype.is_floating else int(pt_val)
+                            product = ciphertext.ct_data[ct_idx] * val
                             row_products.append(product)
 
                     # Handle row result
@@ -837,13 +1013,9 @@ class PHEHandler(TensorHandler):
                     for i in range(pt_shape[0]):  # For each row in the column
                         pt_val = pt_data[i, j]
                         if not is_zero_func(pt_val):
-                            product = ciphertext.ct_data[i] * [
-                                (
-                                    float(pt_val)
-                                    if target_dtype.is_floating
-                                    else int(pt_val)
-                                )
-                            ]
+                            # Use single value (not list) for multiplication
+                            val = float(pt_val) if target_dtype.is_floating else int(pt_val)
+                            product = ciphertext.ct_data[i] * val
                             col_products.append(product)
 
                     # Handle column result
@@ -875,13 +1047,9 @@ class PHEHandler(TensorHandler):
                             pt_val = pt_data[k, j]
                             if not is_zero_func(pt_val):
                                 ct_idx = i * ct_shape[1] + k
-                                product = ciphertext.ct_data[ct_idx] * [
-                                    (
-                                        float(pt_val)
-                                        if target_dtype.is_floating
-                                        else int(pt_val)
-                                    )
-                                ]
+                                # Use single value (not list) for multiplication
+                                val = float(pt_val) if target_dtype.is_floating else int(pt_val)
+                                product = ciphertext.ct_data[ct_idx] * val
                                 products.append(product)
 
                         # Handle element result
@@ -929,13 +1097,9 @@ class PHEHandler(TensorHandler):
                                 pt_val = pt_flat[pt_idx]
                                 if not is_zero_func(pt_val):
                                     ct_idx = i * last_dim_ct + k
-                                    product = ct_flat[ct_idx] * [
-                                        (
-                                            float(pt_val)
-                                            if target_dtype.is_floating
-                                            else int(pt_val)
-                                        )
-                                    ]
+                                    # Use single value (not list) for multiplication
+                                    val = float(pt_val) if target_dtype.is_floating else int(pt_val)
+                                    product = ct_flat[ct_idx] * val
                                     products.append(product)
 
                             # Handle element result
@@ -954,7 +1118,7 @@ class PHEHandler(TensorHandler):
                         f"CipherText shape {ct_shape}, plaintext shape {pt_shape}"
                     )
 
-            # Create result CipherText with computed shape
+            # Create result CipherText with computed shape and encoding parameters
             return [
                 CipherText(
                     ct_data=result_ct_data,
@@ -963,6 +1127,9 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
                 )
             ]
 
@@ -1086,7 +1253,10 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
-                )
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
+                    )
             ]
 
         except ValueError:
@@ -1108,7 +1278,10 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
-                )
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
+                    )
             ]
 
         except ValueError:
@@ -1260,7 +1433,10 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
-                )
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
+                    )
             ]
         except ValueError:
             # Re-raise ValueError directly (validation errors)
@@ -1385,7 +1561,10 @@ class PHEHandler(TensorHandler):
                     scheme=c1.scheme,
                     key_size=c1.key_size,
                     pk_data=c1.pk_data,
-                )
+                    max_value=c1.max_value,
+                    fxp_bits=c1.fxp_bits,
+                    modulus=c1.modulus,
+                    )
             ]
 
         except ValueError:
@@ -1479,7 +1658,7 @@ class PHEHandler(TensorHandler):
                     f"with {new_size} elements"
                 )
 
-            # Create result CipherText with new shape (ct_data remains the same)
+            # Create result CipherText with new shape and encoding parameters (ct_data remains the same)
             return [
                 CipherText(
                     ct_data=ciphertext.ct_data,  # Same encrypted data
@@ -1488,6 +1667,9 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
                 )
             ]
 
@@ -1593,7 +1775,10 @@ class PHEHandler(TensorHandler):
                     scheme=ciphertext.scheme,
                     key_size=ciphertext.key_size,
                     pk_data=ciphertext.pk_data,
-                )
+                    max_value=ciphertext.max_value,
+                    fxp_bits=ciphertext.fxp_bits,
+                    modulus=ciphertext.modulus,
+                    )
             ]
 
         except ValueError:

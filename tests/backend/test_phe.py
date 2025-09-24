@@ -190,7 +190,8 @@ class TestPHEHandler:
         decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
         decrypted = decrypted_result[0]
         assert decrypted.dtype == np.float32
-        assert abs(decrypted.item() - 3.14) < 1e-6
+        # Use appropriate precision for fixed-point encoding (12 bits = ~2.4e-4 precision)
+        assert abs(decrypted.item() - 3.14) < 3e-4
 
     def test_encrypt_decrypt_array_int64(self):
         """Test encrypt/decrypt cycle for array int64."""
@@ -437,7 +438,8 @@ class TestPHEHandler:
             outs_info=(TensorType.from_obj(ciphertext_val),),
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        assert abs(decrypted.item() - 4.0) < 1e-6
+        # Use appropriate precision for fixed-point encoding (12 bits = ~2.4e-4 precision)
+        assert abs(decrypted.item() - 4.0) < 3e-4
 
     def test_add_ciphertext_plaintext_array_int8(self):
         """Test CipherText + plaintext addition with int8 array."""
@@ -1398,7 +1400,8 @@ class TestPHEHandler:
 
             # Check value (with tolerance for floating point)
             if np.issubdtype(plaintext.dtype, np.floating):
-                assert abs(decrypted.item() - plaintext.item()) < 1e-6
+                # Use appropriate precision for fixed-point encoding (12 bits = ~2.4e-4 precision)
+                assert abs(decrypted.item() - plaintext.item()) < 3e-4
             else:
                 assert decrypted.item() == plaintext.item()
 
@@ -2090,7 +2093,7 @@ class TestPHEHandler:
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
         decrypted_array = np.asarray(decrypted)
-        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=3e-4)
 
     def test_gather_multidimensional_out_of_bounds(self):
         """Test gather with out of bounds indices in multidimensional context."""
@@ -2562,7 +2565,7 @@ class TestPHEHandler:
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result, sk])[0]
         decrypted_array = np.asarray(decrypted)
-        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=3e-4)
 
     def test_scatter_multidimensional_out_of_bounds(self):
         """Test scatter with out of bounds indices in multidimensional context."""
@@ -2806,7 +2809,7 @@ class TestPHEHandler:
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
         expected = np.array([1.5, 2.5, 3.5, 4.5, 5.5], dtype=np.float64)
-        np.testing.assert_allclose(decrypted, expected, rtol=1e-10)
+        np.testing.assert_allclose(decrypted, expected, rtol=3e-4)
 
     def test_concat_invalid_args(self):
         """Test concat with invalid number of arguments."""
@@ -3199,7 +3202,7 @@ class TestPHEHandler:
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
         expected = np.array([[1.1, 2.2], [3.3, 4.4], [5.5, 6.6]], dtype=np.float64)
         decrypted_array = np.asarray(decrypted)
-        np.testing.assert_allclose(decrypted_array, expected, rtol=1e-10)
+        np.testing.assert_allclose(decrypted_array, expected, rtol=3e-4)
 
     def test_concat_multidimensional_invalid_axis(self):
         """Test concat operation with invalid axis."""
@@ -3389,7 +3392,7 @@ class TestPHEHandler:
         assert isinstance(decrypted, np.ndarray)
         assert decrypted.dtype == np.float64
         assert decrypted.shape == (2, 2, 2)
-        np.testing.assert_allclose(decrypted, plaintext, rtol=1e-10)
+        np.testing.assert_allclose(decrypted, plaintext, rtol=3e-4)
 
     def test_decrypt_multidimensional_large_matrix_int16(self):
         """Test encrypt/decrypt cycle for large matrix int16."""
@@ -3830,7 +3833,7 @@ class TestPHEHandler:
             outs_info=(TensorType.from_obj(expected_result),),
         )
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        np.testing.assert_allclose(decrypted, expected_result, rtol=1e-10)
+        np.testing.assert_allclose(decrypted, expected_result, rtol=3e-4)
 
     def test_dot_multidimensional_shape_mismatch(self):
         """Test dot product with incompatible shapes."""
@@ -4098,7 +4101,7 @@ class TestPHEHandler:
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
         expected_result = original_matrix.flatten()
         decrypted_array = np.asarray(decrypted)
-        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=3e-4)
 
     def test_transpose_2d_matrix(self):
         """Test transpose operation on 2D matrix."""
@@ -4415,7 +4418,7 @@ class TestPHEHandler:
         decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
         expected_result = original_matrix.T
         decrypted_array = np.asarray(decrypted)
-        np.testing.assert_allclose(decrypted_array, expected_result, rtol=1e-10)
+        np.testing.assert_allclose(decrypted_array, expected_result, rtol=3e-4)
 
     def test_gather_axis_parameter_2d_matrix_axis_1(self):
         """Test gather along axis 1 for 2D matrix."""

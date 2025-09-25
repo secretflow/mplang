@@ -60,7 +60,6 @@ def resolve_uri(path: str) -> ResolvedURI:
     - Supported schemes out-of-the-box (pluggable via ``register_provider``):
         * ``file``: local filesystem paths (default when no scheme is provided)
         * ``mem``: in-memory, per-runtime key-value storage
-        * ``var``: per-runtime/session variables
         * ``s3``: placeholder for object storage (requires external plugin)
         * ``secret``: placeholder for secret manager/KMS (requires external plugin)
 
@@ -82,8 +81,8 @@ def resolve_uri(path: str) -> ResolvedURI:
     >>> resolve_uri("mem://ds1").scheme
     'mem'
 
-    >>> resolve_uri("var://session/input").scheme
-    'var'
+    >>> resolve_uri("symbols://shared_model").scheme
+    'symbols'
 
     >>> resolve_uri("s3://bucket/key").scheme
     's3'
@@ -214,30 +213,6 @@ class MemProvider(DataProvider):
         store[uri.raw] = value
 
 
-class VarProvider(DataProvider):
-    """Session/runtime variable provider.
-
-    Default implementation uses per-runtime state pocket; integration with HTTP
-    session symbols can be added by pre-populating this pocket.
-    """
-
-    def __init__(self) -> None:
-        self._pocket = _KeyedPocket("var")
-
-    def read(
-        self, uri: ResolvedURI, out_spec: TensorType | TableType, *, ctx: KernelContext
-    ) -> Any:
-        store = self._pocket.get_map(ctx)
-        key = uri.raw
-        if key not in store:
-            raise FileNotFoundError(f"var symbol not found: {key}")
-        return store[key]
-
-    def write(self, uri: ResolvedURI, value: Any, *, ctx: KernelContext) -> None:
-        store = self._pocket.get_map(ctx)
-        store[uri.raw] = value
-
-
 class S3Provider(DataProvider):
     """Placeholder S3 provider. Install external plugin to enable."""
 
@@ -273,7 +248,6 @@ class SecretProvider(DataProvider):
 # Register default providers
 register_provider("file", FileProvider())
 register_provider("mem", MemProvider())
-register_provider("var", VarProvider())
 # Stubs to signal missing providers explicitly (can be overridden by plugins)
 register_provider("s3", S3Provider())
 register_provider("secret", SecretProvider())

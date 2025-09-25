@@ -1495,3 +1495,467 @@ class TestPHEKernels:
                 assert np.allclose(out, pt, atol=1e-3)
             else:
                 np.testing.assert_array_equal(out, pt)
+
+    def test_various_integer_types_encryption(self):
+        """Test encryption/decryption with various integer types."""
+        pk, sk = self._keygen()
+
+        # Test different integer types
+        integer_types = [
+            (np.int8, 127),
+            (np.int16, 32767),
+            (np.int32, 2147483647),
+            (np.uint8, 255),
+            (np.uint16, 65535),
+        ]
+
+        for dtype, max_val in integer_types:
+            # Test positive values
+            test_values = [
+                np.array(1, dtype=dtype),
+                np.array(max_val // 2, dtype=dtype),
+                np.array([1, 2, 3], dtype=dtype),
+                np.array([[10, 20], [30, 40]], dtype=dtype),
+            ]
+
+            for pt in test_values:
+                enc = PFunction(
+                    fn_type="phe.encrypt",
+                    ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                    outs_info=(TensorType.from_obj(pt),),
+                )
+                ct = self._exec(enc, [pt, pk])[0]
+
+                dec = PFunction(
+                    fn_type="phe.decrypt",
+                    ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                    outs_info=(TensorType.from_obj(pt),),
+                )
+                out = self._exec(dec, [ct, sk])[0]
+                np.testing.assert_array_equal(out, pt)
+
+    def test_various_float_types_encryption(self):
+        """Test encryption/decryption with various float types."""
+        pk, sk = self._keygen()
+
+        # Test different float types
+        float_types = [np.float32, np.float64]
+
+        for dtype in float_types:
+            test_values = [
+                np.array(3.14, dtype=dtype),
+                np.array(-2.718, dtype=dtype),
+                np.array([1.1, 2.2, 3.3], dtype=dtype),
+                np.array([[1.5, 2.5], [3.5, 4.5]], dtype=dtype),
+            ]
+
+            for pt in test_values:
+                enc = PFunction(
+                    fn_type="phe.encrypt",
+                    ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                    outs_info=(TensorType.from_obj(pt),),
+                )
+                ct = self._exec(enc, [pt, pk])[0]
+
+                dec = PFunction(
+                    fn_type="phe.decrypt",
+                    ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                    outs_info=(TensorType.from_obj(pt),),
+                )
+                out = self._exec(dec, [ct, sk])[0]
+
+                # Use appropriate tolerance for floating point comparison
+                np.testing.assert_allclose(out, pt, atol=1e-3)
+
+    def test_integer_types_homomorphic_addition(self):
+        """Test homomorphic addition with various integer types."""
+        pk, sk = self._keygen()
+
+        integer_types = [np.int8, np.int16, np.int32, np.uint8, np.uint16]
+
+        for dtype in integer_types:
+            # Test cipher + cipher addition
+            a = np.array([10, 20], dtype=dtype)
+            b = np.array([5, 15], dtype=dtype)
+
+            enc_a = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            ca = self._exec(enc_a, [a, pk])[0]
+
+            enc_b = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(b), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(b),),
+            )
+            cb = self._exec(enc_b, [b, pk])[0]
+
+            add = PFunction(
+                fn_type="phe.add",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            cr = self._exec(add, [ca, cb])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            out = self._exec(dec, [cr, sk])[0]
+            expected = a + b
+            np.testing.assert_array_equal(out, expected)
+
+            # Test cipher + plain addition
+            add_plain = PFunction(
+                fn_type="phe.add",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            cr_plain = self._exec(add_plain, [ca, b])[0]
+            out_plain = self._exec(dec, [cr_plain, sk])[0]
+            np.testing.assert_array_equal(out_plain, expected)
+
+    def test_float_types_homomorphic_addition(self):
+        """Test homomorphic addition with various float types."""
+        pk, sk = self._keygen()
+
+        float_types = [np.float32, np.float64]
+
+        for dtype in float_types:
+            # Test cipher + cipher addition
+            a = np.array([1.5, 2.5], dtype=dtype)
+            b = np.array([0.5, 1.5], dtype=dtype)
+
+            enc_a = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            ca = self._exec(enc_a, [a, pk])[0]
+
+            enc_b = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(b), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(b),),
+            )
+            cb = self._exec(enc_b, [b, pk])[0]
+
+            add = PFunction(
+                fn_type="phe.add",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            cr = self._exec(add, [ca, cb])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            out = self._exec(dec, [cr, sk])[0]
+            expected = a + b
+            np.testing.assert_allclose(out, expected, atol=1e-3)
+
+            # Test cipher + plain addition
+            add_plain = PFunction(
+                fn_type="phe.add",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            cr_plain = self._exec(add_plain, [ca, b])[0]
+            out_plain = self._exec(dec, [cr_plain, sk])[0]
+            np.testing.assert_allclose(out_plain, expected, atol=1e-3)
+
+    def test_integer_types_homomorphic_multiplication(self):
+        """Test homomorphic multiplication with various integer types."""
+        pk, sk = self._keygen()
+
+        integer_types = [np.int8, np.int16, np.int32, np.uint8, np.uint16]
+
+        for dtype in integer_types:
+            # Test cipher * plain multiplication
+            a = np.array([2, 3], dtype=dtype)
+            b = np.array([5, 7], dtype=dtype)
+
+            enc_a = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            ca = self._exec(enc_a, [a, pk])[0]
+
+            mul = PFunction(
+                fn_type="phe.mul",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            cr = self._exec(mul, [ca, b])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            out = self._exec(dec, [cr, sk])[0]
+            expected = a * b
+            np.testing.assert_array_equal(out, expected)
+
+    def test_float_types_homomorphic_multiplication(self):
+        """Test homomorphic multiplication with float ciphertext and integer plaintext."""
+        pk, sk = self._keygen()
+
+        float_types = [np.float32, np.float64]
+
+        for dtype in float_types:
+            # Test cipher * plain multiplication (float ciphertext with integer plaintext)
+            a = np.array([2.5, 3.5], dtype=dtype)
+            b = np.array([2, 1], dtype=np.int32)  # Use integer plaintext
+
+            enc_a = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            ca = self._exec(enc_a, [a, pk])[0]
+
+            mul = PFunction(
+                fn_type="phe.mul",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            cr = self._exec(mul, [ca, b])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            out = self._exec(dec, [cr, sk])[0]
+            expected = a * b
+            np.testing.assert_allclose(out, expected, atol=1e-3)
+
+    def test_integer_types_homomorphic_dot_product(self):
+        """Test homomorphic dot product with various integer types."""
+        pk, sk = self._keygen()
+
+        integer_types = [np.int8, np.int16, np.int32, np.uint8, np.uint16]
+
+        for dtype in integer_types:
+            # Test vector dot product
+            a = np.array([1, 2, 3], dtype=dtype)
+            b = np.array([4, 5, 6], dtype=dtype)
+
+            enc_a = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            ca = self._exec(enc_a, [a, pk])[0]
+
+            dot = PFunction(
+                fn_type="phe.dot",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(np.array(0, dtype=dtype)),),
+            )
+            cr = self._exec(dot, [ca, b])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(
+                    TensorType.from_obj(np.array(0, dtype=dtype)),
+                    TensorType(UINT8, (-1, 0)),
+                ),
+                outs_info=(TensorType.from_obj(np.array(0, dtype=dtype)),),
+            )
+            out = self._exec(dec, [cr, sk])[0]
+            expected = np.dot(a, b)
+            assert out.item() == expected
+
+            # Test matrix-vector dot product
+            matrix = np.array([[1, 2], [3, 4]], dtype=dtype)
+            vector = np.array([5, 6], dtype=dtype)
+
+            enc_matrix = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(matrix), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(matrix),),
+            )
+            cm = self._exec(enc_matrix, [matrix, pk])[0]
+
+            dot_mv = PFunction(
+                fn_type="phe.dot",
+                ins_info=(TensorType.from_obj(matrix), TensorType.from_obj(vector)),
+                outs_info=(TensorType.from_obj(np.array([0, 0], dtype=dtype)),),
+            )
+            cr_mv = self._exec(dot_mv, [cm, vector])[0]
+
+            dec_mv = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(
+                    TensorType.from_obj(np.array([0, 0], dtype=dtype)),
+                    TensorType(UINT8, (-1, 0)),
+                ),
+                outs_info=(TensorType.from_obj(np.array([0, 0], dtype=dtype)),),
+            )
+            out_mv = self._exec(dec_mv, [cr_mv, sk])[0]
+            expected_mv = np.dot(matrix, vector)
+            np.testing.assert_array_equal(out_mv, expected_mv)
+
+    def test_float_types_homomorphic_dot_product(self):
+        """Test homomorphic dot product with float ciphertext and integer plaintext."""
+        pk, sk = self._keygen()
+
+        float_types = [np.float32, np.float64]
+
+        for dtype in float_types:
+            # Test vector dot product (float ciphertext with integer plaintext)
+            a = np.array([1.1, 2.2, 3.3], dtype=dtype)
+            b = np.array([1, 2, 3], dtype=np.int32)  # Use integer plaintext
+
+            enc_a = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(a),),
+            )
+            ca = self._exec(enc_a, [a, pk])[0]
+
+            dot = PFunction(
+                fn_type="phe.dot",
+                ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+                outs_info=(TensorType.from_obj(np.array(0.0, dtype=dtype)),),
+            )
+            cr = self._exec(dot, [ca, b])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(
+                    TensorType.from_obj(np.array(0.0, dtype=dtype)),
+                    TensorType(UINT8, (-1, 0)),
+                ),
+                outs_info=(TensorType.from_obj(np.array(0.0, dtype=dtype)),),
+            )
+            out = self._exec(dec, [cr, sk])[0]
+            expected = np.dot(a, b)
+            assert (
+                abs(out.item() - expected) < 1e-2
+            )  # Allow for fixed-point precision loss
+
+            # Test matrix-vector dot product (float ciphertext with integer plaintext)
+            matrix = np.array([[1.5, 2.5], [3.5, 4.5]], dtype=dtype)
+            vector = np.array([1, 2], dtype=np.int32)  # Use integer plaintext
+
+            enc_matrix = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(matrix), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(matrix),),
+            )
+            cm = self._exec(enc_matrix, [matrix, pk])[0]
+
+            dot_mv = PFunction(
+                fn_type="phe.dot",
+                ins_info=(TensorType.from_obj(matrix), TensorType.from_obj(vector)),
+                outs_info=(TensorType.from_obj(np.array([0.0, 0.0], dtype=dtype)),),
+            )
+            cr_mv = self._exec(dot_mv, [cm, vector])[0]
+
+            dec_mv = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(
+                    TensorType.from_obj(np.array([0.0, 0.0], dtype=dtype)),
+                    TensorType(UINT8, (-1, 0)),
+                ),
+                outs_info=(TensorType.from_obj(np.array([0.0, 0.0], dtype=dtype)),),
+            )
+            out_mv = self._exec(dec_mv, [cr_mv, sk])[0]
+            expected_mv = np.dot(matrix, vector)
+            np.testing.assert_allclose(out_mv, expected_mv, atol=1e-2)
+
+    def test_mixed_integer_types_operations(self):
+        """Test operations with mixed integer types."""
+        pk, sk = self._keygen()
+
+        # Test int8 ciphertext with int32 plaintext
+        a_int8 = np.array([10, 20], dtype=np.int8)
+        b_int32 = np.array([2, 3], dtype=np.int32)
+
+        enc_a = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(a_int8), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a_int8),),
+        )
+        ca = self._exec(enc_a, [a_int8, pk])[0]
+
+        # Addition should work with mixed types
+        add = PFunction(
+            fn_type="phe.add",
+            ins_info=(TensorType.from_obj(a_int8), TensorType.from_obj(b_int32)),
+            outs_info=(TensorType.from_obj(a_int8),),
+        )
+        cr_add = self._exec(add, [ca, b_int32])[0]
+
+        dec = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(a_int8), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a_int8),),
+        )
+        out_add = self._exec(dec, [cr_add, sk])[0]
+        # Result should match ciphertext type (int8)
+        expected_add = (a_int8 + b_int32).astype(np.int8)
+        np.testing.assert_array_equal(out_add, expected_add)
+
+        # Multiplication should work with mixed types
+        mul = PFunction(
+            fn_type="phe.mul",
+            ins_info=(TensorType.from_obj(a_int8), TensorType.from_obj(b_int32)),
+            outs_info=(TensorType.from_obj(a_int8),),
+        )
+        cr_mul = self._exec(mul, [ca, b_int32])[0]
+        out_mul = self._exec(dec, [cr_mul, sk])[0]
+        expected_mul = (a_int8 * b_int32).astype(np.int8)
+        np.testing.assert_array_equal(out_mul, expected_mul)
+
+    def test_edge_case_data_types(self):
+        """Test edge cases with different data types."""
+        pk, sk = self._keygen()
+
+        # Test maximum values for different integer types
+        test_cases = [
+            (np.int8, 127),
+            (np.uint8, 255),
+            (np.int16, 32767),
+            (np.uint16, 65535),
+        ]
+
+        for dtype, max_val in test_cases:
+            # Test near-maximum values
+            pt = np.array([max_val // 2, max_val // 4], dtype=dtype)
+
+            enc = PFunction(
+                fn_type="phe.encrypt",
+                ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(pt),),
+            )
+            ct = self._exec(enc, [pt, pk])[0]
+
+            dec = PFunction(
+                fn_type="phe.decrypt",
+                ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(pt),),
+            )
+            out = self._exec(dec, [ct, sk])[0]
+            np.testing.assert_array_equal(out, pt)
+
+            # Test addition with small values to avoid overflow
+            small_val = np.array([1, 2], dtype=dtype)
+            add = PFunction(
+                fn_type="phe.add",
+                ins_info=(TensorType.from_obj(pt), TensorType.from_obj(small_val)),
+                outs_info=(TensorType.from_obj(pt),),
+            )
+            cr_add = self._exec(add, [ct, small_val])[0]
+            out_add = self._exec(dec, [cr_add, sk])[0]
+            expected_add = pt + small_val
+            np.testing.assert_array_equal(out_add, expected_add)

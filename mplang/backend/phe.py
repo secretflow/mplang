@@ -279,7 +279,7 @@ def _phe_keygen(pfunc: PFunction) -> Any:
     scheme = pfunc.attrs.get("scheme", "paillier")
     # use small key_size to speed up tests
     # in production use at least 2048 bits or 3072 bits for better security
-    key_size = pfunc.attrs.get("key_size", 1024)
+    key_size = pfunc.attrs.get("key_size", 2048)
     max_value = pfunc.attrs.get(
         "max_value", 2**32
     )  # Use larger range to avoid overflow

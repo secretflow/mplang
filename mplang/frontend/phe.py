@@ -23,7 +23,7 @@ _PHE_MOD = stateless_mod("phe")
 
 @_PHE_MOD.simple_op()
 def keygen(
-    *, scheme: str = "paillier", key_size: int = 1024
+    *, scheme: str = "paillier", key_size: int = 2048
 ) -> tuple[TensorType, TensorType]:
     """Generate a PHE key pair: returns (public_key, private_key).
 

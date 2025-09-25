@@ -352,16 +352,14 @@ def run_bucket_sum_2_groups():
     group_size = 2
 
     # shape: (sample_size, gh_size)
-    m1_np = np.array(
-        [
-            [1, 10],  # sample 0
-            [2, 20],  # sample 1
-            [3, 30],  # sample 2
-            [4, 40],  # sample 3
-            [5, 50],  # sample 4
-            [6, 60],  # sample 5
-        ]
-    )
+    m1_np = np.array([
+        [1, 10],  # sample 0
+        [2, 20],  # sample 1
+        [3, 30],  # sample 2
+        [4, 40],  # sample 3
+        [5, 50],  # sample 4
+        [6, 60],  # sample 5
+    ])
     # Subgroup 0: samples 0, 1, 2
     # Subgroup 1: samples 3, 4, 5
     subgroup0_mask = np.array([1, 1, 1, 0, 0, 0], dtype=np.int8)
@@ -419,19 +417,17 @@ def run_bucket_sum_3_groups():
     group_size = 3
 
     # shape: (sample_size, gh_size)
-    m1_np = np.array(
-        [
-            [1, 10],  # sample 0 - group 0
-            [2, 20],  # sample 1 - group 1
-            [3, 30],  # sample 2 - group 0
-            [4, 40],  # sample 3 - group 1
-            [5, 50],  # sample 4 - group 2
-            [6, 60],  # sample 5 - group 0
-            [7, 70],  # sample 6 - group 1
-            [8, 80],  # sample 7 - group 2
-            [9, 90],  # sample 8 - group 2
-        ]
-    )
+    m1_np = np.array([
+        [1, 10],  # sample 0 - group 0
+        [2, 20],  # sample 1 - group 1
+        [3, 30],  # sample 2 - group 0
+        [4, 40],  # sample 3 - group 1
+        [5, 50],  # sample 4 - group 2
+        [6, 60],  # sample 5 - group 0
+        [7, 70],  # sample 6 - group 1
+        [8, 80],  # sample 7 - group 2
+        [9, 90],  # sample 8 - group 2
+    ])
     # Subgroup 0: samples 0, 2, 5
     # Subgroup 1: samples 1, 3, 6
     # Subgroup 2: samples 4, 7, 8
@@ -509,27 +505,23 @@ def test_batch_feature_wise_bucket_sum_2_groups(test_setup):
     print(f"group 1 sum: {out_2_1}")
 
     # Verify 2-group test correctness
-    expected_2_0 = np.array(
-        [
-            [4, 40],  # bucket 0 for feature 0: samples 0,2 (buckets <=0)
-            [6, 60],  # bucket 1 for feature 0: samples 0,1,2 (buckets <=1)
-            [6, 60],  # bucket 2 for feature 0: samples 0,1,2 (buckets <=2)
-            [3, 30],  # bucket 0 for feature 1: sample 2 (bucket <=0)
-            [4, 40],  # bucket 1 for feature 1: samples 0,2 (buckets <=1)
-            [6, 60],  # bucket 2 for feature 1: samples 0,1,2 (buckets <=2)
-        ]
-    )
+    expected_2_0 = np.array([
+        [4, 40],  # bucket 0 for feature 0: samples 0,2 (buckets <=0)
+        [6, 60],  # bucket 1 for feature 0: samples 0,1,2 (buckets <=1)
+        [6, 60],  # bucket 2 for feature 0: samples 0,1,2 (buckets <=2)
+        [3, 30],  # bucket 0 for feature 1: sample 2 (bucket <=0)
+        [4, 40],  # bucket 1 for feature 1: samples 0,2 (buckets <=1)
+        [6, 60],  # bucket 2 for feature 1: samples 0,1,2 (buckets <=2)
+    ])
 
-    expected_2_1 = np.array(
-        [
-            [6, 60],  # bucket 0 for feature 0: sample 5 (bucket <=0)
-            [11, 110],  # bucket 1 for feature 0: samples 4,5 (buckets <=1)
-            [15, 150],  # bucket 2 for feature 0: samples 3,4,5 (buckets <=2)
-            [5, 50],  # bucket 0 for feature 1: sample 4 (bucket <=0)
-            [9, 90],  # bucket 1 for feature 1: samples 3,4 (buckets <=1)
-            [15, 150],  # bucket 2 for feature 1: samples 3,4,5 (buckets <=2)
-        ]
-    )
+    expected_2_1 = np.array([
+        [6, 60],  # bucket 0 for feature 0: sample 5 (bucket <=0)
+        [11, 110],  # bucket 1 for feature 0: samples 4,5 (buckets <=1)
+        [15, 150],  # bucket 2 for feature 0: samples 3,4,5 (buckets <=2)
+        [5, 50],  # bucket 0 for feature 1: sample 4 (bucket <=0)
+        [9, 90],  # bucket 1 for feature 1: samples 3,4 (buckets <=1)
+        [15, 150],  # bucket 2 for feature 1: samples 3,4,5 (buckets <=2)
+    ])
 
     np.testing.assert_array_equal(out_2_0, expected_2_0)
     np.testing.assert_array_equal(out_2_1, expected_2_1)
@@ -565,42 +557,36 @@ def test_batch_feature_wise_bucket_sum_3_groups(test_setup):
     # Verify 3-group test correctness
     # Group 0: samples 0,2,5 with values [1,10], [3,30], [6,60]
     # order_map: [0,1], [0,0], [0,2]
-    expected_3_0 = np.array(
-        [
-            [10, 100],  # bucket 0 for feature 0: samples 0,2,5 (buckets <=0)
-            [10, 100],  # bucket 1 for feature 0: samples 0,2,5 (buckets <=1)
-            [10, 100],  # bucket 2 for feature 0: samples 0,2,5 (buckets <=2)
-            [3, 30],  # bucket 0 for feature 1: sample 2 (bucket <=0)
-            [4, 40],  # bucket 1 for feature 1: samples 0,2 (buckets <=1)
-            [10, 100],  # bucket 2 for feature 1: samples 0,2,5 (buckets <=2)
-        ]
-    )
+    expected_3_0 = np.array([
+        [10, 100],  # bucket 0 for feature 0: samples 0,2,5 (buckets <=0)
+        [10, 100],  # bucket 1 for feature 0: samples 0,2,5 (buckets <=1)
+        [10, 100],  # bucket 2 for feature 0: samples 0,2,5 (buckets <=2)
+        [3, 30],  # bucket 0 for feature 1: sample 2 (bucket <=0)
+        [4, 40],  # bucket 1 for feature 1: samples 0,2 (buckets <=1)
+        [10, 100],  # bucket 2 for feature 1: samples 0,2,5 (buckets <=2)
+    ])
 
     # Group 1: samples 1,3,6 with values [2,20], [4,40], [7,70]
     # order_map: [1,2], [2,1], [1,0]
-    expected_3_1 = np.array(
-        [
-            [0, 0],  # bucket 0 for feature 0: no samples (no buckets <=0)
-            [9, 90],  # bucket 1 for feature 0: samples 1,6 (buckets <=1)
-            [13, 130],  # bucket 2 for feature 0: samples 1,3,6 (buckets <=2)
-            [7, 70],  # bucket 0 for feature 1: sample 6 (bucket <=0)
-            [11, 110],  # bucket 1 for feature 1: samples 3,6 (buckets <=1)
-            [13, 130],  # bucket 2 for feature 1: samples 1,3,6 (buckets <=2)
-        ]
-    )
+    expected_3_1 = np.array([
+        [0, 0],  # bucket 0 for feature 0: no samples (no buckets <=0)
+        [9, 90],  # bucket 1 for feature 0: samples 1,6 (buckets <=1)
+        [13, 130],  # bucket 2 for feature 0: samples 1,3,6 (buckets <=2)
+        [7, 70],  # bucket 0 for feature 1: sample 6 (bucket <=0)
+        [11, 110],  # bucket 1 for feature 1: samples 3,6 (buckets <=1)
+        [13, 130],  # bucket 2 for feature 1: samples 1,3,6 (buckets <=2)
+    ])
 
     # Group 2: samples 4,7,8 with values [5,50], [8,80], [9,90]
     # order_map: [1,0], [2,1], [0,2]
-    expected_3_2 = np.array(
-        [
-            [9, 90],  # bucket 0 for feature 0: sample 8 (bucket <=0)
-            [14, 140],  # bucket 1 for feature 0: samples 4,8 (buckets <=1)
-            [22, 220],  # bucket 2 for feature 0: samples 4,7,8 (buckets <=2)
-            [5, 50],  # bucket 0 for feature 1: sample 4 (bucket <=0)
-            [13, 130],  # bucket 1 for feature 1: samples 4,7 (buckets <=1)
-            [22, 220],  # bucket 2 for feature 1: samples 4,7,8 (buckets <=2)
-        ]
-    )
+    expected_3_2 = np.array([
+        [9, 90],  # bucket 0 for feature 0: sample 8 (bucket <=0)
+        [14, 140],  # bucket 1 for feature 0: samples 4,8 (buckets <=1)
+        [22, 220],  # bucket 2 for feature 0: samples 4,7,8 (buckets <=2)
+        [5, 50],  # bucket 0 for feature 1: sample 4 (bucket <=0)
+        [13, 130],  # bucket 1 for feature 1: samples 4,7 (buckets <=1)
+        [22, 220],  # bucket 2 for feature 1: samples 4,7,8 (buckets <=2)
+    ])
 
     np.testing.assert_array_equal(out_3_0, expected_3_0)
     np.testing.assert_array_equal(out_3_1, expected_3_1)

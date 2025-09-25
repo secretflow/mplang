@@ -22,6 +22,7 @@ This tutorial demonstrates a three-party computation using PHE:
 5. Each party sends their encrypted data to Party 0
 6. Party 0 computes the sum and decrypts the result
 """
+
 import numpy as np
 
 import mplang

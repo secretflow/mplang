@@ -167,9 +167,11 @@ class PHEHandler(TensorHandler):
             )
 
         if value >= 0:
-            return value
+            encoded = value
         else:
-            return modulus + value
+            encoded = modulus + value
+
+        return encoded
 
     def _range_encode_float(
         self, value: float, max_value: int, fxp_bits: int, modulus: int
@@ -214,6 +216,7 @@ class PHEHandler(TensorHandler):
         - If r >= N - max_value: decode(r) = r - N
         - If max_value < r < N - max_value: overflow error
         """
+
         # Ensure handling integer
         if isinstance(encoded_value, (list, tuple)):
             encoded_value = encoded_value[0]
@@ -382,11 +385,6 @@ class PHEHandler(TensorHandler):
         except Exception as e:
             raise RuntimeError(f"Failed to generate PHE keys: {e}") from e
 
-            return [public_key, private_key]
-
-        except Exception as e:
-            raise RuntimeError(f"Failed to generate PHE keys: {e}") from e
-
     def _execute_encrypt(
         self, pfunc: PFunction, args: list[TensorLike]
     ) -> list[TensorLike]:
@@ -422,6 +420,12 @@ class PHEHandler(TensorHandler):
                 key_size=public_key.key_size,
                 precision=PRECISION,
             )
+
+            # CRITICAL: Set the same modulus as the key to ensure consistency
+            if public_key.modulus is not None:
+                phe.cs.plaintext_modulo = public_key.modulus
+                phe.cs.ciphertext_modulo = public_key.modulus * public_key.modulus
+
             # Set the public key
             phe.cs.keys["public_key"] = public_key.key_data
 
@@ -802,6 +806,12 @@ class PHEHandler(TensorHandler):
             key_size=ciphertext.key_size,
             precision=PRECISION,
         )
+
+        # CRITICAL: Set the same modulus as the original ciphertext
+        if ciphertext.modulus is not None:
+            phe.cs.plaintext_modulo = ciphertext.modulus
+            phe.cs.ciphertext_modulo = ciphertext.modulus * ciphertext.modulus
+
         phe.cs.keys["public_key"] = ciphertext.pk_data
 
         # Encrypt zero value using range encoding for consistency
@@ -859,6 +869,15 @@ class PHEHandler(TensorHandler):
                 key_size=private_key.key_size,
                 precision=PRECISION,
             )
+
+            # CRITICAL FIX: Manually set the moduli to match the original encryption
+            # This ensures the decryption uses the same mathematical structure
+            if ciphertext.modulus is not None:
+                # Force the lightPHE instance to use the same modulus as during encryption
+                phe.cs.plaintext_modulo = ciphertext.modulus
+                # For Paillier: ciphertext_modulo = N^2
+                phe.cs.ciphertext_modulo = ciphertext.modulus * ciphertext.modulus
+
             # Set both public and private keys (lightPHE needs both for proper decryption)
             phe.cs.keys["private_key"] = private_key.sk_data
             phe.cs.keys["public_key"] = private_key.pk_data
@@ -886,9 +905,9 @@ class PHEHandler(TensorHandler):
                     )
 
                 # Convert to int for decoding
-                int_val = int(raw_val)
-
-                # Use mixed decoding which returns values based on semantic type
+                int_val = int(
+                    raw_val
+                )  # Use mixed decoding which returns values based on semantic type
                 decoded_val = self._range_decode_mixed(
                     int_val,
                     ciphertext.max_value,

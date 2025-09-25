@@ -90,7 +90,7 @@ def test_2d_matrix_operations():
     encrypted = simp.run(phe.encrypt)(data, pkey_bcasted)
 
     # Gather encrypted data at Party 0
-    e0, e1, e2 = mpi.gather_m(world_mask, 0, encrypted)
+    e0, _, e2 = mpi.gather_m(world_mask, 0, encrypted)
 
     # Step 5: Perform various tensor operations at Party 0
 
@@ -171,7 +171,7 @@ def test_3d_tensor_operations():
     encrypted = simp.run(phe.encrypt)(data, pkey_bcasted)
 
     # Gather encrypted data at Party 0
-    e0, e1, e2 = mpi.gather_m(world_mask, 0, encrypted)
+    e0, _, e2 = mpi.gather_m(world_mask, 0, encrypted)
 
     # Step 5: Perform various 3D tensor operations at Party 0
 

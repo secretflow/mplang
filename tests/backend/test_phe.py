@@ -633,7 +633,7 @@ class TestPHEKernels:
 
     def test_reshape_invalid_shape(self):
         """Test reshape with incompatible shape should raise error."""
-        pk, sk = self._keygen()
+        pk, _ = self._keygen()
         a = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)  # 6 elements
         invalid_shape = (2, 4)  # Would need 8 elements
 
@@ -941,7 +941,7 @@ class TestPHEKernels:
 
     def test_mixed_precision_errors(self):
         """Test that mixed precision operations raise appropriate errors."""
-        pk, sk = self._keygen()
+        pk, _ = self._keygen()
 
         # Test float ciphertext + int plaintext (should fail)
         float_ciphertext_val = np.array(3.14, dtype=np.float32)
@@ -1001,7 +1001,7 @@ class TestPHEKernels:
 
     def test_concat_invalid_axis(self):
         """Test concat with invalid axis parameter."""
-        pk, sk = self._keygen()
+        pk, _ = self._keygen()
 
         # Create test matrices
         matrix1 = np.array([[1, 2]], dtype=np.int32)  # Shape (1, 2)
@@ -1086,7 +1086,7 @@ class TestPHEKernels:
 
     def test_transpose_invalid_axes(self):
         """Test transpose operation with invalid axes."""
-        pk, sk = self._keygen()
+        pk, _ = self._keygen()
 
         # Create 2D matrix
         original_matrix = np.array([[1, 2], [3, 4]], dtype=np.int32)  # Shape (2, 2)

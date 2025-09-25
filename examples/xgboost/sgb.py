@@ -1214,16 +1214,16 @@ def _local_try_to_predict(
             def pass_through_or_propagate_unknown(locs):
                 is_a_split_node = is_leaf[i] == 0
 
-                def propagate_unknown(l):
+                def propagate_unknown(loc):
                     # It's a split node, but not mine. Propagate uncertainty to both children.
-                    samples_at_this_node = l[:, i]
-                    l = l.at[:, 2 * i + 1].add(samples_at_this_node)
-                    l = l.at[:, 2 * i + 2].add(samples_at_this_node)
-                    return l.at[:, i].set(0)
+                    samples_at_this_node = loc[:, i]
+                    loc = loc.at[:, 2 * i + 1].add(samples_at_this_node)
+                    loc = loc.at[:, 2 * i + 2].add(samples_at_this_node)
+                    return loc.at[:, i].set(0)
 
-                def do_nothing(l):
+                def do_nothing(loc):
                     # It's a leaf node. Samples that land here should rest. Do nothing.
-                    return l
+                    return loc
 
                 # Is it a split node? If so, propagate uncertainty. If not (it's a leaf), do nothing.
                 return jax.lax.cond(
@@ -1315,11 +1315,11 @@ def predict_ensemble(
     )(model.initial_prediction)
 
     for tree in model.trees:
-        _pred = predict_tree(tree, all_datas, active_party_id, passive_party_ids)
+        pred = predict_tree(tree, all_datas, active_party_id, passive_party_ids)
         y_pred_logits = simp.runAt(
             active_party_id,
             partial(_update_pred, learning_rate=learning_rate),
-        )(y_pred_logits, _pred)
+        )(y_pred_logits, pred)
 
     y_pred = simp.runAt(active_party_id, sigmoid)(y_pred_logits)
 
@@ -1478,7 +1478,7 @@ class SecureBoost:
         gamma=0.0,
         min_child_weight=1.0,
         active_party_id=0,
-        passive_party_ids=[1],
+        passive_party_ids=None,
     ):
         """
         This implements the SecureBoost algorithm building upon the mplang and JAX framework.
@@ -1508,6 +1508,9 @@ class SecureBoost:
 
         self.active_party_id = active_party_id
         self.active_party_mask = Mask(1 << self.active_party_id)
+
+        if passive_party_ids is None:
+            passive_party_ids = [1]
 
         assert isinstance(passive_party_ids, list)
         self.passive_party_ids = passive_party_ids

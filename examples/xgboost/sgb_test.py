@@ -345,9 +345,9 @@ def test_sgb_3pc_debug_leaves(test_setup):
 @mplang.function
 def run_bucket_sum_2_groups():
     """Test batch feature-wise bucket sum with 2 groups"""
-    sample_size = 6
-    feature_size = 2
-    gh_size = 2
+    # sample_size = 6
+    # feature_size = 2
+    # gh_size = 2
     bucket_num = 3
     group_size = 2
 
@@ -412,9 +412,9 @@ def run_bucket_sum_2_groups():
 @mplang.function
 def run_bucket_sum_3_groups():
     """Test batch feature-wise bucket sum with 3 groups"""
-    sample_size = 9
-    feature_size = 2
-    gh_size = 2
+    # sample_size = 9
+    # feature_size = 2
+    # gh_size = 2
     bucket_num = 3
     group_size = 3
 

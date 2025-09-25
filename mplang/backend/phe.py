@@ -430,7 +430,7 @@ def _phe_mul(pfunc: PFunction, ciphertext: CipherText, plaintext: Any) -> Any:
             raise ValueError(
                 f"Operands cannot be broadcast together: CipherText shape {ciphertext.semantic_shape} "
                 f"vs plaintext shape {plaintext_np.shape}: {e}"
-            )
+            ) from e
 
         # Broadcast plaintext to match result shape if needed
         if plaintext_np.shape != result_shape:
@@ -543,7 +543,7 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
         raise ValueError(
             f"CipherText operands cannot be broadcast together: shape {ct1.semantic_shape} "
             f"vs shape {ct2.semantic_shape}: {e}"
-        )
+        ) from e
 
     # Broadcast ct1 if needed
     if ct1.semantic_shape != result_shape:
@@ -615,7 +615,7 @@ def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
         raise ValueError(
             f"Operands cannot be broadcast together: CipherText shape {ciphertext.semantic_shape} "
             f"vs plaintext shape {plaintext_np.shape}: {e}"
-        )
+        ) from e
 
     # Broadcast plaintext to match result shape if needed
     if plaintext_np.shape != result_shape:
@@ -790,7 +790,7 @@ def _phe_decrypt(
         # Convert to target dtype
         if target_dtype.kind in "iu":  # integer types
             # Convert floats back to integers for integer semantic types
-            processed_data = [int(round(val)) for val in decoded_data]
+            processed_data = [round(val) for val in decoded_data]
             # Handle overflow for smaller integer types
             info = np.iinfo(target_dtype)
             processed_data = [
@@ -852,7 +852,7 @@ def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorLike) ->
             raise ValueError(
                 f"Shapes are not compatible for dot product: CipherText shape {ciphertext.semantic_shape} "
                 f"vs plaintext shape {plaintext_np.shape}: {e}"
-            )
+            ) from e
 
         # Perform dot product based on input dimensions
         ct_shape = ciphertext.semantic_shape

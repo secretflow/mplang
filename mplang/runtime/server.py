@@ -20,20 +20,94 @@ It uses FastAPI to provide a RESTful API for managing computations.
 import base64
 import logging
 import re
+from typing import Any
 
 import cloudpickle as pickle
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from mplang.backend.base import KernelContext
 from mplang.core.mpir import Reader
+from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.protos.v1alpha1 import mpir_pb2
 from mplang.runtime import resource
+from mplang.runtime.data_providers import DataProvider, ResolvedURI, register_provider
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+
+class _SymbolsProvider(DataProvider):
+    """Server-local symbols provider backed by BackendRuntime.state."""
+
+    @staticmethod
+    def _symbol_name(uri: ResolvedURI) -> str:
+        if uri.scheme != "symbols" or uri.parsed is None:
+            raise InvalidRequestError(
+                "symbols provider expects URI in the form symbols://{name}"
+            )
+
+        parsed = uri.parsed
+        if parsed.query or parsed.params or parsed.fragment:
+            raise InvalidRequestError(
+                "symbols:// URI must not contain query or fragment"
+            )
+
+        if parsed.netloc:
+            # e.g. symbols://foo -> name is carried in netloc (path may be empty or "/")
+            if parsed.path not in ("", "/"):
+                raise InvalidRequestError("symbols:// URIs cannot include subpaths")
+            name = parsed.netloc
+        else:
+            # e.g. symbols:///foo -> netloc empty, single path segment is the symbol name
+            path = parsed.path.lstrip("/")
+            if not path or "/" in path:
+                raise InvalidRequestError(
+                    "symbols:// URI must specify a single symbol name"
+                )
+            name = path
+
+        if not name:
+            raise InvalidRequestError("symbols:// URI missing symbol name")
+        return name
+
+    def read(
+        self,
+        uri: ResolvedURI,
+        out_spec: TensorType | TableType,
+        *,
+        ctx: KernelContext,
+    ) -> Any:  # type: ignore[override]
+        name = self._symbol_name(uri)
+        sym = resource.get_global_symbol(name)
+        if sym is None:
+            raise ResourceNotFound(f"Global symbol '{name}' not found")
+        return sym.data
+
+    def write(
+        self,
+        uri: ResolvedURI,
+        value: Any,
+        *,
+        ctx: KernelContext,
+    ) -> None:  # type: ignore[override]
+        name = self._symbol_name(uri)
+        try:
+            data_b64 = base64.b64encode(pickle.dumps(value)).decode("utf-8")
+        except Exception as e:  # pragma: no cover - defensive
+            raise InvalidRequestError(
+                f"Failed to encode value for symbols:// write: {e!s}"
+            ) from e
+
+        resource.create_global_symbol(name, {}, data_b64)
+
+
+# Register symbols provider explicitly for server runtime
+register_provider("symbols", _SymbolsProvider())
 
 
 @app.exception_handler(ResourceNotFound)
@@ -137,6 +211,12 @@ class SessionListResponse(BaseModel):
 
 class ComputationListResponse(BaseModel):
     computations: list[str]
+
+
+class GlobalSymbolResponse(BaseModel):
+    name: str
+    mptype: dict
+    data: str
 
 
 @app.get("/health")
@@ -301,6 +381,39 @@ def delete_symbol(session_name: str, symbol_name: str) -> dict[str, str]:
         raise ResourceNotFound(
             f"Symbol '{symbol_name}' not found in session '{session_name}'"
         )
+
+
+# Global Symbols endpoints
+@app.put("/api/v1/symbols/{symbol_name}", response_model=GlobalSymbolResponse)
+def create_global_symbol(
+    symbol_name: str, request: CreateSymbolRequest
+) -> GlobalSymbolResponse:
+    validate_name(symbol_name, "symbol")
+    sym = resource.create_global_symbol(symbol_name, request.mptype, request.data)
+    return GlobalSymbolResponse(name=sym.name, mptype=sym.mptype, data=request.data)
+
+
+@app.get("/api/v1/symbols/{symbol_name}", response_model=GlobalSymbolResponse)
+def get_global_symbol(symbol_name: str) -> GlobalSymbolResponse:
+    sym = resource.get_global_symbol(symbol_name)
+    if not sym:
+        raise ResourceNotFound(f"Global symbol '{symbol_name}' not found")
+    data_bytes = pickle.dumps(sym.data)
+    data_b64 = base64.b64encode(data_bytes).decode("utf-8")
+    return GlobalSymbolResponse(name=sym.name, mptype=sym.mptype, data=data_b64)
+
+
+@app.get("/api/v1/symbols")
+def list_global_symbols() -> dict[str, list[str]]:
+    return {"symbols": resource.list_global_symbols()}
+
+
+@app.delete("/api/v1/symbols/{symbol_name}")
+def delete_global_symbol(symbol_name: str) -> dict[str, str]:
+    if resource.delete_global_symbol(symbol_name):
+        return {"message": f"Global symbol '{symbol_name}' deleted successfully"}
+    else:
+        raise ResourceNotFound(f"Global symbol '{symbol_name}' not found")
 
 
 # Communication endpoints

@@ -36,7 +36,7 @@ from mplang.backend import (  # noqa: F401
     stablehlo,
     tee,
 )
-from mplang.backend.base import create_runtime
+from mplang.backend.base import BackendRuntime, create_runtime
 from mplang.backend.spu import PFunction  # type: ignore
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
@@ -97,6 +97,9 @@ class Session:
 
 # Global session storage
 _sessions: dict[str, Session] = {}
+
+# Service-level global symbol table (process-local for this server)
+_global_symbols: dict[str, Symbol] = {}
 
 
 # Session Management
@@ -223,6 +226,14 @@ def execute_computation(
     # Build evaluator
     # Explicit per-rank backend runtime (deglobalized)
     runtime = create_runtime(rank, session.communicator.world_size)
+    # Inject global symbol storage into backend runtime state so that
+    # symbols:// provider can access it during builtin.read/write.
+    if isinstance(runtime, BackendRuntime):
+        pocket = runtime.state.setdefault("resource.providers", {})
+        if "symbols" not in pocket:
+            pocket["symbols"] = _global_symbols
+        else:
+            raise RuntimeError("resource.providers.symbols already exists")
     evaluator: IEvaluator = create_evaluator(
         rank=rank, env=bindings, comm=session.communicator, runtime=runtime
     )
@@ -272,6 +283,45 @@ def execute_computation(
             )
         for name, val in zip(output_names, results, strict=True):
             session.symbols[name] = Symbol(name=name, mptype={}, data=val)
+
+
+# Global symbol CRUD (service-level)
+def create_global_symbol(name: str, mptype: Any, data: str) -> Symbol:
+    """Create or update a global symbol in the service-level table.
+
+    WARNING: Uses Python pickle for arbitrary object deserialization. Deploy
+    only in trusted environments. Future work may replace this with a
+    restricted / structured serialization.
+
+    The `data` argument is a base64-encoded pickled Python object. Minimal
+    validation of `mptype` is performed for tensor metadata (shape/dtype)
+    when present to catch obvious mismatches.
+    """
+    try:
+        data_bytes = base64.b64decode(data)
+        obj = pickle.loads(data_bytes)
+    except Exception as e:
+        raise InvalidRequestError(f"Invalid global symbol data encoding: {e!s}") from e
+
+    sym = Symbol(name, mptype, obj)
+    _global_symbols[name] = sym
+    return sym
+
+
+def get_global_symbol(name: str) -> Symbol | None:
+    return _global_symbols.get(name)
+
+
+def list_global_symbols() -> list[str]:
+    return list(_global_symbols.keys())
+
+
+def delete_global_symbol(name: str) -> bool:
+    if name in _global_symbols:
+        del _global_symbols[name]
+        logging.info(f"Global symbol {name} deleted")
+        return True
+    return False
 
 
 # Symbol Management

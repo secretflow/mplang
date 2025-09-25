@@ -45,21 +45,35 @@ class _SymbolsProvider(DataProvider):
     """Server-local symbols provider backed by BackendRuntime.state."""
 
     @staticmethod
-    def _candidate_keys(uri: ResolvedURI) -> list[str]:  # type: ignore[override]
-        keys: list[str] = []
-        if uri.scheme == "symbols" and uri.parsed is not None:
-            alt = uri.parsed.netloc or uri.parsed.path.lstrip("/")
-            if alt:
-                keys.append(alt)
-        keys.append(uri.raw)
-        # Preserve order while removing duplicates
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for key in keys:
-            if key not in seen:
-                seen.add(key)
-                deduped.append(key)
-        return deduped
+    def _symbol_name(uri: ResolvedURI) -> str:
+        if uri.scheme != "symbols" or uri.parsed is None:
+            raise InvalidRequestError(
+                "symbols provider expects URI in the form symbols://{name}"
+            )
+
+        parsed = uri.parsed
+        if parsed.query or parsed.params or parsed.fragment:
+            raise InvalidRequestError(
+                "symbols:// URI must not contain query or fragment"
+            )
+
+        if parsed.netloc:
+            # e.g. symbols://foo -> name is carried in netloc (path may be empty or "/")
+            if parsed.path not in ("", "/"):
+                raise InvalidRequestError("symbols:// URIs cannot include subpaths")
+            name = parsed.netloc
+        else:
+            # e.g. symbols:///foo -> netloc empty, single path segment is the symbol name
+            path = parsed.path.lstrip("/")
+            if not path or "/" in path:
+                raise InvalidRequestError(
+                    "symbols:// URI must specify a single symbol name"
+                )
+            name = path
+
+        if not name:
+            raise InvalidRequestError("symbols:// URI missing symbol name")
+        return name
 
     def read(
         self,
@@ -68,11 +82,11 @@ class _SymbolsProvider(DataProvider):
         *,
         ctx: KernelContext,
     ) -> Any:  # type: ignore[override]
-        for key in self._candidate_keys(uri):
-            sym = resource.get_global_symbol(key)
-            if sym is not None:
-                return sym.data
-        raise ResourceNotFound(f"Global symbol '{uri.raw}' not found")
+        name = self._symbol_name(uri)
+        sym = resource.get_global_symbol(name)
+        if sym is None:
+            raise ResourceNotFound(f"Global symbol '{name}' not found")
+        return sym.data
 
     def write(
         self,
@@ -81,9 +95,7 @@ class _SymbolsProvider(DataProvider):
         *,
         ctx: KernelContext,
     ) -> None:  # type: ignore[override]
-        keys = self._candidate_keys(uri)
-        if not keys:
-            raise ResourceNotFound(f"Global symbol '{uri.raw}' not found")
+        name = self._symbol_name(uri)
         try:
             data_b64 = base64.b64encode(pickle.dumps(value)).decode("utf-8")
         except Exception as e:  # pragma: no cover - defensive
@@ -91,8 +103,7 @@ class _SymbolsProvider(DataProvider):
                 f"Failed to encode value for symbols:// write: {e!s}"
             ) from e
 
-        for key in keys:
-            resource.create_global_symbol(key, {}, data_b64)
+        resource.create_global_symbol(name, {}, data_b64)
 
 
 # Register symbols provider explicitly for server runtime

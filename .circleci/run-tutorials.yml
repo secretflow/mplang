@@ -1,0 +1,41 @@
+version: 2.1
+
+executors:
+  python-executor:
+    docker:
+      - image: cimg/python:3.10
+
+jobs:
+  run-tutorials:
+    executor: python-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "pyproject.toml" }}
+            - v1-dependencies-
+      - run:
+          name: Install uv
+          command: |
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            uv --version
+      - run:
+          name: Install dependencies
+          command: |
+            uv venv
+            uv sync --group dev
+      - save_cache:
+          paths:
+            - ~/.cache/uv
+            - ~/.local
+          key: v1-dependencies-{{ checksum "pyproject.toml" }}
+      - run:
+          name: Run tutorials
+          command: |
+            bash tutorials/run.sh
+
+workflows:
+  version: 2
+  pipeline:
+    jobs:
+      - run-tutorials

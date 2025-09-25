@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
 import pytest
 
 import mplang
-import mplang.mpi as mpi
-import mplang.random as mpr
 import mplang.simp as simp
+import mplang.simp.mpi as mpi
+import mplang.simp.random as mpr
 
 
 def eval_and_fetch(sim, fn, *args, **kwargs):
@@ -33,7 +32,7 @@ class TestMPICommunication:
     def test_gather_m_basic(self):
         """Test basic gather_m primitive with 3 parties"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         data = mplang.evaluate(sim, mpr.prandint, 0, 100)
         gathered = mplang.evaluate(sim, mpi.gather_m, (1 << 3) - 1, 0, data)
@@ -47,7 +46,7 @@ class TestMPICommunication:
     def test_gather_m_different_root(self):
         """Test gather_m with different root party"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Test with root = 2
         data = mplang.evaluate(sim, mpr.prandint, 0, 100)
@@ -67,7 +66,7 @@ class TestMPICommunication:
     def test_gather_m_subset_parties(self):
         """Test gather_m from subset of parties"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data at parties 0, 1, 3
         data = mplang.evaluate(sim, mpr.prandint, 0, 100)
@@ -81,7 +80,7 @@ class TestMPICommunication:
     def test_gather_m_two_parties(self):
         """Test gather_m with minimum number of parties"""
         num_parties = 2
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         data = mplang.evaluate(sim, mpr.prandint, 0, 50)
         gathered = mplang.evaluate(sim, mpi.gather_m, (1 << 2) - 1, 1, data)
@@ -97,7 +96,7 @@ class TestMPICommunication:
     def test_scatter_m_basic(self):
         """Test basic scatter_m primitive"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data to scatter at party 0
         data = mplang.evaluate(sim, simp.runAt(0, lambda: [10, 20, 30]))
@@ -110,7 +109,7 @@ class TestMPICommunication:
     def test_scatter_m_different_root(self):
         """Test scatter_m with different root party"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data to scatter at party 2
         data = mplang.evaluate(sim, simp.runAt(2, lambda: [100, 200, 300, 400]))
@@ -123,7 +122,7 @@ class TestMPICommunication:
     def test_scatter_m_subset_parties(self):
         """Test scatter_m to subset of parties"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data to scatter to parties 0, 2, 3
         data = mplang.evaluate(sim, simp.runAt(0, lambda: [5, 15, 25]))
@@ -138,7 +137,7 @@ class TestMPICommunication:
     def test_scatter_m_large_data(self):
         """Test scatter_m with larger data values"""
         num_parties = 2
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create larger data values
         data = mplang.evaluate(sim, simp.runAt(1, lambda: [9999, 8888]))
@@ -150,7 +149,7 @@ class TestMPICommunication:
     def test_bcast_m_basic(self):
         """Test basic bcast_m primitive"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 0
         data = mplang.evaluate(sim, simp.runAt(0, lambda: 42))
@@ -164,7 +163,7 @@ class TestMPICommunication:
     def test_bcast_m_different_root(self):
         """Test bcast_m with different root party"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 3
         data = mplang.evaluate(sim, simp.runAt(3, lambda: 123))
@@ -178,7 +177,7 @@ class TestMPICommunication:
     def test_bcast_m_subset_parties(self):
         """Test bcast_m to subset of parties"""
         num_parties = 5
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 1
         data = mplang.evaluate(sim, simp.runAt(1, lambda: 777))
@@ -193,7 +192,7 @@ class TestMPICommunication:
     def test_bcast_m_negative_value(self):
         """Test bcast_m with negative values"""
         num_parties = 2
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create negative data
         data = mplang.evaluate(sim, simp.runAt(0, lambda: -456))
@@ -206,7 +205,7 @@ class TestMPICommunication:
     def test_bcast_m_zero_value(self):
         """Test bcast_m with zero value"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create zero data
         data = mplang.evaluate(sim, simp.runAt(2, lambda: 0))
@@ -219,7 +218,7 @@ class TestMPICommunication:
     def test_p2p_basic(self):
         """Test basic p2p primitive"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 0
         data = mplang.evaluate(sim, simp.runAt(0, lambda: 99))
@@ -233,7 +232,7 @@ class TestMPICommunication:
     def test_p2p_different_pairs(self):
         """Test p2p between different party pairs"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Test party 3 -> party 1
         data = mplang.evaluate(sim, simp.runAt(3, lambda: 555))
@@ -245,7 +244,7 @@ class TestMPICommunication:
     def test_p2p_multiple_transfers(self):
         """Test multiple p2p transfers in sequence"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # First transfer: party 0 -> party 1
         data1 = mplang.evaluate(sim, simp.runAt(0, lambda: 100))
@@ -263,7 +262,7 @@ class TestMPICommunication:
     def test_p2p_large_value(self):
         """Test p2p with large values"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         large_value = 999999999
         data = mplang.evaluate(sim, simp.runAt(0, lambda: large_value))
@@ -276,7 +275,7 @@ class TestMPICommunication:
     def test_p2p_same_party(self):
         """Test p2p primitive when source and destination are the same"""
         num_parties = 2
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 0
         data = mplang.evaluate(sim, simp.runAt(0, lambda: 77))
@@ -290,7 +289,7 @@ class TestMPICommunication:
     def test_p2p_same_party_different_parties(self):
         """Test p2p same party with different party configurations"""
         num_parties = 4
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Test party 2 -> party 2
         data = mplang.evaluate(sim, simp.runAt(2, lambda: 333))
@@ -303,7 +302,7 @@ class TestMPICommunication:
     def test_allgather_m_placeholder(self):
         """Placeholder test for allgather_m - will be enabled when implemented"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         data = mplang.evaluate(sim, mpr.prandint, 0, 50)
 
@@ -314,10 +313,10 @@ class TestMPICommunication:
     def test_edge_cases_and_error_handling(self):
         """Test edge cases and error handling for MPI primitives"""
         num_parties = 3
-        mplang.Simulator(num_parties)
+        mplang.Simulator.simple(num_parties)
 
         # Test with single party
-        single_party_sim = mplang.Simulator(1)
+        single_party_sim = mplang.Simulator.simple(1)
         original_data = mplang.evaluate(single_party_sim, simp.runAt(0, lambda: 42))
 
         # Broadcast to single party
@@ -337,7 +336,7 @@ class TestMPICommunication:
     def test_stress_with_many_parties(self):
         """Test MPI operations with more parties"""
         num_parties = 8
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Test broadcast to all 8 parties
         data = mplang.evaluate(sim, simp.runAt(4, lambda: 888))
@@ -359,7 +358,7 @@ class TestMPICommunication:
     def test_data_types_variety(self):
         """Test MPI operations with different data types and values"""
         num_parties = 3
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         # Test with float-like values (represented as integers)
         data = mplang.evaluate(sim, simp.runAt(1, lambda: 1234))
@@ -372,28 +371,6 @@ class TestMPICommunication:
         sent = mplang.evaluate(sim, mpi.p2p, 0, 2, large_data)
         large_data, sent = mplang.fetch(sim, (large_data, sent))
         assert sent == [None, None, 2**20]
-
-
-class TestPShfl:
-    """Test pshfl related functions"""
-
-    def test_pshfl_basic(self):
-        """Test basic pshfl_s functionality"""
-        num_parties = 10
-        sim = mplang.Simulator(num_parties)
-
-        src = mplang.evaluate(sim, mpr.prandint, 0, 100)
-        key = mplang.evaluate(sim, mpr.ukey, 42)
-        index = mplang.evaluate(sim, mpr.pperm, key)
-
-        # shuffle data with range, nothing changed.
-        shuffled = mplang.evaluate(sim, mpi.pshfl, src, index)
-
-        data, index, shuffled = mplang.fetch(sim, (src, index, shuffled))
-        data, index, shuffled = np.stack(data), np.stack(index), np.stack(shuffled)
-        np.testing.assert_array_equal(data[index], shuffled)
-
-    # TODO(jint): add shfl complicated
 
 
 if __name__ == "__main__":

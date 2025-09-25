@@ -29,6 +29,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
+from mplang.core.dtype import BOOL
 from mplang.core.expr.ast import (
     AccessExpr,
     CondExpr,
@@ -47,7 +48,7 @@ from mplang.core.table import TableLike
 from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.frontend import builtin
-from mplang.utils.func_utils import var_demorph
+from mplang.utils.func_utils import var_demorph, var_morph
 
 
 def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
@@ -61,9 +62,9 @@ def _switch_ctx(ctx: MPContext, obj: MPObject | Any) -> MPObject | Any:
         # If the object is already in the correct context, return it directly
         return obj
 
-    if obj.ctx.psize() != ctx.psize():
+    if obj.ctx.world_size() != ctx.world_size():
         # TODO(jint): strict check if source and target context are compatible.
-        raise ValueError(f"{obj} world_size mismatch, expect {ctx.psize()}.")
+        raise ValueError(f"{obj} world_size mismatch, expect {ctx.world_size()}.")
 
     if isinstance(ctx, TraceContext):
         # Capture the object (as a variable) into current TraceContext
@@ -98,7 +99,7 @@ def primitive(fn: Callable[P, R]) -> Callable[P, R]:
             args, kwargs = tree_map(partial(_switch_ctx, current_ctx), (args, kwargs))
             return fn(*args, **kwargs)
         elif isinstance(current_ctx, InterpContext):
-            trace_ctx = TraceContext(current_ctx.psize(), attrs=current_ctx.attrs())
+            trace_ctx = TraceContext(current_ctx.cluster_spec, parent=current_ctx)
             # TODO(jint): should we add trace_and_apply to improve the performance?
             traced_fn = trace(trace_ctx, fn, *args, **kwargs)
             # Return back to the original context.
@@ -133,7 +134,7 @@ def psize() -> int:
         int: The total number of parties in the current multi-party computation context.
     """
     ctx = _tracer()
-    return ctx.psize()
+    return ctx.world_size()
 
 
 @primitive
@@ -238,6 +239,18 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
 
 
 @primitive
+def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
+    """Print local value of obj on owning parties and pass it through.
+
+    Returns the same MPObject value to keep it alive against DCE and to
+    support usage like: x = debug_print(x, prefix="x=").
+    """
+    pfunc, eval_args, out_tree = builtin.debug_print(obj, prefix=prefix)
+    results = peval(pfunc, eval_args)
+    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+
+
+@primitive
 def peval(
     pfunc: PFunction,
     args: list[MPObject],
@@ -286,9 +299,10 @@ def peval(
     ctx = _tracer()
 
     if rmask is None and len(args) == 0:
-        # If no rmask is provided and no args, use full mask
-        rmask = Mask.all(ctx.psize())
+        # Zero-arg call: default to current context mask (do not implicitly widen)
+        rmask = ctx.mask
     if rmask is not None and not Mask(rmask).is_subset(ctx.mask):
+        # Keep error wording for backward-compatibility with existing tests/docs
         raise ValueError(
             f"Specified rmask {rmask} is not a subset of deduced pmask {ctx.mask}"
         )
@@ -365,106 +379,138 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
 
 
 @primitive
-def cond(
+def uniform_cond(
     pred: MPObject,
-    then_fn: Callable[..., MPObject],
-    else_fn: Callable[..., MPObject],
+    then_fn: Callable[..., Any],
+    else_fn: Callable[..., Any],
     *args: Any,
-) -> MPObject:
-    """Multi-party conditional execution based on a predicate.
+    verify_uniform: bool = True,
+) -> Any:
+    """Global (uniform) multi-party conditional.
 
-    This function implements conditional branching in multi-party computation,
-    where the execution path (then_fn or else_fn) is determined by a predicate
-    value. All parties evaluate the same predicate and execute the same branch,
-    maintaining the SPMD (Single Program, Multiple Data) execution model.
+    Exactly one branch (``then_fn`` or ``else_fn``) is executed *globally* across
+    all active parties. Use this primitive when:
 
-    The predicate must be a scalar value, and both branches must have compatible
-    input and output signatures. The function ensures type safety by validating
-    that both branches accept the same input types and produce compatible outputs.
+    1. ``pred`` is a boolean scalar whose runtime value is identical for every enabled party.
+    2. At least one branch contains multi-party primitives (``seal`` / ``reveal`` /
+       ``srun`` / ``pshfl`` / mask transformations) whose cost or side-effects you
+       want to avoid if the branch is not taken.
+    3. You require the semantic guarantee that the *non-selected* branch does **not**
+       perform communication, allocate intermediate buffers, or leak timing/side-effects.
+
+    DO NOT use this when:
+    * Predicate differs per party (use party-local selection or ``jax.where``).
+    * You only need elementwise / per-entry selection (use ``jax.where`` / ``peval(jax.where)``).
+    * Predicate is still secret-shared and you cannot reveal it (future: oblivious branch).
+
+    Choosing between primitives (decision guide):
+
+    1. Use ``jax.where`` (elementwise select) WHEN:
+       - You already have both candidate tensors computed (cheap or unavoidable), AND
+       - You want per-element blending, OR
+       - Predicate may differ per party / per element.
+
+       Example::
+           y = peval(jax.where, [mask, a, b])  # both a and b computed
+
+    2. Use ``uniform_cond`` (this primitive) WHEN:
+       - Exactly one expensive or MPC-effectful branch should run, AND
+       - Predicate is (or must be) globally uniform, AND
+       - You want to avoid executing the non-selected branch entirely.
+
+       Example::
+           def heavy_then(x):
+               sealed = smpc.seal(x)
+               return smpc.reveal(sealed) + constant(1)
+
+
+           def light_else(x):
+               return x - constant(1)
+
+
+           pred = reveal(global_flag)  # uniform bool
+           y = uniform_cond(pred, heavy_then, light_else, x)
+
+    3. Use ``jax.lax.cond`` (inside peval) WHEN:
+       - Both branches are purely local numeric compute (no MPC comms), AND
+       - You accept both branches being traced & (possibly) device-compiled, OR
+       - You operate fully in JAX world without multi-party side-effects.
+
+       Example::
+           # Branches are pure JAX functions
+           y = peval(jax.lax.cond, [pred, fn_a, fn_b, x])
 
     Args:
-        pred: A scalar variable representing the boolean predicate that
-              determines which branch to execute. Must be a scalar tensor.
-        then_fn: The multi-party function to execute when
-                 the predicate is true. Must have compatible
-                 input/output signatures with else_fn.
-        else_fn: The multi-party function to execute when
-                 the predicate is false. Must have compatible
-                 input/output signatures with then_fn.
-        *args: Input arguments to pass to the selected branch function.
-               Must be compatible with both then_fn and else_fn input signatures.
+        pred: Boolean scalar ``MPObject``; must have shape ``()`` and dtype bool. Intended to be
+              *uniform* (same logical value) across parties. If ``verify_uniform`` is True,
+              runtime will assert uniformity.
+        then_fn: Multi-party function executed when ``pred`` is True.
+        else_fn: Multi-party function executed when ``pred`` is False.
+        *args: MPObject arguments passed to the selected branch.
+        verify_uniform: Whether to perform a runtime uniformity assertion. Disable only if
+              the caller can guarantee (by construction) uniformity; disabling removes a
+              safety check and may lead to undefined behavior if predicate diverges.
 
     Returns:
-        MPObject: The result of the executed branch. The output type is inferred
-                 from both branches, with pmask set conservatively if the branches
-                 differ in these properties.
+        A PyTree of MPObjects whose structure and per-leaf MPType matches the outputs of both
+        branches (branches must agree exactly on MPType including pmask).
 
     Raises:
-        ValueError: If then_fn or else_fn don't have compatible input/output signatures,
-                   or if function signatures do not match between branches.
+        TypeError: If ``pred`` is not a bool scalar; or branch output types mismatch.
+        ValueError: If ``verify_uniform=True`` and runtime detects non-uniform predicate.
 
-    Examples:
+    Security:
+        ``pred`` must be public (revealed) – using a secret, non-revealed boolean would create
+        a data-dependent control path (timing / communication pattern leak). Reveal first, or
+        use an oblivious selection (``jax.where``) if you cannot reveal.
 
-        def add_one(x):
-            return x + constant(1)
+    Example (common):
+        >>> pred = simp.reveal(secret_flag)  # bool scalar, now public + uniform
+        >>> out = uniform_cond(pred, branch_a, branch_b, x, y)
 
-        def sub_one(x):
-            return x - constant(1)
-
-        pred = ...  # predicate from computation
-        result = cond(pred, add_one, sub_one, x)
-
-        **Example 1: Constant predicate - all parties execute same branch**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   -    x2
-            Pred:    True True True   (constant shared by all parties)
-        then_fn:     x+1  x+1  x+1    (add_one)
-        else_fn:     -    -    -      (sub_one)
-        -----------------------------------------------------------
-            Output:  x0+1 -    x2+1   (all parties execute then_fn)
-
-        **Example 2: Different predicate values - SPMD constraint violation**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   x1   x2
-            Pred:    True False False  (different results per party)
-        then_fn:     x+1  -    -       (add_one)
-        else_fn:     -    x-1  x-1     (sub_one)
-        -----------------------------------------------------------
-            Output:  x0+1 x1-1 x2-1
-
-        Note: This scenario violates SPMD consistency. In practice, the predicate
-        must evaluate to the same value across all participating parties.
-
-        **Example 3: Predicate with different pmask from input**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   -    x2     (pmask=[0,2])
-            Pred:    True True False  (pmask=[0,1,2], superset of input pmask)
-        then_fn:     x+1  -    -      (add_one)
-        else_fn:     -    -    x-1    (sub_one)
-        -----------------------------------------------------------
-            Output:  x0+1 -    x2-1   (only parties with input data produce output)
-
-    Note:
-        Both branches must have identical input and output type signatures.
-        The output pmask is set conservatively if branches have different pmasks.
-        Both functions can capture variables from outer scopes.
     """
     assert all(isinstance(x, MPObject) for x in args), args
 
     cur_tracer = _tracer()
 
+    # Predicate static shape/dtype check
+    pred_ty = pred.mptype
+    if len(pred_ty.shape) != 0:
+        raise TypeError(
+            f"uniform_cond predicate must be scalar, got shape {pred_ty.shape}"
+        )
+    # dtype naming depends on dtype system; assume name property or eq compare
+    if pred_ty.dtype != BOOL:
+        raise TypeError(f"uniform_cond predicate must be boolean, got {pred_ty.dtype}")
+
     # Step 1: Trace both branches in separate contexts
-    then_tracer = cur_tracer.fork(pred.pmask)
+    then_tracer = cur_tracer.fork()
     then_tfn = trace(then_tracer, then_fn, *args)
 
-    else_tracer = cur_tracer.fork(pred.pmask)
+    else_tracer = cur_tracer.fork()
     else_tfn = trace(else_tracer, else_fn, *args)
 
     if not then_tfn.is_signature_match(else_tfn, check_captures=False):
-        raise ValueError(f"Function signatures do not match: {then_tfn} vs {else_tfn}")
+        # Branch outputs (structure, MPType, shape) must match exactly; treat mismatch as a
+        # type error per uniform_cond contract (docstring promises TypeError for output mismatch).
+        raise TypeError(
+            f"uniform_cond branch output/signature mismatch: {then_tfn} vs {else_tfn}"
+        )
+
+    # Enforce identical output MPTypes (including pmask). Then/else already have out_vars.
+    if len(then_tfn.out_vars) != len(else_tfn.out_vars):
+        raise TypeError(
+            "uniform_cond branches must return same number of outputs: "
+            f"{len(then_tfn.out_vars)} vs {len(else_tfn.out_vars)}"
+        )
+    for i, (tv, ev) in enumerate(
+        zip(then_tfn.out_vars, else_tfn.out_vars, strict=True)
+    ):
+        if tv.mptype != ev.mptype:
+            raise TypeError(
+                "uniform_cond branch output MPType mismatch at index "
+                f"{i}: {tv.mptype} vs {ev.mptype}"
+            )
 
     # Step 2: Handle variable captures from outer scopes
 
@@ -514,7 +560,13 @@ def cond(
 
     # Step 4: Create final conditional and return values
     assert then_fn_expr is not None and else_fn_expr is not None
-    fn_expr = CondExpr(pred_expr, then_fn_expr, else_fn_expr, in_exprs)
+    fn_expr = CondExpr(
+        pred_expr,
+        then_fn_expr,
+        else_fn_expr,
+        in_exprs,
+        verify_uniform=verify_uniform,
+    )
 
     rets_expr = [AccessExpr(fn_expr, idx) for idx in range(fn_expr.num_outputs)]
     out_vars = [TraceVar(cur_tracer, res) for res in rets_expr]
@@ -524,10 +576,10 @@ def cond(
 
 @primitive
 def while_loop(
-    cond_fn: Callable[[MPObject], MPObject],
-    body_fn: Callable[[MPObject], MPObject],
-    init: MPObject,
-) -> MPObject:
+    cond_fn: Callable[[Any], MPObject],
+    body_fn: Callable[[Any], Any],
+    init: Any,
+) -> Any:
     """Multi-party while loop with condition and body functions.
 
     This function implements iterative computation in multi-party settings using
@@ -611,56 +663,74 @@ def while_loop(
         (plain ``jax.while_loop`` cannot express it).
 
     Note:
-        The output pmask is set conservatively if the body function changes the pmask
-        during iteration. Both functions can capture variables from outer scopes.
-        This implementation is similar to JAX while_loop but adapted for multi-party computation.
+        Control-flow execution domain (who runs cond/body) follows the outer context's
+        mask; we do not shrink the tracer at trace time based on state pmasks. Value
+        visibility and real participation are enforced per-op by argument pmask
+        intersection (and optional rmask). The loop state MPType (including pmask)
+        must remain identical across iterations. Both functions can capture variables
+        from outer scopes. This implementation is similar to JAX while_loop but
+        adapted for multi-party computation.
     """
-    # TODO(jint): support multiple initial states
     cur_tracer = _tracer()
 
-    # Step 1: Trace both condition and body functions in separate contexts
-    cond_tracer = cur_tracer.fork(init.pmask)
+    # Flatten init into loop-carried MPObject leaves, disallow non-MPObject leaves for now
+    is_mpobj = lambda x: isinstance(x, MPObject)
+    init_vars, init_imms, _init_struct = var_morph(init, is_mpobj)
+
+    if len(init_vars) == 0:
+        raise ValueError("while_loop requires at least one MPObject in init state")
+    if len(init_imms) != 0:
+        raise TypeError(
+            "while_loop init must be a PyTree of MPObjects (no Python/immediate leaves)"
+        )
+
+    cond_tracer = cur_tracer.fork()
     cond_tfn = trace(cond_tracer, cond_fn, init)
 
-    body_tracer = cur_tracer.fork(init.pmask)
+    body_tracer = cur_tracer.fork()
     body_tfn = trace(body_tracer, body_fn, init)
 
-    # Step 2: Validate function signatures
-    if len(body_tfn.out_vars) != 1:
-        raise ValueError(
-            f"Body function must return a single variable: got {len(body_tfn.out_vars)} outputs"
-        )
-    if body_tfn.out_vars[0].mptype != init.mptype:
-        raise ValueError(
-            f"Body function output type {body_tfn.out_vars[0].mptype} "
-            f"does not match initial state type {init.mptype}"
-        )
-
+    # Validate cond returns single value
     if len(cond_tfn.out_vars) != 1:
         raise ValueError(
-            f"Condition function must return a single boolean variable: "
-            f"got {len(cond_tfn.out_vars)} outputs"
+            f"Condition function must return a single boolean variable: got {len(cond_tfn.out_vars)} outputs"
+        )
+    cond_out_var = cond_tfn.out_vars[0]
+    if len(cond_out_var.mptype.shape) != 0:
+        raise TypeError(
+            f"Condition function must return a scalar, but got shape {cond_out_var.mptype.shape}"
+        )
+    # Enforce boolean dtype for condition
+    if cond_out_var.mptype.dtype != BOOL:
+        raise TypeError(
+            f"Condition function must return a boolean scalar, got dtype {cond_out_var.mptype.dtype}"
         )
 
-    # Step 3: Handle variable captures from outer scopes
-    # Collect all variables captured by either function
-    # Similar to cond: union of captures from both functions
-    all_captures = list((cond_tfn.capture_map | body_tfn.capture_map).keys())
+    # Validate body returns same number of leaves and same dtype/shape per leaf
+    if len(body_tfn.out_vars) != len(cond_tfn.in_vars):
+        raise ValueError(
+            "Body function must return the same number of MPObject leaves as the init state"
+        )
+    for i, (out_v, in_v) in enumerate(
+        zip(body_tfn.out_vars, cond_tfn.in_vars, strict=True)
+    ):
+        if out_v.mptype != in_v.mptype:
+            raise TypeError(
+                f"Body output leaf {i} type mismatch: {out_v.mptype} vs {in_v.mptype}"
+            )
 
-    # Re-capture all outer variables into current scope for expression building
+    # Handle variable captures from outer scopes (union of both functions)
+    all_captures = list((cond_tfn.capture_map | body_tfn.capture_map).keys())
     capture_vars = [
         var if var.ctx is cur_tracer else cur_tracer.capture(var)
         for var in all_captures
     ]
-
     assert all(isinstance(var, TraceVar) for var in capture_vars), capture_vars
 
-    # Step 4: Build the while loop expression
-    init_expr = cast(TraceVar, init).expr
+    # Build WhileExpr with all state leaves followed by captures
+    state_exprs = [cast(TraceVar, v).expr for v in init_vars]
     capture_exprs = [cast(TraceVar, var).expr for var in capture_vars]
 
-    # Generate function expressions with correct parameter mapping:
-    # Parameter order: [state_param, capture_params...]
     cond_fn_expr = cond_tfn.make_expr(
         cond_tfn.in_names() + cond_tfn.capture_names(all_captures)
     )
@@ -668,13 +738,17 @@ def while_loop(
         body_tfn.in_names() + body_tfn.capture_names(all_captures)
     )
 
-    # Create WhileExpr with init value and captured variables as arguments
     assert cond_fn_expr is not None and body_fn_expr is not None
-    all_args = [init_expr, *capture_exprs]
+    all_args = [*state_exprs, *capture_exprs]
     out_expr = WhileExpr(cond_fn_expr, body_fn_expr, all_args)
-    assert out_expr.mptype == init.mptype
 
-    return TraceVar(cur_tracer, out_expr)
+    # Materialize outputs and reconstruct the original PyTree of init (args part)
+    rets_expr = [AccessExpr(out_expr, idx) for idx in range(out_expr.num_outputs)]
+    out_vars = [TraceVar(cur_tracer, res) for res in rets_expr]
+
+    # Reconstruct the Python return using the body function's output structure
+    # This preserves the exact PyTree the body returns (matching JAX semantics).
+    return var_demorph(out_vars, body_tfn.out_imms, body_tfn.out_struct)
 
 
 @primitive

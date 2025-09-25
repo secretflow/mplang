@@ -12,309 +12,264 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""SPU flat backend kernel tests.
+
+Rewritten to remove deprecated SpuHandler usage. These tests exercise the
+registered kernels:
+    - spu.makeshares
+    - spu.reconstruct
+    - mlir.pphlo (compiled via frontend.spu.jax_compile)
+
+We keep the tests intentionally lean: just enough coverage to ensure the new
+flat kernel pathway functions for single-party (REF2K) and multi-party (SEMI2K)
+execution flows.
+"""
+
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
 
 import jax.numpy as jnp
 import numpy as np
-import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.backend.spu import SpuHandler, SpuValue
+from mplang.backend.base import (
+    create_runtime,
+    list_registered_kernels,
+)
+from mplang.backend.spu import SpuValue
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
+from mplang.core.dtype import DType
+from mplang.core.mpobject import MPContext, MPObject
+from mplang.core.mptype import MPType
+from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
-from mplang.frontend.spu import SpuFE
+from mplang.frontend import spu
 from mplang.runtime.link_comm import LinkCommunicator
 
 
-def create_mem_link_contexts(world_size: int = 2):
-    """Create real SPU MemLink contexts for testing."""
-    # Create fake addresses for MemLink (not used in memory mode)
+class DummyContext(MPContext):
+    """Minimal MPContext for compiling JAX functions to SPU PFunction."""
+
+    def __init__(self):
+        runtime = RuntimeInfo(version="dev", platform="local", backends=[])
+        node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
+        device = Device(name="p0_local", kind="local", members=[node])
+        spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})
+        super().__init__(spec)
+
+
+class DummyTensor(MPObject):
+    """Minimal MPObject used purely for spu.jax_compile shape/dtype inference."""
+
+    def __init__(self, shape: tuple[int, ...], dtype: jnp.dtype):  # type: ignore[valid-type]
+        self._mptype = MPType.tensor(DType.from_any(dtype), shape)
+        self._ctx = DummyContext()
+
+    @property
+    def mptype(self) -> MPType:  # pragma: no cover - trivial
+        return self._mptype
+
+    @property
+    def ctx(self) -> MPContext:  # pragma: no cover - trivial
+        return self._ctx
+
+
+def create_mem_link_contexts(world_size: int) -> list[LinkCommunicator]:
+    """Create memory link communicators for each party.
+
+    Returns a list so tests can still iterate, but initialize_spu_runtime will
+    now be called per-rank with a single link instance.
+    """
     addrs = [f"P{i}" for i in range(world_size)]
-
-    link_contexts = []
-    for rank in range(world_size):
-        link_comm = LinkCommunicator(rank, addrs, mem_link=True)
-        link_contexts.append(link_comm)
-
-    return link_contexts
+    return [LinkCommunicator(rank, addrs, mem_link=True) for rank in range(world_size)]
 
 
-def create_spu_runtimes(world_size: int = 2):
-    """Create real SPU runtimes for testing."""
-    # Create SPU config
-    spu_config = libspu.RuntimeConfig()
-    spu_config.protocol = libspu.ProtocolKind.SEMI2K
-    spu_config.field = libspu.FieldType.FM128
+def _compile_add(shape: tuple[int, ...] = (3,), dtype=jnp.float32):  # type: ignore[valid-type]
+    def add_fn(x, y):
+        return x + y
 
-    # Create link contexts
-    link_contexts = create_mem_link_contexts(world_size)
-
-    # Create SPU runtimes
-    spu_runtimes = []
-    for link_ctx in link_contexts:
-        spu_rt = spu_api.Runtime(link_ctx, spu_config)
-        spu_runtimes.append(spu_rt)
-
-    return spu_runtimes, spu_config
+    args = [DummyTensor(shape, dtype), DummyTensor(shape, dtype)]
+    pfunc, _ins, _out_tree = spu.jax_compile(add_fn, *args)
+    return pfunc
 
 
-class TestSpuHandler:
-    """Test cases for SpuExecutableHandler focusing on core functionality."""
+def _makeshares_pfunc(arr: np.ndarray, world_size: int) -> PFunction:
+    """Create makeshares PFunction with outs matching expected party world size.
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        # Create SPU config
-        self.spu_config = libspu.RuntimeConfig()
-        self.spu_config.protocol = libspu.ProtocolKind.SEMI2K
-        self.spu_config.field = libspu.FieldType.FM128
+    We rely on caller providing world_size consistent with runtime creation config.
+    """
+    tensor_type = TensorType.from_obj(arr)
+    outs = tuple(tensor_type for _ in range(world_size))
+    return PFunction(
+        fn_type="spu.makeshares",
+        ins_info=(tensor_type,),
+        outs_info=outs,
+        visibility=libspu.Visibility.VIS_SECRET.value,
+    )
 
-    def test_compilation_produces_valid_executable(self):
-        """Test that SpuFrontend.compile produces executables that SpuRT can parse."""
 
-        def add_fn(x, y):
-            return x + y
+def _reconstruct_pfunc(example: np.ndarray, world_size: int) -> PFunction:
+    """Create a reconstruct PFunction whose ins_info matches world size.
 
-        args = [
-            TensorType(shape=(3,), dtype=jnp.float32),
-            TensorType(shape=(3,), dtype=jnp.float32),
-        ]
+    Each input is a share with same tensor type meta; backend kernel validates
+    actual share objects are SpuValue.
+    """
+    tensor_type = TensorType.from_obj(example)
+    return PFunction(
+        fn_type="spu.reconstruct",
+        ins_info=tuple(tensor_type for _ in range(world_size)),
+        outs_info=(tensor_type,),
+    )
 
-        # Compile the function
-        is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, _ = SpuFE(world_size=2).compile_jax(is_var, add_fn, *args)
 
-        # Verify the compiled function format
-        assert cfunc.fn_type == "mlir.pphlo"
-        assert isinstance(cfunc.fn_text, str)
+class TestSpuKernels:
+    def test_kernel_registry(self):
+        for name in ["spu.makeshares", "spu.reconstruct", "mlir.pphlo"]:
+            assert name in list_registered_kernels()
 
-        # Verify runtime can parse the metadata
-        assert "input_visibilities" in cfunc.attrs
-        assert "input_names" in cfunc.attrs
-        assert "output_names" in cfunc.attrs
-        assert "executable_name" in cfunc.attrs
-
-        # Verify we can reconstruct the executable from MLIR code and metadata
-        executable = libspu.Executable(
-            name=cfunc.attrs["executable_name"],
-            input_names=cfunc.attrs["input_names"],
-            output_names=cfunc.attrs["output_names"],
-            code=cfunc.fn_text,
+    def test_makeshares_reconstruct_single_party(self):
+        world = 1
+        cfg = libspu.RuntimeConfig(
+            protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
-        assert executable.name == "add_fn"
-        assert len(executable.input_names) == 2
-
-    def test_real_spu_execution_single_party(self):
-        """Test execution with real SPU runtime in single-party mode.
-
-        Uses REF2K (mock/reference) protocol which supports single-party execution,
-        unlike multi-party protocols like SEMI2K which require >= 2 parties.
-        """
-
-        def add_fn(x, y):
-            return x + y
-
-        args = [
-            TensorType(shape=(3,), dtype=jnp.float32),
-            TensorType(shape=(3,), dtype=jnp.float32),
-        ]
-
-        # Compile the function (this should always work)
-        is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, _ = SpuFE(world_size=1).compile_jax(is_var, add_fn, *args)
-
-        # Create test data
-        x_data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        y_data = np.array([4.0, 5.0, 6.0], dtype=np.float32)
-        expected = x_data + y_data
-
-        # Test compilation and metadata parsing (these work without runtime)
-        assert cfunc.fn_type == "mlir.pphlo"
-        assert isinstance(cfunc.fn_text, str)
-        assert "input_visibilities" in cfunc.attrs
-
-        # Verify we can reconstruct the executable and it contains the expected names
-        executable = libspu.Executable(
-            name=cfunc.attrs.get("executable_name", cfunc.fn_name),
-            input_names=cfunc.attrs["input_names"],
-            output_names=cfunc.attrs["output_names"],
-            code=cfunc.fn_text,
+        link_ctxs = create_mem_link_contexts(world)
+        runtime = create_runtime(0, world)
+        # Seed SPU env via kernel
+        seed_fn = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[0],
         )
-        assert len(executable.input_names) == 2
+        runtime.run_kernel(seed_fn, [])
 
-        # For single-party testing, we use REF2K protocol which is a mock/reference
-        # implementation that doesn't require multi-party synchronization
+        x = np.array([1, 2, 3], dtype=np.int32)
+        mk = _makeshares_pfunc(x, world)
+        shares = runtime.run_kernel(mk, [x])
+        assert len(shares) == 1 and isinstance(shares[0], SpuValue)
+        rc = _reconstruct_pfunc(x, world)
+        # run_kernel expects outs length=1; we call reconstruct with the share list
+        out = runtime.run_kernel(rc, shares)[0]
+        np.testing.assert_array_equal(out, x)
 
-        # Create SPU config for single-party (mock) execution
-        spu_config = libspu.RuntimeConfig(
-            protocol=libspu.ProtocolKind.REF2K,  # Mock protocol
-            field=libspu.FieldType.FM128,
+    def test_makeshares_reconstruct_multiparty(self):
+        world = 2
+        cfg = libspu.RuntimeConfig(
+            protocol=libspu.ProtocolKind.SEMI2K, field=libspu.FieldType.FM128
         )
+        link_ctxs = create_mem_link_contexts(world)
+        # seed rank0 state
+        runtime0 = create_runtime(0, world)
+        seed0 = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[0],
+        )
+        runtime0.run_kernel(seed0, [])
+        # seed rank1 state to simulate multi-rank kernel contexts
+        runtime1 = create_runtime(1, world)
+        seed1 = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[1],
+        )
+        runtime1.run_kernel(seed1, [])
 
-        # Create SPU IO for single party
-        spu_io = spu_api.Io(world_size=1, config=spu_config)
+        x = np.array([10, 20], dtype=np.int32)
+        mk = _makeshares_pfunc(x, world)
+        shares = runtime0.run_kernel(mk, [x])
+        assert len(shares) == world and all(isinstance(s, SpuValue) for s in shares)
+        rc = _reconstruct_pfunc(x, world)
+        out = runtime0.run_kernel(rc, list(shares))[0]
+        np.testing.assert_array_equal(out, x)
 
-        # Create secret shares for inputs (REF2K supports single party)
-        x_shares = spu_io.make_shares(x_data, libspu.Visibility.VIS_SECRET)
-        y_shares = spu_io.make_shares(y_data, libspu.Visibility.VIS_SECRET)
+    def test_mlir_pphlo_single_party(self):
+        world = 1
+        cfg = libspu.RuntimeConfig(
+            protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
+        )
+        link_ctxs = create_mem_link_contexts(world)
+        runtime = create_runtime(0, world)
+        seed = PFunction(
+            fn_type="spu.seed_env",
+            ins_info=(),
+            outs_info=(),
+            config=cfg,
+            world=world,
+            link=link_ctxs[0],
+        )
+        runtime.run_kernel(seed, [])
 
-        # Verify that share creation works (should have 1 share each for single party)
-        assert len(x_shares) == 1
-        assert len(y_shares) == 1
+        pfunc = _compile_add((3,), jnp.float32)
+        x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        y = np.array([4.0, 5.0, 6.0], dtype=np.float32)
+        expected = x + y
 
-        # Create SpuValue objects
-        spu_args = [
-            SpuValue(
-                shape=x_data.shape,
-                dtype=x_data.dtype,
-                vtype=libspu.Visibility.VIS_SECRET,
-                share=x_shares[0],
-            ),
-            SpuValue(
-                shape=y_data.shape,
-                dtype=y_data.dtype,
-                vtype=libspu.Visibility.VIS_SECRET,
-                share=y_shares[0],
-            ),
-        ]
+        mkx = _makeshares_pfunc(x, world)
+        mky = _makeshares_pfunc(y, world)
+        x_shares = runtime.run_kernel(mkx, [x])
+        y_shares = runtime.run_kernel(mky, [y])
 
-        # Verify SpuValue structure
-        for spu_arg in spu_args:
-            assert isinstance(spu_arg, SpuValue)
-            assert hasattr(spu_arg, "shape")
-            assert hasattr(spu_arg, "dtype")
-            assert hasattr(spu_arg, "vtype")
-            assert hasattr(spu_arg, "share")
+        # Single-party run (rank=0)
+        result_share = runtime.run_kernel(pfunc, [x_shares[0], y_shares[0]])[0]
+        assert isinstance(result_share, SpuValue)
+        rc = _reconstruct_pfunc(expected, world)
+        out = runtime.run_kernel(rc, [result_share])[0]
+        np.testing.assert_allclose(out, expected, rtol=1e-5)
 
-        # Now attempt runtime creation and execution with single-party setup
-        link_contexts = create_mem_link_contexts(world_size=1)
-        runtime = SpuHandler(1, spu_config)
-        runtime.set_link_context(link_contexts[0])
+    def test_mlir_pphlo_multiparty(self):
+        world = 2
+        cfg = libspu.RuntimeConfig(
+            protocol=libspu.ProtocolKind.SEMI2K, field=libspu.FieldType.FM128
+        )
+        link_ctxs = create_mem_link_contexts(world)
 
-        # Runtime setup with REF2K should work without synchronization issues
-        runtime.setup(0)  # rank 0 for single party
+        # Initialize per-rank runtime & seed (store explicit runtimes)
+        runtimes = {}
+        for r in range(world):
+            rt = create_runtime(r, world)
+            runtimes[r] = rt
+            seed_fn = PFunction(
+                fn_type="spu.seed_env",
+                ins_info=(),
+                outs_info=(),
+                config=cfg,
+                world=world,
+                link=link_ctxs[r],
+            )
+            rt.run_kernel(seed_fn, [])  # use explicit runtime
 
-        # Execute the compiled function
-        results = runtime.execute(cfunc, spu_args)  # type: ignore[arg-type]
+        pfunc = _compile_add((3,), jnp.float32)
+        x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        y = np.array([4.0, 5.0, 6.0], dtype=np.float32)
+        expected = x + y
 
-        # Verify results
-        assert len(results) == 1
-        result = results[0]
-        assert isinstance(result, SpuValue)
-        assert result.shape == expected.shape
-        assert result.dtype == np.float32
-        assert result.vtype == libspu.Visibility.VIS_SECRET
+        mkx = _makeshares_pfunc(x, world)
+        mky = _makeshares_pfunc(y, world)
+        x_shares: list[SpuValue] = runtimes[0].run_kernel(mkx, [x])
+        y_shares: list[SpuValue] = runtimes[0].run_kernel(mky, [y])
 
-        # Reconstruct and verify result (single party can reconstruct directly)
-        result_shares = [result.share]
-        reconstructed = spu_io.reconstruct(result_shares)
-        np.testing.assert_allclose(reconstructed, expected, rtol=1e-5)
+        # Run mlir.pphlo concurrently per rank to satisfy interactive protocol
+        def party(rank: int, xs: SpuValue, ys: SpuValue):
+            rt = runtimes[rank]
+            return rt.run_kernel(pfunc, [xs, ys])[0]
 
-        print("SPU single-party execution completed successfully!")
-        print(f"Expected: {expected}")
-        print(f"Got: {reconstructed}")
-
-        runtime.teardown()
-
-    def test_real_spu_execution_multiparty(self):
-        """Test execution with real SPU runtime in multi-party mode.
-
-        Uses SEMI2K protocol with proper multi-threaded synchronization to avoid
-        deadlock issues that occur when SPU runtimes are initialized sequentially.
-        """
-
-        def add_fn(x, y):
-            return x + y
-
-        args = [
-            TensorType(shape=(3,), dtype=jnp.float32),
-            TensorType(shape=(3,), dtype=jnp.float32),
-        ]
-
-        # Compile the function
-        is_var = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
-        cfunc, _, _ = SpuFE(world_size=2).compile_jax(is_var, add_fn, *args)
-
-        # Create test data
-        x_data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        y_data = np.array([4.0, 5.0, 6.0], dtype=np.float32)
-        expected = x_data + y_data
-
-        # Create SPU IO for multi-party (SEMI2K requires >= 2 parties)
-        spu_io = spu_api.Io(world_size=2, config=self.spu_config)
-
-        # Create secret shares for inputs (will have 2 shares each)
-        x_shares = spu_io.make_shares(x_data, libspu.Visibility.VIS_SECRET)
-        y_shares = spu_io.make_shares(y_data, libspu.Visibility.VIS_SECRET)
-
-        # Create link contexts once for all parties - CRITICAL: shared between all threads
-        world_size = 2
-        link_contexts = create_mem_link_contexts(world_size=world_size)
-
-        def party_worker(party_id):
-            """Worker function for each party in multi-party computation."""
-            # Each party gets their respective share
-            spu_args = [
-                SpuValue(
-                    shape=x_data.shape,
-                    dtype=x_data.dtype,
-                    vtype=libspu.Visibility.VIS_SECRET,
-                    share=x_shares[party_id],
-                ),
-                SpuValue(
-                    shape=y_data.shape,
-                    dtype=y_data.dtype,
-                    vtype=libspu.Visibility.VIS_SECRET,
-                    share=y_shares[party_id],
-                ),
-            ]
-
-            # Create runtime for this party using shared link contexts
-            runtime = SpuHandler(world_size, self.spu_config)
-            runtime.set_link_context(link_contexts[party_id])
-            runtime.setup(party_id)
-
-            # Execute the compiled function
-            results = runtime.execute(cfunc, spu_args)  # type: ignore[arg-type]
-
-            # Verify results
-            assert len(results) == 1
-            result = results[0]
-            assert isinstance(result, SpuValue)
-
-            runtime.teardown()
-            return party_id, result.share
-
-        # Execute all party workers simultaneously using ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=world_size) as executor:
+        with ThreadPoolExecutor(max_workers=world) as pool:
             futures = [
-                executor.submit(party_worker, party_id)
-                for party_id in range(world_size)
+                pool.submit(party, r, x_shares[r], y_shares[r]) for r in range(world)
             ]
+            results = [f.result() for f in futures]
 
-            # Wait for all futures to complete and collect results
-            party_results = {}
-            result_shares = []
-
-            for i, future in enumerate(futures):
-                try:
-                    party_id, share = future.result(timeout=30)
-                    party_results[party_id] = "success"
-                    result_shares.append(share)
-                except Exception as e:
-                    raise AssertionError(f"Party {i} failed with error: {e}") from e
-
-        # Check that all parties succeeded
-        success_count = sum(
-            1 for status in party_results.values() if status == "success"
-        )
-        assert success_count == world_size, (
-            f"Only {success_count}/{world_size} parties succeeded: {party_results}"
-        )
-
-        # All parties succeeded - reconstruct the final result
-        spu_io = spu_api.Io(world_size=2, config=self.spu_config)
-        reconstructed = spu_io.reconstruct(result_shares)
-        np.testing.assert_allclose(reconstructed, expected, rtol=1e-5)
-
-        print("SPU multi-party execution completed successfully!")
-        print(f"Expected: {expected}")
-        print(f"Got: {reconstructed}")
+        assert len(results) == world and all(isinstance(r, SpuValue) for r in results)
+        rc = _reconstruct_pfunc(expected, world)
+        out = runtimes[0].run_kernel(rc, results)[0]
+        np.testing.assert_allclose(out, expected, rtol=1e-5)

@@ -1,0 +1,32 @@
+# 3-party computation cluster configuration in ClusterSpec format
+nodes:
+  - name: "node_0"
+    endpoint: "http://127.0.0.1:61920"
+  - name: "node_1"
+    endpoint: "http://127.0.0.1:61921"
+  - name: "node_2"
+    endpoint: "http://127.0.0.1:61922"
+  - name: "node_3"
+    endpoint: "http://127.0.0.1:61923"
+
+devices:
+  SP0:
+    kind: "SPU"
+    members: ["node_0", "node_1", "node_2"]
+    config:
+      protocol: "ABY3"
+      field: "FM64"
+      enable_pphlo_profile: true
+      enable_hal_profile: true
+  P0:
+    kind: "PPU"
+    members: ["node_0"]
+    config: {}
+  P1:
+    kind: "PPU"
+    members: ["node_3"]
+    config: {}
+  TEE0:
+    kind: "TEE"
+    members: ["node_1"]
+    config: {}

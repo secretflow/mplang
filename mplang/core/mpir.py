@@ -33,7 +33,7 @@ import numpy as np
 import spu.libspu as spu_api
 
 from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
-from mplang.core.expr import Expr, ExprVisitor, FuncDefExpr
+from mplang.core.expr import Expr, FuncDefExpr
 from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
@@ -46,6 +46,7 @@ from mplang.core.expr.ast import (
     VariableExpr,
     WhileExpr,
 )
+from mplang.core.expr.walk import walk
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
@@ -233,7 +234,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
     return attr_proto
 
 
-class Writer(ExprVisitor):
+class Writer:
     """Writer for serializing Expr-based expressions to GraphProto.
 
     This class traverses an expression tree and converts it into a serialized
@@ -283,19 +284,43 @@ class Writer(ExprVisitor):
         else:
             return f"{self.expr_name(expr)}:{out_idx}"
 
-    def _ensure_visited(self, *exprs: Expr) -> None:
-        """Ensure expressions are visited.
+    # ------------------------- traversal and deps helpers -------------------------
+    @staticmethod
+    def _writer_deps(node: Expr) -> list[Expr]:
+        """Dependencies for serialization order.
 
-        This method ensures that all provided expressions have been processed
-        and added to the serialization graph.
-
-        Args:
-            exprs: Expressions to ensure are visited.
+        Similar to dataflow deps, but with two important differences:
+        - CallExpr: include the function value (fn) so we emit a func_def node
+          in the outer graph before the call node.
+        - FuncDefExpr: include body so we emit body producers before func_def.
         """
-        for expr in exprs:
-            expr_id = id(expr)
-            if expr_id not in self._expr_ids:
-                expr.accept(self)
+        if isinstance(node, EvalExpr):
+            return list(node.args)
+        if isinstance(node, TupleExpr):
+            return list(node.args)
+        if isinstance(node, CondExpr):
+            # pred and actual args only; functions are serialized via attrs (nested graphs)
+            return [node.pred, *node.args]
+        if isinstance(node, WhileExpr):
+            # initial state args only; functions are serialized via attrs (nested graphs)
+            return list(node.args)
+        if isinstance(node, ConvExpr):
+            return list(node.vars)
+        if isinstance(node, ShflSExpr):
+            return [node.src_val]
+        if isinstance(node, ShflExpr):
+            return [node.src, node.index]
+        if isinstance(node, AccessExpr):
+            return [node.src]
+        if isinstance(node, VariableExpr):
+            return []
+        if isinstance(node, FuncDefExpr):
+            # ensure body producers are serialized first
+            return [node.body]
+        if isinstance(node, CallExpr):
+            # include fn and args as deps so func_def appears before call
+            return [node.fn, *node.args]
+        return []
 
     def reset(self) -> None:
         """Reset writer state.
@@ -410,11 +435,17 @@ class Writer(ExprVisitor):
         return self.expr_name(expr)
 
     def dumps(self, expr: Expr) -> mpir_pb2.GraphProto:
-        """Dump an expression to GraphProto."""
+        """Dump an expression to GraphProto using iterative walk traversal."""
         self.reset()
 
-        # Visit the expression tree
-        self._ensure_visited(expr)
+        # Walk in post-order so deps are serialized before users
+        for node in walk(expr, get_deps=self._writer_deps, traversal="dfs_post_iter"):
+            # Avoid double-emit if the same Expr object appears multiple times
+            node_id = id(node)
+            if node_id in self._expr_ids:
+                continue
+            # Emit node
+            self._serialize_node(node)
 
         # Create graph metadata
         graph_attrs = {}
@@ -433,112 +464,64 @@ class Writer(ExprVisitor):
             attrs=graph_attrs,
         )
 
-    def visit_eval(self, expr: EvalExpr) -> Any:
-        """Visit evaluation expression."""
-        # Visit all argument expressions
-        self._ensure_visited(*expr.args)
-
-        op = self._create_node_proto(expr, "eval")
-        self._add_expr_inputs(op, *expr.args)
-        self._add_attrs(op, pfunc=expr.pfunc, rmask=expr.rmask)
-        return self._finalize_node(op, expr)
-
-    def visit_variable(self, expr: VariableExpr) -> Any:
-        """Visit variable expression."""
-        op = self._create_node_proto(expr, "variable")
-        # Use mapped name if available, otherwise use original name
-        mapped_name = self._var_name_mapping.get(expr.name, expr.name)
-        self._add_attrs(op, name=mapped_name)
-        return self._finalize_node(op, expr)
-
-    def visit_tuple(self, expr: TupleExpr) -> Any:
-        """Visit tuple expression."""
-        # Visit all argument expressions
-        self._ensure_visited(*expr.args)
-
-        op = self._create_node_proto(expr, "tuple")
-        self._add_single_expr_inputs(op, *expr.args)
-        return self._finalize_node(op, expr)
-
-    def visit_cond(self, expr: CondExpr) -> Any:
-        """Visit conditional expression."""
-        # Visit predicate and all argument expressions
-        self._ensure_visited(expr.pred, *expr.args)
-
-        op = self._create_node_proto(expr, "cond")
-        self._add_single_expr_inputs(op, expr.pred)
-        self._add_expr_inputs(op, *expr.args)
-        self._add_attrs(op, then_fn=expr.then_fn, else_fn=expr.else_fn)
-        return self._finalize_node(op, expr)
-
-    def visit_call(self, expr: CallExpr) -> Any:
-        """Visit function call expression."""
-        # Visit function definition and all argument expressions
-        self._ensure_visited(expr.fn, *expr.args)
-
-        op = self._create_node_proto(expr, "call")
-        self._add_single_expr_inputs(op, expr.fn)
-        self._add_expr_inputs(op, *expr.args)
-        return self._finalize_node(op, expr)
-
-    def visit_while(self, expr: WhileExpr) -> Any:
-        """Visit while loop expression."""
-        # Visit all argument expressions
-        self._ensure_visited(*expr.args)
-
-        op = self._create_node_proto(expr, "while")
-        self._add_expr_inputs(op, *expr.args)
-        self._add_attrs(op, cond_fn=expr.cond_fn, body_fn=expr.body_fn)
-        return self._finalize_node(op, expr)
-
-    def visit_conv(self, expr: ConvExpr) -> Any:
-        """Visit convergence expression."""
-        # Visit all variable expressions
-        self._ensure_visited(*expr.vars)
-
-        op = self._create_node_proto(expr, "conv")
-        self._add_expr_inputs(op, *expr.vars)
-        return self._finalize_node(op, expr)
-
-    def visit_shfl_s(self, expr: ShflSExpr) -> Any:
-        """Visit static shuffle expression."""
-        # Visit source value expression
-        self._ensure_visited(expr.src_val)
-
-        op = self._create_node_proto(expr, "shfl_s")
-        self._add_single_expr_inputs(op, expr.src_val)
-        self._add_attrs(op, pmask=expr.pmask, src_ranks=expr.src_ranks)
-        return self._finalize_node(op, expr)
-
-    def visit_shfl(self, expr: ShflExpr) -> Any:
-        """Visit dynamic shuffle expression."""
-        # Visit source and index expressions
-        self._ensure_visited(expr.src, expr.index)
-
-        op = self._create_node_proto(expr, "shfl")
-        self._add_single_expr_inputs(op, expr.src, expr.index)
-        return self._finalize_node(op, expr)
-
-    def visit_access(self, expr: AccessExpr) -> Any:
-        """Visit access expression."""
-        # Visit source expression
-        self._ensure_visited(expr.src)
-
-        op = self._create_node_proto(expr, "access")
-        # For access, we use the specific output index
-        op.inputs.append(self.value_name(expr.src, expr.index))
-        self._add_attrs(op, index=expr.index)
-        return self._finalize_node(op, expr)
-
-    def visit_func_def(self, expr: FuncDefExpr) -> Any:
-        """Visit function definition expression."""
-        # Visit body expression
-        self._ensure_visited(expr.body)
-
-        op = self._create_node_proto(expr, "func_def")
-        self._add_expr_inputs(op, expr.body)
-        self._add_attrs(op, params=expr.params)
-        return self._finalize_node(op, expr)
+    # ------------------------------- emitters --------------------------------
+    def _serialize_node(self, expr: Expr) -> None:
+        """Create and append a NodeProto for the given expr."""
+        if isinstance(expr, EvalExpr):
+            op = self._create_node_proto(expr, "eval")
+            self._add_expr_inputs(op, *expr.args)
+            self._add_attrs(op, pfunc=expr.pfunc, rmask=expr.rmask)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, VariableExpr):
+            op = self._create_node_proto(expr, "variable")
+            mapped_name = self._var_name_mapping.get(expr.name, expr.name)
+            self._add_attrs(op, name=mapped_name)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, TupleExpr):
+            op = self._create_node_proto(expr, "tuple")
+            self._add_single_expr_inputs(op, *expr.args)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, CondExpr):
+            op = self._create_node_proto(expr, "cond")
+            self._add_single_expr_inputs(op, expr.pred)
+            self._add_expr_inputs(op, *expr.args)
+            self._add_attrs(op, then_fn=expr.then_fn, else_fn=expr.else_fn)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, CallExpr):
+            op = self._create_node_proto(expr, "call")
+            self._add_single_expr_inputs(op, expr.fn)
+            self._add_expr_inputs(op, *expr.args)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, WhileExpr):
+            op = self._create_node_proto(expr, "while")
+            self._add_expr_inputs(op, *expr.args)
+            self._add_attrs(op, cond_fn=expr.cond_fn, body_fn=expr.body_fn)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, ConvExpr):
+            op = self._create_node_proto(expr, "conv")
+            self._add_expr_inputs(op, *expr.vars)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, ShflSExpr):
+            op = self._create_node_proto(expr, "shfl_s")
+            self._add_single_expr_inputs(op, expr.src_val)
+            self._add_attrs(op, pmask=expr.pmask, src_ranks=expr.src_ranks)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, ShflExpr):
+            op = self._create_node_proto(expr, "shfl")
+            self._add_single_expr_inputs(op, expr.src, expr.index)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, AccessExpr):
+            op = self._create_node_proto(expr, "access")
+            op.inputs.append(self.value_name(expr.src, expr.index))
+            self._add_attrs(op, index=expr.index)
+            self._finalize_node(op, expr)
+        elif isinstance(expr, FuncDefExpr):
+            op = self._create_node_proto(expr, "func_def")
+            self._add_expr_inputs(op, expr.body)
+            self._add_attrs(op, params=expr.params)
+            self._finalize_node(op, expr)
+        else:
+            raise TypeError(f"Unsupported expr type for serialization: {type(expr)}")
 
 
 class Reader:

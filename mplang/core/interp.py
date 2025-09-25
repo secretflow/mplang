@@ -21,11 +21,11 @@ which references computed values in an interpreter.
 
 from __future__ import annotations
 
-import copy
 from abc import abstractmethod
 from collections.abc import Sequence
 from typing import Any, cast
 
+from mplang.core.cluster import ClusterSpec
 from mplang.core.expr.ast import Expr, VariableExpr
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType, TensorLike
@@ -33,6 +33,7 @@ from mplang.core.tracer import TracedFunction
 from mplang.utils.func_utils import var_demorph, var_morph
 
 
+# TODO(jint): Should we use inheritance or composition here?
 class InterpContext(MPContext):
     """Context for eager evaluation using an interpreter.
 
@@ -40,18 +41,11 @@ class InterpContext(MPContext):
     in an underlying interpreter.
     """
 
-    def __init__(self, psize: int, attrs: dict[str, Any] | None = None):
-        self._psize = psize
-        self._attrs = copy.copy(attrs) if attrs else {}
-        self._var_counter = 0
-
-    def psize(self) -> int:
-        """Return the world size."""
-        return self._psize
-
-    def attrs(self) -> dict[str, Any]:
-        """Return the attributes of the context."""
-        return self._attrs
+    def __init__(
+        self,
+        cluster_spec: ClusterSpec,
+    ):
+        super().__init__(cluster_spec)
 
     @abstractmethod
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:

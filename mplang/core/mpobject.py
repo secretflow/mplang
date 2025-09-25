@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mplang.core.dtype import DType
 from mplang.core.mask import Mask
@@ -23,21 +23,47 @@ from mplang.core.mptype import MPType
 from mplang.core.table import TableType
 from mplang.core.tensor import Shape
 
+if TYPE_CHECKING:
+    from mplang.core.cluster import ClusterSpec
 
-class MPContext(ABC):
-    """The context of an MPObject."""
 
-    @abstractmethod
-    def psize(self) -> int:
-        """Return the world size."""
+class MPContext:
+    """The context of an MPObject.
 
-    @abstractmethod
-    def attrs(self) -> dict[str, Any]:
-        """Return the attributes of the context."""
+    MPContext is the abstract base class for all execution contexts.
+    It only holds the immutable cluster_spec plus lightweight parent/root
+    helpers used to support stack-scoped extension state (attached lazily by
+    external features on the root context).
+    """
 
-    def attr(self, key: str, default: Any = None) -> Any:
-        """Return the attribute of the context by key."""
-        return self.attrs().get(key, default)
+    def __init__(self, cluster_spec: ClusterSpec, *, parent: MPContext | None = None):
+        if cluster_spec is None:
+            raise ValueError("cluster_spec cannot be None")
+        self.cluster_spec = cluster_spec
+        # Parent link enables stack-scoped state sharing: ephemeral child contexts
+        # (e.g. short-lived tracing) can delegate to a stable root without relying
+        # on process-wide globals.
+        self._parent: MPContext | None = parent
+
+    # Basic topology helpers
+    def world_size(self) -> int:
+        return len(self.cluster_spec.nodes)
+
+    @property
+    def parent(self) -> MPContext | None:
+        """Direct parent context or None if this is root."""
+        return self._parent
+
+    def root(self) -> MPContext:
+        """Return the root context (follow parent chain)."""
+        ctx: MPContext = self
+        visited: set[int] = set()
+        while ctx._parent is not None:
+            if id(ctx) in visited:
+                raise RuntimeError("Cycle detected in MPContext parent chain")
+            visited.add(id(ctx))
+            ctx = ctx._parent
+        return ctx
 
 
 class MPObject(ABC):

@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 import mplang
-import mplang.random as mpr
+import mplang.simp.random as mpr
 
 
 def eval_and_fetch(sim, fn, *args, **kwargs):
@@ -27,7 +27,7 @@ def eval_and_fetch(sim, fn, *args, **kwargs):
 
 def test_ukey():
     num_parties = 3
-    sim = mplang.Simulator(num_parties)
+    sim = mplang.Simulator.simple(num_parties)
 
     # Test ukey with a specific seed
     results = eval_and_fetch(sim, mpr.ukey, 42)
@@ -49,7 +49,7 @@ def test_ukey():
 
 def test_urandint():
     num_parties = 4
-    sim = mplang.Simulator(num_parties)
+    sim = mplang.Simulator.simple(num_parties)
 
     # test with constant key
     key = np.random.randint(0, 2**32, (2,), dtype=np.uint32)
@@ -84,7 +84,7 @@ def test_urandint():
 
 def test_prandint():
     num_parties = 3
-    sim = mplang.Simulator(num_parties)
+    sim = mplang.Simulator.simple(num_parties)
 
     # test with shape
     results = eval_and_fetch(sim, mpr.prandint, 0, 100, (2, 3))
@@ -112,7 +112,7 @@ def test_prandint():
 
 def test_pperm():
     num_parties = 10
-    sim = mplang.Simulator(num_parties)
+    sim = mplang.Simulator.simple(num_parties)
 
     # Generate a key with mask covering all parties
     key = mplang.evaluate(sim, mpr.ukey, 42)

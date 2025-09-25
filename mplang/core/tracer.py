@@ -60,6 +60,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
+from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
 from mplang.core.expr.ast import Expr, FuncDefExpr, TupleExpr, VariableExpr
 from mplang.core.expr.printer import Printer
@@ -93,27 +94,27 @@ class TraceContext(MPContext):
 
     def __init__(
         self,
-        world_size: int,
+        cluster_spec: ClusterSpec,
+        *,
         mask: Mask | None = None,
-        attrs: dict[str, Any] | None = None,
         capture_namer: VarNamer | None = None,
+        parent: MPContext | None = None,
     ):
-        self._world_size = world_size
-        self._attrs = attrs or {}
-        self._var_counter = 0
-        self._mask = mask or Mask((1 << world_size) - 1)
+        """Initialize TraceContext with a cluster specification.
+
+        Args:
+            cluster_spec: The cluster specification defining the physical nodes
+                          and logical devices available for computation.
+            mask: The default mask for this context. If None, defaults to all parties.
+            capture_namer: Optional VarNamer for naming captured variables.
+        """
+        super().__init__(cluster_spec, parent=parent)
+
+        self._mask = mask or Mask.all(self.world_size())
         self._capture_namer = capture_namer or VarNamer()
 
         self._var_namer = VarNamer(prefix="%")
         self._captures: dict[MPObject, TraceVar] = {}
-
-    def psize(self) -> int:
-        """Return the world size."""
-        return self._world_size
-
-    def attrs(self) -> dict[str, Any]:
-        """Return the attributes of the context."""
-        return self._attrs
 
     @property
     def mask(self) -> Mask:
@@ -136,9 +137,10 @@ class TraceContext(MPContext):
                 )
 
         return TraceContext(
-            world_size=self._world_size,
+            cluster_spec=self.cluster_spec,
             mask=mask,
-            attrs=self._attrs.copy(),
+            parent=self._parent,
+            # capture_namer=self._capture_namer,
         )
 
     def capture(self, obj: MPObject) -> TraceVar:

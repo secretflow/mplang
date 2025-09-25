@@ -17,26 +17,30 @@ import random
 import mplang
 import mplang.device as mpd
 
-device_conf = {
-    "SP0": {
-        "type": "SPU",
-        "node_ids": ["node:1", "node:2", "node:3"],
-        "configs": {
-            "protocol": "SEMI2K",
-            "field": "FM128",
-            "enable_pphlo_profile": True,
+cluster_spec = mplang.ClusterSpec.from_dict({
+    "nodes": [
+        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+        {"name": "node_2", "endpoint": "127.0.0.1:61922"},
+        {"name": "node_3", "endpoint": "127.0.0.1:61923"},
+        {"name": "node_4", "endpoint": "127.0.0.1:61924"},
+        {"name": "node_5", "endpoint": "127.0.0.1:61925"},
+    ],
+    "devices": {
+        "SP0": {
+            "kind": "SPU",
+            "members": ["node_1", "node_2", "node_3"],
+            "config": {
+                "protocol": "SEMI2K",
+                "field": "FM128",
+                "enable_pphlo_profile": True,
+            },
         },
+        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+        "P1": {"kind": "PPU", "members": ["node_4"], "config": {}},
+        "TEE0": {"kind": "TEE", "members": ["node_5"], "config": {}},
     },
-    "P0": {"type": "PPU", "node_ids": ["node:0"]},
-    "P1": {"type": "PPU", "node_ids": ["node:4"]},
-}
-node_def = {
-    "node:0": "127.0.0.1:61920",
-    "node:1": "127.0.0.1:61921",
-    "node:2": "127.0.0.1:61922",
-    "node:3": "127.0.0.1:61923",
-    "node:4": "127.0.0.1:61924",
-}
+})
 
 
 @mpd.function
@@ -62,69 +66,54 @@ def myfun(x, y):
 
 
 @mpd.function
-def millionaire():
+def millionaire(dev_name):
     x = mpd.device("P0")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(x) == "P0", x
-
     y = mpd.device("P1")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(y) == "P1", y
-
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
-    assert mpd.Utils.get_devid(z) == "SP0", z
-
+    # Run comparison inside secure device.
+    z = mpd.device(dev_name)(lambda x, y: x < y)(x, y)
+    # Bring result back to P0
     r = mpd.put("P0", z)
     return x, y, z, r
 
 
-def lazy_eval():
-    compiled = mplang.compile(mplang.cur_ctx(), millionaire)
-    print("millionaire compiled:", compiled.compiler_ir())
+def run_spu():
+    print("-" * 10, "millionaire (SPU)", "-" * 10)
 
-    x, y, z, r = millionaire()
-    print("x:", x, mplang.fetch(None, x))
-    print("y:", y, mplang.fetch(None, y))
-    print("z:", z, mplang.fetch(None, z))
-    print("r:", r, mplang.fetch(None, r))
+    sim = mplang.Simulator(cluster_spec)
+    x, y, z, r = mplang.evaluate(sim, millionaire, "SP0")
+    print("x:", x, mpd.fetch(sim, x))
+    print("y:", y, mpd.fetch(sim, y))
+    print("z:", z, mpd.fetch(sim, z))
+    print("r:", r, mpd.fetch(sim, r))
 
-    print("-" * 10, "myfun", "-" * 10)
-    xx, [yy, _c0], res_dict = myfun(x, y)
-    print("xx:", xx)
-    print("yy:", yy)
-    print("res_dict", res_dict)
+    # compiled = mplang.compile(sim, millionaire, "SP0")
+    # print("SPU compiled:", compiled.compiler_ir())
 
-
-def eager_eval():
-    # the function is evaluated immediately, on P0
-    x = mpd.device("P0")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(x) == "P0", x
-
-    # the function is evaluated immediately, on P1
-    y = mpd.device("P1")(random.randint)(0, 10)
-    assert mpd.Utils.get_devid(y) == "P1", y
-
-    # compare the two numbers, on SP0
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
-    assert mpd.Utils.get_devid(z) == "SP0", z
-
-    print("x:", x)
-    print("y:", y)
-    print("z:", z)
-
-    # reveal the result to P0
-    u = mpd.put("P0", z)
-    print("w:", u)
-
-    # direct reveal a variable from P0 to P1
-    v = mpd.put("P1", x)
-    print("v:", v)
+    # ofcourse we can run other funcs in the same sim instance
+    # print("-" * 10, "myfun", "-" * 10)
+    # xx, [yy, _c0], res_dict = mplang.evaluate(sim, myfun, x, y)
+    # print("xx:", xx)
+    # print("yy:", yy)
+    # print("res_dict", res_dict)
 
 
-# import logging
-# logging.basicConfig(level=logging.DEBUG)
+def run_tee():
+    print("-" * 10, "millionaire (TEE)", "-" * 10)
+
+    sim = mplang.Simulator(cluster_spec)
+    x_p0, y_p1, z_t, r_p0 = mplang.evaluate(sim, millionaire, "TEE0")
+    print("x_p0:", x_p0, mpd.fetch(sim, x_p0))
+    print("y_p1:", y_p1, mpd.fetch(sim, y_p1))
+    print("z_t:", z_t, mpd.fetch(sim, z_t))
+    print("r_p0:", r_p0, mpd.fetch(sim, r_p0))
+
+    # copts = mplang.CompileOptions(cluster_spec)
+    # compiled = mplang.compile(copts, millionaire, "TEE0")
+    # print("TEE compiled:", compiled.compiler_ir())
+
 
 if __name__ == "__main__":
-    mpd.init(device_conf, {})
-    print("-" * 10, "lazy_eval", "-" * 10)
-    lazy_eval()
-    print("-" * 10, "eager_eval", "-" * 10)
-    eager_eval()
+    # SPU version
+    run_spu()
+    # TEE version
+    run_tee()

@@ -15,26 +15,17 @@
 from __future__ import annotations
 
 import copy
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from types import MappingProxyType
-from typing import Any, Generic, TypeVar
+from typing import Any
 
-from mplang.core.table import TableLike, TableType
-from mplang.core.tensor import TensorLike, TensorType
+from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 
 __all__ = [
-    "HybridHandler",
     "PFunction",
-    "PFunctionHandler",
-    "TableHandler",
-    "TensorHandler",
     "get_fn_name",
 ]
-
-# Define type variables
-InputType = TypeVar("InputType", bound=TensorLike | TableLike)
-OutputType = TypeVar("OutputType", bound=TensorLike | TableLike)
 
 
 class PFunction:
@@ -45,8 +36,11 @@ class PFunction:
     1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
     2. User-defined programmable functions with custom code
 
-    The PFunction accepts a list of TensorLike or TableLike inputs and produces
-    TensorLike or TableLike outputs, and can be:
+    The PFunction accepts a list of typed inputs (TensorType/TableType). For
+    backend-only handles (e.g., crypto keys), use a sentinel TensorType
+    of UINT8 with shape (-1, 0) to indicate the argument should bypass
+    structural validation at runtime. Outputs should likewise use concrete
+    TensorType/TableType specs. PFunction can be:
     - Expressed and defined in the mplang frontend
     - Serialized for transmission between components
     - Interpreted and executed by backend runtime engines
@@ -134,55 +128,3 @@ def get_fn_name(fn_like: Any) -> str:
         # handle partial functions
         return get_fn_name(fn_like.func)
     return "unnamed function"
-
-
-class PFunctionHandler(ABC, Generic[InputType, OutputType]):
-    """Generic function handler base class."""
-
-    @abstractmethod
-    def list_fn_names(self) -> list[str]:
-        """List function names supported by this handler."""
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
-    def setup(self, rank: int) -> None:
-        """Set up runtime environment, including any necessary initialization.
-
-        Args:
-            rank: The rank/ID of the current party.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
-    def teardown(self) -> None:
-        """Clean up runtime environment and release any resources."""
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
-    def execute(self, pfunc: PFunction, args: list[InputType]) -> list[OutputType]:
-        """Execute the provided PFunction with its arguments.
-
-        Args:
-            pfunc: The PFunction to execute
-            args: Function arguments, type constrained by subclass specialization
-
-        Returns:
-            Result list, type constrained by subclass specialization
-
-        Note:
-            Subclasses use generic parameters to constrain input/output types
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-
-# Specialized base classes
-class TensorHandler(PFunctionHandler[TensorLike, TensorLike]):
-    """Handler base class specialized for tensor processing."""
-
-
-class TableHandler(PFunctionHandler[TableLike, TableLike]):
-    """Handler base class specialized for table processing."""
-
-
-class HybridHandler(PFunctionHandler[TensorLike | TableLike, TensorLike | TableLike]):
-    """Handler base class that can process mixed types."""

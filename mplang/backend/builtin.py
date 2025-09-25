@@ -12,241 +12,201 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import os
+from typing import Any
 
 import numpy as np
+import pandas as pd
 
-from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import HybridHandler, PFunction
-from mplang.core.table import TableLike, TableType
+from mplang.backend.base import cur_kctx, kernel_def
+from mplang.core.pfunc import PFunction
+from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.utils import table_utils
 
 
-class BuiltinHandler(HybridHandler):
-    """Handler for builtin operations including identity and standard I/O operations.
-
-    This handler provides:
-    1. Identity operation for pass-through functionality
-    2. Read and write operations for tensor data using numpy as intermediate data format
-
-    The I/O operations support reading from and writing to .npy files, with automatic
-    conversion between different tensor formats (JAX arrays, PyTorch tensors, numpy arrays)
-    and numpy arrays.
-    """
-
-    # Function name constants
-    IDENTITY = "builtin.identity"
-    READ = "builtin.read"
-    WRITE = "builtin.write"
-    CONSTANT = "builtin.constant"
-    RANK = "builtin.rank"
-    PRAND = "builtin.prand"
-
-    # override
-    def setup(self, rank: int) -> None:
-        self._my_rank = rank
-
-    # override
-    def teardown(self) -> None: ...
-
-    # override
-    def list_fn_names(self) -> list[str]:
-        """List function names that this handler can execute."""
-        return [
-            self.IDENTITY,
-            self.READ,
-            self.WRITE,
-            self.CONSTANT,
-            self.RANK,
-            self.PRAND,
-        ]
-
-    def _convert_to_numpy(self, obj: TensorLike) -> np.ndarray:
-        """Convert a TensorLike object to numpy array.
-
-        Args:
-            obj: TensorLike object to convert
-
-        Returns:
-            np.ndarray: Converted numpy array
-
-        Raises:
-            Exception: If conversion fails
-        """
-        # Already a numpy array - use asarray to avoid unnecessary copies
-        if isinstance(obj, np.ndarray):
-            return obj
-
-        # Try to use .numpy() method if available (e.g., for JAX/PyTorch tensors).
-        if hasattr(obj, "numpy"):
-            numpy_method = getattr(obj, "numpy", None)
-            if callable(numpy_method):
-                try:
-                    # Use asarray to avoid a copy if the result is already a numpy array.
-                    return np.asarray(numpy_method())
-                except Exception:
-                    # If .numpy() fails, fall through to the general conversion.
-                    pass
-
-        # Fallback for objects without a .numpy() method or if it fails.
-        return np.asarray(obj)
-
-    def _identity(
-        self, pfunc: PFunction, args: list[TensorLike | TableLike]
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin.identity operation."""
-        if len(args) != 1:
-            raise ValueError("Identity expects exactly one argument.")
-        return args
-
-    def _read(
-        self, pfunc: PFunction, args: list[TensorLike | TableLike]
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin.read operation."""
-        path = pfunc.attrs.get("path")
-        if path is None:
-            raise ValueError("Read function requires 'path' attribute.")
-        if len(args) != 0:
-            raise ValueError("Read expects no arguments.")
-
-        output_type = pfunc.outs_info[0]
-
+def _to_numpy(obj: Any) -> np.ndarray:  # minimal helper to avoid duplicating logic
+    if isinstance(obj, np.ndarray):
+        return obj
+    if hasattr(obj, "numpy"):
         try:
-            if isinstance(output_type, TableType):
-                # Read table data from CSV file
-                with open(path, "rb") as f:
-                    csv_bytes = f.read()
-                df = table_utils.csv_to_dataframe(csv_bytes)
-                return [df]
-            else:
-                # Read tensor data from numpy file
-                data = np.load(path)
-                return [data]
-        except Exception as e:
-            raise RuntimeError(f"Failed to read from {path}: {e}") from e
+            return np.asarray(obj.numpy())  # type: ignore
+        except Exception:
+            pass
+    return np.asarray(obj)
 
-    def _write(
-        self, pfunc: PFunction, args: list[TensorLike | TableLike]
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin.write operation."""
-        path = pfunc.attrs.get("path")
-        if path is None:
-            raise ValueError("Write function requires 'path' attribute.")
-        if len(args) != 1:
-            raise ValueError("Write expects exactly one argument.")
 
-        obj = args[0]
+@kernel_def("builtin.identity")
+def _identity(pfunc: PFunction, value: Any) -> Any:
+    # Runtime guarantees exactly one argument; no extra arity checks here.
+    return value
 
-        try:
-            dir_name = os.path.dirname(path)
-            if dir_name:
-                os.makedirs(dir_name, exist_ok=True)
 
-            if isinstance(obj, TableLike):
-                # Handle table-like objects using CSV serialization
-                csv_bytes = table_utils.dataframe_to_csv(obj)
-                with open(path, "wb") as f:
-                    f.write(csv_bytes)
-            else:
-                # Handle tensor-like objects using numpy serialization
-                np_array = self._convert_to_numpy(obj)  # type: ignore
-                np.save(path, np_array)
-
-            return [obj]  # Return the original object
-        except Exception as e:
-            raise RuntimeError(f"Failed to write to {path}: {e}") from e
-
-    def _constant(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike | TableLike],
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin.constant operation."""
-        if len(args) != 0:
-            raise ValueError("Constant expects no arguments.")
-
-        data_bytes = pfunc.attrs.get("data_bytes")
-
-        if data_bytes is None:
-            raise ValueError("Constant function requires 'data_bytes' attribute.")
-
-        output_type = pfunc.outs_info[0]
-        data_format = pfunc.attrs.get("data_format")
-
-        if isinstance(output_type, TableType):
-            if data_format != "bytes[csv]":
-                raise ValueError(f"Only 'bytes[csv]' is supported, got {data_format}")
-            df = table_utils.csv_to_dataframe(data_bytes)
-            return [df]
-        elif isinstance(output_type, TensorLike):
-            shape = output_type.shape
-            dtype = output_type.dtype.numpy_dtype()
-            data = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
-            return [data]
+@kernel_def("builtin.read")
+def _read(pfunc: PFunction) -> Any:
+    path = pfunc.attrs.get("path")
+    if path is None:
+        raise ValueError("missing path attr for builtin.read")
+    out_t = pfunc.outs_info[0]
+    try:
+        if isinstance(out_t, TableType):
+            with open(path, "rb") as f:
+                csv_bytes = f.read()
+            df = table_utils.csv_to_dataframe(csv_bytes)
+            return df
         else:
-            raise ValueError(f"Unsupported output type: {output_type}")
+            data = np.load(path)
+            return data
+    except Exception as e:  # pragma: no cover - filesystem errors
+        raise RuntimeError(f"builtin.read failed: {e}") from e
 
-    def _rank(
-        self, pfunc: PFunction, args: list[TensorLike | TableLike]
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin.rank operation."""
-        if len(args) != 0:
-            raise ValueError("Rank expects no arguments.")
 
-        return [np.array(self._my_rank, dtype=np.uint64)]
+@kernel_def("builtin.write")
+def _write(pfunc: PFunction, obj: Any) -> Any:
+    path = pfunc.attrs.get("path")
+    if path is None:
+        raise ValueError("missing path attr for builtin.write")
+    try:
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        if hasattr(obj, "__dataframe__") or isinstance(obj, pd.DataFrame):
+            csv_bytes = table_utils.dataframe_to_csv(obj)  # type: ignore
+            with open(path, "wb") as f:
+                f.write(csv_bytes)
+        else:
+            np.save(path, _to_numpy(obj))
+        return obj
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError(f"builtin.write failed: {e}") from e
 
-    def _prand(
-        self, pfunc: PFunction, args: list[TensorLike | TableLike]
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin.prand operation."""
-        if len(args) != 0:
-            raise ValueError("Prand expects no arguments.")
 
-        shape = pfunc.attrs.get("shape", ())
-        # Generate random values with the specified shape
-        dtype = np.dtype(np.uint64)
+@kernel_def("builtin.constant")
+def _constant(pfunc: PFunction) -> Any:
+    data_bytes = pfunc.attrs.get("data_bytes")
+    if data_bytes is None:
+        raise ValueError("missing data_bytes attr for builtin.constant")
+    out_t = pfunc.outs_info[0]
+    fmt = pfunc.attrs.get("data_format")
+    if isinstance(out_t, TableType):
+        if fmt != "bytes[csv]":
+            raise ValueError(f"unsupported table constant format {fmt}")
+        df = table_utils.csv_to_dataframe(data_bytes)
+        return df
+    # tensor path
+    shape = out_t.shape  # type: ignore[attr-defined,union-attr]
+    dtype = out_t.dtype.numpy_dtype()  # type: ignore[attr-defined,union-attr]
+    arr = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
+    return arr
 
-        rng = np.random.default_rng()
-        info = np.iinfo(dtype)
-        data = rng.integers(
-            low=info.min,
-            high=info.max,
-            size=shape,
-            dtype=dtype,
-            endpoint=True,  # includes the high value in the possible results
+
+@kernel_def("builtin.rank")
+def _rank(pfunc: PFunction) -> Any:
+    ctx = cur_kctx()
+    return np.array(ctx.rank, dtype=np.uint64)
+
+
+@kernel_def("builtin.prand")
+def _prand(pfunc: PFunction) -> Any:
+    shape = pfunc.attrs.get("shape", ())
+    rng = np.random.default_rng()
+    info = np.iinfo(np.uint64)
+    data = rng.integers(
+        low=info.min, high=info.max, size=shape, dtype=np.uint64, endpoint=True
+    )
+    return data
+
+
+@kernel_def("builtin.table_to_tensor")
+def _table_to_tensor(pfunc: PFunction, table: Any) -> Any:
+    if not isinstance(table, pd.DataFrame):
+        raise TypeError("expected pandas DataFrame")
+    if table.shape[1] == 0:
+        raise ValueError("cannot pack empty table")
+    mat = np.column_stack([table[col].to_numpy() for col in table.columns])
+    return mat
+
+
+@kernel_def("builtin.tensor_to_table")
+def _tensor_to_table(pfunc: PFunction, tensor: Any) -> Any:
+    arr = _to_numpy(tensor)
+    if arr.ndim != 2:
+        raise ValueError("tensor_to_table expects rank-2 array")
+    col_names = pfunc.attrs.get("column_names")
+    if col_names is None:
+        raise ValueError("missing column_names attr")
+    df = pd.DataFrame(arr, columns=list(col_names))
+    return df
+
+
+def _summ(v: Any) -> str:
+    try:
+        if isinstance(v, pd.DataFrame):
+            return str(v.head(8).to_string(index=False))
+        arr = _to_numpy(v)
+        return str(
+            np.array2string(
+                arr, threshold=64, edgeitems=3, precision=6, suppress_small=True
+            )
         )
-        return [data]
+    except Exception as e:  # pragma: no cover
+        return f"<unprintable {type(v).__name__}: {e}>"
 
-    # override
-    def execute(
-        self,
-        pfunc: PFunction,
-        args: list[TensorLike | TableLike],
-    ) -> list[TensorLike | TableLike]:
-        """Execute builtin operations.
 
-        Args:
-            pfunc: PFunction containing operation type and attributes
-            args: Input arguments - varies by operation type
+@kernel_def("builtin.debug_print")
+def _debug_print(pfunc: PFunction, val: Any) -> Any:
+    prefix = pfunc.attrs.get("prefix", "")
+    ctx = cur_kctx()
+    print(f"[debug_print][rank={ctx.rank}] {prefix}{_summ(val)}")
+    return val
 
-        Returns:
-            list[TensorLike | TableLike]: Results based on operation type
 
-        Raises:
-            ValueError: If required attributes are missing or wrong number of args
-            RuntimeError: If file I/O operations fail
-        """
-        if pfunc.fn_type == self.IDENTITY:
-            return self._identity(pfunc, args)
-        elif pfunc.fn_type == self.READ:
-            return self._read(pfunc, args)
-        elif pfunc.fn_type == self.WRITE:
-            return self._write(pfunc, args)
-        elif pfunc.fn_type == self.CONSTANT:
-            return self._constant(pfunc, args)
-        elif pfunc.fn_type == self.RANK:
-            return self._rank(pfunc, args)
-        elif pfunc.fn_type == self.PRAND:
-            return self._prand(pfunc, args)
-        else:
-            raise ValueError(f"Unsupported function type: {pfunc.fn_type}")
+@kernel_def("builtin.pack")
+def _pack(pfunc: PFunction, value: Any) -> Any:
+    outs_info = pfunc.outs_info
+    if len(outs_info) != 1:
+        raise ValueError("builtin.pack expects single output type")
+    out_ty = outs_info[0]
+    if not isinstance(out_ty, TensorType):
+        raise TypeError("builtin.pack must return TensorType")
+    if out_ty.dtype.numpy_dtype() != np.uint8:
+        raise TypeError("builtin.pack output dtype must be uint8")
+
+    if isinstance(value, pd.DataFrame):
+        csv_bytes = table_utils.dataframe_to_csv(value)
+        return np.frombuffer(csv_bytes, dtype=np.uint8)
+
+    arr = _to_numpy(value)
+    return np.frombuffer(arr.tobytes(order="C"), dtype=np.uint8)
+
+
+@kernel_def("builtin.unpack")
+def _unpack(pfunc: PFunction, packed: Any) -> Any:
+    outs_info = pfunc.outs_info
+    if len(outs_info) != 1:
+        raise ValueError("builtin.unpack expects single output type")
+    out_ty = outs_info[0]
+
+    b = np.asarray(packed, dtype=np.uint8).reshape(-1)
+
+    if isinstance(out_ty, TensorType):
+        np_dtype = out_ty.dtype.numpy_dtype()
+        shape = tuple(out_ty.shape)
+        if any(dim < 0 for dim in shape):
+            raise ValueError("builtin.unpack does not support dynamic tensor shapes")
+        elem_count = int(np.prod(shape))
+        expected = elem_count * np.dtype(np_dtype).itemsize
+        if b.size != expected:
+            raise ValueError(
+                f"unpack size mismatch: got {b.size} bytes, expect {expected} for {np_dtype} {shape}"
+            )
+        arr = np.frombuffer(b.tobytes(), dtype=np_dtype)
+        return arr.reshape(shape)
+
+    if isinstance(out_ty, TableType):
+        csv_bytes = b.tobytes()
+        return table_utils.csv_to_dataframe(csv_bytes)
+
+    raise TypeError("builtin.unpack output type must be TensorType or TableType")

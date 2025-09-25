@@ -23,7 +23,7 @@ except PackageNotFoundError:
     # Fallback for development/editable installs when package is not installed
     __version__ = "0.0.0-dev"
 
-# Core API functions
+from mplang import analysis
 from mplang.api import CompileOptions, compile, evaluate, fetch
 from mplang.core import (
     DType,
@@ -32,24 +32,34 @@ from mplang.core import (
     MPContext,
     MPObject,
     MPType,
+    TableType,
+    TensorType,
     function,
 )
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
 
 # Public API
 __all__ = [
+    "ClusterSpec",
     "CompileOptions",
     "DType",
+    "Device",
     "Driver",
     "InterpContext",
     "MPContext",
     "MPObject",
     "MPType",
     "Mask",
+    "Node",
+    "RuntimeInfo",
     "Simulator",
+    "TableType",
+    "TensorType",
     "__version__",
+    "analysis",
     "compile",
     "cur_ctx",
     "evaluate",

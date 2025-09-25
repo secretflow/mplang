@@ -17,7 +17,7 @@ import numpy as np
 
 import mplang
 import mplang.simp as simp
-import mplang.smpc as smpc
+from mplang.core import TensorType
 from mplang.frontend import builtin
 
 
@@ -27,23 +27,23 @@ def save_data():
     x = simp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
     y = simp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
 
-    x = simp.runAt(0, builtin.write)(x, "tmp/x.npy")
-    y = simp.runAt(1, builtin.write)(y, "tmp/y.npy")
+    x = simp.runAt(0, builtin.write)(x, path="tmp/x.npy")
+    y = simp.runAt(1, builtin.write)(y, path="tmp/y.npy")
 
     return x, y
 
 
 @mplang.function
 def load_data():
-    tensor_info = mplang.core.TensorType(shape=(2, 2), dtype=jnp.float32)
+    tensor_info = TensorType(shape=(2, 2), dtype=jnp.float32)
 
-    x = simp.runAt(0, builtin.read)("tmp/x.npy", tensor_info)
-    y = simp.runAt(1, builtin.read)("tmp/y.npy", tensor_info)
+    x = simp.runAt(0, builtin.read)(path="tmp/x.npy", ty=tensor_info)
+    y = simp.runAt(1, builtin.read)(path="tmp/y.npy", ty=tensor_info)
 
-    x_ = smpc.sealFrom(x, 0)
-    y_ = smpc.sealFrom(y, 1)
-    z_ = smpc.srun(lambda a, b: a + b)(x_, y_)
-    z = smpc.reveal(z_)
+    x_ = simp.sealFrom(x, 0)
+    y_ = simp.sealFrom(y, 1)
+    z_ = simp.srun(lambda a, b: a + b)(x_, y_)
+    z = simp.reveal(z_)
 
     return z
 
@@ -54,12 +54,12 @@ def run_stdio_example():
     print("x = [[1, 2], [3, 4]]")
     print("y = [[5, 6], [7, 8]]")
 
-    sim2 = mplang.Simulator(2)
+    sim2 = mplang.Simulator.simple(2)
     _ = mplang.evaluate(sim2, save_data)
     print("Data saved to files successfully")
 
     print("\n--- Session 2: Loading data and computing x + y ---")
-    sim3 = mplang.Simulator(3)
+    sim3 = mplang.Simulator.simple(3)
     z = mplang.evaluate(sim3, load_data)
     result = mplang.fetch(sim3, z)
     print(result)

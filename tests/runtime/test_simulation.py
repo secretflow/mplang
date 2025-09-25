@@ -27,12 +27,13 @@ import numpy as np
 import pytest
 
 from mplang import simp
+from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
-from mplang.core.primitive import cond, constant, prank, pshfl_s, while_loop
+from mplang.core.primitive import constant, prank, pshfl_s, uniform_cond, while_loop
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
 
@@ -49,13 +50,14 @@ def mask_2p():
 @pytest.fixture
 def trace_context(mask_2p):
     """Create a trace context for testing."""
-    return TraceContext(world_size=2, mask=mask_2p)
+    cluster_spec = ClusterSpec.simple(world_size=2)
+    return TraceContext(cluster_spec=cluster_spec, mask=mask_2p)
 
 
 @pytest.fixture
 def simulator():
     """Create a simulator for testing."""
-    return Simulator(psize=2)
+    return Simulator.simple(world_size=2)
 
 
 class TestSimVar:
@@ -97,9 +99,9 @@ class TestSimulator:
 
     def test_simulator_creation(self):
         """Test Simulator creation."""
-        sim = Simulator(psize=3)
+        sim = Simulator.simple(world_size=3)
 
-        assert sim.psize() == 3
+        assert sim.world_size() == 3
         assert len(sim._comms) == 3
         assert len(sim._evaluators) == 3
 
@@ -108,14 +110,6 @@ class TestSimulator:
             assert comm.rank == i
             assert comm.world_size == 3
             assert len(comm.peers) == 3
-
-    def test_simulator_with_attrs(self):
-        """Test Simulator creation with attributes."""
-        sim = Simulator(psize=2, test_attr="test_value", debug=True)
-
-        assert sim.psize() == 2
-        assert sim.attrs()["test_attr"] == "test_value"
-        assert sim.attrs()["debug"] is True
 
     def test_evaluate_constant(self, simulator, trace_context):
         """Test evaluating a constant expression."""
@@ -249,8 +243,8 @@ class TestSimulator:
 
     def test_evaluate_wrong_context(self, trace_context):
         """Test that evaluation fails with variables from wrong context."""
-        sim1 = Simulator(psize=2)
-        sim2 = Simulator(psize=2)
+        sim1 = Simulator.simple(world_size=2)
+        sim2 = Simulator.simple(world_size=2)
 
         # Create a variable in sim1
         mptype = MPType.tensor(INT32, (1,), Mask(3))
@@ -331,8 +325,8 @@ class TestSimulatorIntegration:
 
     def test_multiple_simulator_independence(self, trace_context):
         """Test that multiple simulators are independent."""
-        sim1 = Simulator(psize=2)
-        sim2 = Simulator(psize=2)
+        sim1 = Simulator.simple(world_size=2)
+        sim2 = Simulator.simple(world_size=2)
 
         def const_func():
             return constant(100)
@@ -441,16 +435,16 @@ class TestComplexCond:
         """Test conditional with rank-based predicate where different parties execute different branches."""
 
         def rank_based_func():
-            """Function that uses rank as predicate."""
-            pred = prank()  # rank 0 -> False, rank 1 -> True
+            """Function that uses rank as predicate (divergent per-party) – should NOT use uniform_cond.
 
-            def then_fn(val):
-                return constant(100)
-
-            def else_fn(val):
-                return constant(200)
-
-            result = cond(pred, then_fn, else_fn, constant(0))
+            Migrated to element-wise selection using jax.where semantics via simp.run.
+            """
+            r = prank()
+            is_one = simp.run(lambda v: v == 1)(r)  # bool per-party
+            val_then = constant(100)
+            val_else = constant(200)
+            # Element-wise select (both sides cheap); result structure matches prior expectations.
+            result = simp.run(jnp.where)(is_one, val_then, val_else)
             return result
 
         with with_ctx(trace_context):
@@ -478,11 +472,16 @@ class TestComplexCond:
         """Test two-level nested conditional structure with rank-based predicates."""
 
         def two_level_func():
-            """Function with two levels of conditional nesting using rank predicates."""
-            pred1 = prank()  # Level 1: rank 0 -> False, rank 1 -> True
+            """Nested conditional demo updated:
 
-            def level1_then(val):
-                # Level 2: always False for simplicity
+            Outer predicate: still divergent (rank==1) -> use elementwise selection.
+            Inner predicate: uniform False -> shows uniform_cond legitimate usage.
+            """
+            r = prank()
+            pred1 = simp.run(lambda v: v == 1)(r)  # per-party bool
+
+            def level1_then(val):  # executes only where pred1 True (conceptually)
+                # Build a uniform predicate (constant False) - safe for uniform_cond
                 pred2 = constant(False)
 
                 def level2_then(v):
@@ -491,13 +490,20 @@ class TestComplexCond:
                 def level2_else(v):
                     return constant(40)
 
-                return cond(pred2, level2_then, level2_else, val)
+                # Uniform conditional (verify disabled until predicate aggregation logic richer)
+                return uniform_cond(
+                    pred2, level2_then, level2_else, val, verify_uniform=True
+                )
 
             def level1_else(val):
                 return constant(50)
 
-            result = cond(pred1, level1_then, level1_else, constant(0))
-            return result
+            # Emulate outer branching via where: where pred1 then apply level1_then else level1_else
+            # Both branches evaluated; acceptable for local divergent control.
+            val0 = level1_then(constant(0))
+            val1 = level1_else(constant(0))
+            combined = simp.run(jnp.where)(pred1, val0, val1)
+            return combined
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, two_level_func)
@@ -531,7 +537,8 @@ class TestComplexCond:
         """
 
         def cond_with_jax():
-            pred = prank()  # rank 0 -> False, rank 1 -> True
+            # Divergent predicate -> switch to elementwise where
+            pred = simp.run(lambda v: v == 1)(prank())
             input_data = constant(np.array([2.0, 3.0]))
 
             # Extract JAX operations for clarity
@@ -543,7 +550,10 @@ class TestComplexCond:
             def else_fn(val):
                 return simp.run(multiply_and_add)(val)
 
-            return cond(pred, then_fn, else_fn, input_data)
+            # Evaluate both, elementwise select
+            t_res = then_fn(input_data)
+            f_res = else_fn(input_data)
+            return simp.run(jnp.where)(pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, cond_with_jax)
@@ -571,7 +581,7 @@ class TestComplexCond:
         """
 
         def cond_with_params():
-            pred = prank()
+            pred = simp.run(lambda v: v == 1)(prank())
 
             # Input parameters
             x = constant(np.array([1.0, 2.0]))
@@ -591,7 +601,9 @@ class TestComplexCond:
 
                 return simp.run(polynomial)(a, b, s)
 
-            return cond(pred, then_fn, else_fn, x, y, scale)
+            t_res = then_fn(x, y, scale)
+            f_res = else_fn(x, y, scale)
+            return simp.run(jnp.where)(pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, cond_with_params)
@@ -619,7 +631,7 @@ class TestComplexCond:
         """
 
         def cond_with_capture():
-            pred = prank()
+            pred = simp.run(lambda v: v == 1)(prank())
 
             # Variables to be captured
             outer_matrix = constant(np.array([[1.0, 2.0], [3.0, 4.0]]))
@@ -635,7 +647,9 @@ class TestComplexCond:
             def else_fn(input_val):
                 return simp.run(element_op)(input_val, outer_vector)
 
-            return cond(pred, then_fn, else_fn, input_data)
+            t_res = then_fn(input_data)
+            f_res = else_fn(input_data)
+            return simp.run(jnp.where)(pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, cond_with_capture)
@@ -663,7 +677,7 @@ class TestComplexCond:
         """
 
         def neural_network_cond():
-            pred = prank()
+            pred = simp.run(lambda v: v == 1)(prank())
 
             # Network parameters
             weights = constant(np.array([[0.5, 1.0], [1.5, 2.0]]))
@@ -679,7 +693,9 @@ class TestComplexCond:
             def else_fn(input_val):
                 return simp.run(statistical_transform)(input_val, weights)
 
-            return cond(pred, then_fn, else_fn, input_data)
+            t_res = then_fn(input_data)
+            f_res = else_fn(input_data)
+            return simp.run(jnp.where)(pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, neural_network_cond)
@@ -709,7 +725,7 @@ class TestComplexCond:
         """
 
         def optimizer_cond():
-            pred = prank()
+            pred = simp.run(lambda v: v == 1)(prank())
 
             # Optimizer parameters
             learning_rate = constant(0.01)
@@ -728,16 +744,13 @@ class TestComplexCond:
                 # Only use first two parameters for SGD
                 return simp.run(sgd_step)(grad, lr)
 
-            return cond(
-                pred,
-                adam_optimizer,
-                sgd_optimizer,
-                gradients,
-                learning_rate,
-                momentum,
-                epsilon,
-                state_vector,
+            adam_res = adam_optimizer(
+                gradients, learning_rate, momentum, epsilon, state_vector
             )
+            sgd_res = sgd_optimizer(
+                gradients, learning_rate, momentum, epsilon, state_vector
+            )
+            return simp.run(jnp.where)(pred, adam_res, sgd_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, optimizer_cond)
@@ -773,7 +786,7 @@ class TestComplexCond:
         """
 
         def matrix_reshape_cond():
-            pred = prank()
+            pred = simp.run(lambda v: v == 1)(prank())
             input_data = constant(np.array([1.0, 2.0, 3.0, 4.0]))  # Can reshape to 2x2
 
             def matrix_branch(val):
@@ -790,7 +803,9 @@ class TestComplexCond:
 
                 return simp.run(element_transform)(val)
 
-            return cond(pred, matrix_branch, element_branch, input_data)
+            t_res = matrix_branch(input_data)
+            f_res = element_branch(input_data)
+            return simp.run(jnp.where)(pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, matrix_reshape_cond)
@@ -1099,8 +1114,7 @@ class TestWhileLoop:
             return while_loop(cond_fn, body_fn, init_val)
 
         with pytest.raises(
-            ValueError,
-            match=r"Body function output type .* does not match initial state type",
+            (ValueError, TypeError), match=r"Body output leaf 0 type mismatch: .*"
         ):
             with with_ctx(trace_context):
                 trace(trace_context, invalid_loop)
@@ -1408,7 +1422,7 @@ class TestWhileLoop:
                     # If odd: add 3
                     return simp.run(lambda x: x + 3)(val)
 
-                return cond(even_check, then_fn, else_fn, state)
+                return uniform_cond(even_check, then_fn, else_fn, state)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1776,14 +1790,16 @@ class TestPShflS:
             rank = prank()
             pred = simp.run(lambda r: r == 0)(rank)
 
-            def then_fn(r):
+            def then_fn(r):  # local cheap
                 return constant(100)
 
-            def else_fn(r):
+            def else_fn(r):  # local cheap
                 return constant(200)
 
-            # Conditional determines the data to shuffle
-            cond_result = cond(pred, then_fn, else_fn, rank)
+            # Divergent predicate (rank==0) → use elementwise selection instead of uniform_cond
+            t_val = then_fn(rank)
+            f_val = else_fn(rank)
+            cond_result = simp.run(jnp.where)(pred, t_val, f_val)
 
             # Shuffle the conditional result
             pmask = Mask(3)

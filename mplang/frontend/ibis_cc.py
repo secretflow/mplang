@@ -24,7 +24,7 @@ from mplang.core import dtype
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 
 
@@ -90,10 +90,13 @@ def is_ibis_function(func: Callable) -> bool:
     return False
 
 
-class IbisCompiler(FEOp):
+_IBIS_MOD = stateless_mod("ibis")
+
+
+class IbisCompiler(FeOperation):
     """Ibis compiler frontend operation."""
 
-    def __call__(
+    def trace(
         self, func: Callable, *args: Any, **kwargs: Any
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """Compile an Ibis function to SQL format.
@@ -131,4 +134,4 @@ class IbisCompiler(FEOp):
         return pfunc, in_vars, treedef
 
 
-ibis_compile = IbisCompiler()
+ibis_compile = IbisCompiler(_IBIS_MOD, "compile")

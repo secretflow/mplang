@@ -17,9 +17,9 @@ import numpy as np
 import pytest
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
-import mplang.smpc as smpc
+import mplang.simp.random as mpr
+import mplang.simp.smpc as smpc
 
 
 class TestSmpcBasics:
@@ -28,7 +28,7 @@ class TestSmpcBasics:
     def test_seal_and_reveal(self):
         """Test basic seal and reveal operations"""
         num_parties = 2
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         @mplang.function
         def test_seal_reveal():
@@ -58,7 +58,7 @@ class TestSmpcBasics:
     def test_srun_basic(self):
         """Test basic secure computation with srun"""
         num_parties = 2
-        sim = mplang.Simulator(num_parties)
+        sim = mplang.Simulator.simple(num_parties)
 
         @mplang.function
         def test_srun():
@@ -85,7 +85,7 @@ class TestSMPCComplexScenarios:
 
     def test_millionaire_problem(self):
         """Test the classic millionaire problem"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def millionaire():
@@ -112,7 +112,7 @@ class TestSMPCComplexScenarios:
 
     def test_federated_average(self):
         """Test federated averaging scenario"""
-        sim3 = mplang.Simulator(3)
+        sim3 = mplang.Simulator.simple(3)
 
         @mplang.function
         def federated_avg():
@@ -141,7 +141,7 @@ class TestSMPCComplexScenarios:
 
     def test_conditional_secure_computation(self):
         """Test conditional execution with secure computation"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def conditional_secure():
@@ -163,7 +163,7 @@ class TestSMPCComplexScenarios:
             def else_branch(x):
                 return simp.run(lambda x: x + 10)(x)
 
-            result = simp.cond(condition, then_branch, else_branch, x)
+            result = simp.uniform_cond(condition, then_branch, else_branch, x)
 
             return x, condition, result
 
@@ -186,7 +186,7 @@ class TestSMPCComplexScenarios:
 
     def test_iterative_secure_computation(self):
         """Test iterative secure computation with while loop"""
-        sim2 = mplang.Simulator(2)
+        sim2 = mplang.Simulator.simple(2)
 
         @mplang.function
         def iterative_secure():

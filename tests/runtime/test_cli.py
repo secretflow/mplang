@@ -16,12 +16,12 @@
 Tests for the CLI module.
 """
 
-import json
 import os
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from mplang.runtime.cli import (
     load_config,
@@ -31,25 +31,42 @@ from mplang.runtime.cli import (
 )
 
 
-def test_load_config():
-    """Test loading configuration from a JSON file."""
-    # Create a temporary config file
-    config_data = {
-        "nodes": {
-            "P0": "127.0.0.1:9530",
-            "P1": "127.0.0.1:9531",
-            "P2": "127.0.0.1:9532",
-        }
+def create_test_config():
+    """Create a valid test configuration."""
+    return {
+        "nodes": [
+            {"name": "P0", "endpoint": "127.0.0.1:9530"},
+            {"name": "P1", "endpoint": "127.0.0.1:9531"},
+        ],
+        "devices": {
+            "SPU": {
+                "kind": "SPU",
+                "members": ["P0", "P1"],
+                "config": {"protocol": "ABY3", "field": "FM64"},
+            },
+            "P0": {"kind": "PPU", "members": ["P0"], "config": {}},
+            "P1": {"kind": "PPU", "members": ["P1"], "config": {}},
+        },
     }
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+
+def test_load_config():
+    """Test loading configuration from a YAML file."""
+    # Create a temporary config file with correct format
+    config_data = create_test_config()
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
         # Load the config
         loaded_config = load_config(config_path)
-        assert loaded_config == config_data
+        # Check that the loaded config has the expected structure
+        assert len(loaded_config.nodes) == 2
+        assert "P0" in loaded_config.nodes
+        assert "P1" in loaded_config.nodes
+        assert loaded_config.nodes["P0"].endpoint == "127.0.0.1:9530"
     finally:
         # Clean up
         os.unlink(config_path)
@@ -59,16 +76,16 @@ def test_load_config_invalid_file():
     """Test loading configuration from an invalid file."""
     # Try to load from a non-existent file
     with pytest.raises(FileNotFoundError):
-        load_config("/path/that/does/not/exist.json")
+        load_config("/path/that/does/not/exist.yaml")
 
 
 def test_status_command_success():
     """Test the status command when all nodes are healthy."""
     # Create a temporary config file
-    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
+    config_data = create_test_config()
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -100,10 +117,10 @@ def test_status_command_success():
 def test_status_command_unhealthy_node():
     """Test the status command when a node is unhealthy."""
     # Create a temporary config file
-    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
+    config_data = create_test_config()
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -144,10 +161,10 @@ def test_status_command_unhealthy_node():
 def test_status_command_exception():
     """Test the status command when an exception occurs."""
     # Create a temporary config file
-    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
+    config_data = create_test_config()
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -176,10 +193,10 @@ def test_status_command_exception():
 def test_status_command_empty_config():
     """Test the status command with an empty configuration."""
     # Create a temporary config file with no nodes
-    config_data = {"nodes": {}}
+    config_data = {"nodes": [], "devices": {}}
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -200,10 +217,10 @@ def test_status_command_empty_config():
 def test_start_command_success():
     """Test the start command when successful."""
     # Create a temporary config file
-    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
+    config_data = create_test_config()
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -230,10 +247,10 @@ def test_start_command_success():
 def test_start_command_node_not_found():
     """Test the start command when the specified node is not found."""
     # Create a temporary config file
-    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
+    config_data = create_test_config()
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -255,10 +272,10 @@ def test_start_command_node_not_found():
 def test_start_command_empty_config():
     """Test the start command with an empty configuration."""
     # Create a temporary config file with no nodes
-    config_data = {"nodes": {}}
+    config_data = {"nodes": [], "devices": {}}
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -280,10 +297,10 @@ def test_start_command_empty_config():
 def test_start_cluster_command_success():
     """Test the start-cluster command when successful."""
     # Create a temporary config file
-    config_data = {"nodes": {"P0": "127.0.0.1:9530", "P1": "127.0.0.1:9531"}}
+    config_data = create_test_config()
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:
@@ -317,10 +334,10 @@ def test_start_cluster_command_success():
 def test_start_cluster_command_empty_config():
     """Test the start-cluster command with an empty configuration."""
     # Create a temporary config file with no nodes
-    config_data = {"nodes": {}}
+    config_data = {"nodes": [], "devices": {}}
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(config_data, f)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        yaml.dump(config_data, f)
         config_path = f.name
 
     try:

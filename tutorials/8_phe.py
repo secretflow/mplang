@@ -24,7 +24,6 @@ This tutorial demonstrates a three-party computation using PHE:
 """
 
 import mplang
-import mplang.mpi as mpi
 import mplang.simp as simp
 from mplang.frontend import phe
 import numpy as np
@@ -42,14 +41,14 @@ def three_party_phe_sum():
 
     # Step 3: Party 0 broadcasts public key to all parties
     world_mask = mplang.Mask.all(3)
-    pkey_bcasted = mpi.bcast_m(world_mask, 0, pkey)
+    pkey_bcasted = simp.bcast_m(world_mask, 0, pkey)
 
     # Step 4: Each party encrypts their data
     encrypted = simp.run(phe.encrypt)(data, pkey_bcasted)
 
     # Step 5: All parties send encrypted data to Party 0
     # Gather all encrypted data at Party 0
-    e0, e1, e2 = mpi.gather_m(world_mask, 0, encrypted)
+    e0, e1, e2 = simp.gather_m(world_mask, 0, encrypted)
 
     # Step 6: Party 0 computes sum and decrypts
     sum_e0_e1 = simp.runAt(0, phe.add)(e0, e1)
@@ -298,9 +297,7 @@ def test_3d_tensor_operations():
 def run_simulation():
     """Run the PHE simulation locally."""
     # Set up 3-party simulation with PHE support
-    sim = mplang.Simulator(3)
-
-    # Test original 3-party PHE sum
+    sim = mplang.Simulator.simple(3)
     result = mplang.evaluate(sim, three_party_phe_sum)
     print(f"Original PHE sum completed. Final sum: {mplang.fetch(sim, result)}")
 

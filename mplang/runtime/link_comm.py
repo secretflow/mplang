@@ -41,7 +41,7 @@ class LinkCommunicator(ICommunicator, ICollective):
         else:
             self.lctx = libspu.link.create_brpc(desc, self._rank)
 
-        logging.debug(
+        logging.info(
             f"LinkCommunicator initialized with rank={self._rank}, world_size={self._world_size}, addrs={addrs}",
         )
 

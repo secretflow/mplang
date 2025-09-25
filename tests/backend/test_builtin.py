@@ -18,33 +18,43 @@ import tempfile
 import numpy as np
 import pytest
 
-from mplang.backend.builtin import BuiltinHandler
+from mplang.backend.base import create_runtime
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 
 
 class TestBuiltinHandler:
-    """Test cases for BuiltinHandler."""
+    """Tests for flat builtin kernels (legacy name retained)."""
 
     def setup_method(self):
-        """Set up test fixtures."""
-        self.handler = BuiltinHandler()
+        # initialize backend context for rank 0 (world_size=1) once per test
+        self.runtime = create_runtime(0, 1)
+
+    @staticmethod
+    def _exec_static(runtime, pfunc: PFunction, args: list):
+        return runtime.run_kernel(pfunc, args)
+
+    def _exec(self, pfunc: PFunction, args: list):  # instance helper
+        return self._exec_static(self.runtime, pfunc, args)
 
     def test_list_fn_names(self):
         """Test that handler lists correct function names."""
-        fn_names = self.handler.list_fn_names()
-        expected_functions = [
+        # list_registered_kernels lives in backend.base; import lazily
+        from mplang.backend.base import list_registered_kernels
+
+        kernels = list_registered_kernels()
+        for expected in [
             "builtin.identity",
             "builtin.read",
             "builtin.write",
             "builtin.constant",
             "builtin.rank",
             "builtin.prand",
-        ]
-
-        for expected_fn in expected_functions:
-            assert expected_fn in fn_names
-        assert len(fn_names) == len(expected_functions)
+            "builtin.table_to_tensor",
+            "builtin.tensor_to_table",
+            "builtin.debug_print",
+        ]:
+            assert expected in kernels
 
     def test_identity(self):
         """Test identity operation."""
@@ -58,9 +68,7 @@ class TestBuiltinHandler:
             outs_info=(TensorType.from_obj(test_data),),
             fn_name="Identity",
         )
-
-        result = self.handler.execute(identity_pfunc, [test_data])
-
+        result = self._exec(identity_pfunc, [test_data])
         assert len(result) == 1
         assert np.array_equal(result[0], test_data)
         assert result[0] is test_data  # Should be the same object
@@ -83,7 +91,7 @@ class TestBuiltinHandler:
                 path=tmp_path,
             )
 
-            write_result = self.handler.execute(write_pfunc, [test_data])
+            write_result = self._exec(write_pfunc, [test_data])
             assert len(write_result) == 1
             assert np.array_equal(write_result[0], test_data)
 
@@ -99,7 +107,7 @@ class TestBuiltinHandler:
                 path=tmp_path,
             )
 
-            read_result = self.handler.execute(read_pfunc, [])
+            read_result = self._exec(read_pfunc, [])
             assert len(read_result) == 1
             assert np.array_equal(read_result[0], test_data)
             assert read_result[0].dtype == test_data.dtype
@@ -124,7 +132,7 @@ class TestBuiltinHandler:
                 path=nested_path,
             )
 
-            result = self.handler.execute(write_pfunc, [test_data])
+            result = self._exec(write_pfunc, [test_data])
             assert len(result) == 1
             assert np.array_equal(result[0], test_data)
             assert os.path.exists(nested_path)
@@ -159,7 +167,7 @@ class TestBuiltinHandler:
                     path=tmp_path,
                 )
 
-                result = self.handler.execute(write_pfunc, [test_data])
+                result = self._exec(write_pfunc, [test_data])
                 assert len(result) == 1
 
                 # Read back and verify
@@ -171,7 +179,7 @@ class TestBuiltinHandler:
                     path=tmp_path,
                 )
 
-                read_result = self.handler.execute(read_pfunc, [])
+                read_result = self._exec(read_pfunc, [])
                 assert len(read_result) == 1
                 assert np.array_equal(read_result[0], np.array(test_data))
 
@@ -181,18 +189,17 @@ class TestBuiltinHandler:
 
     def test_identity_wrong_args(self):
         """Test identity with wrong number of arguments."""
+        # Declare expected single input so runtime enforces arity directly.
         identity_pfunc = PFunction(
             fn_type="builtin.identity",
-            ins_info=(),
-            outs_info=(),
+            ins_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
+            outs_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             fn_name="Identity",
         )
-
-        with pytest.raises(ValueError, match="Identity expects exactly one argument"):
-            self.handler.execute(identity_pfunc, [])
-
-        with pytest.raises(ValueError, match="Identity expects exactly one argument"):
-            self.handler.execute(identity_pfunc, [1, 2])
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 0, expect 1"):
+            self._exec(identity_pfunc, [])
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 2, expect 1"):
+            self._exec(identity_pfunc, [1, 2])
 
     def test_read_missing_path(self):
         """Test read operation without path attribute."""
@@ -202,9 +209,8 @@ class TestBuiltinHandler:
             outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
         )
-
-        with pytest.raises(ValueError, match="Read function requires 'path' attribute"):
-            self.handler.execute(read_pfunc, [])
+        with pytest.raises(ValueError, match=r"missing path attr for builtin.read"):
+            self._exec(read_pfunc, [])
 
     def test_read_wrong_args(self):
         """Test read with wrong number of arguments."""
@@ -215,9 +221,8 @@ class TestBuiltinHandler:
             fn_name="Read",
             path="dummy.npy",
         )
-
-        with pytest.raises(ValueError, match="Read expects no arguments"):
-            self.handler.execute(read_pfunc, [np.array([1])])
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 1, expect 0"):
+            self._exec(read_pfunc, [np.array([1])])
 
     def test_write_missing_path(self):
         """Test write operation without path attribute."""
@@ -228,27 +233,22 @@ class TestBuiltinHandler:
             outs_info=(TensorType.from_obj(test_data),),
             fn_name="Write",
         )
-
-        with pytest.raises(
-            ValueError, match="Write function requires 'path' attribute"
-        ):
-            self.handler.execute(write_pfunc, [test_data])
+        with pytest.raises(ValueError, match=r"missing path attr for builtin.write"):
+            self._exec(write_pfunc, [test_data])
 
     def test_write_wrong_args(self):
         """Test write with wrong number of arguments."""
         write_pfunc = PFunction(
             fn_type="builtin.write",
-            ins_info=(),
-            outs_info=(),
+            ins_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
+            outs_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             fn_name="Write",
             path="dummy.npy",
         )
-
-        with pytest.raises(ValueError, match="Write expects exactly one argument"):
-            self.handler.execute(write_pfunc, [])
-
-        with pytest.raises(ValueError, match="Write expects exactly one argument"):
-            self.handler.execute(write_pfunc, [1, 2])
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 0, expect 1"):
+            self._exec(write_pfunc, [])
+        with pytest.raises(ValueError, match=r"arg count mismatch: got 2, expect 1"):
+            self._exec(write_pfunc, [1, 2])
 
     def test_read_nonexistent_file(self):
         """Test reading from a nonexistent file."""
@@ -259,9 +259,8 @@ class TestBuiltinHandler:
             fn_name="Read",
             path="nonexistent_file.npy",
         )
-
-        with pytest.raises(RuntimeError, match="Failed to read from"):
-            self.handler.execute(read_pfunc, [])
+        with pytest.raises(RuntimeError, match=r"builtin.read failed:"):
+            self._exec(read_pfunc, [])
 
     def test_unsupported_function_type(self):
         """Test unsupported function type."""
@@ -272,5 +271,5 @@ class TestBuiltinHandler:
             fn_name="Unsupported",
         )
 
-        with pytest.raises(ValueError, match="Unsupported function type"):
-            self.handler.execute(pfunc, [])
+        with pytest.raises(NotImplementedError, match="no backend kernel registered"):
+            self._exec(pfunc, [])

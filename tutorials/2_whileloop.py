@@ -16,15 +16,13 @@ import jax
 import jax.numpy as jnp
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
-import mplang.smpc as smpc
 
 
 @mplang.function
 def while_party_local():
     # Parties random a number privately
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     def cond(x: simp.MPObject):
         assert isinstance(x, simp.MPObject), x
@@ -42,14 +40,14 @@ def while_party_local():
 @mplang.function
 def while_sum_greater():
     # Parties random a number privately
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     def cond(x: simp.MPObject):
         # Seal all parties private
-        xs_ = smpc.seal(x)
+        xs_ = simp.seal(x)
         # Sum them and reveal it.
-        pred_ = smpc.srun(lambda i: sum(i) < 15)(xs_)
-        return smpc.reveal(pred_)
+        pred_ = simp.srun(lambda i: sum(i) < 15)(xs_)
+        return simp.reveal(pred_)
 
     def body(x: simp.MPObject):
         return simp.run(lambda x: x + 1)(x)
@@ -62,7 +60,7 @@ def while_sum_greater():
 
 @mplang.function
 def while_until_ascending():
-    x = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
 
     def not_ascending(data):
         data = jnp.asarray(data)
@@ -77,15 +75,15 @@ def while_until_ascending():
 
     def cond(x: simp.MPObject):
         # seal it, or we can not directly compare all parties numbers.
-        xs_ = smpc.seal(x)
+        xs_ = simp.seal(x)
         # check if parties' numbers are accending
-        p_ = smpc.srun(not_ascending)(xs_)
+        p_ = simp.srun(not_ascending)(xs_)
         # reveal the result, all parties agree on it.
-        return smpc.reveal(p_)
+        return simp.reveal(p_)
 
     def body(x: simp.MPObject):
         # randomize a new number
-        return mpr.prandint(0, 10)
+        return simp.prandint(0, 10)
 
     z = simp.while_loop(cond, body, x)
 
@@ -94,9 +92,9 @@ def while_until_ascending():
 
 if __name__ == "__main__":
     # Three party computation.
-    sim2 = mplang.Simulator(2)
-    sim3 = mplang.Simulator(3)
-    sim4 = mplang.Simulator(4)
+    sim2 = mplang.Simulator.simple(2)
+    sim3 = mplang.Simulator.simple(3)
+    sim4 = mplang.Simulator.simple(4)
 
     print("all parties increase until 15")
     x = mplang.evaluate(sim2, while_party_local)

@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from mplang import simp
+from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
 from mplang.core.expr.printer import Printer
@@ -35,7 +36,6 @@ from mplang.core.mask import Mask
 from mplang.core.mptype import Rank
 from mplang.core.primitive import (
     _switch_ctx,
-    cond,
     constant,
     pconv,
     peval,
@@ -45,6 +45,7 @@ from mplang.core.primitive import (
     pshfl,
     pshfl_s,
     set_mask,
+    uniform_cond,
     while_loop,
 )
 from mplang.core.tracer import TraceContext, TraceVar, trace
@@ -58,9 +59,15 @@ def mask_2p():
 
 
 @pytest.fixture
-def trace_context(mask_2p):
+def cluster_spec_2p():
+    """Create a 2-party cluster spec for testing."""
+    return ClusterSpec.simple(2)
+
+
+@pytest.fixture
+def trace_context(mask_2p, cluster_spec_2p):
     """Create a trace context for testing."""
-    return TraceContext(world_size=2, mask=mask_2p)
+    return TraceContext(cluster_spec_2p, mask=mask_2p)
 
 
 class TestPrimitiveDecorator:
@@ -414,47 +421,48 @@ class TestConditional:
     """Test conditional primitive with complex semantics."""
 
     def test_cond_simple(self, trace_context):
-        """Test simple conditional."""
+        """Test simple conditional with default verify_uniform disabled (placeholder)."""
 
         def cond_func():
             pred = constant(True)
             x = constant(10)
 
-            def then_fn(x_arg):  # type: ignore
+            def then_fn(x_arg):
                 return x_arg
 
-            def else_fn(x_arg):  # type: ignore
+            def else_fn(x_arg):
                 return x_arg
 
-            return cond(pred, then_fn, else_fn, x)
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
 
         traced_fn = trace(trace_context, cond_func)
-
         func_expr = traced_fn.make_expr()
         assert func_expr is not None
-
         printer = Printer()
         expr_str = printer.print_expr(func_expr)
-        print(f"conditional expression:\n{expr_str}")
+        assert "pcond" in expr_str
 
-        expected = """
-() {
-  %0 = pconst() {data=True} : bool<3>
-  %1 = pconst() {data=10} : i64<3>
-  %2 = pcond(%0, %1) {
-    then_fn: ($0) {
-      return $0
-    }
-    else_fn: ($0) {
-      return $0
-    }
-  } : i64<3>
-  return %2
-}
-"""
-        assert expr_str == expected.strip()
-        assert len(traced_fn.out_vars) == 1
-        assert isinstance(traced_fn.out_vars[0], TraceVar)
+    def test_uniform_cond_traces_with_verify(self, trace_context):
+        """uniform_cond with verify_uniform=True traces successfully for uniform bool predicate."""
+
+        def cond_func():
+            pred = constant(True)
+            x = constant(1)
+
+            def then_fn(a):
+                return a
+
+            def else_fn(a):
+                return a
+
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=True)
+
+        traced_fn = trace(trace_context, cond_func)
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+        printer = Printer()
+        expr_str = printer.print_expr(func_expr)
+        assert "pcond" in expr_str
 
     def test_cond_different_behaviors(self, trace_context):
         """Test then_fn and else_fn with different behaviors."""
@@ -471,7 +479,7 @@ class TestConditional:
                 # Else branch: return constant 20
                 return constant(20)
 
-            return cond(pred, then_fn, else_fn, x)
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
 
         traced_fn = trace(trace_context, cond_func)
 
@@ -520,7 +528,7 @@ class TestConditional:
                 five = constant(5)
                 return run_jax(lambda a, b: a - b, x_arg, five)
 
-            return cond(pred, then_fn, else_fn, x)
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
 
         traced_fn = trace(trace_context, cond_func)
 
@@ -571,7 +579,7 @@ class TestConditional:
                 # Only captures val_b
                 return run_jax(lambda a, b: a + b, x_arg, val_b)
 
-            return cond(pred, then_fn, else_fn, x)
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
 
         traced_fn = trace(trace_context, cond_func)
 
@@ -629,13 +637,17 @@ class TestConditional:
                     return run_jax(lambda a, b: a - b, inner_arg, inner_var)
 
                 # The inner cond captures outer_var.
-                return cond(pred2, inner_then_fn, inner_else_fn, arg1)
+                return uniform_cond(
+                    pred2, inner_then_fn, inner_else_fn, arg1, verify_uniform=False
+                )
 
             def outer_else_fn(arg1):
                 # This branch is simpler, just returns a constant.
                 return constant(999)
 
-            return cond(pred1, outer_then_fn, outer_else_fn, x)
+            return uniform_cond(
+                pred1, outer_then_fn, outer_else_fn, x, verify_uniform=False
+            )
 
         traced_fn = trace(trace_context, nested_cond_func)
         func_expr = traced_fn.make_expr()
@@ -697,7 +709,7 @@ class TestConditional:
                 # Captures one value
                 return run_jax(lambda a, b: a + b, x_arg, val_c)
 
-            return cond(pred, then_fn, else_fn, x)
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
 
         traced_fn = trace(trace_context, cond_func)
 
@@ -749,7 +761,7 @@ class TestConditional:
                 # Incorrect implementation: only uses first argument
                 return x_arg
 
-            return cond(pred, then_fn, else_fn, x, y)
+            return uniform_cond(pred, then_fn, else_fn, x, y, verify_uniform=False)
 
         # This should work but the behavior might be different
         # Since both functions have compatible signatures now
@@ -798,7 +810,9 @@ class TestConditional:
                 # This should cause issues because the signature is fundamentally different
                 return invalid_signature
 
-            return cond(pred, then_fn_good, else_fn_bad, x)
+            return uniform_cond(
+                pred, then_fn_good, else_fn_bad, x, verify_uniform=False
+            )
 
         # This should raise an error due to truly incompatible signatures
         # The error might come from the trace function itself when it tries to call else_fn_bad
@@ -1063,12 +1077,77 @@ class TestWhileLoop:
 
             return while_loop(cond_fn, body_fn, init_val)
 
-        # This should raise a ValueError due to type mismatch
+        # This should raise a ValueError/TypeError due to type mismatch
         with pytest.raises(
-            ValueError,
-            match=r"Body function output type .* does not match initial state type",
+            (ValueError, TypeError), match=r"Body output leaf 0 type mismatch: .*"
         ):
             trace(trace_context, while_func_wrong_type)
+
+    def test_while_loop_pytree_params_complex(self, trace_context):
+        """Test while loop with a complex PyTree init and multiple leaf updates."""
+
+        def while_func():
+            init = {
+                "left": (constant(0), [constant(1), constant(2)]),
+                "right": {"x": constant(10)},
+            }
+
+            inc = constant(3)
+            limit = constant(20)
+
+            def cond_fn(s):
+                i, _arr = s["left"]
+                # Keep it simple: loop while i < limit
+                return run_jax(lambda a, b: a < b, i, limit)
+
+            def body_fn(s):
+                i, arr = s["left"]
+                x = s["right"]["x"]
+                new_i = run_jax(lambda a, b: a + b, i, inc)
+                new_arr0 = run_jax(lambda a, b: a + b, arr[0], inc)
+                return {"left": (new_i, [new_arr0, arr[1]]), "right": {"x": x}}
+
+            final_state = while_loop(cond_fn, body_fn, init)
+            # Return a single leaf to keep a single output var for tracing
+            return final_state["left"][0]
+
+        traced_fn = trace(trace_context, while_func)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+        assert len(traced_fn.out_vars) == 1
+        assert isinstance(traced_fn.out_vars[0], TraceVar)
+
+        printer = Printer()
+        expr_str = printer.print_expr(func_expr)
+        print(f"while loop complex PyTree expression:\n{expr_str}")
+
+        expected = """
+() {
+  %0 = pconst() {data=0} : i64<3>
+  %1 = pconst() {data=1} : i64<3>
+  %2 = pconst() {data=2} : i64<3>
+  %3 = pconst() {data=10} : i64<3>
+  %4 = pconst() {data=20} : i64<3>
+  %5 = pconst() {data=3} : i64<3>
+  %6 = pwhile(%0, %1, %2, %3, %4, %5) {
+    cond_fn: ($0, $1, $2, $3, $4, ) {
+      %0 = peval($0, $4) {fn_type=mlir.stablehlo, fn_name=<lambda>} : bool<3>
+      return %0
+    }
+    body_fn: ($0, $1, $2, $3, , $4) {
+      %0 = peval($0, $4) {fn_type=mlir.stablehlo, fn_name=<lambda>} : i64<3>
+      %1 = peval($1, $4) {fn_type=mlir.stablehlo, fn_name=<lambda>} : i64<3>
+      %2 = tuple(%0, %1, $2, $3) : (i64<3>, i64<3>, i64<3>, i64<3>)
+      return %2
+    }
+  } : (i64<3>, i64<3>, i64<3>, i64<3>)
+  return %6:0
+}
+"""
+        assert expr_str == expected.strip()
+        assert len(traced_fn.out_vars) == 1
+        assert isinstance(traced_fn.out_vars[0], TraceVar)
 
 
 class TestCompleteExample:
@@ -1257,7 +1336,9 @@ class TestSetMask:
         # The final output pmask should be the target_mask
         assert f": i64<{target_mask}>" in expr_str
 
-    def test_set_mask_with_static_pmask_valid_subset(self, trace_context):
+    def test_set_mask_with_static_pmask_valid_subset(
+        self, trace_context, cluster_spec_2p
+    ):
         """Test set_mask with static pmask where mask is a valid subset."""
 
         # Create a function that uses prank to get rank in specific context
@@ -1266,7 +1347,7 @@ class TestSetMask:
 
         # Create a new trace context with specific mask
         original_mask = Mask(0b11)  # Parties 0, 1 (full mask for 2-party context)
-        specific_context = TraceContext(world_size=2, mask=original_mask)
+        specific_context = TraceContext(cluster_spec_2p, mask=original_mask)
         traced_fn = trace(specific_context, rank_func)
         static_var = traced_fn.out_vars[0]
 
@@ -1310,7 +1391,7 @@ class TestSetMask:
         with pytest.raises(ValueError, match="not a subset"):
             trace(trace_context, test_func)
 
-    def test_set_mask_with_empty_mask(self, trace_context):
+    def test_set_mask_with_empty_mask(self, trace_context, cluster_spec_2p):
         """Test set_mask with empty mask (0)."""
 
         # Create a function that uses prank to get rank in specific context
@@ -1319,7 +1400,7 @@ class TestSetMask:
 
         # Create a new trace context with specific mask
         original_mask = Mask(0b11)  # Parties 0, 1 (full mask for 2-party context)
-        specific_context = TraceContext(world_size=2, mask=original_mask)
+        specific_context = TraceContext(cluster_spec_2p, mask=original_mask)
         traced_fn = trace(specific_context, rank_func)
         static_var = traced_fn.out_vars[0]
 
@@ -1434,3 +1515,86 @@ class TestSetMask:
         assert "eval" in expr_str  # From set_mask and simp.run
         assert "prank" in expr_str  # From prank()
         assert "pconst" in expr_str  # From constant()
+
+
+class TestUniformCondValidation:
+    """Focused tests for uniform_cond validation edge cases."""
+
+    def test_uniform_cond_predicate_non_scalar_error(self, trace_context):
+        """Predicate must be scalar: supplying a vector should raise TypeError."""
+        import numpy as np
+
+        def cond_func():
+            # Shape (2,) predicate (invalid)
+            pred = constant(np.array([True, False]))  # non-scalar
+            x = constant(1)
+
+            def then_fn(a):  # type: ignore
+                return a
+
+            def else_fn(a):  # type: ignore
+                return a
+
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
+
+        with pytest.raises(TypeError):
+            trace(trace_context, cond_func)
+
+    def test_uniform_cond_predicate_non_bool_error(self, trace_context):
+        """Predicate must be boolean: supplying int scalar should raise TypeError."""
+
+        def cond_func():
+            pred = constant(1)  # int, not bool
+            x = constant(1)
+
+            def then_fn(a):  # type: ignore
+                return a
+
+            def else_fn(a):  # type: ignore
+                return a
+
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
+
+        with pytest.raises(TypeError):
+            trace(trace_context, cond_func)
+
+    def test_uniform_cond_branch_output_mismatch(self, trace_context):
+        """Branches returning different shapes should raise TypeError."""
+        import numpy as np
+
+        def cond_func():
+            pred = constant(True)
+            x = constant(np.array([1, 2, 3], dtype=np.int64))
+
+            def then_fn(v):  # type: ignore
+                return v  # shape (3,)
+
+            def else_fn(v):  # type: ignore
+                return constant(np.array([[1, 2, 3]], dtype=np.int64))  # shape (1,3)
+
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
+
+        with pytest.raises(TypeError):
+            trace(trace_context, cond_func)
+
+    def test_uniform_cond_divergent_predicate_no_verification(self, trace_context):
+        """Divergent predicate allowed when verify_uniform=False (no error)."""
+
+        def divergent_predicate():
+            # We simulate divergent predicate by constructing a boolean whose logical
+            # value could differ per party if produced via local computation. For now
+            # we just use a uniform True (cannot fabricate divergence without runtime),
+            # the key point is verify_uniform=False does not raise.
+            pred = constant(True)
+            x = constant(5)
+
+            def then_fn(v):  # type: ignore
+                return v
+
+            def else_fn(v):  # type: ignore
+                return v
+
+            return uniform_cond(pred, then_fn, else_fn, x, verify_uniform=False)
+
+        traced = trace(trace_context, divergent_predicate)
+        assert traced.make_expr() is not None

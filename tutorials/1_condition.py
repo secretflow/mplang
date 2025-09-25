@@ -12,91 +12,147 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import jax
 import jax.numpy as jnp
 
 import mplang
-import mplang.random as mpr
 import mplang.simp as simp
-import mplang.smpc as smpc
+
+# TL;DR / Quick Patterns:
+# - Elementwise / per-party divergent predicate & both sides cheap -> jax.where
+# - Pure local lazy control (no multi-party side-effects) -> jax.lax.cond (via simp.run)
+# - Uniform predicate + expensive multi-party side-effects -> uniform_cond
+# - Divergent structural branching you wish were uniform -> aggregate/reduce to uniform or fallback to elementwise where
 
 
 @mplang.function
-def negate_if_local_cond():
-    # Parties random a number privately
-    x = mpr.prandint(0, 20)
+def local_elementwise_select():
+    """Case 1: Per-party / element-wise selection -> use jax.where.
 
-    # Check if local var is less than a given number.
-    p = simp.run(lambda x: x <= 10)(x)
+    Each party privately samples x, and decides locally whether to negate.
+    Both candidate values (pos/neg) are inexpensive and *both computed*.
+    Predicate p may differ across parties.
 
-    # Compute positive and negative of the value.
-    # Note: pos and neg will not be evaluated until parties launched it.
-    pos = simp.run(lambda x: x)(x)
-    neg = simp.run(lambda x: -x)(x)
-
-    # Note: Each party evaluate only one of **pos or neg** code path according to
-    # p's value, it's something like SIMT.
-    # r = simp.select(p, pos, neg)
-    # z = simp.run(lambda p, x, y: jnp.where(p, x, y))(p, pos, neg)
+    Correct primitive: jax.where (NOT uniform_cond).
+    """
+    x = simp.prandint(0, 20)
+    p = simp.run(lambda v: v <= 10)(x)  # local predicate (can diverge per party)
+    pos = simp.run(lambda v: v)(x)
+    neg = simp.run(lambda v: -v)(x)
     z = simp.run(jnp.where)(p, pos, neg)
-
     return x, z
 
 
 @mplang.function
-def negate_if_shared_cond():
-    # Seal all parties private
-    x = mpr.prandint(0, 10)
+def uniform_multi_party_cond():
+    """Case 2: Global uniform predicate with *expensive* multi-party branch.
+    Contrast: if we used ``jax.lax.cond`` here we could only express *local lazy* control
+    and we could NOT guarantee the non-selected branch's multi-party protocol is fully
+    skipped (its subgraph would still be traced/captured early, potentially impacting
+    backend optimization or resource usage).
 
-    # seal all parties private variable.
-    xs_ = smpc.seal(x)
-    # assert len(xs_) == 2  # Fixed from simp.cur_ctx().psize()
+    Steps:
+        1. Each party generates a private ``x``.
+        2. Perform ``seal -> srun`` aggregation (derive a secret statistic) -> ``reveal`` to get a uniform bool.
+        3. ``then`` branch simulates an expensive path (extra seal + reveal round).
+        4. ``else`` branch performs a light-weight local transform.
+    """
+    x = simp.prandint(0, 10)
+    xs_ = simp.seal(x)
+    pred_secret = simp.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
+    pred = simp.reveal(pred_secret)  # public & uniform
 
-    # Sum it privately, and compare to 15
-    pred_ = smpc.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
-    # Reveal the comparison result.
-    pred = smpc.reveal(pred_)
+    def then_branch(v):
+        # Simulate expensive multi-party path: seal + aggregation + reveal
+        sealed_v = simp.seal(v)
+        agg = simp.srun(lambda parts: jnp.sum(jnp.stack(parts), axis=0))(sealed_v)
+        return simp.reveal(agg)
 
-    # if the sum is greater than 10, return it, else return negate of it.
-    pos = simp.run(lambda x: x)(x)
-    neg = simp.run(lambda x: -x)(x)
+    def else_branch(v):
+        return simp.run(lambda t: -t)(v)
 
-    # Note: Since pred is a revealed value (all parties have same value), so
-    # only one of the branch statement will run.
-    # r = simp.select(pred, pos, neg)
-    z = simp.run(jnp.where)(pred, pos, neg)
-    return x, z
+    # Runtime uniform verification here to catch accidental divergence. If you have a
+    # provably uniform predicate and want to skip the O(P^2) tiny boolean gather, you
+    # could pass verify_uniform=False.
+    out = simp.uniform_cond(pred, then_branch, else_branch, x, verify_uniform=True)
+    return x, out
 
 
 @mplang.function
-def party_branch_on_cond():
-    x = simp.constant(5)
-    y = simp.constant(10)
-    pred = simp.run(lambda rank: rank < 2)(simp.prank())
-    z = simp.cond(
-        pred,
-        simp.run(jnp.add),  # Party 0 and 1 will run this branch
-        simp.run(jnp.subtract),  # Party 2 will run this branch
-        x,
-        y,
+def local_lazy_cond():
+    """Supplement: Local (pure compute) lazy conditional using jax.lax.cond.
+    Use case: branches contain no multi-party protocol / communication and you *only* want
+    to avoid computing the non-selected pure local math. Even if the predicate ends up
+    uniform you still do not need ``uniform_cond``; ``lax.cond`` is sufficient. If in the
+    future you introduce seal/reveal (or other MPC side-effects) into the branches and you
+    require truly skipping the other branch's communication, migrate to ``uniform_cond``.
+    """
+    x = simp.prandint(0, 20)
+    # Compute predicate locally (pure value) so that we do not leak TraceVars into JAX tracing.
+    pred = simp.run(lambda v: v % 2 == 0)(x)  # may diverge per party
+
+    # Wrap the entire lax.cond invocation in a single local run so that the JAX tracer
+    # only ever sees concrete numpy/jax arrays, not TraceVar wrappers.
+    def _lazy_branch(pred_val, v_val):
+        def t_fn(z):
+            return z * 2
+
+        def f_fn(z):
+            return z + 3
+
+        return jax.lax.cond(pred_val, t_fn, f_fn, v_val)
+
+    res = simp.run(_lazy_branch)(pred, x)
+    return x, res
+
+
+@mplang.function
+def anti_pattern_uniform_cond_with_divergent_pred():
+    """Case 3 (Anti-pattern): Divergent per-party predicate with uniform_cond.
+
+    This demonstrates what *not* to do: uniform_cond expects a uniform predicate
+    but here we build one that can diverge. For now (verify_uniform=False) the
+    system will not detect it, but semantics are undefined. Use jax.where instead.
+    """
+    rank = simp.prank()
+    pred = simp.run(lambda r: r < 2)(rank)  # may differ per party
+    a = simp.constant(5)
+    b = simp.constant(10)
+    # DO NOT DO THIS IN REAL CODE (shown only for educational contrast)
+    res = simp.uniform_cond(
+        pred, simp.run(jnp.add), simp.run(jnp.subtract), a, b, verify_uniform=False
     )
-    return x, z
+    return a, res
 
 
 if __name__ == "__main__":
     WORLD_SIZE = 3
-    mplang.set_ctx(mplang.Simulator(WORLD_SIZE))
+    mplang.set_ctx(mplang.Simulator.simple(WORLD_SIZE))
 
-    print("negate if x_i > 10")
-    x, r = negate_if_local_cond()
-    print(mplang.compile(mplang.cur_ctx(), negate_if_local_cond).compiler_ir())
-    print(mplang.fetch(None, (x, r)))
+    print("Case 1: local_elementwise_select (use jax.where)")
+    x1, r1 = local_elementwise_select()
+    print(mplang.compile(mplang.cur_ctx(), local_elementwise_select).compiler_ir())
+    print(mplang.fetch(None, (x1, r1)))
 
-    print("negate if sum(x) >= 15")
-    x, r = negate_if_shared_cond()
-    print(mplang.compile(mplang.cur_ctx(), negate_if_shared_cond).compiler_ir())
-    print(mplang.fetch(None, (x, r)))
+    print(
+        "Case 2: uniform_multi_party_cond (use uniform_cond for multi-party heavy branch)"
+    )
+    x2, r2 = uniform_multi_party_cond()
+    print(mplang.compile(mplang.cur_ctx(), uniform_multi_party_cond).compiler_ir())
+    print(mplang.fetch(None, (x2, r2)))
 
-    print("party_branch_on_cond")
-    x, z = party_branch_on_cond()
-    print(mplang.compile(mplang.cur_ctx(), party_branch_on_cond).compiler_ir())
-    print(mplang.fetch(None, (x, z)))
+    print(
+        "Supplement: local_lazy_cond (pure local lazy via lax.cond, NOT uniform_cond)"
+    )
+    x_lazy, r_lazy = local_lazy_cond()
+    print(mplang.compile(mplang.cur_ctx(), local_lazy_cond).compiler_ir())
+    print(mplang.fetch(None, (x_lazy, r_lazy)))
+
+    print("Case 3: anti_pattern_uniform_cond_with_divergent_pred (DON'T DO THIS)")
+    x3, r3 = anti_pattern_uniform_cond_with_divergent_pred()
+    print(
+        mplang.compile(
+            mplang.cur_ctx(), anti_pattern_uniform_cond_with_divergent_pred
+        ).compiler_ir()
+    )
+    print(mplang.fetch(None, (x3, r3)))

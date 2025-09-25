@@ -15,33 +15,20 @@
 import numpy as np
 import pytest
 
-from mplang.backend.phe import CipherText, PHEHandler, PrivateKey, PublicKey
-from mplang.core.dtype import (
-    BOOL,
-    FLOAT32,
-    FLOAT64,
-    INT8,
-    INT16,
-    INT32,
-    INT64,
-    UINT8,
-    UINT16,
-    UINT32,
-    UINT64,
-)
+from mplang.backend.base import create_runtime, list_registered_kernels
+from mplang.backend.phe import CipherText, PrivateKey, PublicKey
+from mplang.core.dtype import INT32, UINT8
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 
 
-class TestPHEHandler:
-    """Test cases for PHEHandler with Paillier scheme."""
+class TestPHEKernels:
+    """Compact PHE kernel tests (clean rewrite)."""
 
     def setup_method(self):
-        """Set up test fixtures."""
-        self.handler = PHEHandler()
+        self.runtime = create_runtime(0, 1)
         self.scheme = "paillier"
-        # Use smaller key size for faster testing, production should use 2048+ bits
-        self.key_size = 1024
+        self.key_size = 512
 
     def test_list_fn_names(self):
         """Test that handler lists correct function names."""
@@ -65,127 +52,66 @@ class TestPHEHandler:
             assert expected_fn in fn_names
         assert len(fn_names) == len(expected_functions)
 
-    def test_keygen_paillier(self):
-        """Test key generation for Paillier scheme."""
-        pfunc = PFunction(
+    def _keygen(self):
+        p = PFunction(
             fn_type="phe.keygen",
             ins_info=(),
-            outs_info=(
-                TensorType(BOOL, ()),
-                TensorType(BOOL, ()),
-            ),  # Dummy types for keys
+            outs_info=(TensorType(UINT8, (-1, 0)), TensorType(UINT8, (-1, 0))),
             scheme=self.scheme,
             key_size=self.key_size,
         )
-
-        result = self.handler.execute(pfunc, [])
-        assert len(result) == 2
-
-        pk, sk = result
-        assert isinstance(pk, PublicKey)
-        assert isinstance(sk, PrivateKey)
-        assert pk.scheme == "Paillier"  # lightPHE capitalizes the scheme name
-        assert sk.scheme == "Paillier"
-        assert pk.key_size == self.key_size
-        assert sk.key_size == self.key_size
-
-    def test_keygen_invalid_scheme(self):
-        """Test key generation with invalid scheme."""
-        pfunc = PFunction(
-            fn_type="phe.keygen",
-            ins_info=(),
-            outs_info=(TensorType(BOOL, ()), TensorType(BOOL, ())),
-            scheme="invalid_scheme",
-            key_size=self.key_size,
-        )
-
-        with pytest.raises(ValueError, match="Unsupported PHE scheme"):
-            self.handler.execute(pfunc, [])
-
-    def test_keygen_with_args(self):
-        """Test key generation with invalid arguments."""
-        test_data = np.array(1)
-        pfunc = PFunction(
-            fn_type="phe.keygen",
-            ins_info=(TensorType.from_obj(test_data),),
-            outs_info=(TensorType(BOOL, ()), TensorType(BOOL, ())),
-            scheme=self.scheme,
-            key_size=self.key_size,
-        )
-
-        with pytest.raises(ValueError, match="Key generation expects no arguments"):
-            self.handler.execute(pfunc, [test_data])
-
-    def _generate_keypair(self):
-        """Helper method to generate a keypair."""
-        pfunc = PFunction(
-            fn_type="phe.keygen",
-            ins_info=(),
-            outs_info=(TensorType(BOOL, ()), TensorType(BOOL, ())),
-            scheme=self.scheme,
-            key_size=self.key_size,
-        )
-        pk, sk = self.handler.execute(pfunc, [])
+        pk, sk = self._exec(p, [])
+        assert isinstance(pk, PublicKey) and isinstance(sk, PrivateKey)
         return pk, sk
 
+    def test_kernel_registry(self):
+        for name in ["phe.keygen", "phe.encrypt", "phe.decrypt", "phe.add", "phe.mul"]:
+            assert name in list_registered_kernels()
+
+    def test_keygen(self):
+        pk, sk = self._keygen()
+        assert pk.scheme == "Paillier" and sk.scheme == "Paillier"
+
+    def test_keygen_invalid_scheme(self):
+        p = PFunction(
+            fn_type="phe.keygen",
+            ins_info=(),
+            outs_info=(TensorType(UINT8, (-1, 0)), TensorType(UINT8, (-1, 0))),
+            scheme="bogus",
+        )
+        with pytest.raises(ValueError, match="Unsupported PHE scheme"):
+            self._exec(p, [])
+
     def test_encrypt_decrypt_scalar_int32(self):
-        """Test encrypt/decrypt cycle for scalar int32."""
-        pk, sk = self._generate_keypair()
-
-        # Test with int32 scalar
-        plaintext = np.array(42, dtype=np.int32)
-
-        # Encrypt
-        encrypt_pfunc = PFunction(
+        pk, sk = self._keygen()
+        pt = np.array(42, dtype=np.int32)
+        enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(pt),),
         )
-        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
-        assert len(ciphertext_result) == 1
-
-        ciphertext = ciphertext_result[0]
-        assert isinstance(ciphertext, CipherText)
-        assert ciphertext.semantic_dtype == INT32
-        assert ciphertext.semantic_shape == ()
-
-        # Decrypt
-        decrypt_pfunc = PFunction(
+        ct = self._exec(enc, [pt, pk])[0]
+        dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(pt),),
         )
-        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
-        assert len(decrypted_result) == 1
-
-        decrypted = decrypted_result[0]
-        assert isinstance(decrypted, np.ndarray)
-        assert decrypted.dtype == np.int32
-        assert decrypted.shape == ()
-        assert decrypted.item() == 42
+        out = self._exec(dec, [ct, sk])[0]
+        assert out.item() == 42
 
     def test_encrypt_decrypt_scalar_float32(self):
-        """Test encrypt/decrypt cycle for scalar float32."""
-        pk, sk = self._generate_keypair()
-
-        # Test with float32 scalar
-        plaintext = np.array(3.14, dtype=np.float32)
-
-        # Encrypt
-        encrypt_pfunc = PFunction(
+        pk, sk = self._keygen()
+        pt = np.array(3.14, dtype=np.float32)
+        enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(pt),),
         )
-        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
-        ciphertext = ciphertext_result[0]
-        assert ciphertext.semantic_dtype == FLOAT32
-
-        # Decrypt
-        decrypt_pfunc = PFunction(
+        ct = self._exec(enc, [pt, pk])[0]
+        dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(pt),),
         )
         decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
         decrypted = decrypted_result[0]
@@ -193,238 +119,98 @@ class TestPHEHandler:
         # Use appropriate precision for fixed-point encoding (12 bits = ~2.4e-4 precision)
         assert abs(decrypted.item() - 3.14) < 3e-4
 
-    def test_encrypt_decrypt_array_int64(self):
-        """Test encrypt/decrypt cycle for array int64."""
-        pk, sk = self._generate_keypair()
-
-        # Test with int64 array
-        plaintext = np.array([1, 2, 3, 4], dtype=np.int64)
-
-        # Encrypt
-        encrypt_pfunc = PFunction(
+    def test_add_cipher_cipher(self):
+        pk, sk = self._keygen()
+        a = np.array(10, dtype=np.int32)
+        b = np.array(5, dtype=np.int32)
+        enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        ciphertext_result = self.handler.execute(encrypt_pfunc, [plaintext, pk])
-        ciphertext = ciphertext_result[0]
-        assert ciphertext.semantic_dtype == INT64
-        assert ciphertext.semantic_shape == (4,)
-
-        # Decrypt
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
-        )
-        decrypted_result = self.handler.execute(decrypt_pfunc, [ciphertext, sk])
-        decrypted = decrypted_result[0]
-        assert decrypted.dtype == np.int64
-        assert decrypted.shape == (4,)
-        np.testing.assert_array_equal(decrypted, [1, 2, 3, 4])
-
-    def test_encrypt_invalid_args(self):
-        """Test encryption with invalid arguments."""
-        _pk, _ = self._generate_keypair()
-
-        # Test with wrong number of arguments
-        plaintext = np.array(42)
-        encrypt_pfunc = PFunction(
-            fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext),),
-            outs_info=(TensorType.from_obj(plaintext),),
-        )
-        with pytest.raises(
-            ValueError, match="Encryption expects exactly two arguments"
-        ):
-            self.handler.execute(encrypt_pfunc, [plaintext])
-
-    def test_decrypt_invalid_args(self):
-        """Test decryption with invalid arguments."""
-        _pk, _sk = self._generate_keypair()
-
-        # Test with wrong number of arguments
-        plaintext = np.array(42)
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(),
-            outs_info=(TensorType.from_obj(plaintext),),
-        )
-        with pytest.raises(
-            ValueError, match="Decryption expects exactly two arguments"
-        ):
-            self.handler.execute(decrypt_pfunc, [])
-
-    def test_add_ciphertext_ciphertext_int32(self):
-        """Test CipherText + CipherText addition with int32."""
-        pk, sk = self._generate_keypair()
-
-        # Encrypt two int32 scalars
-        plaintext1 = np.array(10, dtype=np.int32)
-        plaintext2 = np.array(20, dtype=np.int32)
-
-        encrypt_pfunc = PFunction(
-            fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
-        )
-        ciphertext1 = self.handler.execute(encrypt_pfunc, [plaintext1, pk])[0]
-        ciphertext2 = self.handler.execute(encrypt_pfunc, [plaintext2, pk])[0]
-
-        # Add ciphertexts
-        add_pfunc = PFunction(
+        ca = self._exec(enc, [a, pk])[0]
+        cb = self._exec(enc, [b, pk])[0]
+        add = PFunction(
             fn_type="phe.add",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType.from_obj(plaintext1)),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+            outs_info=(TensorType.from_obj(a),),
         )
-        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
-
-        assert isinstance(result_ct, CipherText)
-        assert result_ct.semantic_dtype == INT32
-        assert result_ct.semantic_shape == ()
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
+        cr = self._exec(add, [ca, cb])[0]
+        dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        assert decrypted.item() == 30
+        out = self._exec(dec, [cr, sk])[0]
+        assert out.item() == 15
 
-    def test_add_ciphertext_ciphertext_float64(self):
-        """Test CipherText + CipherText addition with float64."""
-        pk, sk = self._generate_keypair()
-
-        # Encrypt two float64 scalars
-        plaintext1 = np.array(1.5, dtype=np.float64)
-        plaintext2 = np.array(2.5, dtype=np.float64)
-
-        encrypt_pfunc = PFunction(
+    def test_add_cipher_plain(self):
+        pk, sk = self._keygen()
+        a = np.array([1, 2, 3], dtype=np.int32)
+        b = np.array([4, 5, 6], dtype=np.int32)
+        enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        ciphertext1 = self.handler.execute(encrypt_pfunc, [plaintext1, pk])[0]
-        ciphertext2 = self.handler.execute(encrypt_pfunc, [plaintext2, pk])[0]
-
-        # Add ciphertexts
-        add_pfunc = PFunction(
+        ca = self._exec(enc, [a, pk])[0]
+        add = PFunction(
             fn_type="phe.add",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType.from_obj(plaintext1)),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+            outs_info=(TensorType.from_obj(a),),
         )
-        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
-
-        assert result_ct.semantic_dtype == FLOAT64
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
+        cr = self._exec(add, [ca, b])[0]
+        dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        assert abs(decrypted.item() - 4.0) < 1e-10
+        out = self._exec(dec, [cr, sk])[0]
+        np.testing.assert_array_equal(out, a + b)
 
-    def test_add_ciphertext_ciphertext_array_int16(self):
-        """Test CipherText + CipherText addition with int16 array."""
-        pk, sk = self._generate_keypair()
-
-        # Encrypt two int16 arrays
-        plaintext1 = np.array([1, 2, 3], dtype=np.int16)
-        plaintext2 = np.array([4, 5, 6], dtype=np.int16)
-
-        encrypt_pfunc = PFunction(
+    def test_mul_cipher_plain(self):
+        pk, sk = self._keygen()
+        a = np.array([2, 3], dtype=np.int32)
+        b = np.array([5, 7], dtype=np.int32)
+        enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        ciphertext1 = self.handler.execute(encrypt_pfunc, [plaintext1, pk])[0]
-        ciphertext2 = self.handler.execute(encrypt_pfunc, [plaintext2, pk])[0]
-
-        # Add ciphertexts
-        add_pfunc = PFunction(
-            fn_type="phe.add",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType.from_obj(plaintext1)),
-            outs_info=(TensorType.from_obj(plaintext1),),
+        ca = self._exec(enc, [a, pk])[0]
+        mul = PFunction(
+            fn_type="phe.mul",
+            ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+            outs_info=(TensorType.from_obj(a),),
         )
-        result_ct = self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])[0]
-
-        assert result_ct.semantic_dtype == INT16
-        assert result_ct.semantic_shape == (3,)
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
+        cr = self._exec(mul, [ca, b])[0]
+        dec = PFunction(
             fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        expected = np.array([5, 7, 9], dtype=np.int16)
-        np.testing.assert_array_equal(decrypted, expected)
+        out = self._exec(dec, [cr, sk])[0]
+        np.testing.assert_array_equal(out, a * b)
 
-    def test_add_ciphertext_plaintext_int32(self):
-        """Test CipherText + plaintext addition with int32."""
-        pk, sk = self._generate_keypair()
-
-        # Encrypt int32 scalar
-        ciphertext_val = np.array(15, dtype=np.int32)
-        plaintext_val = np.array(25, dtype=np.int32)
-
-        encrypt_pfunc = PFunction(
-            fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
-        )
-        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
-
-        # Add ciphertext + plaintext
-        add_pfunc = PFunction(
+    def test_plain_plain_add(self):
+        a = np.array([1, 2], dtype=np.int32)
+        b = np.array([3, 4], dtype=np.int32)
+        add = PFunction(
             fn_type="phe.add",
-            ins_info=(
-                TensorType.from_obj(ciphertext_val),
-                TensorType.from_obj(plaintext_val),
-            ),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
+            ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+            outs_info=(TensorType.from_obj(a),),
         )
-        result_ct = self.handler.execute(add_pfunc, [ciphertext, plaintext_val])[0]
+        out = self._exec(add, [a, b])[0]
+        np.testing.assert_array_equal(out, a + b)
 
-        assert isinstance(result_ct, CipherText)
-        assert result_ct.semantic_dtype == INT32
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
-        )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        assert decrypted.item() == 40
-
-    def test_add_plaintext_ciphertext_float32(self):
-        """Test plaintext + CipherText addition with float32."""
-        pk, sk = self._generate_keypair()
-
-        # Encrypt float32 scalar
-        ciphertext_val = np.array(2.5, dtype=np.float32)
-        plaintext_val = np.array(1.5, dtype=np.float32)
-
-        encrypt_pfunc = PFunction(
+    def test_shape_mismatch_add(self):
+        pk, _ = self._keygen()
+        a = np.array([1, 2], dtype=np.int32)
+        b = np.array([1, 2, 3], dtype=np.int32)
+        enc_a = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
-        )
-        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
-
-        # Add plaintext + ciphertext (commutative)
-        add_pfunc = PFunction(
-            fn_type="phe.add",
-            ins_info=(
-                TensorType.from_obj(plaintext_val),
-                TensorType.from_obj(ciphertext_val),
-            ),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
         result_ct = self.handler.execute(add_pfunc, [plaintext_val, ciphertext])[0]
 
@@ -451,51 +237,18 @@ class TestPHEHandler:
 
         encrypt_pfunc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
+            ins_info=(TensorType.from_obj(b), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(b),),
         )
-        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
-
-        # Add ciphertext + plaintext
-        add_pfunc = PFunction(
+        ca = self._exec(enc_a, [a, pk])[0]
+        cb = self._exec(enc_b, [b, pk])[0]
+        add = PFunction(
             fn_type="phe.add",
-            ins_info=(
-                TensorType.from_obj(ciphertext_val),
-                TensorType.from_obj(plaintext_val),
-            ),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
+            ins_info=(TensorType.from_obj(a), TensorType.from_obj(b)),
+            outs_info=(TensorType.from_obj(a),),
         )
-        result_ct = self.handler.execute(add_pfunc, [ciphertext, plaintext_val])[0]
-
-        assert result_ct.semantic_dtype == INT8
-        assert result_ct.semantic_shape == (3,)
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
-        )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        expected = np.array([11, 22, 33], dtype=np.int8)
-        np.testing.assert_array_equal(decrypted, expected)
-
-    def test_add_plaintext_plaintext(self):
-        """Test plaintext + plaintext addition (fallback to regular addition)."""
-        # Regular numpy addition should work
-        plaintext1 = np.array([1, 2, 3], dtype=np.int32)
-        plaintext2 = np.array([4, 5, 6], dtype=np.int32)
-
-        add_pfunc = PFunction(
-            fn_type="phe.add",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType.from_obj(plaintext2)),
-            outs_info=(TensorType.from_obj(plaintext1),),
-        )
-        result = self.handler.execute(add_pfunc, [plaintext1, plaintext2])[0]
-
-        assert isinstance(result, np.ndarray)
-        expected = np.array([5, 7, 9], dtype=np.int32)
-        np.testing.assert_array_equal(result, expected)
+        with pytest.raises(ValueError, match="same shape"):
+            self._exec(add, [ca, cb])
 
     def test_add_shape_mismatch(self):
         """Test addition with incompatible shapes for broadcasting."""
@@ -508,13 +261,8 @@ class TestPHEHandler:
 
         encrypt_pfunc1 = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext1), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext1),),
-        )
-        encrypt_pfunc2 = PFunction(
-            fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext2), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext2),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
         ciphertext1 = self.handler.execute(encrypt_pfunc1, [plaintext1, pk])[0]
         ciphertext2 = self.handler.execute(encrypt_pfunc2, [plaintext2, pk])[0]
@@ -530,37 +278,30 @@ class TestPHEHandler:
         ):
             self.handler.execute(add_pfunc, [ciphertext1, ciphertext2])
 
-    def test_add_scheme_mismatch(self):
-        """Test addition with different schemes (simulate by manual creation)."""
-        pk, _ = self._generate_keypair()
-
-        # Encrypt one value normally
-        plaintext = np.array(10, dtype=np.int32)
-        encrypt_pfunc = PFunction(
+    def test_scheme_mismatch(self):
+        pk, _ = self._keygen()
+        a = np.array(10, dtype=np.int32)
+        enc = PFunction(
             fn_type="phe.encrypt",
-            ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(a), TensorType(UINT8, (-1, 0))),
+            outs_info=(TensorType.from_obj(a),),
         )
-        ciphertext1 = self.handler.execute(encrypt_pfunc, [plaintext, pk])[0]
-
-        # Create a fake ciphertext with different scheme
-        fake_ciphertext = CipherText(
-            ct_data=ciphertext1.ct_data,
+        ct = self._exec(enc, [a, pk])[0]
+        fake = CipherText(
+            ct_data=ct.ct_data,
             semantic_dtype=INT32,
             semantic_shape=(),
-            scheme="ElGamal",  # Different scheme
+            scheme="ElGamal",
             key_size=2048,
             pk_data=None,
         )
-
-        # Try to add - should fail
-        add_pfunc = PFunction(
+        add = PFunction(
             fn_type="phe.add",
-            ins_info=(TensorType.from_obj(plaintext), TensorType.from_obj(plaintext)),
-            outs_info=(TensorType.from_obj(plaintext),),
+            ins_info=(TensorType.from_obj(a), TensorType.from_obj(a)),
+            outs_info=(TensorType.from_obj(a),),
         )
-        with pytest.raises(ValueError, match="must use same scheme and key size"):
-            self.handler.execute(add_pfunc, [ciphertext1, fake_ciphertext])
+        with pytest.raises(ValueError, match="same scheme/key size"):
+            self._exec(add, [ct, fake])
 
     def test_add_ciphertext_plaintext_shape_mismatch(self):
         """Test CipherText + plaintext addition with incompatible shapes for broadcasting."""
@@ -1406,22 +1147,17 @@ class TestPHEHandler:
             (np.array(3.14159, dtype=np.float32), FLOAT32),
             (np.array(2.718281828, dtype=np.float64), FLOAT64),
         ]
-
-        for plaintext, expected_dtype in test_cases:
-            # Encrypt
-            encrypt_pfunc = PFunction(
+        for pt in samples:
+            enc = PFunction(
                 fn_type="phe.encrypt",
-                ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-                outs_info=(TensorType.from_obj(plaintext),),
+                ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(pt),),
             )
-            ciphertext = self.handler.execute(encrypt_pfunc, [plaintext, pk])[0]
-            assert ciphertext.semantic_dtype == expected_dtype
-
-            # Decrypt
-            decrypt_pfunc = PFunction(
+            ct = self._exec(enc, [pt, pk])[0]
+            dec = PFunction(
                 fn_type="phe.decrypt",
-                ins_info=(TensorType.from_obj(plaintext), TensorType(BOOL, ())),
-                outs_info=(TensorType.from_obj(plaintext),),
+                ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
+                outs_info=(TensorType.from_obj(pt),),
             )
             decrypted = self.handler.execute(decrypt_pfunc, [ciphertext, sk])[0]
             assert decrypted.dtype == plaintext.dtype

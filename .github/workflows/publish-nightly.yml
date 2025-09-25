@@ -1,0 +1,45 @@
+name: Publish Nightly Build to mplang-nightly
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-nightly:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # For PyPI Trusted Publishing
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Hatch and hatch-vcs
+        run: pip install hatch hatch-vcs
+
+      - name: Show automatically generated version
+        run: |
+          echo "Nightly version: $(hatch version)"
+
+      - name: Build package
+        run: hatch build
+        env:
+          BUILD_NIGHTLY: true
+
+      - name: Publish to PyPI (mplang-nightly)
+        run: |
+          hatch publish
+        env:
+          BUILD_NIGHTLY: true
+          HATCH_INDEX_USER: __token__
+          HATCH_INDEX_AUTH: ${{ secrets.PYPI_API_TOKEN }}

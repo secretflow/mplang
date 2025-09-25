@@ -24,20 +24,29 @@ from typing import Any, cast
 
 import spu.libspu as libspu
 
-from mplang.backend.builtin import BuiltinHandler
-from mplang.backend.phe import PHEHandler
-from mplang.backend.spu import SpuHandler
-from mplang.backend.sql_duckdb import DuckDBHandler
-from mplang.backend.stablehlo import StablehloHandler
+# Import flat backends for kernel registration side-effects
+from mplang.backend import (
+    builtin,  # noqa: F401
+    crypto,  # noqa: F401
+    phe,  # noqa: F401
+    spu,  # noqa: F401  # ensure SPU kernels (spu.seed_env etc.) registered
+    sql_duckdb,  # noqa: F401
+    stablehlo,  # noqa: F401
+    tee,  # noqa: F401
+)
+from mplang.backend.base import create_runtime  # explicit per-rank backend runtime
+from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
-from mplang.core.expr.evaluator import Evaluator
+from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpir import Reader, Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
+from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
 from mplang.runtime.link_comm import LinkCommunicator
+from mplang.utils.spu_utils import parse_field, parse_protocol
 
 
 class ThreadCommunicator(CommunicatorBase, CollectiveMixin):
@@ -84,72 +93,97 @@ class SimVar(InterpVar):
 class Simulator(InterpContext):
     def __init__(
         self,
-        psize: int,
+        cluster_spec: ClusterSpec,
         *,
-        spu_protocol: libspu.ProtocolKind = libspu.ProtocolKind.SEMI2K,
-        spu_field: libspu.FieldType = libspu.FieldType.FM64,
-        spu_mask: Mask | None = None,
         trace_ranks: list[int] | None = None,
-        **attrs: Any,
     ) -> None:
-        """Initialize a simulator with the given process size and attributes."""
-        if trace_ranks is None:
-            trace_ranks = []
-        all_attrs = {
-            "trace_ranks": trace_ranks,
-            "spu_protocol": int(spu_protocol),
-            "spu_field": int(spu_field),
-            "spu_mask": spu_mask or Mask((1 << psize) - 1),
-            **attrs,
-        }
-        super().__init__(psize, all_attrs)
+        """Initialize a simulator with the given cluster specification.
+
+        Args:
+            cluster_spec: The cluster specification defining the simulation environment.
+            trace_ranks: List of ranks to trace execution for debugging.
+        """
+        super().__init__(cluster_spec)
+        self._trace_ranks = trace_ranks or []
+
+        spu_devices = cluster_spec.get_devices_by_kind("SPU")
+        if not spu_devices:
+            raise ValueError("No SPU device found in the cluster specification")
+        if len(spu_devices) > 1:
+            raise ValueError("Multiple SPU devices found in the cluster specification")
+        spu_device = spu_devices[0]
+
+        # compute spu_mask from spu_device members
+        spu_mask = Mask.from_ranks([member.rank for member in spu_device.members])
+
+        # Convert protocol and field from config using utility functions
+        spu_protocol = parse_protocol(spu_device.config["protocol"])
+        spu_field = parse_field(spu_device.config["field"])
+
+        world_size = self.world_size()
 
         # Setup communicators
-        self._comms = [ThreadCommunicator(rank, psize) for rank in range(psize)]
+        self._comms = [
+            ThreadCommunicator(rank, world_size) for rank in range(world_size)
+        ]
         for comm in self._comms:
             comm.set_peers(self._comms)
 
-        # Prepare link context and spu handlers.
-        spu_mask_attr: Mask = Mask(self.attr("spu_mask"))
-
-        spu_addrs = [f"P{spu_rank}" for spu_rank in Mask(spu_mask_attr)]
-        spu_comms = [
+        # Prepare link contexts for SPU parties (store for evaluator-time initialization)
+        spu_addrs = [f"P{spu_rank}" for spu_rank in spu_mask]
+        self._spu_link_ctxs: list[LinkCommunicator | None] = [None] * world_size
+        link_ctx_list = [
             LinkCommunicator(idx, spu_addrs, mem_link=True)
-            for idx in range(spu_mask_attr.num_parties())
+            for idx in range(spu_mask.num_parties())
         ]
-        spu_config = libspu.RuntimeConfig(
-            protocol=libspu.ProtocolKind.SEMI2K,
-            field=libspu.FieldType.FM64,
-        )
-        # Create separate SpuHandler instances for each party to avoid sharing state
-        spu_handlers = [
-            SpuHandler(spu_mask_attr.num_parties(), spu_config) for _ in range(psize)
-        ]
-        for rank, handler in enumerate(spu_handlers):
-            handler.set_link_context(
-                spu_comms[Mask(spu_mask_attr).global_to_relative_rank(rank)]
-                if rank in Mask(spu_mask_attr)
-                else None
-            )
+        for g_rank in range(world_size):
+            if g_rank in spu_mask:
+                rel = Mask(spu_mask).global_to_relative_rank(g_rank)
+                self._spu_link_ctxs[g_rank] = link_ctx_list[rel]
 
-        # Setup evaluators
-        self._evaluators = [
-            Evaluator(
+        self._spu_runtime_cfg = libspu.RuntimeConfig(
+            protocol=spu_protocol, field=spu_field
+        )
+        self._spu_world = spu_mask.num_parties()
+        self._spu_mask = spu_mask
+
+        # No per-backend handlers needed anymore (all flat kernels)
+        self._handlers: list[list[Any]] = [[] for _ in range(self.world_size())]
+
+        self._evaluators: list[IEvaluator] = []
+        for rank in range(self.world_size()):
+            runtime = create_runtime(rank, self.world_size())
+            ev = create_evaluator(
                 rank,
                 {},  # the global environment for this rank
                 self._comms[rank],
-                [
-                    BuiltinHandler(),
-                    StablehloHandler(),
-                    spu_handlers[rank],
-                    DuckDBHandler(),
-                    PHEHandler(),
-                ],
+                runtime,
+                None,
             )
-            for rank in range(self.psize())
-        ]
+            self._evaluators.append(ev)
 
-    def _do_evaluate(self, expr: Expr, evaluator: Evaluator) -> Any:
+    @classmethod
+    def simple(
+        cls,
+        world_size: int,
+        **kwargs: Any,
+    ) -> Simulator:
+        """Create a simple simulator with the given number of parties.
+
+        This is a convenience method that creates a ClusterSpec.simple()
+        configuration for quick testing and prototyping.
+
+        Args:
+            world_size: Number of simulated parties.
+            **kwargs: Additional arguments passed to the Simulator constructor.
+
+        Returns:
+            A Simulator instance with a simple cluster configuration.
+        """
+        cluster_spec = ClusterSpec.simple(world_size)
+        return cls(cluster_spec, **kwargs)
+
+    def _do_evaluate(self, expr: Expr, evaluator_engine: IEvaluator) -> Any:
         """
         Helper function to simulate real-world MPIR serialization/deserialization
         process instead of direct expr.accept execution.
@@ -166,7 +200,7 @@ class Simulator(InterpContext):
         if deserialized_expr is None:
             raise ValueError("Failed to deserialize expression")
 
-        return deserialized_expr.accept(evaluator)
+        return evaluator_engine.evaluate(deserialized_expr)
 
     # override
     def fetch(self, obj: MPObject) -> list[TensorLike]:
@@ -184,12 +218,32 @@ class Simulator(InterpContext):
 
         pts_env = [
             {name: cast(SimVar, var).values[rank] for name, var in bindings.items()}
-            for rank in range(self.psize())
+            for rank in range(self.world_size())
         ]
 
-        pts_evaluators = [
-            self._evaluators[rank].fork(pts_env[rank]) for rank in range(self.psize())
-        ]
+        # Build per-rank evaluators with the per-party environment
+        pts_evaluators: list[IEvaluator] = []
+        for rank in range(self.world_size()):
+            runtime = create_runtime(rank, self.world_size())
+            ev = create_evaluator(
+                rank,
+                pts_env[rank],
+                self._comms[rank],
+                runtime,
+                None,
+            )
+            link_ctx = self._spu_link_ctxs[rank]
+            seed_fn = PFunction(
+                fn_type="spu.seed_env",
+                ins_info=(),
+                outs_info=(),
+                config=self._spu_runtime_cfg,
+                world=self._spu_world,
+                link=link_ctx,
+            )
+            # Seed SPU backend environment explicitly via runtime (no evaluator fast-path)
+            ev.runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
+            pts_evaluators.append(ev)
 
         # Collect evaluation results from all parties
         pts_results: list[Any] = []
@@ -220,7 +274,7 @@ class Simulator(InterpContext):
         # Convert results to SimVar objects
         # pts_results is a list of party results, where each party result is a list of values
         # We need to transpose this to get (n_outputs, n_parties) structure
-        assert len(pts_results) == self.psize()
+        assert len(pts_results) == self.world_size()
 
         # Ensure all parties returned the same number of outputs (matrix validation)
         if pts_results and not all(

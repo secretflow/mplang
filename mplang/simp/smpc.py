@@ -21,13 +21,10 @@ from typing import Any
 
 from jax.tree_util import tree_unflatten
 
-import mplang.mpi as mpi
-from mplang.core import primitive as prim
+from mplang.core import Mask, MPObject, Rank, peval, psize
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import Rank
-from mplang.frontend.spu import SpuFE, Visibility
+from mplang.frontend import spu
+from mplang.simp import mpi
 
 
 class SecureAPI(ABC):
@@ -72,8 +69,18 @@ class Delegation(SecureAPI):
 class SPU(SecureAPI):
     """Use SPU to  perform secure operations."""
 
+    def get_spu_mask(self) -> Mask:
+        spu_devices = cur_ctx().cluster_spec.get_devices_by_kind("SPU")
+        if not spu_devices:
+            raise ValueError("No SPU device found in the cluster specification")
+        if len(spu_devices) > 1:
+            raise ValueError("Multiple SPU devices found in the cluster specification")
+        spu_device = spu_devices[0]
+        spu_mask = Mask.from_ranks([member.rank for member in spu_device.members])
+        return spu_mask
+
     def seal(self, obj: MPObject, frm_mask: Mask | None = None) -> list[MPObject]:
-        spu_mask: Mask = cur_ctx().attr("spu_mask")
+        spu_mask: Mask = self.get_spu_mask()
         if obj.pmask is None:
             if frm_mask is None:
                 # NOTE: The length of the return list is statically determined by obj_mask,
@@ -92,11 +99,12 @@ class SPU(SecureAPI):
                     raise ValueError(f"Cannot seal from {frm_mask} to {obj.pmask}, ")
 
         # Get the world_size from spu_mask (number of parties in SPU computation)
-        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
-
-        # make shares on each party.
-        pfunc = spu.makeshares(obj, visibility=Visibility.SECRET)
-        shares = prim.peval(pfunc, [obj], frm_mask)
+        world_size = Mask(spu_mask).num_parties()
+        pfunc, ins, _ = spu.makeshares(
+            obj, world_size=world_size, visibility=spu.Visibility.SECRET
+        )
+        assert len(ins) == 1
+        shares = peval(pfunc, ins, frm_mask)
 
         # scatter the shares to each party.
         return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
@@ -110,19 +118,14 @@ class SPU(SecureAPI):
         if fe_type != "jax":
             raise ValueError(f"Unsupported fe_type: {fe_type}")
 
-        spu_mask = cur_ctx().attr("spu_mask")
-
-        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
-        is_mpobject = lambda x: isinstance(x, MPObject)
-        pfunc, in_vars, out_tree = spu.compile_jax(is_mpobject, pyfn, *args, **kwargs)
+        spu_mask = self.get_spu_mask()
+        pfunc, in_vars, out_tree = spu.jax_compile(pyfn, *args, **kwargs)
         assert all(var.pmask == spu_mask for var in in_vars), in_vars
-
-        out_flat = prim.peval(pfunc, in_vars, spu_mask)
-
+        out_flat = peval(pfunc, in_vars, spu_mask)
         return tree_unflatten(out_tree, out_flat)
 
     def reveal(self, obj: MPObject, to_mask: Mask) -> MPObject:
-        spu_mask = cur_ctx().attr("spu_mask")
+        spu_mask = self.get_spu_mask()
 
         assert obj.pmask == spu_mask, (obj.pmask, spu_mask)
 
@@ -132,9 +135,8 @@ class SPU(SecureAPI):
         assert all(share.pmask == to_mask for share in shares)
 
         # Reconstruct the original object from shares
-        spu = SpuFE(world_size=Mask(spu_mask).num_parties())
-        pfunc = spu.reconstruct(shares)
-        return prim.peval(pfunc, shares, to_mask)[0]  # type: ignore[no-any-return]
+        pfunc, ins, _ = spu.reconstruct(*shares)
+        return peval(pfunc, ins, to_mask)[0]  # type: ignore[no-any-return]
 
     def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
         return self.reveal(obj, to_mask=Mask.from_ranks(to_rank))
@@ -181,7 +183,7 @@ def sealFrom(obj: MPObject, root: Rank) -> MPObject:
 # reveal :: s a -> m a
 def reveal(obj: MPObject, to_mask: Mask | None = None) -> MPObject:
     """Reveal a sealed object to pmask'ed parties."""
-    to_mask = to_mask or Mask.all(prim.psize())
+    to_mask = to_mask or Mask.all(psize())
     return _get_sapi().reveal(obj, to_mask)
 
 

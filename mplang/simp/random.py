@@ -23,12 +23,11 @@ from jax.typing import ArrayLike
 
 import mplang.core.primitive as prim
 from mplang import simp
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import Shape
+from mplang.core import MPObject, Shape
 
 
 @prim.function
-def split(key: MPObject) -> tuple[MPObject, MPObject]:
+def key_split(key: MPObject) -> tuple[MPObject, MPObject]:
     """Split the key into two keys."""
 
     def kernel(key: jax.Array) -> tuple[jax.Array, jax.Array]:

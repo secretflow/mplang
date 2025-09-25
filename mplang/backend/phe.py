@@ -19,9 +19,10 @@ from typing import Any
 import numpy as np
 from lightphe import LightPHE
 
+from mplang.backend.base import kernel_def
 from mplang.core.dtype import DType
 from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import PFunction, TensorHandler
+from mplang.core.pfunc import PFunction
 
 # This controls the decimal precision used in lightPHE for float operations
 # we force it to 0 to only support integer operations
@@ -325,12 +326,6 @@ class PHEHandler(TensorHandler):
 
         return np.asarray(obj)
 
-    def _execute_keygen(
-        self, pfunc: PFunction, args: list[TensorLike]
-    ) -> list[TensorLike]:
-        if len(args) != 0:
-            raise ValueError("Key generation expects no arguments")
-
         scheme = pfunc.attrs.get("scheme", "paillier")
         key_size = pfunc.attrs.get("key_size", 1024)
         max_value = pfunc.attrs.get(
@@ -583,46 +578,22 @@ class PHEHandler(TensorHandler):
         except Exception as e:
             raise RuntimeError(f"Failed to perform multiplication: {e}") from e
 
-    def _execute_add(
-        self, pfunc: PFunction, args: list[TensorLike]
-    ) -> list[TensorLike]:
-        """Execute homomorphic addition.
 
-        Args:
-            pfunc: PFunction for addition
-            args: Two operands - can be CipherText + CipherText, CipherText + plaintext, etc.
-
-        Returns:
-            list[TensorLike]: [result] where result type depends on operand types
-        """
-        if len(args) != 2:
-            raise ValueError("Addition expects exactly two arguments")
-
-        lhs, rhs = args
-
-        try:
-            # Handle CipherText + CipherText
-            if isinstance(lhs, CipherText) and isinstance(rhs, CipherText):
-                return [self._execute_add_ct2ct(lhs, rhs)]
-
-            # Handle CipherText + plaintext
-            elif isinstance(lhs, CipherText):
-                return [self._execute_add_ct2pt(lhs, rhs)]
-
-            # Handle plaintext + CipherText (use commutativity)
-            elif isinstance(rhs, CipherText):
-                return [self._execute_add_ct2pt(rhs, lhs)]
-
-            else:
-                # Both are plaintext - regular addition
-                result_np = self._convert_to_numpy(lhs) + self._convert_to_numpy(rhs)
-                return [result_np]
-
-        except ValueError:
-            # Re-raise ValueError directly (validation errors)
-            raise
-        except Exception as e:
-            raise RuntimeError(f"Failed to perform addition: {e}") from e
+@kernel_def("phe.add")
+def _phe_add(pfunc: PFunction, lhs: Any, rhs: Any) -> Any:
+    try:
+        if isinstance(lhs, CipherText) and isinstance(rhs, CipherText):
+            return _phe_add_ct2ct(lhs, rhs)
+        elif isinstance(lhs, CipherText):
+            return _phe_add_ct2pt(lhs, rhs)
+        elif isinstance(rhs, CipherText):
+            return _phe_add_ct2pt(rhs, lhs)
+        else:
+            return _to_numpy(lhs) + _to_numpy(rhs)
+    except ValueError:
+        raise
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError(f"Failed to perform addition: {e}") from e
 
     def _execute_add_ct2ct(self, ct1: CipherText, ct2: CipherText) -> CipherText:
         """Execute CipherText + CipherText addition.

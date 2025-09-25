@@ -12,222 +12,194 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import UINT64
-from mplang.core.mpobject import MPObject
+from mplang.core.dtype import UINT8, UINT64
+from mplang.core.mpobject import MPObject  # Needed for constant() triad return typing
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
-from mplang.frontend.base import FEOp
+from mplang.frontend.base import stateless_mod
 from mplang.utils import table_utils
 
-
-class Identity(FEOp):
-    """Identity function class."""
-
-    def __call__(self, obj: MPObject) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        """Create an identity operation for an MPObject.
-
-        Args:
-            obj: The MPObject to create identity operation for
-
-        Returns:
-            tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for identity, args list with obj, output tree definition
-        """
-        obj_ty = TensorType.from_obj(obj)
-        pfunc = PFunction(
-            fn_type="builtin.identity",
-            ins_info=(obj_ty,),
-            outs_info=(obj_ty,),
-        )
-        _, treedef = tree_flatten(obj_ty)
-        return pfunc, [obj], treedef
+_BUILTIN_MOD = stateless_mod("builtin")
 
 
-identity = Identity()
+@_BUILTIN_MOD.simple_op()
+def identity(x: TensorType) -> TensorType:
+    """Identity on type: captures the underlying MPObject (if any) but kernel sees only the type.
+
+    Under strict typed_op semantics positional MPObject is converted to its TensorType before entering.
+    """
+    return x
 
 
-class Read(FEOp):
-    """Read function class."""
+@_BUILTIN_MOD.simple_op()
+def read(*, path: str, ty: TensorType) -> TensorType:
+    """Type-only kernel for reading a tensor/table from a path.
 
-    def __call__(
-        self, path: str, ty: TensorType, **kwargs: Any
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        """
-        Read data from a file.
+    Attributes:
+      - path: str destination to read from (carried as PFunction attr)
+      - ty:   TensorType/TableType describing the expected output type
 
-        Args:
-            path: The file path to read from
-            ty: The tensor type information for the data
-            **kwargs: Additional attributes for reading
-
-        Returns:
-            tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for reading, empty args list, output tree definition
-        """
-        pfunc = PFunction(
-            fn_type="builtin.read",
-            ins_info=(),
-            outs_info=(ty,),
-            path=path,
-            **kwargs,
-        )
-        _, treedef = tree_flatten(ty)
-        return pfunc, [], treedef
+    Returns: ty (shape/dtype/schema), no inputs captured.
+    """
+    if not isinstance(path, str) or path == "":
+        raise ValueError("path must be a non-empty string")
+    if not isinstance(ty, (TensorType, TableType)):
+        raise TypeError("ty must be a TensorType or TableType")
+    # typed_op will attach 'path' as an attribute and build the PFunction
+    return ty
 
 
-read = Read()
+@_BUILTIN_MOD.simple_op()
+def write(x: TensorType, *, path: str) -> TensorType:
+    """Write op: returns same type it consumes; runtime handles side effect.
+
+    Positional MPObject (tensor/table) will be captured; kernel sees only its type.
+    """
+    return x
 
 
-class Write(FEOp):
-    """Write function class."""
+@_BUILTIN_MOD.op_def()
+def constant(
+    data: TensorLike | ScalarType | TableLike,
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    import numpy as np
 
-    def __call__(
-        self, obj: MPObject, path: str
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        """
-        Write data to a file.
+    data_bytes: bytes
+    out_type: TableType | TensorType
 
-        Args:
-            obj: The MPObject to write
-            path: The file path to write to
-
-        Returns:
-            tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for writing, args list with obj, output tree definition
-
-        Raises:
-            ValueError: If obj is not provided
-        """
-        if obj is None:
-            raise ValueError("builtin.write requires an object to write")
-
-        obj_ty = TensorType.from_obj(obj)
-        pfunc = PFunction(
-            fn_type="builtin.write",
-            ins_info=(obj_ty,),
-            outs_info=(obj_ty,),
-            path=path,
-        )
-        _, treedef = tree_flatten(obj_ty)
-        return pfunc, [obj], treedef
-
-
-write = Write()
-
-
-class Constant(FEOp):
-    """Constant function class."""
-
-    def __call__(
-        self,
-        data: TensorLike | ScalarType | TableLike,
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        """Create a constant tensor or table from data.
-
-        Args:
-            data: The constant data to embed. Can be:
-                  - A scalar value (int, float, bool)
-                  - A numpy array or other tensor-like object
-                  - A pandas DataFrame or other table-like object
-                  - Any object that can be converted to tensor
-
-        Returns:
-            tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for constant, empty args list, output tree definition
-        """
-        import numpy as np
-
-        data_bytes: bytes
-        out_type: TableType | TensorType
-
-        if isinstance(data, TableLike):
-            data_bytes = table_utils.dataframe_to_csv(data)
-            data_format = "bytes[csv]"
-            out_type = TableType.from_tablelike(data)
-        elif isinstance(data, ScalarType):
+    if isinstance(data, TableLike):
+        data_bytes = table_utils.dataframe_to_csv(data)
+        data_format = "bytes[csv]"
+        out_type = TableType.from_tablelike(data)
+    elif isinstance(data, ScalarType):
+        out_type = TensorType.from_obj(data)
+        np_data = np.array(data)
+        data_bytes = np_data.tobytes()
+        data_format = "bytes[numpy]"
+    else:
+        if hasattr(data, "tobytes"):
             out_type = TensorType.from_obj(data)
-            # For scalars, convert to numpy array then to bytes
-            np_data = np.array(data)
-            data_bytes = np_data.tobytes()
-            data_format = "bytes[numpy]"
+            data_bytes = data.tobytes()  # type: ignore[attr-defined]
         else:
-            if hasattr(data, "tobytes"):
-                # For numpy arrays and other TensorLike objects with tobytes method
-                out_type = TensorType.from_obj(data)
-                data_bytes = data.tobytes()  # type: ignore
-            else:
-                # For other TensorLike objects, convert to numpy first
-                np_data = np.array(data)
-                out_type = TensorType.from_obj(np_data)
-                data_bytes = np_data.tobytes()
-            data_format = "bytes[numpy]"
+            np_data = np.array(data)
+            out_type = TensorType.from_obj(np_data)
+            data_bytes = np_data.tobytes()
+        data_format = "bytes[numpy]"
 
-        # Store tensor metadata as simple attributes
-        pfunc = PFunction(
-            fn_type="builtin.constant",
-            ins_info=(),
-            outs_info=(out_type,),
-            data_bytes=data_bytes,
-            data_format=data_format,
+    pfunc = PFunction(
+        fn_type="builtin.constant",
+        ins_info=(),
+        outs_info=(out_type,),
+        data_bytes=data_bytes,
+        data_format=data_format,
+    )
+    _, treedef = tree_flatten(out_type)
+    return pfunc, [], treedef
+
+
+@_BUILTIN_MOD.simple_op()
+def rank() -> TensorType:
+    """Type-only kernel: returns the UINT64 scalar tensor type for current rank.
+
+    Runtime provides the concrete rank value per party during execution; here we
+    only declare the output type with no inputs captured and no attributes.
+    """
+    return TensorType(UINT64, ())
+
+
+@_BUILTIN_MOD.simple_op()
+def prand(*, shape: Shape = ()) -> TensorType:
+    """Type-only kernel: private random UINT64 tensor of given shape.
+
+    Shape is attached as a PFunction attribute via typed_op; no inputs.
+    """
+    return TensorType(UINT64, shape)
+
+
+@_BUILTIN_MOD.simple_op()
+def debug_print(
+    x: TensorType | TableType, *, prefix: str = ""
+) -> TableType | TensorType:
+    """Debug-print pass-through: type identity with side-effect attribute.
+
+    Accepts tensor/table type; MPObject positional (if provided) is captured automatically.
+    """
+    return x
+
+
+@_BUILTIN_MOD.simple_op()
+def pack(x: TensorType | TableType) -> TensorType:
+    """Type-only pack operator: models serialization into a byte vector.
+
+    The frontend only declares the type transformation; the runtime decides
+    whether any actual serialization takes place. The result is always a
+    one-dimensional UINT8 tensor with unknown length (-1 means runtime
+    determined).
+    """
+
+    if not isinstance(x, (TensorType, TableType)):
+        raise TypeError("pack expects TensorType or TableType input")
+
+    return TensorType(UINT8, (-1,))
+
+
+@_BUILTIN_MOD.simple_op()
+def unpack(b: TensorType, *, out_ty: TensorType | TableType) -> TensorType | TableType:
+    """Type-only unpack operator: inverse of `pack`.
+
+    Requires a one-dimensional UINT8 tensor input (length can be -1) and
+    returns the explicit `out_ty` type description.
+    """
+
+    if not isinstance(out_ty, (TensorType, TableType)):
+        raise TypeError("out_ty must be TensorType or TableType")
+
+    if b.dtype != UINT8 or len(b.shape) != 1:
+        raise TypeError("unpack expects a 1-D UINT8 tensor")
+
+    return out_ty
+
+
+@_BUILTIN_MOD.simple_op()
+def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
+    if table.num_columns() == 0:
+        raise ValueError("Cannot pack empty table")
+    col_dtypes = list(table.column_types())
+    first = col_dtypes[0]
+    if not all(dt == first for dt in col_dtypes[1:]):
+        raise TypeError(
+            "Heterogeneous dtypes; perform casting upstream before table_to_tensor"
         )
-        _, treedef = tree_flatten(out_type)
-        return pfunc, [], treedef
+    if not isinstance(number_rows, int):
+        raise TypeError("number_rows must be an int")
+    if number_rows < 0:
+        raise ValueError("number_rows must be >= 0")
+    shape = (number_rows, table.num_columns())
+    return TensorType(first, shape)  # type: ignore[arg-type]
 
 
-constant = Constant()
-
-
-class Rank(FEOp):
-    """Rank function class."""
-
-    def __call__(self) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        """Multi-party get the rank (party identifier) of each party.
-
-        Returns:
-            tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for rank, empty args list, output tree definition
-        """
-        # Return a scalar UINT64 tensor for rank
-        tensor_type = TensorType(UINT64, ())
-
-        pfunc = PFunction(
-            fn_type="builtin.rank",
-            ins_info=(),
-            outs_info=(tensor_type,),
-        )
-        _, treedef = tree_flatten(tensor_type)
-        return pfunc, [], treedef
-
-
-rank = Rank()
-
-
-class PRand(FEOp):
-    """PRand function class."""
-
-    def __call__(
-        self, shape: Shape = ()
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        """Multi-party generate a private random (uint64) tensor with the given shape.
-
-        Args:
-            shape: The shape of the random tensor to generate.
-                   Must be a tuple of positive integers. Defaults to () for scalar.
-
-        Returns:
-            tuple[PFunction, list[MPObject], PyTreeDef]: PFunction for prand, empty args list, output tree definition
-        """
-        # For now, only UINT64 is supported
-        tensor_type = TensorType(UINT64, shape)
-
-        pfunc = PFunction(
-            fn_type="builtin.prand",
-            ins_info=(),
-            outs_info=(tensor_type,),
-            shape=shape,
-        )
-        _, treedef = tree_flatten(tensor_type)
-        return pfunc, [], treedef
-
-
-prand = PRand()
+@_BUILTIN_MOD.simple_op()
+def tensor_to_table(tensor: TensorType, *, column_names: list[str]) -> TableType:
+    if len(tensor.shape) != 2:
+        raise TypeError("tensor_to_table expects a rank-2 tensor (N,F)")
+    n_cols = tensor.shape[1]
+    if not column_names:
+        raise ValueError("column_names required (non-empty)")
+    if len(column_names) != n_cols:
+        raise ValueError("column_names length must match tensor second dim")
+    for i, name in enumerate(column_names):
+        if not isinstance(name, str):
+            raise TypeError(f"column_names[{i}] must be str, got {type(name).__name__}")
+        if name == "" or name.strip() == "":
+            raise ValueError("column names must be non-empty and not whitespace-only")
+    seen: set[str] = set()
+    for name in column_names:
+        if name in seen:
+            raise ValueError(f"duplicate column name: {name!r}")
+        seen.add(name)
+    col_types = [tensor.dtype] * n_cols
+    return TableType.from_pairs(list(zip(column_names, col_types, strict=True)))

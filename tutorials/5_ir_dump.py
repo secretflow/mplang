@@ -14,8 +14,7 @@
 
 
 import mplang
-from mplang import random as mpr
-from mplang import smpc
+import mplang.simp as simp
 from mplang.core import mpir
 
 
@@ -24,29 +23,28 @@ def millionaire():
     # Note: mpl.run(random.randint) will not work, because
     # the random number generator's state is captured and will always
     # return the same number on both parties.
-    x = mpr.prandint(0, 10)
-    y = mpr.prandint(0, 10)
+    x = simp.prandint(0, 10)
+    y = simp.prandint(0, 10)
 
     # both of them seal it
-    x_ = smpc.sealFrom(x, 0)
-    y_ = smpc.sealFrom(y, 1)
+    x_ = simp.sealFrom(x, 0)
+    y_ = simp.sealFrom(y, 1)
 
     # compare it seally.
-    z_ = smpc.srun(lambda x, y: x < y)(x_, y_)
+    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = smpc.reveal(z_)
+    z = simp.reveal(z_)
 
     return x, y, z
 
 
 if __name__ == "__main__":
     world_size = 4
-    spu_mask = 14  # 0b1110, SPU is 2nd, 3rd, and 4th node
 
     # Create compilation options for ahead-of-time (AOT) compilation
     # This specifies the number of parties and which parties have SPU devices
-    copts = mplang.CompileOptions(world_size, spu_mask=spu_mask)
+    copts = mplang.CompileOptions.simple(world_size)
 
     # Compile the function to get the IR representation
     # This traces the function and creates a static computation graph

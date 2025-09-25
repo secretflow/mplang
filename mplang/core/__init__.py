@@ -20,7 +20,7 @@ including type systems, tracing mechanisms, and interpreter contexts.
 """
 
 # Core type system
-# Communication interfaces
+# Communication interfaces & core symbols
 from mplang.core.comm import (
     CollectiveMixin,
     CommunicatorBase,
@@ -28,22 +28,14 @@ from mplang.core.comm import (
     ICommunicator,
 )
 from mplang.core.dtype import DType
-
-# Interpreter system
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
-
-# Core object model
 from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.mptype import MPType
-
-# Function handling
+from mplang.core.mptype import MPType, Rank, Shape
 from mplang.core.pfunc import PFunction
-
-# Primitive operations
 from mplang.core.primitive import (
-    cond,
     constant,
+    debug_print,
     function,
     pconv,
     peval,
@@ -53,14 +45,11 @@ from mplang.core.primitive import (
     pshfl_s,
     psize,
     set_mask,
+    uniform_cond,
     while_loop,
 )
 from mplang.core.table import TableLike, TableType
-
-# Protocol types
 from mplang.core.tensor import TensorLike, TensorType
-
-# Tracing system
 from mplang.core.tracer import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 
 __all__ = [
@@ -76,6 +65,8 @@ __all__ = [
     "MPType",
     "Mask",
     "PFunction",
+    "Rank",
+    "Shape",
     "TableLike",
     "TableType",
     "TensorLike",
@@ -84,8 +75,8 @@ __all__ = [
     "TraceVar",
     "TracedFunction",
     "VarNamer",
-    "cond",
     "constant",
+    "debug_print",
     "function",
     "pconv",
     "peval",
@@ -96,5 +87,6 @@ __all__ = [
     "psize",
     "set_mask",
     "trace",
+    "uniform_cond",
     "while_loop",
 ]

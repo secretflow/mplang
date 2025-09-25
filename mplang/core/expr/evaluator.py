@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from mplang.backend.base import BackendRuntime
+from mplang.backend.context import RuntimeContext
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -56,7 +56,7 @@ class IEvaluator(Protocol):
     backend state via evaluator.runtime.run_kernel(...).
     """
 
-    runtime: BackendRuntime
+    runtime: RuntimeContext
 
     def evaluate(self, root: Expr, env: dict[str, Any] | None = None) -> list[Any]: ...
 
@@ -72,7 +72,7 @@ class EvalSemantic:
     rank: int
     env: dict[str, Any]
     comm: ICommunicator
-    runtime: BackendRuntime
+    runtime: RuntimeContext
 
     # ------------------------------ Shared helpers (semantics) ------------------------------
     def _should_run(self, rmask: Mask | None, args: list[Any]) -> bool:
@@ -205,7 +205,7 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
         rank: int,
         env: dict[str, Any],
         comm: ICommunicator,
-        runtime: BackendRuntime,
+        runtime: RuntimeContext,
     ) -> None:
         super().__init__(rank, env, comm, runtime)
         self._cache: dict[int, Any] = {}  # Cache based on expr id
@@ -380,7 +380,7 @@ class IterativeEvaluator(EvalSemantic):
         rank: int,
         env: dict[str, Any],
         comm: ICommunicator,
-        runtime: BackendRuntime,
+        runtime: RuntimeContext,
     ) -> None:
         super().__init__(rank, env, comm, runtime)
 
@@ -501,7 +501,7 @@ def create_evaluator(
     rank: int,
     env: dict[str, Any],
     comm: ICommunicator,
-    runtime: BackendRuntime,
+    runtime: RuntimeContext,
     kind: str | None = "iterative",
 ) -> IEvaluator:
     """Factory to create an evaluator engine.

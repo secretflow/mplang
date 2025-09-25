@@ -24,17 +24,10 @@ from typing import Any, cast
 
 import spu.libspu as libspu
 
-# Import flat backends for kernel registration side-effects
-from mplang.backend import (
-    builtin,  # noqa: F401
-    crypto,  # noqa: F401
-    phe,  # noqa: F401
-    spu,  # noqa: F401  # ensure SPU kernels (spu.seed_env etc.) registered
-    sql_duckdb,  # noqa: F401
-    stablehlo,  # noqa: F401
-    tee,  # noqa: F401
-)
-from mplang.backend.base import create_runtime  # explicit per-rank backend runtime
+# New explicit binding model: we only need RuntimeContext which ensures
+# bindings via bind_all_ops() on creation; per-module side-effect imports
+# are no longer required here.
+from mplang.backend.context import RuntimeContext
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
@@ -152,7 +145,7 @@ class Simulator(InterpContext):
 
         self._evaluators: list[IEvaluator] = []
         for rank in range(self.world_size()):
-            runtime = create_runtime(rank, self.world_size())
+            runtime = RuntimeContext.create(rank, self.world_size())
             ev = create_evaluator(
                 rank,
                 {},  # the global environment for this rank
@@ -224,7 +217,7 @@ class Simulator(InterpContext):
         # Build per-rank evaluators with the per-party environment
         pts_evaluators: list[IEvaluator] = []
         for rank in range(self.world_size()):
-            runtime = create_runtime(rank, self.world_size())
+            runtime = RuntimeContext.create(rank, self.world_size())
             ev = create_evaluator(
                 rank,
                 pts_env[rank],

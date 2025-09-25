@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Backend module for mplang.
+"""Backend public API.
 
-This module contains handlers that execute serialized functions on individual
-parties in a multi-party computation system.
+Exports:
+        RuntimeContext: per-rank backend execution context (explicit op->kernel binding).
+        bind_all_ops: idempotent bootstrap establishing default op bindings.
 """
+
+from .context import RuntimeContext, bind_all_ops  # noqa: F401

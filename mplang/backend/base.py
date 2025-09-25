@@ -12,12 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Flat backend kernel registry & per-participant runtime.
+"""Backend kernel registry & per-participant runtime (explicit op->kernel binding).
 
-Design revision:
-- Global, stateless kernel function catalog (fn_type -> callable).
-- BackendRuntime: per-rank state & cache; executes kernels.
-- Legacy global helpers removed after full migration to explicit runtimes.
+This version decouples *kernel implementation registration* from *operation binding*.
+
+Concepts:
+    * kernel_id: unique identifier of a concrete backend implementation.
+    * op_type: semantic operation name carried by ``PFunction.fn_type``.
+    * bind_op(op_type, kernel_id): performed by higher layer (see ``backend.context``)
+        to select which implementation handles an op. Runtime dispatch is now a 2-step:
+        pfunc.fn_type -> active kernel_id -> KernelSpec.fn
+
+The previous implicit "import == register+bind" coupling is removed. Kernel
+modules only call ``@kernel_def(kernel_id)``. Default bindings are established
+centrally (lazy) the first time a runtime executes a kernel.
 """
 
 from __future__ import annotations
@@ -27,21 +35,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from mplang.core.dtype import UINT8, DType
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, TableType
-from mplang.core.tensor import TensorLike, TensorType
-
 __all__ = [
-    "BackendRuntime",
     "KernelContext",
-    "create_runtime",
+    "KernelSpec",
+    "bind_op",
     "cur_kctx",
-    "kernel_def",
-    "list_registered_kernels",
+    "get_kernel_for_op",
+    "list_kernels",
+    "list_ops",
+    "unbind_op",
 ]
-
-# ---------------- Context ----------------
 
 
 @dataclass
@@ -99,189 +102,64 @@ def cur_kctx() -> KernelContext:
 
 # ---------------- Registry ----------------
 
-# Canonical kernel callable signature (new style): (pfunc, *args) -> Any | sequence
-# - No **kwargs (explicitly disallowed)
-# - Return normalization handled by BackendRuntime.run_kernel
+# Kernel callable signature: (pfunc, *args) -> Any | sequence (no **kwargs)
 KernelFn = Callable[..., Any]
 
-_KERNELS: dict[str, KernelFn] = {}
+
+@dataclass
+class KernelSpec:
+    kernel_id: str
+    fn: KernelFn
+    meta: dict[str, Any]
 
 
-def _validate_table_arg(
-    fn_type: str, arg_index: int, spec: TableType, value: Any
-) -> None:
-    if not isinstance(value, TableLike):
-        raise TypeError(
-            f"kernel {fn_type} input[{arg_index}] expects TableLike, got {type(value).__name__}"
-        )
-    if len(value.columns) != len(spec.columns):
-        raise ValueError(
-            f"kernel {fn_type} input[{arg_index}] column count mismatch: got {len(value.columns)}, expected {len(spec.columns)}"
-        )
+# All registered kernel implementations: kernel_id -> spec
+_KERNELS: dict[str, KernelSpec] = {}
+
+# Active op bindings: op_type -> kernel_id
+_BINDINGS: dict[str, str] = {}
 
 
-def _validate_tensor_arg(
-    fn_type: str, arg_index: int, spec: TensorType, value: Any
-) -> None:
-    # Backend-only handle sentinel (e.g., PHE keys) bypasses all structural checks
-    if tuple(spec.shape) == (-1, 0) and spec.dtype == UINT8:
-        return
+def kernel_def(kernel_id: str, /, **meta: Any) -> Callable[[KernelFn], KernelFn]:
+    """Decorator to register a concrete kernel implementation.
 
-    if isinstance(value, (int, float, bool, complex)):
-        val_shape: tuple[Any, ...] = ()
-        duck_dtype: Any = type(value)
-    else:
-        if not isinstance(value, TensorLike):
-            raise TypeError(
-                f"kernel {fn_type} input[{arg_index}] expects TensorLike, got {type(value).__name__}"
-            )
-        val_shape = getattr(value, "shape", ())
-        duck_dtype = getattr(value, "dtype", None)
-
-    if len(spec.shape) != len(val_shape):
-        raise ValueError(
-            f"kernel {fn_type} input[{arg_index}] rank mismatch: got {val_shape}, expected {spec.shape}"
-        )
-
-    for dim_idx, (spec_dim, val_dim) in enumerate(
-        zip(spec.shape, val_shape, strict=True)
-    ):
-        if spec_dim >= 0 and spec_dim != val_dim:
-            raise ValueError(
-                f"kernel {fn_type} input[{arg_index}] shape mismatch at dim {dim_idx}: got {val_dim}, expected {spec_dim}"
-            )
-
-    try:
-        val_dtype = DType.from_any(duck_dtype)
-    except (ValueError, TypeError):  # pragma: no cover
-        raise TypeError(
-            f"kernel {fn_type} input[{arg_index}] has unsupported dtype object {duck_dtype!r}"
-        ) from None
-    if val_dtype != spec.dtype:
-        raise ValueError(
-            f"kernel {fn_type} input[{arg_index}] dtype mismatch: got {val_dtype}, expected {spec.dtype}"
-        )
-
-
-def kernel_def(fn_type: str) -> Callable[[KernelFn], KernelFn]:
-    """Decorator to register a backend kernel (new signature).
-
-    Expected Python signature form:
-
-        @kernel_def("namespace.op")
-        def _op(pfunc: PFunction, *args): ...
-
-    Rules:
-      * First parameter MUST be the PFunction object.
-      * Positional arguments correspond 1:1 to pfunc.ins_info order.
-      * **kwargs are NOT supported (will raise at call site if used).
-      * Return value forms accepted (n = len(pfunc.outs_info)):
-          - n == 0: return None / () / []
-          - n == 1: return scalar/object OR (value,) / [value]
-          - n > 1 : return tuple/list of length n
-        Anything else raises a ValueError.
+    This ONLY registers the implementation (kernel_id -> fn). It does NOT bind
+    any op. Higher layer must call ``bind_op(op_type, kernel_id)`` explicitly.
     """
 
     def _decorator(fn: KernelFn) -> KernelFn:
-        if fn_type in _KERNELS:
-            raise ValueError(f"duplicate backend kernel fn_type={fn_type}")
-        _KERNELS[fn_type] = fn
+        if kernel_id in _KERNELS:
+            raise ValueError(f"duplicate kernel_id={kernel_id}")
+        _KERNELS[kernel_id] = KernelSpec(kernel_id=kernel_id, fn=fn, meta=dict(meta))
         return fn
 
     return _decorator
 
 
-def list_registered_kernels() -> list[str]:  # public API unchanged
+def bind_op(op_type: str, kernel_id: str) -> None:
+    if kernel_id not in _KERNELS:
+        raise KeyError(f"kernel_id {kernel_id} not registered")
+    _BINDINGS[op_type] = kernel_id
+
+
+def unbind_op(op_type: str) -> None:
+    _BINDINGS.pop(op_type, None)
+
+
+def get_kernel_for_op(op_type: str) -> KernelSpec:
+    kid = _BINDINGS.get(op_type)
+    if kid is None:
+        # Tests expect NotImplementedError for unsupported operations
+        raise NotImplementedError(f"no backend kernel registered for op {op_type}")
+    spec = _KERNELS.get(kid)
+    if spec is None:  # inconsistent state
+        raise RuntimeError(f"active kernel_id {kid} missing spec")
+    return spec
+
+
+def list_kernels() -> list[str]:
     return sorted(_KERNELS.keys())
 
 
-class BackendRuntime:
-    """Per-rank backend execution environment.
-
-    Holds mutable backend state (namespaced pockets) and a cache. Stateless
-    kernel implementations look up their state through cur_kctx().
-    """
-
-    def __init__(self, rank: int, world_size: int):
-        self.rank = rank
-        self.world_size = world_size
-        self.state: dict[str, dict[str, Any]] = {}
-        self.cache: dict[str, Any] = {}
-
-    # Main entry
-    def run_kernel(self, pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
-        fn_type = pfunc.fn_type
-        fn = _KERNELS.get(fn_type)
-        if fn is None:
-            raise NotImplementedError(f"no backend kernel registered for {fn_type}")
-
-        # Strict positional arg count validation (no kernel-managed arity bypass)
-        if len(arg_list) != len(pfunc.ins_info):
-            raise ValueError(
-                f"kernel {fn_type} arg count mismatch: got {len(arg_list)}, expect {len(pfunc.ins_info)}"
-            )
-
-        for idx, (spec, val) in enumerate(zip(pfunc.ins_info, arg_list, strict=True)):
-            if isinstance(spec, TableType):
-                _validate_table_arg(fn_type, idx, spec, val)
-                continue
-
-            if isinstance(spec, TensorType):
-                _validate_tensor_arg(fn_type, idx, spec, val)
-                continue
-
-            # Unknown spec type: silently skip validation (legacy behavior)
-            continue
-
-        kctx = KernelContext(
-            rank=self.rank,
-            world_size=self.world_size,
-            state=self.state,
-            cache=self.cache,
-        )
-        token = _CTX_VAR.set(kctx)
-        try:
-            raw = fn(pfunc, *arg_list)
-        finally:
-            _CTX_VAR.reset(token)
-
-        # Normalize return values
-        expected = len(pfunc.outs_info)
-        if expected == 0:
-            if raw in (None, (), []):
-                return []
-            raise ValueError(
-                f"kernel {fn_type} should return no values; got {type(raw).__name__}"
-            )
-
-        # If multi-output expected, raw must be sequence of right length
-        if expected == 1:
-            if isinstance(raw, (tuple, list)):
-                if len(raw) != 1:
-                    raise ValueError(
-                        f"kernel {fn_type} produced {len(raw)} outputs, expected 1"
-                    )
-                return [raw[0]]
-            # Single object
-            return [raw]
-
-        # expected > 1
-        if not isinstance(raw, (tuple, list)):
-            raise TypeError(
-                f"kernel {fn_type} must return sequence (len={expected}), got {type(raw).__name__}"
-            )
-        if len(raw) != expected:
-            raise ValueError(
-                f"kernel {fn_type} produced {len(raw)} outputs, expected {expected}"
-            )
-        return list(raw)
-
-    # Optional helper
-    def reset(self) -> None:  # pragma: no cover - simple
-        self.state.clear()
-        self.cache.clear()
-
-
-def create_runtime(rank: int, world_size: int) -> BackendRuntime:
-    """Factory for BackendRuntime (allows future policy injection)."""
-    return BackendRuntime(rank, world_size)
+def list_ops() -> list[str]:
+    return sorted(_BINDINGS.keys())

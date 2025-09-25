@@ -33,10 +33,8 @@ import jax.numpy as jnp
 import numpy as np
 import spu.libspu as libspu
 
-from mplang.backend.base import (
-    create_runtime,
-    list_registered_kernels,
-)
+from mplang.backend.base import list_kernels
+from mplang.backend.context import RuntimeContext
 from mplang.backend.spu import SpuValue
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
@@ -126,7 +124,7 @@ def _reconstruct_pfunc(example: np.ndarray, world_size: int) -> PFunction:
 class TestSpuKernels:
     def test_kernel_registry(self):
         for name in ["spu.makeshares", "spu.reconstruct", "mlir.pphlo"]:
-            assert name in list_registered_kernels()
+            assert name in list_kernels()
 
     def test_makeshares_reconstruct_single_party(self):
         world = 1
@@ -134,7 +132,7 @@ class TestSpuKernels:
             protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        runtime = create_runtime(0, world)
+        runtime = RuntimeContext.create(0, world)
         # Seed SPU env via kernel
         seed_fn = PFunction(
             fn_type="spu.seed_env",
@@ -162,7 +160,7 @@ class TestSpuKernels:
         )
         link_ctxs = create_mem_link_contexts(world)
         # seed rank0 state
-        runtime0 = create_runtime(0, world)
+        runtime0 = RuntimeContext.create(0, world)
         seed0 = PFunction(
             fn_type="spu.seed_env",
             ins_info=(),
@@ -173,7 +171,7 @@ class TestSpuKernels:
         )
         runtime0.run_kernel(seed0, [])
         # seed rank1 state to simulate multi-rank kernel contexts
-        runtime1 = create_runtime(1, world)
+        runtime1 = RuntimeContext.create(1, world)
         seed1 = PFunction(
             fn_type="spu.seed_env",
             ins_info=(),
@@ -198,7 +196,7 @@ class TestSpuKernels:
             protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        runtime = create_runtime(0, world)
+        runtime = RuntimeContext.create(0, world)
         seed = PFunction(
             fn_type="spu.seed_env",
             ins_info=(),
@@ -236,7 +234,7 @@ class TestSpuKernels:
         # Initialize per-rank runtime & seed (store explicit runtimes)
         runtimes = {}
         for r in range(world):
-            rt = create_runtime(r, world)
+            rt = RuntimeContext.create(r, world)
             runtimes[r] = rt
             seed_fn = PFunction(
                 fn_type="spu.seed_env",

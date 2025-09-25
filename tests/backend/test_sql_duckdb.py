@@ -19,7 +19,7 @@ import pytest
 
 import mplang
 from mplang import simp
-from mplang.backend.base import create_runtime
+from mplang.backend.context import RuntimeContext
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.frontend import ibis_cc
@@ -27,7 +27,7 @@ from mplang.frontend import ibis_cc
 
 class TestDuckDBKernel:
     def test_duckdb_run(self):
-        runtime = create_runtime(0, 1)
+        runtime = RuntimeContext.create(0, 1)
         tbl_name = "table"
         schema = {"a": "int", "b": "int", "c": "float"}
         in_tbl = ibis.table(schema=schema, name=tbl_name)

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import time
-from typing import List
 
 import jax.numpy as jnp
 import numpy as np
@@ -22,14 +21,14 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from xgboost import XGBClassifier
 
 import mplang
-import mplang.simp.mpi as mpi
 import mplang.simp as simp
-from mplang.frontend import phe
+import mplang.simp.mpi as mpi
 from examples.xgboost.sgb import (
     SecureBoost,
-    pretty_print_ensemble,
     batch_feature_wise_bucket_sum_mplang,
+    pretty_print_ensemble,
 )
+from mplang.frontend import phe
 
 
 def load_dataset(
@@ -127,7 +126,7 @@ def run_sgb(
     model: SecureBoost,
     X_parts: dict,
     y_jax: jnp.ndarray,
-    all_party_ids_list: List[int],
+    all_party_ids_list: list[int],
     pred_leaves: bool = False,
 ):
     # 1. load data
@@ -313,7 +312,7 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
             if consensus_nodes:
                 print(f"         │ 🤝  → Consensus: {consensus_nodes}")
             else:
-                print(f"         │ ❌  → No consensus")
+                print("         │ ❌  → No consensus")
 
             if len(consensus_nodes) != 1:
                 wrong_nodes += 1

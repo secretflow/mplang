@@ -13,16 +13,16 @@
 # limitations under the License.
 
 from functools import partial
-from typing import List, NamedTuple, Optional, Tuple
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
 from jax.ops import segment_sum
 
 import mplang
-import mplang.simp.mpi as mpi
 import mplang.simp as simp
-from mplang import MPObject, Mask
+import mplang.simp.mpi as mpi
+from mplang import Mask, MPObject
 from mplang.core.mptype import Rank
 from mplang.frontend import phe
 
@@ -60,7 +60,7 @@ def batch_feature_wise_bucket_sum_mplang(
     bucket_num: int,
     group_size: int,
     rank: int,
-) -> List[mplang.MPObject]:
+) -> list[mplang.MPObject]:
     """
     Compute batch feature-wise bucket cumulative sums for XGBoost gradient histogram using PHE.
 
@@ -79,8 +79,6 @@ def batch_feature_wise_bucket_sum_mplang(
     """
 
     # Get dimensions
-    sample_size = arr.shape[0]
-    gh_size = arr.shape[1]
     feature_size = order_map.shape[1]
 
     def compute_using_mask_multiplication():
@@ -233,8 +231,8 @@ class Tree(NamedTuple):
         owned_party_id (jnp.ndarray): Shape (n_nodes,). Party ID of the node owner.
     """
 
-    feature: List[MPObject]  # each party has its own feature
-    threshold: List[MPObject]  # each party has its own threshold
+    feature: list[MPObject]  # each party has its own feature
+    threshold: list[MPObject]  # each party has its own threshold
 
     value: MPObject  # owned by ap only
 
@@ -256,7 +254,7 @@ class TreeEnsemble(NamedTuple):
     """
 
     max_depth: int
-    trees: List[Tree]
+    trees: list[Tree]
     initial_prediction: MPObject  # owned by ap
 
     # bins: jnp.ndarray
@@ -431,7 +429,7 @@ def _compute_best_split_per_node(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for a single node using a combined GH histogram.
     This version performs vectorized calculations on the stacked G and H data.
@@ -487,7 +485,7 @@ def local_compute_best_split(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for all nodes at the current tree level by vmapping
     over the combined GH histogram.
@@ -567,8 +565,8 @@ def _update_is_leaf(
     is_leaf: jnp.ndarray, max_gains: jnp.ndarray, cur_indices: jnp.ndarray
 ) -> jnp.ndarray:
     # A node becomes a leaf if the gain is <= 0 or if it's NaN/inf
-    _is_leaf_level = (max_gains <= 0.0) | (~jnp.isfinite(max_gains))
-    return is_leaf.at[cur_indices].set(_is_leaf_level)
+    is_leaf_level = (max_gains <= 0.0) | (~jnp.isfinite(max_gains))
+    return is_leaf.at[cur_indices].set(is_leaf_level)
 
 
 def _update_best_features(
@@ -639,7 +637,7 @@ def _find_best_split_for_one_node_from_flat_cumulative(
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Computes the best split for a single node from its flat cumulative GH histogram.
 
@@ -702,13 +700,13 @@ def _find_best_split_for_one_node_from_flat_cumulative(
 
 
 def pp_compute_all_best_splits(
-    list_of_histograms: List[jnp.ndarray],
+    list_of_histograms: list[jnp.ndarray],
     n_features: int,
     max_bin: int,
     reg_lambda: float,
     gamma: float,
     min_child_weight: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Efficiently computes the best split for all nodes in a tree level.
 
@@ -751,8 +749,8 @@ def pp_compute_all_best_splits(
 
 @jax.jit
 def find_global_best_split_local_features(
-    cur_level_best_gains: List[jnp.ndarray],
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    cur_level_best_gains: list[jnp.ndarray],
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """
     Finds the global best split for each node from results across multiple feature groups,
     returning the LOCAL feature index within the winning group.
@@ -851,7 +849,7 @@ def build_tree(
     Returns:
         Tree: The completed tree object.
     """
-    all_party_ids = [active_party_id] + passive_party_ids
+    all_party_ids = [active_party_id, *passive_party_ids]
     all_party_mask = Mask((1 << (len(all_party_ids))) - 1)
 
     m = gh_plaintext.shape[0]
@@ -917,7 +915,6 @@ def build_tree(
         for idx, pp_rank in enumerate(passive_party_ids):
             # 1.2.1 pp compute the accumulated histogram locally.
             cur_pp_rank = pp_rank
-            cur_pp_mask = Mask(1 << cur_pp_rank)
 
             # +1 because the first party is the active party
             cur_pp_bin_indices = all_bin_indices[idx + 1]
@@ -931,7 +928,7 @@ def build_tree(
             )  # (n_nodes_level, m)
 
             # 1.2.2 pp encrypt the accumulated histogram.
-            cur_pp_enc_hist_cumsum: List[MPObject] = (
+            cur_pp_enc_hist_cumsum: list[MPObject] = (
                 batch_feature_wise_bucket_sum_mplang(
                     gh_encrypted,
                     cur_pp_subgroup_map,
@@ -947,12 +944,12 @@ def build_tree(
             ), f"Expect {n_nodes_level} outputs, got {len(cur_pp_enc_hist_cumsum)}"
 
             # 1.2.3 pp send the encrypted histogram to ap.
-            cur_pp_enc_hist_cumsum: List[MPObject] = p2p_list(
+            cur_pp_enc_hist_cumsum: list[MPObject] = p2p_list(
                 cur_pp_rank, active_party_id, cur_pp_enc_hist_cumsum
             )
 
             # 1.2.4 ap decrypt the histogram.
-            cur_pp_dec_hist_cumsum: List[MPObject] = [
+            cur_pp_dec_hist_cumsum: list[MPObject] = [
                 simp.runAt(active_party_id, phe.decrypt)(
                     cur_pp_enc_hist_cumsum[i], skey
                 )
@@ -1026,7 +1023,7 @@ def build_tree(
                 )
 
             # temp bt for each party
-            _tmp = simp.runAt(i, _update_bt)(
+            tmp = simp.runAt(i, _update_bt)(
                 bt,
                 bt_levels,
                 is_leaf,
@@ -1035,8 +1032,8 @@ def build_tree(
                 cur_level_best_threshold_idxs[i],
             )
             if i > 0:
-                _tmp = mpi.p2p(passive_party_ids[i - 1], active_party_id, _tmp)
-            all_cur_tmp_bt.append(_tmp)
+                tmp = mpi.p2p(passive_party_ids[i - 1], active_party_id, tmp)
+            all_cur_tmp_bt.append(tmp)
 
             all_feats[i] = simp.runAt(i, _update_best_features)(
                 all_feats[i],
@@ -1255,7 +1252,7 @@ def _local_try_to_predict(
 
 @jax.jit
 def agg_prediction(
-    all_masks: List[jnp.ndarray], is_leaf: jnp.ndarray, values: jnp.ndarray
+    all_masks: list[jnp.ndarray], is_leaf: jnp.ndarray, values: jnp.ndarray
 ):
     stacked_masks = jnp.stack(all_masks)
     consensus_mask = jnp.all(stacked_masks > 0, axis=0)
@@ -1330,7 +1327,7 @@ def predict_ensemble(
 
 
 @jax.jit
-def agg_prediction_leaves(all_masks: List[jnp.ndarray]):
+def agg_prediction_leaves(all_masks: list[jnp.ndarray]):
     # Original stacking: (n_parties, n_samples, n_nodes)
     stacked_masks = jnp.stack(all_masks)
 
@@ -1419,7 +1416,7 @@ def fit_tree_ensemble(
         active_party_id, lambda init_y, m=m: init_y * jnp.ones(m)
     )(initial_y_pred)
 
-    trees: List[Tree] = []
+    trees: list[Tree] = []
     # TODO: add more controls of keygen, e.g., key size
     pkey, skey = simp.runAt(active_party_id, phe.keygen)()
     world_mask = mplang.Mask.all(1 + len(passive_party_ids))
@@ -1522,7 +1519,7 @@ class SecureBoost:
             range(1, len(passive_party_ids) + 1)
         ), f"Only passive party ids {list(range(1, len(passive_party_ids) + 1))} are supported now"
 
-        self.trees: Optional[TreeEnsemble] = None
+        self.trees: TreeEnsemble | None = None
 
     def fit(self, all_datas: list[MPObject], y_data: MPObject):
         """
@@ -1655,7 +1652,7 @@ class SecureBoost:
 
 
 # debug only
-def pretty_print_ensemble(ensemble: TreeEnsemble, party_ids: List[int]):
+def pretty_print_ensemble(ensemble: TreeEnsemble, party_ids: list[int]):
     """
     Prints a TreeEnsemble object in a human-readable, raw format,
     reflecting the perspective of each party.
@@ -1673,7 +1670,7 @@ def pretty_print_ensemble(ensemble: TreeEnsemble, party_ids: List[int]):
     print("\n" + "=" * 25 + " Tree Ensemble Details " + "=" * 25)
 
     # --- 1. Print Ensemble-level information ---
-    print(f"\n[Ensemble Info]")
+    print("\n[Ensemble Info]")
     print(f"  - Max Depth: {ensemble.max_depth}")
     print(f"  - Initial Prediction (Logits): {ensemble.initial_prediction}")
 

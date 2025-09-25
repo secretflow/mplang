@@ -22,11 +22,12 @@ This tutorial demonstrates a three-party computation using PHE:
 5. Each party sends their encrypted data to Party 0
 6. Party 0 computes the sum and decrypts the result
 """
+import numpy as np
+
 import mplang
 import mplang.simp as simp
 import mplang.simp.mpi as mpi
 from mplang.frontend import phe
-import numpy as np
 
 
 @mplang.function
@@ -327,7 +328,7 @@ def run_simulation():
     print(f"2D CONCAT result shape: {concat_result.shape}")
 
     # Verify additional operations
-    print(f"\n=== 2D Additional Operations Verification ===")
+    print("\n=== 2D Additional Operations Verification ===")
     print(
         f"2D RESHAPE result shape: {reshaped_result.shape}, values: {reshaped_result}"
     )
@@ -391,7 +392,7 @@ def run_simulation():
     print(f"3D CONCAT result shape: {concat_3d.shape}")
 
     # Display multi-axis results
-    print(f"\n=== Multi-axis Operations Results ===")
+    print("\n=== Multi-axis Operations Results ===")
     print(f"3D GATHER axis=0 result shape: {gathered_axis0_3d.shape}")
     print(f"3D GATHER axis=1 result shape: {gathered_axis1_3d.shape}")
     print(
@@ -401,7 +402,7 @@ def run_simulation():
     print(f"3D SCATTER axis=2 result shape: {scattered_axis2_3d.shape}")
 
     # Display additional operations
-    print(f"\n=== 3D Additional Operations Verification ===")
+    print("\n=== 3D Additional Operations Verification ===")
     print(f"3D RESHAPE result shape: {reshaped_3d.shape}, values: {reshaped_3d}")
     print(f"3D TRANSPOSE result shape: {transposed_3d.shape}")
     print(f"3D RESHAPE_FOR_DOT result shape: {reshaped_for_dot_3d.shape}")

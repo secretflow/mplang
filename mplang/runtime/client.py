@@ -403,3 +403,57 @@ class HttpExecutorClient:
             raise self._raise_http_error(
                 f"list computations for session {session_name}", e
             ) from e
+
+    # ---------------- Global Symbols (process-level) ----------------
+    async def create_global_symbol(
+        self, symbol_name: str, data: Any, mptype: dict | None = None
+    ) -> None:
+        """Create or replace a process-global symbol.
+
+        Args:
+            symbol_name: Identifier
+            data: Python object to store (pickle based)
+            mptype: Optional metadata dict
+        """
+        url = f"/api/v1/symbols/{symbol_name}"
+        try:
+            payload = {
+                "data": base64.b64encode(pickle.dumps(data)).decode("utf-8"),
+                "mptype": mptype or {},
+            }
+            resp = await self._client.put(url, json=payload)
+            resp.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(
+                f"create global symbol {symbol_name}", e
+            ) from e
+
+    async def get_global_symbol(self, symbol_name: str) -> Any:
+        url = f"/api/v1/symbols/{symbol_name}"
+        try:
+            resp = await self._client.get(url)
+            resp.raise_for_status()
+            payload = resp.json()
+            data_bytes = base64.b64decode(payload["data"])
+            return pickle.loads(data_bytes)
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(f"get global symbol {symbol_name}", e) from e
+
+    async def delete_global_symbol(self, symbol_name: str) -> None:
+        url = f"/api/v1/symbols/{symbol_name}"
+        try:
+            resp = await self._client.delete(url)
+            resp.raise_for_status()
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error(
+                f"delete global symbol {symbol_name}", e
+            ) from e
+
+    async def list_global_symbols(self) -> list[str]:
+        url = "/api/v1/symbols"
+        try:
+            resp = await self._client.get(url)
+            resp.raise_for_status()
+            return list(resp.json().get("symbols", []))
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            raise self._raise_http_error("list global symbols", e) from e

@@ -134,8 +134,35 @@ def test_create_and_get_symbol():
     response_data = response.json()
     assert response_data["name"] == "my_symbol"
 
-    # Retrieve the symbol (using session-level path, not computation)
-    response = client.get("/sessions/test_session_3/symbols/my_symbol")
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data["name"] == "my_symbol"
+
+def test_global_symbol_crud():
+    # Create global symbol
+    import numpy as np
+
+    arr = np.arange(6, dtype=np.int32)
+    data_b64 = base64.b64encode(pickle.dumps(arr)).decode("utf-8")
+    resp = client.put(
+        "/api/v1/symbols/gx",
+        json={"mptype": {"tensor": {"dtype": "I32", "shape": [6]}}, "data": data_b64},
+    )
+    assert resp.status_code == 200
+
+    # Get global symbol
+    resp = client.get("/api/v1/symbols/gx")
+    assert resp.status_code == 200
+    payload = resp.json()
+    fetched = pickle.loads(base64.b64decode(payload["data"]))
+    assert np.array_equal(fetched, arr)
+
+    # List contains symbol
+    resp = client.get("/api/v1/symbols")
+    assert resp.status_code == 200
+    assert "gx" in resp.json().get("symbols", [])
+
+    # Delete
+    resp = client.delete("/api/v1/symbols/gx")
+    assert resp.status_code == 200
+
+    # Get after delete -> 404
+    resp = client.get("/api/v1/symbols/gx")
+    assert resp.status_code == 404

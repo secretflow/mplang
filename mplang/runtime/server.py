@@ -20,16 +20,20 @@ It uses FastAPI to provide a RESTful API for managing computations.
 import base64
 import logging
 import re
+from typing import Any
 
 import cloudpickle as pickle
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from mplang.backend.base import KernelContext
 from mplang.core.mpir import Reader
+from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.protos.v1alpha1 import mpir_pb2
 from mplang.runtime import resource
-from mplang.runtime.data_providers import DataProvider, register_provider
+from mplang.runtime.data_providers import DataProvider, ResolvedURI, register_provider
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 
 logger = logging.getLogger(__name__)
@@ -41,40 +45,45 @@ class _SymbolsProvider(DataProvider):
     """Server-local symbols provider backed by BackendRuntime.state."""
 
     @staticmethod
-    def _candidate_keys(uri) -> list[str]:  # type: ignore[override]
+    def _candidate_keys(uri: ResolvedURI) -> list[str]:  # type: ignore[override]
         keys: list[str] = []
-        parsed = getattr(uri, "parsed", None)
-        if parsed is not None and getattr(parsed, "scheme", None) == "symbols":
-            alt = parsed.netloc or parsed.path.lstrip("/")  # type: ignore[attr-defined]
+        if uri.scheme == "symbols" and uri.parsed is not None:
+            alt = uri.parsed.netloc or uri.parsed.path.lstrip("/")
             if alt:
                 keys.append(alt)
         keys.append(uri.raw)
-        # Deduplicate while preserving order
+        # Preserve order while removing duplicates
+        deduped: list[str] = []
         seen: set[str] = set()
-        result: list[str] = []
-        for k in keys:
-            if k not in seen:
-                seen.add(k)
-                result.append(k)
-        return result
+        for key in keys:
+            if key not in seen:
+                seen.add(key)
+                deduped.append(key)
+        return deduped
 
-    def read(self, uri, out_spec, *, ctx):  # type: ignore[override]
+    def read(
+        self,
+        uri: ResolvedURI,
+        out_spec: TensorType | TableType,
+        *,
+        ctx: KernelContext,
+    ) -> Any:  # type: ignore[override]
         for key in self._candidate_keys(uri):
             sym = resource.get_global_symbol(key)
             if sym is not None:
                 return sym.data
-            val = resource._global_symbols.get(key)  # type: ignore[attr-defined]
-            if val is not None:
-                if hasattr(val, "data"):
-                    return val.data  # type: ignore[attr-defined]
-                return val
         raise ResourceNotFound(f"Global symbol '{uri.raw}' not found")
 
-    def write(self, uri, value, *, ctx):  # type: ignore[override]
+    def write(
+        self,
+        uri: ResolvedURI,
+        value: Any,
+        *,
+        ctx: KernelContext,
+    ) -> None:  # type: ignore[override]
         keys = self._candidate_keys(uri)
         if not keys:
             raise ResourceNotFound(f"Global symbol '{uri.raw}' not found")
-        primary = keys[0]
         try:
             data_b64 = base64.b64encode(pickle.dumps(value)).decode("utf-8")
         except Exception as e:  # pragma: no cover - defensive
@@ -82,14 +91,8 @@ class _SymbolsProvider(DataProvider):
                 f"Failed to encode value for symbols:// write: {e!s}"
             ) from e
 
-        sym = resource.create_global_symbol(primary, {}, data_b64)
-        # Populate alias entries (if any) so future lookups succeed (share same Symbol instance).
-        for alias in keys[1:]:
-            resource._global_symbols[alias] = resource.Symbol(  # type: ignore[attr-defined]
-                name=alias,
-                mptype=sym.mptype,
-                data=sym.data,
-            )
+        for key in keys:
+            resource.create_global_symbol(key, {}, data_b64)
 
 
 # Register symbols provider explicitly for server runtime

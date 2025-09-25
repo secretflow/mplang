@@ -230,7 +230,10 @@ def execute_computation(
     # symbols:// provider can access it during builtin.read/write.
     if isinstance(runtime, BackendRuntime):
         pocket = runtime.state.setdefault("resource.providers", {})
-        pocket["symbols"] = _global_symbols
+        if "symbols" not in pocket:
+            pocket["symbols"] = _global_symbols
+        else:
+            raise RuntimeError("resource.providers.symbols already exists")
     evaluator: IEvaluator = create_evaluator(
         rank=rank, env=bindings, comm=session.communicator, runtime=runtime
     )
@@ -286,7 +289,13 @@ def execute_computation(
 def create_global_symbol(name: str, mptype: Any, data: str) -> Symbol:
     """Create or update a global symbol in the service-level table.
 
-    The `data` is base64-encoded pickled Python object, same as session symbols.
+    WARNING: Uses Python pickle for arbitrary object deserialization. Deploy
+    only in trusted environments. Future work may replace this with a
+    restricted / structured serialization.
+
+    The `data` argument is a base64-encoded pickled Python object. Minimal
+    validation of `mptype` is performed for tensor metadata (shape/dtype)
+    when present to catch obvious mismatches.
     """
     try:
         data_bytes = base64.b64decode(data)

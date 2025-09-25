@@ -54,8 +54,8 @@ def _read(pfunc: PFunction) -> Any:
     prov = get_provider(uri.scheme)
     if prov is None:
         raise NotImplementedError(f"no resource provider for scheme: {uri.scheme}")
+    ctx = cur_kctx()
     try:
-        ctx = cur_kctx()
         return prov.read(uri, out_t, ctx=ctx)
     except Exception as e:  # pragma: no cover - provider errors
         raise RuntimeError(f"builtin.read failed: {e}") from e
@@ -70,8 +70,8 @@ def _write(pfunc: PFunction, obj: Any) -> Any:
     prov = get_provider(uri.scheme)
     if prov is None:
         raise NotImplementedError(f"no resource provider for scheme: {uri.scheme}")
+    ctx = cur_kctx()
     try:
-        ctx = cur_kctx()
         prov.write(uri, obj, ctx=ctx)
         return obj
     except Exception as e:  # pragma: no cover

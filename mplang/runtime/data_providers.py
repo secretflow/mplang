@@ -47,61 +47,44 @@ class ResolvedURI:
 def resolve_uri(path: str) -> ResolvedURI:
     """Resolve a user-provided resource location into a normalized URI form.
 
-    This helper accepts both plain filesystem paths and full URIs, returning a
-    lightweight ``ResolvedURI`` that captures:
-      - ``scheme``: the canonical, lower-cased URI scheme.
-      - ``raw``: the original user input (kept verbatim for round-tripping).
-      - ``parsed``: the ``urllib.parse.ParseResult`` when a scheme is present; ``None`` otherwise.
-      - ``local_path``: a best-effort filesystem path for ``file`` resources; otherwise ``None``.
+    This helper accepts plain filesystem paths and RFC 3986 style URIs. A path
+    is treated as ``file`` when ``urlparse(path).scheme`` is empty. Detection
+    no longer depends on the presence of the literal substring ``"://"`` so
+    that forms like ``mem:foo`` (no slashes) are still recognized as a URI.
 
-    Schema (scheme) and standard
-    - Syntax follows RFC 3986 (URI Generic Syntax). We detect a URI when the input contains ``"://"``.
-    - When no scheme is present, we default to ``file`` and set ``local_path`` to the input string as-is.
-    - Supported schemes out-of-the-box (pluggable via ``register_provider``):
-        * ``file``: local filesystem paths (default when no scheme is provided)
-        * ``mem``: in-memory, per-runtime key-value storage
-        * ``s3``: placeholder for object storage (requires external plugin)
-        * ``secret``: placeholder for secret manager/KMS (requires external plugin)
+    Captured fields
+    - ``scheme``: Lower-cased scheme (``file`` when absent)
+    - ``raw``: Original input
+    - ``parsed``: ``ParseResult`` when a scheme was provided, else ``None``
+    - ``local_path``: Filesystem path for ``file`` scheme, else ``None``
 
-    Behavior notes for ``file`` scheme
-    - ``file:///abs/path`` and ``/abs/path`` are both treated as absolute paths on POSIX.
-    - ``file://<host>/abs/path`` will ignore ``<host>`` on POSIX; we keep a path derived from ``ParseResult.path``.
-    - ``local_path`` is only populated for the ``file`` scheme; for other schemes it's ``None``.
+    Supported (pluggable) schemes out-of-the-box:
+      * ``file`` (default)
+      * ``mem``
+      * ``s3`` (stub)
+      * ``secret`` (stub)
+      * ``symbols`` (registered server-side)
 
     Examples
-    >>> resolve_uri("data/train.npy")
-    ResolvedURI(scheme='file', raw='data/train.npy', parsed=None, local_path='data/train.npy')
-
-    >>> resolve_uri("/abs/path/table.csv")
-    ResolvedURI(scheme='file', raw='/abs/path/table.csv', parsed=None, local_path='/abs/path/table.csv')
-
-    >>> resolve_uri("file:///tmp/x.npy").scheme
+    >>> resolve_uri("data/train.npy").scheme
     'file'
-
-    >>> resolve_uri("mem://ds1").scheme
+    >>> resolve_uri("mem:dataset1").scheme
     'mem'
-
+    >>> resolve_uri("mem://dataset1").scheme  # both forms acceptable
+    'mem'
     >>> resolve_uri("symbols://shared_model").scheme
     'symbols'
-
-    >>> resolve_uri("s3://bucket/key").scheme
-    's3'
-
-    Returns
-    -------
-    ResolvedURI
-        A normalized representation suitable for provider lookups and I/O.
+    >>> resolve_uri("file:///tmp/x.npy").local_path
+    '/tmp/x.npy'
     """
 
-    if "://" not in path:
+    pr = urlparse(path)
+    if not pr.scheme:
         return ResolvedURI("file", path, None, path)
 
-    pr = urlparse(path)
-    scheme = pr.scheme or "file"
+    scheme = pr.scheme.lower()
     local_path: str | None = None
     if scheme == "file":
-        # file://<host>/abs/path or file:///abs/path; ignore host on posix
-        # Keep it simple: join netloc and path when netloc present
         local_path = pr.path
         if pr.netloc and not local_path.startswith("/"):
             local_path = f"//{pr.netloc}/{pr.path}"
@@ -128,11 +111,23 @@ _REGISTRY: dict[str, DataProvider] = {}
 
 
 def register_provider(
-    scheme: str, provider: DataProvider, *, replace: bool = False
+    scheme: str, provider: DataProvider, *, replace: bool = False, quiet: bool = False
 ) -> None:
+    """Register a provider implementation.
+
+    Args:
+        scheme: URI scheme handled (case-insensitive)
+        provider: Implementation
+        replace: If False and scheme exists -> ValueError
+        quiet: If True, suppress duplicate log messages when replacing
+    """
+    import logging
+
     key = scheme.lower()
     if not replace and key in _REGISTRY:
         raise ValueError(f"provider already registered for scheme: {scheme}")
+    if replace and key in _REGISTRY and not quiet:
+        logging.info(f"Replacing existing provider for scheme '{scheme}'")
     _REGISTRY[key] = provider
 
 

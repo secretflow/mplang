@@ -34,12 +34,12 @@ jobs:
       - name: Build package
         run: hatch build
         env:
-          BUILD_NIGTHLY: true
+          BUILD_NIGHTLY: true
 
       - name: Publish to PyPI (mplang-nightly)
         run: |
           hatch publish
         env:
-          BUILD_NIGTHLY: true
+          BUILD_NIGHTLY: true
           HATCH_INDEX_USER: __token__
           HATCH_INDEX_AUTH: ${{ secrets.PYPI_API_TOKEN }}

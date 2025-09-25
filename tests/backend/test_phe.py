@@ -655,11 +655,11 @@ class TestPHEHandler:
         assert decrypted.item() == 15  # 5 * 3
 
     def test_mul_ciphertext_plaintext_float64(self):
-        """Test CipherText * plaintext multiplication with float64."""
+        """Test that multiplication with float64 plaintext raises an error."""
         pk, sk = self._generate_keypair()
 
-        # Encrypt float64 scalar
-        ciphertext_val = np.array(2.5, dtype=np.float64)
+        # Encrypt int32 scalar (to test against float64 plaintext)
+        ciphertext_val = np.array(2, dtype=np.int32)
         plaintext_multiplier = np.array(4.0, dtype=np.float64)
 
         encrypt_pfunc = PFunction(
@@ -669,7 +669,7 @@ class TestPHEHandler:
         )
         ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
 
-        # Multiply ciphertext * plaintext
+        # Multiply ciphertext * plaintext should raise error
         mul_pfunc = PFunction(
             fn_type="phe.mul",
             ins_info=(
@@ -678,21 +678,12 @@ class TestPHEHandler:
             ),
             outs_info=(TensorType.from_obj(ciphertext_val),),
         )
-        result_ct = self.handler.execute(mul_pfunc, [ciphertext, plaintext_multiplier])[
-            0
-        ]
 
-        assert isinstance(result_ct, CipherText)
-        assert result_ct.semantic_dtype == FLOAT64
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(ciphertext_val),),
-        )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        assert abs(decrypted.item() - 10.0) < 1e-10  # 2.5 * 4.0
+        with pytest.raises(
+            ValueError,
+            match="Homomorphic multiplication with floating point plaintext is not supported",
+        ):
+            self.handler.execute(mul_pfunc, [ciphertext, plaintext_multiplier])
 
     def test_mul_ciphertext_plaintext_array_int16(self):
         """Test CipherText * plaintext multiplication with int16 array."""
@@ -826,6 +817,43 @@ class TestPHEHandler:
         except ValueError as e:
             if "float x float operations" in str(e):
                 pytest.fail("float x int should be allowed")
+
+    def test_mul_floating_point_plaintext_not_supported(self):
+        """Test that multiplication with floating point plaintext raises an error."""
+        pk, sk = self._generate_keypair()
+
+        # Create integer ciphertext
+        ciphertext_val = np.array(10, dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Test with different floating point types
+        float_types = [
+            (np.float32, "float32"),
+            (np.float64, "float64"),
+        ]
+
+        for float_dtype, dtype_name in float_types:
+            plaintext_val = np.array(3.14, dtype=float_dtype)
+
+            mul_pfunc = PFunction(
+                fn_type="phe.mul",
+                ins_info=(
+                    TensorType.from_obj(ciphertext_val),
+                    TensorType.from_obj(plaintext_val),
+                ),
+                outs_info=(TensorType.from_obj(ciphertext_val),),
+            )
+
+            with pytest.raises(
+                ValueError,
+                match="Homomorphic multiplication with floating point plaintext is not supported",
+            ):
+                self.handler.execute(mul_pfunc, [ciphertext, plaintext_val])
 
     def test_mul_multidimensional_same_shape(self):
         """Test multiplication with multi-dimensional arrays of same shape."""
@@ -1454,11 +1482,11 @@ class TestPHEHandler:
         assert decrypted.item() == expected
 
     def test_dot_ciphertext_plaintext_float64(self):
-        """Test CipherText dot plaintext with float64 vectors."""
+        """Test that dot product with float64 plaintext raises an error."""
         pk, sk = self._generate_keypair()
 
-        # Create float64 vectors
-        ciphertext_vec = np.array([1.5, 2.0, 3.5], dtype=np.float64)
+        # Create int32 ciphertext vector (to test against float64 plaintext)
+        ciphertext_vec = np.array([1, 2, 3], dtype=np.int32)
         plaintext_vec = np.array([2.0, 1.5, 1.0], dtype=np.float64)
 
         # Encrypt the first vector
@@ -1469,7 +1497,7 @@ class TestPHEHandler:
         )
         ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_vec, pk])[0]
 
-        # Perform dot product
+        # Perform dot product should raise error
         dot_pfunc = PFunction(
             fn_type="phe.dot",
             ins_info=(
@@ -1477,29 +1505,15 @@ class TestPHEHandler:
                 TensorType.from_obj(plaintext_vec),
             ),
             outs_info=(
-                TensorType.from_obj(np.array(0.0, dtype=np.float64)),
+                TensorType.from_obj(np.array(0, dtype=np.int32)),
             ),  # Scalar result
         )
-        result_ct = self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])[0]
 
-        assert isinstance(result_ct, CipherText)
-        assert result_ct.semantic_dtype == FLOAT64
-        assert result_ct.semantic_shape == ()  # Scalar result
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(
-                TensorType.from_obj(np.array(0.0, dtype=np.float64)),
-                TensorType(BOOL, ()),
-            ),
-            outs_info=(TensorType.from_obj(np.array(0.0, dtype=np.float64)),),
-        )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        expected = np.dot(
-            ciphertext_vec, plaintext_vec
-        )  # 1.5*2.0 + 2.0*1.5 + 3.5*1.0 = 3.0 + 3.0 + 3.5 = 9.5
-        assert abs(decrypted.item() - expected) < 1e-10
+        with pytest.raises(
+            ValueError,
+            match="Homomorphic dot product with floating point plaintext is not supported",
+        ):
+            self.handler.execute(dot_pfunc, [ciphertext, plaintext_vec])
 
     def test_dot_ciphertext_plaintext_array_int16(self):
         """Test CipherText dot plaintext with int16 vectors."""
@@ -1657,6 +1671,43 @@ class TestPHEHandler:
             ValueError, match="First argument must be a CipherText instance"
         ):
             self.handler.execute(dot_pfunc, [plaintext_vec1, plaintext_vec2])
+
+    def test_dot_floating_point_plaintext_not_supported(self):
+        """Test that dot product with floating point plaintext raises an error."""
+        pk, sk = self._generate_keypair()
+
+        # Create integer ciphertext vector
+        ciphertext_val = np.array([1, 2, 3], dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Test with different floating point types
+        float_types = [
+            (np.float32, "float32"),
+            (np.float64, "float64"),
+        ]
+
+        for float_dtype, dtype_name in float_types:
+            plaintext_val = np.array([1.5, 2.5, 3.5], dtype=float_dtype)
+
+            dot_pfunc = PFunction(
+                fn_type="phe.dot",
+                ins_info=(
+                    TensorType.from_obj(ciphertext_val),
+                    TensorType.from_obj(plaintext_val),
+                ),
+                outs_info=(TensorType.from_obj(np.array(0, dtype=np.int32)),),
+            )
+
+            with pytest.raises(
+                ValueError,
+                match="Homomorphic dot product with floating point plaintext is not supported",
+            ):
+                self.handler.execute(dot_pfunc, [ciphertext, plaintext_val])
 
     def test_gather_ciphertext_basic_int32(self):
         """Test gather operation with basic int32 array."""
@@ -3799,11 +3850,11 @@ class TestPHEHandler:
         np.testing.assert_array_equal(decrypted, expected_result)
 
     def test_dot_multidimensional_float_types(self):
-        """Test dot product with floating point types."""
+        """Test that dot product with floating point plaintext raises an error."""
         pk, sk = self._generate_keypair()
 
-        # Test with float64
-        ct_matrix = np.array([[1.5, 2.5], [3.5, 4.5]], dtype=np.float64)
+        # Test with int32 ciphertext and float64 plaintext
+        ct_matrix = np.array([[1, 2], [3, 4]], dtype=np.int32)
         pt_vector = np.array([2.0, 3.0], dtype=np.float64)
 
         # Encrypt matrix
@@ -3814,26 +3865,18 @@ class TestPHEHandler:
         )
         ciphertext = self.handler.execute(encrypt_pfunc, [ct_matrix, pk])[0]
 
-        # Dot product
-        expected_result = np.dot(ct_matrix, pt_vector)
+        # Dot product should raise error
         dot_pfunc = PFunction(
             fn_type="phe.dot",
             ins_info=(TensorType.from_obj(ct_matrix), TensorType.from_obj(pt_vector)),
-            outs_info=(TensorType.from_obj(expected_result),),
+            outs_info=(TensorType.from_obj(np.array([0, 0], dtype=np.int32)),),
         )
-        result_ct = self.handler.execute(dot_pfunc, [ciphertext, pt_vector])[0]
 
-        assert isinstance(result_ct, CipherText)
-        assert result_ct.semantic_shape == expected_result.shape
-
-        # Decrypt and verify
-        decrypt_pfunc = PFunction(
-            fn_type="phe.decrypt",
-            ins_info=(TensorType.from_obj(expected_result), TensorType(BOOL, ())),
-            outs_info=(TensorType.from_obj(expected_result),),
-        )
-        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
-        np.testing.assert_allclose(decrypted, expected_result, rtol=3e-4)
+        with pytest.raises(
+            ValueError,
+            match="Homomorphic dot product with floating point plaintext is not supported",
+        ):
+            self.handler.execute(dot_pfunc, [ciphertext, pt_vector])
 
     def test_dot_multidimensional_shape_mismatch(self):
         """Test dot product with incompatible shapes."""
@@ -4835,3 +4878,417 @@ class TestPHEHandler:
             self.handler.execute(
                 scatter_pfunc, [ciphertext, indices, updates_ciphertext]
             )
+
+    def test_add_mixed_precision_float_ciphertext_int_plaintext_not_supported(self):
+        """Test that addition of floating point ciphertext + integer plaintext raises an error."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt float32 ciphertext
+        float_ciphertext_val = np.array(3.14, dtype=np.float32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(float_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+        float_ciphertext = self.handler.execute(
+            encrypt_pfunc, [float_ciphertext_val, pk]
+        )[0]
+
+        # Try to add integer plaintext - should raise error
+        int_plaintext = np.array(5, dtype=np.int32)
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(float_ciphertext_val),
+                TensorType.from_obj(int_plaintext),
+            ),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Cannot add integer plaintext to floating point ciphertext due to fixed-point encoding",
+        ):
+            self.handler.execute(add_pfunc, [float_ciphertext, int_plaintext])
+
+    def test_add_mixed_precision_int_ciphertext_float_plaintext_not_supported(self):
+        """Test that addition of integer ciphertext + floating point plaintext raises an error."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt int32 ciphertext
+        int_ciphertext_val = np.array(10, dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(int_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(int_ciphertext_val),),
+        )
+        int_ciphertext = self.handler.execute(encrypt_pfunc, [int_ciphertext_val, pk])[
+            0
+        ]
+
+        # Try to add floating point plaintext - should raise error
+        float_plaintext = np.array(2.5, dtype=np.float64)
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(int_ciphertext_val),
+                TensorType.from_obj(float_plaintext),
+            ),
+            outs_info=(TensorType.from_obj(int_ciphertext_val),),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Cannot add floating point plaintext to integer ciphertext due to fixed-point encoding",
+        ):
+            self.handler.execute(add_pfunc, [int_ciphertext, float_plaintext])
+
+    def test_add_mixed_precision_float_ciphertext_int_ciphertext_not_supported(self):
+        """Test that addition of floating point ciphertext + integer ciphertext raises an error."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt float32 ciphertext
+        float_ciphertext_val = np.array(3.14, dtype=np.float32)
+        encrypt_pfunc_float = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(float_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+        float_ciphertext = self.handler.execute(
+            encrypt_pfunc_float, [float_ciphertext_val, pk]
+        )[0]
+
+        # Encrypt int32 ciphertext
+        int_ciphertext_val = np.array(10, dtype=np.int32)
+        encrypt_pfunc_int = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(int_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(int_ciphertext_val),),
+        )
+        int_ciphertext = self.handler.execute(
+            encrypt_pfunc_int, [int_ciphertext_val, pk]
+        )[0]
+
+        # Try to add float ciphertext + int ciphertext - should raise error
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(float_ciphertext_val),
+                TensorType.from_obj(int_ciphertext_val),
+            ),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Cannot add ciphertexts with different numeric types due to fixed-point encoding",
+        ):
+            self.handler.execute(add_pfunc, [float_ciphertext, int_ciphertext])
+
+    def test_add_same_precision_float_ciphertext_float_plaintext_supported(self):
+        """Test that addition of floating point ciphertext + floating point plaintext works correctly."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt float32 ciphertext
+        float_ciphertext_val = np.array(3.14, dtype=np.float32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(float_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+        float_ciphertext = self.handler.execute(
+            encrypt_pfunc, [float_ciphertext_val, pk]
+        )[0]
+
+        # Add floating point plaintext - should work
+        float_plaintext = np.array(2.5, dtype=np.float32)
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(float_ciphertext_val),
+                TensorType.from_obj(float_plaintext),
+            ),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+
+        result_ct = self.handler.execute(
+            add_pfunc, [float_ciphertext, float_plaintext]
+        )[0]
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == FLOAT32
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(float_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(float_ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        # Use appropriate precision for fixed-point encoding (12 bits = ~2.4e-4 precision)
+        assert abs(decrypted.item() - (3.14 + 2.5)) < 3e-4
+
+    def test_add_same_precision_int_ciphertext_int_plaintext_supported(self):
+        """Test that addition of integer ciphertext + integer plaintext works correctly."""
+        pk, sk = self._generate_keypair()
+
+        # Encrypt int32 ciphertext
+        int_ciphertext_val = np.array(10, dtype=np.int32)
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(int_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(int_ciphertext_val),),
+        )
+        int_ciphertext = self.handler.execute(encrypt_pfunc, [int_ciphertext_val, pk])[
+            0
+        ]
+
+        # Add integer plaintext - should work
+        int_plaintext = np.array(15, dtype=np.int32)
+        add_pfunc = PFunction(
+            fn_type="phe.add",
+            ins_info=(
+                TensorType.from_obj(int_ciphertext_val),
+                TensorType.from_obj(int_plaintext),
+            ),
+            outs_info=(TensorType.from_obj(int_ciphertext_val),),
+        )
+
+        result_ct = self.handler.execute(add_pfunc, [int_ciphertext, int_plaintext])[0]
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+
+        # Decrypt and verify
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(int_ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(int_ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert decrypted.item() == 25
+
+    def test_mul_ciphertext_zero_plaintext_optimization(self):
+        """Test homomorphic multiplication with zero plaintext values - should return zero ciphertext."""
+        pk, sk = self._generate_keypair()
+
+        # Test scalar case: ciphertext * 0
+        ciphertext_val = np.array(42, dtype=np.int32)
+        zero_plaintext = np.array(0, dtype=np.int32)
+
+        # Encrypt the non-zero value
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        ciphertext = self.handler.execute(encrypt_pfunc, [ciphertext_val, pk])[0]
+
+        # Multiply by zero
+        mul_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_val),
+                TensorType.from_obj(zero_plaintext),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        result_ct = self.handler.execute(mul_pfunc, [ciphertext, zero_plaintext])[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+
+        # Decrypt and verify result is zero
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_val), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_val),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.item() == 0
+
+        # Test array case: ciphertext_array * zero_array
+        ciphertext_array = np.array([1, 2, 3, 4], dtype=np.int32)
+        zero_array = np.array([0, 0, 0, 0], dtype=np.int32)
+
+        # Encrypt the non-zero array
+        encrypt_array_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_array), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_array),),
+        )
+        ciphertext_array_encrypted = self.handler.execute(
+            encrypt_array_pfunc, [ciphertext_array, pk]
+        )[0]
+
+        # Multiply by zero array
+        mul_array_pfunc = PFunction(
+            fn_type="phe.mul",
+            ins_info=(
+                TensorType.from_obj(ciphertext_array),
+                TensorType.from_obj(zero_array),
+            ),
+            outs_info=(TensorType.from_obj(ciphertext_array),),
+        )
+        result_array_ct = self.handler.execute(
+            mul_array_pfunc, [ciphertext_array_encrypted, zero_array]
+        )[0]
+
+        assert isinstance(result_array_ct, CipherText)
+        assert result_array_ct.semantic_dtype == INT32
+        assert result_array_ct.semantic_shape == (4,)
+
+        # Decrypt and verify all elements are zero
+        decrypt_array_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(ciphertext_array), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_array),),
+        )
+        decrypted_array = self.handler.execute(
+            decrypt_array_pfunc, [result_array_ct, sk]
+        )[0]
+        assert isinstance(decrypted_array, np.ndarray)
+        expected_zeros = np.array([0, 0, 0, 0], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted_array, expected_zeros)
+
+    def test_dot_ciphertext_zero_plaintext_optimization(self):
+        """Test homomorphic dot product with zero plaintext values - should return zero ciphertext."""
+        pk, sk = self._generate_keypair()
+
+        # Test vector dot product: ciphertext_vector · zero_vector
+        ciphertext_vector = np.array([1, 2, 3, 4], dtype=np.int32)
+        zero_vector = np.array([0, 0, 0, 0], dtype=np.int32)
+
+        # Encrypt the non-zero vector
+        encrypt_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_vector), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_vector),),
+        )
+        ciphertext_vector_encrypted = self.handler.execute(
+            encrypt_pfunc, [ciphertext_vector, pk]
+        )[0]
+
+        # Compute dot product with zero vector
+        # Create a scalar result tensor type
+        scalar_result = np.array(0, dtype=np.int32)
+        dot_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_vector),
+                TensorType.from_obj(zero_vector),
+            ),
+            outs_info=(
+                TensorType.from_obj(scalar_result),
+            ),  # Dot product result is scalar
+        )
+        result_ct = self.handler.execute(
+            dot_pfunc, [ciphertext_vector_encrypted, zero_vector]
+        )[0]
+
+        assert isinstance(result_ct, CipherText)
+        assert result_ct.semantic_dtype == INT32
+        assert result_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify result is zero
+        decrypt_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(scalar_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(scalar_result),),
+        )
+        decrypted = self.handler.execute(decrypt_pfunc, [result_ct, sk])[0]
+        assert isinstance(decrypted, np.ndarray)
+        assert decrypted.item() == 0
+
+        # Test matrix-vector dot product: ciphertext_matrix · zero_vector
+        ciphertext_matrix = np.array(
+            [[1, 2], [3, 4], [5, 6]], dtype=np.int32
+        )  # 3x2 matrix
+        zero_vector_2d = np.array([0, 0], dtype=np.int32)  # 2-element vector
+
+        # Encrypt the non-zero matrix
+        encrypt_matrix_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_matrix), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_matrix),),
+        )
+        ciphertext_matrix_encrypted = self.handler.execute(
+            encrypt_matrix_pfunc, [ciphertext_matrix, pk]
+        )[0]
+
+        # Compute matrix · zero_vector (should give zero vector of shape (3,))
+        # Create a vector result tensor type
+        vector_result = np.array([0, 0, 0], dtype=np.int32)
+        dot_matrix_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_matrix),
+                TensorType.from_obj(zero_vector_2d),
+            ),
+            outs_info=(
+                TensorType.from_obj(vector_result),
+            ),  # Result is 3-element vector
+        )
+        result_matrix_ct = self.handler.execute(
+            dot_matrix_pfunc, [ciphertext_matrix_encrypted, zero_vector_2d]
+        )[0]
+
+        assert isinstance(result_matrix_ct, CipherText)
+        assert result_matrix_ct.semantic_dtype == INT32
+        assert result_matrix_ct.semantic_shape == (3,)  # 3-element vector result
+
+        # Decrypt and verify all elements are zero
+        decrypt_matrix_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(vector_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(vector_result),),
+        )
+        decrypted_matrix = self.handler.execute(
+            decrypt_matrix_pfunc, [result_matrix_ct, sk]
+        )[0]
+        assert isinstance(decrypted_matrix, np.ndarray)
+        expected_zero_vector = np.array([0, 0, 0], dtype=np.int32)
+        np.testing.assert_array_equal(decrypted_matrix, expected_zero_vector)
+
+        # Test scalar dot product: ciphertext_scalar · zero_scalar
+        ciphertext_scalar = np.array(7, dtype=np.int32)
+        zero_scalar = np.array(0, dtype=np.int32)
+
+        # Encrypt the non-zero scalar
+        encrypt_scalar_pfunc = PFunction(
+            fn_type="phe.encrypt",
+            ins_info=(TensorType.from_obj(ciphertext_scalar), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(ciphertext_scalar),),
+        )
+        ciphertext_scalar_encrypted = self.handler.execute(
+            encrypt_scalar_pfunc, [ciphertext_scalar, pk]
+        )[0]
+
+        # Compute scalar · zero_scalar
+        scalar_scalar_result = np.array(0, dtype=np.int32)
+        dot_scalar_pfunc = PFunction(
+            fn_type="phe.dot",
+            ins_info=(
+                TensorType.from_obj(ciphertext_scalar),
+                TensorType.from_obj(zero_scalar),
+            ),
+            outs_info=(TensorType.from_obj(scalar_scalar_result),),  # Scalar result
+        )
+        result_scalar_ct = self.handler.execute(
+            dot_scalar_pfunc, [ciphertext_scalar_encrypted, zero_scalar]
+        )[0]
+
+        assert isinstance(result_scalar_ct, CipherText)
+        assert result_scalar_ct.semantic_dtype == INT32
+        assert result_scalar_ct.semantic_shape == ()  # Scalar result
+
+        # Decrypt and verify result is zero
+        decrypt_scalar_pfunc = PFunction(
+            fn_type="phe.decrypt",
+            ins_info=(TensorType.from_obj(scalar_scalar_result), TensorType(BOOL, ())),
+            outs_info=(TensorType.from_obj(scalar_scalar_result),),
+        )
+        decrypted_scalar = self.handler.execute(
+            decrypt_scalar_pfunc, [result_scalar_ct, sk]
+        )[0]
+        assert isinstance(decrypted_scalar, np.ndarray)
+        assert decrypted_scalar.item() == 0

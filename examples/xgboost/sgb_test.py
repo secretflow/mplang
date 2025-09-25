@@ -163,7 +163,7 @@ def test_setup():
     sim3 = mplang.Simulator(3)
 
     # fixed dataset params
-    n_samples = 1_0
+    n_samples = 10
     n_total_features = 2
     n_features_ap = 1
     random_state = 42
@@ -172,15 +172,15 @@ def test_setup():
     XGB_PARAMS = {
         "n_estimators": 1,
         "learning_rate": 0.1,
-        "max_depth": 1,
-        "max_bin": 2,
+        "max_depth": 2,
+        "max_bin": 4,
         "reg_lambda": 0.1,
         "gamma": 0.1,
         "min_child_weight": 1.0,
     }
 
     # fixed debug params
-    DEBUG_SAMPLES = 10
+    DEBUG_SAMPLES = 2
 
     yield {
         "sim2": sim2,
@@ -252,10 +252,9 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
     )
     ret = mplang.fetch(sim, out)
     assert len(ret) == 3  # trees, pred, leaves (if need)
-
+    print("SecureBoost training and prediction completed.")
     # Calculate and print accuracy metrics
-    pred_results = ret[1][0]
-    prob = pred_results[0]  # Extract probabilities from AP
+    prob = ret[1][0]
     predictions = (prob > 0.5).astype(int)
     sgb_acc = accuracy_score(y_plaintext, predictions)
     sgb_auc = roc_auc_score(y_plaintext, prob)
@@ -270,9 +269,8 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
 
     # step 5: debug phase (if need)
     if need_debug_leaves:
-        pretty_print_ensemble(ret[0][0], all_party_ids_list)
-        pred_leaves = ret[2][0]
-        leaves_data = pred_leaves[0]  # Shape: (n_samples * n_parties, n_nodes)
+        pretty_print_ensemble(ret[0], all_party_ids_list)
+        leaves_data = ret[2][0]  # Shape: (n_samples * n_parties, n_nodes)
         n_parties = world_size
 
         print(f"\n📊 Leaf Node Predictions (Shape: {leaves_data.shape}):")
@@ -329,15 +327,17 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
     )
 
 
-def test_sgb_2pc(test_setup):
-    _sgb_run_main(test_setup, world_size=2, need_debug_leaves=False)
+# def test_sgb_2pc(test_setup):
+#     _sgb_run_main(test_setup, world_size=2, need_debug_leaves=False)
 
 
 # def test_sgb_2pc_debug_leaves(test_setup):
 #     _sgb_run_main(test_setup, world_size=2, need_debug_leaves=True)
 
-# def test_sgb_3pc(test_setup):
-#     _sgb_run_main(test_setup, world_size=3, need_debug_leaves=False)
+
+def test_sgb_3pc(test_setup):
+    _sgb_run_main(test_setup, world_size=3, need_debug_leaves=False)
+
 
 # def test_sgb_3pc_debug_leaves(test_setup):
 #     _sgb_run_main(test_setup, world_size=3, need_debug_leaves=True)

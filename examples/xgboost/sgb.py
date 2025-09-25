@@ -154,7 +154,7 @@ def batch_feature_wise_bucket_sum_mplang(
                         valid_and_in_bucket = (feature_buckets >= 0) & (
                             feature_buckets <= b_idx
                         )
-                        return valid_and_in_bucket.astype(jnp.float32)
+                        return valid_and_in_bucket.astype(jnp.int32)
 
                     bucket_mask = simp.runAt(rank, create_bucket_mask)(
                         group_order_map, feature_idx, bucket_idx
@@ -1330,7 +1330,7 @@ def predict_ensemble(
 
 
 @jax.jit
-def agg_prediction_leaves(all_masks: List[jnp.ndarray], is_leaf: jnp.ndarray):
+def agg_prediction_leaves(all_masks: List[jnp.ndarray]):
     # Original stacking: (n_parties, n_samples, n_nodes)
     stacked_masks = jnp.stack(all_masks)
 
@@ -1378,9 +1378,7 @@ def predict_tree_leaf(
         all_masks.append(mpi.p2p(passive_party_ids[i], active_party_id, pp_mask))
 
     # Aggregation and Final Prediction in AP
-    final_pred = simp.runAt(active_party_id, agg_prediction_leaves)(
-        all_masks, tree.is_leaf
-    )
+    final_pred = simp.runAt(active_party_id, agg_prediction_leaves)(all_masks)
     return final_pred
 
 

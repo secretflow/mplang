@@ -332,9 +332,9 @@ class PHEHandler(TensorHandler):
             raise ValueError("Key generation expects no arguments")
 
         scheme = pfunc.attrs.get("scheme", "paillier")
-        key_size = pfunc.attrs.get("key_size", 2048)
+        key_size = pfunc.attrs.get("key_size", 1024)
         max_value = pfunc.attrs.get(
-            "max_value", 2**100
+            "max_value", 2**32
         )  # Use larger range to avoid overflow
         fxp_bits = pfunc.attrs.get("fxp_bits", 12)
 
@@ -497,6 +497,13 @@ class PHEHandler(TensorHandler):
             # Convert plaintext to numpy
             plaintext_np = self._convert_to_numpy(plaintext)
 
+            # Check if plaintext is floating point type - multiplication not supported
+            if np.issubdtype(plaintext_np.dtype, np.floating):
+                raise ValueError(
+                    f"Homomorphic multiplication with floating point plaintext is not supported. "
+                    f"Got plaintext dtype: {plaintext_np.dtype}"
+                )
+
             # Use numpy broadcasting to determine result shape and broadcast operands
             # Create dummy arrays with the same shapes to test broadcasting
             try:
@@ -636,6 +643,15 @@ class PHEHandler(TensorHandler):
         if ct1.pk_data != ct2.pk_data:
             raise ValueError("CipherText operands must be encrypted with same key")
 
+        # Check for mixed precision issue: floating point ciphertext + integer ciphertext
+        # This would cause decode failures due to different fixed-point encoding scales
+        if ct1.semantic_dtype.is_floating != ct2.semantic_dtype.is_floating:
+            raise ValueError(
+                f"Cannot add ciphertexts with different numeric types due to fixed-point encoding. "
+                f"First CipherText dtype: {ct1.semantic_dtype}, second CipherText dtype: {ct2.semantic_dtype}. "
+                f"Both operands must have the same numeric type (both floating or both integer)."
+            )
+
         # Use numpy broadcasting to determine result shape and broadcast operands
         try:
             dummy_ct1 = np.zeros(ct1.semantic_shape)
@@ -705,6 +721,24 @@ class PHEHandler(TensorHandler):
         """
         # Convert plaintext to numpy
         plaintext_np = self._convert_to_numpy(plaintext)
+        plaintext_dtype = DType.from_numpy(plaintext_np.dtype)
+
+        # Check for mixed precision issue: floating point ciphertext + integer plaintext
+        # This would cause decode failures due to 2**fxp * f + i scaling mismatch
+        if ciphertext.semantic_dtype.is_floating and not plaintext_dtype.is_floating:
+            raise ValueError(
+                f"Cannot add integer plaintext to floating point ciphertext due to fixed-point encoding. "
+                f"CipherText dtype: {ciphertext.semantic_dtype}, plaintext dtype: {plaintext_dtype}. "
+                f"Both operands must have the same numeric type (both floating or both integer)."
+            )
+
+        # Check for mixed precision issue: integer ciphertext + floating point plaintext
+        if not ciphertext.semantic_dtype.is_floating and plaintext_dtype.is_floating:
+            raise ValueError(
+                f"Cannot add floating point plaintext to integer ciphertext due to fixed-point encoding. "
+                f"CipherText dtype: {ciphertext.semantic_dtype}, plaintext dtype: {plaintext_dtype}. "
+                f"Both operands must have the same numeric type (both floating or both integer)."
+            )
 
         # Use numpy broadcasting to determine result shape and broadcast operands
         try:
@@ -974,6 +1008,13 @@ class PHEHandler(TensorHandler):
         try:
             # Convert plaintext to numpy
             plaintext_np = self._convert_to_numpy(plaintext)
+
+            # Check if plaintext is floating point type - dot product not supported
+            if np.issubdtype(plaintext_np.dtype, np.floating):
+                raise ValueError(
+                    f"Homomorphic dot product with floating point plaintext is not supported. "
+                    f"Got plaintext dtype: {plaintext_np.dtype}"
+                )
 
             # Use numpy.dot to determine result shape and validate compatibility
             # Create dummy arrays with same shapes to test dot product compatibility

@@ -22,7 +22,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from xgboost import XGBClassifier
 
 import mplang
-import mplang.mpi as mpi
+import mplang.simp.mpi as mpi
 import mplang.simp as simp
 from mplang.frontend import phe
 from examples.xgboost.sgb import (
@@ -159,8 +159,8 @@ def test_setup():
     """Setup fixture for all tests"""
     print(" ========= start test of jit_sgb package ========= \n")
 
-    sim2 = mplang.Simulator(2)
-    sim3 = mplang.Simulator(3)
+    sim2 = mplang.Simulator.simple(2)
+    sim3 = mplang.Simulator.simple(3)
 
     # fixed dataset params
     n_samples = 10

@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from jax.ops import segment_sum
 
 import mplang
-import mplang.mpi as mpi
+import mplang.simp.mpi as mpi
 import mplang.simp as simp
 from mplang import MPObject, Mask
 from mplang.core.mptype import Rank

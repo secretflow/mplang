@@ -46,7 +46,19 @@ class TestPHEKernels:
         return pk, sk
 
     def test_kernel_registry(self):
-        for name in ["phe.keygen", "phe.encrypt", "phe.decrypt", "phe.add", "phe.mul"]:
+        for name in [
+            "phe.keygen",
+            "phe.encrypt",
+            "phe.decrypt",
+            "phe.add",
+            "phe.mul",
+            "phe.dot",
+            "phe.gather",
+            "phe.scatter",
+            "phe.concat",
+            "phe.reshape",
+            "phe.transpose",
+        ]:
             assert name in list_registered_kernels()
 
     def test_keygen(self):

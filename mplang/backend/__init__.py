@@ -11,12 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Backend public API.
-
-Exports:
-        RuntimeContext: per-rank backend execution context (explicit op->kernel binding).
-        bind_all_ops: idempotent bootstrap establishing default op bindings.
-"""
-
-from .context import RuntimeContext, bind_all_ops  # noqa: F401

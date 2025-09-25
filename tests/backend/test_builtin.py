@@ -28,7 +28,7 @@ class TestBuiltinHandler:
 
     def setup_method(self):
         # initialize backend context for rank 0 (world_size=1) once per test
-        self.runtime = RuntimeContext.create(0, 1)
+        self.runtime = RuntimeContext(rank=0, world_size=1)
 
     @staticmethod
     def _exec_static(runtime, pfunc: PFunction, args: list):

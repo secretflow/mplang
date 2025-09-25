@@ -27,7 +27,7 @@ class TestPHEKernels:
     """Compact PHE kernel tests (clean rewrite)."""
 
     def setup_method(self):
-        self.runtime = RuntimeContext.create(0, 1)
+        self.runtime = RuntimeContext(rank=0, world_size=1)
         self.scheme = "paillier"
         self.key_size = 512
 

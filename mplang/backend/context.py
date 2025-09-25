@@ -12,18 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Runtime execution context & explicit op->kernel binding setup.
-
-`RuntimeContext` executes previously bound operations. Binding is performed
-by `bind_all_ops()` which imports builtin kernel implementation modules and
-manually maps each semantic op_type to a kernel_id (currently identical).
-
-This keeps initialization explicit & deterministic (no import-order magic).
-"""
-
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from mplang.backend import base
@@ -33,78 +25,69 @@ from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
 
-# --- Binding bootstrap ---
-
-_BOUND = False
-
-# Enumerate builtin ops (semantic names). kernel_id is same string.
-_BUILTIN_OPS = [
-    # builtin
-    "builtin.identity",
-    "builtin.read",
-    "builtin.write",
-    "builtin.constant",
-    "builtin.rank",
-    "builtin.prand",
-    "builtin.table_to_tensor",
-    "builtin.tensor_to_table",
-    "builtin.debug_print",
-    "builtin.pack",
-    "builtin.unpack",
-    # crypto
-    "crypto.keygen",
-    "crypto.enc",
-    "crypto.dec",
-    "crypto.kem_keygen",
-    "crypto.kem_derive",
-    "crypto.hkdf",
-    # phe
-    "phe.keygen",
-    "phe.encrypt",
-    "phe.mul",
-    "phe.add",
-    "phe.decrypt",
-    # spu
-    "spu.seed_env",
-    "spu.makeshares",
-    "spu.reconstruct",
-    "mlir.pphlo",
-    # stablehlo
-    "mlir.stablehlo",
-    # sql
-    "sql[duckdb]",
-    # tee
-    "tee.quote",
-    "tee.attest",
-]
-
-_IMPLEMENTATION_MODULES = [
-    ".builtin",
-    ".crypto",
-    ".phe",
-    ".spu",
-    ".stablehlo",
-    ".sql_duckdb",
-    ".tee",
-]
+# Default bindings
+# Import kernel implementation modules explicitly so their @kernel_def entries
+# register at import time. Keep imports grouped; alias with leading underscore
+# to silence unused variable warnings without F401 pragmas.
+_IMPL_IMPORTED = False
 
 
-def bind_all_ops(force: bool = False) -> None:
-    """Import builtin implementation modules then bind op->kernel.
-
-    Idempotent unless force=True.
-    """
-    global _BOUND
-    if _BOUND and not force:
+def _ensure_impl_imported() -> None:
+    global _IMPL_IMPORTED
+    if _IMPL_IMPORTED:
         return
-    # import implementations to register kernels
-    pkg = __name__.rsplit(".", 1)[0]
-    for rel in _IMPLEMENTATION_MODULES:
-        __import__(pkg + rel, fromlist=["*"])
-    # perform 1:1 bindings
-    for op in _BUILTIN_OPS:
-        bind_op(op, op)
-    _BOUND = True
+    from mplang.backend import builtin as _impl_builtin  # noqa: F401
+    from mplang.backend import crypto as _impl_crypto  # noqa: F401
+    from mplang.backend import phe as _impl_phe  # noqa: F401
+    from mplang.backend import spu as _impl_spu  # noqa: F401
+    from mplang.backend import sql_duckdb as _impl_sql_duckdb  # noqa: F401
+    from mplang.backend import stablehlo as _impl_stablehlo  # noqa: F401
+    from mplang.backend import tee as _impl_tee  # noqa: F401
+
+    _IMPL_IMPORTED = True
+
+
+# imports consolidated above
+
+_DEFAULT_BINDINGS: dict[str, str] = {
+    # builtin
+    "builtin.identity": "builtin.identity",
+    "builtin.read": "builtin.read",
+    "builtin.write": "builtin.write",
+    "builtin.constant": "builtin.constant",
+    "builtin.rank": "builtin.rank",
+    "builtin.prand": "builtin.prand",
+    "builtin.table_to_tensor": "builtin.table_to_tensor",
+    "builtin.tensor_to_table": "builtin.tensor_to_table",
+    "builtin.debug_print": "builtin.debug_print",
+    "builtin.pack": "builtin.pack",
+    "builtin.unpack": "builtin.unpack",
+    # crypto
+    "crypto.keygen": "crypto.keygen",
+    "crypto.enc": "crypto.enc",
+    "crypto.dec": "crypto.dec",
+    "crypto.kem_keygen": "crypto.kem_keygen",
+    "crypto.kem_derive": "crypto.kem_derive",
+    "crypto.hkdf": "crypto.hkdf",
+    # phe
+    "phe.keygen": "phe.keygen",
+    "phe.encrypt": "phe.encrypt",
+    "phe.mul": "phe.mul",
+    "phe.add": "phe.add",
+    "phe.decrypt": "phe.decrypt",
+    # spu
+    "spu.seed_env": "spu.seed_env",
+    "spu.makeshares": "spu.makeshares",
+    "spu.reconstruct": "spu.reconstruct",
+    "mlir.pphlo": "mlir.pphlo",
+    # stablehlo
+    "mlir.stablehlo": "mlir.stablehlo",
+    # sql
+    "sql[duckdb]": "sql[duckdb]",
+    # tee
+    "tee.quote": "tee.quote",
+    "tee.attest": "tee.attest",
+}
 
 
 # --- RuntimeContext ---
@@ -114,13 +97,21 @@ def bind_all_ops(force: bool = False) -> None:
 class RuntimeContext:
     rank: int
     world_size: int
-    state: dict[str, dict[str, Any]]
-    cache: dict[str, Any]
+    bindings: Mapping[str, str] | None = None  # optional overrides
+    state: dict[str, dict[str, Any]] = field(default_factory=dict)
+    cache: dict[str, Any] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
 
-    @classmethod
-    def create(cls, rank: int, world_size: int) -> RuntimeContext:
-        bind_all_ops()  # ensure bindings loaded
-        return cls(rank=rank, world_size=world_size, state={}, cache={})
+    def __post_init__(self) -> None:
+        _ensure_impl_imported()
+        if self.bindings is not None:
+            for op, kid in self.bindings.items():
+                bind_op(op, kid)
+        else:
+            for op, kid in _DEFAULT_BINDINGS.items():
+                bind_op(op, kid)
+        # Initialize stats pocket
+        self.stats.setdefault("op_calls", {})
 
     def run_kernel(self, pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
         fn_type = pfunc.fn_type
@@ -151,6 +142,12 @@ class RuntimeContext:
             raw = fn(pfunc, *arg_list)
         finally:
             base._CTX_VAR.reset(token)  # type: ignore[attr-defined]
+        # Stats (best effort)
+        try:
+            op_calls = self.stats.setdefault("op_calls", {})
+            op_calls[fn_type] = op_calls.get(fn_type, 0) + 1
+        except Exception:  # pragma: no cover - never raise due to stats
+            pass
         expected = len(pfunc.outs_info)
         if expected == 0:
             if raw in (None, (), []):
@@ -179,6 +176,20 @@ class RuntimeContext:
     def reset(self) -> None:
         self.state.clear()
         self.cache.clear()
+
+    # ---- explicit (re)binding API ----
+    def bind_op(self, op_type: str, kernel_id: str, *, force: bool = False) -> None:
+        """Bind an operation to a kernel at runtime.
+
+        force=False (default) preserves any existing binding to avoid accidental
+        silent overrides. Use ``rebind_op`` or ``force=True`` to intentionally
+        change a binding.
+        """
+        base.bind_op(op_type, kernel_id, force=force)
+
+    def rebind_op(self, op_type: str, kernel_id: str) -> None:
+        """Force rebind an operation to a different kernel (shorthand)."""
+        base.bind_op(op_type, kernel_id, force=True)
 
 
 def _validate_table_arg(

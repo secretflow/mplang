@@ -249,7 +249,7 @@ def execute_computation(
 
     # Build evaluator
     # Explicit per-rank backend runtime (deglobalized)
-    runtime = RuntimeContext.create(rank, session.communicator.world_size)
+    runtime = RuntimeContext(rank=rank, world_size=session.communicator.world_size)
     evaluator: IEvaluator = create_evaluator(
         rank=rank, env=bindings, comm=session.communicator, runtime=runtime
     )

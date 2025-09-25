@@ -145,7 +145,7 @@ class Simulator(InterpContext):
 
         self._evaluators: list[IEvaluator] = []
         for rank in range(self.world_size()):
-            runtime = RuntimeContext.create(rank, self.world_size())
+            runtime = RuntimeContext(rank=rank, world_size=self.world_size())
             ev = create_evaluator(
                 rank,
                 {},  # the global environment for this rank
@@ -217,7 +217,7 @@ class Simulator(InterpContext):
         # Build per-rank evaluators with the per-party environment
         pts_evaluators: list[IEvaluator] = []
         for rank in range(self.world_size()):
-            runtime = RuntimeContext.create(rank, self.world_size())
+            runtime = RuntimeContext(rank=rank, world_size=self.world_size())
             ev = create_evaluator(
                 rank,
                 pts_env[rank],

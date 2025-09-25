@@ -43,7 +43,7 @@ class TestStablehloKernel:
                 raise RuntimeError("send should not be called in single-rank test")
 
         comm = _SingleComm(rank=0, world_size=1)
-        runtime = RuntimeContext.create(rank=0, world_size=1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         ev = create_evaluator(rank=0, env={}, comm=comm, runtime=runtime)
         self.ev = ev
         yield
@@ -151,7 +151,7 @@ class TestStablehloKernel:
                 raise RuntimeError("send should not be called in single-rank test")
 
         comm = _SingleComm(rank=0, world_size=1)
-        runtime = RuntimeContext.create(rank=0, world_size=1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         ev = create_evaluator(0, {}, comm, runtime)
         with pytest.raises(NotImplementedError):
             ev._exec_pfunc(invalid_pfunc, [])  # type: ignore[attr-defined]

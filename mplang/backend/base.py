@@ -136,9 +136,19 @@ def kernel_def(kernel_id: str, /, **meta: Any) -> Callable[[KernelFn], KernelFn]
     return _decorator
 
 
-def bind_op(op_type: str, kernel_id: str) -> None:
+def bind_op(op_type: str, kernel_id: str, *, force: bool = True) -> None:
+    """Bind an op_type to a registered kernel implementation.
+
+    Args:
+        op_type: Semantic operation name.
+        kernel_id: Previously registered kernel identifier.
+        force: If False and op_type already bound, keep existing binding.
+               If True (default), overwrite.
+    """
     if kernel_id not in _KERNELS:
         raise KeyError(f"kernel_id {kernel_id} not registered")
+    if not force and op_type in _BINDINGS:
+        return
     _BINDINGS[op_type] = kernel_id
 
 

@@ -27,7 +27,7 @@ from mplang.frontend import ibis_cc
 
 class TestDuckDBKernel:
     def test_duckdb_run(self):
-        runtime = RuntimeContext.create(0, 1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         tbl_name = "table"
         schema = {"a": "int", "b": "int", "c": "float"}
         in_tbl = ibis.table(schema=schema, name=tbl_name)

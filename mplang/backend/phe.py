@@ -60,7 +60,7 @@ class PublicKey:
     @property
     def max_float_value(self) -> float:
         """Maximum float value that can be encoded."""
-        return self.max_value / (2**self.fxp_bits)
+        return float(self.max_value / (2**self.fxp_bits))
 
     def __repr__(self) -> str:
         return f"PublicKey(scheme={self.scheme}, key_size={self.key_size}, max_value={self.max_value}, fxp_bits={self.fxp_bits})"
@@ -98,7 +98,7 @@ class PrivateKey:
     @property
     def max_float_value(self) -> float:
         """Maximum float value that can be encoded."""
-        return self.max_value / (2**self.fxp_bits)
+        return float(self.max_value / (2**self.fxp_bits))
 
     def __repr__(self) -> str:
         return f"PrivateKey(scheme={self.scheme}, key_size={self.key_size}, max_value={self.max_value}, fxp_bits={self.fxp_bits})"
@@ -140,7 +140,7 @@ class CipherText:
     @property
     def max_float_value(self) -> float:
         """Maximum float value that can be encoded."""
-        return self.max_value / (2**self.fxp_bits)
+        return float(self.max_value / (2**self.fxp_bits))
 
     def __repr__(self) -> str:
         return f"CipherText(dtype={self.semantic_dtype}, shape={self.semantic_shape}, scheme={self.scheme})"
@@ -188,7 +188,7 @@ def _range_encode_float(
 
 
 def _range_encode_mixed(
-    value, max_value: int, fxp_bits: int, modulus: int, semantic_dtype: DType
+    value: Any, max_value: int, fxp_bits: int, modulus: int, semantic_dtype: DType
 ) -> int:
     """
     Mixed encoding function - automatically handle integers and floats based on semantic type.
@@ -235,7 +235,7 @@ def _range_decode_float(
     decoded_int = _range_decode_integer(encoded_value, max_value, modulus)
 
     # Fixed-point decoding: scaled integer → float
-    return decoded_int / (2**fxp_bits)
+    return float(decoded_int / (2**fxp_bits))
 
 
 def _range_decode_mixed(
@@ -244,7 +244,7 @@ def _range_decode_mixed(
     fxp_bits: int,
     modulus: int,
     semantic_dtype: DType,
-):
+) -> Any:
     """
     Mixed decoding function - decode based on semantic type.
     Use semantic_dtype to choose between integer and float decoding.
@@ -442,8 +442,10 @@ def _phe_mul(pfunc: PFunction, ciphertext: CipherText, plaintext: Any) -> Any:
         if ciphertext.semantic_shape != result_shape:
             # Use numpy to create a properly broadcasted index mapping
             # Create a dummy array with same shape as ciphertext, fill with indices
-            dummy_ct = np.arange(np.prod(ciphertext.semantic_shape)).reshape(
-                ciphertext.semantic_shape
+            dummy_ct = (
+                np.arange(np.prod(ciphertext.semantic_shape))
+                .reshape(ciphertext.semantic_shape)
+                .astype(np.int64)
             )
             # Broadcast this to the result shape
             broadcasted_indices = np.broadcast_to(dummy_ct, result_shape).flatten()
@@ -547,7 +549,11 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
 
     # Broadcast ct1 if needed
     if ct1.semantic_shape != result_shape:
-        dummy_ct1 = np.arange(np.prod(ct1.semantic_shape)).reshape(ct1.semantic_shape)
+        dummy_ct1 = (
+            np.arange(np.prod(ct1.semantic_shape))
+            .reshape(ct1.semantic_shape)
+            .astype(np.int64)
+        )
         broadcasted_indices1 = np.broadcast_to(dummy_ct1, result_shape).flatten()
         raw_ct1: list[Any] = ct1.ct_data
         broadcasted_ct1_data = [raw_ct1[int(idx)] for idx in broadcasted_indices1]
@@ -556,7 +562,11 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
 
     # Broadcast ct2 if needed
     if ct2.semantic_shape != result_shape:
-        dummy_ct2 = np.arange(np.prod(ct2.semantic_shape)).reshape(ct2.semantic_shape)
+        dummy_ct2 = (
+            np.arange(np.prod(ct2.semantic_shape))
+            .reshape(ct2.semantic_shape)
+            .astype(np.int64)
+        )
         broadcasted_indices2 = np.broadcast_to(dummy_ct2, result_shape).flatten()
         raw_ct2: list[Any] = ct2.ct_data
         broadcasted_ct2_data = [raw_ct2[int(idx)] for idx in broadcasted_indices2]
@@ -625,8 +635,10 @@ def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
 
     # Broadcast ciphertext if needed
     if ciphertext.semantic_shape != result_shape:
-        dummy_ct = np.arange(np.prod(ciphertext.semantic_shape)).reshape(
-            ciphertext.semantic_shape
+        dummy_ct = (
+            np.arange(np.prod(ciphertext.semantic_shape))
+            .reshape(ciphertext.semantic_shape)
+            .astype(np.int64)
         )
         broadcasted_indices = np.broadcast_to(dummy_ct, result_shape).flatten()
         raw_ct: list[Any] = ciphertext.ct_data
@@ -869,7 +881,7 @@ def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorLike) ->
             is_zero_func = lambda x: x == 0
 
         # Helper function to create encrypted zero when needed
-        def get_encrypted_zero():
+        def get_encrypted_zero() -> Any:
             return _create_encrypted_zero(ciphertext)
 
         if len(ct_shape) == 0 and len(pt_shape) == 0:
@@ -1097,7 +1109,7 @@ def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorLike) ->
 
 
 @kernel_def("phe.gather")
-def _phe_gather(pfunc: PFunction, ciphertext: CipherText, indices) -> Any:
+def _phe_gather(pfunc: PFunction, ciphertext: CipherText, indices: Any) -> Any:
     """Execute gather operation on CipherText.
 
     Supports gathering from multidimensional CipherText using multidimensional indices.
@@ -1402,9 +1414,9 @@ def _phe_concat(pfunc: PFunction, c1: CipherText, c2: CipherText) -> Any:
 
     try:
         # Calculate result shape
-        result_shape = list(c1.semantic_shape)
-        result_shape[axis] = c1.semantic_shape[axis] + c2.semantic_shape[axis]
-        result_shape = tuple(result_shape)
+        result_shape_list = list(c1.semantic_shape)
+        result_shape_list[axis] = c1.semantic_shape[axis] + c2.semantic_shape[axis]
+        result_shape = tuple(result_shape_list)
 
         # Calculate the number of slices before the concatenation axis
         pre_axis_size = int(np.prod(c1.semantic_shape[:axis])) if axis > 0 else 1
@@ -1517,14 +1529,14 @@ def _phe_reshape(pfunc: PFunction, ciphertext: CipherText) -> Any:
                     raise ValueError(f"negative dimensions not allowed: {dim}")
 
         # Convert back to tuple
-        inferred_shape = tuple(inferred_shape)
+        final_shape = tuple(inferred_shape)
 
         # Validate that new shape has the same number of elements
-        new_size = int(np.prod(inferred_shape)) if inferred_shape else 1
+        new_size = int(np.prod(final_shape)) if final_shape else 1
 
         if old_size != new_size:
             raise ValueError(
-                f"Cannot reshape CipherText with {old_size} elements to shape {inferred_shape} "
+                f"Cannot reshape CipherText with {old_size} elements to shape {final_shape} "
                 f"with {new_size} elements"
             )
 
@@ -1533,7 +1545,7 @@ def _phe_reshape(pfunc: PFunction, ciphertext: CipherText) -> Any:
             CipherText(
                 ct_data=ciphertext.ct_data,  # Same encrypted data
                 semantic_dtype=ciphertext.semantic_dtype,
-                semantic_shape=inferred_shape,  # Use the inferred shape
+                semantic_shape=final_shape,  # Use the final shape
                 scheme=ciphertext.scheme,
                 key_size=ciphertext.key_size,
                 pk_data=ciphertext.pk_data,
@@ -1607,7 +1619,7 @@ def _phe_transpose(pfunc: PFunction, ciphertext: CipherText) -> Any:
 
         # For multidimensional transpose, we need to rearrange the encrypted data
         # Create mapping from old flat index to new flat index
-        def transpose_data(ct_data: list, old_shape: tuple, axes: tuple):
+        def transpose_data(ct_data: list, old_shape: tuple, axes: tuple) -> list:
             if len(old_shape) <= 1:
                 # 1D or scalar case - no actual transposition needed
                 return ct_data

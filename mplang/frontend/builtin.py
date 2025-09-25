@@ -15,7 +15,7 @@
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import UINT64
+from mplang.core.dtype import UINT8, UINT64
 from mplang.core.mpobject import MPObject  # Needed for constant() triad return typing
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
@@ -129,6 +129,39 @@ def debug_print(
     Accepts tensor/table type; MPObject positional (if provided) is captured automatically.
     """
     return x
+
+
+@_BUILTIN_MOD.simple_op()
+def pack(x: TensorType | TableType) -> TensorType:
+    """Type-only pack operator: models serialization into a byte vector.
+
+    The frontend only declares the type transformation; the runtime decides
+    whether any actual serialization takes place. The result is always a
+    one-dimensional UINT8 tensor with unknown length (-1 means runtime
+    determined).
+    """
+
+    if not isinstance(x, (TensorType, TableType)):
+        raise TypeError("pack expects TensorType or TableType input")
+
+    return TensorType(UINT8, (-1,))
+
+
+@_BUILTIN_MOD.simple_op()
+def unpack(b: TensorType, *, out_ty: TensorType | TableType) -> TensorType | TableType:
+    """Type-only unpack operator: inverse of `pack`.
+
+    Requires a one-dimensional UINT8 tensor input (length can be -1) and
+    returns the explicit `out_ty` type description.
+    """
+
+    if not isinstance(out_ty, (TensorType, TableType)):
+        raise TypeError("out_ty must be TensorType or TableType")
+
+    if b.dtype != UINT8 or len(b.shape) != 1:
+        raise TypeError("unpack expects a 1-D UINT8 tensor")
+
+    return out_ty
 
 
 @_BUILTIN_MOD.simple_op()

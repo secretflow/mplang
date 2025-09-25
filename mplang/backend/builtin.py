@@ -23,6 +23,7 @@ import pandas as pd
 from mplang.backend.base import cur_kctx, kernel_def
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
+from mplang.core.tensor import TensorType
 from mplang.utils import table_utils
 
 
@@ -160,3 +161,52 @@ def _debug_print(pfunc: PFunction, val: Any) -> Any:
     ctx = cur_kctx()
     print(f"[debug_print][rank={ctx.rank}] {prefix}{_summ(val)}")
     return val
+
+
+@kernel_def("builtin.pack")
+def _pack(pfunc: PFunction, value: Any) -> Any:
+    outs_info = pfunc.outs_info
+    if len(outs_info) != 1:
+        raise ValueError("builtin.pack expects single output type")
+    out_ty = outs_info[0]
+    if not isinstance(out_ty, TensorType):
+        raise TypeError("builtin.pack must return TensorType")
+    if out_ty.dtype.numpy_dtype() != np.uint8:
+        raise TypeError("builtin.pack output dtype must be uint8")
+
+    if isinstance(value, pd.DataFrame):
+        csv_bytes = table_utils.dataframe_to_csv(value)
+        return np.frombuffer(csv_bytes, dtype=np.uint8)
+
+    arr = _to_numpy(value)
+    return np.frombuffer(arr.tobytes(order="C"), dtype=np.uint8)
+
+
+@kernel_def("builtin.unpack")
+def _unpack(pfunc: PFunction, packed: Any) -> Any:
+    outs_info = pfunc.outs_info
+    if len(outs_info) != 1:
+        raise ValueError("builtin.unpack expects single output type")
+    out_ty = outs_info[0]
+
+    b = np.asarray(packed, dtype=np.uint8).reshape(-1)
+
+    if isinstance(out_ty, TensorType):
+        np_dtype = out_ty.dtype.numpy_dtype()
+        shape = tuple(out_ty.shape)
+        if any(dim < 0 for dim in shape):
+            raise ValueError("builtin.unpack does not support dynamic tensor shapes")
+        elem_count = int(np.prod(shape))
+        expected = elem_count * np.dtype(np_dtype).itemsize
+        if b.size != expected:
+            raise ValueError(
+                f"unpack size mismatch: got {b.size} bytes, expect {expected} for {np_dtype} {shape}"
+            )
+        arr = np.frombuffer(b.tobytes(), dtype=np_dtype)
+        return arr.reshape(shape)
+
+    if isinstance(out_ty, TableType):
+        csv_bytes = b.tobytes()
+        return table_utils.csv_to_dataframe(csv_bytes)
+
+    raise TypeError("builtin.unpack output type must be TensorType or TableType")

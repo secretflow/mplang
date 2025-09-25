@@ -94,9 +94,10 @@ def _compile_jax(
     *args: Any,
     **kwargs: Any,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    """Compile a JAX function into SPU pphlo MLIR representation."""
+    """Compile a JAX function into SPU pphlo MLIR and wrap as PFunction.
 
-    """Compile a JAX function into SPU pphlo MLIR representation."""
+    Resulting PFunction uses fn_type 'spu.run_pphlo'.
+    """
 
     def is_variable(arg: Any) -> bool:
         return isinstance(arg, MPObject)
@@ -132,7 +133,7 @@ def _compile_jax(
     executable_code = executable_code.decode("utf-8")
 
     pfunc = PFunction(
-        fn_type="mlir.pphlo",
+        fn_type="spu.run_pphlo",
         ins_info=tuple(TensorType.from_obj(x) for x in in_vars),
         outs_info=tuple(output_tensor_infos),
         fn_name=get_fn_name(fn),

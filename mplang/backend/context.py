@@ -79,7 +79,7 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     "spu.seed_env": "spu.seed_env",
     "spu.makeshares": "spu.makeshares",
     "spu.reconstruct": "spu.reconstruct",
-    "mlir.pphlo": "mlir.pphlo",
+    "spu.run_pphlo": "spu.run_pphlo",
     # stablehlo
     "mlir.stablehlo": "mlir.stablehlo",
     # sql

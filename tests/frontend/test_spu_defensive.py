@@ -49,7 +49,7 @@ from tests.frontend.dummy import DummyTensor
 def test_basic_and_multi_outputs(func, input_shapes, expected_outputs):
     args = [DummyTensor(jnp.float32, shape) for shape in input_shapes]
     pfunc, _ins, _tree = spu.jax_compile(func, *args)
-    assert pfunc.fn_type == "mlir.pphlo"
+    assert pfunc.fn_type == "spu.run_pphlo"
     assert len(pfunc.outs_info) == expected_outputs
 
 

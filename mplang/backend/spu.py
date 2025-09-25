@@ -186,16 +186,18 @@ def _spu_reconstruct(pfunc: PFunction, *args: Any) -> Any:
     return reconstructed
 
 
-@kernel_def("mlir.pphlo")
+@kernel_def("spu.run_pphlo")
 def _spu_run_mlir(pfunc: PFunction, *args: Any) -> Any:
-    """Execute compiled SPU function (mlir.pphlo) and return SpuValue outputs.
+    """Execute compiled SPU function (spu.run_pphlo) and return SpuValue outputs.
 
     Participation rule: a rank participates iff its entry in the stored
     link_ctx list is non-None. This allows us to allocate a world-sized list
     (indexed by global rank) and simply assign None for non-SPU parties.
     """
-    if pfunc.fn_type != "mlir.pphlo":
-        raise ValueError(f"Unsupported format: {pfunc.fn_type}. Expected 'mlir.pphlo'")
+    if pfunc.fn_type != "spu.run_pphlo":
+        raise ValueError(
+            f"Unsupported format: {pfunc.fn_type}. Expected 'spu.run_pphlo'"
+        )
 
     cfg, _ = _get_spu_config_and_world()
     pocket = _get_spu_pocket()

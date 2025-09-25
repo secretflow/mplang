@@ -197,7 +197,7 @@ def batch_feature_wise_bucket_sum_mplang(
             first_result = bucket_results[0]
             for i in range(1, len(bucket_results)):
                 first_result = simp.runAt(rank, phe.concat)(
-                    [first_result, bucket_results[i]], axis=0
+                    first_result, bucket_results[i], axis=0
                 )
 
             return first_result
@@ -1420,6 +1420,7 @@ def fit_tree_ensemble(
     )(initial_y_pred)
 
     trees: List[Tree] = []
+    # TODO: add more controls of keygen, e.g., key size
     pkey, skey = simp.runAt(active_party_id, phe.keygen)()
     world_mask = mplang.Mask.all(1 + len(passive_party_ids))
     pkey = mpi.bcast_m(world_mask, active_party_id, pkey)

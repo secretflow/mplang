@@ -32,7 +32,7 @@ def test_mul_validation():
 
     with pytest.raises(
         ValueError,
-        match="PHE multiplication does not support float x float operations",
+        match="PHE multiplication does not support floating-point plaintext",
     ):
         phe.mul(float_ct, float_pt)
 

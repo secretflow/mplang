@@ -90,7 +90,7 @@ def dot(ciphertext: TensorType, plaintext: TensorType) -> TensorType:
 
 
 @_PHE_MOD.simple_op()
-def gather(ciphertext: TensorType, indices: TensorType, axis: int = 0) -> TensorType:
+def gather(ciphertext: TensorType, indices: TensorType, *, axis: int = 0) -> TensorType:
     """Gather elements from ciphertext using indices.
 
     Args:
@@ -117,6 +117,7 @@ def scatter(
     ciphertext: TensorType,
     indices: TensorType,
     updates: TensorType,
+    *,
     axis: int = 0,
 ) -> TensorType:
     """Scatter updates into ciphertext at specified indices.
@@ -134,36 +135,33 @@ def scatter(
 
 
 @_PHE_MOD.simple_op()
-def concat(operands: list[TensorType], axis: int = 0) -> TensorType:
+def concat(operand0: TensorType, operand1: TensorType, *, axis: int = 0) -> TensorType:
     """Concatenate ciphertext tensors along specified axis.
 
     Args:
-        operands: List of ciphertext operands to concatenate
+        operand0: The first ciphertext operand to concatenate
+        operand1: The second ciphertext operand to concatenate
         axis: Axis along which to concatenate
 
     Returns:
         TensorType: Result tensor type with computed shape following numpy concatenation rules
     """
-    if not operands:
-        raise ValueError("concat requires at least one operand")
-
     # All operands should have same dtype
-    first_dtype = operands[0].dtype
-    for op_ty in operands[1:]:
-        if op_ty.dtype != first_dtype:
-            raise ValueError("All operands must have the same dtype for concatenation")
+    first_dtype = operand0.dtype
+    if operand1.dtype != first_dtype:
+        raise ValueError("All operands must have the same dtype for concatenation")
 
     # Calculate result shape using numpy concatenation logic
     import numpy as np
 
-    dummy_arrays = [np.zeros(op_ty.shape) for op_ty in operands]
+    dummy_arrays = [np.zeros(operand0.shape), np.zeros(operand1.shape)]
     dummy_result = np.concatenate(dummy_arrays, axis=axis)
 
     return TensorType(first_dtype, dummy_result.shape)
 
 
 @_PHE_MOD.simple_op()
-def reshape(ciphertext: TensorType, new_shape: tuple[int, ...]) -> TensorType:
+def reshape(ciphertext: TensorType, *, new_shape: tuple[int, ...]) -> TensorType:
     """Reshape ciphertext to new shape.
 
     Args:
@@ -186,7 +184,7 @@ def reshape(ciphertext: TensorType, new_shape: tuple[int, ...]) -> TensorType:
 
 @_PHE_MOD.simple_op()
 def transpose(
-    ciphertext: TensorType, axes: tuple[int, ...] | None = None
+    ciphertext: TensorType, *, axes: tuple[int, ...] | None = None
 ) -> TensorType:
     """Transpose ciphertext by permuting axes.
 

@@ -94,7 +94,7 @@ def test_2d_matrix_operations():
     # Step 5: Perform various tensor operations at Party 0
 
     # Test RESHAPE: reshape e0 from (2,3) to (6,)
-    reshaped_e0 = simp.runAt(0, phe.reshape)(e0, (6,))
+    reshaped_e0 = simp.runAt(0, phe.reshape)(e0, new_shape=(6,))
 
     # Test TRANSPOSE: transpose e0 from (2,3) to (3,2)
     transposed_e0 = simp.runAt(0, phe.transpose)(e0)
@@ -115,7 +115,7 @@ def test_2d_matrix_operations():
     gathered = simp.runAt(0, phe.gather)(reshaped_e0, gather_indices)
 
     # Test CONCAT: concatenate e0 and e2 along axis 0 -> (4,3)
-    concat_result = simp.runAt(0, phe.concat)([e0, e2], axis=0)
+    concat_result = simp.runAt(0, phe.concat)(e0, e2, axis=0)
 
     # Test SCATTER: create updates and scatter into reshaped_e0
     def create_scatter_indices():
@@ -215,7 +215,7 @@ def test_3d_tensor_operations():
     gathered_axis2 = simp.runAt(0, phe.gather)(e0, indices_axis2, axis=2)
 
     # Test CONCAT: concatenate e0 and e2 along axis 0 -> (4,2,3)
-    concat_result = simp.runAt(0, phe.concat)([e0, e2], axis=0)
+    concat_result = simp.runAt(0, phe.concat)(e0, e2, axis=0)
 
     # Test SCATTER: create updates and scatter into reshaped_e0
     def create_3d_scatter_indices():

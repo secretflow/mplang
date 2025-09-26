@@ -1445,7 +1445,7 @@ class TestPHEKernels:
 
     def test_large_key_size(self):
         """Test with larger key size for better security."""
-        runtime = create_runtime(0, 1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         scheme = "paillier"
         key_size = 1024  # Larger key size
 

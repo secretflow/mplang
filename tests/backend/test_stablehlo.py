@@ -20,7 +20,7 @@ import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
 from mplang.backend import stablehlo  # noqa: F401
-from mplang.backend.base import create_runtime
+from mplang.backend.context import RuntimeContext
 from mplang.core.expr.evaluator import create_evaluator
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
@@ -43,7 +43,7 @@ class TestStablehloKernel:
                 raise RuntimeError("send should not be called in single-rank test")
 
         comm = _SingleComm(rank=0, world_size=1)
-        runtime = create_runtime(rank=0, world_size=1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         ev = create_evaluator(rank=0, env={}, comm=comm, runtime=runtime)
         self.ev = ev
         yield
@@ -151,7 +151,7 @@ class TestStablehloKernel:
                 raise RuntimeError("send should not be called in single-rank test")
 
         comm = _SingleComm(rank=0, world_size=1)
-        runtime = create_runtime(rank=0, world_size=1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         ev = create_evaluator(0, {}, comm, runtime)
         with pytest.raises(NotImplementedError):
             ev._exec_pfunc(invalid_pfunc, [])  # type: ignore[attr-defined]

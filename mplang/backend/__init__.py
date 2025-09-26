@@ -11,10 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Backend module for mplang.
-
-This module contains handlers that execute serialized functions on individual
-parties in a multi-party computation system.
-"""

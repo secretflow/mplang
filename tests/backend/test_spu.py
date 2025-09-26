@@ -18,7 +18,7 @@ Rewritten to remove deprecated SpuHandler usage. These tests exercise the
 registered kernels:
     - spu.makeshares
     - spu.reconstruct
-    - mlir.pphlo (compiled via frontend.spu.jax_compile)
+    - spu.run_pphlo (compiled via frontend.spu.jax_compile)
 
 We keep the tests intentionally lean: just enough coverage to ensure the new
 flat kernel pathway functions for single-party (REF2K) and multi-party (SEMI2K)
@@ -33,10 +33,8 @@ import jax.numpy as jnp
 import numpy as np
 import spu.libspu as libspu
 
-from mplang.backend.base import (
-    create_runtime,
-    list_registered_kernels,
-)
+from mplang.backend.base import list_kernels
+from mplang.backend.context import RuntimeContext
 from mplang.backend.spu import SpuValue
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
@@ -125,8 +123,8 @@ def _reconstruct_pfunc(example: np.ndarray, world_size: int) -> PFunction:
 
 class TestSpuKernels:
     def test_kernel_registry(self):
-        for name in ["spu.makeshares", "spu.reconstruct", "mlir.pphlo"]:
-            assert name in list_registered_kernels()
+        for name in ["spu.makeshares", "spu.reconstruct", "spu.run_pphlo"]:
+            assert name in list_kernels()
 
     def test_makeshares_reconstruct_single_party(self):
         world = 1
@@ -134,7 +132,7 @@ class TestSpuKernels:
             protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        runtime = create_runtime(0, world)
+        runtime = RuntimeContext(rank=0, world_size=world)
         # Seed SPU env via kernel
         seed_fn = PFunction(
             fn_type="spu.seed_env",
@@ -162,7 +160,7 @@ class TestSpuKernels:
         )
         link_ctxs = create_mem_link_contexts(world)
         # seed rank0 state
-        runtime0 = create_runtime(0, world)
+        runtime0 = RuntimeContext(rank=0, world_size=world)
         seed0 = PFunction(
             fn_type="spu.seed_env",
             ins_info=(),
@@ -173,7 +171,7 @@ class TestSpuKernels:
         )
         runtime0.run_kernel(seed0, [])
         # seed rank1 state to simulate multi-rank kernel contexts
-        runtime1 = create_runtime(1, world)
+        runtime1 = RuntimeContext(rank=1, world_size=world)
         seed1 = PFunction(
             fn_type="spu.seed_env",
             ins_info=(),
@@ -192,13 +190,13 @@ class TestSpuKernels:
         out = runtime0.run_kernel(rc, list(shares))[0]
         np.testing.assert_array_equal(out, x)
 
-    def test_mlir_pphlo_single_party(self):
+    def test_spu_run_pphlo_single_party(self):
         world = 1
         cfg = libspu.RuntimeConfig(
             protocol=libspu.ProtocolKind.REF2K, field=libspu.FieldType.FM128
         )
         link_ctxs = create_mem_link_contexts(world)
-        runtime = create_runtime(0, world)
+        runtime = RuntimeContext(rank=0, world_size=world)
         seed = PFunction(
             fn_type="spu.seed_env",
             ins_info=(),
@@ -226,7 +224,7 @@ class TestSpuKernels:
         out = runtime.run_kernel(rc, [result_share])[0]
         np.testing.assert_allclose(out, expected, rtol=1e-5)
 
-    def test_mlir_pphlo_multiparty(self):
+    def test_spu_run_pphlo_multiparty(self):
         world = 2
         cfg = libspu.RuntimeConfig(
             protocol=libspu.ProtocolKind.SEMI2K, field=libspu.FieldType.FM128
@@ -236,7 +234,7 @@ class TestSpuKernels:
         # Initialize per-rank runtime & seed (store explicit runtimes)
         runtimes = {}
         for r in range(world):
-            rt = create_runtime(r, world)
+            rt = RuntimeContext(rank=r, world_size=world)
             runtimes[r] = rt
             seed_fn = PFunction(
                 fn_type="spu.seed_env",
@@ -258,7 +256,7 @@ class TestSpuKernels:
         x_shares: list[SpuValue] = runtimes[0].run_kernel(mkx, [x])
         y_shares: list[SpuValue] = runtimes[0].run_kernel(mky, [y])
 
-        # Run mlir.pphlo concurrently per rank to satisfy interactive protocol
+        # Run spu.run_pphlo concurrently per rank to satisfy interactive protocol
         def party(rank: int, xs: SpuValue, ys: SpuValue):
             rt = runtimes[rank]
             return rt.run_kernel(pfunc, [xs, ys])[0]

@@ -129,7 +129,7 @@ class FeModule(ABC):
         - You need compilation/stateful behavior/dynamic routing, multiple PFunctions, or complex capture flows.
 
     Tips:
-    - Keep routing information in PFunction.fn_type (e.g., "builtin.read", "sql[duckdb]", "mlir.stablehlo").
+    - Keep routing information in PFunction.fn_type (e.g., "builtin.read", "sql.run", "mlir.stablehlo").
     - Avoid backend-specific logic in kernels; only validate and shape types.
     - Prefer keyword-only attributes in typed_op kernels for clarity (def op(x: MPObject, *, attr: int)).
     """

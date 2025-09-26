@@ -15,7 +15,8 @@
 import numpy as np
 import pytest
 
-from mplang.backend.base import create_runtime, list_registered_kernels
+from mplang.backend.base import list_kernels
+from mplang.backend.context import RuntimeContext
 from mplang.backend.phe import CipherText, PrivateKey, PublicKey
 from mplang.core.dtype import INT32, UINT8
 from mplang.core.pfunc import PFunction
@@ -26,7 +27,7 @@ class TestPHEKernels:
     """Compact PHE kernel tests (clean rewrite)."""
 
     def setup_method(self):
-        self.runtime = create_runtime(0, 1)
+        self.runtime = RuntimeContext(rank=0, world_size=1)
         self.scheme = "paillier"
         self.key_size = 512
 
@@ -59,7 +60,7 @@ class TestPHEKernels:
             "phe.reshape",
             "phe.transpose",
         ]:
-            assert name in list_registered_kernels()
+            assert name in list_kernels()
 
     def test_keygen(self):
         pk, sk = self._keygen()
@@ -1444,7 +1445,7 @@ class TestPHEKernels:
 
     def test_large_key_size(self):
         """Test with larger key size for better security."""
-        runtime = create_runtime(0, 1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         scheme = "paillier"
         key_size = 1024  # Larger key size
 

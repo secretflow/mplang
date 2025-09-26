@@ -18,7 +18,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from mplang.backend.base import create_runtime
+from mplang.backend.context import RuntimeContext
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 
@@ -28,7 +28,7 @@ class TestBuiltinHandler:
 
     def setup_method(self):
         # initialize backend context for rank 0 (world_size=1) once per test
-        self.runtime = create_runtime(0, 1)
+        self.runtime = RuntimeContext(rank=0, world_size=1)
 
     @staticmethod
     def _exec_static(runtime, pfunc: PFunction, args: list):
@@ -40,9 +40,9 @@ class TestBuiltinHandler:
     def test_list_fn_names(self):
         """Test that handler lists correct function names."""
         # list_registered_kernels lives in backend.base; import lazily
-        from mplang.backend.base import list_registered_kernels
+        from mplang.backend.base import list_kernels
 
-        kernels = list_registered_kernels()
+        kernels = list_kernels()
         for expected in [
             "builtin.identity",
             "builtin.read",

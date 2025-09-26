@@ -20,7 +20,7 @@ from mplang.backend.base import kernel_def
 from mplang.core.pfunc import PFunction
 
 
-@kernel_def("sql[duckdb]")
+@kernel_def("duckdb.run_sql")
 def _duckdb_sql(pfunc: PFunction, *args: Any) -> Any:
     import duckdb
     import pandas as pd

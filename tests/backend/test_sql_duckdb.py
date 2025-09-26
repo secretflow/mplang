@@ -19,7 +19,7 @@ import pytest
 
 import mplang
 from mplang import simp
-from mplang.backend.base import create_runtime
+from mplang.backend.context import RuntimeContext
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.frontend import ibis_cc
@@ -27,7 +27,7 @@ from mplang.frontend import ibis_cc
 
 class TestDuckDBKernel:
     def test_duckdb_run(self):
-        runtime = create_runtime(0, 1)
+        runtime = RuntimeContext(rank=0, world_size=1)
         tbl_name = "table"
         schema = {"a": "int", "b": "int", "c": "float"}
         in_tbl = ibis.table(schema=schema, name=tbl_name)
@@ -35,9 +35,8 @@ class TestDuckDBKernel:
         result_expr = in_tbl["a"].add(in_tbl["b"])  # type: ignore[attr-defined]
         new_table = in_tbl.mutate(d=result_expr)
         pfn = ibis_cc.ibis2sql(new_table, [in_tbl.schema()], [tbl_name])
-
-        # Build PFunction for duckdb kernel is already done by ibis2sql (fn_type sql[duckdb])
-        assert isinstance(pfn, PFunction) and pfn.fn_type == "sql[duckdb]"
+        # Build PFunction for generic sql run op (fn_type sql.run)
+        assert isinstance(pfn, PFunction) and pfn.fn_type == "sql.run"
         # outs_info produced from ibis schema; sanity
         assert len(pfn.outs_info) == 1
         assert isinstance(pfn.outs_info[0], TableType)

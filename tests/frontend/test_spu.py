@@ -63,7 +63,7 @@ def test_jax_compile_simple_add() -> None:
     a = DummyTensor(jnp.float32, (2,))
     b = DummyTensor(jnp.float32, (2,))
     pfunc, ins, _out_tree = spu.jax_compile(fn, a, b)
-    assert pfunc.fn_type == "mlir.pphlo"
+    assert pfunc.fn_type == "spu.run_pphlo"
     assert len(ins) == 2
     assert len(pfunc.outs_info) == 1
     assert pfunc.fn_text is not None and "func" in pfunc.fn_text

@@ -57,8 +57,9 @@ def ibis2sql(
     outs_info = [_convert(expr.schema())]
 
     sql = ibis.to_sql(expr, dialect="duckdb")
+    # Emit generic sql.run op; runtime maps to backend-specific kernel.
     pfn = PFunction(
-        fn_type="sql[duckdb]",
+        fn_type="sql.run",
         fn_name=fn_name,
         fn_text=sql,
         ins_info=tuple(ins_info),

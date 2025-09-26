@@ -78,7 +78,6 @@ def batch_feature_wise_bucket_sum_mplang(
         List of encrypted cumulative sums, each element shape (feature_size * bucket_num, gh_size)
     """
 
-    # Get dimensions
     feature_size = order_map.shape[1]
 
     def compute_using_mask_multiplication():
@@ -94,7 +93,7 @@ def batch_feature_wise_bucket_sum_mplang(
 
         def extract_group_mask(group_idx):
             def slice_group(sg_map):
-                return sg_map[group_idx]  # Extract group_idx-th row
+                return sg_map[group_idx]
 
             return simp.runAt(rank, slice_group)(subgroup_map)
 
@@ -921,7 +920,9 @@ def build_tree(
             # bt_level: (m,), with values in (0,1,2,...,n_nodes_level-1)
             cur_pp_subgroup_map = simp.runAt(
                 cur_pp_rank, partial(_get_subgroup_map, group_size=n_nodes_level)
-            )(bt_levels)  # (n_nodes_level, m)
+            )(
+                bt_levels
+            )  # (n_nodes_level, m)
 
             # 1.2.2 pp encrypt the accumulated histogram.
             cur_pp_enc_hist_cumsum: list[MPObject] = (
@@ -935,9 +936,9 @@ def build_tree(
                 )
             )
 
-            assert len(cur_pp_enc_hist_cumsum) == n_nodes_level, (
-                f"Expect {n_nodes_level} outputs, got {len(cur_pp_enc_hist_cumsum)}"
-            )
+            assert (
+                len(cur_pp_enc_hist_cumsum) == n_nodes_level
+            ), f"Expect {n_nodes_level} outputs, got {len(cur_pp_enc_hist_cumsum)}"
 
             # 1.2.3 pp send the encrypted histogram to ap.
             cur_pp_enc_hist_cumsum: list[MPObject] = p2p_list(
@@ -967,7 +968,9 @@ def build_tree(
                     gamma=gamma,
                     min_child_weight=min_child_weight,
                 ),
-            )(cur_pp_dec_hist_cumsum)
+            )(
+                cur_pp_dec_hist_cumsum
+            )
             cur_level_best_gains.append(cur_pp_best_gains)
             cur_level_best_features.append(cur_pp_best_features)
             cur_level_best_threshold_idxs.append(cur_pp_best_threshold_idxs)
@@ -1511,9 +1514,9 @@ class SecureBoost:
 
         # TODO: support more general party ids
         assert self.active_party_id == 0, "Only active party id 0 is supported now"
-        assert self.passive_party_ids == list(range(1, len(passive_party_ids) + 1)), (
-            f"Only passive party ids {list(range(1, len(passive_party_ids) + 1))} are supported now"
-        )
+        assert self.passive_party_ids == list(
+            range(1, len(passive_party_ids) + 1)
+        ), f"Only passive party ids {list(range(1, len(passive_party_ids) + 1))} are supported now"
 
         self.trees: TreeEnsemble | None = None
 
@@ -1528,9 +1531,9 @@ class SecureBoost:
             y_data: the label vector of the active party
         """
         self._check_all_datas(all_datas)
-        assert y_data.pmask == self.active_party_mask, (
-            f"y_data.pmask: {y_data.pmask}, self.active_party_mask: {self.active_party_mask}"
-        )
+        assert (
+            y_data.pmask == self.active_party_mask
+        ), f"y_data.pmask: {y_data.pmask}, self.active_party_mask: {self.active_party_mask}"
 
         # 1. do the binning.
         # TODO: support more sophisticated binning schemes.
@@ -1625,9 +1628,9 @@ class SecureBoost:
             assert pp_data.pmask == self.passive_party_masks[i]
         # check whether ap_data and pp_datas have the same number of rows
         for pp_data in pp_datas:
-            assert pp_data.shape[0] == ap_data.shape[0], (
-                "The number of rows of ap_data and pp_datas must be the same"
-            )
+            assert (
+                pp_data.shape[0] == ap_data.shape[0]
+            ), "The number of rows of ap_data and pp_datas must be the same"
 
     # debug only
     def predict_leaves(self, all_datas: list[MPObject]) -> MPObject:

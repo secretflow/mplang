@@ -89,7 +89,8 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     # stablehlo
     "mlir.stablehlo": "mlir.stablehlo",
     # sql
-    "sql[duckdb]": "sql[duckdb]",
+    # generic SQL op; backend-specific kernel id for duckdb
+    "sql.run": "duckdb.run_sql",
     # tee
     "tee.quote": "tee.quote",
     "tee.attest": "tee.attest",

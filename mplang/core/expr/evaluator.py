@@ -311,8 +311,14 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
             assert len(cond_result) == 1, (
                 f"Condition function must return a single value, got {cond_result}"
             )
+            cond_value = cond_result[0]
+            if cond_value is None:
+                raise RuntimeError(
+                    "while_loop condition produced None on rank "
+                    f"{self.rank}; ensure the predicate yields a boolean for every party."
+                )
 
-            if not cond_result[0]:
+            if not cond_value:
                 break
 
             # Call body function with same arguments
@@ -446,7 +452,13 @@ class IterativeEvaluator(EvalSemantic):
                         node.cond_fn.body, {**env, **cond_env}
                     )
                     assert len(cond_vals) == 1
-                    if not bool(cond_vals[0]):
+                    cond_val = cond_vals[0]
+                    if cond_val is None:
+                        raise RuntimeError(
+                            "while_loop condition produced None on rank "
+                            f"{self.rank}; ensure the predicate yields a boolean for every party."
+                        )
+                    if not bool(cond_val):
                         break
                     body_env = dict(zip(node.body_fn.params, state, strict=True))
                     new_state = self._iter_eval_graph(

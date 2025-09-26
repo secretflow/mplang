@@ -33,7 +33,14 @@ from mplang.core.dtype import FLOAT32, INT32
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
-from mplang.core.primitive import constant, prank, pshfl_s, uniform_cond, while_loop
+from mplang.core.primitive import (
+    constant,
+    prank,
+    pshfl_s,
+    set_mask,
+    uniform_cond,
+    while_loop,
+)
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
 
@@ -1391,6 +1398,180 @@ class TestWhileLoop:
         # Party 1: 0 -> 2 -> 4 (stops when counter >= 4)
         assert results[0].values[0] == 6  # Party 0: 3 iterations
         assert results[0].values[1] == 4  # Party 1: 2 iterations
+
+    def test_while_loop_subset_state_mask(self):
+        """Loop state and control stay on subset of parties."""
+
+        cluster_spec = ClusterSpec.simple(world_size=3)
+        full_mask = Mask(0b111)
+        subset_mask = Mask(0b011)
+        trace_ctx = TraceContext(cluster_spec=cluster_spec, mask=full_mask)
+        simulator = Simulator.simple(world_size=3)
+
+        def subset_loop():
+            init_state = set_mask(constant(np.int64(0)), subset_mask)
+            threshold = set_mask(constant(np.int64(3)), subset_mask)
+            step = set_mask(constant(np.int64(1)), subset_mask)
+
+            def cond_fn(state):
+                subset_pred = simp.run(lambda val, limit: val < limit)(state, threshold)
+                return pshfl_s(subset_pred, full_mask, [Rank(0), Rank(0), Rank(0)])
+
+            def body_fn(state):
+                return simp.run(lambda val, inc: val + inc)(state, step)
+
+            return while_loop(cond_fn, body_fn, init_state)
+
+        with with_ctx(trace_ctx):
+            traced_fn = trace(trace_ctx, subset_loop)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+        expr = func_expr.body
+        results = simulator.evaluate(expr, {})
+
+        assert len(results) == 1
+        sim_var = results[0]
+        assert isinstance(sim_var, SimVar)
+        assert sim_var.mptype.pmask == subset_mask
+
+        values = sim_var.values
+        assert len(values) == 3
+        assert values[0] == 3
+        assert values[1] == 3
+        assert values[2] is None
+
+    def test_while_loop_subset_context_mask_success(self):
+        """Trace under subset context mask; predicate pmask==context mask so no broadcast needed.
+
+        Ensures static pmask validation (design A) does NOT raise when the trace context
+        itself is the subset. Predicate pmask equals the context mask.
+        """
+        # Use a 2-party cluster because only parties 0 and 1 participate.
+        cluster_spec = ClusterSpec.simple(world_size=2)
+        subset_mask = Mask(0b11)  # parties 0 and 1
+        trace_ctx = TraceContext(cluster_spec=cluster_spec, mask=subset_mask)
+        simulator = Simulator.simple(world_size=2)
+
+        def subset_loop():
+            init_state = set_mask(constant(np.int64(0)), subset_mask)
+            threshold = set_mask(constant(np.int64(3)), subset_mask)
+            step = set_mask(constant(np.int64(1)), subset_mask)
+
+            def cond_fn(state):
+                # Returns bool with pmask=subset_mask (no broadcast)
+                return simp.run(lambda val, limit: val < limit)(state, threshold)
+
+            def body_fn(state):
+                return simp.run(lambda val, inc: val + inc)(state, step)
+
+            return while_loop(cond_fn, body_fn, init_state)
+
+        with with_ctx(trace_ctx):
+            traced_fn = trace(trace_ctx, subset_loop)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+        expr = func_expr.body
+        results = simulator.evaluate(expr, {})
+
+        assert len(results) == 1
+        sim_var = results[0]
+        assert isinstance(sim_var, SimVar)
+        assert sim_var.mptype.pmask == subset_mask
+        values = sim_var.values
+        assert len(values) == 2
+        assert values[0] == 3
+        assert values[1] == 3
+
+    def test_while_loop_predicate_static_pmask_mismatch_error(self):
+        """Full context mask but predicate has smaller static pmask -> trace-time ValueError.
+
+        We purposely do NOT broadcast the subset predicate to full mask, expecting the
+        new static pmask validation in while_loop to raise.
+        """
+        cluster_spec = ClusterSpec.simple(world_size=3)
+        full_mask = Mask(0b111)
+        subset_mask = Mask(0b011)
+        trace_ctx = TraceContext(cluster_spec=cluster_spec, mask=full_mask)
+
+        def bad_loop():
+            init_state = set_mask(constant(np.int64(0)), subset_mask)
+            threshold = set_mask(constant(np.int64(2)), subset_mask)
+            step = set_mask(constant(np.int64(1)), subset_mask)
+
+            def cond_fn(state):
+                # Returns bool with pmask=subset_mask only; no broadcast.
+                return simp.run(lambda val, limit: val < limit)(state, threshold)
+
+            def body_fn(state):
+                return simp.run(lambda val, inc: val + inc)(state, step)
+
+            return while_loop(cond_fn, body_fn, init_state)
+
+        with with_ctx(trace_ctx):
+            with pytest.raises(
+                ValueError, match=r"while_loop predicate static pmask mismatch"
+            ):
+                trace(trace_ctx, bad_loop)
+
+    def test_while_loop_cond_body_with_aux_party(self):
+        """Loop state on subset while cond/body still invoke a third party."""
+
+        cluster_spec = ClusterSpec.simple(world_size=3)
+        full_mask = Mask(0b111)
+        subset_mask = Mask(0b011)
+        aux_mask = Mask(0b100)
+        trace_ctx = TraceContext(cluster_spec=cluster_spec, mask=full_mask)
+        simulator = Simulator.simple(world_size=3)
+
+        def cooperative_loop():
+            subset_state = set_mask(constant(np.int64(0)), subset_mask)
+            aux_state = set_mask(constant(np.int64(0)), aux_mask)
+
+            subset_limit = set_mask(constant(np.int64(6)), subset_mask)
+            subset_step = set_mask(constant(np.int64(2)), subset_mask)
+            aux_step = set_mask(constant(np.int64(1)), aux_mask)
+
+            def cond_fn(states):
+                sub_val, aux_val = states
+
+                # Auxiliary party executes a helper kernel (result ignored by others)
+                _ = simp.run(lambda val, inc: val + inc)(aux_val, aux_step)
+                subset_pred = simp.run(lambda val, limit: val < limit)(
+                    sub_val, subset_limit
+                )
+                # Broadcast predicate so every party observes the same boolean
+                return pshfl_s(subset_pred, full_mask, [Rank(0), Rank(0), Rank(0)])
+
+            def body_fn(states):
+                sub_val, aux_val = states
+
+                next_sub = simp.run(lambda val, step: val + step)(sub_val, subset_step)
+                next_aux = simp.run(lambda val, inc: val + inc)(aux_val, aux_step)
+
+                return (next_sub, next_aux)
+
+            return while_loop(cond_fn, body_fn, (subset_state, aux_state))
+
+        with with_ctx(trace_ctx):
+            traced_fn = trace(trace_ctx, cooperative_loop)
+
+        func_expr = traced_fn.make_expr()
+        assert func_expr is not None
+        expr = func_expr.body
+        results = simulator.evaluate(expr, {})
+
+        assert len(results) == 2
+        subset_result, aux_result = results
+
+        assert isinstance(subset_result, SimVar)
+        assert subset_result.mptype.pmask == subset_mask
+        assert subset_result.values == [6, 6, None]
+
+        assert isinstance(aux_result, SimVar)
+        assert aux_result.mptype.pmask == aux_mask
+        assert aux_result.values == [None, None, 3]
 
     def test_nested_while_with_conditional(self, simulator, trace_context):
         """Test: While_loop containing conditional operations.

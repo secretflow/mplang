@@ -75,6 +75,12 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     "phe.mul": "phe.mul",
     "phe.add": "phe.add",
     "phe.decrypt": "phe.decrypt",
+    "phe.dot": "phe.dot",
+    "phe.gather": "phe.gather",
+    "phe.scatter": "phe.scatter",
+    "phe.concat": "phe.concat",
+    "phe.reshape": "phe.reshape",
+    "phe.transpose": "phe.transpose",
     # spu
     "spu.seed_env": "spu.seed_env",
     "spu.makeshares": "spu.makeshares",

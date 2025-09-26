@@ -66,10 +66,12 @@ def run_simulation():
     # Set up 3-party simulation with PHE support
     sim = mplang.Simulator.simple(3)
     result = mplang.evaluate(sim, three_party_phe_sum)
-    print(f"Simulation completed. Final sum: {mplang.fetch(sim, result)}")
+    print(f"Original PHE sum completed. Final sum: {mplang.fetch(sim, result)}")
 
+    # Show compilation results
     compiled = mplang.compile(sim, three_party_phe_sum)
-    print("compiled:", compiled.compiler_ir())
+    print("\n=== Compilation IR ===")
+    print("Original function compiled:", compiled.compiler_ir())
 
 
 if __name__ == "__main__":

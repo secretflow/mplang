@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mplang.backend import base
-from mplang.backend.base import KernelContext, bind_op, get_kernel_for_op
+from mplang.backend.base import KernelContext, get_kernel_spec, list_kernels
 from mplang.core.dtype import UINT8, DType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
@@ -104,26 +104,32 @@ _DEFAULT_BINDINGS: dict[str, str] = {
 class RuntimeContext:
     rank: int
     world_size: int
-    bindings: Mapping[str, str] | None = None  # optional overrides
+    bindings: Mapping[str, str] | None = None  # user-provided overrides (partial)
     state: dict[str, dict[str, Any]] = field(default_factory=dict)
     cache: dict[str, Any] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
 
+    # internal canonical dict (op_type -> kernel_id)
+    _ibindings: dict[str, str] = field(init=False, repr=False)
+
     def __post_init__(self) -> None:
         _ensure_impl_imported()
-        if self.bindings is not None:
+        # Start from defaults then merge user overrides (override semantics, not replace)
+        base_map = dict(_DEFAULT_BINDINGS)
+        if self.bindings:
             for op, kid in self.bindings.items():
-                bind_op(op, kid)
-        else:
-            for op, kid in _DEFAULT_BINDINGS.items():
-                bind_op(op, kid)
-        # Initialize stats pocket
+                base_map[op] = kid
+        self._ibindings = base_map
+        # Stats pocket
         self.stats.setdefault("op_calls", {})
 
     def run_kernel(self, pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
         fn_type = pfunc.fn_type
-        spec = get_kernel_for_op(fn_type)
-        fn = spec.fn
+        kid = self._ibindings.get(fn_type)
+        if kid is None:
+            raise NotImplementedError(f"no backend kernel registered for op {fn_type}")
+        spec = get_kernel_spec(kid)
+        fn = spec.fn  # kernel implementation
         if len(arg_list) != len(pfunc.ins_info):
             raise ValueError(
                 f"kernel {fn_type} arg count mismatch: got {len(arg_list)}, expect {len(pfunc.ins_info)}"
@@ -186,17 +192,26 @@ class RuntimeContext:
 
     # ---- explicit (re)binding API ----
     def bind_op(self, op_type: str, kernel_id: str, *, force: bool = False) -> None:
-        """Bind an operation to a kernel at runtime.
+        """Bind an operation to a kernel for THIS context only.
 
-        force=False (default) preserves any existing binding to avoid accidental
-        silent overrides. Use ``rebind_op`` or ``force=True`` to intentionally
-        change a binding.
+        force=False (default) keeps existing binding (no silent override).
         """
-        base.bind_op(op_type, kernel_id, force=force)
+        if kernel_id not in list_kernels():
+            raise KeyError(f"kernel_id {kernel_id} not registered")
+        if not force and op_type in self._ibindings:
+            return
+        self._ibindings[op_type] = kernel_id
 
     def rebind_op(self, op_type: str, kernel_id: str) -> None:
         """Force rebind an operation to a different kernel (shorthand)."""
-        base.bind_op(op_type, kernel_id, force=True)
+        self.bind_op(op_type, kernel_id, force=True)
+
+    # Introspection helpers
+    def list_bound_ops(self) -> list[str]:  # pragma: no cover - convenience
+        return sorted(self._ibindings.keys())
+
+    def get_binding(self, op_type: str) -> str | None:  # pragma: no cover
+        return self._ibindings.get(op_type)
 
 
 def _validate_table_arg(

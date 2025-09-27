@@ -106,14 +106,46 @@ def jax2stablehlo(
     out_info_flat, out_tree = tree_flatten(lowered.out_info)
     out_info_flat = [TensorType.from_obj(info) for info in out_info_flat]
 
+    # Extract argument keep mapping to handle JAX's unused parameter elimination
+    # JAX can eliminate unused parameters during compilation, but the runtime still
+    # receives all original arguments. We need the mapping to filter them correctly.
+    arg_keep_map = None
+    original_arg_count = len(in_vars)
+
+    try:
+        # Access JAX internal kept_var_idx - the authoritative source
+        # This tells us exactly which original parameters survived compilation
+        compile_args = lowered._lowering.compile_args
+        kept_var_idx = compile_args["kept_var_idx"]
+
+        kept_indices = sorted(kept_var_idx)
+        if len(kept_indices) < original_arg_count:
+            arg_keep_map = kept_indices
+
+    except (AttributeError, KeyError, TypeError) as e:
+        # JAX internal API is not available or changed
+        # This is a hard error - we cannot reliably handle unused parameters
+        # without knowing exactly which ones were kept
+        raise RuntimeError(
+            f"Cannot access JAX's kept_var_idx to handle unused parameter elimination. "
+            f"This function may have unused parameters that JAX optimized away, "
+            f"but we cannot determine which ones without the internal API. "
+            f"Original error: {e}"
+        ) from e
+
     # This format tells JaxRT how to handle the compiled result
-    pfn = PFunction(
-        fn_type="mlir.stablehlo",  # Key: specify StableHLO MLIR format
-        ins_info=tuple(TensorType.from_obj(x) for x in in_vars),
-        outs_info=tuple(out_info_flat),
-        fn_name=get_fn_name(flat_fn),
-        fn_text=mlir_text,  # MLIR text, serializable for transmission
-    )
+    pfn_kwargs = {
+        "fn_type": "mlir.stablehlo",  # Key: specify StableHLO MLIR format
+        "ins_info": tuple(TensorType.from_obj(x) for x in in_vars),
+        "outs_info": tuple(out_info_flat),
+        "fn_name": get_fn_name(flat_fn),
+        "fn_text": mlir_text,  # MLIR text, serializable for transmission
+    }
+
+    if arg_keep_map is not None:
+        pfn_kwargs["arg_keep_map"] = arg_keep_map
+
+    pfn = PFunction(**pfn_kwargs)
     return pfn, in_vars, out_tree
 
 

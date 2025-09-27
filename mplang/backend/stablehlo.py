@@ -51,8 +51,15 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
             raise RuntimeError(f"StableHLO compile failed: {e}") from e
         cache[mlir_text] = compiled
 
+    # Handle JAX's unused parameter elimination via arg_keep_map
+    runtime_args = args
+    if "arg_keep_map" in pfunc.attrs:
+        keep_indices = pfunc.attrs["arg_keep_map"]
+        # Filter out arguments that were eliminated by JAX during compilation
+        runtime_args = [args[i] for i in keep_indices]
+
     jax_args = []
-    for arg in args:
+    for arg in runtime_args:
         if hasattr(arg, "numpy"):
             jax_arg = jnp.array(arg.numpy())  # type: ignore
         else:

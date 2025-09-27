@@ -166,7 +166,6 @@ class TestUnusedParameterHandling:
             assert isinstance(keep_map, list)
             assert len(keep_map) < 3  # Should be fewer than original 3 params
             assert 1 not in keep_map  # Index 1 (unused) should not be in keep_map
-            print(f"✓ arg_keep_map correctly generated: {keep_map}")
         else:
             # If no elimination happened (possible with different JAX versions/optimizations)
             pass

@@ -143,7 +143,7 @@ class TestUnusedParameterHandling:
 
     def test_arg_keep_map_in_pfunc(self):
         """Test that arg_keep_map is correctly stored in PFunction when needed."""
-        from mplang.frontend.jax_cc import jax2stablehlo
+        from mplang.ops.jax_cc import jax2stablehlo
 
         def func_with_unused(a, unused, b):
             return a * b

@@ -6,7 +6,7 @@ This directory contains integration (end-to-end / cross-module) tests.
 
 Integration tests exercise multiple layers of the MPLang stack together:
 
-- Frontend APIs (`mplang.frontend.*` / `simp.*` helpers)
+- Frontend APIs (`mplang.ops.*` / `simp.*` helpers)
 - Runtime scheduling and Simulator coordination
 - Backend handlers (TEE, crypto, SPU, PHE, etc.)
 - Cross‑party or cross‑device interactions (e.g. encryption handshake, gather / scatter, conditional SPMD control flow)

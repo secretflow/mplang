@@ -35,10 +35,10 @@ from mplang.core import InterpContext, MPObject, primitive
 from mplang.core.cluster import ClusterSpec, Device
 from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
-from mplang.frontend import builtin, crypto, ibis_cc, jax_cc, tee
-from mplang.frontend.base import FeOperation
-from mplang.frontend.ibis_cc import IbisCompiler
-from mplang.frontend.jax_cc import JaxCompiler
+from mplang.ops import builtin, crypto, ibis_cc, jax_cc, tee
+from mplang.ops.base import FeOperation
+from mplang.ops.ibis_cc import IbisCompiler
+from mplang.ops.jax_cc import JaxCompiler
 from mplang.simp import mpi, smpc
 
 # Automatic transfer between devices when parameter is not on the target device.

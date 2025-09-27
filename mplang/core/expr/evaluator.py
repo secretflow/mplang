@@ -196,6 +196,28 @@ class EvalSemantic:
                     "uniform_cond: predicate is not uniform across parties"
                 )
 
+    # ------------------------------ While helpers ------------------------------
+    def _check_while_predicate(self, cond_result: list[Any]) -> Any:
+        """Validate while_loop predicate evaluation result.
+
+        Ensures the condition function returns exactly one value and that value
+        is non-None. Returns the boolean predicate value for convenience.
+
+        Raises:
+            AssertionError: If condition function returns != 1 value.
+            RuntimeError: If the single predicate value is None.
+        """
+        assert len(cond_result) == 1, (
+            f"Condition function must return a single value, got {cond_result}"
+        )
+        cond_value = cond_result[0]
+        if cond_value is None:
+            raise RuntimeError(
+                "while_loop condition produced None on rank "
+                f"{self.rank}; ensure the predicate yields a boolean for every party."
+            )
+        return cond_value
+
 
 class RecursiveEvaluator(EvalSemantic, ExprVisitor):
     """Recursive visitor-based evaluator."""
@@ -307,17 +329,7 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
             cond_env = dict(zip(expr.cond_fn.params, state, strict=True))
             cond_evaluator = self._fork(cond_env)
             cond_result = expr.cond_fn.body.accept(cond_evaluator)
-
-            assert len(cond_result) == 1, (
-                f"Condition function must return a single value, got {cond_result}"
-            )
-            cond_value = cond_result[0]
-            if cond_value is None:
-                raise RuntimeError(
-                    "while_loop condition produced None on rank "
-                    f"{self.rank}; ensure the predicate yields a boolean for every party."
-                )
-
+            cond_value = self._check_while_predicate(cond_result)
             if not cond_value:
                 break
 
@@ -451,13 +463,7 @@ class IterativeEvaluator(EvalSemantic):
                     cond_vals = self._iter_eval_graph(
                         node.cond_fn.body, {**env, **cond_env}
                     )
-                    assert len(cond_vals) == 1
-                    cond_val = cond_vals[0]
-                    if cond_val is None:
-                        raise RuntimeError(
-                            "while_loop condition produced None on rank "
-                            f"{self.rank}; ensure the predicate yields a boolean for every party."
-                        )
+                    cond_val = self._check_while_predicate(cond_vals)
                     if not bool(cond_val):
                         break
                     body_env = dict(zip(node.body_fn.params, state, strict=True))

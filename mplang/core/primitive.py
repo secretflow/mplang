@@ -483,15 +483,13 @@ def uniform_cond(
     if pred_ty.dtype != BOOL:
         raise TypeError(f"uniform_cond predicate must be boolean, got {pred_ty.dtype}")
 
-    # Static pmask validation (design A):
-    # If predicate has a statically known pmask (not None), it must equal the
-    # current trace context mask. Otherwise some parties in the context would
-    # execute a branch without a defined predicate value, which is illegal.
-    # If the user intends a smaller participating set, they should trace the
-    # whole conditional under a subset TraceContext (fork(mask=...)).
-    # If pred.pmask is None we treat it as dynamic and defer validation to
-    # runtime (uniformity check still applies if verify_uniform=True).
-    cur_tracer = _tracer()
+    # Static pmask rule:
+    # If predicate has a static pmask (not None), it must equal the current trace
+    # context mask. Otherwise some parties would execute a branch without a
+    # defined predicate value (unsafe). To run on a subset either:
+    #   1. Trace the entire uniform_cond under a subset TraceContext (ctx.fork(mask=...))
+    #   2. Broadcast / lift predicate to full mask (e.g. pshfl_s)
+    # Pred pmask None => dynamic: defer to runtime uniformity (if verify_uniform=True).
     pred_pmask = pred_ty.pmask
     if pred_pmask is not None and pred_pmask != cur_tracer.mask:
         raise ValueError(
@@ -722,15 +720,14 @@ def while_loop(
             f"Condition function must return a boolean scalar, got dtype {cond_out_var.mptype.dtype}"
         )
 
-    # Static pmask validation (design A):
-    # If predicate pmask is statically known, it must match the trace context mask.
-    # Otherwise some parties inside the context would not have a defined boolean
-    # to drive control flow (previously caused hang via None). Users wanting a
-    # subset participation must either:
-    #   1. Trace the entire while_loop under a subset context: tracer.fork(mask=submask)
-    #   2. Or broadcast (e.g. pshfl_s) predicate to the full mask.
-    # Dynamic predicates (pmask=None) are allowed; runtime guard will raise if any
-    # participating party observes None (already implemented in evaluator).
+    # Static pmask rule:
+    # If the predicate's pmask is statically known it must match the trace context
+    # mask. Otherwise some parties in this context would lack a boolean to drive
+    # control flow (previously could lead to hang via None). To restrict to a subset:
+    #   1. Trace the entire while_loop under a subset context (ctx.fork(mask=submask)), or
+    #   2. Broadcast predicate to full mask (e.g. pshfl_s) before while_loop.
+    # Dynamic predicates (pmask=None) are allowed; runtime guard (evaluator) raises
+    # if any participating party observes None.
     pred_pmask = cond_out_var.mptype.pmask
     if pred_pmask is not None and pred_pmask != cur_tracer.mask:
         raise ValueError(

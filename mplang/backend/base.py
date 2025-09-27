@@ -12,20 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Backend kernel registry & per-participant runtime (explicit op->kernel binding).
+"""Backend kernel registry: mapping kernel_id -> implementation.
 
-This version decouples *kernel implementation registration* from *operation binding*.
+This module provides a lightweight registry for backend kernel implementations.
+It does not track or decide which kernel handles a given semantic operation;
+that policy (op -> kernel_id) is managed externally by each ``RuntimeContext``.
 
-Concepts:
-    * kernel_id: unique identifier of a concrete backend implementation.
-    * op_type: semantic operation name carried by ``PFunction.fn_type``.
-    * bind_op(op_type, kernel_id): performed by higher layer (see ``backend.context``)
-        to select which implementation handles an op. Runtime dispatch is now a 2-step:
-        pfunc.fn_type -> active kernel_id -> KernelSpec.fn
+Exposed primitives:
+* ``@kernel_def(kernel_id)``: decorator to register a kernel implementation.
+* ``get_kernel_spec(kernel_id)``: look up a previously registered kernel.
+* ``cur_kctx()`` / ``KernelContext``: execution context available only
+    inside a kernel body (rank, world_size, per-backend state pockets, and a
+    runtime-wide cache shared by kernels of the same runtime instance).
 
-The previous implicit "import == register+bind" coupling is removed. Kernel
-modules only call ``@kernel_def(kernel_id)``. Default bindings are established
-centrally (lazy) the first time a runtime executes a kernel.
+No global op binding table exists here; callers resolve an op to a kernel_id
+before invoking the kernel function.
 """
 
 from __future__ import annotations
@@ -38,12 +39,10 @@ from typing import Any
 __all__ = [
     "KernelContext",
     "KernelSpec",
-    "bind_op",
     "cur_kctx",
-    "get_kernel_for_op",
+    "get_kernel_spec",
+    "kernel_exists",
     "list_kernels",
-    "list_ops",
-    "unbind_op",
 ]
 
 
@@ -116,9 +115,6 @@ class KernelSpec:
 # All registered kernel implementations: kernel_id -> spec
 _KERNELS: dict[str, KernelSpec] = {}
 
-# Active op bindings: op_type -> kernel_id
-_BINDINGS: dict[str, str] = {}
-
 
 def kernel_def(kernel_id: str, /, **meta: Any) -> Callable[[KernelFn], KernelFn]:
     """Decorator to register a concrete kernel implementation.
@@ -136,34 +132,11 @@ def kernel_def(kernel_id: str, /, **meta: Any) -> Callable[[KernelFn], KernelFn]
     return _decorator
 
 
-def bind_op(op_type: str, kernel_id: str, *, force: bool = True) -> None:
-    """Bind an op_type to a registered kernel implementation.
-
-    Args:
-        op_type: Semantic operation name.
-        kernel_id: Previously registered kernel identifier.
-        force: If False and op_type already bound, keep existing binding.
-               If True (default), overwrite.
-    """
-    if kernel_id not in _KERNELS:
+def get_kernel_spec(kernel_id: str) -> KernelSpec:
+    """Return KernelSpec for a registered kernel_id (no op binding lookup)."""
+    spec = _KERNELS.get(kernel_id)
+    if spec is None:
         raise KeyError(f"kernel_id {kernel_id} not registered")
-    if not force and op_type in _BINDINGS:
-        return
-    _BINDINGS[op_type] = kernel_id
-
-
-def unbind_op(op_type: str) -> None:
-    _BINDINGS.pop(op_type, None)
-
-
-def get_kernel_for_op(op_type: str) -> KernelSpec:
-    kid = _BINDINGS.get(op_type)
-    if kid is None:
-        # Tests expect NotImplementedError for unsupported operations
-        raise NotImplementedError(f"no backend kernel registered for op {op_type}")
-    spec = _KERNELS.get(kid)
-    if spec is None:  # inconsistent state
-        raise RuntimeError(f"active kernel_id {kid} missing spec")
     return spec
 
 
@@ -171,5 +144,6 @@ def list_kernels() -> list[str]:
     return sorted(_KERNELS.keys())
 
 
-def list_ops() -> list[str]:
-    return sorted(_BINDINGS.keys())
+def kernel_exists(kernel_id: str) -> bool:
+    """Return True if a kernel_id has been registered."""
+    return kernel_id in _KERNELS

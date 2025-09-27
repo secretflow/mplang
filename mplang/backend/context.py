@@ -15,11 +15,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import Any
 
 from mplang.backend import base
-from mplang.backend.base import KernelContext, bind_op, get_kernel_for_op
+from mplang.backend.base import KernelContext, get_kernel_spec, kernel_exists
 from mplang.core.dtype import UINT8, DType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
@@ -100,30 +99,57 @@ _DEFAULT_BINDINGS: dict[str, str] = {
 # --- RuntimeContext ---
 
 
-@dataclass
 class RuntimeContext:
-    rank: int
-    world_size: int
-    bindings: Mapping[str, str] | None = None  # optional overrides
-    state: dict[str, dict[str, Any]] = field(default_factory=dict)
-    cache: dict[str, Any] = field(default_factory=dict)
-    stats: dict[str, Any] = field(default_factory=dict)
+    """Per-runtime execution context with isolated op->kernel bindings.
 
-    def __post_init__(self) -> None:
+    Parameters
+    ----------
+    rank : int
+        Local rank of this participant.
+    world_size : int
+        Total number of participants.
+    initial_bindings : Mapping[str, str] | None, optional
+        Optional partial overrides applied on top of the default binding table
+        during construction (override semantics, not replace). After
+        initialization, all (re)binding must go through ``bind_op`` /
+        ``rebind_op``.
+    state / cache / stats : dict, optional
+        Mutable pockets reused across kernel invocations. If omitted, new
+        dictionaries are created.
+    """
+
+    __slots__ = ("_ibindings", "cache", "rank", "state", "stats", "world_size")
+
+    def __init__(
+        self,
+        rank: int,
+        world_size: int,
+        initial_bindings: Mapping[str, str] | None = None,
+        *,
+        state: dict[str, dict[str, Any]] | None = None,
+        cache: dict[str, Any] | None = None,
+        stats: dict[str, Any] | None = None,
+    ) -> None:
         _ensure_impl_imported()
-        if self.bindings is not None:
-            for op, kid in self.bindings.items():
-                bind_op(op, kid)
-        else:
-            for op, kid in _DEFAULT_BINDINGS.items():
-                bind_op(op, kid)
-        # Initialize stats pocket
+        self.rank = rank
+        self.world_size = world_size
+        # Merge defaults with user overrides (override semantics)
+        self._ibindings: dict[str, str] = {
+            **_DEFAULT_BINDINGS,
+            **(initial_bindings or {}),
+        }
+        self.state = state if state is not None else {}
+        self.cache = cache if cache is not None else {}
+        self.stats = stats if stats is not None else {}
         self.stats.setdefault("op_calls", {})
 
     def run_kernel(self, pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
         fn_type = pfunc.fn_type
-        spec = get_kernel_for_op(fn_type)
-        fn = spec.fn
+        kid = self._ibindings.get(fn_type)
+        if kid is None:
+            raise NotImplementedError(f"no backend kernel registered for op {fn_type}")
+        spec = get_kernel_spec(kid)
+        fn = spec.fn  # kernel implementation
         if len(arg_list) != len(pfunc.ins_info):
             raise ValueError(
                 f"kernel {fn_type} arg count mismatch: got {len(arg_list)}, expect {len(pfunc.ins_info)}"
@@ -186,17 +212,32 @@ class RuntimeContext:
 
     # ---- explicit (re)binding API ----
     def bind_op(self, op_type: str, kernel_id: str, *, force: bool = False) -> None:
-        """Bind an operation to a kernel at runtime.
+        """Bind an operation to a kernel for THIS context only.
 
-        force=False (default) preserves any existing binding to avoid accidental
-        silent overrides. Use ``rebind_op`` or ``force=True`` to intentionally
-        change a binding.
+        force=False (default) keeps existing binding (no silent override).
         """
-        base.bind_op(op_type, kernel_id, force=force)
+        if not kernel_exists(kernel_id):
+            raise KeyError(f"kernel_id {kernel_id} not registered")
+        if not force and op_type in self._ibindings:
+            return
+        self._ibindings[op_type] = kernel_id
 
     def rebind_op(self, op_type: str, kernel_id: str) -> None:
         """Force rebind an operation to a different kernel (shorthand)."""
-        base.bind_op(op_type, kernel_id, force=True)
+        self.bind_op(op_type, kernel_id, force=True)
+
+    # Introspection helpers
+    def list_bound_ops(self) -> list[str]:  # pragma: no cover - convenience
+        return sorted(self._ibindings.keys())
+
+    def get_binding(self, op_type: str) -> str | None:  # pragma: no cover
+        return self._ibindings.get(op_type)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return (
+            f"RuntimeContext(rank={self.rank}, world_size={self.world_size}, "
+            f"bound_ops={len(self._ibindings)})"
+        )
 
 
 def _validate_table_arg(

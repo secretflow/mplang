@@ -55,8 +55,8 @@ def make_pfunc(op_type: str) -> PFunction:
 def test_isolated_rebind():
     # ctx1 binds op -> v1, ctx2 binds op -> v2; they should not interfere.
     op = "test.echo"
-    ctx1 = RuntimeContext(rank=0, world_size=1, bindings={op: "test.echo.v1"})
-    ctx2 = RuntimeContext(rank=0, world_size=1, bindings={op: "test.echo.v2"})
+    ctx1 = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v1"})
+    ctx2 = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v2"})
 
     pfunc = make_pfunc(op)
     out1 = ctx1.run_kernel(pfunc, [10])[0]
@@ -68,7 +68,7 @@ def test_isolated_rebind():
 
 def test_rebind_only_affects_context():
     op = "test.echo"
-    ctx = RuntimeContext(rank=0, world_size=1, bindings={op: "test.echo.v1"})
+    ctx = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v1"})
     pfunc = make_pfunc(op)
     assert ctx.run_kernel(pfunc, [5])[0] == 6
     ctx.rebind_op(op, "test.echo.v2")
@@ -77,7 +77,7 @@ def test_rebind_only_affects_context():
 
 def test_force_flag():
     op = "test.echo"
-    ctx = RuntimeContext(rank=0, world_size=1, bindings={op: "test.echo.v1"})
+    ctx = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v1"})
     # Attempt non-force bind (should keep v1)
     ctx.bind_op(op, "test.echo.v2", force=False)
     pfunc = make_pfunc(op)

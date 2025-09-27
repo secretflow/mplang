@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from typing import Any
 
 from mplang.backend import base
@@ -100,27 +99,48 @@ _DEFAULT_BINDINGS: dict[str, str] = {
 # --- RuntimeContext ---
 
 
-@dataclass
 class RuntimeContext:
-    rank: int
-    world_size: int
-    bindings: Mapping[str, str] | None = None  # user-provided overrides (partial)
-    state: dict[str, dict[str, Any]] = field(default_factory=dict)
-    cache: dict[str, Any] = field(default_factory=dict)
-    stats: dict[str, Any] = field(default_factory=dict)
+    """Per-runtime execution context with isolated op->kernel bindings.
 
-    # internal canonical dict (op_type -> kernel_id)
-    _ibindings: dict[str, str] = field(init=False, repr=False)
+    Parameters
+    ----------
+    rank : int
+        Local rank of this participant.
+    world_size : int
+        Total number of participants.
+    initial_bindings : Mapping[str, str] | None, optional
+        Optional partial overrides applied on top of the default binding table
+        during construction (override semantics, not replace). After
+        initialization, all (re)binding must go through ``bind_op`` /
+        ``rebind_op``.
+    state / cache / stats : dict, optional
+        Mutable pockets reused across kernel invocations. If omitted, new
+        dictionaries are created.
+    """
 
-    def __post_init__(self) -> None:
+    __slots__ = ("_ibindings", "cache", "rank", "state", "stats", "world_size")
+
+    def __init__(
+        self,
+        rank: int,
+        world_size: int,
+        initial_bindings: Mapping[str, str] | None = None,
+        *,
+        state: dict[str, dict[str, Any]] | None = None,
+        cache: dict[str, Any] | None = None,
+        stats: dict[str, Any] | None = None,
+    ) -> None:
         _ensure_impl_imported()
-        # Start from defaults then merge user overrides (override semantics, not replace)
+        self.rank = rank
+        self.world_size = world_size
         base_map = dict(_DEFAULT_BINDINGS)
-        if self.bindings:
-            for op, kid in self.bindings.items():
+        if initial_bindings:
+            for op, kid in initial_bindings.items():
                 base_map[op] = kid
-        self._ibindings = base_map
-        # Stats pocket
+        self._ibindings: dict[str, str] = base_map
+        self.state = state if state is not None else {}
+        self.cache = cache if cache is not None else {}
+        self.stats = stats if stats is not None else {}
         self.stats.setdefault("op_calls", {})
 
     def run_kernel(self, pfunc: PFunction, arg_list: list[Any]) -> list[Any]:
@@ -212,6 +232,12 @@ class RuntimeContext:
 
     def get_binding(self, op_type: str) -> str | None:  # pragma: no cover
         return self._ibindings.get(op_type)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return (
+            f"RuntimeContext(rank={self.rank}, world_size={self.world_size}, "
+            f"bound_ops={len(self._ibindings)})"
+        )
 
 
 def _validate_table_arg(

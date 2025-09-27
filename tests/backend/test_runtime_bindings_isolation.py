@@ -19,7 +19,7 @@ def _echo_v1(pfunc: PFunction, x: int) -> tuple[int,]:  # pragma: no cover - exe
 
 
 @base.kernel_def("test.echo.v2")
-def _echo_v2(pfunc, x):  # pragma: no cover - executed in test
+def _echo_v2(pfunc: PFunction, x: int) -> tuple[int,]:  # pragma: no cover - executed in test
     return (x + 2,)
 
 

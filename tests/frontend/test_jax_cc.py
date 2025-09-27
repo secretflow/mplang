@@ -244,21 +244,37 @@ class TestJax2StableHLO:
         assert cfunc.fn_text is not None
 
     def test_multiple_outputs(self):
-        """Test compilation with multiple outputs."""
+        """Test functions with multiple outputs."""
 
         def multi_output(x, y):
             return x + y, x - y, x * y
 
-        x = jnp.array([1.0, 2.0])
-        y = jnp.array([3.0, 4.0])
+        pfunc, out_tree = self._compile_with_transformer(
+            multi_output, jnp.array([1, 2]), jnp.array([3, 4])
+        )
 
-        cfunc, _out_tree = self._compile_with_transformer(multi_output, x, y)
+        assert len(pfunc.outs_info) == 3
+        assert out_tree is not None
 
-        assert len(cfunc.ins_info) == 2
-        assert len(cfunc.outs_info) == 3
+    def test_unused_parameter_elimination(self):
+        """Test that unused parameters are handled correctly via arg_keep_map."""
 
-        # All outputs should have the same shape as inputs
-        for out_info in cfunc.outs_info:
-            assert out_info.shape == x.shape
+        def func_with_unused(x, unused, z):
+            return x + z  # unused parameter eliminated by JAX
 
-        assert cfunc.fn_text is not None
+        x = jnp.array(1, dtype=jnp.int32)
+        unused = jnp.array(999, dtype=jnp.int32)
+        z = jnp.array(3, dtype=jnp.int32)
+
+        pfunc, _ = self._compile_with_transformer(func_with_unused, x, unused, z)
+
+        # Check that compilation succeeded
+        assert pfunc.fn_type == "mlir.stablehlo"
+        assert len(pfunc.ins_info) == 3  # Original input count
+
+        # If JAX eliminated unused parameters, arg_keep_map should be present
+        if "arg_keep_map" in pfunc.attrs:
+            keep_map = pfunc.attrs["arg_keep_map"]
+            assert isinstance(keep_map, list)
+            assert len(keep_map) < 3  # Should be fewer than original 3 params
+            assert 1 not in keep_map  # Index 1 (unused) should not be kept

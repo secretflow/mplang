@@ -173,7 +173,7 @@ class TestUnusedParameterHandling:
             print(f"✓ arg_keep_map correctly generated: {keep_map}")
         else:
             # If no elimination happened (possible with different JAX versions/optimizations)
-            print("i No parameter elimination detected, arg_keep_map not needed")
+            pass
 
     def test_different_dtypes_unused(self):
         """Test unused parameter elimination with different data types."""

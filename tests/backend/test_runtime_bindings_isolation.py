@@ -14,7 +14,7 @@ from mplang.core.tensor import TensorType
 
 
 @base.kernel_def("test.echo.v1")
-def _echo_v1(pfunc, x):  # pragma: no cover - executed in test
+def _echo_v1(pfunc: PFunction, x: int) -> tuple[int,]:  # pragma: no cover - executed in test
     return (x + 1,)
 
 

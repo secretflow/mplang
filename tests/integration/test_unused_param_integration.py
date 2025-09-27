@@ -77,11 +77,7 @@ class TestUnusedParameterHandling:
         result = mplang.evaluate(sim, test_func)
         output = mplang.fetch(sim, result)
 
-        # Extract scalar value from output (may be wrapped in array)
-        if hasattr(output, "__iter__") and len(output) == 1:
-            output = output[0]
-        if hasattr(output, "item"):  # JAX array
-            output = output.item()
+        output = self._extract_scalar(output)
 
         assert output == expected, f"Expected {expected}, got {output}"
 

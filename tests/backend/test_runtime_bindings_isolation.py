@@ -25,7 +25,7 @@ def _echo_v2(pfunc: PFunction, x: int) -> tuple[int,]:  # pragma: no cover - exe
 
 def make_pfunc(op_type: str) -> PFunction:
     # Minimal PFunction stub compatible with backend.run_kernel expectations.
-    # shape info matters only for validation; use scalar INT64 (python int maps to int64).
+    # shape info matters only for validation; use scalar INT64 (Python int maps to int64).
     return PFunction(
         fn_type=op_type,
         fn_text="",

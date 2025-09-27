@@ -56,7 +56,7 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     if "arg_keep_map" in pfunc.attrs:
         keep_indices = pfunc.attrs["arg_keep_map"]
         # Filter out arguments that were eliminated by JAX during compilation
-        runtime_args = [args[i] for i in keep_indices]
+        runtime_args = tuple(args[i] for i in keep_indices)
 
     jax_args = []
     for arg in runtime_args:

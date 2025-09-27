@@ -134,7 +134,7 @@ def jax2stablehlo(
         ) from e
 
     # This format tells JaxRT how to handle the compiled result
-    pfn_kwargs = {
+    pfn_kwargs: dict[str, Any] = {
         "fn_type": "mlir.stablehlo",  # Key: specify StableHLO MLIR format
         "ins_info": tuple(TensorType.from_obj(x) for x in in_vars),
         "outs_info": tuple(out_info_flat),

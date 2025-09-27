@@ -5,7 +5,7 @@ import pytest
 
 from mplang.backend import base
 from mplang.backend.context import RuntimeContext
-from mplang.core.dtype import INT64  # switched from INT32 to INT64 to match python int
+from mplang.core.dtype import INT64  # switched from INT32 to INT64 to match Python int
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 

@@ -36,8 +36,8 @@ from mplang.core.primitive import (
     uniform_cond,
     while_loop,
 )
-from mplang.frontend import ibis_cc, jax_cc
-from mplang.frontend.base import FeOperation
+from mplang.ops import ibis_cc, jax_cc
+from mplang.ops.base import FeOperation
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
 from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
 from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
@@ -189,7 +189,7 @@ def P2P(src: Party, dst: Party, value: Any) -> Any:
 This module provides a light-weight mechanism to expose *module-like* groups
 of callable operations bound to a specific party (rank) via attribute access:
 
-    load_module("mplang.frontend.crypto", alias="crypto")
+    load_module("mplang.ops.crypto", alias="crypto")
     P0.crypto.encrypt(x)  # executes encrypt() with pmask = {rank 0}
 
 Core concepts:
@@ -283,13 +283,13 @@ def _load_prelude_modules() -> None:
     """Auto-register public frontend submodules for party namespace access.
 
     Implementation detail: we treat every non-underscore immediate child of
-    ``mplang.frontend`` as public and make it available as ``P0.<name>``.
+    ``mplang.ops`` as public and make it available as ``P0.<name>``.
     This keeps user ergonomics high (no manual load_module calls for core
     frontends) but slightly increases implicit surface area. If this grows
     unwieldy we can switch to an allowlist.
     """
     try:
-        import mplang.frontend as _fe  # type: ignore
+        import mplang.ops as _fe  # type: ignore
     except (ImportError, ModuleNotFoundError):  # pragma: no cover
         # Frontend package not present (minimal install); safe to skip.
         return
@@ -299,7 +299,7 @@ def _load_prelude_modules() -> None:
         if m.name.startswith("_"):
             continue
         if m.name not in _NAMESPACE_REGISTRY:
-            _NAMESPACE_REGISTRY[m.name] = f"mplang.frontend.{m.name}"
+            _NAMESPACE_REGISTRY[m.name] = f"mplang.ops.{m.name}"
 
 
 def load_module(module: str, alias: str | None = None) -> None:
@@ -333,7 +333,7 @@ def load_module(module: str, alias: str | None = None) -> None:
 
     Examples
     --------
-    >>> load_module("mplang.frontend.crypto", alias="crypto")
+    >>> load_module("mplang.ops.crypto", alias="crypto")
     >>> # Now call an op on party 0
     >>> P0.crypto.encrypt(data)
     """

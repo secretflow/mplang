@@ -21,9 +21,9 @@ from urllib.parse import ParseResult, urlparse
 import numpy as np
 import pandas as pd
 
-from mplang.backend.base import KernelContext
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
+from mplang.kernels.base import KernelContext
 from mplang.utils import table_utils
 
 

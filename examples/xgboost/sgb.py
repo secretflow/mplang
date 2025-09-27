@@ -24,7 +24,7 @@ import mplang.simp as simp
 import mplang.simp.mpi as mpi
 from mplang import Mask, MPObject
 from mplang.core.mptype import Rank
-from mplang.frontend import phe
+from mplang.ops import phe
 
 # ==============================================================================
 # Naming Conventions for Shapes & Variables

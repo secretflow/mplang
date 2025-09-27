@@ -49,7 +49,7 @@ from mplang.core.primitive import (
     while_loop,
 )
 from mplang.core.tracer import TraceContext, TraceVar, trace
-from mplang.frontend import jax_cc
+from mplang.ops import jax_cc
 
 
 @pytest.fixture

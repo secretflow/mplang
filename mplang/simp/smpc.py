@@ -23,7 +23,7 @@ from jax.tree_util import tree_unflatten
 
 from mplang.core import Mask, MPObject, Rank, peval, psize
 from mplang.core.context_mgr import cur_ctx
-from mplang.frontend import spu
+from mplang.ops import spu
 from mplang.simp import mpi
 
 

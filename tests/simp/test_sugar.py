@@ -23,7 +23,7 @@ import pytest
 
 import mplang
 import mplang.simp as simp
-from mplang.frontend import crypto
+from mplang.ops import crypto
 
 
 def test_basic_callable_and_namespace():
@@ -74,17 +74,17 @@ def test_bound_method_style_lambda():
 
 def test_load_module_conflict():
     # First registration should succeed
-    simp.load_module("mplang.frontend.crypto", alias="crypto_alias")
+    simp.load_module("mplang.ops.crypto", alias="crypto_alias")
     # Re-register same alias -> idempotent
-    simp.load_module("mplang.frontend.crypto", alias="crypto_alias")
+    simp.load_module("mplang.ops.crypto", alias="crypto_alias")
     # Different target with same alias should raise
     with pytest.raises(ValueError):
-        simp.load_module("mplang.frontend.tee", alias="crypto_alias")
+        simp.load_module("mplang.ops.tee", alias="crypto_alias")
 
 
 def test_non_callable_attribute_raises(monkeypatch: pytest.MonkeyPatch):
     # Create a fake module with a non-callable attr
-    module_name = "mplang.frontend._fake_const_mod"
+    module_name = "mplang.ops._fake_const_mod"
     fake_mod = types.ModuleType(module_name)
     fake_mod.VALUE = 123  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, module_name, fake_mod)

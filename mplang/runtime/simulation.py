@@ -24,10 +24,6 @@ from typing import Any, cast
 
 import spu.libspu as libspu
 
-# New explicit binding model: we only need RuntimeContext which ensures
-# bindings via bind_all_ops() on creation; per-module side-effect imports
-# are no longer required here.
-from mplang.backend.context import RuntimeContext
 from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import CollectiveMixin, CommunicatorBase
 from mplang.core.expr.ast import Expr
@@ -38,6 +34,11 @@ from mplang.core.mpir import Reader, Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
 from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
+
+# New explicit binding model: we only need RuntimeContext which ensures
+# bindings via bind_all_ops() on creation; per-module side-effect imports
+# are no longer required here.
+from mplang.kernels.context import RuntimeContext
 from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol
 

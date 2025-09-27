@@ -27,10 +27,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from mplang.backend.base import KernelContext
 from mplang.core.mpir import Reader
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
+from mplang.kernels.base import KernelContext
 from mplang.protos.v1alpha1 import mpir_pb2
 from mplang.runtime import resource
 from mplang.runtime.data_providers import DataProvider, ResolvedURI, register_provider

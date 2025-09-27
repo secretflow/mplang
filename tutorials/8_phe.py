@@ -25,7 +25,7 @@ This tutorial demonstrates a three-party computation using PHE:
 
 import mplang
 import mplang.simp as simp
-from mplang.frontend import phe
+from mplang.ops import phe
 
 
 @mplang.function

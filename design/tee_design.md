@@ -88,7 +88,7 @@ These operations are used inside `@mplang.function` traced graphs and lowered to
 backend instructions. The surface stays small for users while letting us run a
 mock mode now and a production KEM/ECDH path later.
 
-- `mplang.frontend.crypto`
+- `mplang.ops.crypto`
   - `keygen(length: int = 32) -> key`
   - `enc(plaintext, key) -> ciphertext` (ciphertext = 12B nonce || payload)
   - `dec(ciphertext, key) -> plaintext`
@@ -96,7 +96,7 @@ mock mode now and a production KEM/ECDH path later.
   - `kem_derive(sk, peer_pk, suite: str = 'x25519') -> secret`
   - `hkdf(secret, info) -> key`
 
-- `mplang.frontend.tee`
+- `mplang.ops.tee`
   - `quote(pk) -> quote` (binds the provided ephemeral public key)
   - `attest(quote) -> tee_pk` (returns the attested TEE public key)
 

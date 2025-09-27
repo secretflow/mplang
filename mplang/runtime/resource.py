@@ -26,11 +26,11 @@ from urllib.parse import urlparse
 import cloudpickle as pickle
 import spu.libspu as libspu
 
-from mplang.backend.context import RuntimeContext
-from mplang.backend.spu import PFunction  # type: ignore
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
+from mplang.kernels.context import RuntimeContext
+from mplang.kernels.spu import PFunction  # type: ignore
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
 from mplang.runtime.link_comm import LinkCommunicator

@@ -483,6 +483,20 @@ def uniform_cond(
     if pred_ty.dtype != BOOL:
         raise TypeError(f"uniform_cond predicate must be boolean, got {pred_ty.dtype}")
 
+    # Static pmask rule:
+    # If predicate has a static pmask (not None), it must equal the current trace
+    # context mask. Otherwise some parties would execute a branch without a
+    # defined predicate value (unsafe). To run on a subset either:
+    #   1. Trace the entire uniform_cond under a subset TraceContext (ctx.fork(mask=...))
+    #   2. Broadcast / lift predicate to full mask (e.g. pshfl_s)
+    # Pred pmask None => dynamic: defer to runtime uniformity (if verify_uniform=True).
+    pred_pmask = pred_ty.pmask
+    if pred_pmask is not None and pred_pmask != cur_tracer.mask:
+        raise ValueError(
+            "uniform_cond predicate static pmask mismatch: predicate pmask="
+            f"{pred_pmask} trace mask={cur_tracer.mask}. Trace under a subset "
+            "context (ctx.fork(mask=...)) or broadcast predicate (pshfl_s) to all parties."
+        )
     # Step 1: Trace both branches in separate contexts
     then_tracer = cur_tracer.fork()
     then_tfn = trace(then_tracer, then_fn, *args)
@@ -704,6 +718,22 @@ def while_loop(
     if cond_out_var.mptype.dtype != BOOL:
         raise TypeError(
             f"Condition function must return a boolean scalar, got dtype {cond_out_var.mptype.dtype}"
+        )
+
+    # Static pmask rule:
+    # If the predicate's pmask is statically known it must match the trace context
+    # mask. Otherwise some parties in this context would lack a boolean to drive
+    # control flow (previously could lead to hang via None). To restrict to a subset:
+    #   1. Trace the entire while_loop under a subset context (ctx.fork(mask=submask)), or
+    #   2. Broadcast predicate to full mask (e.g. pshfl_s) before while_loop.
+    # Dynamic predicates (pmask=None) are allowed; runtime guard (evaluator) raises
+    # if any participating party observes None.
+    pred_pmask = cond_out_var.mptype.pmask
+    if pred_pmask is not None and pred_pmask != cur_tracer.mask:
+        raise ValueError(
+            "while_loop predicate static pmask mismatch: predicate pmask="
+            f"{pred_pmask} trace mask={cur_tracer.mask}. Trace under subset context "
+            "or broadcast predicate to all parties."
         )
 
     # Validate body returns same number of leaves and same dtype/shape per leaf

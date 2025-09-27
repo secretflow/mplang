@@ -41,6 +41,7 @@ __all__ = [
     "KernelSpec",
     "cur_kctx",
     "get_kernel_spec",
+    "kernel_exists",
     "list_kernels",
 ]
 
@@ -141,3 +142,8 @@ def get_kernel_spec(kernel_id: str) -> KernelSpec:
 
 def list_kernels() -> list[str]:
     return sorted(_KERNELS.keys())
+
+
+def kernel_exists(kernel_id: str) -> bool:
+    """Return True if a kernel_id has been registered."""
+    return kernel_id in _KERNELS

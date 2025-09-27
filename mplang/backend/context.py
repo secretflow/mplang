@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from mplang.backend import base
-from mplang.backend.base import KernelContext, get_kernel_spec, list_kernels
+from mplang.backend.base import KernelContext, get_kernel_spec, kernel_exists
 from mplang.core.dtype import UINT8, DType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
@@ -133,11 +133,11 @@ class RuntimeContext:
         _ensure_impl_imported()
         self.rank = rank
         self.world_size = world_size
-        base_map = dict(_DEFAULT_BINDINGS)
-        if initial_bindings:
-            for op, kid in initial_bindings.items():
-                base_map[op] = kid
-        self._ibindings: dict[str, str] = base_map
+        # Merge defaults with user overrides (override semantics)
+        self._ibindings: dict[str, str] = {
+            **_DEFAULT_BINDINGS,
+            **(initial_bindings or {}),
+        }
         self.state = state if state is not None else {}
         self.cache = cache if cache is not None else {}
         self.stats = stats if stats is not None else {}
@@ -216,7 +216,7 @@ class RuntimeContext:
 
         force=False (default) keeps existing binding (no silent override).
         """
-        if kernel_id not in list_kernels():
+        if not kernel_exists(kernel_id):
             raise KeyError(f"kernel_id {kernel_id} not registered")
         if not force and op_type in self._ibindings:
             return

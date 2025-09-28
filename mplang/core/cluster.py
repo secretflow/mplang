@@ -193,8 +193,6 @@ class ClusterSpec:
                 for k, v in runtime_info_cfg.items()
                 if k not in known_runtime_fields
             }
-            # Gracefully ignore legacy 'backends' if present (treated as extra)
-            # for backward compatibility.
             runtime_info = RuntimeInfo(
                 version=runtime_info_cfg.get("version", "N/A"),
                 platform=runtime_info_cfg.get("platform", "N/A"),

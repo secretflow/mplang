@@ -18,50 +18,31 @@ import asyncio
 
 import pytest
 
-from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
+from mplang.core.cluster import ClusterSpec
 from mplang.runtime.driver import Driver
 from tests.utils.server_fixtures import http_servers  # noqa: F401
 
 
 def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
-    """Create a ClusterSpec for testing with the given node addresses."""
-    nodes = {}
-    for node_id, addr in node_addrs.items():
-        rank = int(node_id)
-        nodes[f"node{rank}"] = Node(
-            name=f"node{rank}",
-            rank=rank,
-            endpoint=addr,  # Keep the full HTTP URL as endpoint
-            runtime_info=RuntimeInfo(
-                version="test",
-                platform="test",
-                backends=["__all__"],
-            ),
-        )
+    """Create a ClusterSpec for testing with the given node addresses.
 
-    # Create local devices for each node
-    local_devices = {}
-    for _node_name, node in nodes.items():
-        local_devices[f"local_{node.rank}"] = Device(
-            name=f"local_{node.rank}",
-            kind="local",
-            members=[node],
-        )
-
-    # Create SPU device with all nodes
-    spu_device = Device(
-        name="SPU_0",
-        kind="SPU",
-        members=list(nodes.values()),
-        config={
-            "protocol": "SEMI2K",
-            "field": "FM128",
-        },
+    Uses ``ClusterSpec.simple`` with explicit endpoints so ranks align with the provided
+    address ordering and includes local devices for each node.
+    """
+    # Preserve ordering by rank key (0..n-1)
+    ordered_endpoints = [
+        addr.replace("http://", "")
+        for _, addr in sorted(node_addrs.items(), key=lambda kv: int(kv[0]))
+    ]
+    return ClusterSpec.simple(
+        world_size=len(ordered_endpoints),
+        endpoints=ordered_endpoints,
+        enable_local_device=True,
+        spu_protocol="SEMI2K",
+        spu_field="FM128",
+        runtime_version="test",
+        runtime_platform="test",
     )
-
-    devices = {**local_devices, "SPU_0": spu_device}
-
-    return ClusterSpec(nodes=nodes, devices=devices)
 
 
 @pytest.mark.parametrize("http_servers", [3], indirect=True)

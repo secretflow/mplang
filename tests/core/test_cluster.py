@@ -34,11 +34,11 @@ class TestRuntimeInfo:
         runtime = RuntimeInfo(
             version="2.0.0",
             platform="cpu",
-            backends=["builtin", "spu"],
+            op_bindings={"crypto.enc": "crypto.enc.fast"},
         )
         assert runtime.version == "2.0.0"
         assert runtime.platform == "cpu"
-        assert runtime.backends == ["builtin", "spu"]
+        assert runtime.op_bindings == {"crypto.enc": "crypto.enc.fast"}
         assert runtime.extra == {}
 
     def test_creation_with_extra(self):
@@ -46,7 +46,7 @@ class TestRuntimeInfo:
         runtime = RuntimeInfo(
             version="2.0.0",
             platform="cpu",
-            backends=["builtin"],
+            op_bindings={},
             extra={"custom_field": "value", "number": 42},
         )
         assert runtime.extra == {"custom_field": "value", "number": 42}
@@ -56,20 +56,20 @@ class TestRuntimeInfo:
         runtime = RuntimeInfo(
             version="2.0.0",
             platform="cpu",
-            backends=["builtin", "spu"],
+            op_bindings={"x": "y"},
             extra={"custom": "value"},
         )
         expected = {
             "version": "2.0.0",
             "platform": "cpu",
-            "backends": ["builtin", "spu"],
+            "op_bindings": {"x": "y"},
             "custom": "value",
         }
         assert runtime.to_dict() == expected
 
     def test_immutability(self):
         """Test that RuntimeInfo is immutable."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         with pytest.raises(AttributeError):
             runtime.version = "3.0.0"  # type: ignore
 
@@ -79,7 +79,7 @@ class TestPhysicalNode:
 
     def test_basic_creation(self):
         """Test basic PhysicalNode creation."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node(
             name="alice_node",
             rank=0,
@@ -93,7 +93,7 @@ class TestPhysicalNode:
 
     def test_to_dict(self):
         """Test PhysicalNode.to_dict() method."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node(
             name="alice_node",
             rank=0,
@@ -106,14 +106,14 @@ class TestPhysicalNode:
             "runtime_info": {
                 "version": "2.0.0",
                 "platform": "cpu",
-                "backends": ["builtin"],
+                "op_bindings": {},
             },
         }
         assert node.to_dict() == expected
 
     def test_immutability(self):
         """Test that PhysicalNode is immutable."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node(
             name="alice_node",
             rank=0,
@@ -129,7 +129,7 @@ class TestLogicalDevice:
 
     def test_basic_creation(self):
         """Test basic LogicalDevice creation."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
@@ -146,7 +146,7 @@ class TestLogicalDevice:
 
     def test_member_ranks_property(self):
         """Test LogicalDevice.member_ranks property."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
         node3 = Node("carol_node", 2, "127.0.0.1:9003", runtime)
@@ -160,7 +160,7 @@ class TestLogicalDevice:
 
     def test_to_dict(self):
         """Test LogicalDevice.to_dict() method."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
@@ -179,7 +179,7 @@ class TestLogicalDevice:
 
     def test_empty_config_default(self):
         """Test LogicalDevice with default empty config."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
 
         device = Device(name="alice", kind="local", members=[node])
@@ -191,7 +191,7 @@ class TestClusterSpec:
 
     def test_basic_creation(self):
         """Test basic ClusterSpec creation."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
@@ -206,7 +206,7 @@ class TestClusterSpec:
 
     def test_get_node(self):
         """Test ClusterSpec.get_node() method."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
 
         cluster = ClusterSpec(nodes={"alice_node": node}, devices={})
@@ -221,7 +221,7 @@ class TestClusterSpec:
 
     def test_get_device(self):
         """Test ClusterSpec.get_device() method."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         device = Device("alice", "local", [node])
 
@@ -237,7 +237,7 @@ class TestClusterSpec:
 
     def test_get_node_by_rank(self):
         """Test ClusterSpec.get_node_by_rank() method."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
@@ -255,7 +255,7 @@ class TestClusterSpec:
 
     def test_to_dict(self):
         """Test ClusterSpec.to_dict() method."""
-        runtime = RuntimeInfo(version="2.0.0", platform="cpu", backends=["builtin"])
+        runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
         device = Device("alice", "local", [node1])
@@ -285,7 +285,7 @@ class TestFromDict:
                     "runtime_info": {
                         "version": "2.0.0",
                         "platform": "cpu",
-                        "backends": ["builtin", "spu"],
+                        "op_bindings": {"crypto.enc": "crypto.enc.fast"},
                     },
                 }
             ],
@@ -335,7 +335,9 @@ class TestFromDict:
                     "runtime_info": {
                         "version": "2.0.0",
                         "platform": "cpu",
+                        # legacy field 'backends' should be ignored gracefully
                         "backends": ["builtin"],
+                        "op_bindings": {"crypto.enc": "crypto.enc.fast"},
                         "custom_field": "custom_value",
                         "number_field": 42,
                     },
@@ -346,10 +348,13 @@ class TestFromDict:
 
         cluster = ClusterSpec.from_dict(config)
         node = cluster.get_node("alice_node")
+        # extra should exclude reserved keys (version/platform/op_bindings)
         assert node.runtime_info.extra == {
             "custom_field": "custom_value",
             "number_field": 42,
+            "backends": ["builtin"],
         }
+        assert node.runtime_info.op_bindings == {"crypto.enc": "crypto.enc.fast"}
 
     def test_missing_runtime_info_defaults(self):
         """Test that missing runtime_info fields get default values."""
@@ -362,7 +367,7 @@ class TestFromDict:
         node = cluster.get_node("alice_node")
         assert node.runtime_info.version == "N/A"
         assert node.runtime_info.platform == "N/A"
-        assert node.runtime_info.backends == []
+        assert node.runtime_info.op_bindings == {}
 
     def test_device_config_preservation(self):
         """Test that device configs are preserved with correct types."""
@@ -442,7 +447,7 @@ class TestFromDict:
                     "runtime_info": {
                         "version": "2.0.0",
                         "platform": "cpu",
-                        "backends": ["builtin", "spu"],
+                        "op_bindings": {"a": "b"},
                         "custom": "value",
                     },
                 },
@@ -452,7 +457,7 @@ class TestFromDict:
                     "runtime_info": {
                         "version": "2.0.0",
                         "platform": "cpu",
-                        "backends": ["builtin"],
+                        "op_bindings": {},
                     },
                 },
             ],
@@ -486,7 +491,7 @@ class TestFromDict:
 
     def test_dict_key_name_mismatch_validation(self):
         """Test that ClusterSpec validates dict keys match object names."""
-        runtime = RuntimeInfo(version="1.0", platform="cpu", backends=[])
+        runtime = RuntimeInfo(version="1.0", platform="cpu", op_bindings={})
 
         # Test node name mismatch
         node = Node(

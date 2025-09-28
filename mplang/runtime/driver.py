@@ -145,8 +145,6 @@ class Driver(InterpContext):
         """Get existing session or create a new one across all HTTP servers."""
         if self._session_id is None:
             new_session_id = new_uuid()
-            endpoints_list = list(self.node_addrs.values())
-
             # Create temporary clients for session creation
             clients = self._create_clients()
             try:
@@ -158,10 +156,7 @@ class Driver(InterpContext):
                     task = client.create_session(
                         name=new_session_id,
                         rank=rank,
-                        endpoints=endpoints_list,
-                        spu_mask=self.spu_mask_int,
-                        spu_protocol=self.spu_protocol_str,
-                        spu_field=self.spu_field_str,
+                        cluster_spec=self.cluster_spec.to_dict(),
                     )
                     tasks.append(task)
 

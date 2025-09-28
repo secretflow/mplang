@@ -21,9 +21,10 @@ import httpx
 import pytest
 import uvicorn
 
-from mplang.runtime import resource
+from mplang.core.cluster import ClusterSpec
 from mplang.runtime.communicator import HttpCommunicator
-from mplang.runtime.server import app
+from mplang.runtime.server import app, register_session
+from mplang.runtime.session import Session
 from tests.utils.server_fixtures import http_servers  # noqa: F401 (fixture)
 
 
@@ -77,22 +78,24 @@ def test_distributed_send_recv(http_servers):  # noqa: F811
     # Each server will create its own session with the rank appropriate for that server
     session_name = "test_session"
 
+    # Build cluster_spec once (2-party subset for this test)
+    cluster_spec_dict = ClusterSpec.simple(
+        2,
+        endpoints=[ep.replace("http://", "") for ep in endpoints],
+        spu_protocol="SEMI2K",
+        spu_field="FM64",
+        runtime_version="test",
+        runtime_platform="test",
+    ).to_dict()
+
     for i, endpoint in enumerate(endpoints):
-        rank = i  # Server 0 gets rank 0, server 1 gets rank 1
+        rank = i
         response = httpx.put(
             f"{endpoint}/sessions/{session_name}",
-            json={
-                "rank": rank,
-                "endpoints": endpoints,
-                "spu_mask": -1,
-                "spu_protocol": "SEMI2K",
-                "spu_field": "FM64",
-            },
+            json={"rank": rank, "cluster_spec": cluster_spec_dict},
         )
         assert response.status_code == 200
-        assert (
-            response.json()["name"] == session_name
-        )  # This test verifies the basic HTTP communication works
+        assert response.json()["name"] == session_name
     # For full bidirectional communication testing, see single_process_party.py
 
 
@@ -109,16 +112,19 @@ def test_distributed_multiple_messages(http_servers):  # noqa: F811
     for session_idx in range(3):
         session_name = f"multi_session_{session_idx}"
 
+        # Build cluster_spec for each session (reuse endpoints list)
+        cluster_spec_dict = ClusterSpec.simple(
+            2,
+            endpoints=[ep.replace("http://", "") for ep in base_endpoints],
+            spu_protocol="SEMI2K",
+            spu_field="FM64",
+            runtime_version="test",
+            runtime_platform="test",
+        ).to_dict()
         for rank, endpoint in enumerate(base_endpoints):
             response = httpx.put(
                 f"{endpoint}/sessions/{session_name}",
-                json={
-                    "rank": rank,
-                    "endpoints": base_endpoints,
-                    "spu_mask": -1,
-                    "spu_protocol": "SEMI2K",
-                    "spu_field": "FM64",
-                },
+                json={"rank": rank, "cluster_spec": cluster_spec_dict},
             )
             assert response.status_code == 200
             assert response.json()["name"] == session_name
@@ -163,10 +169,7 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
 
     try:
         # Ports are pre-assigned by parent process via assigned_ports structure.
-        port0 = assigned_ports[0]
-        port1 = assigned_ports[1]
         port = assigned_ports[rank]
-        endpoints = {0: f"http://localhost:{port0}", 1: f"http://localhost:{port1}"}
 
         # Create session and communicator
         session_name = "e2e_test_session"
@@ -176,13 +179,25 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
 
         # Create session in the resource manager
         logger.info(f"Creating session: {session_name}")
-        session = resource.create_session(
-            name=session_name, rank=rank, endpoints=list(endpoints.values())
+        # Build minimal cluster_spec dict consistent across parties
+        cluster_spec_dict = ClusterSpec.simple(
+            2,
+            endpoints=[f"localhost:{assigned_ports[i]}" for i in range(2)],
+            spu_protocol="SEMI2K",
+            spu_field="FM128",
+            runtime_version="test",
+            runtime_platform="test",
+        ).to_dict()
+        sess = Session.from_cluster_spec_dict(
+            name=session_name,
+            rank=rank,
+            spec_dict=cluster_spec_dict,
         )
+        register_session(sess)
 
         # Save communicator for server to use
         global party_communicator
-        party_communicator = session.communicator
+        party_communicator = sess.communicator
 
         # Define server lifespan
         @asynccontextmanager
@@ -234,11 +249,11 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
             logger.info("Party 0: Sending message to party 1")
             test_data = {"message": "Hello from Party 0", "test_value": 42}
 
-            session.communicator.send(to=1, key="test_message", data=test_data)
+            sess.communicator.send(to=1, key="test_message", data=test_data)
             logger.info("Party 0: Message sent, waiting for response")
 
             # Wait for response
-            response = session.communicator.recv(frm=1, key="response_message")
+            response = sess.communicator.recv(frm=1, key="response_message")
             logger.info(f"Party 0: Received response: {response}")
 
             return_dict[rank] = {"status": "success", "received": response}
@@ -247,14 +262,14 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
             # Party 1: Wait for message from Party 0
             logger.info("Party 1: Waiting for message from party 0")
 
-            received_data = session.communicator.recv(frm=0, key="test_message")
+            received_data = sess.communicator.recv(frm=0, key="test_message")
             logger.info(f"Party 1: Received message: {received_data}")
 
             # Send response back
             logger.info("Party 1: Sending response to party 0")
             response_data = {"status": "received", "original_message": received_data}
 
-            session.communicator.send(to=0, key="response_message", data=response_data)
+            sess.communicator.send(to=0, key="response_message", data=response_data)
             logger.info("Party 1: Response sent")
 
             return_dict[rank] = {"status": "success", "sent_response": response_data}

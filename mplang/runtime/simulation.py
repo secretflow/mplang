@@ -86,20 +86,17 @@ class Simulator(InterpContext):
         cluster_spec: ClusterSpec,
         *,
         trace_ranks: list[int] | None = None,
-        op_bindings: dict[str, str] | None = None,
     ) -> None:
         """Initialize a simulator with the given cluster specification.
 
         Args:
             cluster_spec: The cluster specification defining the simulation environment.
             trace_ranks: List of ranks to trace execution for debugging.
-            op_bindings: Optional op->kernel binding template applied to all
-                RuntimeContexts. These are static dispatch overrides (merged
-                with project defaults) and are orthogonal to the per-evaluate
-                variable ``bindings`` dict passed into ``evaluate``.
+                Per-node op binding overrides should now be provided via
+                each node's `runtime_info.op_bindings` in the supplied
+                `cluster_spec`.
         """
         super().__init__(cluster_spec)
-        self._op_bindings_template = op_bindings or {}
         self._trace_ranks = trace_ranks or []
 
         spu_devices = cluster_spec.get_devices_by_kind("SPU")
@@ -145,21 +142,22 @@ class Simulator(InterpContext):
 
         # Persistent per-rank RuntimeContext instances (reused across evaluates).
         # We no longer pre-create evaluators since each evaluate has different env bindings.
-        self._runtimes: list[RuntimeContext] = [
-            RuntimeContext(
+        # Build per-rank runtime contexts.
+        self._runtimes: list[RuntimeContext] = []
+        for rank in range(self.world_size()):
+            node = self.cluster_spec.get_node_by_rank(rank)
+            rt = RuntimeContext(
                 rank=rank,
                 world_size=self.world_size(),
-                # Static op bindings template cloned into each runtime. These are kernel
-                # dispatch mappings, not per-evaluate variable bindings.
-                initial_bindings=self._op_bindings_template,
+                initial_bindings=node.runtime_info.op_bindings,
             )
-            for rank in range(self.world_size())
-        ]
+            self._runtimes.append(rt)
 
     @classmethod
     def simple(
         cls,
         world_size: int,
+        op_bindings: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> Simulator:
         """Create a simple simulator with the given number of parties.
@@ -175,6 +173,10 @@ class Simulator(InterpContext):
             A Simulator instance with a simple cluster configuration.
         """
         cluster_spec = ClusterSpec.simple(world_size)
+        if op_bindings:
+            # Apply the same op_bindings to every node's runtime_info for convenience
+            for node in cluster_spec.nodes.values():
+                node.runtime_info.op_bindings.update(op_bindings)
         return cls(cluster_spec, **kwargs)
 
     def _do_evaluate(self, expr: Expr, evaluator_engine: IEvaluator) -> Any:

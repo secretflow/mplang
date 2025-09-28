@@ -25,23 +25,28 @@ from typing import Any
 
 @dataclass(frozen=True)
 class RuntimeInfo:
-    """
-    Structured representation of a Physical Node's runtime capabilities.
+    """Per-physical-node runtime configuration.
+
+    ``op_bindings`` is a per-node override map (logical_op -> kernel_id) merged
+    into that node's ``RuntimeContext``. Unknown future / auxiliary fields are
+    preserved in ``extra``.
     """
 
     version: str
     platform: str
-    backends: list[str]
+    # Per-node partial override dispatch table (merged over project defaults).
+    op_bindings: dict[str, str] = field(default_factory=dict)
 
-    # A catch-all for any other custom or future properties
+    # A catch-all for any other custom or future properties (must not collide
+    # with reserved keys: version, platform, op_bindings).
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert RuntimeInfo to a dictionary."""
+        """Convert RuntimeInfo to a dictionary (stable field names)."""
         result = {
             "version": self.version,
             "platform": self.platform,
-            "backends": self.backends,
+            "op_bindings": self.op_bindings,
         }
         result.update(self.extra)
         return result
@@ -175,7 +180,8 @@ class ClusterSpec:
 
         # 2. Parse Physical Nodes, using the list index as the rank
         nodes_map: dict[str, Node] = {}
-        known_runtime_fields = {"version", "platform", "backends"}
+        # Reserved runtime info keys we recognize explicitly.
+        known_runtime_fields = {"version", "platform", "op_bindings"}
         for i, node_cfg in enumerate(config["nodes"]):
             if "rank" in node_cfg:
                 # Optionally, we can log a warning that the explicit 'rank' is ignored.
@@ -187,11 +193,12 @@ class ClusterSpec:
                 for k, v in runtime_info_cfg.items()
                 if k not in known_runtime_fields
             }
-
+            # Gracefully ignore legacy 'backends' if present (treated as extra)
+            # for backward compatibility.
             runtime_info = RuntimeInfo(
                 version=runtime_info_cfg.get("version", "N/A"),
                 platform=runtime_info_cfg.get("platform", "N/A"),
-                backends=runtime_info_cfg.get("backends", []),
+                op_bindings=runtime_info_cfg.get("op_bindings", {}) or {},
                 extra=extra_runtime_info,
             )
 
@@ -227,32 +234,96 @@ class ClusterSpec:
         return cls(nodes=nodes_map, devices=devices_map)
 
     @classmethod
-    def simple(cls, world_size: int) -> ClusterSpec:
-        """Creates a simple cluster spec for simulation with the given number of parties."""
-        nodes = {
-            f"node{i}": Node(
+    def simple(
+        cls,
+        world_size: int,
+        *,
+        endpoints: list[str] | None = None,
+        spu_protocol: str = "SEMI2K",
+        spu_field: str = "FM128",
+        runtime_version: str = "simulated",
+        runtime_platform: str = "simulated",
+        op_bindings: list[dict[str, str]] | None = None,
+        enable_local_device: bool = True,
+        enable_spu_device: bool = True,
+    ) -> ClusterSpec:
+        """Convenience constructor used heavily in tests.
+
+        Parameters
+        ----------
+        world_size:
+            Number of parties (physical nodes).
+        endpoints:
+            Optional explicit endpoint list of length ``world_size``. Each element may
+            include scheme (``http://``) or not; stored verbatim. If not provided we
+            synthesize ``localhost:{5000 + i}`` (5000 is a fixed default; pass explicit
+            endpoints for control). Deprecated ``base_port`` legacy kwarg can adjust it.
+        spu_protocol / spu_field:
+            SPU device config values.
+        runtime_version / runtime_platform:
+            Populated into each node's ``RuntimeInfo``.
+        op_bindings:
+            Optional list of length ``world_size`` supplying per-node op_bindings
+            override dicts (defaults to empty dicts).
+        enable_local_device:
+            If True (default), create one ``local_{rank}`` device per node.
+        enable_spu_device:
+            If True (default) create a shared SPU device named ``SP0``.
+        """
+        base_port = 5000
+
+        if endpoints is not None and len(endpoints) != world_size:
+            raise ValueError(
+                "len(endpoints) must equal world_size when provided: "
+                f"{len(endpoints)} != {world_size}"
+            )
+
+        if op_bindings is not None and len(op_bindings) != world_size:
+            raise ValueError(
+                "len(op_bindings) must equal world_size when provided: "
+                f"{len(op_bindings)} != {world_size}"
+            )
+
+        if not enable_local_device and not enable_spu_device:
+            raise ValueError(
+                "At least one of enable_local_device or enable_spu_device must be True"
+            )
+
+        nodes: dict[str, Node] = {}
+        for i in range(world_size):
+            ep = endpoints[i] if endpoints is not None else f"localhost:{base_port + i}"
+            node_op_bindings = op_bindings[i] if op_bindings is not None else {}
+            nodes[f"node{i}"] = Node(
                 name=f"node{i}",
                 rank=i,
-                endpoint=f"localhost:{5000 + i}",
+                endpoint=ep,
                 runtime_info=RuntimeInfo(
-                    version="simulated",
-                    platform="simulated",
-                    backends=["__all__"],
+                    version=runtime_version,
+                    platform=runtime_platform,
+                    op_bindings=node_op_bindings,
                 ),
             )
-            for i in range(world_size)
-        }
 
-        devices = {
-            "SP0": Device(
+        devices: dict[str, Device] = {}
+        # Optional per-node local devices
+        if enable_local_device:
+            for i in range(world_size):
+                devices[f"local_{i}"] = Device(
+                    name=f"local_{i}",
+                    kind="local",
+                    members=[nodes[f"node{i}"]],
+                )
+
+        # Shared SPU device
+        if enable_spu_device:
+            devices["SP0"] = Device(
                 name="SP0",
                 kind="SPU",
                 members=list(nodes.values()),
                 config={
-                    "protocol": "SEMI2K",
-                    "field": "FM128",
+                    "protocol": spu_protocol,
+                    "field": spu_field,
                 },
             )
-        }
 
         return cls(nodes=nodes, devices=devices)

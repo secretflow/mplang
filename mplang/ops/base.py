@@ -30,7 +30,7 @@ from mplang.core.tensor import TensorType
 # The standard return contract for frontend operations (FeOperation.trace).
 #
 # Triad := (PFunction, list[MPObject], PyTreeDef)
-# - PFunction: Captures fn_type (routing key, e.g., "mlir.stablehlo", "sql.duckdb"),
+# - PFunction: Captures fn_type (routing key, e.g., "mlir.stablehlo", "sql.run"),
 #              input/output MPTypes and optional attributes.
 # - list[MPObject]: The flat positional MPObjects captured under the current
 #                   context (Trace/Interp). Order matches pfunc.ins_info.
@@ -422,6 +422,6 @@ def list_ops(module: str | None = None) -> dict[tuple[str, str], FeOperation]:
 # - For type-only kernels, use @module.typed_op(pfunc_name)(kernel). The op name is derived from the kernel function name.
 # - For complex ops (with Python callables/closures), subclass FeOperation and register
 #   using get_registry().register_op(module, name, op_instance) or use @module.feop with InlineFeOperation.
-# - Ensure PFunction.fn_type is set as the routing key (e.g., "mlir.stablehlo", "sql.duckdb").
+# - Ensure PFunction.fn_type is set as the routing key (e.g., "mlir.stablehlo", "sql.run").
 # - Keep device selection/routing out of frontend code; only set fn_type and attributes.
 # - Avoid moving MPObjects across contexts directly; capture within current ctx in trace().

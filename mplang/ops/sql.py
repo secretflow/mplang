@@ -46,12 +46,13 @@ class SqlFE(FeOperation):
                 in_vars.append(tbl)
 
         pfn = PFunction(
-            fn_type=f"sql[{self._dialect}]",
+            fn_type="sql.run",
             fn_name="",
             fn_text=sql,
             ins_info=tuple(ins_info),
             outs_info=(out_type,),
             in_names=tuple(in_names),
+            dialect=self._dialect,
         )
         _, treedef = tree_flatten(out_type)
         return pfn, in_vars, treedef

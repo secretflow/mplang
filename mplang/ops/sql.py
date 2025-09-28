@@ -46,7 +46,7 @@ class SqlFE(FeOperation):
                 in_vars.append(tbl)
 
         pfn = PFunction(
-            fn_type=f"sql[{self._dialect}]",
+            fn_type="sql.run",
             fn_name="",
             fn_text=sql,
             ins_info=tuple(ins_info),

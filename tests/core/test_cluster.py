@@ -335,8 +335,6 @@ class TestFromDict:
                     "runtime_info": {
                         "version": "2.0.0",
                         "platform": "cpu",
-                        # legacy field 'backends' should be ignored gracefully
-                        "backends": ["builtin"],
                         "op_bindings": {"crypto.enc": "crypto.enc.fast"},
                         "custom_field": "custom_value",
                         "number_field": 42,
@@ -352,7 +350,6 @@ class TestFromDict:
         assert node.runtime_info.extra == {
             "custom_field": "custom_value",
             "number_field": 42,
-            "backends": ["builtin"],
         }
         assert node.runtime_info.op_bindings == {"crypto.enc": "crypto.enc.fast"}
 

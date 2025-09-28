@@ -33,7 +33,6 @@ def build_cluster():
             "runtime_info": {
                 "version": "test",
                 "platform": "sim",
-                "backends": ["__all__"],
             },
         }
 

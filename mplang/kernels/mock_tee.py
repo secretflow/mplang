@@ -43,7 +43,7 @@ def _quote_from_pk(pk: np.ndarray) -> NDArray[np.uint8]:
     return out
 
 
-@kernel_def("tee.quote")
+@kernel_def("mock_tee.quote")
 def _tee_quote(pfunc: PFunction, pk: object) -> NDArray[np.uint8]:
     pk = np.asarray(pk, dtype=np.uint8)
     # rng access ensures deterministic seeding per rank even if unused now
@@ -51,7 +51,7 @@ def _tee_quote(pfunc: PFunction, pk: object) -> NDArray[np.uint8]:
     return _quote_from_pk(pk)
 
 
-@kernel_def("tee.attest")
+@kernel_def("mock_tee.attest")
 def _tee_attest(pfunc: PFunction, quote: object) -> NDArray[np.uint8]:
     quote = np.asarray(quote, dtype=np.uint8)
     if quote.size != 33:

@@ -90,14 +90,21 @@ class Simulator(InterpContext):
         cluster_spec: ClusterSpec,
         *,
         trace_ranks: list[int] | None = None,
+        op_bindings: dict[str, str] | None = None,
     ) -> None:
         """Initialize a simulator with the given cluster specification.
 
         Args:
             cluster_spec: The cluster specification defining the simulation environment.
             trace_ranks: List of ranks to trace execution for debugging.
+            op_bindings: Optional op->kernel binding template applied to all
+                RuntimeContexts. These are static dispatch overrides (merged
+                with project defaults) and are orthogonal to the per-evaluate
+                variable ``bindings`` dict passed into ``evaluate``. Use
+                ``bind_op_all`` for post-construction global rebinding.
         """
         super().__init__(cluster_spec)
+        self._op_bindings_template = op_bindings or {}
         self._trace_ranks = trace_ranks or []
 
         spu_devices = cluster_spec.get_devices_by_kind("SPU")
@@ -141,20 +148,18 @@ class Simulator(InterpContext):
         self._spu_world = spu_mask.num_parties()
         self._spu_mask = spu_mask
 
-        # No per-backend handlers needed anymore (all flat kernels)
-        self._handlers: list[list[Any]] = [[] for _ in range(self.world_size())]
-
-        self._evaluators: list[IEvaluator] = []
-        for rank in range(self.world_size()):
-            runtime = RuntimeContext(rank=rank, world_size=self.world_size())
-            ev = create_evaluator(
-                rank,
-                {},  # the global environment for this rank
-                self._comms[rank],
-                runtime,
-                None,
+        # Persistent per-rank RuntimeContext instances (reused across evaluates).
+        # We no longer pre-create evaluators since each evaluate has different env bindings.
+        self._runtimes: list[RuntimeContext] = [
+            RuntimeContext(
+                rank=rank,
+                world_size=self.world_size(),
+                # Static op bindings template cloned into each runtime. These are kernel
+                # dispatch mappings, not per-evaluate variable bindings.
+                initial_bindings=self._op_bindings_template,
             )
-            self._evaluators.append(ev)
+            for rank in range(self.world_size())
+        ]
 
     @classmethod
     def simple(
@@ -196,6 +201,18 @@ class Simulator(InterpContext):
 
         return evaluator_engine.evaluate(deserialized_expr)
 
+    # Convenience API to (re)bind an op across all persistent runtimes.
+    def bind_op_all(
+        self, op_type: str, kernel_id: str, *, force: bool = False
+    ) -> None:  # pragma: no cover - thin helper
+        """Bind/rebind an op->kernel mapping for every rank runtime.
+
+        Updates internal initial_bindings cache so future runtimes (if any) stay consistent.
+        """
+        self._op_bindings_template[op_type] = kernel_id
+        for rt in self._runtimes:
+            rt.bind_op(op_type, kernel_id, force=force)
+
     # override
     def fetch(self, obj: MPObject) -> list[TensorLike]:
         if not isinstance(obj, SimVar):
@@ -215,10 +232,10 @@ class Simulator(InterpContext):
             for rank in range(self.world_size())
         ]
 
-        # Build per-rank evaluators with the per-party environment
+        # Build per-rank evaluators with the per-party environment (runtime reused)
         pts_evaluators: list[IEvaluator] = []
         for rank in range(self.world_size()):
-            runtime = RuntimeContext(rank=rank, world_size=self.world_size())
+            runtime = self._runtimes[rank]
             ev = create_evaluator(
                 rank,
                 pts_env[rank],
@@ -226,17 +243,20 @@ class Simulator(InterpContext):
                 runtime,
                 None,
             )
-            link_ctx = self._spu_link_ctxs[rank]
-            seed_fn = PFunction(
-                fn_type="spu.seed_env",
-                ins_info=(),
-                outs_info=(),
-                config=self._spu_runtime_cfg,
-                world=self._spu_world,
-                link=link_ctx,
-            )
-            # Seed SPU backend environment explicitly via runtime (no evaluator fast-path)
-            ev.runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
+            # Seed SPU once per runtime (idempotent logical requirement)
+            spu_meta = runtime.state.get("_spu", {})
+            if not spu_meta.get("inited", False):
+                link_ctx = self._spu_link_ctxs[rank]
+                seed_fn = PFunction(
+                    fn_type="spu.seed_env",
+                    ins_info=(),
+                    outs_info=(),
+                    config=self._spu_runtime_cfg,
+                    world=self._spu_world,
+                    link=link_ctx,
+                )
+                ev.runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
+                runtime.state.setdefault("_spu", {})["inited"] = True
             pts_evaluators.append(ev)
 
         # Collect evaluation results from all parties

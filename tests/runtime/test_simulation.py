@@ -107,10 +107,10 @@ class TestSimulator:
     def test_simulator_creation(self):
         """Test Simulator creation."""
         sim = Simulator.simple(world_size=3)
-
         assert sim.world_size() == 3
         assert len(sim._comms) == 3
-        assert len(sim._evaluators) == 3
+        # persistent runtimes after refactor
+        assert len(sim._runtimes) == 3
 
         # Check that communicators are properly connected
         for i, comm in enumerate(sim._comms):

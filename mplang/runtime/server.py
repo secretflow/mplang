@@ -258,7 +258,7 @@ def list_session_computations(session_name: str) -> ComputationListResponse:
     sess = _sessions.get(session_name)
     if not sess:
         raise ResourceNotFound(f"Session '{session_name}' not found")
-    return ComputationListResponse(computations=list(sess.state.computations.keys()))
+    return ComputationListResponse(computations=sess.list_computations())
 
 
 # Session endpoints
@@ -336,8 +336,7 @@ def create_and_execute_computation(
 def delete_computation(session_name: str, computation_id: str) -> dict[str, str]:
     """Delete a specific computation."""
     sess = _sessions.get(session_name)
-    if sess and computation_id in sess.state.computations:
-        del sess.state.computations[computation_id]
+    if sess and sess.delete_computation(computation_id):
         logging.info(
             f"Computation {computation_id} deleted from session {session_name}"
         )
@@ -415,8 +414,7 @@ def list_session_symbols(session_name: str) -> dict[str, list[str]]:
 def delete_symbol(session_name: str, symbol_name: str) -> dict[str, str]:
     """Delete a specific symbol."""
     sess = _sessions.get(session_name)
-    if sess and symbol_name in sess.state.symbols:
-        del sess.state.symbols[symbol_name]
+    if sess and sess.delete_symbol(symbol_name):
         logging.info(f"Symbol {symbol_name} deleted from session {session_name}")
         return {"message": f"Symbol '{symbol_name}' deleted successfully"}
     else:

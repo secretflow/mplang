@@ -1,3 +1,17 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Core Session model (pure, no global registries).
 
 Contents:
@@ -15,7 +29,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import spu.libspu as libspu
@@ -29,6 +43,9 @@ from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.exceptions import ResourceNotFound
 from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from mplang.core.cluster import ClusterSpec
 
 
 class LinkCommFactory:
@@ -83,7 +100,7 @@ class Session:
     Mutable: state (runtime object, symbols, computations, seeded flag).
     """
 
-    def __init__(self, name: str, rank: int, cluster_spec: Any):  # ClusterSpec shape
+    def __init__(self, name: str, rank: int, cluster_spec: ClusterSpec):
         self.name = name
         self.rank = rank
         self.cluster_spec = cluster_spec
@@ -167,6 +184,10 @@ class Session:
             return
 
         link_ctx = None
+        # Fixed port offset for SPU runtime link services (legacy value retained).
+        # TODO: make configurable if future deployments require dynamic offset.
+        SPU_PORT_OFFSET = 100
+
         if self.is_spu_party:
             # Build SPU address list across all endpoints for ranks in mask
             spu_addrs: list[str] = []
@@ -176,7 +197,7 @@ class Session:
                         addr = f"//{addr}"
                     parsed = urlparse(addr)
                     assert isinstance(parsed.port, int)
-                    new_addr = f"{parsed.hostname}:{parsed.port + 100}"
+                    new_addr = f"{parsed.hostname}:{parsed.port + SPU_PORT_OFFSET}"
                     spu_addrs.append(new_addr)
             rel_index = sum(1 for r in range(self.rank) if r in self.spu_mask)
             link_ctx = g_link_factory.create_link(rel_index, spu_addrs)
@@ -212,6 +233,21 @@ class Session:
 
     def list_symbols(self) -> list[str]:  # pragma: no cover - trivial
         return list(self.state.symbols.keys())
+
+    def delete_symbol(self, name: str) -> bool:
+        if name in self.state.symbols:
+            del self.state.symbols[name]
+            return True
+        return False
+
+    def list_computations(self) -> list[str]:  # pragma: no cover - trivial
+        return list(self.state.computations.keys())
+
+    def delete_computation(self, name: str) -> bool:
+        if name in self.state.computations:
+            del self.state.computations[name]
+            return True
+        return False
 
     # --- Execution ---
     def execute(

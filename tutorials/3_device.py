@@ -102,7 +102,10 @@ def run_tee():
 
     # TEE operations need explicit binding for security
     tee_bindings = {"tee.quote": "mock_tee.quote", "tee.attest": "mock_tee.attest"}
-    sim = mplang.Simulator(cluster_spec, op_bindings=tee_bindings)
+    # Apply tee bindings across nodes before constructing simulator
+    for n in cluster_spec.nodes.values():
+        n.runtime_info.op_bindings.update(tee_bindings)
+    sim = mplang.Simulator(cluster_spec)
     x_p0, y_p1, z_t, r_p0 = mplang.evaluate(sim, millionaire, "TEE0")
     print("x_p0:", x_p0, mpd.fetch(sim, x_p0))
     print("y_p1:", y_p1, mpd.fetch(sim, y_p1))

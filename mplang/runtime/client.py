@@ -81,21 +81,14 @@ class HttpExecutorClient:
         self,
         name: str,
         rank: int,
-        endpoints: list[str],
-        *,
-        spu_mask: int = 0,
-        spu_protocol: str = "SEMI2K",
-        spu_field: str = "FM64",
+        cluster_spec: dict,
     ) -> str:
         """Create a new session.
 
         Args:
             name: Session name/ID.
-            rank: The rank of this party in the session.
-            endpoints: List of endpoint URLs for all parties, indexed by rank.
-            spu_mask: SPU mask for the session, 0 means no SPU.
-            spu_protocol: SPU protocol for the session (e.g., "SEMI2K", "ABY3").
-            spu_field: SPU field for the session (e.g., "FM64", "FM128").
+            rank: This party's rank.
+            cluster_spec: Full cluster specification dict (ClusterSpec.to_dict()).
 
         Returns:
             The session name/ID
@@ -104,14 +97,7 @@ class HttpExecutorClient:
             RuntimeError: If session creation fails
         """
         url = f"/sessions/{name}"
-
-        payload: dict[str, Any] = {
-            "rank": rank,
-            "endpoints": endpoints,
-            "spu_mask": spu_mask,
-            "spu_protocol": spu_protocol,
-            "spu_field": spu_field,
-        }
+        payload: dict[str, Any] = {"rank": rank, "cluster_spec": cluster_spec}
 
         try:
             response = await self._client.put(url, json=payload)

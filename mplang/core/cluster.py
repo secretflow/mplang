@@ -25,23 +25,28 @@ from typing import Any
 
 @dataclass(frozen=True)
 class RuntimeInfo:
-    """
-    Structured representation of a Physical Node's runtime capabilities.
+    """Per-physical-node runtime configuration.
+
+    ``op_bindings`` is a per-node override map (logical_op -> kernel_id) merged
+    into that node's ``RuntimeContext``. Unknown future / auxiliary fields are
+    preserved in ``extra``.
     """
 
     version: str
     platform: str
-    backends: list[str]
+    # Per-node partial override dispatch table (merged over project defaults).
+    op_bindings: dict[str, str] = field(default_factory=dict)
 
-    # A catch-all for any other custom or future properties
+    # A catch-all for any other custom or future properties (must not collide
+    # with reserved keys: version, platform, op_bindings).
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert RuntimeInfo to a dictionary."""
+        """Convert RuntimeInfo to a dictionary (stable field names)."""
         result = {
             "version": self.version,
             "platform": self.platform,
-            "backends": self.backends,
+            "op_bindings": self.op_bindings,
         }
         result.update(self.extra)
         return result
@@ -175,7 +180,8 @@ class ClusterSpec:
 
         # 2. Parse Physical Nodes, using the list index as the rank
         nodes_map: dict[str, Node] = {}
-        known_runtime_fields = {"version", "platform", "backends"}
+        # Reserved runtime info keys we recognize explicitly.
+        known_runtime_fields = {"version", "platform", "op_bindings"}
         for i, node_cfg in enumerate(config["nodes"]):
             if "rank" in node_cfg:
                 # Optionally, we can log a warning that the explicit 'rank' is ignored.
@@ -187,11 +193,12 @@ class ClusterSpec:
                 for k, v in runtime_info_cfg.items()
                 if k not in known_runtime_fields
             }
-
+            # Gracefully ignore legacy 'backends' if present (treated as extra)
+            # for backward compatibility.
             runtime_info = RuntimeInfo(
                 version=runtime_info_cfg.get("version", "N/A"),
                 platform=runtime_info_cfg.get("platform", "N/A"),
-                backends=runtime_info_cfg.get("backends", []),
+                op_bindings=runtime_info_cfg.get("op_bindings", {}) or {},
                 extra=extra_runtime_info,
             )
 
@@ -237,7 +244,7 @@ class ClusterSpec:
                 runtime_info=RuntimeInfo(
                     version="simulated",
                     platform="simulated",
-                    backends=["__all__"],
+                    op_bindings={},  # no per-node overrides by default
                 ),
             )
             for i in range(world_size)

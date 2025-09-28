@@ -35,7 +35,7 @@ def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
             runtime_info=RuntimeInfo(
                 version="test",
                 platform="test",
-                backends=["__all__"],
+                op_bindings={},
             ),
         )
 

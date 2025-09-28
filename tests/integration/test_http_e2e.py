@@ -24,7 +24,6 @@ import pytest
 import mplang
 import mplang.simp as simp
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
-from tests.utils.server_fixtures import http_servers  # noqa: F401
 
 
 def create_e2e_cluster_spec(
@@ -44,7 +43,7 @@ def create_e2e_cluster_spec(
             runtime_info=RuntimeInfo(
                 version="test",
                 platform="test",
-                backends=["__all__"],
+                op_bindings={},
             ),
         )
 
@@ -77,7 +76,7 @@ def create_e2e_cluster_spec(
 
 
 @pytest.fixture
-def http_driver(http_servers):  # type: ignore  # noqa: F811
+def http_driver(http_servers):  # type: ignore
     node_ids = ["P0", "P1", "P2", "P3", "P4"]
     node_addrs = dict(zip(node_ids, http_servers.addresses, strict=True))
     cluster_spec = create_e2e_cluster_spec(node_addrs, ["P1", "P2", "P3"])

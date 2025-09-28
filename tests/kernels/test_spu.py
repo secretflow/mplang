@@ -50,7 +50,7 @@ class DummyContext(MPContext):
     """Minimal MPContext for compiling JAX functions to SPU PFunction."""
 
     def __init__(self):
-        runtime = RuntimeInfo(version="dev", platform="local", backends=[])
+        runtime = RuntimeInfo(version="dev", platform="local", op_bindings={})
         node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
         device = Device(name="p0_local", kind="local", members=[node])
         spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})

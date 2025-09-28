@@ -118,7 +118,10 @@ def main():
     print("-" * 10, "TEE millionaire: device vs manual (end-to-end IR)", "-" * 10)
     # Create simulator with TEE bindings
     tee_bindings = {"tee.quote": "mock_tee.quote", "tee.attest": "mock_tee.attest"}
-    sim = Simulator(cluster_spec, op_bindings=tee_bindings)
+    # Apply tee_bindings per-node (preferred) then construct Simulator
+    for n in cluster_spec.nodes.values():
+        n.runtime_info.op_bindings.update(tee_bindings)
+    sim = Simulator(cluster_spec)
 
     compiled_dev = mplang.compile(sim, millionaire_device)
     compiled_man = mplang.compile(sim, millionaire_manual)

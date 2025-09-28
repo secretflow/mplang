@@ -58,9 +58,7 @@ def test_global_symbol_roundtrip(http_servers):
             name=f"node{r}",
             rank=r,
             endpoint=addr,
-            runtime_info=RuntimeInfo(
-                version="test", platform="test", backends=["__all__"]
-            ),
+            runtime_info=RuntimeInfo(version="test", platform="test", op_bindings={}),
         )
     local_devices = {
         f"local_{n.rank}": Device(name=f"local_{n.rank}", kind="local", members=[n])

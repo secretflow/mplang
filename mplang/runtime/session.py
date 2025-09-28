@@ -29,7 +29,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlparse
 
 import spu.libspu as libspu
@@ -45,7 +45,7 @@ from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checking
-    from mplang.core.cluster import ClusterSpec
+    from mplang.core.cluster import ClusterSpec, Node, RuntimeInfo
 
 
 class LinkCommFactory:
@@ -111,11 +111,11 @@ class Session:
 
     # --- Derived topology ---
     @cached_property
-    def node(self):  # type: ignore
+    def node(self) -> Node:
         return self.cluster_spec.get_node_by_rank(self.rank)
 
     @property
-    def runtime_info(self):  # type: ignore
+    def runtime_info(self) -> RuntimeInfo:
         return self.node.runtime_info
 
     @cached_property
@@ -146,11 +146,11 @@ class Session:
 
     @property
     def spu_protocol(self) -> str:
-        return self.spu_device.config.get("protocol", "SEMI2K")
+        return cast(str, self.spu_device.config.get("protocol", "SEMI2K"))
 
     @property
     def spu_field(self) -> str:
-        return self.spu_device.config.get("field", "FM64")
+        return cast(str, self.spu_device.config.get("field", "FM64"))
 
     @property
     def is_spu_party(self) -> bool:
@@ -276,7 +276,7 @@ class Session:
 
     # --- Convenience constructor ---
     @classmethod
-    def from_cluster_spec_dict(cls, name: str, rank: int, spec_dict: dict):
+    def from_cluster_spec_dict(cls, name: str, rank: int, spec_dict: dict) -> Session:
         from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
 
         spec = ClusterSpec.from_dict(spec_dict)

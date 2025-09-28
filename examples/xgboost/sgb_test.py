@@ -28,7 +28,7 @@ from examples.xgboost.sgb import (
     batch_feature_wise_bucket_sum_mplang,
     pretty_print_ensemble,
 )
-from mplang.frontend import phe
+from mplang.ops import phe
 
 
 def load_dataset(

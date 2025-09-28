@@ -18,7 +18,7 @@ import numpy as np
 import mplang
 import mplang.simp as simp
 from mplang.core import TensorType
-from mplang.frontend import builtin
+from mplang.ops import builtin
 
 
 @mplang.function

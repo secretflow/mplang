@@ -27,7 +27,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from mplang.backend.context import RuntimeContext
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -47,6 +46,7 @@ from mplang.core.expr.visitor import ExprVisitor
 from mplang.core.expr.walk import walk_dataflow
 from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction
+from mplang.kernels.context import RuntimeContext
 
 
 class IEvaluator(Protocol):

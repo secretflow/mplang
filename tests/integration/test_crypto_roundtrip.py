@@ -23,7 +23,7 @@ import pytest
 import mplang
 import mplang.simp as simp
 from mplang.core.tensor import TensorType
-from mplang.frontend import builtin, crypto
+from mplang.ops import builtin, crypto
 
 pytestmark = pytest.mark.integration
 

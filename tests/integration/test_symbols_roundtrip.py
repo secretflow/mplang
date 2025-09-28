@@ -39,7 +39,7 @@ import mplang.simp as simp
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
 from mplang.core.tensor import TensorType
-from mplang.frontend import builtin as fb
+from mplang.ops import builtin as fb
 from mplang.runtime.client import HttpExecutorClient
 
 pytest_plugins = ("tests.utils.server_fixtures",)

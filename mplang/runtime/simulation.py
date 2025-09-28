@@ -227,7 +227,8 @@ class Simulator(InterpContext):
                 None,
             )
             # Seed SPU once per runtime (idempotent logical requirement)
-            spu_meta = runtime.state.get("_spu", {})
+            # Use setdefault to both retrieve and create metadata dict in one step.
+            spu_meta = runtime.state.setdefault("_spu", {})
             if not spu_meta.get("inited", False):
                 link_ctx = self._spu_link_ctxs[rank]
                 seed_fn = PFunction(
@@ -239,7 +240,7 @@ class Simulator(InterpContext):
                     link=link_ctx,
                 )
                 ev.runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
-                runtime.state.setdefault("_spu", {})["inited"] = True
+                spu_meta["inited"] = True
             pts_evaluators.append(ev)
 
         # Collect evaluation results from all parties

@@ -34,10 +34,6 @@ from mplang.core.mpir import Reader, Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
 from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
-
-# New explicit binding model: we only need RuntimeContext which ensures
-# bindings via bind_all_ops() on creation; per-module side-effect imports
-# are no longer required here.
 from mplang.kernels.context import RuntimeContext
 from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol
@@ -100,8 +96,7 @@ class Simulator(InterpContext):
             op_bindings: Optional op->kernel binding template applied to all
                 RuntimeContexts. These are static dispatch overrides (merged
                 with project defaults) and are orthogonal to the per-evaluate
-                variable ``bindings`` dict passed into ``evaluate``. Use
-                ``bind_op_all`` for post-construction global rebinding.
+                variable ``bindings`` dict passed into ``evaluate``.
         """
         super().__init__(cluster_spec)
         self._op_bindings_template = op_bindings or {}
@@ -200,18 +195,6 @@ class Simulator(InterpContext):
             raise ValueError("Failed to deserialize expression")
 
         return evaluator_engine.evaluate(deserialized_expr)
-
-    # Convenience API to (re)bind an op across all persistent runtimes.
-    def bind_op_all(
-        self, op_type: str, kernel_id: str, *, force: bool = False
-    ) -> None:  # pragma: no cover - thin helper
-        """Bind/rebind an op->kernel mapping for every rank runtime.
-
-        Updates internal initial_bindings cache so future runtimes (if any) stay consistent.
-        """
-        self._op_bindings_template[op_type] = kernel_id
-        for rt in self._runtimes:
-            rt.bind_op(op_type, kernel_id, force=force)
 
     # override
     def fetch(self, obj: MPObject) -> list[TensorLike]:

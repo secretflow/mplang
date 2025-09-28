@@ -37,11 +37,11 @@ def _ensure_impl_imported() -> None:
         return
     from mplang.kernels import builtin as _impl_builtin  # noqa: F401
     from mplang.kernels import crypto as _impl_crypto  # noqa: F401
+    from mplang.kernels import mock_tee as _impl_tee  # noqa: F401
     from mplang.kernels import phe as _impl_phe  # noqa: F401
     from mplang.kernels import spu as _impl_spu  # noqa: F401
     from mplang.kernels import sql_duckdb as _impl_sql_duckdb  # noqa: F401
     from mplang.kernels import stablehlo as _impl_stablehlo  # noqa: F401
-    from mplang.kernels import tee as _impl_tee  # noqa: F401
 
     _IMPL_IMPORTED = True
 
@@ -91,8 +91,8 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     # generic SQL op; backend-specific kernel id for duckdb
     "sql.run": "duckdb.run_sql",
     # tee
-    "tee.quote": "tee.quote",
-    "tee.attest": "tee.attest",
+    # "tee.quote": "mock_tee.quote",
+    # "tee.attest": "mock_tee.attest",
 }
 
 
@@ -102,6 +102,10 @@ _DEFAULT_BINDINGS: dict[str, str] = {
 class RuntimeContext:
     """Per-runtime execution context with isolated op->kernel bindings.
 
+    This object owns ONLY static dispatch metadata ("op bindings") and mutable
+    per-rank kernel side state/cache/stats. It does NOT store per-evaluation
+    variable bindings (those are provided to the evaluator at evaluation time).
+
     Parameters
     ----------
     rank : int
@@ -110,9 +114,10 @@ class RuntimeContext:
         Total number of participants.
     initial_bindings : Mapping[str, str] | None, optional
         Optional partial overrides applied on top of the default binding table
-        during construction (override semantics, not replace). After
+        during construction (override semantics, not replace). These map
+        op_type -> kernel_id and form a *template* for dispatch. After
         initialization, all (re)binding must go through ``bind_op`` /
-        ``rebind_op``.
+        ``rebind_op`` on this context (scoped to THIS runtime only).
     state / cache / stats : dict, optional
         Mutable pockets reused across kernel invocations. If omitted, new
         dictionaries are created.

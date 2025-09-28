@@ -74,7 +74,9 @@ def _demo_flow():
 
 
 def test_crypto_enc_dec_and_tee_quote_attest_roundtrip():
-    sim = mplang.Simulator.simple(3)
+    # Create simulator with TEE bindings using the new initial_bindings parameter
+    tee_bindings = {"tee.quote": "mock_tee.quote", "tee.attest": "mock_tee.attest"}
+    sim = mplang.Simulator.simple(3, op_bindings=tee_bindings)
     p0, p1 = mplang.evaluate(sim, _demo_flow)
     a = mplang.fetch(sim, p0)
     b = mplang.fetch(sim, p1)

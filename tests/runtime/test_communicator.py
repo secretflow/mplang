@@ -21,6 +21,7 @@ import httpx
 import pytest
 import uvicorn
 
+from mplang.core.cluster import ClusterSpec
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.server import app, register_session
 from mplang.runtime.session import Session
@@ -78,31 +79,14 @@ def test_distributed_send_recv(http_servers):  # noqa: F811
     session_name = "test_session"
 
     # Build cluster_spec once (2-party subset for this test)
-    from mplang.core.cluster import (  # local import
-        ClusterSpec,
-        Device,
-        Node,
-        RuntimeInfo,
-    )
-
-    nodes = {
-        f"node{i}": Node(
-            name=f"node{i}",
-            rank=i,
-            endpoint=endpoints[i].replace("http://", ""),
-            runtime_info=RuntimeInfo(version="test", platform="test", op_bindings={}),
-        )
-        for i in range(2)
-    }
-    devices = {
-        "SP0": Device(
-            name="SP0",
-            kind="SPU",
-            members=list(nodes.values()),
-            config={"protocol": "SEMI2K", "field": "FM64"},
-        )
-    }
-    cluster_spec_dict = ClusterSpec(nodes=nodes, devices=devices).to_dict()
+    cluster_spec_dict = ClusterSpec.simple(
+        2,
+        endpoints=[ep.replace("http://", "") for ep in endpoints],
+        spu_protocol="SEMI2K",
+        spu_field="FM64",
+        runtime_version="test",
+        runtime_platform="test",
+    ).to_dict()
 
     for i, endpoint in enumerate(endpoints):
         rank = i
@@ -129,33 +113,14 @@ def test_distributed_multiple_messages(http_servers):  # noqa: F811
         session_name = f"multi_session_{session_idx}"
 
         # Build cluster_spec for each session (reuse endpoints list)
-        from mplang.core.cluster import (  # local import
-            ClusterSpec,
-            Device,
-            Node,
-            RuntimeInfo,
-        )
-
-        nodes = {
-            f"node{i}": Node(
-                name=f"node{i}",
-                rank=i,
-                endpoint=base_endpoints[i].replace("http://", ""),
-                runtime_info=RuntimeInfo(
-                    version="test", platform="test", op_bindings={}
-                ),
-            )
-            for i in range(2)
-        }
-        devices = {
-            "SP0": Device(
-                name="SP0",
-                kind="SPU",
-                members=list(nodes.values()),
-                config={"protocol": "SEMI2K", "field": "FM64"},
-            )
-        }
-        cluster_spec_dict = ClusterSpec(nodes=nodes, devices=devices).to_dict()
+        cluster_spec_dict = ClusterSpec.simple(
+            2,
+            endpoints=[ep.replace("http://", "") for ep in base_endpoints],
+            spu_protocol="SEMI2K",
+            spu_field="FM64",
+            runtime_version="test",
+            runtime_platform="test",
+        ).to_dict()
         for rank, endpoint in enumerate(base_endpoints):
             response = httpx.put(
                 f"{endpoint}/sessions/{session_name}",
@@ -215,33 +180,14 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
         # Create session in the resource manager
         logger.info(f"Creating session: {session_name}")
         # Build minimal cluster_spec dict consistent across parties
-        from mplang.core.cluster import (
-            ClusterSpec,
-            Device,
-            Node,
-            RuntimeInfo,
-        )  # local import for test isolation
-
-        nodes = {
-            f"node{i}": Node(
-                name=f"node{i}",
-                rank=i,
-                endpoint=f"localhost:{assigned_ports[i]}",
-                runtime_info=RuntimeInfo(
-                    version="test", platform="test", op_bindings={}
-                ),
-            )
-            for i in range(2)
-        }
-        devices = {
-            "SP0": Device(
-                name="SP0",
-                kind="SPU",
-                members=list(nodes.values()),
-                config={"protocol": "SEMI2K", "field": "FM128"},
-            )
-        }
-        cluster_spec_dict = ClusterSpec(nodes=nodes, devices=devices).to_dict()
+        cluster_spec_dict = ClusterSpec.simple(
+            2,
+            endpoints=[f"localhost:{assigned_ports[i]}" for i in range(2)],
+            spu_protocol="SEMI2K",
+            spu_field="FM128",
+            runtime_version="test",
+            runtime_platform="test",
+        ).to_dict()
         sess = Session.from_cluster_spec_dict(
             name=session_name,
             rank=rank,

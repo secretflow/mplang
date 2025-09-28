@@ -21,6 +21,7 @@ import base64
 import cloudpickle as pickle
 from fastapi.testclient import TestClient
 
+from mplang.core.cluster import ClusterSpec
 from mplang.runtime.server import app
 from tests.utils.server_fixtures import get_free_ports
 
@@ -35,32 +36,16 @@ def test_create_and_get_session():
     """Test creating and retrieving a session."""
     # Create a session with a specific name, rank, and endpoints
     eps = _endpoints(2)
-    # Build minimal cluster_spec dict with 2 nodes and 1 SPU device
-    from mplang.core.cluster import (  # local import
-        ClusterSpec,
-        Device,
-        Node,
-        RuntimeInfo,
-    )
-
-    nodes = {
-        f"node{i}": Node(
-            name=f"node{i}",
-            rank=i,
-            endpoint=eps[i].replace("http://", ""),  # store host:port
-            runtime_info=RuntimeInfo(version="test", platform="test", op_bindings={}),
-        )
-        for i in range(2)
-    }
-    devices = {
-        "SP0": Device(
-            name="SP0",
-            kind="SPU",
-            members=list(nodes.values()),
-            config={"protocol": "SEMI2K", "field": "FM64"},
-        )
-    }
-    cluster_spec_dict = ClusterSpec(nodes=nodes, devices=devices).to_dict()
+    # Build minimal cluster_spec dict with 2 nodes using helper
+    # endpoints stored without scheme inside spec to match existing tests
+    cluster_spec_dict = ClusterSpec.simple(
+        2,
+        endpoints=[ep.replace("http://", "") for ep in eps],
+        spu_protocol="SEMI2K",
+        spu_field="FM64",
+        runtime_version="test",
+        runtime_platform="test",
+    ).to_dict()
     response = client.put(
         "/sessions/test_session_1",
         json={"rank": 0, "cluster_spec": cluster_spec_dict},
@@ -82,31 +67,14 @@ def test_create_computation():
     """Test creating a computation within a session."""
     # First, create a session
     eps = _endpoints(2)
-    from mplang.core.cluster import (  # local import
-        ClusterSpec,
-        Device,
-        Node,
-        RuntimeInfo,
-    )
-
-    nodes = {
-        f"node{i}": Node(
-            name=f"node{i}",
-            rank=i,
-            endpoint=eps[i].replace("http://", ""),
-            runtime_info=RuntimeInfo(version="test", platform="test", op_bindings={}),
-        )
-        for i in range(2)
-    }
-    devices = {
-        "SP0": Device(
-            name="SP0",
-            kind="SPU",
-            members=list(nodes.values()),
-            config={"protocol": "SEMI2K", "field": "FM64"},
-        )
-    }
-    cluster_spec_dict = ClusterSpec(nodes=nodes, devices=devices).to_dict()
+    cluster_spec_dict = ClusterSpec.simple(
+        2,
+        endpoints=[ep.replace("http://", "") for ep in eps],
+        spu_protocol="SEMI2K",
+        spu_field="FM64",
+        runtime_version="test",
+        runtime_platform="test",
+    ).to_dict()
     client.put(
         "/sessions/test_session_2",
         json={"rank": 0, "cluster_spec": cluster_spec_dict},
@@ -144,31 +112,14 @@ def test_create_and_get_symbol():
     """Test creating and retrieving a symbol."""
     # Create session first
     eps = _endpoints(2)
-    from mplang.core.cluster import (  # local import
-        ClusterSpec,
-        Device,
-        Node,
-        RuntimeInfo,
-    )
-
-    nodes = {
-        f"node{i}": Node(
-            name=f"node{i}",
-            rank=i,
-            endpoint=eps[i].replace("http://", ""),
-            runtime_info=RuntimeInfo(version="test", platform="test", op_bindings={}),
-        )
-        for i in range(2)
-    }
-    devices = {
-        "SP0": Device(
-            name="SP0",
-            kind="SPU",
-            members=list(nodes.values()),
-            config={"protocol": "SEMI2K", "field": "FM64"},
-        )
-    }
-    cluster_spec_dict = ClusterSpec(nodes=nodes, devices=devices).to_dict()
+    cluster_spec_dict = ClusterSpec.simple(
+        2,
+        endpoints=[ep.replace("http://", "") for ep in eps],
+        spu_protocol="SEMI2K",
+        spu_field="FM64",
+        runtime_version="test",
+        runtime_platform="test",
+    ).to_dict()
     response = client.put(
         "/sessions/test_session_3",
         json={"rank": 0, "cluster_spec": cluster_spec_dict},

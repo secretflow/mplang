@@ -234,32 +234,96 @@ class ClusterSpec:
         return cls(nodes=nodes_map, devices=devices_map)
 
     @classmethod
-    def simple(cls, world_size: int) -> ClusterSpec:
-        """Creates a simple cluster spec for simulation with the given number of parties."""
-        nodes = {
-            f"node{i}": Node(
+    def simple(
+        cls,
+        world_size: int,
+        *,
+        endpoints: list[str] | None = None,
+        spu_protocol: str = "SEMI2K",
+        spu_field: str = "FM128",
+        runtime_version: str = "simulated",
+        runtime_platform: str = "simulated",
+        op_bindings: list[dict[str, str]] | None = None,
+        enable_local_device: bool = True,
+        enable_spu_device: bool = True,
+    ) -> ClusterSpec:
+        """Convenience constructor used heavily in tests.
+
+        Parameters
+        ----------
+        world_size:
+            Number of parties (physical nodes).
+        endpoints:
+            Optional explicit endpoint list of length ``world_size``. Each element may
+            include scheme (``http://``) or not; stored verbatim. If not provided we
+            synthesize ``localhost:{5000 + i}`` (5000 is a fixed default; pass explicit
+            endpoints for control). Deprecated ``base_port`` legacy kwarg can adjust it.
+        spu_protocol / spu_field:
+            SPU device config values.
+        runtime_version / runtime_platform:
+            Populated into each node's ``RuntimeInfo``.
+        op_bindings:
+            Optional list of length ``world_size`` supplying per-node op_bindings
+            override dicts (defaults to empty dicts).
+        enable_local_device:
+            If True (default), create one ``local_{rank}`` device per node.
+        enable_spu_device:
+            If True (default) create a shared SPU device named ``SP0``.
+        """
+        base_port = 5000
+
+        if endpoints is not None and len(endpoints) != world_size:
+            raise ValueError(
+                "len(endpoints) must equal world_size when provided: "
+                f"{len(endpoints)} != {world_size}"
+            )
+
+        if op_bindings is not None and len(op_bindings) != world_size:
+            raise ValueError(
+                "len(op_bindings) must equal world_size when provided: "
+                f"{len(op_bindings)} != {world_size}"
+            )
+
+        if not enable_local_device and not enable_spu_device:
+            raise ValueError(
+                "At least one of enable_local_device or enable_spu_device must be True"
+            )
+
+        nodes: dict[str, Node] = {}
+        for i in range(world_size):
+            ep = endpoints[i] if endpoints is not None else f"localhost:{base_port + i}"
+            node_op_bindings = op_bindings[i] if op_bindings is not None else {}
+            nodes[f"node{i}"] = Node(
                 name=f"node{i}",
                 rank=i,
-                endpoint=f"localhost:{5000 + i}",
+                endpoint=ep,
                 runtime_info=RuntimeInfo(
-                    version="simulated",
-                    platform="simulated",
-                    op_bindings={},  # no per-node overrides by default
+                    version=runtime_version,
+                    platform=runtime_platform,
+                    op_bindings=node_op_bindings,
                 ),
             )
-            for i in range(world_size)
-        }
 
-        devices = {
-            "SP0": Device(
+        devices: dict[str, Device] = {}
+        # Optional per-node local devices
+        if enable_local_device:
+            for i in range(world_size):
+                devices[f"local_{i}"] = Device(
+                    name=f"local_{i}",
+                    kind="local",
+                    members=[nodes[f"node{i}"]],
+                )
+
+        # Shared SPU device
+        if enable_spu_device:
+            devices["SP0"] = Device(
                 name="SP0",
                 kind="SPU",
                 members=list(nodes.values()),
                 config={
-                    "protocol": "SEMI2K",
-                    "field": "FM128",
+                    "protocol": spu_protocol,
+                    "field": spu_field,
                 },
             )
-        }
 
         return cls(nodes=nodes, devices=devices)

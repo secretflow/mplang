@@ -25,6 +25,11 @@ def _duckdb_sql(pfunc: PFunction, *args: Any) -> Any:
     import duckdb
     import pandas as pd
 
+    # TODO: maybe we could translate the sql to duckdb dialect
+    # instead of raising an exception
+    if pfunc.attrs.get("dialect") != "duckdb":
+        raise ValueError("duckdb.run_sql must have dialect=duckdb attr")
+
     conn = duckdb.connect(":memory:")
     if args:
         in_names = pfunc.attrs.get("in_names")

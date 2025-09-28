@@ -65,6 +65,7 @@ def ibis2sql(
         ins_info=tuple(ins_info),
         outs_info=tuple(outs_info),
         in_names=tuple(in_names),
+        dialect="duckdb",
     )
     return pfn
 

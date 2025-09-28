@@ -52,6 +52,7 @@ class SqlFE(FeOperation):
             ins_info=tuple(ins_info),
             outs_info=(out_type,),
             in_names=tuple(in_names),
+            dialect=self._dialect,
         )
         _, treedef = tree_flatten(out_type)
         return pfn, in_vars, treedef

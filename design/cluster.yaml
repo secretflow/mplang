@@ -11,14 +11,12 @@ nodes:
     endpoint: "127.0.0.1:9001"
     runtime_info:
       version: "2.0.0"
-      backends: ["builtin", "stablehlo", "spu", "phe"]
       platform: "cpu"
 
   - name: bob_node
     endpoint: "127.0.0.1:9002"
     runtime_info:
       version: "2.0.0"
-      backends: ["builtin", "stablehlo", "spu"]
       platform: "cpu"
 
   # --- Carol's capabilities are split into two distinct PPs for security ---
@@ -28,7 +26,6 @@ nodes:
     runtime_info:
       version: "2.0.0"
       # This PP is Carol's standard compute node. It can access local data.
-      backends: ["builtin", "stablehlo", "spu", "duckdb"]
       platform: "cpu"
 
   - name: carol_tee
@@ -36,8 +33,12 @@ nodes:
     runtime_info:
       version: "2.0.0"
       # This PP is a dedicated TEE service node. It cannot access local data.
-      backends: ["builtin", "stablehlo"]
       platform: "intel_sgx_2.16"
+      # Example per-op kernel override bindings for this TEE node.
+      # Keys are logical op names, values are kernel implementation IDs.
+      op_bindings:
+        tee.quote: mock_tee.quote
+        tee.attest: mock_tee.attest
 
 # ===================================================================
 # Logical Layer: Definition of all Logical Devices (VPs)
@@ -82,6 +83,5 @@ devices:
     members: [carol_tee]
     config:
       # Intel SGX enclave configuration
-      enclave_binary: "trusted_executor.signed.so"  # Enclave binary filename
-      enclave_config: "trusted_executor.xml"         # SGX config file
-      # The binary should be available on the carol_tee node's filesystem
+      enclave_binary: "trusted_executor.signed.so" # Enclave binary filename
+      enclave_config: "trusted_executor.xml" # SGX config file

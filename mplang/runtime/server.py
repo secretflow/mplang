@@ -44,10 +44,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# ---------------------------------------------------------------------------
-# In-process registries (moved from resource.py)
-# ---------------------------------------------------------------------------
-
+# per-server global state
 _sessions: dict[str, Session] = {}
 _global_symbols: dict[str, Symbol] = {}
 

@@ -34,7 +34,10 @@ from __future__ import annotations
 import contextvars
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mplang.kernels.context import RuntimeContext
 
 __all__ = [
     "KernelContext",
@@ -56,7 +59,7 @@ class KernelContext:
 
     rank: int
     world_size: int
-    runtime: Any  # RuntimeContext (forward reference)
+    runtime: RuntimeContext
 
 
 _CTX_VAR: contextvars.ContextVar[KernelContext | None] = contextvars.ContextVar(

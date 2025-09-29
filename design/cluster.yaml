@@ -37,7 +37,7 @@ nodes:
       # Example per-op kernel override bindings for this TEE node.
       # Keys are logical op names, values are kernel implementation IDs.
       op_bindings:
-        tee.quote: mock_tee.quote
+        tee.quote_gen: mock_tee.quote_gen
         tee.attest: mock_tee.attest
 
 # ===================================================================

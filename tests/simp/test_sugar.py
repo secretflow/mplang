@@ -35,7 +35,7 @@ def test_basic_callable_and_namespace():
         a, b = simp.P0(crypto.kem_keygen, "x25519")
         # namespace form (tee side key, then quote)
         t_sk, t_pk = simp.P[2].crypto.kem_keygen("x25519")
-        _ = simp.P[2].tee.quote(t_pk)
+        _ = simp.P[2].tee.quote_gen(t_pk)
         # derive something simple at party 0 to ensure run path works
         _ = simp.P0(lambda x: x + 1, 41)
         return a, b, t_sk, t_pk

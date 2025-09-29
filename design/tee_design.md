@@ -26,7 +26,7 @@ your script stays focused on business logic. At a glance:
 1. Scripting & Compilation
 
     - Before any sensitive value goes to a TEE device, the program includes
-      `tee.quote(pk)` and `tee.attest(quote)` at the right points. The quote binds
+      `tee.quote_gen(pk)` and `tee.attest(quote)` at the right points. The quote binds
       the provided ephemeral public key and is tied to the current program and
       session. Attestation returns the attested TEE public key to verifiers, who
       then derive per-party session keys via KEM/ECDH + HKDF. The final MPIR keeps
@@ -48,7 +48,7 @@ your script stays focused on business logic. At a glance:
     - Initial check (all parties): verify the `driver_signature` over the tuple
     - TEE attestation (TEE parties): generate an ephemeral keypair and emit a quote
       that binds `report_data = H(program_hash || session_nonce ||
-      H(ephemeral_pubkey))`. In this API this is `tee.quote(pk)`, where `pk` is the
+      H(ephemeral_pubkey))`. In this API this is `tee.quote_gen(pk)`, where `pk` is the
       ephemeral public key.
     - Quote verification (data parties): run `tee.attest(quote)`, verify the vendor
       chain, measurement, and `report_data`, and obtain the attested TEE public key.
@@ -102,10 +102,10 @@ mock mode now and a production KEM/ECDH path later.
 
 Notes & design choices:
 
-- `tee.quote` runs on the TEE. In production, the TEE SHOULD generate the
+- `tee.quote_gen` runs on the TEE. In production, the TEE SHOULD generate the
   ephemeral keypair internally and bind `H(ephemeral_pubkey)` in `report_data`.
   This is to ensure the ephemeral private key never leaves the trusted hardware
-  boundary. Our current API expresses it as `tee.quote(pk)` for clarity and
+  boundary. Our current API expresses it as `tee.quote_gen(pk)` for clarity and
   auditability.
 - `tee.attest` runs on data parties and returns the attested TEE public key;
   each verifier then derives a per-party session key via KEM/ECDH + HKDF. The
@@ -141,7 +141,7 @@ sequenceDiagram
 
   C->>C: generate ephemeral keypair inside TEE
   C->>C: report_data = H(program_hash + nonce + H(ephemeral_pubkey))
-  C->>C: quote = tee.quote(pk)
+  C->>C: quote = tee.quote_gen(pk)
 
   C-->>A: quote
   C-->>B: quote

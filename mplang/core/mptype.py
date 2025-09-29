@@ -400,39 +400,5 @@ class MPType:
                 "Table object detection for non-pandas objects not fully implemented yet"
             )
 
-        # Check if it's a table-like object
-        if hasattr(obj, "dtypes") and hasattr(obj, "columns"):
-            # Basic pandas DataFrame support
-            try:
-                import pandas as pd
-
-                if isinstance(obj, pd.DataFrame):
-                    from mplang.core.dtype import DType
-
-                    schema_dict = {}
-                    for col_name in obj.columns:
-                        pandas_dtype = obj[col_name].dtype
-                        # Convert pandas dtype to DType
-                        if pandas_dtype.kind in (
-                            "O",
-                            "U",
-                            "S",
-                        ):  # object, unicode, string
-                            schema_dict[col_name] = (
-                                DType.from_numpy(pandas_dtype)
-                                if pandas_dtype.kind != "O"
-                                else STRING
-                            )
-                        else:
-                            schema_dict[col_name] = DType.from_numpy(pandas_dtype)
-                    schema = TableType.from_dict(schema_dict)
-                    return cls(schema, pmask, attrs)
-            except ImportError:
-                pass
-            # For other table-like objects without pandas
-            raise NotImplementedError(
-                "Table object detection not fully implemented yet"
-            )
-
         # Otherwise treat as tensor-like
         return cls.from_tensor(obj, pmask, **attrs)

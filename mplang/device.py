@@ -207,7 +207,11 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         tee_rank = to_dev.members[0].rank
-        platform = to_dev.config["platform"]
+        platform = to_dev.config.get("platform")
+        if not platform:
+            raise ValueError(
+                f"TEE device '{to_dev_id}' is missing 'platform' in its config."
+            )
         # Ensure sessions (both directions) exist for this PPU<->TEE pair
         sess_p, sess_t = _ensure_tee_session(
             frm_dev_id, to_dev_id, frm_rank, tee_rank, platform
@@ -225,7 +229,11 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         tee_rank = frm_dev.members[0].rank
         ppu_rank = to_dev.members[0].rank
-        platform = frm_dev.config["platform"]
+        platform = to_dev.config.get("platform")
+        if not platform:
+            raise ValueError(
+                f"TEE device '{to_dev_id}' is missing 'platform' in its config."
+            )
         # Ensure bidirectional session established for this pair
         sess_p, sess_t = _ensure_tee_session(
             to_dev_id, frm_dev_id, ppu_rank, tee_rank, platform

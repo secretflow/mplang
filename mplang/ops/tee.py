@@ -37,7 +37,6 @@ def attest(
     quote: MPObject, platform: str
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """TEE quote verification returning the attested TEE public key."""
-    _ = quote  # Mark as used for the decorator
 
     ins_info = [TensorType.from_obj(quote)]
     outs_info = [TensorType(UINT8, (32,))]  # pk is always 32 bytes for x25519

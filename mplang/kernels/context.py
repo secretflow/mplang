@@ -233,7 +233,7 @@ class RuntimeContext:
 
     def get_state(self, key: str, default: Any | None = None) -> Any:
         if not key:
-            return default
+            raise ValueError("empty state key")
         return self.state.get(key, default)
 
     def set_state(self, key: str, value: Any) -> None:

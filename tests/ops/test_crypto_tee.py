@@ -25,14 +25,14 @@ def _demo_flow():
     # TEE generates two ephemeral keypairs and quotes binding their pk
     t_sk0, t_pk0 = simp.runAt(P2, crypto.kem_keygen)("x25519")
     t_sk1, t_pk1 = simp.runAt(P2, crypto.kem_keygen)("x25519")
-    q0 = simp.runAt(P2, tee.quote)(t_pk0)
-    q1 = simp.runAt(P2, tee.quote)(t_pk1)
+    q0 = simp.runAt(P2, tee.quote_gen)(t_pk0)
+    q1 = simp.runAt(P2, tee.quote_gen)(t_pk1)
 
     # Send quotes to P0/P1 and attest to obtain TEE public keys
     q0_for_p0 = simp.p2p(P2, P0, q0)
     q1_for_p1 = simp.p2p(P2, P1, q1)
-    t_pk0_for_p0 = simp.runAt(P0, tee.attest)(q0_for_p0)
-    t_pk1_for_p1 = simp.runAt(P1, tee.attest)(q1_for_p1)
+    t_pk0_for_p0 = simp.runAt(P0, tee.attest)(q0_for_p0, "TDX")
+    t_pk1_for_p1 = simp.runAt(P1, tee.attest)(q1_for_p1, "TDX")
 
     # Each party generates its own ephemeral keypair and shares pk with TEE
     v_sk0, v_pk0 = simp.runAt(P0, crypto.kem_keygen)("x25519")
@@ -75,7 +75,10 @@ def _demo_flow():
 
 def test_crypto_enc_dec_and_tee_quote_attest_roundtrip():
     # Create simulator with TEE bindings using the new initial_bindings parameter
-    tee_bindings = {"tee.quote": "mock_tee.quote", "tee.attest": "mock_tee.attest"}
+    tee_bindings = {
+        "tee.quote_gen": "mock_tee.quote_gen",
+        "tee.attest": "mock_tee.attest",
+    }
     sim = mplang.Simulator.simple(3, op_bindings=tee_bindings)
     p0, p1 = mplang.evaluate(sim, _demo_flow)
     a = mplang.fetch(sim, p0)

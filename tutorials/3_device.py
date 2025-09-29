@@ -101,7 +101,10 @@ def run_tee():
     print("-" * 10, "millionaire (TEE)", "-" * 10)
 
     # TEE operations need explicit binding for security
-    tee_bindings = {"tee.quote": "mock_tee.quote", "tee.attest": "mock_tee.attest"}
+    tee_bindings = {
+        "tee.quote_gen": "mock_tee.quote_gen",
+        "tee.attest": "mock_tee.attest",
+    }
     # Apply tee bindings across nodes before constructing simulator
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)

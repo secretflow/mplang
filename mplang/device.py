@@ -207,8 +207,15 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         tee_rank = to_dev.members[0].rank
+        platform = to_dev.config.get("platform")
+        if not platform:
+            raise ValueError(
+                f"TEE device '{to_dev_id}' is missing 'platform' in its config."
+            )
         # Ensure sessions (both directions) exist for this PPU<->TEE pair
-        sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
+        sess_p, sess_t = _ensure_tee_session(
+            frm_dev_id, to_dev_id, frm_rank, tee_rank, platform
+        )
         # Bytes-only path: pack -> enc -> p2p -> dec -> unpack (with static out type)
         obj_ty = TensorType.from_obj(obj)
         b = simp.runAt(frm_rank, builtin.pack)(obj)
@@ -222,8 +229,15 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         tee_rank = frm_dev.members[0].rank
         ppu_rank = to_dev.members[0].rank
+        platform = to_dev.config.get("platform")
+        if not platform:
+            raise ValueError(
+                f"TEE device '{to_dev_id}' is missing 'platform' in its config."
+            )
         # Ensure bidirectional session established for this pair
-        sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
+        sess_p, sess_t = _ensure_tee_session(
+            to_dev_id, frm_dev_id, ppu_rank, tee_rank, platform
+        )
         obj_ty = TensorType.from_obj(obj)
         b = simp.runAt(tee_rank, builtin.pack)(obj)
         ct = simp.runAt(tee_rank, crypto.enc)(b, sess_t)
@@ -245,7 +259,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
 
 
 def _ensure_tee_session(
-    frm_dev_id: str, to_dev_id: str, frm_rank: int, tee_rank: int
+    frm_dev_id: str, to_dev_id: str, frm_rank: int, tee_rank: int, platform: str
 ) -> tuple[MPObject, MPObject]:
     """Ensure a TEE session (sess_p at sender, sess_t at TEE) exists.
 
@@ -263,11 +277,11 @@ def _ensure_tee_session(
     # 1) TEE generates (sk, pk) and quote(pk)
     # KEM suite currently constant; future: read from tee device config (e.g. cluster_spec.devices[dev_id].config)
     tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
-    quote = simp.runAt(tee_rank, tee.quote)(tee_pk)
+    quote = simp.runAt(tee_rank, tee.quote_gen)(tee_pk)
 
     # 2) Send quote to sender and attest to obtain TEE pk
     quote_at_sender = mpi.p2p(tee_rank, frm_rank, quote)
-    tee_pk_at_sender = simp.runAt(frm_rank, tee.attest)(quote_at_sender)
+    tee_pk_at_sender = simp.runAt(frm_rank, tee.attest)(quote_at_sender, platform)
 
     # 3) Sender generates its ephemeral keypair and sends its pk to TEE
     v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)

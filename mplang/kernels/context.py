@@ -91,7 +91,7 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     # generic SQL op; backend-specific kernel id for duckdb
     "sql.run": "duckdb.run_sql",
     # tee
-    # "tee.quote": "mock_tee.quote",
+    # "tee.quote_gen": "mock_tee.quote_gen",
     # "tee.attest": "mock_tee.attest",
 }
 

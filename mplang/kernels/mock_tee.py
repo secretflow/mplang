@@ -34,6 +34,7 @@ def _rng() -> np.random.Generator:
         seed = int(os.environ.get("MPLANG_TEE_SEED", "0")) + kctx.rank * 10007
         r = np.random.default_rng(seed)
         rt.set_state("tee.rng", r)
+    assert isinstance(r, np.random.Generator)  # type narrowing for mypy
     return r
 
 

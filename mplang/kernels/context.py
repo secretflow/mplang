@@ -217,7 +217,7 @@ class RuntimeContext:
     # by string prefix. Values themselves MAY be dicts if callers want a
     # manual pocket. This keeps semantics simple and predictable.
 
-    def ensure_state(self, key: str, factory=dict):
+    def ensure_state(self, key: str, factory: type | Any = dict) -> Any:
         """Return value for key; if absent create via factory and store.
 
         Key is not parsed; dotted forms are allowed but treated as a single

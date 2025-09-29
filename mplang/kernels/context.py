@@ -243,7 +243,7 @@ class RuntimeContext:
 
     def del_state(self, key: str) -> None:
         if not key:
-            return
+            raise ValueError("empty state key")
         self.state.pop(key, None)
 
     def list_state(self, prefix: str = "") -> dict[str, Any]:

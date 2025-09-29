@@ -23,9 +23,7 @@ from mplang.core.tensor import TensorType
 from mplang.kernels.context import RuntimeContext
 
 
-class TestBuiltinHandler:
-    """Tests for flat builtin kernels (legacy name retained)."""
-
+class TestBuiltin:
     def setup_method(self):
         # initialize backend context for rank 0 (world_size=1) once per test
         self.runtime = RuntimeContext(rank=0, world_size=1)

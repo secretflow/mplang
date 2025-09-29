@@ -66,7 +66,6 @@ class EvalSemantic:
     """Shared evaluation semantics and utilities for evaluators.
 
     Minimal dataclass carrying runtime execution context (rank/env/comm/runtime).
-    Legacy handler-based execution (pfunc_handles) has been fully removed.
     """
 
     rank: int

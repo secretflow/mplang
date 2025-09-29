@@ -255,7 +255,7 @@ class ClusterSpec:
             Optional explicit endpoint list of length ``world_size``. Each element may
             include scheme (``http://``) or not; stored verbatim. If not provided we
             synthesize ``localhost:{5000 + i}`` (5000 is a fixed default; pass explicit
-            endpoints for control). Deprecated ``base_port`` legacy kwarg can adjust it.
+            endpoints for control).
         spu_protocol / spu_field:
             SPU device config values.
         runtime_version / runtime_platform:

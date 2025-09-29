@@ -400,7 +400,7 @@ class MPType:
                 "Table object detection for non-pandas objects not fully implemented yet"
             )
 
-        # Check if it's a table-like object (legacy check for backward compatibility)
+        # Check if it's a table-like object
         if hasattr(obj, "dtypes") and hasattr(obj, "columns"):
             # Basic pandas DataFrame support
             try:

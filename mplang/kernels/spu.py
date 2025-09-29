@@ -63,9 +63,6 @@ class SpuValue:
         return f"SpuValue({self.shape},{self.dtype},{self.vtype})"
 
 
-# SpuHandler removed (legacy handler API deprecated)
-
-
 def _get_spu_pocket() -> dict[str, Any]:
     return cur_kctx().state.setdefault("spu", {})
 

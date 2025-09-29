@@ -155,5 +155,3 @@ class TestStablehloKernel:
         ev = create_evaluator(0, {}, comm, runtime)
         with pytest.raises(NotImplementedError):
             ev._exec_pfunc(invalid_pfunc, [])  # type: ignore[attr-defined]
-
-        # No legacy handler path anymore; only NotImplementedError is expected.

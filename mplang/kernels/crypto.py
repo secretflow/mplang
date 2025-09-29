@@ -27,10 +27,7 @@ __all__: list[str] = []  # flat kernels only
 
 
 def _get_rng() -> np.random.Generator:
-    """Get (and lazily create) per-rank RNG for crypto kernels.
-
-    Seed rule matches legacy handler: MPLANG_CRYPTO_SEED + rank*7919
-    """
+    """Get (and lazily create) per-rank RNG for crypto kernels."""
     kctx = cur_kctx()
     pocket = kctx.state.setdefault("crypto", {})
     rng = pocket.get("rng")

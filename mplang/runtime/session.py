@@ -184,8 +184,7 @@ class Session:
             return
 
         link_ctx = None
-        # Fixed port offset for SPU runtime link services (legacy value retained).
-        # TODO: make configurable if future deployments require dynamic offset.
+        # TODO(jint): reuse same port for mplang and spu.
         SPU_PORT_OFFSET = 100
 
         if self.is_spu_party:

@@ -118,10 +118,18 @@ class RuntimeContext:
         op_type -> kernel_id and form a *template* for dispatch. After
         initialization, all (re)binding must go through ``bind_op`` /
         ``rebind_op`` on this context (scoped to THIS runtime only).
-    state / stats : dict, optional
-        Mutable namespaces reused across kernel invocations. If omitted, new
-        dictionaries are created. Global 'cache' concept removed; use a
-        namespaced key (e.g. stablehlo.compile_cache) instead.
+    state : dict, optional
+        Mutable per-runtime key/value storage for kernels. Flat key space;
+        callers SHOULD use dotted prefixes (e.g. "stablehlo.compile_cache").
+        Kernels own their *state* (functional correctness data, caches,
+        handles, compiled objects, RNGs, etc.). Runtime does not interpret
+        structure—values may themselves be dicts if a kernel wants its own
+        pocket. Created empty when omitted.
+    stats : dict, optional
+        Mutable statistics/telemetry owned by the runtime (usage counters,
+        timings, profiling aids). Kernels may increment counters but should
+        avoid storing functional state here. A default "op_calls" mapping is
+        ensured. Created empty when omitted.
     """
 
     __slots__ = ("_ibindings", "rank", "state", "stats", "world_size")
@@ -132,7 +140,7 @@ class RuntimeContext:
         world_size: int,
         initial_bindings: Mapping[str, str] | None = None,
         *,
-        state: dict[str, dict[str, Any]] | None = None,
+        state: dict[str, Any] | None = None,
         stats: dict[str, Any] | None = None,
     ) -> None:
         _ensure_impl_imported()
@@ -167,16 +175,15 @@ class RuntimeContext:
             if isinstance(ins_spec, TensorType):
                 _validate_tensor_arg(fn_type, idx, ins_spec, val)
                 continue
+
         # install kernel context
-        # New KernelContext form: only rank/world_size/runtime; deprecated
-        # state/cache accessors proxy to runtime.state/cache for transition.
         kctx = KernelContext(rank=self.rank, world_size=self.world_size, runtime=self)
-        token = base._CTX_VAR.set(kctx)  # type: ignore[attr-defined]
+        token = base._CTX_VAR.set(kctx)
         try:
             raw = fn(pfunc, *arg_list)
         finally:
-            base._CTX_VAR.reset(token)  # type: ignore[attr-defined]
-        # Stats (best effort)
+            base._CTX_VAR.reset(token)
+
         try:
             op_calls = self.stats.setdefault("op_calls", {})
             op_calls[fn_type] = op_calls.get(fn_type, 0) + 1

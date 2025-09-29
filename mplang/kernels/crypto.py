@@ -27,15 +27,19 @@ __all__: list[str] = []  # flat kernels only
 
 
 def _get_rng() -> np.random.Generator:
-    """Get (and lazily create) per-rank RNG for crypto kernels."""
+    """Get (and lazily create) per-rank RNG for crypto kernels.
+
+    Runtime state is untyped, so we narrow the type explicitly for mypy.
+    """
     kctx = cur_kctx()
-    pocket = kctx.state.setdefault("crypto", {})
-    rng = pocket.get("rng")
-    if rng is None:
+    rt = kctx.runtime
+    rng_obj = rt.get_state("crypto.rng")
+    if rng_obj is None:
         seed = int(os.environ.get("MPLANG_CRYPTO_SEED", "0")) + kctx.rank * 7919
-        rng = np.random.default_rng(seed)
-        pocket["rng"] = rng
-    return rng
+        rng_obj = np.random.default_rng(seed)
+        rt.set_state("crypto.rng", rng_obj)
+    assert isinstance(rng_obj, np.random.Generator)  # narrow
+    return rng_obj
 
 
 def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:

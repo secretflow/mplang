@@ -118,12 +118,21 @@ class RuntimeContext:
         op_type -> kernel_id and form a *template* for dispatch. After
         initialization, all (re)binding must go through ``bind_op`` /
         ``rebind_op`` on this context (scoped to THIS runtime only).
-    state / cache / stats : dict, optional
-        Mutable pockets reused across kernel invocations. If omitted, new
-        dictionaries are created.
+    state : dict, optional
+        Mutable per-runtime key/value storage for kernels. Flat key space;
+        callers SHOULD use dotted prefixes (e.g. "stablehlo.compile_cache").
+        Kernels own their *state* (functional correctness data, caches,
+        handles, compiled objects, RNGs, etc.). Runtime does not interpret
+        structure—values may themselves be dicts if a kernel wants its own
+        pocket. Created empty when omitted.
+    stats : dict, optional
+        Mutable statistics/telemetry owned by the runtime (usage counters,
+        timings, profiling aids). Kernels may increment counters but should
+        avoid storing functional state here. A default "op_calls" mapping is
+        ensured. Created empty when omitted.
     """
 
-    __slots__ = ("_ibindings", "cache", "rank", "state", "stats", "world_size")
+    __slots__ = ("_ibindings", "rank", "state", "stats", "world_size")
 
     def __init__(
         self,
@@ -131,8 +140,7 @@ class RuntimeContext:
         world_size: int,
         initial_bindings: Mapping[str, str] | None = None,
         *,
-        state: dict[str, dict[str, Any]] | None = None,
-        cache: dict[str, Any] | None = None,
+        state: dict[str, Any] | None = None,
         stats: dict[str, Any] | None = None,
     ) -> None:
         _ensure_impl_imported()
@@ -144,7 +152,6 @@ class RuntimeContext:
             **(initial_bindings or {}),
         }
         self.state = state if state is not None else {}
-        self.cache = cache if cache is not None else {}
         self.stats = stats if stats is not None else {}
         self.stats.setdefault("op_calls", {})
 
@@ -168,19 +175,15 @@ class RuntimeContext:
             if isinstance(ins_spec, TensorType):
                 _validate_tensor_arg(fn_type, idx, ins_spec, val)
                 continue
+
         # install kernel context
-        kctx = KernelContext(
-            rank=self.rank,
-            world_size=self.world_size,
-            state=self.state,
-            cache=self.cache,
-        )
-        token = base._CTX_VAR.set(kctx)  # type: ignore[attr-defined]
+        kctx = KernelContext(rank=self.rank, world_size=self.world_size, runtime=self)
+        token = base._CTX_VAR.set(kctx)
         try:
             raw = fn(pfunc, *arg_list)
         finally:
-            base._CTX_VAR.reset(token)  # type: ignore[attr-defined]
-        # Stats (best effort)
+            base._CTX_VAR.reset(token)
+
         try:
             op_calls = self.stats.setdefault("op_calls", {})
             op_calls[fn_type] = op_calls.get(fn_type, 0) + 1
@@ -213,7 +216,57 @@ class RuntimeContext:
 
     def reset(self) -> None:
         self.state.clear()
-        self.cache.clear()
+
+    # ---- runtime state API (flat key space) ----
+    # Keys are treated atomically; convention encourages dotted prefixes
+    # (e.g. 'stablehlo.compile_cache.hash', 'crypto.rng'). Implementation
+    # does NOT parse or create hierarchical dicts—any grouping is purely
+    # by string prefix. Values themselves MAY be dicts if callers want a
+    # manual pocket. This keeps semantics simple and predictable.
+
+    def ensure_state(self, key: str, factory: type | Any = dict) -> Any:
+        """Return value for key; if absent create via factory and store.
+
+        Key is not parsed; dotted forms are allowed but treated as a single
+        map key. Use consistent prefixes for grouping (e.g. 'spu.config').
+        """
+        if not key:
+            raise ValueError("empty state key")
+        val = self.state.get(key)
+        if val is None:
+            val = factory()
+            self.state[key] = val
+        return val
+
+    def get_state(self, key: str, default: Any | None = None) -> Any:
+        if not key:
+            raise ValueError("empty state key")
+        return self.state.get(key, default)
+
+    def set_state(self, key: str, value: Any) -> None:
+        if not key:
+            raise ValueError("empty state key")
+        self.state[key] = value
+
+    def del_state(self, key: str) -> None:
+        if not key:
+            raise ValueError("empty state key")
+        self.state.pop(key, None)
+
+    def list_state(self, prefix: str = "") -> dict[str, Any]:
+        """Return mapping of key -> value; optional prefix filter.
+
+        Prefix match is string-based; if prefix is non-empty include keys
+        where key == prefix or key starts with prefix + '.'.
+        """
+        if not prefix:
+            return dict(self.state)
+        pref = prefix if prefix.endswith(".") else prefix + "."
+        out: dict[str, Any] = {}
+        for k, v in self.state.items():
+            if k == prefix or k.startswith(pref):
+                out[k] = v
+        return out
 
     # ---- explicit (re)binding API ----
     def bind_op(self, op_type: str, kernel_id: str, *, force: bool = False) -> None:

@@ -34,7 +34,10 @@ from __future__ import annotations
 import contextvars
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mplang.kernels.context import RuntimeContext
 
 __all__ = [
     "KernelContext",
@@ -48,12 +51,15 @@ __all__ = [
 
 @dataclass
 class KernelContext:
-    """Ephemeral call context set via contextvar while a kernel runs."""
+    """Ephemeral per-kernel invocation context.
+
+    Cross-kernel persistent state (RNGs, compiled artifacts, environment handles)
+    should be stored in RuntimeContext.
+    """
 
     rank: int
     world_size: int
-    state: dict[str, dict[str, Any]]  # backend namespace -> pocket
-    cache: dict[str, Any]  # runtime-level shared cache (per BackendRuntime)
+    runtime: RuntimeContext
 
 
 _CTX_VAR: contextvars.ContextVar[KernelContext | None] = contextvars.ContextVar(
@@ -62,37 +68,7 @@ _CTX_VAR: contextvars.ContextVar[KernelContext | None] = contextvars.ContextVar(
 
 
 def cur_kctx() -> KernelContext:
-    """Return the current kernel execution context (only valid inside a kernel).
-
-    Two storages:
-      - state: namespaced pockets (dict[str, dict]) for backend-local mutable helpers
-      - cache: global (per runtime) shared dict; prefer state unless truly cross-backend
-
-    Examples:
-      1) Compile cache::
-            @kernel_def("mlir.stablehlo")
-            def _exec(pfunc, args):
-                ctx = cur_kctx()
-                pocket = ctx.state.setdefault("stablehlo", {})
-                cache = pocket.setdefault("compile_cache", {})
-                text = pfunc.fn_text
-                mod = cache.get(text)
-                if mod is None:
-                    mod = compile_mlir(text)
-                    cache[text] = mod
-                return run(mod, args)
-
-      2) Deterministic RNG::
-            @kernel_def("crypto.keygen")
-            def _keygen(pfunc, args):
-                ctx = cur_kctx()
-                pocket = ctx.state.setdefault("crypto", {})
-                rng = pocket.get("rng")
-                if rng is None:
-                    rng = np.random.default_rng(1234 + ctx.rank * 7919)
-                    pocket["rng"] = rng
-                return (rng.integers(0, 256, size=(32,), dtype=np.uint8),)
-    """
+    """Return current kernel execution context (only valid inside kernel)."""
     ctx = _CTX_VAR.get()
     if ctx is None:
         raise RuntimeError("cur_kctx() called outside backend kernel execution")

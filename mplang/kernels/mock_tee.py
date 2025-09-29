@@ -28,12 +28,13 @@ __all__: list[str] = []
 
 def _rng() -> np.random.Generator:
     kctx = cur_kctx()
-    pocket = kctx.state.setdefault("tee", {})
-    r = pocket.get("rng")
+    rt = kctx.runtime
+    r = rt.get_state("tee.rng")
     if r is None:
         seed = int(os.environ.get("MPLANG_TEE_SEED", "0")) + kctx.rank * 10007
         r = np.random.default_rng(seed)
-        pocket["rng"] = r
+        rt.set_state("tee.rng", r)
+    assert isinstance(r, np.random.Generator)  # type narrowing for mypy
     return r
 
 

@@ -173,38 +173,32 @@ class FileProvider(DataProvider):
         np.save(path, np.asarray(value))
 
 
-class _KeyedPocket:
-    """Small helper to keep a dict in KernelContext.state under a namespaced key."""
-
-    def __init__(self, ns: str):
-        self.ns = ns
-
-    def get_map(self, ctx: KernelContext) -> dict[str, Any]:
-        pocket = ctx.state.setdefault("resource.providers", {})
-        store = pocket.get(self.ns)
-        if store is None:
-            store = {}
-            pocket[self.ns] = store
-        return store  # type: ignore[return-value]
-
-
 class MemProvider(DataProvider):
     """In-memory per-runtime KV provider (per rank, per session/runtime)."""
 
-    def __init__(self) -> None:
-        self._pocket = _KeyedPocket("mem")
+    STATE_KEY = "resource.providers.mem"
+
+    @staticmethod
+    def _store(ctx: KernelContext) -> dict[str, Any]:
+        # Use ensure_state so creation is atomic & centralized; enforce dict.
+        store = ctx.runtime.ensure_state(MemProvider.STATE_KEY, dict)
+        if not isinstance(store, dict):  # pragma: no cover - defensive
+            raise TypeError(
+                f"runtime state key '{MemProvider.STATE_KEY}' expected dict, got {type(store).__name__}"
+            )
+        return store  # type: ignore[return-value]
 
     def read(
         self, uri: ResolvedURI, out_spec: TensorType | TableType, *, ctx: KernelContext
     ) -> Any:
-        store = self._pocket.get_map(ctx)
+        store = self._store(ctx)
         key = uri.raw
         if key not in store:
             raise FileNotFoundError(f"mem resource not found: {key}")
         return store[key]
 
     def write(self, uri: ResolvedURI, value: Any, *, ctx: KernelContext) -> None:
-        store = self._pocket.get_map(ctx)
+        store = self._store(ctx)
         store[uri.raw] = value
 
 

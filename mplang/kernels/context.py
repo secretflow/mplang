@@ -115,6 +115,7 @@ def add_default_binding(
         ValueError: If binding exists and override=False
         KeyError: If kernel_id is not registered
     """
+    _ensure_impl_imported()
     if not kernel_exists(kernel_id):
         raise KeyError(f"kernel_id {kernel_id} is not registered")
 

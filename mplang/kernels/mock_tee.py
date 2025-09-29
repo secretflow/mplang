@@ -45,10 +45,10 @@ def _quote_from_pk(pk: np.ndarray) -> NDArray[np.uint8]:
     return out
 
 
-@kernel_def("mock_tee.quote")
-def _tee_quote(pfunc: PFunction, pk: object) -> NDArray[np.uint8]:
+@kernel_def("mock_tee.quote_gen")
+def _tee_quote_gen(pfunc: PFunction, pk: object) -> NDArray[np.uint8]:
     warnings.warn(
-        "Insecure mock TEE kernel 'mock_tee.quote' in use. NOT secure; for local testing only.",
+        "Insecure mock TEE kernel 'mock_tee.quote_gen' in use. NOT secure; for local testing only.",
         stacklevel=3,
     )
     pk = np.asarray(pk, dtype=np.uint8)
@@ -64,6 +64,10 @@ def _tee_attest(pfunc: PFunction, quote: object) -> NDArray[np.uint8]:
         stacklevel=3,
     )
     quote = np.asarray(quote, dtype=np.uint8)
+    platform = pfunc.attrs.get("platform")
+    if platform is None:
+        raise ValueError("missing required 'platform' attribute in PFunction")
+
     if quote.size != 33:
         raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")
     return quote[1:33].astype(np.uint8)

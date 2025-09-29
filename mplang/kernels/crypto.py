@@ -29,12 +29,12 @@ __all__: list[str] = []  # flat kernels only
 def _get_rng() -> np.random.Generator:
     """Get (and lazily create) per-rank RNG for crypto kernels."""
     kctx = cur_kctx()
-    pocket = kctx.state.setdefault("crypto", {})
-    rng = pocket.get("rng")
+    rt = kctx.runtime
+    rng = rt.get_state("crypto.rng")
     if rng is None:
         seed = int(os.environ.get("MPLANG_CRYPTO_SEED", "0")) + kctx.rank * 7919
         rng = np.random.default_rng(seed)
-        pocket["rng"] = rng
+        rt.set_state("crypto.rng", rng)
     return rng
 
 

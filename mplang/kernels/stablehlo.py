@@ -36,11 +36,14 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     if isinstance(mlir_text, bytes):
         mlir_text = mlir_text.decode("utf-8")
 
-    # Simple compile cache per runtime (state pocket per backend namespace)
+    # Flat-key compile cache: stablehlo.compile_cache.<hash>
     ctx = cur_kctx()
-    pocket = ctx.state.setdefault("stablehlo", {})
-    cache = pocket.setdefault("compile_cache", {})
-    compiled = cache.get(mlir_text)
+    rt = ctx.runtime
+    import hashlib
+
+    h = hashlib.sha256(mlir_text.encode("utf-8")).hexdigest()[:16]
+    key = f"stablehlo.compile_cache.{h}"
+    compiled = rt.get_state(key)
     if compiled is None:
         backend = jax.default_backend()
         client = xla_bridge.get_backend(backend)
@@ -49,7 +52,7 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
             compiled = client.compile(mlir_text, compile_options)
         except Exception as e:  # pragma: no cover
             raise RuntimeError(f"StableHLO compile failed: {e}") from e
-        cache[mlir_text] = compiled
+        rt.set_state(key, compiled)
 
     # Handle JAX's unused parameter elimination via arg_keep_map
     runtime_args = args

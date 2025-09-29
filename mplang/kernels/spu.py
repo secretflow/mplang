@@ -63,14 +63,10 @@ class SpuValue:
         return f"SpuValue({self.shape},{self.dtype},{self.vtype})"
 
 
-def _get_spu_pocket() -> dict[str, Any]:
-    return cur_kctx().state.setdefault("spu", {})
-
-
 def _get_spu_config_and_world() -> tuple[libspu.RuntimeConfig, int]:
-    pocket = _get_spu_pocket()
-    cfg = pocket.get("config")
-    world = pocket.get("world")
+    kctx = cur_kctx()
+    cfg = kctx.runtime.get_state("spu.config")
+    world = kctx.runtime.get_state("spu.world")
     if cfg is None or world is None:
         raise RuntimeError("SPU kernel state not initialized (config/world)")
     return cfg, int(world)
@@ -84,12 +80,12 @@ def _register_spu_env(
     Idempotent: if config/world already set, they must match; link is recorded per rank.
     This replaces previous global fallback seeding logic.
     """
-    pocket = _get_spu_pocket()
-    prev_cfg = pocket.get("config")
-    prev_world = pocket.get("world")
+    kctx = cur_kctx()
+    prev_cfg = kctx.runtime.get_state("spu.config")
+    prev_world = kctx.runtime.get_state("spu.world")
     if prev_cfg is None:
-        pocket["config"] = config
-        pocket["world"] = world_size
+        kctx.runtime.set_state("spu.config", config)
+        kctx.runtime.set_state("spu.world", world_size)
     else:
         # libspu RuntimeConfig may not implement __eq__; compare serialized repr
         same_cfg = (
@@ -102,7 +98,7 @@ def _register_spu_env(
             raise RuntimeError("Conflicting SPU env registration")
     # Store single link per runtime (one runtime per rank)
     if link_ctx is not None:
-        pocket["link"] = link_ctx
+        kctx.runtime.set_state("spu.link", link_ctx)
 
 
 @kernel_def("spu.seed_env")
@@ -197,16 +193,16 @@ def _spu_run_mlir(pfunc: PFunction, *args: Any) -> Any:
         )
 
     cfg, _ = _get_spu_config_and_world()
-    pocket = _get_spu_pocket()
-    link_ctx: LinkCommunicator | None = pocket.get("link")
+    kctx = cur_kctx()
+    link_ctx = kctx.runtime.get_state("spu.link")
     if link_ctx is None:
         raise RuntimeError("Rank not participating in SPU; no link set via seed_env")
 
-    # Lazy runtime cache
-    spu_rt = pocket.get("runtime")
+    # Lazy runtime cache under key spu.runtime
+    spu_rt = kctx.runtime.get_state("spu.runtime")
     if spu_rt is None:
         spu_rt = spu_api.Runtime(link_ctx.get_lctx(), cfg)
-        pocket["runtime"] = spu_rt
+        kctx.runtime.set_state("spu.runtime", spu_rt)
 
     # Validate that all inputs are SpuValue objects
     for i, arg in enumerate(args):

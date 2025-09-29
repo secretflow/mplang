@@ -24,6 +24,11 @@ from mplang.core.tensor import TensorLike, TensorType
 from mplang.kernels import base
 from mplang.kernels.base import KernelContext, get_kernel_spec, kernel_exists
 
+__all__ = [
+    "RuntimeContext",
+    "add_default_binding",
+]
+
 # Default bindings
 # Import kernel implementation modules explicitly so their @kernel_def entries
 # register at import time. Keep imports grouped; alias with leading underscore
@@ -94,6 +99,32 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     # "tee.quote_gen": "mock_tee.quote_gen",
     # "tee.attest": "mock_tee.attest",
 }
+
+
+def add_default_binding(
+    op_type: str, kernel_id: str, *, override: bool = False
+) -> None:
+    """Add or modify a default binding rule.
+
+    Args:
+        op_type: Operation type (e.g., "builtin.add")
+        kernel_id: Kernel ID (e.g., "my_custom.add")
+        override: Whether to override existing binding, defaults to False
+
+    Raises:
+        ValueError: If binding exists and override=False
+        KeyError: If kernel_id is not registered
+    """
+    if not kernel_exists(kernel_id):
+        raise KeyError(f"kernel_id {kernel_id} is not registered")
+
+    if op_type in _DEFAULT_BINDINGS and not override:
+        raise ValueError(
+            f"Binding for operation type {op_type} already exists: {_DEFAULT_BINDINGS[op_type]}. "
+            f"Use override=True to override"
+        )
+
+    _DEFAULT_BINDINGS[op_type] = kernel_id
 
 
 # --- RuntimeContext ---

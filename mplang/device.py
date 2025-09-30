@@ -232,7 +232,8 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         platform = frm_dev.config.get("platform")
         if not platform:
             raise ValueError(
-                f"TEE device '{to_dev_id}' is missing 'platform' in its config."
+                f"TEE device '{frm_dev_id}' is missing 'platform' in its config."
+            )
             )
         # Ensure bidirectional session established for this pair
         sess_p, sess_t = _ensure_tee_session(

@@ -31,8 +31,8 @@ def _demo_flow():
     # Send quotes to P0/P1 and attest to obtain TEE public keys
     q0_for_p0 = simp.p2p(P2, P0, q0)
     q1_for_p1 = simp.p2p(P2, P1, q1)
-    t_pk0_for_p0 = simp.runAt(P0, tee.attest)(q0_for_p0, "TDX")
-    t_pk1_for_p1 = simp.runAt(P1, tee.attest)(q1_for_p1, "TDX")
+    t_pk0_for_p0 = simp.runAt(P0, tee.attest)(q0_for_p0)
+    t_pk1_for_p1 = simp.runAt(P1, tee.attest)(q1_for_p1)
 
     # Each party generates its own ephemeral keypair and shares pk with TEE
     v_sk0, v_pk0 = simp.runAt(P0, crypto.kem_keygen)("x25519")

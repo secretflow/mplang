@@ -64,9 +64,6 @@ def _tee_attest(pfunc: PFunction, quote: object) -> NDArray[np.uint8]:
         stacklevel=3,
     )
     quote = np.asarray(quote, dtype=np.uint8)
-    platform = pfunc.attrs.get("platform")
-    if platform is None:
-        raise ValueError("missing required 'platform' attribute in PFunction")
 
     if quote.size != 33:
         raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")

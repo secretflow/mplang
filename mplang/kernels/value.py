@@ -1,7 +1,16 @@
-"""Value abstraction & wire-format registry.
-
-Protobuf `ValueProto` envelope is the sole on-wire format.
-"""
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
@@ -416,7 +425,6 @@ class TensorValue(Value):  # well-known tensor (ndarray) Value
         proto = (
             ValueProtoBuilder(self.KIND, self.WIRE_VERSION)
             .set_attr("dtype", arr.dtype.str)
-            .set_attr("ndim", arr.ndim)
             .set_payload(arr.tobytes())
             .build()
         )
@@ -433,14 +441,7 @@ class TensorValue(Value):  # well-known tensor (ndarray) Value
         dtype_val = reader.get_attr("dtype")
         if not isinstance(dtype_val, str):
             raise ValueDecodeError("TensorValue runtime attr 'dtype' must be str")
-        ndim_val = reader.get_attr("ndim")
-        try:
-            ndim = int(ndim_val)
-        except (TypeError, ValueError) as e:
-            raise ValueDecodeError("TensorValue runtime attr 'ndim' must be int") from e
         shape = tuple(int(dim) for dim in proto.concrete_shape)
-        if ndim != len(shape):
-            raise ValueDecodeError("TensorValue rank mismatch between attrs and shape")
         try:
             arr = np.frombuffer(reader.payload, dtype=np.dtype(dtype_val))
         except Exception as e:  # pragma: no cover

@@ -13,5 +13,5 @@
 # limitations under the License.
 
 # Auto-loaded pytest configuration to expose shared fixtures.
-# Import server_fixtures so its `http_servers` fixture is registered globally.
-from tests.utils.server_fixtures import http_servers  # noqa: F401
+# Register server fixtures as a pytest plugin for proper assert-rewrite.
+pytest_plugins = ("tests.utils.server_fixtures",)

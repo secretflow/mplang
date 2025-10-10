@@ -15,15 +15,15 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import numpy as np
 
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
+from mplang.kernels.value import TensorValue
 from mplang.utils.crypto import blake2b
 
-__all__: list[str] = []  # flat kernels only
+__all__: list[str] = []  # No public exports currently
 
 
 def _get_rng() -> np.random.Generator:
@@ -54,62 +54,71 @@ def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
 
 
 @kernel_def("crypto.keygen")
-def _crypto_keygen(pfunc: PFunction) -> Any:
+def _crypto_keygen(pfunc: PFunction) -> TensorValue:
     length = int(pfunc.attrs.get("length", 32))
     rng = _get_rng()
     key = rng.integers(0, 256, size=(length,), dtype=np.uint8)
-    return key
+    return TensorValue(key)
 
 
 @kernel_def("crypto.enc")
-def _crypto_encrypt(pfunc: PFunction, pt_bytes: Any, key: Any) -> Any:
-    pt_bytes = np.asarray(pt_bytes, dtype=np.uint8)
-    key = np.asarray(key, dtype=np.uint8)
+def _crypto_encrypt(
+    pfunc: PFunction, pt_bytes: TensorValue, key: TensorValue
+) -> TensorValue:
+    pt_bytes_np = pt_bytes.to_numpy().astype(np.uint8, copy=False)
+    key_np = key.to_numpy().astype(np.uint8, copy=False)
     rng = _get_rng()
     nonce = rng.integers(0, 256, size=(12,), dtype=np.uint8)
     stream = np.frombuffer(
-        _keystream(key.tobytes(), nonce.tobytes(), pt_bytes.size), dtype=np.uint8
+        _keystream(key_np.tobytes(), nonce.tobytes(), pt_bytes_np.size), dtype=np.uint8
     )
-    ct = (pt_bytes ^ stream).astype(np.uint8)
+    ct = (pt_bytes_np ^ stream).astype(np.uint8)
     out = np.concatenate([nonce, ct]).astype(np.uint8)
-    return out
+    return TensorValue(out)
 
 
 @kernel_def("crypto.dec")
-def _crypto_decrypt(pfunc: PFunction, ct_with_nonce: Any, key: Any) -> Any:
-    ct_with_nonce = np.asarray(ct_with_nonce, dtype=np.uint8)
-    key = np.asarray(key, dtype=np.uint8)
-    nonce = ct_with_nonce[:12]
-    ct = ct_with_nonce[12:]
+def _crypto_decrypt(
+    pfunc: PFunction, ct_with_nonce: TensorValue, key: TensorValue
+) -> TensorValue:
+    ct_np = ct_with_nonce.to_numpy().astype(np.uint8, copy=False)
+    key_np = key.to_numpy().astype(np.uint8, copy=False)
+    nonce = ct_np[:12]
+    ct = ct_np[12:]
     stream = np.frombuffer(
-        _keystream(key.tobytes(), nonce.tobytes(), len(ct)), dtype=np.uint8
+        _keystream(key_np.tobytes(), nonce.tobytes(), len(ct)), dtype=np.uint8
     )
     pt_bytes = (ct ^ stream).astype(np.uint8)
-    return pt_bytes
+    return TensorValue(pt_bytes)
 
 
 @kernel_def("crypto.kem_keygen")
-def _crypto_kem_keygen(pfunc: PFunction) -> Any:
+def _crypto_kem_keygen(pfunc: PFunction) -> tuple[TensorValue, TensorValue]:
     rng = _get_rng()
     sk = rng.integers(0, 256, size=(32,), dtype=np.uint8)
-    pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
-    return (sk, pk)
+    pk_bytes = blake2b(sk.tobytes())[:32]
+    pk = np.frombuffer(pk_bytes, dtype=np.uint8)
+    return (TensorValue(sk), TensorValue(pk))
 
 
 @kernel_def("crypto.kem_derive")
-def _crypto_kem_derive(pfunc: PFunction, sk: Any, peer_pk: Any) -> Any:
-    sk = np.asarray(sk, dtype=np.uint8)
-    peer_pk = np.asarray(peer_pk, dtype=np.uint8)
-    self_pk = np.frombuffer(blake2b(sk.tobytes())[:32], dtype=np.uint8)
-    xored = (self_pk ^ peer_pk).astype(np.uint8)
+def _crypto_kem_derive(
+    pfunc: PFunction, sk: TensorValue, peer_pk: TensorValue
+) -> TensorValue:
+    sk_np = sk.to_numpy().astype(np.uint8, copy=False)
+    peer_pk_np = peer_pk.to_numpy().astype(np.uint8, copy=False)
+
+    self_pk_bytes = blake2b(sk_np.tobytes())[:32]
+    self_pk_arr = np.frombuffer(self_pk_bytes, dtype=np.uint8)
+    xored = (self_pk_arr ^ peer_pk_np).astype(np.uint8)
     secret = np.frombuffer(blake2b(xored.tobytes())[:32], dtype=np.uint8)
-    return secret
+    return TensorValue(secret)
 
 
 @kernel_def("crypto.hkdf")
-def _crypto_hkdf(pfunc: PFunction, secret: Any) -> Any:
-    secret = np.asarray(secret, dtype=np.uint8)
+def _crypto_hkdf(pfunc: PFunction, secret: TensorValue) -> TensorValue:
+    secret_np = secret.to_numpy().astype(np.uint8, copy=False)
     info_str = str(pfunc.attrs.get("info", ""))
     info = info_str.encode("utf-8")
-    out = np.frombuffer(blake2b(secret.tobytes() + info)[:32], dtype=np.uint8)
-    return out
+    out = np.frombuffer(blake2b(secret_np.tobytes() + info)[:32], dtype=np.uint8)
+    return TensorValue(out)

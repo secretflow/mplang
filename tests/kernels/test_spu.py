@@ -42,6 +42,7 @@ from mplang.core.tensor import TensorType
 from mplang.kernels.base import list_kernels
 from mplang.kernels.context import RuntimeContext
 from mplang.kernels.spu import SpuValue
+from mplang.kernels.value import TensorValue
 from mplang.ops import spu
 from mplang.runtime.link_comm import LinkCommunicator
 
@@ -146,12 +147,12 @@ class TestSpuKernels:
 
         x = np.array([1, 2, 3], dtype=np.int32)
         mk = _makeshares_pfunc(x, world)
-        shares = runtime.run_kernel(mk, [x])
+        shares = runtime.run_kernel(mk, [TensorValue(x)])
         assert len(shares) == 1 and isinstance(shares[0], SpuValue)
         rc = _reconstruct_pfunc(x, world)
         # run_kernel expects outs length=1; we call reconstruct with the share list
         out = runtime.run_kernel(rc, shares)[0]
-        np.testing.assert_array_equal(out, x)
+        np.testing.assert_array_equal(out.to_numpy(), x)
 
     def test_makeshares_reconstruct_multiparty(self):
         world = 2
@@ -184,11 +185,11 @@ class TestSpuKernels:
 
         x = np.array([10, 20], dtype=np.int32)
         mk = _makeshares_pfunc(x, world)
-        shares = runtime0.run_kernel(mk, [x])
+        shares = runtime0.run_kernel(mk, [TensorValue(x)])
         assert len(shares) == world and all(isinstance(s, SpuValue) for s in shares)
         rc = _reconstruct_pfunc(x, world)
         out = runtime0.run_kernel(rc, list(shares))[0]
-        np.testing.assert_array_equal(out, x)
+        np.testing.assert_array_equal(out.to_numpy(), x)
 
     def test_spu_run_pphlo_single_party(self):
         world = 1
@@ -214,15 +215,15 @@ class TestSpuKernels:
 
         mkx = _makeshares_pfunc(x, world)
         mky = _makeshares_pfunc(y, world)
-        x_shares = runtime.run_kernel(mkx, [x])
-        y_shares = runtime.run_kernel(mky, [y])
+        x_shares = runtime.run_kernel(mkx, [TensorValue(x)])
+        y_shares = runtime.run_kernel(mky, [TensorValue(y)])
 
         # Single-party run (rank=0)
         result_share = runtime.run_kernel(pfunc, [x_shares[0], y_shares[0]])[0]
         assert isinstance(result_share, SpuValue)
         rc = _reconstruct_pfunc(expected, world)
         out = runtime.run_kernel(rc, [result_share])[0]
-        np.testing.assert_allclose(out, expected, rtol=1e-5)
+        np.testing.assert_allclose(out.to_numpy(), expected, rtol=1e-5)
 
     def test_spu_run_pphlo_multiparty(self):
         world = 2
@@ -253,8 +254,8 @@ class TestSpuKernels:
 
         mkx = _makeshares_pfunc(x, world)
         mky = _makeshares_pfunc(y, world)
-        x_shares: list[SpuValue] = runtimes[0].run_kernel(mkx, [x])
-        y_shares: list[SpuValue] = runtimes[0].run_kernel(mky, [y])
+        x_shares: list[SpuValue] = runtimes[0].run_kernel(mkx, [TensorValue(x)])
+        y_shares: list[SpuValue] = runtimes[0].run_kernel(mky, [TensorValue(y)])
 
         # Run spu.run_pphlo concurrently per rank to satisfy interactive protocol
         def party(rank: int, xs: SpuValue, ys: SpuValue):
@@ -270,4 +271,4 @@ class TestSpuKernels:
         assert len(results) == world and all(isinstance(r, SpuValue) for r in results)
         rc = _reconstruct_pfunc(expected, world)
         out = runtimes[0].run_kernel(rc, results)[0]
-        np.testing.assert_allclose(out, expected, rtol=1e-5)
+        np.testing.assert_allclose(out.to_numpy(), expected, rtol=1e-5)

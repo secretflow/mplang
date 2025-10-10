@@ -15,18 +15,28 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-import cloudpickle as pickle
 import spu.libspu as libspu
 
-from mplang.core.comm import ICollective, ICommunicator
 
+class LinkCommunicator:
+    """Minimal wrapper for libspu link context.
 
-class LinkCommunicator(ICommunicator, ICollective):
-    """Wraps libspu link communicator for distributed communication"""
+    This class serves only to create and hold a libspu link context for SPU runtime.
+    It does NOT provide general-purpose communication methods - those are handled by
+    the underlying libspu.link.Context which SPU runtime uses directly.
+
+    All serialization is handled internally by libspu - no pickle needed here.
+    """
 
     def __init__(self, rank: int, addrs: list[str], *, mem_link: bool = False):
+        """Initialize link communicator for SPU.
+
+        Args:
+            rank: Rank of this party
+            addrs: List of addresses for all parties
+            mem_link: If True, use in-memory link (for testing); otherwise use BRPC
+        """
         self._rank = rank
         self._world_size = len(addrs)
 
@@ -42,90 +52,27 @@ class LinkCommunicator(ICommunicator, ICollective):
             self.lctx = libspu.link.create_brpc(desc, self._rank)
 
         logging.info(
-            f"LinkCommunicator initialized with rank={self._rank}, world_size={self._world_size}, addrs={addrs}",
+            f"LinkCommunicator initialized: rank={self._rank}, world_size={self._world_size}, "
+            f"addrs={addrs}, mem_link={mem_link}"
         )
-
-        self._counter = 0
 
     @property
     def rank(self) -> int:
+        """Get rank from underlying link context."""
         return self.lctx.rank  # type: ignore[no-any-return]
 
     @property
     def world_size(self) -> int:
+        """Get world size from underlying link context."""
         return self.lctx.world_size  # type: ignore[no-any-return]
 
     def get_lctx(self) -> libspu.link.Context:
-        """Get the link context"""
+        """Get the underlying libspu link context.
+
+        This is the primary interface - SPU runtime uses this context directly.
+        All communication and serialization is handled by libspu internally.
+
+        Returns:
+            The underlying libspu.link.Context instance.
+        """
         return self.lctx
-
-    # override
-    def new_id(self) -> str:
-        res = self._counter
-        self._counter += 1
-        return str(res)
-
-    def wrap(self, obj: Any) -> str:
-        data = pickle.dumps(obj)
-        return data.hex()  # type: ignore[no-any-return]
-
-    def unwrap(self, obj: str) -> Any:
-        data = bytes.fromhex(obj)
-        return pickle.loads(data)  # type: ignore[no-any-return]
-
-    def send(self, to: int, key: str, data: Any) -> None:
-        serialized = pickle.dumps((key, data))
-        self.lctx.send(to, serialized.hex())
-
-    def recv(self, frm: int, key: str) -> Any:
-        serialized = self.lctx.recv(frm)
-        rkey, data = pickle.loads(bytes.fromhex(serialized.decode()))
-        assert key == rkey, f"recv key {key} != {rkey}"
-        return data  # type: ignore[no-any-return]
-
-    def p2p(self, frm: int, to: int, data: Any) -> Any:
-        assert 0 <= frm < self.world_size
-        assert 0 <= to < self.world_size
-
-        # TODO: link handles cid internally?
-        cid = self.new_id()
-
-        if self.rank == frm:
-            self.send(to, cid, data)
-            return None
-        elif self.rank == to:
-            return self.recv(frm, cid)
-        else:
-            return None
-
-    def gather(self, root: int, data: Any) -> list[Any]:
-        assert 0 <= root < self.world_size
-        rets = self.lctx.gather(self.wrap(data), root)
-        return [self.unwrap(ret) for ret in rets]
-
-    def scatter(self, root: int, args: list[Any]) -> Any:
-        assert 0 <= root < self.world_size
-        assert len(args) == self.world_size, f"{len(args)} != {self.world_size}"
-        ret = self.lctx.scatter([self.wrap(arg) for arg in args], root)
-        return self.unwrap(ret)
-
-    def allgather(self, arg: Any) -> list[Any]:
-        rets = self.lctx.all_gather(self.wrap(arg))
-        return [self.unwrap(ret) for ret in rets]
-
-    def bcast(self, root: int, arg: Any) -> Any:
-        assert 0 <= root < self.world_size
-        ret = self.lctx.broadcast(self.wrap(arg), root)
-        return self.unwrap(ret)
-
-    def gather_m(self, pmask: int, root: int, data: Any) -> list[Any]:
-        raise ValueError("Not supported by LinkCommunicator")
-
-    def scatter_m(self, pmask: int, root: int, args: list[Any]) -> Any:
-        raise ValueError("Not supported by LinkCommunicator")
-
-    def allgather_m(self, pmask: int, arg: Any) -> list[Any]:
-        raise ValueError("Not supported by LinkCommunicator")
-
-    def bcast_m(self, pmask: int, root: int, arg: Any) -> Any:
-        raise ValueError("Not supported by LinkCommunicator")

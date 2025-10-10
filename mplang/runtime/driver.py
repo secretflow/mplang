@@ -27,6 +27,8 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
+
 from mplang.core.cluster import ClusterSpec
 from mplang.core.expr.ast import Expr
 from mplang.core.interp import InterpContext, InterpVar
@@ -34,6 +36,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpir import Writer
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType
+from mplang.kernels.value import TableValue, TensorValue
 from mplang.runtime.client import HttpExecutorClient
 
 
@@ -257,7 +260,19 @@ class Driver(InterpContext):
             try:
                 # The results will be in the same order as the clients (ranks)
                 results = await asyncio.gather(*tasks)
-                return list(results)
+                converted: list[Any] = []
+                for value in results:
+                    if isinstance(value, TensorValue):
+                        arr = value.to_numpy()
+                        if isinstance(arr, np.ndarray) and arr.size == 1:
+                            converted.append(arr.item())
+                        else:
+                            converted.append(arr)
+                    elif isinstance(value, TableValue):
+                        converted.append(value.to_pandas())
+                    else:
+                        converted.append(value)
+                return converted
             except RuntimeError as e:
                 raise RuntimeError(
                     f"Failed to fetch symbol from one or more parties: {e}"

@@ -15,15 +15,37 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.mptype import TensorLike
+from mplang.core.dtype import (
+    BOOL,
+    FLOAT32,
+    FLOAT64,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
+    DType,
+)
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
+from mplang.kernels.value import (
+    TensorValue,
+    Value,
+    ValueDecodeError,
+    ValueProtoBuilder,
+    ValueProtoReader,
+    register_value,
+)
+from mplang.protos.v1alpha1 import value_pb2 as _value_pb2
 from mplang.runtime.link_comm import LinkCommunicator
 
 
@@ -32,35 +54,105 @@ def shape_spu_to_np(spu_shape: Any) -> tuple[int, ...]:
     return tuple(spu_shape.dims)
 
 
-def dtype_spu_to_np(spu_dtype: Any) -> np.dtype:
-    """Convert SPU dtype to numpy dtype."""
+def dtype_spu_to_mpl(spu_dtype: libspu.DataType) -> DType:
+    """Convert libspu.DataType to MPLang DType."""
     MAP = {
-        libspu.DataType.DT_F32: np.float32,
-        libspu.DataType.DT_F64: np.float64,
-        libspu.DataType.DT_I1: np.bool_,
-        libspu.DataType.DT_I8: np.int8,
-        libspu.DataType.DT_U8: np.uint8,
-        libspu.DataType.DT_I16: np.int16,
-        libspu.DataType.DT_U16: np.uint16,
-        libspu.DataType.DT_I32: np.int32,
-        libspu.DataType.DT_U32: np.uint32,
-        libspu.DataType.DT_I64: np.int64,
-        libspu.DataType.DT_U64: np.uint64,
+        libspu.DataType.DT_F32: FLOAT32,
+        libspu.DataType.DT_F64: FLOAT64,
+        libspu.DataType.DT_I1: BOOL,
+        libspu.DataType.DT_I8: INT8,
+        libspu.DataType.DT_U8: UINT8,
+        libspu.DataType.DT_I16: INT16,
+        libspu.DataType.DT_U16: UINT16,
+        libspu.DataType.DT_I32: INT32,
+        libspu.DataType.DT_U32: UINT32,
+        libspu.DataType.DT_I64: INT64,
+        libspu.DataType.DT_U64: UINT64,
     }
-    return MAP[spu_dtype]  # type: ignore[return-value]
+    return MAP[spu_dtype]
 
 
+@register_value
 @dataclass
-class SpuValue:
-    """SPU value container for secure computation."""
+class SpuValue(Value):
+    """SPU value container for secure computation (Value type)."""
+
+    KIND: ClassVar[str] = "mplang.spu.SpuValue"
+    WIRE_VERSION: ClassVar[int] = 1
 
     shape: tuple[int, ...]
-    dtype: Any
+    dtype: DType  # Now uses MPLang's unified DType
     vtype: libspu.Visibility
     share: libspu.Share
 
     def __repr__(self) -> str:
         return f"SpuValue({self.shape},{self.dtype},{self.vtype})"
+
+    def to_proto(self) -> _value_pb2.ValueProto:
+        """Serialize SpuValue to wire format.
+
+        libspu.Share has two attributes:
+        - meta: bytes (protobuf serialized metadata)
+        - share_chunks: list[bytes] (the actual secret share data)
+
+        Strategy: Store shape/dtype/vtype in runtime_attrs, concatenate share.meta + all chunks in payload.
+        """
+        # Store metadata in runtime_attrs; keep chunk lengths for payload splitting
+        chunk_lengths = [len(chunk) for chunk in self.share.share_chunks]
+
+        # Payload contains only share chunks (meta stored in attrs)
+        payload = b""
+        for chunk in self.share.share_chunks:
+            payload += chunk
+
+        return (
+            ValueProtoBuilder(self.KIND, self.WIRE_VERSION)
+            .set_attr("shape", list(self.shape))
+            .set_attr("dtype", self.dtype.name)  # Serialize DType name
+            .set_attr("vtype", int(self.vtype))
+            .set_attr("share_meta", self.share.meta)
+            .set_attr("chunk_lengths", chunk_lengths)
+            .set_payload(payload)
+            .build()
+        )
+
+    @classmethod
+    def from_proto(cls, proto: _value_pb2.ValueProto) -> SpuValue:
+        """Deserialize SpuValue from wire format."""
+        reader = ValueProtoReader(proto)
+        if reader.version != cls.WIRE_VERSION:
+            raise ValueDecodeError(f"Unsupported SpuValue version {reader.version}")
+
+        # Read metadata from runtime_attrs
+        shape = tuple(reader.get_attr("shape"))
+        dtype_name = reader.get_attr("dtype")
+        # Reconstruct DType from serialized name (numpy dtype string)
+        dtype = DType.from_numpy(dtype_name)
+        vtype = libspu.Visibility(reader.get_attr("vtype"))
+        share_meta = reader.get_attr("share_meta")
+        chunk_lengths = reader.get_attr("chunk_lengths")
+
+        # Parse payload: [chunk_0][chunk_1]...
+        payload = reader.payload
+        offset = 0
+
+        share_chunks: list[bytes] = []
+        for chunk_len in chunk_lengths:
+            chunk = payload[offset : offset + chunk_len]
+            offset += chunk_len
+            share_chunks.append(chunk)
+
+        # Reconstruct libspu.Share
+        share = libspu.Share()
+        share.meta = share_meta
+        share.share_chunks = share_chunks
+
+        return cls(
+            shape=shape,
+            dtype=dtype,
+            vtype=vtype,
+            share=share,
+        )
 
 
 def _get_spu_config_and_world() -> tuple[libspu.RuntimeConfig, int]:
@@ -128,33 +220,25 @@ def _spu_seed_env(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("spu.makeshares")
-def _spu_makeshares(pfunc: PFunction, *args: Any) -> Any:
-    """Create SPU shares from input data.
-
-    Args:
-        pfunc: PFunction containing makeshares metadata
-        args: Input data to be shared (single tensor)
-
-    Returns:
-        Tuple of SPU shares (SpuValue), one for each party.
-    """
-    assert len(args) == 1
-
+def _spu_makeshares(pfunc: PFunction, tensor: TensorValue) -> tuple[SpuValue, ...]:
+    """Create SPU shares from input TensorValue data."""
     visibility_value = pfunc.attrs.get("visibility", libspu.Visibility.VIS_SECRET.value)
     if isinstance(visibility_value, int):
         visibility = libspu.Visibility(visibility_value)
     else:
         visibility = visibility_value
 
-    arg = np.array(args[0], copy=False)
+    arg = tensor.to_numpy()
     cfg, world = _get_spu_config_and_world()
     spu_io = spu_api.Io(world, cfg)
     shares = spu_io.make_shares(arg, visibility)
     assert len(shares) == world, f"Expected {world} shares, got {len(shares)}"
+    # Store MPLang DType instead of libspu.DataType
+    dtype = DType.from_numpy(arg.dtype)
     return tuple(
         SpuValue(
             shape=arg.shape,
-            dtype=arg.dtype,
+            dtype=dtype,
             vtype=visibility,
             share=share,
         )
@@ -163,24 +247,29 @@ def _spu_makeshares(pfunc: PFunction, *args: Any) -> Any:
 
 
 @kernel_def("spu.reconstruct")
-def _spu_reconstruct(pfunc: PFunction, *args: Any) -> Any:
+def _spu_reconstruct(pfunc: PFunction, *shares: SpuValue) -> TensorValue:
     """Reconstruct plaintext data from SPU shares."""
     cfg, world = _get_spu_config_and_world()
-    assert len(args) == world, f"Expected {world} shares, got {len(args)}"
-    for i, arg in enumerate(args):
-        if not isinstance(arg, SpuValue):
+    assert len(shares) == world, f"Expected {world} shares, got {len(shares)}"
+    for i, share in enumerate(shares):
+        if not isinstance(share, SpuValue):
             raise ValueError(
-                f"Input {i} must be SpuValue, got {type(arg)}. Reconstruction requires SPU shares as input."
+                f"Input {i} must be SpuValue, got {type(share)}. Reconstruction requires SPU shares as input."
             )
-    spu_args: list[SpuValue] = list(args)  # type: ignore
-    shares = [spu_arg.share for spu_arg in spu_args]
+    spu_args: list[SpuValue] = list(shares)  # type: ignore
+    share_payloads = [spu_arg.share for spu_arg in spu_args]
     spu_io = spu_api.Io(world, cfg)
-    reconstructed = spu_io.reconstruct(shares)
-    return reconstructed
+    reconstructed = spu_io.reconstruct(share_payloads)
+    base = np.array(reconstructed, copy=False)
+    # Respect semantic dtype/shape recorded on shares (all shares share same meta).
+    semantic_dtype = shares[0].dtype.to_numpy()  # DType now has to_numpy() method
+    semantic_shape = shares[0].shape
+    restored = np.asarray(base, dtype=semantic_dtype).reshape(semantic_shape)
+    return TensorValue(np.array(restored, copy=False))
 
 
 @kernel_def("spu.run_pphlo")
-def _spu_run_mlir(pfunc: PFunction, *args: Any) -> Any:
+def _spu_run_mlir(pfunc: PFunction, *args: SpuValue) -> tuple[SpuValue, ...]:
     """Execute compiled SPU function (spu.run_pphlo) and return SpuValue outputs.
 
     Participation rule: a rank participates iff its entry in the stored
@@ -240,10 +329,10 @@ def _spu_run_mlir(pfunc: PFunction, *args: Any) -> Any:
     spu_rt.run(executable)
     shares = [spu_rt.get_var(out_name) for out_name in output_names]
     metas = [spu_rt.get_var_meta(out_name) for out_name in output_names]
-    results: list[TensorLike] = [
+    results: list[SpuValue] = [
         SpuValue(
             shape=shape_spu_to_np(meta.shape),
-            dtype=dtype_spu_to_np(meta.data_type),
+            dtype=dtype_spu_to_mpl(meta.data_type),
             vtype=meta.visibility,
             share=shares[idx],
         )

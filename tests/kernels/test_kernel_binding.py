@@ -15,6 +15,7 @@
 # Tests for per-RuntimeContext binding isolation
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from mplang.core.dtype import INT64  # switched from INT32 to INT64 to match Python int
@@ -22,6 +23,7 @@ from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.kernels import base
 from mplang.kernels.context import RuntimeContext
+from mplang.kernels.value import TensorValue
 
 # We'll register two fake kernels for an op to test rebinding.
 # If they already exist due to other tests, we guard with try/except.
@@ -29,16 +31,20 @@ from mplang.kernels.context import RuntimeContext
 
 @base.kernel_def("test.echo.v1")
 def _echo_v1(
-    pfunc: PFunction, x: int
-) -> tuple[int,]:  # pragma: no cover - executed in test
-    return (x + 1,)
+    pfunc: PFunction, x: TensorValue
+) -> tuple[TensorValue,]:  # pragma: no cover - executed in test
+    arr = x.to_numpy()
+    result = np.array(arr + 1, dtype=arr.dtype, copy=False)
+    return (TensorValue(result),)
 
 
 @base.kernel_def("test.echo.v2")
 def _echo_v2(
-    pfunc: PFunction, x: int
-) -> tuple[int,]:  # pragma: no cover - executed in test
-    return (x + 2,)
+    pfunc: PFunction, x: TensorValue
+) -> tuple[TensorValue,]:  # pragma: no cover - executed in test
+    arr = x.to_numpy()
+    result = np.array(arr + 2, dtype=arr.dtype, copy=False)
+    return (TensorValue(result),)
 
 
 def make_pfunc(op_type: str) -> PFunction:
@@ -59,20 +65,30 @@ def test_isolated_rebind():
     ctx2 = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v2"})
 
     pfunc = make_pfunc(op)
-    out1 = ctx1.run_kernel(pfunc, [10])[0]
-    out2 = ctx2.run_kernel(pfunc, [10])[0]
+    out1 = ctx1.run_kernel(pfunc, [TensorValue(np.array(10, dtype=np.int64))])[0]
+    out2 = ctx2.run_kernel(pfunc, [TensorValue(np.array(10, dtype=np.int64))])[0]
 
-    assert out1 == 11
-    assert out2 == 12
+    assert out1.to_numpy().item() == 11
+    assert out2.to_numpy().item() == 12
 
 
 def test_rebind_only_affects_context():
     op = "test.echo"
     ctx = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v1"})
     pfunc = make_pfunc(op)
-    assert ctx.run_kernel(pfunc, [5])[0] == 6
+    assert (
+        ctx.run_kernel(pfunc, [TensorValue(np.array(5, dtype=np.int64))])[0]
+        .to_numpy()
+        .item()
+        == 6
+    )
     ctx.rebind_op(op, "test.echo.v2")
-    assert ctx.run_kernel(pfunc, [5])[0] == 7
+    assert (
+        ctx.run_kernel(pfunc, [TensorValue(np.array(5, dtype=np.int64))])[0]
+        .to_numpy()
+        .item()
+        == 7
+    )
 
 
 def test_force_flag():
@@ -81,10 +97,20 @@ def test_force_flag():
     # Attempt non-force bind (should keep v1)
     ctx.bind_op(op, "test.echo.v2", force=False)
     pfunc = make_pfunc(op)
-    assert ctx.run_kernel(pfunc, [1])[0] == 2  # still v1 (+1)
+    assert (
+        ctx.run_kernel(pfunc, [TensorValue(np.array(1, dtype=np.int64))])[0]
+        .to_numpy()
+        .item()
+        == 2
+    )  # still v1 (+1)
     # Now force
     ctx.bind_op(op, "test.echo.v2", force=True)
-    assert ctx.run_kernel(pfunc, [1])[0] == 3
+    assert (
+        ctx.run_kernel(pfunc, [TensorValue(np.array(1, dtype=np.int64))])[0]
+        .to_numpy()
+        .item()
+        == 3
+    )
 
 
 def test_unknown_kernel_id():
@@ -99,4 +125,4 @@ def test_missing_binding():
     ctx = RuntimeContext(rank=0, world_size=1)
     pfunc = make_pfunc(op)
     with pytest.raises(NotImplementedError):
-        ctx.run_kernel(pfunc, [0])
+        ctx.run_kernel(pfunc, [TensorValue(np.array(0, dtype=np.int64))])

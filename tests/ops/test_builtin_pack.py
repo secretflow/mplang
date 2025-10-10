@@ -23,8 +23,8 @@ import mplang.simp as simp
 from mplang.core.dtype import UINT8, DType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
+from mplang.kernels.value import TableValue
 from mplang.ops import builtin
-from mplang.utils import table_utils
 
 
 @pytest.mark.integration
@@ -59,7 +59,7 @@ def test_builtin_pack_unpack_table_runtime() -> None:
         ("a", DType.from_any("int64")),
         ("b", DType.from_any("float64")),
     ])
-    expected_bytes = table_utils.dataframe_to_csv(pd.DataFrame(data))
+    # With Arrow IPC, packed bytes are not CSV anymore; we validate roundtrip instead
 
     @mplang.function
     def fn():
@@ -70,10 +70,13 @@ def test_builtin_pack_unpack_table_runtime() -> None:
 
     packed, unpacked = mplang.evaluate(sim, fn)
     packed_v, unpacked_v = mplang.fetch(sim, (packed, unpacked))
-    pd.testing.assert_frame_equal(unpacked_v[0], pd.DataFrame(data))
+    assert isinstance(unpacked_v[0], TableValue)
+    pd.testing.assert_frame_equal(unpacked_v[0].to_pandas(), pd.DataFrame(data))
     assert packed_v[0].dtype == np.uint8
     assert packed_v[0].ndim == 1
-    assert packed_v[0].tobytes() == expected_bytes
+    # Packed bytes are Arrow IPC stream; just ensure non-empty
+    assert isinstance(packed_v[0], np.ndarray)
+    assert packed_v[0].size > 0
     assert packed.mptype._type.dtype == UINT8
     assert packed.mptype._type.shape == (-1,)
     assert unpacked.mptype._type == table_schema

@@ -18,10 +18,11 @@ Tests for the HTTP server endpoints.
 
 import base64
 
-import cloudpickle as pickle
+import numpy as np
 from fastapi.testclient import TestClient
 
 from mplang.core.cluster import ClusterSpec
+from mplang.kernels.value import TensorValue, decode_value, encode_value
 from mplang.runtime.server import app
 from tests.utils.server_fixtures import get_free_ports
 
@@ -126,10 +127,10 @@ def test_create_and_get_symbol():
     )
     assert response.status_code == 200
 
-    # Create valid pickled data for a simple integer
-    test_value = 42
-    pickled_data = pickle.dumps(test_value)
-    encoded_data = base64.b64encode(pickled_data).decode("utf-8")
+    # Create valid TensorValue for a simple scalar
+    test_value = np.array(42, dtype=np.int32)
+    tensor_val = TensorValue(test_value)
+    encoded_data = base64.b64encode(encode_value(tensor_val)).decode("utf-8")
 
     symbol_data = {
         "mptype": {"scalar_type": {"type": "SCALAR_TYPE_I32"}},
@@ -146,10 +147,9 @@ def test_create_and_get_symbol():
 
 def test_global_symbol_crud():
     # Create global symbol
-    import numpy as np
-
     arr = np.arange(6, dtype=np.int32)
-    data_b64 = base64.b64encode(pickle.dumps(arr)).decode("utf-8")
+    tensor_val = TensorValue(arr)
+    data_b64 = base64.b64encode(encode_value(tensor_val)).decode("utf-8")
     resp = client.put(
         "/api/v1/symbols/gx",
         json={"mptype": {"tensor": {"dtype": "I32", "shape": [6]}}, "data": data_b64},
@@ -160,8 +160,10 @@ def test_global_symbol_crud():
     resp = client.get("/api/v1/symbols/gx")
     assert resp.status_code == 200
     payload = resp.json()
-    fetched = pickle.loads(base64.b64decode(payload["data"]))
-    assert np.array_equal(fetched, arr)
+    # Pydantic auto-encodes as base64 in JSON
+    fetched_val = decode_value(base64.b64decode(payload["data"]))
+    assert isinstance(fetched_val, TensorValue)
+    np.testing.assert_array_equal(fetched_val.to_numpy(), arr)
 
     # List contains symbol
     resp = client.get("/api/v1/symbols")

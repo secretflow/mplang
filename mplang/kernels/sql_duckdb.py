@@ -14,16 +14,14 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import kernel_def
+from mplang.kernels.value import TableValue
 
 
 @kernel_def("duckdb.run_sql")
-def _duckdb_sql(pfunc: PFunction, *args: Any) -> Any:
+def _duckdb_sql(pfunc: PFunction, *args: TableValue) -> TableValue:
     import duckdb
-    import pandas as pd
 
     # TODO: maybe we could translate the sql to duckdb dialect
     # instead of raising an exception
@@ -36,12 +34,9 @@ def _duckdb_sql(pfunc: PFunction, *args: Any) -> Any:
         if in_names is None:
             raise ValueError("duckdb sql missing in_names attr")
         for arg, name in zip(args, in_names, strict=True):
-            if isinstance(arg, pd.DataFrame):
-                df = arg
-            elif isinstance(arg, list):  # const list-of-dict for tests
-                df = pd.DataFrame.from_records(arg)
-            else:
-                raise ValueError(f"unsupported duckdb input type {type(arg)}")
-            conn.register(name, df)
-    res_df = conn.execute(pfunc.fn_text).fetchdf()
-    return res_df
+            # Use Arrow directly for zero-copy data transfer
+            arrow_table = arg.to_arrow()
+            conn.register(name, arrow_table)
+    # Fetch result as Arrow table for consistency
+    res_arrow = conn.execute(pfunc.fn_text).fetch_arrow_table()
+    return TableValue(res_arrow)

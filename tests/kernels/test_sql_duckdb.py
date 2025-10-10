@@ -52,7 +52,11 @@ class TestDuckDBKernel:
             "c": [7.1, 8.1, 9.1],
             "d": [5, 7, 9],
         })
-        (out_df,) = runtime.run_kernel(pfn, [in_df])
+        from mplang.kernels.value import TableValue
+
+        (out_val,) = runtime.run_kernel(pfn, [TableValue(in_df)])
+        assert isinstance(out_val, TableValue)
+        out_df = out_val.to_pandas()
         npt.assert_allclose(out_df, expected, rtol=1e-7, atol=1e-8)
 
     @pytest.mark.parametrize("op", ["+", "-", "*", "/"])

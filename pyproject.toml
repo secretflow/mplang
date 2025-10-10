@@ -152,3 +152,8 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--strict-markers --strict-config"
 markers = ["integration: cross-module or multi-party integration tests"]
+filterwarnings = [
+    # Suppress insecure mock TEE warnings in tests
+    "ignore:Insecure mock TEE kernel 'mock_tee.quote_gen' in use.*:UserWarning",
+    "ignore:Insecure mock TEE kernel 'mock_tee.attest' in use.*:UserWarning",
+]

@@ -468,25 +468,6 @@ def _range_decode_mixed(
         return _range_decode_integer(encoded_value, max_value, modulus)
 
 
-def _convert_to_numpy(obj: TensorValue) -> np.ndarray:
-    """Convert a TensorValue to numpy array.
-
-    Args:
-        obj: TensorValue instance to convert
-
-    Returns:
-        numpy.ndarray: The underlying numpy array
-
-    Raises:
-        TypeError: If obj is not a TensorValue instance
-    """
-    if not isinstance(obj, TensorValue):
-        raise TypeError(
-            f"PHE kernels expect TensorValue inputs, got {type(obj).__name__}"
-        )
-    return obj.to_numpy()
-
-
 @kernel_def("phe.keygen")
 def _phe_keygen(pfunc: PFunction) -> Any:
     scheme = pfunc.attrs.get("scheme", "paillier")
@@ -556,7 +537,7 @@ def _phe_encrypt(
 
     try:
         # Convert plaintext to numpy to get semantic type info
-        plaintext_np = _convert_to_numpy(plaintext)
+        plaintext_np = plaintext.to_numpy()
         semantic_dtype = DType.from_numpy(plaintext_np.dtype)
         semantic_shape = plaintext_np.shape
 
@@ -625,7 +606,7 @@ def _phe_mul(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorValue) -
 
     try:
         # Convert plaintext to numpy
-        plaintext_np = _convert_to_numpy(plaintext)
+        plaintext_np = plaintext.to_numpy()
 
         # Check if plaintext is floating point type - multiplication not supported
         if np.issubdtype(plaintext_np.dtype, np.floating):
@@ -726,7 +707,7 @@ def _phe_add(pfunc: PFunction, lhs: Any, rhs: Any) -> Any:
         elif isinstance(rhs, CipherText):
             return _phe_add_ct2pt(rhs, lhs)
         else:
-            return TensorValue(_convert_to_numpy(lhs) + _convert_to_numpy(rhs))
+            return TensorValue(lhs.to_numpy() + rhs.to_numpy())
     except ValueError:
         raise
     except Exception as e:  # pragma: no cover
@@ -810,7 +791,7 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
 
 def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorValue) -> CipherText:
     # Convert plaintext to numpy
-    plaintext_np = _convert_to_numpy(plaintext)
+    plaintext_np = plaintext.to_numpy()
     plaintext_dtype = DType.from_numpy(plaintext_np.dtype)
 
     # Check for mixed precision issue: floating point ciphertext + integer plaintext
@@ -1059,7 +1040,7 @@ def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorValue) -
 
     try:
         # Convert plaintext to numpy
-        plaintext_np = _convert_to_numpy(plaintext)
+        plaintext_np = plaintext.to_numpy()
 
         # Check if plaintext is floating point type - dot product not supported
         if np.issubdtype(plaintext_np.dtype, np.floating):
@@ -1341,7 +1322,7 @@ def _phe_gather(pfunc: PFunction, ciphertext: CipherText, indices: TensorValue) 
 
     try:
         # Convert indices to numpy
-        indices_np = _convert_to_numpy(indices)
+        indices_np = indices.to_numpy()
 
         if not np.issubdtype(indices_np.dtype, np.integer):
             raise ValueError("Indices must be of integer type")
@@ -1470,7 +1451,7 @@ def _phe_scatter(
 
     try:
         # Convert indices to numpy
-        indices_np = _convert_to_numpy(indices)
+        indices_np = indices.to_numpy()
 
         if not np.issubdtype(indices_np.dtype, np.integer):
             raise ValueError("Indices must be of integer type")

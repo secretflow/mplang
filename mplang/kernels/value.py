@@ -6,9 +6,12 @@ Protobuf `ValueProto` envelope is the sole on-wire format.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from mplang.protos.v1alpha1 import value_pb2 as _value_pb2
+
+if TYPE_CHECKING:
+    import numpy as np
 
 __all__ = [
     "BytesBlob",
@@ -322,7 +325,7 @@ def encode_value(val: Value) -> bytes:
         raise ValueError(
             f"ValueProto.value_version mismatch: expected {val.WIRE_VERSION}, got {proto.value_version}"
         )
-    return proto.SerializeToString()
+    return proto.SerializeToString()  # type: ignore[no-any-return]
 
 
 def is_value_envelope(data: bytes) -> bool:
@@ -453,21 +456,25 @@ class TensorValue(Value):  # well-known tensor (ndarray) Value
         return tuple(self._arr.shape)
 
     @property
-    def dtype(self):  # pragma: no cover - simple accessor
-        return self._arr.dtype
+    def dtype(self) -> np.dtype[Any]:  # pragma: no cover - simple accessor
+        return self._arr.dtype  # type: ignore[no-any-return]
 
     @property
     def ndim(self) -> int:  # pragma: no cover - simple accessor
         return int(self._arr.ndim)
 
-    def to_numpy(self, *, copy: bool = False):  # pragma: no cover - simple accessor
+    def to_numpy(
+        self, *, copy: bool = False
+    ) -> np.ndarray[Any, Any]:  # pragma: no cover - simple accessor
         if copy:
             import numpy as np
 
             return np.array(self._arr, copy=True)
-        return self._arr
+        return self._arr  # type: ignore[no-any-return]
 
-    def __array__(self, dtype=None):  # pragma: no cover - numpy bridge
+    def __array__(
+        self, dtype: np.dtype[Any] | None = None
+    ) -> np.ndarray[Any, Any]:  # pragma: no cover - numpy bridge
         import numpy as np
 
         return np.asarray(self._arr, dtype=dtype)
@@ -571,7 +578,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
         table = ipc_reader.read_all()
         return cls(table)
 
-    def to_arrow(self):
+    def to_arrow(self) -> Any:  # pyarrow.Table
         """Get the underlying pyarrow.Table (primary interface).
 
         Returns:
@@ -579,7 +586,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
         """
         return self._table
 
-    def to_pandas(self):
+    def to_pandas(self) -> Any:  # pandas.DataFrame
         """Convert to pandas DataFrame (compatibility interface).
 
         Note: This creates a copy and converts from Arrow to pandas format.
@@ -597,7 +604,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
         return [str(name) for name in self._table.column_names]
 
     @property
-    def dtypes(self):
+    def dtypes(self) -> Any:  # pyarrow.Schema
         """Return column dtypes as Arrow schema (TableLike protocol compatibility)."""
         return self._table.schema
 
@@ -607,7 +614,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
         Returns:
             Number of rows
         """
-        return self._table.num_rows  # type: ignore[attr-defined,return-value]
+        return self._table.num_rows  # type: ignore[attr-defined,return-value,no-any-return]
 
     def __repr__(self) -> str:
         """String representation of TableValue."""

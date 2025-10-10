@@ -97,11 +97,11 @@ class SpuValue(Value):
 
         Strategy: Store shape/dtype/vtype in runtime_attrs, concatenate share.meta + all chunks in payload.
         """
-        # Store metadata in runtime_attrs
+        # Store metadata in runtime_attrs; keep chunk lengths for payload splitting
         chunk_lengths = [len(chunk) for chunk in self.share.share_chunks]
 
-        # Concatenate all binary data: meta + chunks
-        payload = self.share.meta
+        # Payload contains only share chunks (meta stored in attrs)
+        payload = b""
         for chunk in self.share.share_chunks:
             payload += chunk
 
@@ -110,7 +110,7 @@ class SpuValue(Value):
             .set_attr("shape", list(self.shape))
             .set_attr("dtype", self.dtype.name)  # Serialize DType name
             .set_attr("vtype", int(self.vtype))
-            .set_attr("meta_len", len(self.share.meta))
+            .set_attr("share_meta", self.share.meta)
             .set_attr("chunk_lengths", chunk_lengths)
             .set_payload(payload)
             .build()
@@ -129,15 +129,12 @@ class SpuValue(Value):
         # Reconstruct DType from serialized name (numpy dtype string)
         dtype = DType.from_numpy(dtype_name)
         vtype = libspu.Visibility(reader.get_attr("vtype"))
-        meta_len = reader.get_attr("meta_len")
+        share_meta = reader.get_attr("share_meta")
         chunk_lengths = reader.get_attr("chunk_lengths")
 
-        # Parse payload: [meta][chunk_0][chunk_1]...
+        # Parse payload: [chunk_0][chunk_1]...
         payload = reader.payload
         offset = 0
-
-        share_meta = payload[offset : offset + meta_len]
-        offset += meta_len
 
         share_chunks: list[bytes] = []
         for chunk_len in chunk_lengths:

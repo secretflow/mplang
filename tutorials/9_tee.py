@@ -49,7 +49,6 @@ cluster_spec = ClusterSpec.from_dict({
         "TEE0": {
             "kind": "TEE",
             "members": ["node_2"],
-            "config": {"platform": "TDX"},
         },
     },
 })
@@ -77,7 +76,7 @@ def millionaire_manual():
     # P0 <-> TEE handshake and transfer x (using sugar)
     tee_sk0, tee_pk0 = P2.crypto.kem_keygen("x25519")
     quote0 = P2.tee.quote_gen(tee_pk0)
-    tee_pk0_at_p0 = P0.tee.attest(P2P(P2, P0, quote0), "TDX")
+    tee_pk0_at_p0 = P0.tee.attest(P2P(P2, P0, quote0))
     v_sk0, v_pk0 = P0.crypto.kem_keygen("x25519")
     shared0_p = P0.crypto.kem_derive(v_sk0, tee_pk0_at_p0, "x25519")
     shared0_t = P2.crypto.kem_derive(tee_sk0, P2P(P0, P2, v_pk0), "x25519")
@@ -93,7 +92,7 @@ def millionaire_manual():
     # P1 <-> TEE handshake and transfer y (still show original style for contrast)
     tee_sk1, tee_pk1 = P2.crypto.kem_keygen("x25519")
     quote1 = P2.tee.quote_gen(tee_pk1)
-    tee_pk1_at_p1 = P1.tee.attest(P2P(P2, P1, quote1), "TDX")
+    tee_pk1_at_p1 = P1.tee.attest(P2P(P2, P1, quote1))
     v_sk1, v_pk1 = P1.crypto.kem_keygen("x25519")
     shared1_p = P1.crypto.kem_derive(v_sk1, tee_pk1_at_p1, "x25519")
     shared1_t = P2.crypto.kem_derive(tee_sk1, P2P(P1, P2, v_pk1), "x25519")

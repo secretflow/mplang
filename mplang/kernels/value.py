@@ -594,20 +594,12 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
     @property
     def columns(self) -> list[str]:
         """Return column names (TableLike protocol compatibility)."""
-        return self.column_names()
+        return [str(name) for name in self._table.column_names]
 
     @property
     def dtypes(self):
         """Return column dtypes as Arrow schema (TableLike protocol compatibility)."""
         return self._table.schema
-
-    def column_names(self) -> list[str]:
-        """Get list of column names.
-
-        Returns:
-            List of column names as strings
-        """
-        return [str(name) for name in self._table.column_names]
 
     def num_rows(self) -> int:
         """Get number of rows in the table.
@@ -621,7 +613,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
         """String representation of TableValue."""
         try:
             rows = self.num_rows()
-            cols = self.column_names()
+            cols = self.columns
             return f"TableValue(rows={rows}, cols={cols})"
         except Exception:
             return "TableValue()"

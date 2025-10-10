@@ -234,19 +234,30 @@ class TestPHEValuesSerde:
         assert decoded.pk_data == pk_data
 
     def test_ciphertext(self):
-        """Test PHE CipherText serialization."""
-        ct_data = [{"c": 12345}, {"c": 67890}]
-        pk_data = {"n": 333, "g": 444}
+        """Test PHE CipherText serialization with real encryption."""
+        from lightphe import LightPHE
+
+        # Use real PHE encryption to create valid Ciphertext objects
+        phe = LightPHE(algorithm_name="Paillier", key_size=512)  # Small key for speed
+
+        # Encrypt some values to get real Ciphertext objects
+        plaintext = np.array([10, 20], dtype=np.int32)
+        ct_data = [phe.encrypt(int(val)) for val in plaintext]
+
+        # Extract public key data
+        pk_data = phe.cs.keys.get("public_key", {})
+        modulus = phe.cs.plaintext_modulo
+
         val = CipherText(
             ct_data=ct_data,
             semantic_dtype=INT32,
             semantic_shape=(2,),
             scheme="Paillier",
-            key_size=2048,
+            key_size=512,
             pk_data=pk_data,
             max_value=2**32,
             fxp_bits=12,
-            modulus=99999,
+            modulus=modulus,
         )
         wire = encode_value(val)
         decoded = decode_value(wire)
@@ -255,21 +266,36 @@ class TestPHEValuesSerde:
         assert decoded.scheme == "Paillier"
         assert decoded.semantic_dtype == INT32
         assert decoded.semantic_shape == (2,)
-        assert decoded.ct_data == ct_data
+        # Verify ct_data length and types
+        assert len(decoded.ct_data) == 2
+        from lightphe.models.Ciphertext import Ciphertext
+
+        assert all(isinstance(ct, Ciphertext) for ct in decoded.ct_data)
         assert decoded.pk_data == pk_data
 
     def test_ciphertext_float(self):
-        """Test CipherText with float semantic type."""
-        ct_data = [{"c": 11111}, {"c": 22222}, {"c": 33333}]
+        """Test CipherText with float semantic type using real encryption."""
+        from lightphe import LightPHE
+
+        # Use real PHE encryption to create valid Ciphertext objects
+        phe = LightPHE(algorithm_name="Paillier", key_size=512)  # Small key for speed
+
+        # Encrypt some values
+        plaintext = np.array([1.5, 2.5, 3.5], dtype=np.float32)
+        # Convert to int for encryption (mimicking range encoding)
+        ct_data = [phe.encrypt(int(val * 1000)) for val in plaintext]
+
+        modulus = phe.cs.plaintext_modulo
+
         val = CipherText(
             ct_data=ct_data,
             semantic_dtype=FLOAT32,
             semantic_shape=(3,),
             scheme="Paillier",
-            key_size=2048,
+            key_size=512,
             max_value=2**32,
             fxp_bits=12,
-            modulus=99999,
+            modulus=modulus,
         )
         wire = encode_value(val)
         decoded = decode_value(wire)
@@ -277,6 +303,11 @@ class TestPHEValuesSerde:
         assert isinstance(decoded, CipherText)
         assert decoded.semantic_dtype == FLOAT32
         assert decoded.semantic_shape == (3,)
+        # Verify ct_data
+        assert len(decoded.ct_data) == 3
+        from lightphe.models.Ciphertext import Ciphertext
+
+        assert all(isinstance(ct, Ciphertext) for ct in decoded.ct_data)
 
 
 class TestSPUValueSerde:

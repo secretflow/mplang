@@ -109,11 +109,8 @@ def _crypto_kem_derive(
     peer_pk_np = peer_pk.to_numpy().astype(np.uint8, copy=False)
 
     self_pk_bytes = blake2b(sk_np.tobytes())[:32]
-    peer_pk_bytes = peer_pk_np.tobytes()
-
-    peer_pk_arr = np.frombuffer(peer_pk_bytes, dtype=np.uint8)
     self_pk_arr = np.frombuffer(self_pk_bytes, dtype=np.uint8)
-    xored = (self_pk_arr ^ peer_pk_arr).astype(np.uint8)
+    xored = (self_pk_arr ^ peer_pk_np).astype(np.uint8)
     secret = np.frombuffer(blake2b(xored.tobytes())[:32], dtype=np.uint8)
     return TensorValue(secret)
 

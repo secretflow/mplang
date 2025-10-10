@@ -152,7 +152,8 @@ class EvalSemantic:
     def _as_optional_int(val: Any) -> int | None:
         """Convert a value to int if possible, preserving None.
 
-        Handles Python ints, numpy scalars, and None.
+        Handles Python ints, floats, numpy scalar types (e.g., np.int32, np.float64), and None.
+        Uses int(val) for conversion which works with numpy scalars via __int__().
         """
         val = EvalSemantic._unwrap_value(val)
         if val is None:

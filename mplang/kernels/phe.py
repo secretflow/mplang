@@ -86,7 +86,7 @@ class PublicKey(Value):
             .set_attr("key_size", self.key_size)
             .set_attr("max_value", self.max_value)
             .set_attr("fxp_bits", self.fxp_bits)
-            .set_attr("modulus", self.modulus if self.modulus is not None else -1)
+            .set_attr("modulus", str(self.modulus) if self.modulus is not None else "")
             .set_payload(json.dumps(self.key_data).encode("utf-8"))
             .build()
         )
@@ -103,8 +103,8 @@ class PublicKey(Value):
         key_size = reader.get_attr("key_size")
         max_value = reader.get_attr("max_value")
         fxp_bits = reader.get_attr("fxp_bits")
-        modulus_val = reader.get_attr("modulus")
-        modulus = None if modulus_val == -1 else modulus_val
+        modulus_str = reader.get_attr("modulus")
+        modulus = None if modulus_str == "" else int(modulus_str)
 
         # JSON deserialize the public key dict
         key_data = json.loads(reader.payload.decode("utf-8"))
@@ -172,7 +172,7 @@ class PrivateKey(Value):
             .set_attr("key_size", self.key_size)
             .set_attr("max_value", self.max_value)
             .set_attr("fxp_bits", self.fxp_bits)
-            .set_attr("modulus", self.modulus if self.modulus is not None else -1)
+            .set_attr("modulus", str(self.modulus) if self.modulus is not None else "")
             .set_payload(json.dumps(keys_dict).encode("utf-8"))
             .build()
         )
@@ -189,8 +189,8 @@ class PrivateKey(Value):
         key_size = reader.get_attr("key_size")
         max_value = reader.get_attr("max_value")
         fxp_bits = reader.get_attr("fxp_bits")
-        modulus_val = reader.get_attr("modulus")
-        modulus = None if modulus_val == -1 else modulus_val
+        modulus_str = reader.get_attr("modulus")
+        modulus = None if modulus_str == "" else int(modulus_str)
 
         # JSON deserialize both key dicts
         keys_dict = json.loads(reader.payload.decode("utf-8"))
@@ -254,31 +254,33 @@ class CipherText(Value):
         return float(self.max_value / (2**self.fxp_bits))
 
     def to_proto(self) -> _value_pb2.ValueProto:
-        """Serialize CipherText to wire format."""
+        """Serialize CipherText to wire format.
+
+        WARNING: This serialization is tightly coupled to lightphe.Ciphertext
+        internal attributes (value, algorithm_name, keys). Any changes to these
+        attributes in future lightphe versions will break serialization.
+
+        TODO: Check if lightphe provides official serialization methods and
+        migrate to them if available. Consider adding version compatibility checks.
+        """
         # JSON serialize ciphertext components
         # ct_data is a list of lightPHE Ciphertext objects
         # Each Ciphertext has: value, algorithm_name, keys
         # We need to serialize the list of ciphertexts
-        ct_list = []
-        if isinstance(self.ct_data, list):
-            for ct in self.ct_data:
-                if isinstance(ct, Ciphertext):
-                    # lightPHE Ciphertext object
-                    ct_list.append({
-                        "value": ct.value,
-                        "algorithm_name": ct.algorithm_name,
-                        "keys": ct.keys,
-                    })
-                else:
-                    # Plain data (for testing) - store as-is
-                    ct_list.append({
-                        "value": ct,
-                        "algorithm_name": None,
-                        "keys": None,
-                    })
-        else:
-            # Fallback: treat as single element
+        if not isinstance(self.ct_data, list):
             raise ValueError(f"ct_data should be a list, got {type(self.ct_data)}")
+
+        ct_list = []
+        for ct in self.ct_data:
+            if not isinstance(ct, Ciphertext):
+                raise TypeError(
+                    f"ct_data must contain lightphe.Ciphertext objects, got {type(ct).__name__}"
+                )
+            ct_list.append({
+                "value": ct.value,
+                "algorithm_name": ct.algorithm_name,
+                "keys": ct.keys,
+            })
 
         # Combine ct_data and pk_data into single dict
         payload_dict = {
@@ -294,7 +296,7 @@ class CipherText(Value):
             .set_attr("key_size", self.key_size)
             .set_attr("max_value", self.max_value)
             .set_attr("fxp_bits", self.fxp_bits)
-            .set_attr("modulus", self.modulus if self.modulus is not None else -1)
+            .set_attr("modulus", str(self.modulus) if self.modulus is not None else "")
             .set_payload(json.dumps(payload_dict).encode("utf-8"))
             .build()
         )
@@ -313,29 +315,28 @@ class CipherText(Value):
         key_size = reader.get_attr("key_size")
         max_value = reader.get_attr("max_value")
         fxp_bits = reader.get_attr("fxp_bits")
-        modulus_val = reader.get_attr("modulus")
-        modulus = None if modulus_val == -1 else modulus_val
+        modulus_str = reader.get_attr("modulus")
+        modulus = None if modulus_str == "" else int(modulus_str)
 
         # JSON deserialize ciphertext and public key
         payload_dict = json.loads(reader.payload.decode("utf-8"))
         ct_list = payload_dict["ct_list"]
         pk_data = payload_dict["pk"]
 
-        # Reconstruct ct_data: list of Ciphertext objects or plain data
+        # Reconstruct ct_data: list of Ciphertext objects
         ct_data = []
         for ct_dict in ct_list:
-            if ct_dict["keys"] is not None and ct_dict["algorithm_name"] is not None:
-                # Reconstruct lightPHE Ciphertext object
-                ct_data.append(
-                    Ciphertext(
-                        algorithm_name=ct_dict["algorithm_name"],
-                        keys=ct_dict["keys"],
-                        value=ct_dict["value"],
-                    )
+            if ct_dict["keys"] is None or ct_dict["algorithm_name"] is None:
+                raise ValueDecodeError(
+                    "Invalid CipherText: missing keys or algorithm_name in serialized data"
                 )
-            else:
-                # Plain data (for testing)
-                ct_data.append(ct_dict["value"])
+            ct_data.append(
+                Ciphertext(
+                    algorithm_name=ct_dict["algorithm_name"],
+                    keys=ct_dict["keys"],
+                    value=ct_dict["value"],
+                )
+            )
 
         # Parse dtype string back to DType
         dtype = DType.from_any(semantic_dtype_str)
@@ -467,8 +468,18 @@ def _range_decode_mixed(
         return _range_decode_integer(encoded_value, max_value, modulus)
 
 
-def _convert_to_numpy(obj: Any) -> np.ndarray:
-    """Convert a TensorValue to numpy array."""
+def _convert_to_numpy(obj: TensorValue) -> np.ndarray:
+    """Convert a TensorValue to numpy array.
+
+    Args:
+        obj: TensorValue instance to convert
+
+    Returns:
+        numpy.ndarray: The underlying numpy array
+
+    Raises:
+        TypeError: If obj is not a TensorValue instance
+    """
     if not isinstance(obj, TensorValue):
         raise TypeError(
             f"PHE kernels expect TensorValue inputs, got {type(obj).__name__}"

@@ -4,6 +4,9 @@ on:
   pull_request_target:
     types: [labeled]
 
+permissions:
+  contents: read
+
 jobs:
   trigger-circleci:
     runs-on: ubuntu-latest
@@ -12,6 +15,11 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
       - name: Trigger CircleCI Pipeline
         run: |
           echo "PR #${{ github.event.pull_request.number }} has 'run-tut' label. Triggering CircleCI pipeline..."

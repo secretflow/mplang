@@ -66,10 +66,6 @@ def _tee_attest(pfunc: PFunction, quote: TensorValue) -> TensorValue:
         stacklevel=3,
     )
     quote_arr = quote.to_numpy().astype(np.uint8, copy=False)
-    platform = pfunc.attrs.get("platform")
-    if platform is None:
-        raise ValueError("missing required 'platform' attribute in PFunction")
-
     if quote_arr.size != 33:
         raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")
     attest = quote_arr[1:33].astype(np.uint8, copy=True)

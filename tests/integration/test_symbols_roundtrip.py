@@ -39,6 +39,7 @@ import mplang.simp as simp
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
 from mplang.core.tensor import TensorType
+from mplang.kernels.value import TensorValue
 from mplang.ops import builtin as fb
 from mplang.runtime.client import HttpExecutorClient
 
@@ -79,7 +80,10 @@ def test_global_symbol_roundtrip(http_servers):
     async def upload_symbol(addr: str, symbol_name: str, data: np.ndarray) -> None:
         client = HttpExecutorClient(addr)
         try:
-            await client.create_global_symbol(symbol_name, data, tensor_meta)
+            # Wrap numpy array in TensorValue before sending
+            await client.create_global_symbol(
+                symbol_name, TensorValue(data), tensor_meta
+            )
         finally:
             await client.close()
 

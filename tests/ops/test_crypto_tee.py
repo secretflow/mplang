@@ -52,7 +52,7 @@ def _demo_flow():
     sess0_t = simp.runAt(P2, crypto.hkdf)(shared0_t, info_literal)
     sess1_t = simp.runAt(P2, crypto.hkdf)(shared1_t, info_literal)
 
-    # Encrypt at data parties and decrypt at TEE (bytes-only path)
+    # Encrypt data on clients
     x0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
     x1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
     b0 = simp.runAt(P0, builtin.pack)(x0)
@@ -64,12 +64,8 @@ def _demo_flow():
     b0_at_tee = simp.runAt(P2, crypto.dec)(c0_at_tee, sess0_t)
     b1_at_tee = simp.runAt(P2, crypto.dec)(c1_at_tee, sess1_t)
 
-    p0 = simp.runAt(P2, builtin.unpack)(
-        b0_at_tee, out_ty=TensorType(x0.dtype, x0.shape)
-    )
-    p1 = simp.runAt(P2, builtin.unpack)(
-        b1_at_tee, out_ty=TensorType(x1.dtype, x1.shape)
-    )
+    p0 = simp.runAt(P2, builtin.unpack)(b0_at_tee, out_ty=TensorType.from_obj(x0))
+    p1 = simp.runAt(P2, builtin.unpack)(b1_at_tee, out_ty=TensorType.from_obj(x1))
     return p0, p1
 
 
@@ -84,5 +80,5 @@ def test_crypto_enc_dec_and_tee_quote_attest_roundtrip():
     a = mplang.fetch(sim, p0)
     b = mplang.fetch(sim, p1)
     # Expect third element to be the numpy arrays propagated
-    assert (a[2] == np.array([10, 20, 30], dtype=np.uint8)).all()
-    assert (b[2] == np.array([1, 2, 3], dtype=np.uint8)).all()
+    assert np.array_equal(a[2], np.array([10, 20, 30], dtype=np.uint8))
+    assert np.array_equal(b[2], np.array([1, 2, 3], dtype=np.uint8))

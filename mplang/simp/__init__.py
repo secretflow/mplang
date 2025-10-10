@@ -96,7 +96,7 @@ def run_impl(
     to route different function types to appropriate handlers.
 
     Args:
-        pmask: The party mask of this function, None indicates auto deduce parties.
+        pmask: The party mask of this function, None indicates auto deduce parties from args.
         func: The function to be dispatched and executed
         *args: Positional arguments to pass to the function
         **kwargs: Keyword arguments to pass to the function

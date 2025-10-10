@@ -73,8 +73,8 @@ class SimVar(InterpVar):
 
     @property
     def values(self) -> list[Any]:
-        """The values of this variable across all ranks."""
-        return self._values
+        """Converted values across all ranks for user inspection."""
+        return [v.to_numpy() if hasattr(v, "to_numpy") else v for v in self._values]
 
     def __repr__(self) -> str:
         return f"SimVar({self.mptype})"
@@ -202,8 +202,7 @@ class Simulator(InterpContext):
     def fetch(self, obj: MPObject) -> list[TensorLike]:
         if not isinstance(obj, SimVar):
             raise ValueError(f"Expected SimVar, got {type(obj)}")
-
-        return list(obj.values)
+        return [v.to_numpy() if hasattr(v, "to_numpy") else v for v in obj._values]
 
     # override
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
@@ -213,7 +212,7 @@ class Simulator(InterpContext):
                 raise ValueError(f"Variable {name} not in this context, got {var.ctx}.")
 
         pts_env = [
-            {name: cast(SimVar, var).values[rank] for name, var in bindings.items()}
+            {name: cast(SimVar, var)._values[rank] for name, var in bindings.items()}
             for rank in range(self.world_size())
         ]
 

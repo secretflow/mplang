@@ -21,6 +21,7 @@ import pytest
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.kernels.context import RuntimeContext
+from mplang.kernels.value import TensorValue
 
 
 class TestBuiltin:
@@ -57,7 +58,7 @@ class TestBuiltin:
     def test_identity(self):
         """Test identity operation."""
         # Create test data
-        test_data = np.array([1, 2, 3], dtype=np.float32)
+        test_data = TensorValue(np.array([1, 2, 3], dtype=np.float32))
 
         # Test identity
         identity_pfunc = PFunction(
@@ -68,13 +69,13 @@ class TestBuiltin:
         )
         result = self._exec(identity_pfunc, [test_data])
         assert len(result) == 1
-        assert np.array_equal(result[0], test_data)
-        assert result[0] is test_data  # Should be the same object
+        assert result[0] is test_data
+        np.testing.assert_array_equal(result[0].to_numpy(), test_data.to_numpy())
 
     def test_write_and_read_numpy_array(self):
         """Test writing and reading a numpy array."""
         # Create test data
-        test_data = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        test_data = TensorValue(np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32))
 
         with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as tmp_file:
             tmp_path = tmp_file.name
@@ -91,7 +92,7 @@ class TestBuiltin:
 
             write_result = self._exec(write_pfunc, [test_data])
             assert len(write_result) == 1
-            assert np.array_equal(write_result[0], test_data)
+            assert write_result[0] is test_data
 
             # Verify file was created
             assert os.path.exists(tmp_path)
@@ -107,8 +108,10 @@ class TestBuiltin:
 
             read_result = self._exec(read_pfunc, [])
             assert len(read_result) == 1
-            assert np.array_equal(read_result[0], test_data)
-            assert read_result[0].dtype == test_data.dtype
+            assert isinstance(read_result[0], TensorValue)
+            np.testing.assert_array_equal(
+                read_result[0].to_numpy(), test_data.to_numpy()
+            )
 
         finally:
             # Clean up
@@ -117,7 +120,7 @@ class TestBuiltin:
 
     def test_write_creates_directory(self):
         """Test that write creates directory if it doesn't exist."""
-        test_data = np.array([1, 2, 3], dtype=np.int32)
+        test_data = TensorValue(np.array([1, 2, 3], dtype=np.int32))
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             nested_path = os.path.join(tmp_dir, "nested", "deep", "file.npy")
@@ -132,21 +135,21 @@ class TestBuiltin:
 
             result = self._exec(write_pfunc, [test_data])
             assert len(result) == 1
-            assert np.array_equal(result[0], test_data)
+            assert result[0] is test_data
             assert os.path.exists(nested_path)
 
             # Verify the file content
             loaded = np.load(nested_path)
-            assert np.array_equal(loaded, test_data)
+            np.testing.assert_array_equal(loaded, test_data.to_numpy())
 
     def test_write_different_tensor_types(self):
         """Test writing different types of tensor-like objects."""
         test_cases = [
-            np.array([1, 2, 3], dtype=np.int32),
-            np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64),
-            np.array([True, False, True], dtype=bool),
-            42,  # scalar
-            np.array([1, 2, 3]),  # converted list to numpy array
+            TensorValue(np.array([1, 2, 3], dtype=np.int32)),
+            TensorValue(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)),
+            TensorValue(np.array([True, False, True], dtype=bool)),
+            TensorValue(np.array(42, dtype=np.int64)),
+            TensorValue(np.array([1, 2, 3])),
         ]
 
         for i, test_data in enumerate(test_cases):
@@ -179,7 +182,10 @@ class TestBuiltin:
 
                 read_result = self._exec(read_pfunc, [])
                 assert len(read_result) == 1
-                assert np.array_equal(read_result[0], np.array(test_data))
+                assert isinstance(read_result[0], TensorValue)
+                np.testing.assert_array_equal(
+                    read_result[0].to_numpy(), test_data.to_numpy()
+                )
 
             finally:
                 if os.path.exists(tmp_path):
@@ -197,7 +203,9 @@ class TestBuiltin:
         with pytest.raises(ValueError, match=r"arg count mismatch: got 0, expect 1"):
             self._exec(identity_pfunc, [])
         with pytest.raises(ValueError, match=r"arg count mismatch: got 2, expect 1"):
-            self._exec(identity_pfunc, [1, 2])
+            self._exec(
+                identity_pfunc, [TensorValue(np.array(1)), TensorValue(np.array(2))]
+            )
 
     def test_read_missing_path(self):
         """Test read operation without path attribute."""
@@ -220,11 +228,11 @@ class TestBuiltin:
             path="dummy.npy",
         )
         with pytest.raises(ValueError, match=r"arg count mismatch: got 1, expect 0"):
-            self._exec(read_pfunc, [np.array([1])])
+            self._exec(read_pfunc, [TensorValue(np.array([1]))])
 
     def test_write_missing_path(self):
         """Test write operation without path attribute."""
-        test_data = np.array([1, 2, 3])
+        test_data = TensorValue(np.array([1, 2, 3]))
         write_pfunc = PFunction(
             fn_type="builtin.write",
             ins_info=(TensorType.from_obj(test_data),),
@@ -246,7 +254,13 @@ class TestBuiltin:
         with pytest.raises(ValueError, match=r"arg count mismatch: got 0, expect 1"):
             self._exec(write_pfunc, [])
         with pytest.raises(ValueError, match=r"arg count mismatch: got 2, expect 1"):
-            self._exec(write_pfunc, [1, 2])
+            self._exec(
+                write_pfunc,
+                [
+                    TensorValue(np.array(1, dtype=np.int32)),
+                    TensorValue(np.array(2, dtype=np.int32)),
+                ],
+            )
 
     def test_read_nonexistent_file(self):
         """Test reading from a nonexistent file."""

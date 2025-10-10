@@ -31,14 +31,17 @@ def test_debug_print_tensor_pass_through():
     vals = mp.fetch(sim, y)
     assert isinstance(vals, list) and len(vals) == sim.world_size()
     # Some parties may not hold values depending on pmask; prand should set all enabled
-    # So we allow None only if pmask excludes ranks; otherwise expect numpy arrays
+    # After fetch, Values are normalized to numpy arrays
     for v in vals:
         if v is not None:
+            # fetch returns numpy arrays via normalization
             assert isinstance(v, np.ndarray)
             assert v.shape == (2,)
 
 
 def test_debug_print_table_pass_through():
+    from mplang.kernels.value import TableValue
+
     try:
         import pandas as pd
     except Exception:
@@ -52,6 +55,8 @@ def test_debug_print_table_pass_through():
     vals = mp.fetch(sim, t2)
     # Both ranks hold the constant
     assert all(v is not None for v in vals)
-    # Verify type is DataFrame
+    # Values are now returned as TableValue
     for v in vals:
-        assert isinstance(v, pd.DataFrame)
+        assert isinstance(v, TableValue)
+        result_df = v.to_pandas()
+        assert isinstance(result_df, pd.DataFrame)

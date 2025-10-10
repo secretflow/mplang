@@ -23,6 +23,7 @@ import mplang.simp as simp
 from mplang.core.dtype import UINT8, DType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
+from mplang.kernels.value import TableValue
 from mplang.ops import builtin
 from mplang.utils import table_utils
 
@@ -70,7 +71,8 @@ def test_builtin_pack_unpack_table_runtime() -> None:
 
     packed, unpacked = mplang.evaluate(sim, fn)
     packed_v, unpacked_v = mplang.fetch(sim, (packed, unpacked))
-    pd.testing.assert_frame_equal(unpacked_v[0], pd.DataFrame(data))
+    assert isinstance(unpacked_v[0], TableValue)
+    pd.testing.assert_frame_equal(unpacked_v[0].to_pandas(), pd.DataFrame(data))
     assert packed_v[0].dtype == np.uint8
     assert packed_v[0].ndim == 1
     assert packed_v[0].tobytes() == expected_bytes

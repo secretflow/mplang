@@ -21,7 +21,20 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.dtype import DType
+from mplang.core.dtype import (
+    BOOL,
+    FLOAT32,
+    FLOAT64,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
+    DType,
+)
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
 from mplang.kernels.value import (
@@ -41,22 +54,8 @@ def shape_spu_to_np(spu_shape: Any) -> tuple[int, ...]:
     return tuple(spu_shape.dims)
 
 
-def dtype_spu_to_dtype(spu_dtype: libspu.DataType) -> DType:
+def dtype_spu_to_mpl(spu_dtype: libspu.DataType) -> DType:
     """Convert libspu.DataType to MPLang DType."""
-    from mplang.core.dtype import (
-        BOOL,
-        FLOAT32,
-        FLOAT64,
-        INT8,
-        INT16,
-        INT32,
-        INT64,
-        UINT8,
-        UINT16,
-        UINT32,
-        UINT64,
-    )
-
     MAP = {
         libspu.DataType.DT_F32: FLOAT32,
         libspu.DataType.DT_F64: FLOAT64,
@@ -336,7 +335,7 @@ def _spu_run_mlir(pfunc: PFunction, *args: SpuValue) -> tuple[SpuValue, ...]:
     results: list[SpuValue] = [
         SpuValue(
             shape=shape_spu_to_np(meta.shape),
-            dtype=dtype_spu_to_dtype(meta.data_type),
+            dtype=dtype_spu_to_mpl(meta.data_type),
             vtype=meta.visibility,
             share=shares[idx],
         )

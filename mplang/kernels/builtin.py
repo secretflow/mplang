@@ -144,7 +144,7 @@ def _tensor_to_table(pfunc: PFunction, tensor: TensorValue) -> TableValue:
         raise ValueError("missing column_names attr")
     # Create Arrow table directly from numpy array columns
     arrays = [pa.array(arr[:, i]) for i in range(arr.shape[1])]
-    arrow_table = pa.table(dict(zip(col_names, arrays, strict=False)))
+    arrow_table = pa.table(dict(zip(col_names, arrays, strict=True)))
     return TableValue(arrow_table)
 
 
@@ -188,13 +188,16 @@ def _pack(pfunc: PFunction, value: Value) -> TensorValue:
         raise TypeError("builtin.pack output dtype must be uint8")
 
     if isinstance(value, TableValue):
-        # Use Arrow IPC for efficient table serialization (fallback to CSV for compatibility)
-        # TODO: Consider using Arrow IPC stream for better performance
+        # Serialize Arrow table using IPC stream for consistency with Value serde
+        import pyarrow as pa  # type: ignore
+        import pyarrow.ipc as pa_ipc  # type: ignore
+
         arrow_table = value.to_arrow()
-        # For now, keep CSV format for backward compatibility
-        df = arrow_table.to_pandas()
-        csv_bytes = table_utils.dataframe_to_csv(df)
-        return TensorValue(np.frombuffer(csv_bytes, dtype=np.uint8))
+        sink = pa.BufferOutputStream()
+        with pa_ipc.new_stream(sink, arrow_table.schema) as writer:  # type: ignore[arg-type]
+            writer.write_table(arrow_table)  # type: ignore[arg-type]
+        ipc_bytes = sink.getvalue().to_pybytes()
+        return TensorValue(np.frombuffer(ipc_bytes, dtype=np.uint8))
 
     if isinstance(value, TensorValue):
         arr = value.to_numpy()
@@ -227,8 +230,13 @@ def _unpack(pfunc: PFunction, packed: TensorValue) -> Value:
         return TensorValue(arr.reshape(shape))
 
     if isinstance(out_ty, TableType):
-        csv_bytes = b.tobytes()
-        # csv_to_dataframe returns pandas DataFrame, TableValue.__init__ will convert to Arrow
-        return TableValue(table_utils.csv_to_dataframe(csv_bytes))
+        # Deserialize Arrow IPC stream back to TableValue
+        import pyarrow as pa  # type: ignore
+        import pyarrow.ipc as pa_ipc  # type: ignore
+
+        buf = pa.py_buffer(b.tobytes())
+        reader = pa_ipc.open_stream(buf)
+        table = reader.read_all()
+        return TableValue(table)
 
     raise TypeError("builtin.unpack output type must be TensorType or TableType")

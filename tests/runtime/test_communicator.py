@@ -299,7 +299,10 @@ def test_end_to_end_communication():
     # Use multiprocessing to run two party processes
     from tests.utils.server_fixtures import get_free_ports  # type: ignore
 
-    with multiprocessing.Manager() as manager:
+    # Use spawn context to avoid inheriting state that may conflict with JAX or other libs
+    mp_ctx = multiprocessing.get_context("spawn")
+
+    with mp_ctx.Manager() as manager:
         return_dict = manager.dict()
         assigned_ports = manager.dict()
         p0, p1 = get_free_ports(2)
@@ -309,7 +312,7 @@ def test_end_to_end_communication():
         # Start both party processes
         processes = []
         for rank in [0, 1]:
-            process = multiprocessing.Process(
+            process = mp_ctx.Process(
                 target=run_party_e2e_process, args=(rank, return_dict, assigned_ports)
             )
             process.start()

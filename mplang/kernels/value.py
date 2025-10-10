@@ -225,7 +225,9 @@ def _python_to_attr_proto(value: Any) -> _value_pb2.ValueAttrProto:
         attr.raw_bytes = bytes(value)
     elif isinstance(value, (list, tuple)):
         if not value:
-            raise ValueError("Cannot encode empty list in AttrProto")
+            # Represent empty list explicitly
+            attr.type = _value_pb2.ValueAttrProto.EMPTY
+            return attr
         if all(isinstance(v, float) for v in value):
             attr.type = _value_pb2.ValueAttrProto.FLOATS
             attr.floats.extend(float(v) for v in value)
@@ -267,6 +269,8 @@ def _attr_proto_to_python(attr: _value_pb2.ValueAttrProto) -> Any:
         return list(attr.ints)
     if attr.type == _value_pb2.ValueAttrProto.STRINGS:
         return list(attr.strs)
+    if attr.type == _value_pb2.ValueAttrProto.EMPTY:
+        return []
     if attr.type == _value_pb2.ValueAttrProto.UNDEFINED:
         return None
     raise ValueDecodeError(f"Unsupported AttrProto type {attr.type}")
@@ -392,8 +396,6 @@ class BytesBlob(Value):  # demo subclass
             raise ValueDecodeError(f"Unsupported BytesBlob version {reader.version}")
         if proto.runtime_attrs:
             raise ValueDecodeError("BytesBlob does not expect runtime attributes")
-        if proto.concrete_shape:
-            raise ValueDecodeError("BytesBlob does not support concrete_shape metadata")
         return cls(reader.payload)
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -422,14 +424,13 @@ class TensorValue(Value):  # well-known tensor (ndarray) Value
         arr = self._arr
         if not arr.flags.c_contiguous:
             arr = np.ascontiguousarray(arr)
-        proto = (
+        return (
             ValueProtoBuilder(self.KIND, self.WIRE_VERSION)
             .set_attr("dtype", arr.dtype.str)
+            .set_attr("shape", [int(dim) for dim in arr.shape])
             .set_payload(arr.tobytes())
             .build()
         )
-        proto.concrete_shape.extend(int(dim) for dim in arr.shape)
-        return proto
 
     @classmethod
     def from_proto(cls, proto: _value_pb2.ValueProto) -> TensorValue:
@@ -441,15 +442,16 @@ class TensorValue(Value):  # well-known tensor (ndarray) Value
         dtype_val = reader.get_attr("dtype")
         if not isinstance(dtype_val, str):
             raise ValueDecodeError("TensorValue runtime attr 'dtype' must be str")
-        shape = tuple(int(dim) for dim in proto.concrete_shape)
+        shape_val = reader.get_attr("shape")
+        if not isinstance(shape_val, list):
+            raise ValueDecodeError("TensorValue runtime attr 'shape' must be list")
+        shape = tuple(int(dim) for dim in shape_val)
         try:
-            arr = np.frombuffer(reader.payload, dtype=np.dtype(dtype_val))
+            arr = np.frombuffer(reader.payload, dtype=np.dtype(dtype_val)).reshape(
+                shape
+            )
         except Exception as e:  # pragma: no cover
             raise ValueDecodeError(f"Failed reconstruct ndarray: {e}") from e
-        try:
-            arr = arr.reshape(shape)
-        except Exception as e:
-            raise ValueDecodeError(f"Failed reshape ndarray: {e}") from e
         return cls(np.array(arr, copy=True))
 
     @property
@@ -567,10 +569,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
             raise ValueDecodeError(f"Unsupported TableValue version {reader.version}")
         if proto.runtime_attrs:
             raise ValueDecodeError("TableValue does not expect runtime attributes")
-        if proto.concrete_shape:
-            raise ValueDecodeError(
-                "TableValue does not support concrete_shape metadata"
-            )
+
         import pyarrow as pa  # type: ignore
         import pyarrow.ipc as pa_ipc  # type: ignore
 

@@ -29,6 +29,8 @@ message ValueAttrProto {
     FLOATS = 6;
     INTS = 7;
     STRINGS = 8;
+    // Represents an explicitly empty attribute value (e.g., empty list)
+    EMPTY = 9;
   }
 
   AttrType type = 1;
@@ -63,10 +65,6 @@ message ValueProto {
   // Primary data payload bytes (layout defined by each Value subclass).
   bytes payload = 3;
 
-  reserved 4, 5, 6, 7, 8, 9;
-
   // Additional runtime metadata required to recreate the Value instance.
-  map<string, ValueAttrProto> runtime_attrs = 10;
-  // Concrete shape values for dynamically-shaped tensors; empty if not needed.
-  repeated int64 concrete_shape = 11;
+  map<string, ValueAttrProto> runtime_attrs = 4;
 }

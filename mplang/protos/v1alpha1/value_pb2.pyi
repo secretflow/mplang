@@ -52,6 +52,8 @@ class ValueAttrProto(google.protobuf.message.Message):
         FLOATS: ValueAttrProto._AttrType.ValueType  # 6
         INTS: ValueAttrProto._AttrType.ValueType  # 7
         STRINGS: ValueAttrProto._AttrType.ValueType  # 8
+        EMPTY: ValueAttrProto._AttrType.ValueType  # 9
+        """Represents an explicitly empty attribute value (e.g., empty list)"""
 
     class AttrType(_AttrType, metaclass=_AttrTypeEnumTypeWrapper): ...
     UNDEFINED: ValueAttrProto.AttrType.ValueType  # 0
@@ -63,6 +65,8 @@ class ValueAttrProto(google.protobuf.message.Message):
     FLOATS: ValueAttrProto.AttrType.ValueType  # 6
     INTS: ValueAttrProto.AttrType.ValueType  # 7
     STRINGS: ValueAttrProto.AttrType.ValueType  # 8
+    EMPTY: ValueAttrProto.AttrType.ValueType  # 9
+    """Represents an explicitly empty attribute value (e.g., empty list)"""
 
     TYPE_FIELD_NUMBER: builtins.int
     F_FIELD_NUMBER: builtins.int
@@ -143,7 +147,6 @@ class ValueProto(google.protobuf.message.Message):
     VALUE_VERSION_FIELD_NUMBER: builtins.int
     PAYLOAD_FIELD_NUMBER: builtins.int
     RUNTIME_ATTRS_FIELD_NUMBER: builtins.int
-    CONCRETE_SHAPE_FIELD_NUMBER: builtins.int
     kind: builtins.str
     """Globally unique identifier for Value subclass, e.g. "mplang.ndarray"."""
     value_version: builtins.int
@@ -153,9 +156,6 @@ class ValueProto(google.protobuf.message.Message):
     @property
     def runtime_attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___ValueAttrProto]:
         """Additional runtime metadata required to recreate the Value instance."""
-    @property
-    def concrete_shape(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
-        """Concrete shape values for dynamically-shaped tensors; empty if not needed."""
     def __init__(
         self,
         *,
@@ -163,8 +163,7 @@ class ValueProto(google.protobuf.message.Message):
         value_version: builtins.int = ...,
         payload: builtins.bytes = ...,
         runtime_attrs: collections.abc.Mapping[builtins.str, global___ValueAttrProto] | None = ...,
-        concrete_shape: collections.abc.Iterable[builtins.int] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing_extensions.Literal["concrete_shape", b"concrete_shape", "kind", b"kind", "payload", b"payload", "runtime_attrs", b"runtime_attrs", "value_version", b"value_version"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["kind", b"kind", "payload", b"payload", "runtime_attrs", b"runtime_attrs", "value_version", b"value_version"]) -> None: ...
 
 global___ValueProto = ValueProto

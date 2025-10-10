@@ -14,22 +14,21 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"mplang/protos/v1alpha1/value.proto\x12\x16mplang.protos.v1alpha1\"\xdd\x02\n\x0eValueAttrProto\x12\x43\n\x04type\x18\x01 \x01(\x0e\x32/.mplang.protos.v1alpha1.ValueAttrProto.AttrTypeR\x04type\x12\x0c\n\x01\x66\x18\x02 \x01(\x02R\x01\x66\x12\x0c\n\x01i\x18\x03 \x01(\x03R\x01i\x12\x0c\n\x01s\x18\x04 \x01(\tR\x01s\x12\x0c\n\x01\x62\x18\x05 \x01(\x08R\x01\x62\x12\x1b\n\traw_bytes\x18\x06 \x01(\x0cR\x08rawBytes\x12\x16\n\x06\x66loats\x18\x07 \x03(\x02R\x06\x66loats\x12\x12\n\x04ints\x18\x08 \x03(\x03R\x04ints\x12\x12\n\x04strs\x18\t \x03(\tR\x04strs\"q\n\x08\x41ttrType\x12\r\n\tUNDEFINED\x10\x00\x12\t\n\x05\x46LOAT\x10\x01\x12\x07\n\x03INT\x10\x02\x12\n\n\x06STRING\x10\x03\x12\x08\n\x04\x42OOL\x10\x04\x12\t\n\x05\x42YTES\x10\x05\x12\n\n\x06\x46LOATS\x10\x06\x12\x08\n\x04INTS\x10\x07\x12\x0b\n\x07STRINGS\x10\x08\"\xee\x02\n\nValueProto\x12\x12\n\x04kind\x18\x01 \x01(\tR\x04kind\x12#\n\rvalue_version\x18\x02 \x01(\rR\x0cvalueVersion\x12\x18\n\x07payload\x18\x03 \x01(\x0cR\x07payload\x12Y\n\rruntime_attrs\x18\n \x03(\x0b\x32\x34.mplang.protos.v1alpha1.ValueProto.RuntimeAttrsEntryR\x0cruntimeAttrs\x12%\n\x0e\x63oncrete_shape\x18\x0b \x03(\x03R\rconcreteShape\x1ag\n\x11RuntimeAttrsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12<\n\x05value\x18\x02 \x01(\x0b\x32&.mplang.protos.v1alpha1.ValueAttrProtoR\x05value:\x02\x38\x01J\x04\x08\x04\x10\x05J\x04\x08\x05\x10\x06J\x04\x08\x06\x10\x07J\x04\x08\x07\x10\x08J\x04\x08\x08\x10\tJ\x04\x08\t\x10\nB.Z,github.com/secretflow/mplang/protos/v1alpha1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"mplang/protos/v1alpha1/value.proto\x12\x16mplang.protos.v1alpha1\"\xe8\x02\n\x0eValueAttrProto\x12\x43\n\x04type\x18\x01 \x01(\x0e\x32/.mplang.protos.v1alpha1.ValueAttrProto.AttrTypeR\x04type\x12\x0c\n\x01\x66\x18\x02 \x01(\x02R\x01\x66\x12\x0c\n\x01i\x18\x03 \x01(\x03R\x01i\x12\x0c\n\x01s\x18\x04 \x01(\tR\x01s\x12\x0c\n\x01\x62\x18\x05 \x01(\x08R\x01\x62\x12\x1b\n\traw_bytes\x18\x06 \x01(\x0cR\x08rawBytes\x12\x16\n\x06\x66loats\x18\x07 \x03(\x02R\x06\x66loats\x12\x12\n\x04ints\x18\x08 \x03(\x03R\x04ints\x12\x12\n\x04strs\x18\t \x03(\tR\x04strs\"|\n\x08\x41ttrType\x12\r\n\tUNDEFINED\x10\x00\x12\t\n\x05\x46LOAT\x10\x01\x12\x07\n\x03INT\x10\x02\x12\n\n\x06STRING\x10\x03\x12\x08\n\x04\x42OOL\x10\x04\x12\t\n\x05\x42YTES\x10\x05\x12\n\n\x06\x46LOATS\x10\x06\x12\x08\n\x04INTS\x10\x07\x12\x0b\n\x07STRINGS\x10\x08\x12\t\n\x05\x45MPTY\x10\t\"\xa3\x02\n\nValueProto\x12\x12\n\x04kind\x18\x01 \x01(\tR\x04kind\x12#\n\rvalue_version\x18\x02 \x01(\rR\x0cvalueVersion\x12\x18\n\x07payload\x18\x03 \x01(\x0cR\x07payload\x12Y\n\rruntime_attrs\x18\x04 \x03(\x0b\x32\x34.mplang.protos.v1alpha1.ValueProto.RuntimeAttrsEntryR\x0cruntimeAttrs\x1ag\n\x11RuntimeAttrsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12<\n\x05value\x18\x02 \x01(\x0b\x32&.mplang.protos.v1alpha1.ValueAttrProtoR\x05value:\x02\x38\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'mplang.protos.v1alpha1.value_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'Z,github.com/secretflow/mplang/protos/v1alpha1'
+  DESCRIPTOR._loaded_options = None
   _globals['_VALUEPROTO_RUNTIMEATTRSENTRY']._loaded_options = None
   _globals['_VALUEPROTO_RUNTIMEATTRSENTRY']._serialized_options = b'8\001'
   _globals['_VALUEATTRPROTO']._serialized_start=63
-  _globals['_VALUEATTRPROTO']._serialized_end=412
+  _globals['_VALUEATTRPROTO']._serialized_end=423
   _globals['_VALUEATTRPROTO_ATTRTYPE']._serialized_start=299
-  _globals['_VALUEATTRPROTO_ATTRTYPE']._serialized_end=412
-  _globals['_VALUEPROTO']._serialized_start=415
-  _globals['_VALUEPROTO']._serialized_end=781
-  _globals['_VALUEPROTO_RUNTIMEATTRSENTRY']._serialized_start=642
-  _globals['_VALUEPROTO_RUNTIMEATTRSENTRY']._serialized_end=745
+  _globals['_VALUEATTRPROTO_ATTRTYPE']._serialized_end=423
+  _globals['_VALUEPROTO']._serialized_start=426
+  _globals['_VALUEPROTO']._serialized_end=717
+  _globals['_VALUEPROTO_RUNTIMEATTRSENTRY']._serialized_start=614
+  _globals['_VALUEPROTO_RUNTIMEATTRSENTRY']._serialized_end=717
 # @@protoc_insertion_point(module_scope)

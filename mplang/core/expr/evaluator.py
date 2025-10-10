@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import numpy as np
+
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -47,6 +49,7 @@ from mplang.core.expr.walk import walk_dataflow
 from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction
 from mplang.kernels.context import RuntimeContext
+from mplang.kernels.value import Value
 
 
 class IEvaluator(Protocol):
@@ -149,12 +152,11 @@ class EvalSemantic:
     def _as_optional_int(val: Any) -> int | None:
         """Convert a value to int if possible, preserving None.
 
-        Handles Python ints, numpy scalars with .item(), and None.
+        Handles Python ints, numpy scalars, and None.
         """
+        val = EvalSemantic._unwrap_value(val)
         if val is None:
             return None
-        if hasattr(val, "item"):
-            return int(val.item())
         return int(val)
 
     def _simple_allgather(self, value: Any) -> list[Any]:
@@ -167,6 +169,7 @@ class EvalSemantic:
         Returns a list of length world_size with entries ordered by rank.
         """
         ws = self.comm.world_size
+        value = self._unwrap_value(value)
         # Trivial fast-path
         if ws == 1:
             return [value]
@@ -185,7 +188,12 @@ class EvalSemantic:
 
     def _verify_uniform_predicate(self, pred: Any) -> None:
         # Runtime uniformity check (O(P^2) send/recv emulation).
-        vals = self._simple_allgather(bool(pred))
+        # Use Value.to_bool() if available, otherwise unwrap and convert
+        if isinstance(pred, Value):
+            pred_bool = pred.to_bool()
+        else:
+            pred_bool = bool(self._unwrap_value(pred))
+        vals = self._simple_allgather(pred_bool)
         if not vals:
             raise ValueError("uniform_cond: empty gather for predicate")
         first = vals[0]
@@ -209,13 +217,33 @@ class EvalSemantic:
         assert len(cond_result) == 1, (
             f"Condition function must return a single value, got {cond_result}"
         )
-        cond_value = cond_result[0]
-        if cond_value is None:
+        cond_val = cond_result[0]
+        if cond_val is None:
             raise RuntimeError(
                 "while_loop condition produced None on rank "
                 f"{self.rank}; ensure the predicate yields a boolean for every party."
             )
-        return cond_value
+        # Use Value.to_bool() if available for cleaner conversion
+        if isinstance(cond_val, Value):
+            return cond_val.to_bool()
+        return bool(self._unwrap_value(cond_val))
+
+    @staticmethod
+    def _unwrap_value(value: Any) -> Any:
+        """Convert Value payloads to numpy/python equivalents when possible."""
+        if value is None:
+            return None
+        if isinstance(value, Value):
+            # Try to_numpy first for broader compatibility
+            to_numpy = getattr(value, "to_numpy", None)
+            if callable(to_numpy):
+                arr = to_numpy()
+                if isinstance(arr, np.ndarray):
+                    if arr.size == 1:
+                        return arr.item()
+                    return arr
+                return arr
+        return value
 
 
 class RecursiveEvaluator(EvalSemantic, ExprVisitor):
@@ -296,15 +324,21 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
           * Add optional static uniform inference (data provenance) to elide the
             runtime check when predicate uniformity is provable at trace time.
         """
-        pred = self._value(expr.pred)
-        if pred is None:
+        pred_val = self._value(expr.pred)
+        if pred_val is None:
             return [None] * len(expr.mptypes)
 
         if expr.verify_uniform:
-            self._verify_uniform_predicate(pred)
+            self._verify_uniform_predicate(pred_val)
+
+        # Convert to bool using Value.to_bool() if available
+        if isinstance(pred_val, Value):
+            pred = pred_val.to_bool()
+        else:
+            pred = bool(self._unwrap_value(pred_val))
 
         # Only evaluate selected branch locally
-        if pred:
+        if bool(pred):
             then_call = CallExpr(expr.then_fn, expr.args)
             return self._values(then_call)
         else:
@@ -435,15 +469,20 @@ class IterativeEvaluator(EvalSemantic):
                 res = self._iter_eval_graph(node.fn.body, {**env, **sub_env})
                 symbols[id(node)] = res
             elif isinstance(node, CondExpr):
-                pred_v = self._first(symbols[id(node.pred)])
+                pred_val = self._first(symbols[id(node.pred)])
                 arg_vals = [self._first(symbols[id(a)]) for a in node.args]
-                if pred_v is None:
+                if pred_val is None:
                     symbols[id(node)] = [None] * len(node.mptypes)
                 else:
                     # Optional uniform verification identical to recursive evaluator (DRY helper).
                     if node.verify_uniform:
-                        self._verify_uniform_predicate(pred_v)
-                    if bool(pred_v):
+                        self._verify_uniform_predicate(pred_val)
+                    # Convert to bool using Value.to_bool() if available
+                    if isinstance(pred_val, Value):
+                        pred = pred_val.to_bool()
+                    else:
+                        pred = bool(self._unwrap_value(pred_val))
+                    if pred:
                         sub_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
                         res = self._iter_eval_graph(
                             node.then_fn.body, {**env, **sub_env}

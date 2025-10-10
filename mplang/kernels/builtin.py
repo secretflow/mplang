@@ -14,38 +14,25 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
-import pandas as pd
 
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
 from mplang.kernels.base import cur_kctx, kernel_def
+from mplang.kernels.value import TableValue, TensorValue, Value
 from mplang.runtime.data_providers import get_provider, resolve_uri
 from mplang.utils import table_utils
 
 
-def _to_numpy(obj: Any) -> np.ndarray:  # minimal helper to avoid duplicating logic
-    if isinstance(obj, np.ndarray):
-        return obj
-    if hasattr(obj, "numpy"):
-        try:
-            return np.asarray(obj.numpy())  # type: ignore
-        except Exception:
-            pass
-    return np.asarray(obj)
-
-
 @kernel_def("builtin.identity")
-def _identity(pfunc: PFunction, value: Any) -> Any:
+def _identity(pfunc: PFunction, value: Value) -> Value:
     # Runtime guarantees exactly one argument; no extra arity checks here.
     return value
 
 
 @kernel_def("builtin.read")
-def _read(pfunc: PFunction) -> Any:
+def _read(pfunc: PFunction) -> Value:
     path = pfunc.attrs.get("path")
     if path is None:
         raise ValueError("missing path attr for builtin.read")
@@ -56,13 +43,25 @@ def _read(pfunc: PFunction) -> Any:
         raise NotImplementedError(f"no resource provider for scheme: {uri.scheme}")
     ctx = cur_kctx()
     try:
-        return prov.read(uri, out_t, ctx=ctx)
+        data = prov.read(uri, out_t, ctx=ctx)
     except Exception as e:  # pragma: no cover - provider errors
         raise RuntimeError(f"builtin.read failed: {e}") from e
 
+    if isinstance(out_t, TableType):
+        if isinstance(data, TableValue):
+            return data
+        return TableValue(data)
+    if isinstance(out_t, TensorType):
+        if isinstance(data, TensorValue):
+            return data
+        return TensorValue(np.asarray(data))
+    raise TypeError(
+        f"builtin.read only supports TableType/TensorType outputs, got {type(out_t).__name__}"
+    )
+
 
 @kernel_def("builtin.write")
-def _write(pfunc: PFunction, obj: Any) -> Any:
+def _write(pfunc: PFunction, obj: Value) -> Value:
     path = pfunc.attrs.get("path")
     if path is None:
         raise ValueError("missing path attr for builtin.write")
@@ -70,16 +69,18 @@ def _write(pfunc: PFunction, obj: Any) -> Any:
     prov = get_provider(uri.scheme)
     if prov is None:
         raise NotImplementedError(f"no resource provider for scheme: {uri.scheme}")
+    # Pass Value object directly to provider - let provider decide how to handle it
     ctx = cur_kctx()
     try:
         prov.write(uri, obj, ctx=ctx)
-        return obj
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"builtin.write failed: {e}") from e
+    return obj
 
 
 @kernel_def("builtin.constant")
-def _constant(pfunc: PFunction) -> Any:
+def _constant(pfunc: PFunction) -> Value:
+    """Return constants as Value types (TensorValue or TableValue)."""
     data_bytes = pfunc.attrs.get("data_bytes")
     if data_bytes is None:
         raise ValueError("missing data_bytes attr for builtin.constant")
@@ -89,69 +90,86 @@ def _constant(pfunc: PFunction) -> Any:
         if fmt != "bytes[csv]":
             raise ValueError(f"unsupported table constant format {fmt}")
         df = table_utils.csv_to_dataframe(data_bytes)
-        return df
+        return TableValue(df)
     # tensor path
     shape = out_t.shape  # type: ignore[attr-defined,union-attr]
     dtype = out_t.dtype.numpy_dtype()  # type: ignore[attr-defined,union-attr]
     arr = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
-    return arr
+    return TensorValue(arr)
 
 
 @kernel_def("builtin.rank")
-def _rank(pfunc: PFunction) -> Any:
+def _rank(pfunc: PFunction) -> TensorValue:
+    """Return rank as TensorValue."""
     ctx = cur_kctx()
-    return np.array(ctx.rank, dtype=np.uint64)
+    arr = np.array(ctx.rank, dtype=np.uint64)
+    return TensorValue(arr)
 
 
 @kernel_def("builtin.prand")
-def _prand(pfunc: PFunction) -> Any:
+def _prand(pfunc: PFunction) -> TensorValue:
+    """Return random data as TensorValue."""
     shape = pfunc.attrs.get("shape", ())
     rng = np.random.default_rng()
     info = np.iinfo(np.uint64)
     data = rng.integers(
         low=info.min, high=info.max, size=shape, dtype=np.uint64, endpoint=True
     )
-    return data
+    return TensorValue(data)
 
 
 @kernel_def("builtin.table_to_tensor")
-def _table_to_tensor(pfunc: PFunction, table: Any) -> Any:
-    if not isinstance(table, pd.DataFrame):
-        raise TypeError("expected pandas DataFrame")
-    if table.shape[1] == 0:
+def _table_to_tensor(pfunc: PFunction, table: TableValue) -> TensorValue:
+    """Convert table to tensor, return as TensorValue."""
+    arrow_table = table.to_arrow()
+    if arrow_table.num_columns == 0:
         raise ValueError("cannot pack empty table")
-    mat = np.column_stack([table[col].to_numpy() for col in table.columns])
-    return mat
+    # Convert Arrow columns to numpy arrays and stack
+    mat = np.column_stack([
+        arrow_table.column(i).to_numpy() for i in range(arrow_table.num_columns)
+    ])
+    return TensorValue(mat)
 
 
 @kernel_def("builtin.tensor_to_table")
-def _tensor_to_table(pfunc: PFunction, tensor: Any) -> Any:
-    arr = _to_numpy(tensor)
+def _tensor_to_table(pfunc: PFunction, tensor: TensorValue) -> TableValue:
+    """Convert tensor to table, return as TableValue."""
+    import pyarrow as pa  # type: ignore
+
+    arr = tensor.to_numpy()
     if arr.ndim != 2:
         raise ValueError("tensor_to_table expects rank-2 array")
     col_names = pfunc.attrs.get("column_names")
     if col_names is None:
         raise ValueError("missing column_names attr")
-    df = pd.DataFrame(arr, columns=list(col_names))
-    return df
+    # Create Arrow table directly from numpy array columns
+    arrays = [pa.array(arr[:, i]) for i in range(arr.shape[1])]
+    arrow_table = pa.table(dict(zip(col_names, arrays, strict=False)))
+    return TableValue(arrow_table)
 
 
-def _summ(v: Any) -> str:
+def _summ(v: Value) -> str:
     try:
-        if isinstance(v, pd.DataFrame):
-            return str(v.head(8).to_string(index=False))
-        arr = _to_numpy(v)
-        return str(
-            np.array2string(
-                arr, threshold=64, edgeitems=3, precision=6, suppress_small=True
+        if isinstance(v, TableValue):
+            # Use Arrow's native string representation (more efficient)
+            arrow_table = v.to_arrow()
+            # Show first 8 rows
+            preview = arrow_table.slice(0, min(8, arrow_table.num_rows))
+            return str(preview)
+        if isinstance(v, TensorValue):
+            arr = v.to_numpy()
+            return str(
+                np.array2string(
+                    arr, threshold=64, edgeitems=3, precision=6, suppress_small=True
+                )
             )
-        )
+        return repr(v)
     except Exception as e:  # pragma: no cover
         return f"<unprintable {type(v).__name__}: {e}>"
 
 
 @kernel_def("builtin.debug_print")
-def _debug_print(pfunc: PFunction, val: Any) -> Any:
+def _debug_print(pfunc: PFunction, val: Value) -> Value:
     prefix = pfunc.attrs.get("prefix", "")
     ctx = cur_kctx()
     print(f"[debug_print][rank={ctx.rank}] {prefix}{_summ(val)}")
@@ -159,7 +177,7 @@ def _debug_print(pfunc: PFunction, val: Any) -> Any:
 
 
 @kernel_def("builtin.pack")
-def _pack(pfunc: PFunction, value: Any) -> Any:
+def _pack(pfunc: PFunction, value: Value) -> TensorValue:
     outs_info = pfunc.outs_info
     if len(outs_info) != 1:
         raise ValueError("builtin.pack expects single output type")
@@ -169,22 +187,30 @@ def _pack(pfunc: PFunction, value: Any) -> Any:
     if out_ty.dtype.numpy_dtype() != np.uint8:
         raise TypeError("builtin.pack output dtype must be uint8")
 
-    if isinstance(value, pd.DataFrame):
-        csv_bytes = table_utils.dataframe_to_csv(value)
-        return np.frombuffer(csv_bytes, dtype=np.uint8)
+    if isinstance(value, TableValue):
+        # Use Arrow IPC for efficient table serialization (fallback to CSV for compatibility)
+        # TODO: Consider using Arrow IPC stream for better performance
+        arrow_table = value.to_arrow()
+        # For now, keep CSV format for backward compatibility
+        df = arrow_table.to_pandas()
+        csv_bytes = table_utils.dataframe_to_csv(df)
+        return TensorValue(np.frombuffer(csv_bytes, dtype=np.uint8))
 
-    arr = _to_numpy(value)
-    return np.frombuffer(arr.tobytes(order="C"), dtype=np.uint8)
+    if isinstance(value, TensorValue):
+        arr = value.to_numpy()
+        return TensorValue(np.frombuffer(arr.tobytes(order="C"), dtype=np.uint8))
+
+    raise TypeError(f"builtin.pack does not support Value type {type(value).__name__}")
 
 
 @kernel_def("builtin.unpack")
-def _unpack(pfunc: PFunction, packed: Any) -> Any:
+def _unpack(pfunc: PFunction, packed: TensorValue) -> Value:
     outs_info = pfunc.outs_info
     if len(outs_info) != 1:
         raise ValueError("builtin.unpack expects single output type")
     out_ty = outs_info[0]
 
-    b = np.asarray(packed, dtype=np.uint8).reshape(-1)
+    b = packed.to_numpy().astype(np.uint8, copy=False).reshape(-1)
 
     if isinstance(out_ty, TensorType):
         np_dtype = out_ty.dtype.numpy_dtype()
@@ -198,10 +224,11 @@ def _unpack(pfunc: PFunction, packed: Any) -> Any:
                 f"unpack size mismatch: got {b.size} bytes, expect {expected} for {np_dtype} {shape}"
             )
         arr = np.frombuffer(b.tobytes(), dtype=np_dtype)
-        return arr.reshape(shape)
+        return TensorValue(arr.reshape(shape))
 
     if isinstance(out_ty, TableType):
         csv_bytes = b.tobytes()
-        return table_utils.csv_to_dataframe(csv_bytes)
+        # csv_to_dataframe returns pandas DataFrame, TableValue.__init__ will convert to Arrow
+        return TableValue(table_utils.csv_to_dataframe(csv_bytes))
 
     raise TypeError("builtin.unpack output type must be TensorType or TableType")

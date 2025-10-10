@@ -21,10 +21,10 @@ import base64
 import logging
 from typing import Any
 
-import cloudpickle as pickle
 import httpx
 
 from mplang.core.comm import CommunicatorBase
+from mplang.kernels.value import Value, decode_value, encode_value
 
 
 class HttpCommunicator(CommunicatorBase):
@@ -52,8 +52,14 @@ class HttpCommunicator(CommunicatorBase):
         )
 
         try:
-            # Use cloudpickle for robust serialization of complex Python objects
-            data_bytes = pickle.dumps(data)
+            # Serialize data using Value envelope.
+            if not isinstance(data, Value):
+                raise TypeError(
+                    f"Communicator requires Value instance, got {type(data).__name__}. "
+                    "Wrap data in TensorValue or custom Value subclass."
+                )
+            data_bytes = encode_value(data)
+
             data_b64 = base64.b64encode(data_bytes).decode("utf-8")
 
             request_data = {
@@ -79,7 +85,8 @@ class HttpCommunicator(CommunicatorBase):
         data_b64 = super().recv(frm, key)
 
         data_bytes = base64.b64decode(data_b64)
-        result = pickle.loads(data_bytes)
+        # Deserialize using Value envelope
+        result = decode_value(data_bytes)
 
         logging.debug(
             f"Received data: from_rank={frm}, to_rank={self._rank}, key={key}"

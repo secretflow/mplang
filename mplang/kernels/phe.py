@@ -14,15 +14,27 @@
 
 """PHE (Partially Homomorphic Encryption) backend implementation using lightPHE."""
 
-from typing import Any
+from __future__ import annotations
+
+import json
+from typing import Any, ClassVar
 
 import numpy as np
 from lightphe import LightPHE
+from lightphe.models.Ciphertext import Ciphertext
 
 from mplang.core.dtype import DType
-from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import kernel_def
+from mplang.kernels.value import (
+    TensorValue,
+    Value,
+    ValueDecodeError,
+    ValueProtoBuilder,
+    ValueProtoReader,
+    register_value,
+)
+from mplang.protos.v1alpha1 import value_pb2 as _value_pb2
 
 # This controls the decimal precision used in lightPHE for float operations
 # we force it to 0 to only support integer operations
@@ -30,8 +42,12 @@ from mplang.kernels.base import kernel_def
 PRECISION = 0
 
 
-class PublicKey:
-    """PHE Public Key that implements TensorLike protocol."""
+@register_value
+class PublicKey(Value):
+    """PHE Public Key Value type."""
+
+    KIND: ClassVar[str] = "mplang.phe.PublicKey"
+    WIRE_VERSION: ClassVar[int] = 1
 
     def __init__(
         self,
@@ -62,12 +78,56 @@ class PublicKey:
         """Maximum float value that can be encoded."""
         return float(self.max_value / (2**self.fxp_bits))
 
+    def to_proto(self) -> _value_pb2.ValueProto:
+        """Serialize PublicKey to wire format."""
+        return (
+            ValueProtoBuilder(self.KIND, self.WIRE_VERSION)
+            .set_attr("scheme", self.scheme)
+            .set_attr("key_size", self.key_size)
+            .set_attr("max_value", self.max_value)
+            .set_attr("fxp_bits", self.fxp_bits)
+            .set_attr("modulus", self.modulus if self.modulus is not None else -1)
+            .set_payload(json.dumps(self.key_data).encode("utf-8"))
+            .build()
+        )
+
+    @classmethod
+    def from_proto(cls, proto: _value_pb2.ValueProto) -> PublicKey:
+        """Deserialize PublicKey from wire format."""
+        reader = ValueProtoReader(proto)
+        if reader.version != cls.WIRE_VERSION:
+            raise ValueDecodeError(f"Unsupported PublicKey version {reader.version}")
+
+        # Read metadata from runtime_attrs
+        scheme = reader.get_attr("scheme")
+        key_size = reader.get_attr("key_size")
+        max_value = reader.get_attr("max_value")
+        fxp_bits = reader.get_attr("fxp_bits")
+        modulus_val = reader.get_attr("modulus")
+        modulus = None if modulus_val == -1 else modulus_val
+
+        # JSON deserialize the public key dict
+        key_data = json.loads(reader.payload.decode("utf-8"))
+
+        return cls(
+            key_data=key_data,
+            scheme=scheme,
+            key_size=key_size,
+            max_value=max_value,
+            fxp_bits=fxp_bits,
+            modulus=modulus,
+        )
+
     def __repr__(self) -> str:
         return f"PublicKey(scheme={self.scheme}, key_size={self.key_size}, max_value={self.max_value}, fxp_bits={self.fxp_bits})"
 
 
-class PrivateKey:
-    """PHE Private Key that implements TensorLike protocol."""
+@register_value
+class PrivateKey(Value):
+    """PHE Private Key Value type."""
+
+    KIND: ClassVar[str] = "mplang.phe.PrivateKey"
+    WIRE_VERSION: ClassVar[int] = 1
 
     def __init__(
         self,
@@ -100,12 +160,63 @@ class PrivateKey:
         """Maximum float value that can be encoded."""
         return float(self.max_value / (2**self.fxp_bits))
 
+    def to_proto(self) -> _value_pb2.ValueProto:
+        """Serialize PrivateKey to wire format."""
+        # JSON serialize both key dicts (contain int values)
+        # Store both keys in a single dict to avoid needing length metadata
+        keys_dict = {"sk": self.sk_data, "pk": self.pk_data}
+
+        return (
+            ValueProtoBuilder(self.KIND, self.WIRE_VERSION)
+            .set_attr("scheme", self.scheme)
+            .set_attr("key_size", self.key_size)
+            .set_attr("max_value", self.max_value)
+            .set_attr("fxp_bits", self.fxp_bits)
+            .set_attr("modulus", self.modulus if self.modulus is not None else -1)
+            .set_payload(json.dumps(keys_dict).encode("utf-8"))
+            .build()
+        )
+
+    @classmethod
+    def from_proto(cls, proto: _value_pb2.ValueProto) -> PrivateKey:
+        """Deserialize PrivateKey from wire format."""
+        reader = ValueProtoReader(proto)
+        if reader.version != cls.WIRE_VERSION:
+            raise ValueDecodeError(f"Unsupported PrivateKey version {reader.version}")
+
+        # Read metadata from runtime_attrs
+        scheme = reader.get_attr("scheme")
+        key_size = reader.get_attr("key_size")
+        max_value = reader.get_attr("max_value")
+        fxp_bits = reader.get_attr("fxp_bits")
+        modulus_val = reader.get_attr("modulus")
+        modulus = None if modulus_val == -1 else modulus_val
+
+        # JSON deserialize both key dicts
+        keys_dict = json.loads(reader.payload.decode("utf-8"))
+        sk_data = keys_dict["sk"]
+        pk_data = keys_dict["pk"]
+
+        return cls(
+            sk_data=sk_data,
+            pk_data=pk_data,
+            scheme=scheme,
+            key_size=key_size,
+            max_value=max_value,
+            fxp_bits=fxp_bits,
+            modulus=modulus,
+        )
+
     def __repr__(self) -> str:
         return f"PrivateKey(scheme={self.scheme}, key_size={self.key_size}, max_value={self.max_value}, fxp_bits={self.fxp_bits})"
 
 
-class CipherText:
-    """PHE CipherText that implements TensorLike protocol."""
+@register_value
+class CipherText(Value):
+    """PHE CipherText Value type."""
+
+    KIND: ClassVar[str] = "mplang.phe.CipherText"
+    WIRE_VERSION: ClassVar[int] = 1
 
     def __init__(
         self,
@@ -141,6 +252,105 @@ class CipherText:
     def max_float_value(self) -> float:
         """Maximum float value that can be encoded."""
         return float(self.max_value / (2**self.fxp_bits))
+
+    def to_proto(self) -> _value_pb2.ValueProto:
+        """Serialize CipherText to wire format."""
+        # JSON serialize ciphertext components
+        # ct_data is a list of lightPHE Ciphertext objects
+        # Each Ciphertext has: value, algorithm_name, keys
+        # We need to serialize the list of ciphertexts
+        ct_list = []
+        if isinstance(self.ct_data, list):
+            for ct in self.ct_data:
+                if isinstance(ct, Ciphertext):
+                    # lightPHE Ciphertext object
+                    ct_list.append({
+                        "value": ct.value,
+                        "algorithm_name": ct.algorithm_name,
+                        "keys": ct.keys,
+                    })
+                else:
+                    # Plain data (for testing) - store as-is
+                    ct_list.append({
+                        "value": ct,
+                        "algorithm_name": None,
+                        "keys": None,
+                    })
+        else:
+            # Fallback: treat as single element
+            raise ValueError(f"ct_data should be a list, got {type(self.ct_data)}")
+
+        # Combine ct_data and pk_data into single dict
+        payload_dict = {
+            "ct_list": ct_list,
+            "pk": self.pk_data if self.pk_data is not None else None,
+        }
+
+        return (
+            ValueProtoBuilder(self.KIND, self.WIRE_VERSION)
+            .set_attr("semantic_dtype", str(self.semantic_dtype))
+            .set_attr("semantic_shape", list(self.semantic_shape))
+            .set_attr("scheme", self.scheme)
+            .set_attr("key_size", self.key_size)
+            .set_attr("max_value", self.max_value)
+            .set_attr("fxp_bits", self.fxp_bits)
+            .set_attr("modulus", self.modulus if self.modulus is not None else -1)
+            .set_payload(json.dumps(payload_dict).encode("utf-8"))
+            .build()
+        )
+
+    @classmethod
+    def from_proto(cls, proto: _value_pb2.ValueProto) -> CipherText:
+        """Deserialize CipherText from wire format."""
+        reader = ValueProtoReader(proto)
+        if reader.version != cls.WIRE_VERSION:
+            raise ValueDecodeError(f"Unsupported CipherText version {reader.version}")
+
+        # Read metadata from runtime_attrs
+        semantic_dtype_str = reader.get_attr("semantic_dtype")
+        semantic_shape = reader.get_attr("semantic_shape")
+        scheme = reader.get_attr("scheme")
+        key_size = reader.get_attr("key_size")
+        max_value = reader.get_attr("max_value")
+        fxp_bits = reader.get_attr("fxp_bits")
+        modulus_val = reader.get_attr("modulus")
+        modulus = None if modulus_val == -1 else modulus_val
+
+        # JSON deserialize ciphertext and public key
+        payload_dict = json.loads(reader.payload.decode("utf-8"))
+        ct_list = payload_dict["ct_list"]
+        pk_data = payload_dict["pk"]
+
+        # Reconstruct ct_data: list of Ciphertext objects or plain data
+        ct_data = []
+        for ct_dict in ct_list:
+            if ct_dict["keys"] is not None and ct_dict["algorithm_name"] is not None:
+                # Reconstruct lightPHE Ciphertext object
+                ct_data.append(
+                    Ciphertext(
+                        algorithm_name=ct_dict["algorithm_name"],
+                        keys=ct_dict["keys"],
+                        value=ct_dict["value"],
+                    )
+                )
+            else:
+                # Plain data (for testing)
+                ct_data.append(ct_dict["value"])
+
+        # Parse dtype string back to DType
+        dtype = DType.from_any(semantic_dtype_str)
+
+        return cls(
+            ct_data=ct_data,
+            semantic_dtype=dtype,
+            semantic_shape=tuple(semantic_shape),
+            scheme=scheme,
+            key_size=key_size,
+            pk_data=pk_data,
+            max_value=max_value,
+            fxp_bits=fxp_bits,
+            modulus=modulus,
+        )
 
     def __repr__(self) -> str:
         return f"CipherText(dtype={self.semantic_dtype}, shape={self.semantic_shape}, scheme={self.scheme})"
@@ -257,21 +467,13 @@ def _range_decode_mixed(
         return _range_decode_integer(encoded_value, max_value, modulus)
 
 
-def _convert_to_numpy(obj: TensorLike) -> np.ndarray:
-    """Convert a TensorLike object to numpy array."""
-    if isinstance(obj, np.ndarray):
-        return obj
-
-    # Try to use .numpy() method if available
-    if hasattr(obj, "numpy"):
-        numpy_method = getattr(obj, "numpy", None)
-        if callable(numpy_method):
-            try:
-                return np.asarray(numpy_method())
-            except Exception:
-                pass
-
-    return np.asarray(obj)
+def _convert_to_numpy(obj: Any) -> np.ndarray:
+    """Convert a TensorValue to numpy array."""
+    if not isinstance(obj, TensorValue):
+        raise TypeError(
+            f"PHE kernels expect TensorValue inputs, got {type(obj).__name__}"
+        )
+    return obj.to_numpy()
 
 
 @kernel_def("phe.keygen")
@@ -334,7 +536,9 @@ def _phe_keygen(pfunc: PFunction) -> Any:
 
 
 @kernel_def("phe.encrypt")
-def _phe_encrypt(pfunc: PFunction, plaintext: Any, public_key: PublicKey) -> Any:
+def _phe_encrypt(
+    pfunc: PFunction, plaintext: TensorValue, public_key: PublicKey
+) -> Any:
     # Validate public_key type
     if not isinstance(public_key, PublicKey):
         raise ValueError("Second argument must be a PublicKey instance")
@@ -403,7 +607,7 @@ def _phe_encrypt(pfunc: PFunction, plaintext: Any, public_key: PublicKey) -> Any
 
 
 @kernel_def("phe.mul")
-def _phe_mul(pfunc: PFunction, ciphertext: CipherText, plaintext: Any) -> Any:
+def _phe_mul(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorValue) -> Any:
     # Validate that first argument is a CipherText
     if not isinstance(ciphertext, CipherText):
         raise ValueError("First argument must be a CipherText instance")
@@ -511,7 +715,7 @@ def _phe_add(pfunc: PFunction, lhs: Any, rhs: Any) -> Any:
         elif isinstance(rhs, CipherText):
             return _phe_add_ct2pt(rhs, lhs)
         else:
-            return _convert_to_numpy(lhs) + _convert_to_numpy(rhs)
+            return TensorValue(_convert_to_numpy(lhs) + _convert_to_numpy(rhs))
     except ValueError:
         raise
     except Exception as e:  # pragma: no cover
@@ -593,7 +797,7 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
     )
 
 
-def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
+def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorValue) -> CipherText:
     # Convert plaintext to numpy
     plaintext_np = _convert_to_numpy(plaintext)
     plaintext_dtype = DType.from_numpy(plaintext_np.dtype)
@@ -816,14 +1020,14 @@ def _phe_decrypt(
             ciphertext.semantic_shape
         )
 
-        return [plaintext_np]
+        return [TensorValue(plaintext_np)]
 
     except Exception as e:
         raise RuntimeError(f"Failed to decrypt data: {e}") from e
 
 
 @kernel_def("phe.dot")
-def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorLike) -> Any:
+def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorValue) -> Any:
     """Execute homomorphic dot product with zero-value optimization.
 
     Supports various dot product operations:
@@ -1109,7 +1313,7 @@ def _phe_dot(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorLike) ->
 
 
 @kernel_def("phe.gather")
-def _phe_gather(pfunc: PFunction, ciphertext: CipherText, indices: Any) -> Any:
+def _phe_gather(pfunc: PFunction, ciphertext: CipherText, indices: TensorValue) -> Any:
     """Execute gather operation on CipherText.
 
     Supports gathering from multidimensional CipherText using multidimensional indices.
@@ -1224,7 +1428,10 @@ def _phe_gather(pfunc: PFunction, ciphertext: CipherText, indices: Any) -> Any:
 
 @kernel_def("phe.scatter")
 def _phe_scatter(
-    pfunc: PFunction, ciphertext: CipherText, indices: TensorLike, updated: CipherText
+    pfunc: PFunction,
+    ciphertext: CipherText,
+    indices: TensorValue,
+    updated: CipherText,
 ) -> Any:
     """Execute scatter operation on CipherText.
 

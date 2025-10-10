@@ -22,6 +22,7 @@ from numpy.typing import NDArray
 
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
+from mplang.kernels.value import TensorValue
 
 __all__: list[str] = []
 
@@ -46,25 +47,30 @@ def _quote_from_pk(pk: np.ndarray) -> NDArray[np.uint8]:
 
 
 @kernel_def("mock_tee.quote_gen")
-def _tee_quote_gen(pfunc: PFunction, pk: object) -> NDArray[np.uint8]:
+def _tee_quote_gen(pfunc: PFunction, pk: TensorValue) -> TensorValue:
     warnings.warn(
         "Insecure mock TEE kernel 'mock_tee.quote_gen' in use. NOT secure; for local testing only.",
         stacklevel=3,
     )
-    pk = np.asarray(pk, dtype=np.uint8)
+    pk_arr = pk.to_numpy().astype(np.uint8, copy=False)
     # rng access ensures deterministic seeding per rank even if unused now
     _rng()
-    return _quote_from_pk(pk)
+    quote = _quote_from_pk(pk_arr)
+    return TensorValue(np.array(quote, copy=True))
 
 
 @kernel_def("mock_tee.attest")
-def _tee_attest(pfunc: PFunction, quote: object) -> NDArray[np.uint8]:
+def _tee_attest(pfunc: PFunction, quote: TensorValue) -> TensorValue:
     warnings.warn(
         "Insecure mock TEE kernel 'mock_tee.attest' in use. NOT secure; for local testing only.",
         stacklevel=3,
     )
-    quote = np.asarray(quote, dtype=np.uint8)
+    quote_arr = quote.to_numpy().astype(np.uint8, copy=False)
+    platform = pfunc.attrs.get("platform")
+    if platform is None:
+        raise ValueError("missing required 'platform' attribute in PFunction")
 
-    if quote.size != 33:
+    if quote_arr.size != 33:
         raise ValueError("mock quote must be 33 bytes (1 header + 32 pk)")
-    return quote[1:33].astype(np.uint8)
+    attest = quote_arr[1:33].astype(np.uint8, copy=True)
+    return TensorValue(attest)

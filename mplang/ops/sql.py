@@ -58,4 +58,4 @@ class SqlFE(FeOperation):
         return pfn, in_vars, treedef
 
 
-sql_run = SqlFE("duckdb")
+run_sql = SqlFE("duckdb")

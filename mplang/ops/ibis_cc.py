@@ -136,4 +136,4 @@ class IbisCompiler(FeOperation):
         return pfunc, in_vars, treedef
 
 
-ibis_compile = IbisCompiler(_IBIS_MOD, "compile")
+run_ibis = IbisCompiler(_IBIS_MOD, "run")

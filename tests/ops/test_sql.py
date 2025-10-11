@@ -18,14 +18,14 @@ import mplang
 from mplang import simp
 from mplang.core.dtype import INT32
 from mplang.core.table import TableType
-from mplang.ops import sql_run
+from mplang.ops import run_sql
 
 
 def test_sqlrun():
     # test without input
     sql = "select a from 'a.csv'"
     out_type = TableType.from_pairs([("a", INT32)])
-    pfn, input_args, _output_tree = sql_run(sql, out_type)
+    pfn, input_args, _output_tree = run_sql(sql, out_type)
     assert pfn.fn_text == sql
     assert pfn.outs_info[0] == out_type
     assert len(input_args) == 0
@@ -40,7 +40,7 @@ def test_sqlrun():
     sql = "select a from table"
     out_type = TableType.from_pairs([("a", INT32)])
     in_tables = {"table": in_tbl}
-    pfn, input_args, _output_tree = sql_run(sql, out_type, in_tables=in_tables)
+    pfn, input_args, _output_tree = run_sql(sql, out_type, in_tables=in_tables)
     assert pfn.fn_text == sql
     assert pfn.outs_info[0] == out_type
     assert len(input_args) == 1

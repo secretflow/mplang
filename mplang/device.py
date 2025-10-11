@@ -38,7 +38,7 @@ from mplang.core.tensor import TensorType
 from mplang.ops import builtin, crypto, ibis_cc, jax_cc, tee
 from mplang.ops.base import FeOperation
 from mplang.ops.ibis_cc import IbisCompiler
-from mplang.ops.jax_cc import JaxCompiler
+from mplang.ops.jax_cc import JaxRunner
 from mplang.simp import mpi, smpc
 
 # Automatic transfer between devices when parameter is not on the target device.
@@ -82,7 +82,7 @@ _is_mpobj = lambda x: isinstance(x, MPObject)
 def _device_run_spu(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
-    if not isinstance(op, JaxCompiler):
+    if not isinstance(op, JaxRunner):
         raise ValueError("SPU device only supports JAX frontend.")
     fn, *aargs = args
     var = smpc.srun(fn)(*aargs, **kwargs)
@@ -92,7 +92,7 @@ def _device_run_spu(
 def _device_run_tee(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
-    if not isinstance(op, JaxCompiler) and not isinstance(op, IbisCompiler):
+    if not isinstance(op, JaxRunner) and not isinstance(op, IbisCompiler):
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
@@ -159,11 +159,9 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
                 return _device_run(dev_id, fn, *args, **kwargs)
             else:
                 if fe_type == "jax":
-                    return _device_run(dev_id, jax_cc.jax_compile, fn, *args, **kwargs)
+                    return _device_run(dev_id, jax_cc.run_jax, fn, *args, **kwargs)
                 elif fe_type == "ibis":
-                    return _device_run(
-                        dev_id, ibis_cc.ibis_compile, fn, *args, **kwargs
-                    )
+                    return _device_run(dev_id, ibis_cc.run_ibis, fn, *args, **kwargs)
                 else:
                     raise ValueError(f"Unsupported frontend type: {fe_type}")
 

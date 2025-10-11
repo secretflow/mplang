@@ -27,20 +27,20 @@ from mplang.ops import phe as phe
 from mplang.ops import spu as spu
 from mplang.ops import tee as tee
 from mplang.ops.base import FeOperation as FeOperation
-from mplang.ops.ibis_cc import ibis_compile as ibis_compile
-from mplang.ops.jax_cc import jax_compile as jax_compile
-from mplang.ops.sql import sql_run as sql_run
+from mplang.ops.ibis_cc import run_ibis as run_ibis
+from mplang.ops.jax_cc import run_jax as run_jax
+from mplang.ops.sql import run_sql as run_sql
 
 __all__ = [
     "FeOperation",
     "builtin",
     "crypto",
     "ibis_cc",
-    "ibis_compile",
     "jax_cc",
-    "jax_compile",
     "phe",
+    "run_ibis",
+    "run_jax",
+    "run_sql",
     "spu",
-    "sql_run",
     "tee",
 ]

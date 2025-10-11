@@ -133,11 +133,61 @@ def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
     return wrapped
 
 
-primitive = partial(trace_before_apply, make_call=True)
-primitive.__doc__ = """Decorator to trace a Python function as an opaque primitive call (`CallExpr`) in the expression graph.\n\nWhen a function decorated with `@primitive` is called within a `TraceContext`, it is not inlined. Instead, it is traced separately in a forked context, and a `CallExpr` node is inserted into the main graph. This is useful for encapsulating complex operations or third-party library calls as single, opaque nodes.\n"""
+def primitive(fn: Callable[P, R]) -> Callable[P, R]:
+    """Decorator to trace a Python function as an opaque primitive call (`CallExpr`).
 
-function = partial(trace_before_apply, make_call=False)
-function.__doc__ = """Decorator to trace a Python function by inlining its body into the current expression graph.\n\nWhen a function decorated with `@function` is called within a `TraceContext`, its underlying primitive operations are expanded and inserted directly into the caller's graph. This is the default tracing behavior and is suitable for most pure-Python multi-party functions.\n"""
+    When a function decorated with `@primitive` is called within a `TraceContext`, it is
+    not inlined. Instead, it is traced separately in a forked context, and a `CallExpr`
+    node is inserted into the main graph. This is useful for encapsulating complex
+    operations or third-party library calls as single, opaque nodes.
+
+    **Implementation Note:**
+    A `CallExpr` represents a call to a single inline lambda (non-recursive, as we don't
+    have Y-combinator support). This single lambda call can be treated as a "primitive call"
+    by the printer/visualizer - hence the name "primitive". The function body is captured
+    once during tracing and represented as an opaque callable unit in the expression graph,
+    maintaining a clear boundary between the caller and callee contexts.
+
+    Args:
+        fn: The function to be traced as a primitive operation.
+
+    Returns:
+        A wrapped function that creates a `CallExpr` node when called in a trace context.
+
+    Example:
+        ```python
+        @primitive
+        def my_op(x: MPObject) -> MPObject:
+            # Complex logic traced as a single CallExpr node
+            return x + 1
+        ```
+    """
+    return trace_before_apply(fn, make_call=True)
+
+
+def function(fn: Callable[P, R]) -> Callable[P, R]:
+    """Decorator to trace a Python function by inlining its body.
+
+    When a function decorated with `@function` is called within a `TraceContext`, its
+    underlying primitive operations are expanded and inserted directly into the caller's
+    graph. This is the default tracing behavior and is suitable for most pure-Python
+    multi-party functions.
+
+    Args:
+        fn: The function to be traced and inlined.
+
+    Returns:
+        A wrapped function that inlines its operations into the caller's trace context.
+
+    Example:
+        ```python
+        @function
+        def my_func(x: MPObject, y: MPObject) -> MPObject:
+            # Operations are inlined into the caller's trace
+            return x + y * constant(2)
+        ```
+    """
+    return trace_before_apply(fn, make_call=False)
 
 
 # ============================================================================

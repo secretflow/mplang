@@ -134,8 +134,10 @@ def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
 
 
 primitive = partial(trace_before_apply, make_call=True)
+primitive.__doc__ = """Decorator to trace a Python function as an opaque primitive call (`CallExpr`) in the expression graph.\n\nWhen a function decorated with `@primitive` is called within a `TraceContext`, it is not inlined. Instead, it is traced separately in a forked context, and a `CallExpr` node is inserted into the main graph. This is useful for encapsulating complex operations or third-party library calls as single, opaque nodes.\n"""
 
 function = partial(trace_before_apply, make_call=False)
+function.__doc__ = """Decorator to trace a Python function by inlining its body into the current expression graph.\n\nWhen a function decorated with `@function` is called within a `TraceContext`, its underlying primitive operations are expanded and inserted directly into the caller's graph. This is the default tracing behavior and is suitable for most pure-Python multi-party functions.\n"""
 
 
 # ============================================================================

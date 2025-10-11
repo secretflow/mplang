@@ -42,6 +42,7 @@ from mplang.runtime.session import (
     Computation,
     Session,
     Symbol,
+    session_from_cluster_spec_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -262,15 +263,13 @@ def list_session_computations(session_name: str) -> ComputationListResponse:
 def create_session(session_name: str, request: CreateSessionRequest) -> SessionResponse:
     validate_name(session_name, "session")
     # Delegate cluster spec parsing & session construction to resource layer
-    from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
 
     if session_name in _sessions:
         sess = _sessions[session_name]
     else:
-        spec = ClusterSpec.from_dict(request.cluster_spec)
-        if len(spec.get_devices_by_kind("SPU")) == 0:
-            raise InvalidRequestError("No SPU device found in cluster_spec for session")
-        sess = Session(name=session_name, rank=request.rank, cluster_spec=spec)
+        sess = session_from_cluster_spec_dict(
+            name=session_name, rank=request.rank, spec_dict=request.cluster_spec
+        )
         _sessions[session_name] = sess
     return SessionResponse(name=sess.name)
 

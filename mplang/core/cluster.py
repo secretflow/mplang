@@ -20,6 +20,7 @@ MPLang cluster configuration.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 
@@ -168,6 +169,19 @@ class ClusterSpec:
                 name: device.to_dict() for name, device in self.devices.items()
             },
         }
+
+    @cached_property
+    def endpoints(self) -> list[str]:
+        eps: list[str] = []
+        for n in sorted(
+            self.nodes.values(),
+            key=lambda x: x.rank,  # type: ignore[attr-defined]
+        ):
+            ep = n.endpoint
+            if not ep.startswith(("http://", "https://")):
+                ep = f"http://{ep}"
+            eps.append(ep)
+        return eps
 
     @classmethod
     def from_dict(cls, config: dict[str, Any]) -> ClusterSpec:

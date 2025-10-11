@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 
 import spu.libspu as libspu
 
+from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
@@ -101,14 +102,18 @@ class Session:
     Mutable: state (runtime object, symbols, computations, seeded flag).
     """
 
-    def __init__(self, name: str, rank: int, cluster_spec: ClusterSpec):
+    def __init__(
+        self,
+        name: str,
+        rank: int,
+        cluster_spec: ClusterSpec,
+        communicator: ICommunicator,
+    ):
         self.name = name
         self.rank = rank
         self.cluster_spec = cluster_spec
         self.state = SessionState()
-        self.communicator = HttpCommunicator(
-            session_name=name, rank=rank, endpoints=self.endpoints
-        )
+        self.communicator = communicator
 
     # --- Derived topology ---
     @cached_property
@@ -191,7 +196,7 @@ class Session:
         if self.is_spu_party:
             # Build SPU address list across all endpoints for ranks in mask
             spu_addrs: list[str] = []
-            for r, addr in enumerate(self.communicator.endpoints):
+            for r, addr in enumerate(self.cluster_spec.endpoints):
                 if r in self.spu_mask:
                     if "//" not in addr:
                         addr = f"//{addr}"
@@ -282,12 +287,20 @@ class Session:
                 )
             self.add_symbol(Symbol(name=name, mptype={}, data=val))
 
-    # --- Convenience constructor ---
-    @classmethod
-    def from_cluster_spec_dict(cls, name: str, rank: int, spec_dict: dict) -> Session:
-        from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
 
-        spec = ClusterSpec.from_dict(spec_dict)
-        if len(spec.get_devices_by_kind("SPU")) == 0:
-            raise RuntimeError("No SPU device found in cluster_spec")
-        return cls(name=name, rank=rank, cluster_spec=spec)
+# --- Convenience constructor use Httpcommunicator---
+def session_from_cluster_spec_dict(name: str, rank: int, spec_dict: dict) -> Session:
+    from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
+
+    spec = ClusterSpec.from_dict(spec_dict)
+    if len(spec.get_devices_by_kind("SPU")) == 0:
+        raise RuntimeError("No SPU device found in cluster_spec")
+
+    # Create HttpCommunicator for the session
+    communicator = HttpCommunicator(
+        session_name=name,
+        rank=rank,
+        endpoints=spec.endpoints,
+    )
+
+    return Session(name=name, rank=rank, cluster_spec=spec, communicator=communicator)

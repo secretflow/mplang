@@ -49,7 +49,7 @@ def _ensure_impl_imported() -> None:
 # imports consolidated above
 
 _DEFAULT_BINDINGS: dict[str, str] = {
-    # std
+    # basic
     "basic.identity": "basic.identity",
     "basic.read": "basic.read",
     "basic.write": "basic.write",

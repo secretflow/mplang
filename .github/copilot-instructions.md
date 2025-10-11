@@ -41,7 +41,7 @@ Concise guidance for AI coding agents working in this repo. Keep answers specifi
 ## Good starting references (read these before changes)
 - How primitives build IR: `mplang/core/primitive.py` (see `peval`, `prand`, `constant`, `cond`).
 - Context behavior: `mplang/core/tracer.py`, `mplang/core/interp.py`, and `_switch_ctx` in `primitive.py`.
-- Runtime simulation and E2E: mplang/runtime/simulation.py, tutorials/*.py, tests in tests/** (e.g., tests/kernels/test_builtin.py).
+- Runtime simulation and E2E: mplang/runtime/simulation.py, tutorials/*.py, tests in tests/** (e.g., tests/kernels/test_basic.py).
 
 ## Do/Don’t (project-specific)
 - Do add new high-level APIs by composing existing primitives instead of bypassing trace/IR.

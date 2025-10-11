@@ -48,6 +48,10 @@ class ICommunicator(ABC):
     def recv(self, frm: int, key: str) -> Any:
         """Receive data from peer with the given key"""
 
+    @abstractmethod
+    def onSent(self, frm: int, key: str, data: Any) -> None:
+        """Called when a key is sent to self"""
+
 
 class ICollective(ABC):
     """Interface for collective communication"""

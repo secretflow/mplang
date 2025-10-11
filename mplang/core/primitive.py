@@ -274,9 +274,6 @@ def prand(shape: Shape = ()) -> MPObject:
     pfunc, eval_args, out_tree = basic.prand(shape)
     results = peval(pfunc, eval_args)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
-    pfunc, eval_args, out_tree = basic.prand(shape)
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
 def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:

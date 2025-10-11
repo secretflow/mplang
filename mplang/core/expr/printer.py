@@ -164,13 +164,9 @@ class Printer(ExprVisitor):
         arg_names = [self._var_name(arg) for arg in expr.args]
         fn_type = expr.pfunc.fn_type
 
-        # for well known builtin functions
-        if fn_type == "builtin.constant":
+        # for well known std functions
+        if fn_type == "basic.constant":
             return self._print_const(expr.pfunc, expr.mptypes)
-        elif fn_type == "builtin.rank":
-            return self._do_print("prank", [], mptypes=expr.mptypes)
-        elif fn_type == "builtin.prand":
-            return self._do_print("prand", [], mptypes=expr.mptypes)
 
         attrs = {"fn_type": fn_type}
         if expr.pfunc.fn_name:

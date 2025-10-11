@@ -24,7 +24,7 @@ from mplang.core.dtype import UINT8, DType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
 from mplang.kernels.value import TableValue
-from mplang.ops import builtin
+from mplang.ops import basic
 
 
 @pytest.mark.integration
@@ -36,8 +36,8 @@ def test_builtin_pack_unpack_tensor_runtime() -> None:
     @mplang.function
     def fn():
         x = simp.runAt(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))()
-        packed = simp.runAt(0, builtin.pack)(x)
-        unpacked = simp.runAt(0, builtin.unpack)(packed, out_ty=tensor_ty)
+        packed = simp.runAt(0, basic.pack)(x)
+        unpacked = simp.runAt(0, basic.unpack)(packed, out_ty=tensor_ty)
         return x, packed, unpacked
 
     x, packed, unpacked = mplang.evaluate(sim, fn)
@@ -64,8 +64,8 @@ def test_builtin_pack_unpack_table_runtime() -> None:
     @mplang.function
     def fn():
         table = simp.constant(pd.DataFrame(data))
-        packed = simp.runAt(0, builtin.pack)(table)
-        unpacked = simp.runAt(0, builtin.unpack)(packed, out_ty=table_schema)
+        packed = simp.runAt(0, basic.pack)(table)
+        unpacked = simp.runAt(0, basic.unpack)(packed, out_ty=table_schema)
         return packed, unpacked
 
     packed, unpacked = mplang.evaluate(sim, fn)

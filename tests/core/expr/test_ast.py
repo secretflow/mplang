@@ -233,7 +233,7 @@ class TestCallExpr:
         arg_mptype = MPType.tensor(FLOAT32, (2, 3), pmask_2p)
         arg = VariableExpr("arg", arg_mptype)
 
-        expr = CallExpr(func, [arg])
+        expr = CallExpr("test", func, [arg])
 
         # The call should have the correct structure
         assert isinstance(expr.fn, FuncDefExpr)

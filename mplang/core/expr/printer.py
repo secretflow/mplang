@@ -50,11 +50,13 @@ class Printer(ExprVisitor):
         compact_format: bool = True,
         *,
         verbose_peval: bool = False,
+        inline_pcall: bool = True,
     ):
         super().__init__()  # Initialize MemorizedVisitor
         self.indent_size = indent_size
         self.compact_format = compact_format
         self.verbose_peval = verbose_peval
+        self.inline_pcall = inline_pcall
         self._cur_indent = 0
         self._output: list[str] = []
         self._visited: dict[Expr, str] = {}
@@ -92,6 +94,7 @@ class Printer(ExprVisitor):
                 body_printer = Printer(
                     indent_size=self.indent_size,
                     compact_format=self.compact_format,
+                    inline_pcall=self.inline_pcall,
                 )
                 func_def_expr.accept(body_printer)
                 regions_str += f"{indent}{r_name}: "
@@ -209,12 +212,19 @@ class Printer(ExprVisitor):
 
     def visit_call(self, expr: CallExpr) -> str:
         arg_names = [self._var_name(arg) for arg in expr.args]
-        return self._do_print(
-            "pcall",
-            arg_names,
-            regions={"fn": expr.fn},
-            mptypes=expr.mptypes,
-        )
+        if self.inline_pcall:
+            return self._do_print(
+                expr.name,
+                arg_names,
+                mptypes=expr.mptypes,
+            )
+        else:
+            return self._do_print(
+                "pcall",
+                arg_names,
+                regions={"fn": expr.fn},
+                mptypes=expr.mptypes,
+            )
 
     def visit_while(self, expr: WhileExpr) -> str:
         arg_names = [self._var_name(arg) for arg in expr.args]

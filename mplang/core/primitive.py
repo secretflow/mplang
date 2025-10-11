@@ -32,6 +32,7 @@ from mplang.core.context_mgr import cur_ctx
 from mplang.core.dtype import BOOL
 from mplang.core.expr.ast import (
     AccessExpr,
+    CallExpr,
     CondExpr,
     ConvExpr,
     EvalExpr,
@@ -87,30 +88,106 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def primitive(fn: Callable[P, R]) -> Callable[P, R]:
+def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
     """A decorator to make all primitive call in trace context."""
 
     @wraps(fn)
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
         current_ctx = cur_ctx()
         if isinstance(current_ctx, TraceContext):
-            # If we are in a tracer context, just call the function.
-            # Note: switch_ctx will do the capture if needed.
-            args, kwargs = tree_map(partial(_switch_ctx, current_ctx), (args, kwargs))
-            return fn(*args, **kwargs)
+            # If we are already in a tracer context
+            if make_call:
+                # make a primitive call
+                tracer = current_ctx
+                tfn = trace(tracer.fork(), fn, *args, **kwargs)
+                is_mpobj = lambda x: isinstance(x, MPObject)
+                in_vars, in_imms, in_struct = var_morph((args, kwargs), is_mpobj)
+                assert in_struct == tfn.in_struct and in_imms == tfn.in_imms
+                arg_exprs = [arg.expr for arg in in_vars]
+                # re-capture all captured variables into current context if needed.
+                cap_exprs = [tracer.capture(var).expr for var in tfn.capture_map.keys()]
+                caller_expr = CallExpr(
+                    name=fn.__name__, fn=tfn.make_expr(), args=arg_exprs + cap_exprs
+                )
+                out_vars = [
+                    TraceVar(tracer, AccessExpr(caller_expr, idx))
+                    for idx in range(caller_expr.num_outputs)
+                ]
+                return cast(R, var_demorph(out_vars, tfn.out_imms, tfn.out_struct))
+            else:
+                # embed the function call in the current tracer context
+                # Note: switch_ctx will do the capture if needed.
+                args, kwargs = tree_map(
+                    partial(_switch_ctx, current_ctx), (args, kwargs)
+                )
+                return fn(*args, **kwargs)
         elif isinstance(current_ctx, InterpContext):
             trace_ctx = TraceContext(current_ctx.cluster_spec, parent=current_ctx)
             # TODO(jint): should we add trace_and_apply to improve the performance?
-            traced_fn = trace(trace_ctx, fn, *args, **kwargs)
+            tfn = trace(trace_ctx, fn, *args, **kwargs)
             # Return back to the original context.
-            return cast(R, apply(current_ctx, traced_fn, *args, **kwargs))
+            return cast(R, apply(current_ctx, tfn, *args, **kwargs))
         else:
             raise ValueError(f"Unsupported context type: {type(current_ctx)}")
 
     return wrapped
 
 
-function = primitive
+def primitive(fn: Callable[P, R]) -> Callable[P, R]:
+    """Decorator to trace a Python function as an opaque primitive call (`CallExpr`).
+
+    When a function decorated with `@primitive` is called within a `TraceContext`, it is
+    not inlined. Instead, it is traced separately in a forked context, and a `CallExpr`
+    node is inserted into the main graph. This is useful for encapsulating complex
+    operations or third-party library calls as single, opaque nodes.
+
+    **Implementation Note:**
+    A `CallExpr` represents a call to a single inline lambda (non-recursive, as we don't
+    have Y-combinator support). This single lambda call can be treated as a "primitive call"
+    by the printer/visualizer - hence the name "primitive". The function body is captured
+    once during tracing and represented as an opaque callable unit in the expression graph,
+    maintaining a clear boundary between the caller and callee contexts.
+
+    Args:
+        fn: The function to be traced as a primitive operation.
+
+    Returns:
+        A wrapped function that creates a `CallExpr` node when called in a trace context.
+
+    Example:
+        ```python
+        @primitive
+        def my_op(x: MPObject) -> MPObject:
+            # Complex logic traced as a single CallExpr node
+            return x + 1
+        ```
+    """
+    return trace_before_apply(fn, make_call=True)
+
+
+def function(fn: Callable[P, R]) -> Callable[P, R]:
+    """Decorator to trace a Python function by inlining its body.
+
+    When a function decorated with `@function` is called within a `TraceContext`, its
+    underlying primitive operations are expanded and inserted directly into the caller's
+    graph. This is the default tracing behavior and is suitable for most pure-Python
+    multi-party functions.
+
+    Args:
+        fn: The function to be traced and inlined.
+
+    Returns:
+        A wrapped function that inlines its operations into the caller's trace context.
+
+    Example:
+        ```python
+        @function
+        def my_func(x: MPObject, y: MPObject) -> MPObject:
+            # Operations are inlined into the caller's trace
+            return x + y * constant(2)
+        ```
+    """
+    return trace_before_apply(fn, make_call=False)
 
 
 # ============================================================================
@@ -126,18 +203,15 @@ def _tracer() -> TraceContext:
     return ctx
 
 
-@primitive
 def psize() -> int:
     """Get the size of the current party world.
 
     Returns:
         int: The total number of parties in the current multi-party computation context.
     """
-    ctx = _tracer()
-    return ctx.world_size()
+    return cur_ctx().world_size()
 
 
-@primitive
 def pmask() -> Mask:
     """Get the current party mask in this computation context.
 
@@ -145,8 +219,7 @@ def pmask() -> Mask:
         Mask: The current party mask indicating which parties are active
               in the current computation context.
     """
-    ctx = _tracer()
-    return ctx.mask
+    return _tracer().mask
 
 
 @primitive
@@ -203,7 +276,6 @@ def prand(shape: Shape = ()) -> MPObject:
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
-@primitive
 def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
     """Create a constant tensor or table from data.
 
@@ -250,7 +322,7 @@ def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
-@primitive
+@function
 def peval(
     pfunc: PFunction,
     args: list[MPObject],
@@ -378,7 +450,7 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
-@primitive
+@function
 def uniform_cond(
     pred: MPObject,
     then_fn: Callable[..., Any],
@@ -588,7 +660,7 @@ def uniform_cond(
     return var_demorph(out_vars, then_tfn.out_imms, then_tfn.out_struct)  # type: ignore[no-any-return]
 
 
-@primitive
+@function
 def while_loop(
     cond_fn: Callable[[Any], MPObject],
     body_fn: Callable[[Any], Any],
@@ -781,7 +853,7 @@ def while_loop(
     return var_demorph(out_vars, body_tfn.out_imms, body_tfn.out_struct)
 
 
-@primitive
+@function
 def pshfl(src: MPObject, index: MPObject) -> MPObject:
     """Shuffle the input tensor to the specified index (dynamic version).
 
@@ -851,7 +923,7 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
     return TraceVar(_tracer(), shfl_expr)
 
 
-@primitive
+@function
 def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
     """Shuffle the input tensor to the specified rank, static version.
 
@@ -910,7 +982,7 @@ def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
     return TraceVar(_tracer(), shfl_s_expr)
 
 
-@primitive
+@function
 def pconv(vars: list[MPObject]) -> MPObject:
     """Combine multiple variables that share the same dtype and shape into one.
 

@@ -491,6 +491,7 @@ class Writer:
             op = self._create_node_proto(expr, "call")
             self._add_single_expr_inputs(op, expr.fn)
             self._add_expr_inputs(op, *expr.args)
+            self._add_attrs(op, name=expr.name)
             self._finalize_node(op, expr)
         elif isinstance(expr, WhileExpr):
             op = self._create_node_proto(expr, "while")
@@ -822,8 +823,12 @@ class Reader:
                 arg_exprs.append(self._value_cache[dep_name])
             else:
                 raise ValueError(f"Input {input_name} not found for call node")
+        # Optional call-site name attribute
+        call_name = None
+        if "name" in node_proto.attrs:
+            call_name = self._proto_to_attr(node_proto.attrs["name"])  # type: ignore[assignment]
 
-        return CallExpr(fn_expr, arg_exprs)
+        return CallExpr(call_name or "", fn_expr, arg_exprs)
 
     def _proto_to_mptype(self, type_proto: mpir_pb2.MPTypeProto) -> MPType:
         """Convert MPTypeProto to MPType."""

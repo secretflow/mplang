@@ -97,9 +97,11 @@ class SessionState:
 class Session:
     """Represents the per-rank execution context.
 
-    Immutable config: name, rank, cluster_spec.
+    Immutable config: name, rank, cluster_spec, communicator.
     Derived: node, runtime_info, endpoints, spu_device, spu_mask, protocol/field, is_spu_party.
     Mutable: state (runtime object, symbols, computations, seeded flag).
+
+    Note: communicator is assumed to be initialized with cluster spec info (e.g. endpoints).
     """
 
     def __init__(
@@ -124,14 +126,9 @@ class Session:
     def runtime_info(self) -> RuntimeInfo:
         return self.node.runtime_info
 
-    @cached_property
+    @property
     def endpoints(self) -> list[str]:
-        eps: list[str] = []
-        for ep in self.cluster_spec.endpoints:
-            if not ep.startswith(("http://", "https://")):
-                endpoint = f"http://{ep}"
-            eps.append(endpoint)
-        return eps
+        return self.cluster_spec.endpoints
 
     @cached_property
     def spu_device(self):  # type: ignore
@@ -192,10 +189,11 @@ class Session:
         if self.is_spu_party:
             # Build SPU address list across all endpoints for ranks in mask
             spu_addrs: list[str] = []
-            for r, addr in enumerate(self.endpoints):
+            for r, addr in enumerate(self.cluster_spec.endpoints):
                 if r in self.spu_mask:
-                    if "//" not in addr:
-                        addr = f"//{addr}"
+                    # TODO(oeqqwq): addr may contain other schema like grpc://
+                    if not addr.startswith(("http://", "https://")):
+                        addr = f"http://{addr}"
                     parsed = urlparse(addr)
                     assert isinstance(parsed.port, int)
                     new_addr = f"{parsed.hostname}:{parsed.port + SPU_PORT_OFFSET}"

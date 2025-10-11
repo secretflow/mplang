@@ -13,7 +13,7 @@ Concise guidance for AI coding agents working in this repo. Keep answers specifi
    - `mpobject.py`, `mptype.py`, `dtype.py`, `tensor.py`, `table.py`, `pfunc.py`, `mask.py`.
 - Expression AST: `mplang/core/expr/` (Expr nodes used by tracing; see imports in `primitive.py`).
 - Runtime: `mplang/runtime/` (`simulation.py` for local multi-threaded runs, `driver.py`, `server.py`, `client.py`, `communicator.py`).
-- Frontends/Backends: `mplang/ops/*` (std, jax_cc, ibis_cc, etc.) and `mplang/kernels/*` (std, spu, phe, sql_duckdb, stablehlo).
+- Frontends/Backends: `mplang/ops/*` (basic, jax_cc, ibis_cc, etc.) and `mplang/kernels/*` (std, spu, phe, sql_duckdb, stablehlo).
 - Devices API: `mplang/device.py` (device placement/transforms).
 - Low-level party API: `mplang/simp/*` (MPI-style ops, random, smpc) — used when you need rank-level control.
 - Public API surface: `mplang/__init__.py` (re-exports: `function`, `compile`, `evaluate`, `fetch`, `Simulator`, etc.).

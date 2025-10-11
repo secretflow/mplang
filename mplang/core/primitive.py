@@ -136,7 +136,7 @@ def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
 def bltin_function(fn: Callable[P, R]) -> Callable[P, R]:
     """Decorator to trace a Python function as an opaque primitive call (`CallExpr`).
 
-    When a function decorated with `@primitive` is called within a `TraceContext`, it is
+    When a function decorated with `@bltin_function` is called within a `TraceContext`, it is
     not inlined. Instead, it is traced separately in a forked context, and a `CallExpr`
     node is inserted into the main graph. This is useful for encapsulating complex
     operations or third-party library calls as single, opaque nodes.
@@ -156,7 +156,7 @@ def bltin_function(fn: Callable[P, R]) -> Callable[P, R]:
 
     Example:
         ```python
-        @primitive
+        @bltin_function
         def my_op(x: MPObject) -> MPObject:
             # Complex logic traced as a single CallExpr node
             return x + 1

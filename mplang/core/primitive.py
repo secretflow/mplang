@@ -48,7 +48,7 @@ from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike
 from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.tracer import TraceContext, TraceVar, trace
-from mplang.ops import builtin
+from mplang.ops import basic
 from mplang.utils.func_utils import var_demorph, var_morph
 
 
@@ -133,10 +133,10 @@ def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
     return wrapped
 
 
-def primitive(fn: Callable[P, R]) -> Callable[P, R]:
+def bltin_function(fn: Callable[P, R]) -> Callable[P, R]:
     """Decorator to trace a Python function as an opaque primitive call (`CallExpr`).
 
-    When a function decorated with `@primitive` is called within a `TraceContext`, it is
+    When a function decorated with `@bltin_function` is called within a `TraceContext`, it is
     not inlined. Instead, it is traced separately in a forked context, and a `CallExpr`
     node is inserted into the main graph. This is useful for encapsulating complex
     operations or third-party library calls as single, opaque nodes.
@@ -156,7 +156,7 @@ def primitive(fn: Callable[P, R]) -> Callable[P, R]:
 
     Example:
         ```python
-        @primitive
+        @bltin_function
         def my_op(x: MPObject) -> MPObject:
             # Complex logic traced as a single CallExpr node
             return x + 1
@@ -222,7 +222,7 @@ def pmask() -> Mask:
     return _tracer().mask
 
 
-@primitive
+@bltin_function
 def prank() -> MPObject:
     """Multi-party get the rank (party identifier) of each party.
 
@@ -243,12 +243,12 @@ def prank() -> MPObject:
     Note:
         Each party in the current party mask independently produces its own rank value.
     """
-    pfunc, eval_args, out_tree = builtin.rank()
+    pfunc, eval_args, out_tree = basic.rank()
     results = peval(pfunc, eval_args)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
-@primitive
+@bltin_function
 def prand(shape: Shape = ()) -> MPObject:
     """Multi-party generate a private random (uint64) tensor with the given shape.
 
@@ -271,7 +271,7 @@ def prand(shape: Shape = ()) -> MPObject:
         private random values. The randomness is local to each party and is
         not shared or revealed to other parties.
     """
-    pfunc, eval_args, out_tree = builtin.prand(shape)
+    pfunc, eval_args, out_tree = basic.prand(shape)
     results = peval(pfunc, eval_args)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
@@ -305,19 +305,19 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
         Note that the constant primitive is not designed to carry large tables efficiently -
         consider using dedicated table loading mechanisms for substantial datasets.
     """
-    pfunc, eval_args, out_tree = builtin.constant(data)
+    pfunc, eval_args, out_tree = basic.constant(data)
     results = peval(pfunc, eval_args)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
 
-@primitive
+@bltin_function
 def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
     """Print local value of obj on owning parties and pass it through.
 
     Returns the same MPObject value to keep it alive against DCE and to
     support usage like: x = debug_print(x, prefix="x=").
     """
-    pfunc, eval_args, out_tree = builtin.debug_print(obj, prefix=prefix)
+    pfunc, eval_args, out_tree = basic.debug_print(obj, prefix=prefix)
     results = peval(pfunc, eval_args)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 
@@ -445,7 +445,7 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
         The underlying implementation uses JAX identity function with the
         specified execution mask.
     """
-    pfunc, eval_args, out_tree = builtin.identity(arg)
+    pfunc, eval_args, out_tree = basic.identity(arg)
     results = peval(pfunc, eval_args, mask)
     return out_tree.unflatten(results)  # type: ignore[no-any-return]
 

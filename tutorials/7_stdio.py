@@ -18,7 +18,7 @@ import numpy as np
 import mplang
 import mplang.simp as simp
 from mplang.core import TensorType
-from mplang.ops import builtin
+from mplang.ops import basic
 
 
 @mplang.function
@@ -27,8 +27,8 @@ def save_data():
     x = simp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
     y = simp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
 
-    x = simp.runAt(0, builtin.write)(x, path="tmp/x.npy")
-    y = simp.runAt(1, builtin.write)(y, path="tmp/y.npy")
+    x = simp.runAt(0, basic.write)(x, path="tmp/x.npy")
+    y = simp.runAt(1, basic.write)(y, path="tmp/y.npy")
 
     return x, y
 
@@ -37,8 +37,8 @@ def save_data():
 def load_data():
     tensor_info = TensorType(shape=(2, 2), dtype=jnp.float32)
 
-    x = simp.runAt(0, builtin.read)(path="tmp/x.npy", ty=tensor_info)
-    y = simp.runAt(1, builtin.read)(path="tmp/y.npy", ty=tensor_info)
+    x = simp.runAt(0, basic.read)(path="tmp/x.npy", ty=tensor_info)
+    y = simp.runAt(1, basic.read)(path="tmp/y.npy", ty=tensor_info)
 
     x_ = simp.sealFrom(x, 0)
     y_ = simp.sealFrom(y, 1)

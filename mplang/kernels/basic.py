@@ -25,17 +25,17 @@ from mplang.runtime.data_providers import get_provider, resolve_uri
 from mplang.utils import table_utils
 
 
-@kernel_def("builtin.identity")
+@kernel_def("basic.identity")
 def _identity(pfunc: PFunction, value: Value) -> Value:
     # Runtime guarantees exactly one argument; no extra arity checks here.
     return value
 
 
-@kernel_def("builtin.read")
+@kernel_def("basic.read")
 def _read(pfunc: PFunction) -> Value:
     path = pfunc.attrs.get("path")
     if path is None:
-        raise ValueError("missing path attr for builtin.read")
+        raise ValueError("missing path attr for basic.read")
     out_t = pfunc.outs_info[0]
     uri = resolve_uri(str(path))
     prov = get_provider(uri.scheme)
@@ -45,7 +45,7 @@ def _read(pfunc: PFunction) -> Value:
     try:
         data = prov.read(uri, out_t, ctx=ctx)
     except Exception as e:  # pragma: no cover - provider errors
-        raise RuntimeError(f"builtin.read failed: {e}") from e
+        raise RuntimeError(f"basic.read failed: {e}") from e
 
     if isinstance(out_t, TableType):
         if isinstance(data, TableValue):
@@ -56,15 +56,15 @@ def _read(pfunc: PFunction) -> Value:
             return data
         return TensorValue(np.asarray(data))
     raise TypeError(
-        f"builtin.read only supports TableType/TensorType outputs, got {type(out_t).__name__}"
+        f"basic.read only supports TableType/TensorType outputs, got {type(out_t).__name__}"
     )
 
 
-@kernel_def("builtin.write")
+@kernel_def("basic.write")
 def _write(pfunc: PFunction, obj: Value) -> Value:
     path = pfunc.attrs.get("path")
     if path is None:
-        raise ValueError("missing path attr for builtin.write")
+        raise ValueError("missing path attr for basic.write")
     uri = resolve_uri(str(path))
     prov = get_provider(uri.scheme)
     if prov is None:
@@ -74,16 +74,16 @@ def _write(pfunc: PFunction, obj: Value) -> Value:
     try:
         prov.write(uri, obj, ctx=ctx)
     except Exception as e:  # pragma: no cover
-        raise RuntimeError(f"builtin.write failed: {e}") from e
+        raise RuntimeError(f"basic.write failed: {e}") from e
     return obj
 
 
-@kernel_def("builtin.constant")
+@kernel_def("basic.constant")
 def _constant(pfunc: PFunction) -> Value:
     """Return constants as Value types (TensorValue or TableValue)."""
     data_bytes = pfunc.attrs.get("data_bytes")
     if data_bytes is None:
-        raise ValueError("missing data_bytes attr for builtin.constant")
+        raise ValueError("missing data_bytes attr for basic.constant")
     out_t = pfunc.outs_info[0]
     fmt = pfunc.attrs.get("data_format")
     if isinstance(out_t, TableType):
@@ -98,7 +98,7 @@ def _constant(pfunc: PFunction) -> Value:
     return TensorValue(arr)
 
 
-@kernel_def("builtin.rank")
+@kernel_def("basic.rank")
 def _rank(pfunc: PFunction) -> TensorValue:
     """Return rank as TensorValue."""
     ctx = cur_kctx()
@@ -106,7 +106,7 @@ def _rank(pfunc: PFunction) -> TensorValue:
     return TensorValue(arr)
 
 
-@kernel_def("builtin.prand")
+@kernel_def("basic.prand")
 def _prand(pfunc: PFunction) -> TensorValue:
     """Return random data as TensorValue."""
     shape = pfunc.attrs.get("shape", ())
@@ -118,7 +118,7 @@ def _prand(pfunc: PFunction) -> TensorValue:
     return TensorValue(data)
 
 
-@kernel_def("builtin.table_to_tensor")
+@kernel_def("basic.table_to_tensor")
 def _table_to_tensor(pfunc: PFunction, table: TableValue) -> TensorValue:
     """Convert table to tensor, return as TensorValue."""
     arrow_table = table.to_arrow()
@@ -131,7 +131,7 @@ def _table_to_tensor(pfunc: PFunction, table: TableValue) -> TensorValue:
     return TensorValue(mat)
 
 
-@kernel_def("builtin.tensor_to_table")
+@kernel_def("basic.tensor_to_table")
 def _tensor_to_table(pfunc: PFunction, tensor: TensorValue) -> TableValue:
     """Convert tensor to table, return as TableValue."""
     import pyarrow as pa  # type: ignore
@@ -168,7 +168,7 @@ def _summ(v: Value) -> str:
         return f"<unprintable {type(v).__name__}: {e}>"
 
 
-@kernel_def("builtin.debug_print")
+@kernel_def("basic.debug_print")
 def _debug_print(pfunc: PFunction, val: Value) -> Value:
     prefix = pfunc.attrs.get("prefix", "")
     ctx = cur_kctx()
@@ -176,16 +176,16 @@ def _debug_print(pfunc: PFunction, val: Value) -> Value:
     return val
 
 
-@kernel_def("builtin.pack")
+@kernel_def("basic.pack")
 def _pack(pfunc: PFunction, value: Value) -> TensorValue:
     outs_info = pfunc.outs_info
     if len(outs_info) != 1:
-        raise ValueError("builtin.pack expects single output type")
+        raise ValueError("basic.pack expects single output type")
     out_ty = outs_info[0]
     if not isinstance(out_ty, TensorType):
-        raise TypeError("builtin.pack must return TensorType")
+        raise TypeError("basic.pack must return TensorType")
     if out_ty.dtype.numpy_dtype() != np.uint8:
-        raise TypeError("builtin.pack output dtype must be uint8")
+        raise TypeError("basic.pack output dtype must be uint8")
 
     if isinstance(value, TableValue):
         # Serialize Arrow table using IPC stream for consistency with Value serde
@@ -203,14 +203,14 @@ def _pack(pfunc: PFunction, value: Value) -> TensorValue:
         arr = value.to_numpy()
         return TensorValue(np.frombuffer(arr.tobytes(order="C"), dtype=np.uint8))
 
-    raise TypeError(f"builtin.pack does not support Value type {type(value).__name__}")
+    raise TypeError(f"basic.pack does not support Value type {type(value).__name__}")
 
 
-@kernel_def("builtin.unpack")
+@kernel_def("basic.unpack")
 def _unpack(pfunc: PFunction, packed: TensorValue) -> Value:
     outs_info = pfunc.outs_info
     if len(outs_info) != 1:
-        raise ValueError("builtin.unpack expects single output type")
+        raise ValueError("basic.unpack expects single output type")
     out_ty = outs_info[0]
 
     b = packed.to_numpy().astype(np.uint8, copy=False).reshape(-1)
@@ -219,7 +219,7 @@ def _unpack(pfunc: PFunction, packed: TensorValue) -> Value:
         np_dtype = out_ty.dtype.numpy_dtype()
         shape = tuple(out_ty.shape)
         if any(dim < 0 for dim in shape):
-            raise ValueError("builtin.unpack does not support dynamic tensor shapes")
+            raise ValueError("basic.unpack does not support dynamic tensor shapes")
         elem_count = int(np.prod(shape))
         expected = elem_count * np.dtype(np_dtype).itemsize
         if b.size != expected:
@@ -239,4 +239,4 @@ def _unpack(pfunc: PFunction, packed: TensorValue) -> Value:
         table = reader.read_all()
         return TableValue(table)
 
-    raise TypeError("builtin.unpack output type must be TensorType or TableType")
+    raise TypeError("basic.unpack output type must be TensorType or TableType")

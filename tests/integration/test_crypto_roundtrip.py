@@ -23,7 +23,7 @@ import pytest
 import mplang
 import mplang.simp as simp
 from mplang.core.tensor import TensorType
-from mplang.ops import builtin, crypto
+from mplang.ops import basic, crypto
 
 pytestmark = pytest.mark.integration
 
@@ -78,8 +78,8 @@ def test_pack_unpack_roundtrip_various():
         outs = []
         for _idx, (shape, dt) in enumerate(shapes_dtypes):
             arr = simp.runAt(0, lambda s=shape, d=dt: np.zeros(s, dtype=d))()
-            packed = simp.runAt(0, builtin.pack)(arr)
-            unpacked = simp.runAt(0, builtin.unpack)(
+            packed = simp.runAt(0, basic.pack)(arr)
+            unpacked = simp.runAt(0, basic.unpack)(
                 packed, out_ty=TensorType.from_obj(arr)
             )
             outs.append(unpacked)

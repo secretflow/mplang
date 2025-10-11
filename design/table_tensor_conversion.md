@@ -27,8 +27,8 @@ Excluded (must be done upstream before calling these ops):
 
 | FEOp | fn_type | Direction | Inputs (runtime args) | Attributes (captured) | Output |
 |------|---------|-----------|-----------------------|------------------------|--------|
-| `table_to_tensor` | `builtin.table_to_tensor` | Table → Tensor | (table, number_rows:int) | none | `TensorType(d, (N,F))` where d is the shared column dtype |
-| `tensor_to_table` | `builtin.tensor_to_table` | Tensor → Table | (tensor, column_names:list[str]) | column_names | `TableType([(name,d) * F])` (names preserved order) |
+| `table_to_tensor` | `basic.table_to_tensor` | Table → Tensor | (table, number_rows:int) | none | `TensorType(d, (N,F))` where d is the shared column dtype |
+| `tensor_to_table` | `basic.tensor_to_table` | Tensor → Table | (tensor, column_names:list[str]) | column_names | `TableType([(name,d) * F])` (names preserved order) |
 
 Where:
 

@@ -22,7 +22,7 @@ Flow:
 
 This tests end-to-end interaction between:
  - Global symbol CRUD endpoints
- - ``builtin.read`` path using ``symbols://`` scheme
+ - ``basic.read`` path using ``symbols://`` scheme
  - Driver evaluation and fetch
  - HttpExecutorClient helpers for symbol CRUD
 """
@@ -40,7 +40,7 @@ from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.dtype import DType
 from mplang.core.tensor import TensorType
 from mplang.kernels.value import TensorValue
-from mplang.ops import builtin as fb
+from mplang.ops import basic as fb
 from mplang.runtime.client import HttpExecutorClient
 
 pytest_plugins = ("tests.utils.server_fixtures",)

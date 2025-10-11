@@ -33,7 +33,7 @@ class PFunction:
 
     PFunction serves as a unified interface for describing single-party computations
     in multi-party computing scenarios. It can represent both:
-    1. Built-in operations (e.g., "spu.makeshares", "builtin.read")
+    1. Built-in operations (e.g., "spu.makeshares", "basic.read")
     2. User-defined programmable functions with custom code
 
     The PFunction accepts a list of typed inputs (TensorType/TableType). For
@@ -47,7 +47,7 @@ class PFunction:
 
     Args:
         fn_type: The type/category identifier of this PFunction, indicating which
-            backend or handler should process it (e.g., "spu.makeshares", "builtin.read",
+            backend or handler should process it (e.g., "spu.makeshares", "basic.read",
             "mlir.stablehlo"). This serves as a routing mechanism for execution.
         ins_info: Type information for input parameters (TensorType or TableType)
         outs_info: Type information for output values (TensorType or TableType)

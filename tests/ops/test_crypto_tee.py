@@ -17,7 +17,7 @@ import numpy as np
 import mplang
 import mplang.simp as simp
 from mplang.core.tensor import TensorType
-from mplang.ops import builtin, crypto, tee
+from mplang.ops import basic, crypto, tee
 
 
 def _demo_flow():
@@ -55,8 +55,8 @@ def _demo_flow():
     # Encrypt data on clients
     x0 = simp.runAt(P0, lambda: np.array([10, 20, 30], dtype=np.uint8))()
     x1 = simp.runAt(P1, lambda: np.array([1, 2, 3], dtype=np.uint8))()
-    b0 = simp.runAt(P0, builtin.pack)(x0)
-    b1 = simp.runAt(P1, builtin.pack)(x1)
+    b0 = simp.runAt(P0, basic.pack)(x0)
+    b1 = simp.runAt(P1, basic.pack)(x1)
     c0 = simp.runAt(P0, crypto.enc)(b0, sess0_v)
     c1 = simp.runAt(P1, crypto.enc)(b1, sess1_v)
     c0_at_tee = simp.p2p(P0, P2, c0)
@@ -64,8 +64,8 @@ def _demo_flow():
     b0_at_tee = simp.runAt(P2, crypto.dec)(c0_at_tee, sess0_t)
     b1_at_tee = simp.runAt(P2, crypto.dec)(c1_at_tee, sess1_t)
 
-    p0 = simp.runAt(P2, builtin.unpack)(b0_at_tee, out_ty=TensorType.from_obj(x0))
-    p1 = simp.runAt(P2, builtin.unpack)(b1_at_tee, out_ty=TensorType.from_obj(x1))
+    p0 = simp.runAt(P2, basic.unpack)(b0_at_tee, out_ty=TensorType.from_obj(x0))
+    p1 = simp.runAt(P2, basic.unpack)(b1_at_tee, out_ty=TensorType.from_obj(x1))
     return p0, p1
 
 

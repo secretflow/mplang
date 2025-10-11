@@ -28,9 +28,10 @@ class SqlRunner(FeOperation):
         super().__init__(_SQL_MOD, "run")
         self._dialect = dialect
 
+    # TODO(jint): we should deduce out_type according to query and in_tables' schema
     def trace(
         self,
-        sql: str,
+        query: str,
         out_type: TableType,
         in_tables: dict[str, MPObject] | None = None,
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -48,7 +49,7 @@ class SqlRunner(FeOperation):
         pfn = PFunction(
             fn_type="sql.run",
             fn_name="",
-            fn_text=sql,
+            fn_text=query,
             ins_info=tuple(ins_info),
             outs_info=(out_type,),
             in_names=tuple(in_names),

@@ -96,7 +96,7 @@ _IBIS_MOD = stateless_mod("ibis")
 
 
 class IbisRunner(FeOperation):
-    """Ibis compiler frontend operation."""
+    """Ibis runner frontend operation."""
 
     def trace(
         self, func: Callable, *args: Any, **kwargs: Any

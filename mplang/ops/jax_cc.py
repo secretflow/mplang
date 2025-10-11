@@ -162,12 +162,12 @@ class JaxRunner(FeOperation):
         along with variable arguments for evaluation.
 
         Args:
-            func: The JAX function to compile
+            jax_fn: The JAX function to compile
             *args: Positional arguments to the function
             **kwargs: Keyword arguments to the function
 
         Returns:
-            tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
+            tuple[PFunction, list[MPObject], PyTreeDef]: The compiled PFunction, input variables, and output tree
         """
 
         def is_variable(arg: Any) -> bool:

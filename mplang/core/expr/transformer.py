@@ -79,7 +79,7 @@ class ExprTransformer(ExprVisitor):
     def visit_call(self, expr: CallExpr) -> Expr:
         # Transform child expressions first
         transformed_args = [arg.accept(self) for arg in expr.args]
-        new_expr = CallExpr(expr.fn, transformed_args)
+        new_expr = CallExpr(expr.name, expr.fn, transformed_args)
 
         if "call" in self.trans_rules:
             return self.trans_rules["call"](new_expr)

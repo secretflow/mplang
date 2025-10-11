@@ -341,10 +341,10 @@ class RecursiveEvaluator(EvalSemantic, ExprVisitor):
 
         # Only evaluate selected branch locally
         if bool(pred):
-            then_call = CallExpr(expr.then_fn, expr.args)
+            then_call = CallExpr("then", expr.then_fn, expr.args)
             return self._values(then_call)
         else:
-            else_call = CallExpr(expr.else_fn, expr.args)
+            else_call = CallExpr("else", expr.else_fn, expr.args)
             return self._values(else_call)
 
     def visit_call(self, expr: CallExpr) -> Any:

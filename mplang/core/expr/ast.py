@@ -528,8 +528,9 @@ class FuncDefExpr(Expr):
 class CallExpr(Expr):
     """Expression for function call."""
 
-    def __init__(self, fn: FuncDefExpr, args: list[Expr]):
+    def __init__(self, name: str, fn: FuncDefExpr, args: list[Expr]):
         super().__init__()
+        self.name = name
         self.fn = fn
         self.args = args
 

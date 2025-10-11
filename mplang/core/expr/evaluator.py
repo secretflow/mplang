@@ -27,8 +27,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-import numpy as np
-
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -234,11 +232,14 @@ class EvalSemantic:
         """Convert Value payloads to numpy/python equivalents when possible."""
         if value is None:
             return None
+
         if isinstance(value, Value):
             # Try to_numpy first for broader compatibility
             to_numpy = getattr(value, "to_numpy", None)
             if callable(to_numpy):
                 arr = to_numpy()
+                import numpy as np
+
                 if isinstance(arr, np.ndarray):
                     if arr.size == 1:
                         return arr.item()

@@ -288,7 +288,7 @@ class Session:
             self.add_symbol(Symbol(name=name, mptype={}, data=val))
 
 
-# --- Convenience constructor use Httpcommunicator---
+# --- Convenience constructor use HttpCommunicator---
 def session_from_cluster_spec_dict(name: str, rank: int, spec_dict: dict) -> Session:
     from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
 

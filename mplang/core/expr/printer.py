@@ -164,7 +164,7 @@ class Printer(ExprVisitor):
         arg_names = [self._var_name(arg) for arg in expr.args]
         fn_type = expr.pfunc.fn_type
 
-        # for well known std functions
+        # for well known basic functions
         if fn_type == "basic.constant":
             return self._print_const(expr.pfunc, expr.mptypes)
 

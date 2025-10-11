@@ -37,11 +37,11 @@ from mplang.core.mptype import Rank
 from mplang.core.primitive import (
     _switch_ctx,
     constant,
+    function,
     pconv,
     peval,
     prand,
     prank,
-    primitive,
     pshfl,
     pshfl_s,
     set_mask,
@@ -76,7 +76,7 @@ class TestPrimitiveDecorator:
     def test_primitive_decorator_basic(self, trace_context):
         """Test basic primitive decorator functionality."""
 
-        @primitive
+        @function
         def simple_func():
             return constant(42)
 
@@ -1156,7 +1156,7 @@ class TestCompleteExample:
     def test_complete_primitive_example(self, trace_context):
         """Complete example showing the complete testing pattern."""
 
-        @primitive
+        @function
         def example_computation():
             """Example multi-party computation function."""
             my_rank = prank()
@@ -1193,7 +1193,7 @@ class TestComplexExpressions:
     def test_complex_function(self, trace_context):
         """Test function combining multiple primitives."""
 
-        @primitive
+        @function
         def complex_func():
             prank()
             prand((2, 2))
@@ -1226,9 +1226,9 @@ class TestComplexExpressions:
     def test_nested_primitives(self, trace_context):
         """Test nested primitive calls."""
 
-        @primitive
+        @function
         def outer_func():
-            @primitive
+            @function
             def inner_func():
                 return constant(1)
 

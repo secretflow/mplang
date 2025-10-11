@@ -374,7 +374,7 @@ class TestComplexExpressions:
         # Create arguments using VariableExpr
         arg = VariableExpr("input", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
-        original = CallExpr(fn, [arg])
+        original = CallExpr("original", fn, [arg])
 
         writer = Writer()
         proto = writer.dumps(original)
@@ -887,7 +887,7 @@ class TestComplexExpressionRoundtrip:
             MPType.tensor(FLOAT32, (2,), pmask=Mask(7)),
         )
 
-        original = CallExpr(fn, [arg])
+        original = CallExpr("original", fn, [arg])
 
         # Test roundtrip
         writer = Writer()

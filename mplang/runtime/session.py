@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 
 import spu.libspu as libspu
 
+from mplang.core.cluster import ClusterSpec
 from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
@@ -284,8 +285,6 @@ class Session:
 
 # --- Convenience constructor use HttpCommunicator---
 def session_from_cluster_spec_dict(name: str, rank: int, spec_dict: dict) -> Session:
-    from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
-
     spec = ClusterSpec.from_dict(spec_dict)
     if len(spec.get_devices_by_kind("SPU")) == 0:
         raise RuntimeError("No SPU device found in cluster_spec")

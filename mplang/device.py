@@ -37,7 +37,7 @@ from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
 from mplang.ops import builtin, crypto, ibis_cc, jax_cc, tee
 from mplang.ops.base import FeOperation
-from mplang.ops.ibis_cc import IbisCompiler
+from mplang.ops.ibis_cc import IbisRunner
 from mplang.ops.jax_cc import JaxRunner
 from mplang.simp import mpi, smpc
 
@@ -92,7 +92,7 @@ def _device_run_spu(
 def _device_run_tee(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
-    if not isinstance(op, JaxRunner) and not isinstance(op, IbisCompiler):
+    if not isinstance(op, JaxRunner) and not isinstance(op, IbisRunner):
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank

@@ -95,7 +95,7 @@ def is_ibis_function(func: Callable) -> bool:
 _IBIS_MOD = stateless_mod("ibis")
 
 
-class IbisCompiler(FeOperation):
+class IbisRunner(FeOperation):
     """Ibis compiler frontend operation."""
 
     def trace(
@@ -136,4 +136,4 @@ class IbisCompiler(FeOperation):
         return pfunc, in_vars, treedef
 
 
-run_ibis = IbisCompiler(_IBIS_MOD, "run")
+run_ibis = IbisRunner(_IBIS_MOD, "run")

@@ -22,7 +22,7 @@ from mplang.ops.base import FeOperation, stateless_mod
 _SQL_MOD = stateless_mod("sql")
 
 
-class SqlFE(FeOperation):
+class SqlRunner(FeOperation):
     def __init__(self, dialect: str = "duckdb"):
         # Bind to sql module with a stable op name for registry/dispatch
         super().__init__(_SQL_MOD, "run")
@@ -58,4 +58,4 @@ class SqlFE(FeOperation):
         return pfn, in_vars, treedef
 
 
-run_sql = SqlFE("duckdb")
+run_sql = SqlRunner("duckdb")

@@ -149,11 +149,11 @@ def jax2stablehlo(
     return pfn, in_vars, out_tree
 
 
-class JaxCompiler(FeOperation):
-    """JAX compiler frontend operation."""
+class JaxRunner(FeOperation):
+    """JAX function runner frontend operation."""
 
     def trace(
-        self, func: Callable, *args: Any, **kwargs: Any
+        self, jax_fn: Callable, *args: Any, **kwargs: Any
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """
         JAX compilation helper function.
@@ -173,10 +173,10 @@ class JaxCompiler(FeOperation):
         def is_variable(arg: Any) -> bool:
             return isinstance(arg, MPObject)
 
-        pfunc, in_vars, out_tree = jax2stablehlo(is_variable, func, *args, **kwargs)
+        pfunc, in_vars, out_tree = jax2stablehlo(is_variable, jax_fn, *args, **kwargs)
         return pfunc, in_vars, out_tree
 
 
 _JAX_MOD = stateless_mod("jax")
 
-jax_compile = JaxCompiler(_JAX_MOD, "compile")
+run_jax = JaxRunner(_JAX_MOD, "run")

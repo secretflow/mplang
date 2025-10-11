@@ -177,10 +177,7 @@ class ClusterSpec:
             self.nodes.values(),
             key=lambda x: x.rank,  # type: ignore[attr-defined]
         ):
-            ep = n.endpoint
-            if not ep.startswith(("http://", "https://")):
-                ep = f"http://{ep}"
-            eps.append(ep)
+            eps.append(n.endpoint)
         return eps
 
     @classmethod

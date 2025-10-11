@@ -127,14 +127,10 @@ class Session:
     @cached_property
     def endpoints(self) -> list[str]:
         eps: list[str] = []
-        for n in sorted(
-            self.cluster_spec.nodes.values(),
-            key=lambda x: x.rank,  # type: ignore[attr-defined]
-        ):
-            ep = n.endpoint
+        for ep in self.cluster_spec.endpoints:
             if not ep.startswith(("http://", "https://")):
-                ep = f"http://{ep}"
-            eps.append(ep)
+                endpoint = f"http://{ep}"
+            eps.append(endpoint)
         return eps
 
     @cached_property
@@ -196,7 +192,7 @@ class Session:
         if self.is_spu_party:
             # Build SPU address list across all endpoints for ranks in mask
             spu_addrs: list[str] = []
-            for r, addr in enumerate(self.cluster_spec.endpoints):
+            for r, addr in enumerate(self.endpoints):
                 if r in self.spu_mask:
                     if "//" not in addr:
                         addr = f"//{addr}"

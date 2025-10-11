@@ -219,7 +219,6 @@ class Printer(ExprVisitor):
                 mptypes=expr.mptypes,
             )
         else:
-            print("FUCK")
             return self._do_print(
                 "pcall",
                 arg_names,

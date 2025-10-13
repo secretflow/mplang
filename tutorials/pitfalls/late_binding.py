@@ -14,8 +14,7 @@
 
 import jax.numpy as jnp
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 
 
 def pure_python_func():
@@ -36,11 +35,11 @@ def pure_python_func():
     print("======== pure python func with late binding end: =========\n")
 
 
-@mplang.function
+@mp.function
 def _run_wrong_func():
     values = []
 
-    init = simp.constant(jnp.array(0))
+    init = mp.constant(jnp.array(0))
     for i in range(3):
 
         def _update_offset(x):
@@ -48,7 +47,7 @@ def _run_wrong_func():
 
         # Similar to the issue in pure Python, we expected to append 0, 1, and 2 in each iteration of the loop,
         # but we actually ended up with 2, 2, 2.
-        offset = simp.run(_update_offset)(init)
+        offset = mp.rjax(_update_offset, init)
         values.append(offset)
 
     return values
@@ -56,22 +55,22 @@ def _run_wrong_func():
 
 def wrong_func():
     print("======== wrong func, with late binding in mplang begin: =========\n")
-    sim2 = mplang.Simulator(2)
-    values = mplang.evaluate(sim2, _run_wrong_func)
-    print("fetch results: ", mplang.fetch(sim2, values))
+    sim2 = mp.Simulator.simple(2)
+    values = mp.evaluate(sim2, _run_wrong_func)
+    print("fetch results: ", mp.fetch(sim2, values))
 
     # It's hard to distinguish the issue directly from the IR,
     # because the function `_update_offset` will be determined at runtime.
-    print("compiled program: ", mplang.compile(sim2, _run_wrong_func).compiler_ir())
+    print("compiled program: ", mp.compile(sim2, _run_wrong_func).compiler_ir())
     print("======== wrong func, with late binding in mplang end: =========\n")
 
 
-@mplang.function
+@mp.function
 def _run_correct_func():
     values = []
     values1 = []
 
-    init = simp.constant(jnp.array(0))
+    init = mp.constant(jnp.array(0))
     for i in range(3):
         # There are some tricks to avoid the issue
         def _update_offset(x, i=i):
@@ -81,11 +80,11 @@ def _run_correct_func():
         # In Python, default parameters for functions are evaluated at the time of function definition,
         # not at the time of function call.
         # We get [0,1,2] here.
-        offset = simp.run(_update_offset)(init)
+        offset = mp.rjax(_update_offset, init)
 
         # 2. Just pass the value of i to the function directly
         # We get [0,10,20] here.
-        offset1 = simp.run(_update_offset)(init, i * 10)
+        offset1 = mp.rjax(_update_offset, init, i * 10)
 
         values.append(offset)
         values1.append(offset1)
@@ -95,10 +94,10 @@ def _run_correct_func():
 
 def correct_func():
     print("======== correct func, with late binding in mplang begin: =========\n")
-    sim2 = mplang.Simulator(2)
-    values = mplang.evaluate(sim2, _run_correct_func)
-    print("fetch results: ", mplang.fetch(sim2, values))
-    print("compiled program: ", mplang.compile(sim2, _run_correct_func).compiler_ir())
+    sim2 = mp.Simulator.simple(2)
+    values = mp.evaluate(sim2, _run_correct_func)
+    print("fetch results: ", mp.fetch(sim2, values))
+    print("compiled program: ", mp.compile(sim2, _run_correct_func).compiler_ir())
     print("======== correct func, with late binding in mplang end: =========\n")
 
 

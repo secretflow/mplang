@@ -49,6 +49,9 @@ from mplang.core.table import TableLike
 from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.ops import basic
+from mplang.ops.base import (
+    FeOperation,  # TODO(jint), is this a backward dependency?
+)
 from mplang.utils.func_utils import var_demorph, var_morph
 
 
@@ -243,9 +246,7 @@ def prank() -> MPObject:
     Note:
         Each party in the current party mask independently produces its own rank value.
     """
-    pfunc, eval_args, out_tree = basic.rank()
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+    return cast(MPObject, rall(None, basic.rank))
 
 
 @bltin_function
@@ -271,9 +272,7 @@ def prand(shape: Shape = ()) -> MPObject:
         private random values. The randomness is local to each party and is
         not shared or revealed to other parties.
     """
-    pfunc, eval_args, out_tree = basic.prand(shape)
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+    return cast(MPObject, rall(None, basic.prand, shape))
 
 
 def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
@@ -305,9 +304,7 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
         Note that the constant primitive is not designed to carry large tables efficiently -
         consider using dedicated table loading mechanisms for substantial datasets.
     """
-    pfunc, eval_args, out_tree = basic.constant(data)
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+    return cast(MPObject, rall(None, basic.constant, data))
 
 
 @bltin_function
@@ -319,7 +316,7 @@ def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
     """
     pfunc, eval_args, out_tree = basic.debug_print(obj, prefix=prefix)
     results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+    return cast(MPObject, out_tree.unflatten(results))
 
 
 @function
@@ -386,6 +383,23 @@ def peval(
     return [TraceVar(ctx, res) for res in ret_exprs]
 
 
+def rall(
+    pmask: Mask | None,
+    fe_op: FeOperation,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Run an operation in the current context."""
+    pfunc, eval_args, out_tree = fe_op(*args, **kwargs)
+    results = peval(pfunc, eval_args, pmask)
+    return out_tree.unflatten(results)
+
+
+def rat(rank: Rank, op: Any, *args: Any, **kwargs: Any) -> Any:
+    """Run an operation at a specific rank."""
+    return rall(Mask.from_ranks(rank), op, *args, **kwargs)
+
+
 def set_mask(arg: MPObject, mask: Mask) -> MPObject:
     """Set the mask of an MPObject to a new value.
 
@@ -447,7 +461,7 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
     """
     pfunc, eval_args, out_tree = basic.identity(arg)
     results = peval(pfunc, eval_args, mask)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
+    return cast(MPObject, out_tree.unflatten(results))
 
 
 @function

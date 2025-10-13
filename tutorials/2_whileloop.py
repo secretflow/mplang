@@ -15,52 +15,51 @@
 import jax
 import jax.numpy as jnp
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 
 
-@mplang.function
+@mp.function
 def while_party_local():
     # Parties random a number privately
-    x = simp.prandint(0, 10)
+    x = mp.prandint(0, 10)
 
-    def cond(x: simp.MPObject):
-        assert isinstance(x, simp.MPObject), x
-        return simp.run(lambda x: x < 15)(x)
+    def cond(x: mp.MPObject):
+        assert isinstance(x, mp.MPObject), x
+        return mp.rjax(lambda x: x < 15, x)
 
-    def body(x: simp.MPObject):
-        return simp.run(lambda x: x + 1)(x)
+    def body(x: mp.MPObject):
+        return mp.rjax(lambda x: x + 1, x)
 
     # if < 15, each party increase itself.
-    r = simp.while_loop(cond, body, x)
+    r = mp.while_loop(cond, body, x)
 
     return x, r
 
 
-@mplang.function
+@mp.function
 def while_sum_greater():
     # Parties random a number privately
-    x = simp.prandint(0, 10)
+    x = mp.prandint(0, 10)
 
-    def cond(x: simp.MPObject):
+    def cond(x: mp.MPObject):
         # Seal all parties private
-        xs_ = simp.seal(x)
+        xs_ = mp.seal(x)
         # Sum them and reveal it.
-        pred_ = simp.srun(lambda i: sum(i) < 15)(xs_)
-        return simp.reveal(pred_)
+        pred_ = mp.srun(lambda i: sum(i) < 15)(xs_)
+        return mp.reveal(pred_)
 
-    def body(x: simp.MPObject):
-        return simp.run(lambda x: x + 1)(x)
+    def body(x: mp.MPObject):
+        return mp.rjax(lambda x: x + 1, x)
 
     # if < 15, each party increase itself.
-    r = simp.while_loop(cond, body, x)
+    r = mp.while_loop(cond, body, x)
 
     return x, r
 
 
-@mplang.function
+@mp.function
 def while_until_ascending():
-    x = simp.prandint(0, 10)
+    x = mp.prandint(0, 10)
 
     def not_ascending(data):
         data = jnp.asarray(data)
@@ -73,37 +72,37 @@ def while_until_ascending():
 
         return result
 
-    def cond(x: simp.MPObject):
+    def cond(x: mp.MPObject):
         # seal it, or we can not directly compare all parties numbers.
-        xs_ = simp.seal(x)
+        xs_ = mp.seal(x)
         # check if parties' numbers are accending
-        p_ = simp.srun(not_ascending)(xs_)
+        p_ = mp.srun(not_ascending)(xs_)
         # reveal the result, all parties agree on it.
-        return simp.reveal(p_)
+        return mp.reveal(p_)
 
-    def body(x: simp.MPObject):
+    def body(x: mp.MPObject):
         # randomize a new number
-        return simp.prandint(0, 10)
+        return mp.prandint(0, 10)
 
-    z = simp.while_loop(cond, body, x)
+    z = mp.while_loop(cond, body, x)
 
     return z
 
 
 if __name__ == "__main__":
     # Three party computation.
-    sim2 = mplang.Simulator.simple(2)
-    sim3 = mplang.Simulator.simple(3)
-    sim4 = mplang.Simulator.simple(4)
+    sim2 = mp.Simulator.simple(2)
+    sim3 = mp.Simulator.simple(3)
+    sim4 = mp.Simulator.simple(4)
 
     print("all parties increase until 15")
-    x = mplang.evaluate(sim2, while_party_local)
-    print("x:", mplang.fetch(sim2, x))
+    x = mp.evaluate(sim2, while_party_local)
+    print("x:", mp.fetch(sim2, x))
 
     print("all parties increase until sum >= 15")
-    y = mplang.evaluate(sim3, while_sum_greater)
-    print("y:", mplang.fetch(sim3, y))
+    y = mp.evaluate(sim3, while_sum_greater)
+    print("y:", mp.fetch(sim3, y))
 
     print("random until all parties ascending")
-    z = mplang.evaluate(sim4, while_until_ascending)
-    print("z:", mplang.fetch(sim4, z))
+    z = mp.evaluate(sim4, while_until_ascending)
+    print("z:", mp.fetch(sim4, z))

@@ -32,10 +32,10 @@ from __future__ import annotations
 
 import random
 
-import mplang
+import mplang as mp
 import mplang.device as mpd
 
-cluster_spec = mplang.ClusterSpec.from_dict({
+cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
         {"name": "node_0", "endpoint": "127.0.0.1:61930"},
         {"name": "node_1", "endpoint": "127.0.0.1:61931"},
@@ -64,9 +64,9 @@ def millionaire_device():
 
 
 if __name__ == "__main__":
-    sim = mplang.Simulator(cluster_spec)
-    traced_dev = mplang.compile(sim, millionaire_device)
-    mplang.analysis.dump(
+    sim = mp.Simulator(cluster_spec)
+    traced_dev = mp.compile(sim, millionaire_device)
+    mp.analysis.dump(
         traced_dev,
         cluster_spec=cluster_spec,
         sequence=True,

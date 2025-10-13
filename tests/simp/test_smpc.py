@@ -17,9 +17,10 @@ import numpy as np
 import pytest
 
 import mplang
-import mplang.simp as simp
+import mplang.core.primitive as prim
 import mplang.simp.random as mpr
 import mplang.simp.smpc as smpc
+from mplang.simp.api import rjax
 
 
 class TestSmpcBasics:
@@ -33,7 +34,7 @@ class TestSmpcBasics:
         @mplang.function
         def test_seal_reveal():
             # Each party has some data
-            data = simp.prank()
+            data = prim.prank()
             # Seal the data - returns a list of sealed values
             sealed_list = smpc.seal(data)
             # Use srun to perform computation on sealed values - pass list directly
@@ -158,12 +159,12 @@ class TestSMPCComplexScenarios:
 
             # Conditional execution based on secure condition
             def then_branch(x):
-                return simp.run(lambda x: x * 2)(x)
+                return rjax(lambda x: x * 2, x)
 
             def else_branch(x):
-                return simp.run(lambda x: x + 10)(x)
+                return rjax(lambda x: x + 10, x)
 
-            result = simp.uniform_cond(condition, then_branch, else_branch, x)
+            result = prim.uniform_cond(condition, then_branch, else_branch, x)
 
             return x, condition, result
 
@@ -191,7 +192,7 @@ class TestSMPCComplexScenarios:
         @mplang.function
         def iterative_secure():
             # Start with small values
-            x = simp.constant(1)
+            x = prim.constant(1)
 
             def cond(x):
                 # Seal and check if sum < 10 - pass list to lambda
@@ -200,9 +201,9 @@ class TestSMPCComplexScenarios:
                 return smpc.reveal(sum_result)
 
             def body(x):
-                return simp.run(lambda x: x + 1)(x)
+                return rjax(lambda x: x + 1, x)
 
-            result = simp.while_loop(cond, body, x)
+            result = prim.while_loop(cond, body, x)
             return result
 
         result = mplang.evaluate(sim2, iterative_secure)

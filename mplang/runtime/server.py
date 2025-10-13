@@ -30,7 +30,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from mplang.core.mpir import Reader
+from mplang.core.mpir import IrReader
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
 from mplang.kernels.base import KernelContext
@@ -310,7 +310,7 @@ def create_and_execute_computation(
             f"Invalid base64 or protobuf for mpprogram: {e!s}"
         ) from e
 
-    reader = Reader()
+    reader = IrReader()
     expr = reader.loads(graph_proto)
 
     if expr is None:

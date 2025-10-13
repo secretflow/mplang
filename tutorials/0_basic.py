@@ -15,8 +15,7 @@
 import random
 from functools import partial
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 
 
 # This is a simple example of how to use the MPLang library to create a
@@ -26,41 +25,41 @@ def millionaire():
     range_rand = partial(random.randint, 0, 10)
 
     # P0 make a random number.
-    x = simp.runAt(0, range_rand)()
-    # P1 make a random number too.
-    y = simp.runAt(1, range_rand)()
+    x = mp.rjax_at(0, range_rand)
+    # Each party has a different random value
+    y = mp.rjax_at(1, range_rand)
 
     # both of them seal it
-    x_ = simp.sealFrom(x, 0)
-    y_ = simp.sealFrom(y, 1)
+    x_ = mp.sealFrom(x, 0)
+    y_ = mp.sealFrom(y, 1)
 
     # compare it securely.
-    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
+    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = simp.reveal(z_)
+    z = mp.reveal(z_)
 
     return x, y, z
 
 
 # Now we create a simulator with 2 parties, which use two threads to simulate the two parties.
-sim2 = mplang.Simulator.simple(2)
+sim2 = mp.Simulator.simple(2)
 # Evaluate the millionaire function in the simulator.
-x, y, z = mplang.evaluate(sim2, millionaire)
+x, y, z = mp.evaluate(sim2, millionaire)
 # x, y, z will be references to the values of the two parties.
 print("millionaire result:", x, y, z)
-# use mplang.fetchAt to get the values of the parties.
+# use mp.fetch to get the values of the parties.
 print(
     "millionaire fetch:",
-    mplang.fetch(sim2, x),
-    mplang.fetch(sim2, y),
-    mplang.fetch(sim2, z),
+    mp.fetch(sim2, x),
+    mp.fetch(sim2, y),
+    mp.fetch(sim2, z),
 )
 
 # Of course, we can also run the same function in a different simulator with 3 parties.
-sim3 = mplang.Simulator.simple(3)
+sim3 = mp.Simulator.simple(3)
 # Evaluate the millionaire function in the simulator.
-x, y, z = mplang.evaluate(sim3, millionaire)
+x, y, z = mp.evaluate(sim3, millionaire)
 # Uncomments to see the result.
 # print(
 #     "millionaire fetch (3PC):",
@@ -77,71 +76,71 @@ def millionaire_simp():
     range_rand = partial(random.randint, 0, 10)
 
     # Instead of runAt, all parties call randint(0, 10)
-    x = simp.run(range_rand)()
+    x = mp.rjax(range_rand)
 
     # all parties seal it, result a list of sealed values
-    xs_ = simp.seal(x)
-    # assert len(xs_) == 2  # Fixed from simp.cur_ctx().psize()
+    xs_ = mp.seal(x)
+    # assert len(xs_) == 2  # Fixed from mp.cur_ctx().psize()
 
     # compare it securely.
-    z_ = simp.srun(lambda x, y: x < y)(*xs_)
+    z_ = mp.srun(lambda x, y: x < y)(*xs_)
 
     # reveal it to all.
-    z = simp.reveal(z_)
+    z = mp.reveal(z_)
 
     return x, z
 
 
 # Evaluate it.
-x, r = mplang.evaluate(sim2, millionaire_simp)
-print("millionaire_simp:", mplang.fetch(sim2, x), mplang.fetch(sim2, r))
+x, r = mp.evaluate(sim2, millionaire_simp)
+print("millionaire_simp:", mp.fetch(sim2, x), mp.fetch(sim2, r))
 
 # Why SIMP? it use less instructions and more close to SPMD (Single Program Multiple Data) programming model.
-# To inspect the compiled code, we can use mplang.compile.
-compiled = mplang.compile(sim2, millionaire)
-simp_compiled = mplang.compile(sim2, millionaire_simp)
+# To inspect the compiled code, we can use mp.compile.
+compiled = mp.compile(sim2, millionaire)
+simp_compiled = mp.compile(sim2, millionaire_simp)
 # SIMP compile will generate less code than the original function.
 print("millionaire compiled:", compiled.compiler_ir())
 print("millionaire_simp compiled:", simp_compiled.compiler_ir())
 
 # Eager evaluation vs lazy evaluation.
-# In the above example, we use `simp.runAt` to run a function at a specific party, it
+# In the above example, we use `mp.runAt` to run a function at a specific party, it
 # will be evaluated immediately when the function is called.
-# In contrast, we can use 'mplang.function' to trace a whole function and send to parties
+# In contrast, we can use 'mp.function' to trace a whole function and send to parties
 # once, which makes it more efficient in some cases. In secure computation setting, it also
 # allows parties to audit and verify the function before running it.
 
 # The following code is equivalent to add a decorator to the millionaire function,
-# @mplang.function
+# @mp.function
 # def millionaire(): ...
-millionaire_jitted = mplang.function(millionaire)
+millionaire_jitted = mp.function(millionaire)
 
 # We can also evaluate or compile the jitted function.
-x, y, z = mplang.evaluate(sim2, millionaire_jitted)
+x, y, z = mp.evaluate(sim2, millionaire_jitted)
 print(
     "millionaire_jitted result:",
-    mplang.fetch(sim2, x),
-    mplang.fetch(sim2, y),
-    mplang.fetch(sim2, z),
+    mp.fetch(sim2, x),
+    mp.fetch(sim2, y),
+    mp.fetch(sim2, z),
 )
 # Or compile it.
 print(
     "millionaire_jitted compiled:",
-    mplang.compile(sim2, millionaire_jitted).compiler_ir(),
+    mp.compile(sim2, millionaire_jitted).compiler_ir(),
 )
 
 
-# Here is a more complicated example that shows how to use `mplang.function` to
+# Here is a more complicated example that shows how to use `mp.function` to
 # create a function that can be run at different parties, and how to use
-# `simp` to securely compute the result.
+# `mp` APIs to securely compute the result.
 
 
-@mplang.function
+@mp.function
 def sub_func():
-    return simp.runAt(1, partial(random.randint, 0, 10))()
+    return mp.rat(1, partial(random.randint, 0, 10))()
 
 
-@mplang.function
+@mp.function
 def myfun(*args, **kwargs):
     # mplang.function can take both positional and keyword arguments.
 
@@ -150,36 +149,36 @@ def myfun(*args, **kwargs):
     y = kwargs["y"]
     c1: str = kwargs["s"]
 
-    u = simp.runAt(0, partial(random.randint, 0, 10))()
-    # Call a 'mplang.function' inside another 'mplang.function'.
+    u = mp.rat(0, partial(random.randint, 0, 10))
+    # Call a 'mp.function' inside another 'mp.function'.
     v = sub_func()
 
     c2 = c0 * 2
     c3 = c1 + " processed"
 
-    a = simp.runAt(0, lambda v: v * 2)(u)
-    b = simp.runAt(1, lambda v: v + 5)(v)
+    a = mp.rjax_at(0, lambda v: v * 2, u)
+    b = mp.rjax_at(1, lambda v: v + 5, v)
 
-    x_ = simp.sealFrom(x, 0)
-    y_ = simp.sealFrom(y, 1)
-    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
-    c = simp.reveal(z_)
+    x_ = mp.sealFrom(x, 0)
+    y_ = mp.sealFrom(y, 1)
+    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
+    c = mp.reveal(z_)
 
     # return complicated result.
     return a, [b, c2], {"c": c, "c3": c3}
 
 
 # Set the global context, so we dont need to pass it around.
-mplang.set_ctx(sim2)
+mp.set_ctx(sim2)
 
 # make a random number at P0
-x = simp.runAt(0, partial(random.randint, 0, 10))()
+x = mp.rat(0, partial(random.randint, 0, 10))()
 
 # make a random number at P1
-y = simp.runAt(1, partial(random.randint, 0, 10))()
+y = mp.rat(1, partial(random.randint, 0, 10))()
 
 # Call the myfun function with the random numbers.
 z = myfun(x, 42, y=y, s="hello")
 # Print the results.
 print("z:", z)
-print("fetch(z):", mplang.fetch(None, z))
+print("fetch(z):", mp.fetch(None, z))

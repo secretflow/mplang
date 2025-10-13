@@ -21,14 +21,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import mplang
-import mplang.simp as simp
-from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
+import mplang as mp
 
 
 def create_e2e_cluster_spec(
     node_addrs: dict[str, str], spu_nodes: list[str]
-) -> ClusterSpec:
+) -> mp.ClusterSpec:
     """Create a ClusterSpec for e2e testing with specific SPU nodes."""
     nodes = {}
 
@@ -36,11 +34,11 @@ def create_e2e_cluster_spec(
     for node_id, addr in node_addrs.items():
         # Extract rank from node_id (e.g., "P0" -> 0)
         rank = int(node_id[1:])
-        nodes[f"node{rank}"] = Node(
+        nodes[f"node{rank}"] = mp.Node(
             name=f"node{rank}",
             rank=rank,
             endpoint=addr,
-            runtime_info=RuntimeInfo(
+            runtime_info=mp.RuntimeInfo(
                 version="test",
                 platform="test",
                 op_bindings={},
@@ -50,7 +48,7 @@ def create_e2e_cluster_spec(
     # Create local devices for each node
     local_devices = {}
     for _node_name, node in nodes.items():
-        local_devices[f"local_{node.rank}"] = Device(
+        local_devices[f"local_{node.rank}"] = mp.Device(
             name=f"local_{node.rank}",
             kind="local",
             members=[node],
@@ -60,7 +58,7 @@ def create_e2e_cluster_spec(
     spu_node_ranks = [int(node_id[1:]) for node_id in spu_nodes]
     spu_members = [nodes[f"node{rank}"] for rank in spu_node_ranks]
 
-    spu_device = Device(
+    spu_device = mp.Device(
         name="SPU_0",
         kind="SPU",
         members=spu_members,
@@ -72,7 +70,7 @@ def create_e2e_cluster_spec(
 
     devices = {**local_devices, "SPU_0": spu_device}
 
-    return ClusterSpec(nodes=nodes, devices=devices)
+    return mp.ClusterSpec(nodes=nodes, devices=devices)
 
 
 @pytest.fixture
@@ -80,7 +78,7 @@ def http_driver(http_servers):  # type: ignore
     node_ids = ["P0", "P1", "P2", "P3", "P4"]
     node_addrs = dict(zip(node_ids, http_servers.addresses, strict=True))
     cluster_spec = create_e2e_cluster_spec(node_addrs, ["P1", "P2", "P3"])
-    return mplang.Driver(cluster_spec)
+    return mp.Driver(cluster_spec)
 
 
 @pytest.mark.parametrize("http_servers", [5], indirect=True)
@@ -91,16 +89,16 @@ def test_simple_addition_e2e(http_driver):
     y = np.array([4.0, 5.0, 6.0])
 
     def constant_add_fn(x, y):
-        x_const = simp.constant(x)
-        y_const = simp.constant(y)
+        x_const = mp.constant(x)
+        y_const = mp.constant(y)
         # Use JAX function for addition
-        return simp.run(jnp.add)(x_const, y_const)
+        return mp.rjax(jnp.add, x_const, y_const)
 
     # Evaluate the computation
-    result = mplang.evaluate(http_driver, constant_add_fn, x, y)
+    result = mp.evaluate(http_driver, constant_add_fn, x, y)
 
     # Fetch the result
-    fetched = mplang.fetch(http_driver, result)
+    fetched = mp.fetch(http_driver, result)
 
     # Verify result - all 5 parties should get the same result
     expected = x + y
@@ -117,32 +115,30 @@ def test_secure_comparison_e2e(http_driver):
     x = np.array([5.0])  # From P0
     y = np.array([3.0])  # From P4
 
-    @mplang.function
+    @mp.function
     def secure_compare():
         # Create constants
-        x_const = simp.constant(x)
-        y_const = simp.constant(y)
+        x_const = mp.constant(x)
+        y_const = mp.constant(y)
 
         # Seal them for secure computation - data from P0 and P4
-        x_sealed = simp.sealFrom(x_const, 0)  # P0 provides data
-        y_sealed = simp.sealFrom(y_const, 4)  # P4 provides data
+        x_sealed = mp.sealFrom(x_const, 0)  # P0 provides data
+        y_sealed = mp.sealFrom(y_const, 4)  # P4 provides data
 
         # Perform secure comparison
         import jax.numpy as jnp
 
-        result = simp.srun(lambda a, b: jnp.where(a > b, True, False))(
-            x_sealed, y_sealed
-        )
+        result = mp.srun(lambda a, b: jnp.where(a > b, True, False))(x_sealed, y_sealed)
 
         # Reveal the result
-        revealed = simp.reveal(result)
+        revealed = mp.reveal(result)
         return revealed
 
     # Evaluate the computation
-    result = mplang.evaluate(http_driver, secure_compare)
+    result = mp.evaluate(http_driver, secure_compare)
 
     # Fetch the result
-    fetched = mplang.fetch(http_driver, result)
+    fetched = mp.fetch(http_driver, result)
 
     # Verify result - all 5 parties should get the same result
     expected = x > y  # Should be True since 5.0 > 3.0
@@ -160,50 +156,44 @@ def test_three_way_comparison_e2e(http_driver):
     wealth_b = np.array([30.0])  # P2's wealth
     wealth_c = np.array([70.0])  # P4's wealth
 
-    @mplang.function
+    @mp.function
     def millionaire_problem():
         # Create constants for each party's wealth
-        wealth_a_const = simp.constant(wealth_a)
-        wealth_b_const = simp.constant(wealth_b)
-        wealth_c_const = simp.constant(wealth_c)
+        wealth_a_const = mp.constant(wealth_a)
+        wealth_b_const = mp.constant(wealth_b)
+        wealth_c_const = mp.constant(wealth_c)
 
         # Seal the wealth values for secure computation
-        wealth_a_sealed = simp.sealFrom(wealth_a_const, 0)  # P0 provides wealth
-        wealth_b_sealed = simp.sealFrom(wealth_b_const, 2)  # P2 provides wealth
-        wealth_c_sealed = simp.sealFrom(wealth_c_const, 4)  # P4 provides wealth
+        wealth_a_sealed = mp.sealFrom(wealth_a_const, 0)  # P0 provides wealth
+        wealth_b_sealed = mp.sealFrom(wealth_b_const, 2)  # P2 provides wealth
+        wealth_c_sealed = mp.sealFrom(wealth_c_const, 4)  # P4 provides wealth
 
         # Perform secure comparison to find the richest
         import jax.numpy as jnp
 
         # Find who has the maximum wealth
-        max_ab = simp.srun(jnp.maximum)(wealth_a_sealed, wealth_b_sealed)
-        max_wealth = simp.srun(jnp.maximum)(max_ab, wealth_c_sealed)
+        max_ab = mp.srun(jnp.maximum)(wealth_a_sealed, wealth_b_sealed)
+        max_wealth = mp.srun(jnp.maximum)(max_ab, wealth_c_sealed)
 
         # Check if each party is the richest
-        a_is_richest = simp.srun(lambda a, max_w: a >= max_w)(
-            wealth_a_sealed, max_wealth
-        )
-        b_is_richest = simp.srun(lambda b, max_w: b >= max_w)(
-            wealth_b_sealed, max_wealth
-        )
-        c_is_richest = simp.srun(lambda c, max_w: c >= max_w)(
-            wealth_c_sealed, max_wealth
-        )
+        a_is_richest = mp.srun(lambda a, max_w: a >= max_w)(wealth_a_sealed, max_wealth)
+        b_is_richest = mp.srun(lambda b, max_w: b >= max_w)(wealth_b_sealed, max_wealth)
+        c_is_richest = mp.srun(lambda c, max_w: c >= max_w)(wealth_c_sealed, max_wealth)
 
         # Reveal the results
-        a_result = simp.reveal(a_is_richest)
-        b_result = simp.reveal(b_is_richest)
-        c_result = simp.reveal(c_is_richest)
+        a_result = mp.reveal(a_is_richest)
+        b_result = mp.reveal(b_is_richest)
+        c_result = mp.reveal(c_is_richest)
 
         return a_result, b_result, c_result
 
     # Evaluate the computation
-    a_result, b_result, c_result = mplang.evaluate(http_driver, millionaire_problem)
+    a_result, b_result, c_result = mp.evaluate(http_driver, millionaire_problem)
 
     # Fetch the results
-    fetched_a = mplang.fetch(http_driver, a_result)
-    fetched_b = mplang.fetch(http_driver, b_result)
-    fetched_c = mplang.fetch(http_driver, c_result)
+    fetched_a = mp.fetch(http_driver, a_result)
+    fetched_b = mp.fetch(http_driver, b_result)
+    fetched_c = mp.fetch(http_driver, c_result)
 
     # Verify results - P4 (wealth_c = 70.0) should be the richest
     for i in range(5):
@@ -219,42 +209,42 @@ def test_multiple_operations_e2e(http_driver):
     a = np.array([10.0, 20.0])  # From P0
     b = np.array([5.0, 15.0])  # From P3
 
-    @mplang.function
+    @mp.function
     def multi_operations():
         # Create constants
-        a_const = simp.constant(a)
-        b_const = simp.constant(b)
+        a_const = mp.constant(a)
+        b_const = mp.constant(b)
 
         # Seal for secure computation - data from P0 and P3
-        a_sealed = simp.sealFrom(a_const, 0)  # P0 provides data
-        b_sealed = simp.sealFrom(b_const, 3)  # P3 provides data
+        a_sealed = mp.sealFrom(a_const, 0)  # P0 provides data
+        b_sealed = mp.sealFrom(b_const, 3)  # P3 provides data
 
         # Multiple operations
         import jax.numpy as jnp
 
         # Addition
-        sum_result = simp.srun(jnp.add)(a_sealed, b_sealed)
+        sum_result = mp.srun(jnp.add)(a_sealed, b_sealed)
 
         # Multiplication
-        mul_result = simp.srun(jnp.multiply)(a_sealed, b_sealed)
+        mul_result = mp.srun(jnp.multiply)(a_sealed, b_sealed)
 
         # Comparison
-        cmp_result = simp.srun(lambda x, y: x > y)(a_sealed, b_sealed)
+        cmp_result = mp.srun(lambda x, y: x > y)(a_sealed, b_sealed)
 
         # Reveal all results
-        sum_revealed = simp.reveal(sum_result)
-        mul_revealed = simp.reveal(mul_result)
-        cmp_revealed = simp.reveal(cmp_result)
+        sum_revealed = mp.reveal(sum_result)
+        mul_revealed = mp.reveal(mul_result)
+        cmp_revealed = mp.reveal(cmp_result)
 
         return sum_revealed, mul_revealed, cmp_revealed
 
     # Evaluate the computation
-    sum_result, mul_result, cmp_result = mplang.evaluate(http_driver, multi_operations)
+    sum_result, mul_result, cmp_result = mp.evaluate(http_driver, multi_operations)
 
     # Fetch the results
-    fetched_sum = mplang.fetch(http_driver, sum_result)
-    fetched_mul = mplang.fetch(http_driver, mul_result)
-    fetched_cmp = mplang.fetch(http_driver, cmp_result)
+    fetched_sum = mp.fetch(http_driver, sum_result)
+    fetched_mul = mp.fetch(http_driver, mul_result)
+    fetched_cmp = mp.fetch(http_driver, cmp_result)
 
     # Verify results
     expected_sum = a + b

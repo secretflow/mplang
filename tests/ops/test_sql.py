@@ -15,7 +15,7 @@
 import pandas as pd
 
 import mplang
-from mplang import simp
+import mplang as mp
 from mplang.core.dtype import INT32
 from mplang.core.table import TableType
 from mplang.ops import sql_cc
@@ -35,7 +35,7 @@ def test_sqlrun():
     mplang.set_ctx(sim2)
 
     data = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [4.1, 5.1, 6.1]})
-    in_tbl = simp.constant(data)
+    in_tbl = mp.constant(data)
 
     sql = "select a from table"
     out_type = TableType.from_pairs([("a", INT32)])

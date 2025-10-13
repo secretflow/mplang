@@ -14,28 +14,25 @@
 
 import re
 
+import mplang as mp
 from mplang.analysis import diagram as analysis
-from mplang.core.cluster import ClusterSpec
-from mplang.core.mpir import Writer
-from mplang.core.tracer import TraceContext, TracedFunction, trace
-from mplang.simp import prandint, reveal, sealFrom, srun
 
 
 def _toy():  # simple function for viz
-    x = prandint(0, 10)
-    y = prandint(0, 10)
-    x_ = sealFrom(x, 0)
-    y_ = sealFrom(y, 1)
-    z_ = srun(lambda a, b: a < b)(x_, y_)
-    z = reveal(z_)
+    x = mp.prandint(0, 10)
+    y = mp.prandint(0, 10)
+    x_ = mp.sealFrom(x, 0)
+    y_ = mp.sealFrom(y, 1)
+    z_ = mp.srun(lambda a, b: a < b)(x_, y_)
+    z = mp.reveal(z_)
     return z
 
 
 def test_sequence_diagram_basic():
-    cluster = ClusterSpec.simple(2)
-    tctx = TraceContext(cluster)
-    traced: TracedFunction = trace(tctx, _toy)
-    graph = Writer().dumps(traced.make_expr())
+    cluster = mp.ClusterSpec.simple(2)
+    tctx = mp.TraceContext(cluster)
+    traced: mp.TracedFunction = mp.trace(tctx, _toy)
+    graph = mp.IrWriter().dumps(traced.make_expr())
     diagram = analysis.to_sequence_diagram(graph, world_size=2)
     assert "sequenceDiagram" in diagram
     # Accept any backend-specific naming for sealing and revealing primitives.
@@ -55,9 +52,9 @@ def test_dump_markdown_sections(tmp_path):
     # We indirectly obtain a traced function by using the diagram utilities which accept python callables.
     # However, dump expects a traced function object; importing here to avoid broad public surface changes.
     # Build a simple MPContext and trace manually to avoid importing heavy frontends
-    cluster = ClusterSpec.simple(1)
-    tctx = TraceContext(cluster)
-    traced: TracedFunction = trace(tctx, _dummy_fn, 1, 2)
+    cluster = mp.ClusterSpec.simple(1)
+    tctx = mp.TraceContext(cluster)
+    traced: mp.TracedFunction = mp.trace(tctx, _dummy_fn, 1, 2)
 
     md_path = tmp_path / "report.md"
     mpir_path = tmp_path / "graph.mpir"

@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 
 import mplang
-import mplang.simp as simp
+import mplang as mp
 from mplang.core.dtype import UINT8, DType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
@@ -35,9 +35,9 @@ def test_builtin_pack_unpack_tensor_runtime() -> None:
 
     @mplang.function
     def fn():
-        x = simp.runAt(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))()
-        packed = simp.runAt(0, basic.pack)(x)
-        unpacked = simp.runAt(0, basic.unpack)(packed, out_ty=tensor_ty)
+        x = mp.rjax_at(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))
+        packed = mp.rat(0, basic.pack, x)
+        unpacked = mp.rat(0, basic.unpack, packed, out_ty=tensor_ty)
         return x, packed, unpacked
 
     x, packed, unpacked = mplang.evaluate(sim, fn)
@@ -63,9 +63,9 @@ def test_builtin_pack_unpack_table_runtime() -> None:
 
     @mplang.function
     def fn():
-        table = simp.constant(pd.DataFrame(data))
-        packed = simp.runAt(0, basic.pack)(table)
-        unpacked = simp.runAt(0, basic.unpack)(packed, out_ty=table_schema)
+        table = mp.constant(pd.DataFrame(data))
+        packed = mp.rat(0, basic.pack, table)
+        unpacked = mp.rat(0, basic.unpack, packed, out_ty=table_schema)
         return packed, unpacked
 
     packed, unpacked = mplang.evaluate(sim, fn)

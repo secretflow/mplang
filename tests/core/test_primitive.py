@@ -1478,7 +1478,7 @@ class TestSetMask:
         assert eval_expr.args[0] == input_var.expr
 
     def test_set_mask_integration_with_other_primitives(self, trace_context):
-        """Test set_mask integration with other primitive operations using the new mp.run API."""
+        """Test set_mask integration with other primitive operations using the run_jax API."""
 
         # Create a chain of operations involving set_mask
         def test_func():

@@ -87,7 +87,7 @@ def rand_from_parties():
 
     def jr_split(key):
         # TODO: since MPObject tensor does not implement slicing yet.
-        # subkey, key = run_jax(jr.split, key) does not work.
+        # subkey, key = mp.rjax(jr.split, key) does not work.
         # we workaround it by splitting inside tracer.
         subkey, key = jr.split(key)
         return subkey, key

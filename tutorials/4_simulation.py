@@ -199,7 +199,7 @@ if __name__ == "__main__":
     #
     # To run on real multi-party execution:
     # 1. First start the cluster with:
-    #    uv run python -m mp.runtime.cli up -c examples/conf/3pc.yaml
+    #    uv run python -m mplang.runtime.cli up -c examples/conf/3pc.yaml
     # 2. Then run the computation:
     #    uv run python tutorials/4_simulation.py run
     cmd_main(main)

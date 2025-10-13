@@ -35,8 +35,8 @@ def test_keygen_shape():
 
     @mp.function
     def fn():
-        k16 = mp.rat(0, crypto.keygen, 16)
-        k32 = mp.rat(1, crypto.keygen)
+        k16 = mp.run_at(0, crypto.keygen, 16)
+        k32 = mp.run_at(1, crypto.keygen)
         return k16, k32
 
     k16, k32 = mp.evaluate(sim, fn)
@@ -51,10 +51,10 @@ def test_enc_dec_roundtrip_bytes():
 
     @mp.function
     def fn():
-        key = mp.rat(0, crypto.keygen, 32)
-        pt = mp.rjax_at(0, lambda: np.arange(50, dtype=np.uint8))
-        ct = mp.rat(0, crypto.enc, pt, key)
-        rt = mp.rat(0, crypto.dec, ct, key)
+        key = mp.run_at(0, crypto.keygen, 32)
+        pt = mp.run_jax_at(0, lambda: np.arange(50, dtype=np.uint8))
+        ct = mp.run_at(0, crypto.enc, pt, key)
+        rt = mp.run_at(0, crypto.dec, ct, key)
         return pt, rt
 
     pt, rt = mp.evaluate(sim, fn)
@@ -75,9 +75,9 @@ def test_pack_unpack_roundtrip_various():
     def fn():
         outs = []
         for _idx, (shape, dt) in enumerate(shapes_dtypes):
-            arr = mp.rjax_at(0, lambda s=shape, d=dt: np.zeros(s, dtype=d))
-            packed = mp.rat(0, basic.pack, arr)
-            unpacked = mp.rat(
+            arr = mp.run_jax_at(0, lambda s=shape, d=dt: np.zeros(s, dtype=d))
+            packed = mp.run_at(0, basic.pack, arr)
+            unpacked = mp.run_at(
                 0, basic.unpack, packed, out_ty=mp.TensorType.from_obj(arr)
             )
             outs.append(unpacked)
@@ -95,14 +95,14 @@ def test_kem_hkdf_symmetric_mock():
 
     @mp.function
     def fn():
-        sk0, pk0 = mp.rat(0, crypto.kem_keygen)
-        sk1, pk1 = mp.rat(1, crypto.kem_keygen)
+        sk0, pk0 = mp.run_at(0, crypto.kem_keygen)
+        sk1, pk1 = mp.run_at(1, crypto.kem_keygen)
         pk1_on_0 = mp.p2p(1, 0, pk1)
         pk0_on_1 = mp.p2p(0, 1, pk0)
-        sec0 = mp.rat(0, crypto.kem_derive, sk0, pk1_on_0)
-        sec1 = mp.rat(1, crypto.kem_derive, sk1, pk0_on_1)
-        k0 = mp.rat(0, crypto.hkdf, sec0, "info")
-        k1 = mp.rat(1, crypto.hkdf, sec1, "info")
+        sec0 = mp.run_at(0, crypto.kem_derive, sk0, pk1_on_0)
+        sec1 = mp.run_at(1, crypto.kem_derive, sk1, pk0_on_1)
+        k0 = mp.run_at(0, crypto.hkdf, sec0, "info")
+        k1 = mp.run_at(1, crypto.hkdf, sec1, "info")
         return k0, k1
 
     k0, k1 = mp.evaluate(sim, fn)
@@ -116,7 +116,7 @@ def test_variable_key_lengths(length: int):
 
     @mp.function
     def fn(n: int):
-        return mp.rat(0, crypto.keygen, n)
+        return mp.run_at(0, crypto.keygen, n)
 
     k = mp.evaluate(sim, fn, length)
     v = mp.fetch(sim, k)

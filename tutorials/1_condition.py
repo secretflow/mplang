@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 
@@ -35,10 +37,10 @@ def local_elementwise_select():
     Correct primitive: jax.where (NOT uniform_cond).
     """
     x = mp.prandint(0, 20)
-    p = mp.rjax(lambda v: v <= 10, x)  # local predicate (can diverge per party)
-    pos = mp.rjax(lambda v: v, x)
-    neg = mp.rjax(lambda v: -v, x)
-    z = mp.rjax(jnp.where, p, pos, neg)
+    p = mp.run_jax(lambda v: v <= 10, x)  # local predicate (can diverge per party)
+    pos = mp.run_jax(lambda v: v, x)
+    neg = mp.run_jax(lambda v: -v, x)
+    z = mp.run_jax(jnp.where, p, pos, neg)
     return x, z
 
 
@@ -68,7 +70,7 @@ def uniform_multi_party_cond():
         return mp.reveal(agg)
 
     def else_branch(v):
-        return mp.rjax(lambda t: -t, v)
+        return mp.run_jax(lambda t: -t, v)
 
     # Runtime uniform verification here to catch accidental divergence. If you have a
     # provably uniform predicate and want to skip the O(P^2) tiny boolean gather, you
@@ -88,7 +90,7 @@ def local_lazy_cond():
     """
     x = mp.prandint(0, 20)
     # Compute predicate locally (pure value) so that we do not leak TraceVars into JAX tracing.
-    pred = mp.rjax(lambda v: v % 2 == 0, x)  # may diverge per party
+    pred = mp.run_jax(lambda v: v % 2 == 0, x)  # may diverge per party
 
     # Wrap the entire lax.cond invocation in a single local run so that the JAX tracer
     # only ever sees concrete numpy/jax arrays, not TraceVar wrappers.
@@ -101,7 +103,7 @@ def local_lazy_cond():
 
         return jax.lax.cond(pred_val, t_fn, f_fn, v_val)
 
-    res = mp.rjax(_lazy_branch, pred, x)
+    res = mp.run_jax(_lazy_branch, pred, x)
     return x, res
 
 
@@ -114,12 +116,17 @@ def anti_pattern_uniform_cond_with_divergent_pred():
     system will not detect it, but semantics are undefined. Use jax.where instead.
     """
     rank = mp.prank()
-    pred = mp.rjax(lambda r: r < 2, rank)  # may differ per party
+    pred = mp.run_jax(lambda r: r < 2, rank)  # may differ per party
     a = mp.constant(5)
     b = mp.constant(10)
     # DO NOT DO THIS IN REAL CODE (shown only for educational contrast)
     res = mp.uniform_cond(
-        pred, mp.rjax(jnp.add), mp.rjax(jnp.subtract), a, b, verify_uniform=False
+        pred,
+        partial(mp.run_jax, jnp.add),
+        partial(mp.run_jax, jnp.subtract),
+        a,
+        b,
+        verify_uniform=False,
     )
     return a, res
 

@@ -92,7 +92,7 @@ def test_simple_addition_e2e(http_driver):
         x_const = mp.constant(x)
         y_const = mp.constant(y)
         # Use JAX function for addition
-        return mp.rjax(jnp.add, x_const, y_const)
+        return mp.run_jax(jnp.add, x_const, y_const)
 
     # Evaluate the computation
     result = mp.evaluate(http_driver, constant_add_fn, x, y)

@@ -23,7 +23,7 @@ from types import ModuleType
 from typing import Any
 
 from mplang.ops.base import FeOperation
-from mplang.simp.api import rat, rjax_at
+from mplang.simp.api import run_at, run_jax_at
 from mplang.simp.mpi import p2p
 
 
@@ -107,7 +107,7 @@ class _PartyModuleProxy:
         @wraps(op)
         def _wrapped(*args: Any, **kw: Any) -> Any:
             # Inline runAt to reduce an extra partial layer while preserving semantics.
-            return rat(self._party.rank, op, *args, **kw)
+            return run_at(self._party.rank, op, *args, **kw)
 
         # Provide a party-qualified name for debugging / logs without losing original metadata.
         base_name = getattr(op, "__name__", None)
@@ -135,10 +135,10 @@ class Party:
             )
         # Use run_op_at for FeOperation, run_jax_at for plain callables
         if isinstance(fn, FeOperation):
-            return rat(self.rank, fn, *args, **kwargs)
+            return run_at(self.rank, fn, *args, **kwargs)
         else:
             # TODO(jint): implicitly assume non-FeOperation as JAX function is a bit too magical?
-            return rjax_at(self.rank, fn, *args, **kwargs)
+            return run_jax_at(self.rank, fn, *args, **kwargs)
 
     def __getattr__(self, name: str) -> _PartyModuleProxy:
         if name in _NAMESPACE_REGISTRY:

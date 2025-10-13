@@ -47,7 +47,7 @@ def _run_wrong_func():
 
         # Similar to the issue in pure Python, we expected to append 0, 1, and 2 in each iteration of the loop,
         # but we actually ended up with 2, 2, 2.
-        offset = mp.rjax(_update_offset, init)
+        offset = mp.run_jax(_update_offset, init)
         values.append(offset)
 
     return values
@@ -80,11 +80,11 @@ def _run_correct_func():
         # In Python, default parameters for functions are evaluated at the time of function definition,
         # not at the time of function call.
         # We get [0,1,2] here.
-        offset = mp.rjax(_update_offset, init)
+        offset = mp.run_jax(_update_offset, init)
 
         # 2. Just pass the value of i to the function directly
         # We get [0,10,20] here.
-        offset1 = mp.rjax(_update_offset, init, i * 10)
+        offset1 = mp.run_jax(_update_offset, init, i * 10)
 
         values.append(offset)
         values1.append(offset1)

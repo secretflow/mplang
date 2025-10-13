@@ -19,11 +19,11 @@ from typing import Any
 
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import Rank
-from mplang.core.primitive import rall, rat
+from mplang.core.primitive import run, run_at
 from mplang.ops import ibis_cc, jax_cc, sql_cc
 
 
-def rjax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
+def run_jax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
     """Run a JAX function.
 
     Args:
@@ -67,30 +67,30 @@ def rjax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
         ...     return {"mean": mean, "std": std}
         >>> stats = run_jax(compute_statistics, dataset)
     """
-    return rall(None, jax_cc.run_jax, jax_fn, *args, **kwargs)
+    return run(None, jax_cc.run_jax, jax_fn, *args, **kwargs)
 
 
-def rjax_at(rank: Rank, jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
-    return rat(rank, jax_cc.run_jax, jax_fn, *args, **kwargs)
+def run_jax_at(rank: Rank, jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
+    return run_at(rank, jax_cc.run_jax, jax_fn, *args, **kwargs)
 
 
-def ribis(ibis_expr: Any, *args: Any, **kwargs: Any) -> Any:
+def run_ibis(ibis_expr: Any, *args: Any, **kwargs: Any) -> Any:
     # TODO(jint): add docstring, add type hints, describe args and kwargs constraints.
-    return rall(None, ibis_cc.run_ibis, ibis_expr, *args, **kwargs)
+    return run(None, ibis_cc.run_ibis, ibis_expr, *args, **kwargs)
 
 
-def ribis_at(rank: Rank, ibis_fn: Any, *args: Any, **kwargs: Any) -> Any:
-    return rat(rank, ibis_cc.run_ibis, ibis_fn, *args, **kwargs)
+def run_ibis_at(rank: Rank, ibis_fn: Any, *args: Any, **kwargs: Any) -> Any:
+    return run_at(rank, ibis_cc.run_ibis, ibis_fn, *args, **kwargs)
 
 
-def rsql(
+def run_sql(
     query: str, out_type: Any, in_tables: dict[str, MPObject] | None = None
 ) -> Any:
     # TODO(jint): add docstring, drop out_type.
-    return rall(None, sql_cc.run_sql, query, out_type, in_tables)
+    return run(None, sql_cc.run_sql, query, out_type, in_tables)
 
 
-def rsql_at(
+def run_sql_at(
     rank: Rank, query: str, out_type: Any, in_tables: dict[str, MPObject] | None = None
 ) -> Any:
-    return rat(rank, sql_cc.run_sql, query, out_type, in_tables)
+    return run_at(rank, sql_cc.run_sql, query, out_type, in_tables)

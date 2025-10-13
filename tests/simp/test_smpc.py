@@ -20,7 +20,7 @@ import mplang
 import mplang.core.primitive as prim
 import mplang.simp.random as mpr
 import mplang.simp.smpc as smpc
-from mplang.simp.api import rjax
+from mplang.simp.api import run_jax
 
 
 class TestSmpcBasics:
@@ -159,10 +159,10 @@ class TestSMPCComplexScenarios:
 
             # Conditional execution based on secure condition
             def then_branch(x):
-                return rjax(lambda x: x * 2, x)
+                return run_jax(lambda x: x * 2, x)
 
             def else_branch(x):
-                return rjax(lambda x: x + 10, x)
+                return run_jax(lambda x: x + 10, x)
 
             result = prim.uniform_cond(condition, then_branch, else_branch, x)
 
@@ -201,7 +201,7 @@ class TestSMPCComplexScenarios:
                 return smpc.reveal(sum_result)
 
             def body(x):
-                return rjax(lambda x: x + 1, x)
+                return run_jax(lambda x: x + 1, x)
 
             result = prim.while_loop(cond, body, x)
             return result

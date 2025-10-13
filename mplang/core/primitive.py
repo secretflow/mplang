@@ -246,7 +246,7 @@ def prank() -> MPObject:
     Note:
         Each party in the current party mask independently produces its own rank value.
     """
-    return cast(MPObject, rall(None, basic.rank))
+    return cast(MPObject, run(None, basic.rank))
 
 
 @bltin_function
@@ -272,7 +272,7 @@ def prand(shape: Shape = ()) -> MPObject:
         private random values. The randomness is local to each party and is
         not shared or revealed to other parties.
     """
-    return cast(MPObject, rall(None, basic.prand, shape))
+    return cast(MPObject, run(None, basic.prand, shape))
 
 
 def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
@@ -304,7 +304,7 @@ def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
         Note that the constant primitive is not designed to carry large tables efficiently -
         consider using dedicated table loading mechanisms for substantial datasets.
     """
-    return cast(MPObject, rall(None, basic.constant, data))
+    return cast(MPObject, run(None, basic.constant, data))
 
 
 @bltin_function
@@ -383,7 +383,7 @@ def peval(
     return [TraceVar(ctx, res) for res in ret_exprs]
 
 
-def rall(
+def run(
     pmask: Mask | None,
     fe_op: FeOperation,
     *args: Any,
@@ -395,9 +395,9 @@ def rall(
     return out_tree.unflatten(results)
 
 
-def rat(rank: Rank, op: Any, *args: Any, **kwargs: Any) -> Any:
+def run_at(rank: Rank, op: Any, *args: Any, **kwargs: Any) -> Any:
     """Run an operation at a specific rank."""
-    return rall(Mask.from_ranks(rank), op, *args, **kwargs)
+    return run(Mask.from_ranks(rank), op, *args, **kwargs)
 
 
 def set_mask(arg: MPObject, mask: Mask) -> MPObject:

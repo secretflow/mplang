@@ -87,7 +87,7 @@ class TestDuckDBKernel:
         def example():
             data = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [4.1, 5.1, 6.1]})
             in_tbl = mp.constant(data)
-            out_tbl = mp.ribis_at(0, _binary_op, in_tbl, op)
+            out_tbl = mp.run_ibis_at(0, _binary_op, in_tbl, op)
 
             return out_tbl
 
@@ -110,7 +110,7 @@ class TestDuckDBKernel:
             df2 = pd.DataFrame({"f0": [0.3, 0.4], "f1": [3, 4]})
             t1 = mp.constant(df1)
             t2 = mp.constant(df2)
-            res = mp.ribis_at(0, _union, t1, t2)
+            res = mp.run_ibis_at(0, _union, t1, t2)
             return res
 
         sim2 = mplang.Simulator.simple(2)

@@ -25,8 +25,8 @@ def save_data():
     x = mp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
     y = mp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
 
-    x = mp.rat(0, basic.write, x, path="tmp/x.npy")
-    y = mp.rat(1, basic.write, y, path="tmp/y.npy")
+    x = mp.run_at(0, basic.write, x, path="tmp/x.npy")
+    y = mp.run_at(1, basic.write, y, path="tmp/y.npy")
 
     return x, y
 
@@ -35,8 +35,8 @@ def save_data():
 def load_data():
     tensor_info = mp.TensorType(shape=(2, 2), dtype=jnp.float32)
 
-    x = mp.rat(0, basic.read, path="tmp/x.npy", ty=tensor_info)
-    y = mp.rat(1, basic.read, path="tmp/y.npy", ty=tensor_info)
+    x = mp.run_at(0, basic.read, path="tmp/x.npy", ty=tensor_info)
+    y = mp.run_at(1, basic.read, path="tmp/y.npy", ty=tensor_info)
 
     x_ = mp.sealFrom(x, 0)
     y_ = mp.sealFrom(y, 1)

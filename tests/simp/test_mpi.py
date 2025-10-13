@@ -19,7 +19,7 @@ import mplang
 import mplang.simp.mpi as mpi
 import mplang.simp.random as mpr
 from mplang.core.primitive import pshfl
-from mplang.simp.api import rjax_at
+from mplang.simp.api import run_jax_at
 
 
 def eval_and_fetch(sim, fn, *args, **kwargs):
@@ -101,7 +101,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data to scatter at party 0
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: [10, 20, 30]))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: [10, 20, 30]))
         scattered = mplang.evaluate(sim, mpi.scatter_m, (1 << 3) - 1, 0, data)
         data, scattered = mplang.fetch(sim, (data, scattered))
 
@@ -114,7 +114,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data to scatter at party 2
-        data = mplang.evaluate(sim, lambda: rjax_at(2, lambda: [100, 200, 300, 400]))
+        data = mplang.evaluate(sim, lambda: run_jax_at(2, lambda: [100, 200, 300, 400]))
         scattered = mplang.evaluate(sim, mpi.scatter_m, (1 << 4) - 1, 2, data)
         data, scattered = mplang.fetch(sim, (data, scattered))
 
@@ -127,7 +127,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data to scatter to parties 0, 2, 3
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: [5, 15, 25]))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: [5, 15, 25]))
         # Scatter to parties 0, 2, 3 (mask = 1101 = 13)
         to_mask = (1 << 0) | (1 << 2) | (1 << 3)
         scattered = mplang.evaluate(sim, mpi.scatter_m, to_mask, 0, data)
@@ -142,7 +142,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create larger data values
-        data = mplang.evaluate(sim, lambda: rjax_at(1, lambda: [9999, 8888]))
+        data = mplang.evaluate(sim, lambda: run_jax_at(1, lambda: [9999, 8888]))
         scattered = mplang.evaluate(sim, mpi.scatter_m, (1 << 2) - 1, 1, data)
         data, scattered = mplang.fetch(sim, (data, scattered))
 
@@ -154,7 +154,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 0
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: 42))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: 42))
         # Broadcast from party 0 to all parties
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, (1 << 3) - 1, 0, data)
         data, broadcasted = mplang.fetch(sim, (data, broadcasted))
@@ -168,7 +168,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 3
-        data = mplang.evaluate(sim, lambda: rjax_at(3, lambda: 123))
+        data = mplang.evaluate(sim, lambda: run_jax_at(3, lambda: 123))
         # Broadcast from party 3 to all parties
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, (1 << 4) - 1, 3, data)
         data, broadcasted = mplang.fetch(sim, (data, broadcasted))
@@ -182,7 +182,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 1
-        data = mplang.evaluate(sim, lambda: rjax_at(1, lambda: 777))
+        data = mplang.evaluate(sim, lambda: run_jax_at(1, lambda: 777))
         # Broadcast from party 1 to parties 0, 1, 3, 4 (mask = 11011 = 27)
         to_mask = (1 << 0) | (1 << 1) | (1 << 3) | (1 << 4)
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, to_mask, 1, data)
@@ -197,7 +197,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create negative data
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: -456))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: -456))
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, (1 << 2) - 1, 0, data)
         data, broadcasted = mplang.fetch(sim, (data, broadcasted))
 
@@ -210,7 +210,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create zero data
-        data = mplang.evaluate(sim, lambda: rjax_at(2, lambda: 0))
+        data = mplang.evaluate(sim, lambda: run_jax_at(2, lambda: 0))
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, (1 << 3) - 1, 2, data)
         data, broadcasted = mplang.fetch(sim, (data, broadcasted))
 
@@ -223,7 +223,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 0
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: 99))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: 99))
         # Send from party 0 to party 2
         sent = mplang.evaluate(sim, mpi.p2p, 0, 2, data)
         data, sent = mplang.fetch(sim, (data, sent))
@@ -237,7 +237,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Test party 3 -> party 1
-        data = mplang.evaluate(sim, lambda: rjax_at(3, lambda: 555))
+        data = mplang.evaluate(sim, lambda: run_jax_at(3, lambda: 555))
         sent = mplang.evaluate(sim, mpi.p2p, 3, 1, data)
         data, sent = mplang.fetch(sim, (data, sent))
 
@@ -249,11 +249,11 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # First transfer: party 0 -> party 1
-        data1 = mplang.evaluate(sim, lambda: rjax_at(0, lambda: 100))
+        data1 = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: 100))
         sent1 = mplang.evaluate(sim, mpi.p2p, 0, 1, data1)
 
         # Second transfer: party 1 -> party 2
-        data2 = mplang.evaluate(sim, lambda: rjax_at(1, lambda: 200))
+        data2 = mplang.evaluate(sim, lambda: run_jax_at(1, lambda: 200))
         sent2 = mplang.evaluate(sim, mpi.p2p, 1, 2, data2)
 
         data1, sent1, data2, sent2 = mplang.fetch(sim, (data1, sent1, data2, sent2))
@@ -267,7 +267,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         large_value = 999999999
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: large_value))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: large_value))
         result = mplang.evaluate(sim, mpi.p2p, 0, 2, data)
 
         data, result = mplang.fetch(sim, (data, result))
@@ -280,7 +280,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Create data at party 0
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: 77))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: 77))
         # Send from party 0 to party 0 (same party)
         sent = mplang.evaluate(sim, mpi.p2p, 0, 0, data)
         data, sent = mplang.fetch(sim, (data, sent))
@@ -294,7 +294,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Test party 2 -> party 2
-        data = mplang.evaluate(sim, lambda: rjax_at(2, lambda: 333))
+        data = mplang.evaluate(sim, lambda: run_jax_at(2, lambda: 333))
         sent = mplang.evaluate(sim, mpi.p2p, 2, 2, data)
         data, sent = mplang.fetch(sim, (data, sent))
 
@@ -320,7 +320,7 @@ class TestMPICommunication:
         # Test with single party
         single_party_sim = mplang.Simulator.simple(1)
         original_data = mplang.evaluate(
-            single_party_sim, lambda: rjax_at(0, lambda: 42)
+            single_party_sim, lambda: run_jax_at(0, lambda: 42)
         )
 
         # Broadcast to single party
@@ -343,7 +343,7 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Test broadcast to all 8 parties
-        data = mplang.evaluate(sim, lambda: rjax_at(4, lambda: 888))
+        data = mplang.evaluate(sim, lambda: run_jax_at(4, lambda: 888))
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, (1 << 8) - 1, 4, data)
         data, broadcasted = mplang.fetch(sim, (data, broadcasted))
 
@@ -351,7 +351,7 @@ class TestMPICommunication:
         assert broadcasted == expected
 
         # Test p2p chain communication
-        data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: 111))
+        data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: 111))
         # 0 -> 7
         sent = mplang.evaluate(sim, mpi.p2p, 0, 7, data)
         data, sent = mplang.fetch(sim, (data, sent))
@@ -365,13 +365,13 @@ class TestMPICommunication:
         sim = mplang.Simulator.simple(num_parties)
 
         # Test with float-like values (represented as integers)
-        data = mplang.evaluate(sim, lambda: rjax_at(1, lambda: 1234))
+        data = mplang.evaluate(sim, lambda: run_jax_at(1, lambda: 1234))
         broadcasted = mplang.evaluate(sim, mpi.bcast_m, (1 << 3) - 1, 1, data)
         data, broadcasted = mplang.fetch(sim, (data, broadcasted))
         assert broadcasted == [1234, 1234, 1234]
 
         # Test with very large numbers
-        large_data = mplang.evaluate(sim, lambda: rjax_at(0, lambda: 2**20))
+        large_data = mplang.evaluate(sim, lambda: run_jax_at(0, lambda: 2**20))
         sent = mplang.evaluate(sim, mpi.p2p, 0, 2, large_data)
         large_data, sent = mplang.fetch(sim, (large_data, sent))
         assert sent == [None, None, 2**20]

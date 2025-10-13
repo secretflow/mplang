@@ -35,9 +35,9 @@ def test_builtin_pack_unpack_tensor_runtime() -> None:
 
     @mplang.function
     def fn():
-        x = mp.rjax_at(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))
-        packed = mp.rat(0, basic.pack, x)
-        unpacked = mp.rat(0, basic.unpack, packed, out_ty=tensor_ty)
+        x = mp.run_jax_at(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))
+        packed = mp.run_at(0, basic.pack, x)
+        unpacked = mp.run_at(0, basic.unpack, packed, out_ty=tensor_ty)
         return x, packed, unpacked
 
     x, packed, unpacked = mplang.evaluate(sim, fn)
@@ -64,8 +64,8 @@ def test_builtin_pack_unpack_table_runtime() -> None:
     @mplang.function
     def fn():
         table = mp.constant(pd.DataFrame(data))
-        packed = mp.rat(0, basic.pack, table)
-        unpacked = mp.rat(0, basic.unpack, packed, out_ty=table_schema)
+        packed = mp.run_at(0, basic.pack, table)
+        unpacked = mp.run_at(0, basic.unpack, packed, out_ty=table_schema)
         return packed, unpacked
 
     packed, unpacked = mplang.evaluate(sim, fn)

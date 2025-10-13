@@ -62,7 +62,7 @@ class TestUnusedParameterHandling:
             unused = mp.constant(999)  # This should be eliminated by JAX
             b = mp.constant(2)
             c = mp.constant(3)
-            return mp.rjax(func_with_unused_params, a, unused, b, c)
+            return mp.run_jax(func_with_unused_params, a, unused, b, c)
 
         expected = 6  # 1 + 2 + 3
 
@@ -94,7 +94,7 @@ class TestUnusedParameterHandling:
             b = mp.constant(b_val)
             c = mp.constant(c_val)
             unused2 = mp.constant(200)
-            return mp.rjax(func_first_last_unused, unused1, b, c, unused2)
+            return mp.run_jax(func_first_last_unused, unused1, b, c, unused2)
 
         result = mp.evaluate(sim, test_func)
         output = mp.fetch(sim, result)
@@ -112,7 +112,7 @@ class TestUnusedParameterHandling:
             a = mp.constant(1)
             unused1 = mp.constant(10)
             unused2 = mp.constant(20)
-            return mp.rjax(func_all_unused_returns_constant, a, unused1, unused2)
+            return mp.run_jax(func_all_unused_returns_constant, a, unused1, unused2)
 
         result = mp.evaluate(sim, test_func)
         output = mp.fetch(sim, result)
@@ -132,7 +132,7 @@ class TestUnusedParameterHandling:
             a = mp.constant(10)
             b = mp.constant(20)
             c = mp.constant(30)
-            return mp.rjax(func_all_used, a, b, c)
+            return mp.run_jax(func_all_used, a, b, c)
 
         result = mp.evaluate(sim, test_func)
         output = mp.fetch(sim, result)
@@ -181,7 +181,7 @@ class TestUnusedParameterHandling:
             a = mp.constant(5)
             unused_float = mp.constant(3.14)  # Different dtype, unused
             c = mp.constant(7)
-            return mp.rjax(func_mixed_types, a, unused_float, c)
+            return mp.run_jax(func_mixed_types, a, unused_float, c)
 
         result = mp.evaluate(sim, test_func)
         output = mp.fetch(sim, result)

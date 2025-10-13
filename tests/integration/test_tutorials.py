@@ -35,8 +35,8 @@ class TestTutorialBasicExamples:
         @mp.function
         def millionaire():
             range_rand = partial(random.randint, 0, 10)
-            x = mp.rjax_at(0, range_rand)
-            y = mp.rjax_at(1, range_rand)
+            x = mp.run_jax_at(0, range_rand)
+            y = mp.run_jax_at(1, range_rand)
             x_ = mp.sealFrom(x, 0)
             y_ = mp.sealFrom(y, 1)
             z_ = mp.srun(lambda x, y: x < y)(x_, y_)
@@ -56,10 +56,10 @@ class TestTutorialConditionalExamples:
         @mp.function
         def negate_if_local_cond():
             x = mp.prandint(0, 20)
-            p = mp.rjax(lambda x: x <= 10, x)
-            pos = mp.rjax(lambda x: x, x)
-            neg = mp.rjax(lambda x: -x, x)
-            z = mp.rjax(jnp.where, p, pos, neg)
+            p = mp.run_jax(lambda x: x <= 10, x)
+            pos = mp.run_jax(lambda x: x, x)
+            neg = mp.run_jax(lambda x: -x, x)
+            z = mp.run_jax(jnp.where, p, pos, neg)
             return x, z
 
         x, z = mp.evaluate(sim3, negate_if_local_cond)
@@ -79,9 +79,9 @@ class TestTutorialConditionalExamples:
             xs_ = mp.seal(x)
             pred_ = mp.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
             pred = mp.reveal(pred_)
-            pos = mp.rjax(lambda x: x, x)
-            neg = mp.rjax(lambda x: -x, x)
-            z = mp.rjax(jnp.where, pred, pos, neg)
+            pos = mp.run_jax(lambda x: x, x)
+            neg = mp.run_jax(lambda x: -x, x)
+            z = mp.run_jax(jnp.where, pred, pos, neg)
             return x, z
 
         x, z = mp.evaluate(sim3, negate_if_shared_cond)
@@ -101,11 +101,11 @@ class TestTutorialConditionalExamples:
         def party_branch_on_cond():
             x = mp.constant(5)
             y = mp.constant(10)
-            pred = mp.rjax(lambda rank: rank < 2, mp.prank())
+            pred = mp.run_jax(lambda rank: rank < 2, mp.prank())
             z = mp.uniform_cond(
                 pred,
-                lambda a, b: mp.rjax(jnp.add, a, b),
-                lambda a, b: mp.rjax(jnp.subtract, a, b),
+                lambda a, b: mp.run_jax(jnp.add, a, b),
+                lambda a, b: mp.run_jax(jnp.subtract, a, b),
                 x,
                 y,
             )
@@ -127,10 +127,10 @@ class TestTutorialWhileLoopExamples:
             x = mp.prandint(0, 10)
 
             def cond(x: mp.MPObject):
-                return mp.rjax(lambda x: x < 15, x)
+                return mp.run_jax(lambda x: x < 15, x)
 
             def body(x: mp.MPObject):
-                return mp.rjax(lambda x: x + 1, x)
+                return mp.run_jax(lambda x: x + 1, x)
 
             r = mp.while_loop(cond, body, x)
             return x, r
@@ -153,7 +153,7 @@ class TestTutorialWhileLoopExamples:
                 return mp.reveal(pred_)
 
             def body(x: mp.MPObject):
-                return mp.rjax(lambda x: x + 1, x)
+                return mp.run_jax(lambda x: x + 1, x)
 
             r = mp.while_loop(cond, body, x)
             return x, r
@@ -171,10 +171,10 @@ class TestTutorialWhileLoopExamples:
             x = mp.prandint(0, 3)
 
             def cond(x: mp.MPObject):
-                return mp.rjax(lambda x: x < 2, x)
+                return mp.run_jax(lambda x: x < 2, x)
 
             def body(x: mp.MPObject):
-                return mp.rjax(lambda x: x + 1, x)
+                return mp.run_jax(lambda x: x + 1, x)
 
             z = mp.while_loop(cond, body, x)
             return z
@@ -192,7 +192,7 @@ class TestTutorialAdvancedExamples:
         y = mp.evaluate(sim3, lambda: mp.prandint(0, 100))
 
         def pass_and_capture(x):
-            return mp.rjax(jnp.multiply, x, y)
+            return mp.run_jax(jnp.multiply, x, y)
 
         z = mp.evaluate(sim3, pass_and_capture, x)
         z_vals = mp.fetch(sim3, z)
@@ -209,7 +209,7 @@ class TestTutorialAdvancedExamples:
         y = mp.evaluate(sim3, lambda: mp.prandint(0, 100))
 
         def pass_and_capture(x):
-            return mp.rjax(jnp.multiply, x, y)
+            return mp.run_jax(jnp.multiply, x, y)
 
         jitted = mp.function(pass_and_capture)
         z1 = mp.evaluate(sim3, jitted, x)
@@ -248,7 +248,7 @@ class TestTutorialErrorHandling:
 
         @mp.function
         def test_runAt_invalid_party():
-            return mp.rjax_at(5, lambda: 42)
+            return mp.run_jax_at(5, lambda: 42)
 
         with pytest.raises(
             ValueError, match="Specified rmask 32 is not a subset of deduced pmask 3"
@@ -274,10 +274,10 @@ class TestTutorialErrorHandling:
             x = mp.constant(10)
 
             def cond(x):
-                return mp.rjax(lambda x: x < 5, x)
+                return mp.run_jax(lambda x: x < 5, x)
 
             def body(x):
-                return mp.rjax(lambda x: x + 1, x)
+                return mp.run_jax(lambda x: x + 1, x)
 
             return mp.while_loop(cond, body, x)
 

@@ -92,14 +92,14 @@ def test_global_symbol_roundtrip(http_servers):
     def compute_chain():
         ty = mp.TensorType(mp.DType.from_any(np.int32), (5,))
         # P0 reads x from its local global symbol table.
-        x_p0 = mp.rat(0, basic.read, path="symbols://x", ty=ty)
+        x_p0 = mp.run_at(0, basic.read, path="symbols://x", ty=ty)
 
         # P0 computes x + 1 using rjax for plain Python function.
-        x_inc_p0 = mp.rjax(lambda a: a + 1, x_p0)
+        x_inc_p0 = mp.run_jax(lambda a: a + 1, x_p0)
 
         # Transfer the result to P1 and write it out as symbols://y from P1.
         x_p1 = mp.p2p(0, 1, x_inc_p0)
-        written = mp.rat(1, basic.write, x_p1, path="symbols://y")
+        written = mp.run_at(1, basic.write, x_p1, path="symbols://y")
 
         return written
 

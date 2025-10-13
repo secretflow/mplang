@@ -25,9 +25,9 @@ def millionaire():
     range_rand = partial(random.randint, 0, 10)
 
     # P0 make a random number.
-    x = mp.rjax_at(0, range_rand)
+    x = mp.run_jax_at(0, range_rand)
     # Each party has a different random value
-    y = mp.rjax_at(1, range_rand)
+    y = mp.run_jax_at(1, range_rand)
 
     # both of them seal it
     x_ = mp.sealFrom(x, 0)
@@ -76,7 +76,7 @@ def millionaire_simp():
     range_rand = partial(random.randint, 0, 10)
 
     # Instead of runAt, all parties call randint(0, 10)
-    x = mp.rjax(range_rand)
+    x = mp.run_jax(range_rand)
 
     # all parties seal it, result a list of sealed values
     xs_ = mp.seal(x)
@@ -137,7 +137,7 @@ print(
 
 @mp.function
 def sub_func():
-    return mp.rat(1, partial(random.randint, 0, 10))()
+    return mp.run_jax_at(1, random.randint, 0, 10)
 
 
 @mp.function
@@ -149,15 +149,15 @@ def myfun(*args, **kwargs):
     y = kwargs["y"]
     c1: str = kwargs["s"]
 
-    u = mp.rat(0, partial(random.randint, 0, 10))
+    u = mp.run_jax_at(0, random.randint, 0, 10)
     # Call a 'mp.function' inside another 'mp.function'.
     v = sub_func()
 
     c2 = c0 * 2
     c3 = c1 + " processed"
 
-    a = mp.rjax_at(0, lambda v: v * 2, u)
-    b = mp.rjax_at(1, lambda v: v + 5, v)
+    a = mp.run_jax_at(0, lambda v: v * 2, u)
+    b = mp.run_jax_at(1, lambda v: v + 5, v)
 
     x_ = mp.sealFrom(x, 0)
     y_ = mp.sealFrom(y, 1)
@@ -172,10 +172,10 @@ def myfun(*args, **kwargs):
 mp.set_ctx(sim2)
 
 # make a random number at P0
-x = mp.rat(0, partial(random.randint, 0, 10))()
+x = mp.run_jax_at(0, random.randint, 0, 10)
 
 # make a random number at P1
-y = mp.rat(1, partial(random.randint, 0, 10))()
+y = mp.run_jax_at(1, random.randint, 0, 10)
 
 # Call the myfun function with the random numbers.
 z = myfun(x, 42, y=y, s="hello")

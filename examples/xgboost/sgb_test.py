@@ -129,15 +129,15 @@ def run_sgb(
 ):
     # 1. load data
     all_datas = [
-        mp.rjax_at(
+        mp.run_jax_at(
             all_party_ids_list[0], lambda x: x, X_parts[all_party_ids_list[0]]
         ),  # AP
         *[
-            mp.rjax_at(pp_id, lambda x: x, X_parts[pp_id])
+            mp.run_jax_at(pp_id, lambda x: x, X_parts[pp_id])
             for pp_id in all_party_ids_list[1:]
         ],  # PPs
     ]
-    y_data = mp.rjax_at(all_party_ids_list[0], lambda x: x, y_jax)
+    y_data = mp.run_jax_at(all_party_ids_list[0], lambda x: x, y_jax)
 
     # 2. train process
     model = model.fit(all_datas, y_data)
@@ -378,17 +378,17 @@ def run_bucket_sum_2_groups():
         dtype=np.int8,
     )
 
-    pkey, skey = mp.rat(0, phe.keygen)
+    pkey, skey = mp.run_at(0, phe.keygen)
     world_mask = mp.Mask.all(2)
     pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
 
-    m1 = mp.rjax_at(0, lambda x: x, m1_np)
+    m1 = mp.run_jax_at(0, lambda x: x, m1_np)
 
-    encrypted_arr = mp.rat(0, phe.encrypt, m1, pkey_bcasted)
+    encrypted_arr = mp.run_at(0, phe.encrypt, m1, pkey_bcasted)
     encrypted_arr = mp.p2p(0, 1, encrypted_arr)
 
-    subgroup_map = mp.rjax_at(1, lambda x: x, subgroup_map)
-    order_map = mp.rjax_at(1, lambda x: x, order_map)
+    subgroup_map = mp.run_jax_at(1, lambda x: x, subgroup_map)
+    order_map = mp.run_jax_at(1, lambda x: x, order_map)
 
     bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
         encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
@@ -397,7 +397,7 @@ def run_bucket_sum_2_groups():
     # Decrypt each group result separately
     decrypted_results = []
     for group_idx in range(group_size):
-        decrypted_group = mp.rat(
+        decrypted_group = mp.run_at(
             0, phe.decrypt, mp.p2p(1, 0, bucket_sum_list[group_idx]), skey
         )
         decrypted_results.append(decrypted_group)
@@ -451,17 +451,17 @@ def run_bucket_sum_3_groups():
         dtype=np.int8,
     )
 
-    pkey, skey = mp.rat(0, phe.keygen)
+    pkey, skey = mp.run_at(0, phe.keygen)
     world_mask = mp.Mask.all(2)
     pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
 
-    m1 = mp.rjax_at(0, lambda x: x, m1_np)
+    m1 = mp.run_jax_at(0, lambda x: x, m1_np)
 
-    encrypted_arr = mp.rat(0, phe.encrypt, m1, pkey_bcasted)
+    encrypted_arr = mp.run_at(0, phe.encrypt, m1, pkey_bcasted)
     encrypted_arr = mp.p2p(0, 1, encrypted_arr)
 
-    subgroup_map = mp.rjax_at(1, lambda x: x, subgroup_map)
-    order_map = mp.rjax_at(1, lambda x: x, order_map)
+    subgroup_map = mp.run_jax_at(1, lambda x: x, subgroup_map)
+    order_map = mp.run_jax_at(1, lambda x: x, order_map)
 
     bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
         encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
@@ -470,7 +470,7 @@ def run_bucket_sum_3_groups():
     # Decrypt each group result separately
     decrypted_results = []
     for group_idx in range(group_size):
-        decrypted_group = mp.rat(
+        decrypted_group = mp.run_at(
             0, phe.decrypt, mp.p2p(1, 0, bucket_sum_list[group_idx]), skey
         )
         decrypted_results.append(decrypted_group)

@@ -59,16 +59,15 @@ from mplang.host import CompileOptions, compile, evaluate, fetch
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
 from mplang.simp.api import (
-    rall,
-    rat,
-    ribis,
-    ribis_at,
-    rjax,
-    rjax_at,
-    rsql,
-    rsql_at,
+    run,
+    run_at,
+    run_ibis,
+    run_ibis_at,
+    run_jax,
+    run_jax_at,
+    run_sql,
+    run_sql_at,
 )
-from mplang.simp.legacy import run, runAt
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
 from mplang.simp.party import P0, P1, P2, P2P, P, Party, load_module
 from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
@@ -124,18 +123,16 @@ __all__ = [
     "prank",
     "pshfl",
     "pshfl_s",
-    "rall",
-    "rat",
     "reveal",
     "revealTo",
-    "ribis",
-    "ribis_at",
-    "rjax",
-    "rjax_at",
-    "rsql",
-    "rsql_at",
     "run",
-    "runAt",
+    "run_at",
+    "run_ibis",
+    "run_ibis_at",
+    "run_jax",
+    "run_jax_at",
+    "run_sql",
+    "run_sql_at",
     "scatter_m",
     "seal",
     "sealFrom",

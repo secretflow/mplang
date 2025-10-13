@@ -39,7 +39,7 @@ from mplang.ops.base import FeOperation
 from mplang.ops.ibis_cc import IbisRunner
 from mplang.ops.jax_cc import JaxRunner
 from mplang.simp import mpi, smpc
-from mplang.simp.api import rat
+from mplang.simp.api import run_at
 
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
@@ -96,7 +96,7 @@ def _device_run_tee(
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
-    var = rat(rank, op, *args, **kwargs)
+    var = run_at(rank, op, *args, **kwargs)
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
@@ -105,7 +105,7 @@ def _device_run_ppu(
 ) -> Any:
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
-    var = rat(rank, op, *args, **kwargs)
+    var = run_at(rank, op, *args, **kwargs)
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
@@ -209,11 +209,11 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
         # Bytes-only path: pack -> enc -> p2p -> dec -> unpack (with static out type)
         obj_ty = TensorType.from_obj(obj)
-        b = rat(frm_rank, basic.pack, obj)
-        ct = rat(frm_rank, crypto.enc, b, sess_p)
+        b = run_at(frm_rank, basic.pack, obj)
+        ct = run_at(frm_rank, crypto.enc, b, sess_p)
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
-        b_at_tee = rat(tee_rank, crypto.dec, ct_at_tee, sess_t)
-        pt_at_tee = rat(tee_rank, basic.unpack, b_at_tee, out_ty=obj_ty)
+        b_at_tee = run_at(tee_rank, crypto.dec, ct_at_tee, sess_t)
+        pt_at_tee = run_at(tee_rank, basic.unpack, b_at_tee, out_ty=obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEE", "PPU"):
         # Transparent encryption from TEE to a specific PPU using the reverse-direction session key
@@ -223,11 +223,11 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         # Ensure bidirectional session established for this pair
         sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
         obj_ty = TensorType.from_obj(obj)
-        b = rat(tee_rank, basic.pack, obj)
-        ct = rat(tee_rank, crypto.enc, b, sess_t)
+        b = run_at(tee_rank, basic.pack, obj)
+        ct = run_at(tee_rank, crypto.enc, b, sess_t)
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
-        b_at_ppu = rat(ppu_rank, crypto.dec, ct_at_ppu, sess_p)
-        pt_at_ppu = rat(ppu_rank, basic.unpack, b_at_ppu, out_ty=obj_ty)
+        b_at_ppu = run_at(ppu_rank, crypto.dec, ct_at_ppu, sess_p)
+        pt_at_ppu = run_at(ppu_rank, basic.unpack, b_at_ppu, out_ty=obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         supported = [
@@ -260,23 +260,25 @@ def _ensure_tee_session(
 
     # 1) TEE generates (sk, pk) and quote(pk)
     # KEM suite currently constant; future: read from tee device config (e.g. cluster_spec.devices[dev_id].config)
-    tee_sk, tee_pk = rat(tee_rank, crypto.kem_keygen, _TEE_KEM_SUITE)
-    quote = rat(tee_rank, tee.quote_gen, tee_pk)
+    tee_sk, tee_pk = run_at(tee_rank, crypto.kem_keygen, _TEE_KEM_SUITE)
+    quote = run_at(tee_rank, tee.quote_gen, tee_pk)
 
     # 2) Send quote to sender and attest to obtain TEE pk
     quote_at_sender = mpi.p2p(tee_rank, frm_rank, quote)
-    tee_pk_at_sender = rat(frm_rank, tee.attest, quote_at_sender)
+    tee_pk_at_sender = run_at(frm_rank, tee.attest, quote_at_sender)
 
     # 3) Sender generates its ephemeral keypair and sends its pk to TEE
-    v_sk, v_pk = rat(frm_rank, crypto.kem_keygen, _TEE_KEM_SUITE)
+    v_sk, v_pk = run_at(frm_rank, crypto.kem_keygen, _TEE_KEM_SUITE)
     v_pk_at_tee = mpi.p2p(frm_rank, tee_rank, v_pk)
 
     # 4) Both sides derive the shared secret and session key
-    shared_p = rat(frm_rank, crypto.kem_derive, v_sk, tee_pk_at_sender, _TEE_KEM_SUITE)
-    shared_t = rat(tee_rank, crypto.kem_derive, tee_sk, v_pk_at_tee, _TEE_KEM_SUITE)
+    shared_p = run_at(
+        frm_rank, crypto.kem_derive, v_sk, tee_pk_at_sender, _TEE_KEM_SUITE
+    )
+    shared_t = run_at(tee_rank, crypto.kem_derive, tee_sk, v_pk_at_tee, _TEE_KEM_SUITE)
     # Use a fixed ASCII string literal for HKDF info on both sides
-    sess_p = rat(frm_rank, crypto.hkdf, shared_p, _HKDF_INFO_LITERAL)
-    sess_t = rat(tee_rank, crypto.hkdf, shared_t, _HKDF_INFO_LITERAL)
+    sess_p = run_at(frm_rank, crypto.hkdf, shared_p, _HKDF_INFO_LITERAL)
+    sess_t = run_at(tee_rank, crypto.hkdf, shared_t, _HKDF_INFO_LITERAL)
 
     cache[key] = (sess_p, sess_t)
     return sess_p, sess_t

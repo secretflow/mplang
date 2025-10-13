@@ -25,10 +25,10 @@ def while_party_local():
 
     def cond(x: mp.MPObject):
         assert isinstance(x, mp.MPObject), x
-        return mp.rjax(lambda x: x < 15, x)
+        return mp.run_jax(lambda x: x < 15, x)
 
     def body(x: mp.MPObject):
-        return mp.rjax(lambda x: x + 1, x)
+        return mp.run_jax(lambda x: x + 1, x)
 
     # if < 15, each party increase itself.
     r = mp.while_loop(cond, body, x)
@@ -49,7 +49,7 @@ def while_sum_greater():
         return mp.reveal(pred_)
 
     def body(x: mp.MPObject):
-        return mp.rjax(lambda x: x + 1, x)
+        return mp.run_jax(lambda x: x + 1, x)
 
     # if < 15, each party increase itself.
     r = mp.while_loop(cond, body, x)

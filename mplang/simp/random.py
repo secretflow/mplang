@@ -23,7 +23,7 @@ from jax.typing import ArrayLike
 
 import mplang.core.primitive as prim
 from mplang.core import MPObject, Shape
-from mplang.simp.api import rjax
+from mplang.simp.api import run_jax
 
 
 @prim.function
@@ -37,7 +37,7 @@ def key_split(key: MPObject) -> tuple[MPObject, MPObject]:
         subkey, key = jr.split(key)
         return subkey, key
 
-    return rjax(kernel, key)  # type: ignore[no-any-return]
+    return run_jax(kernel, key)  # type: ignore[no-any-return]
 
 
 @prim.function
@@ -49,7 +49,7 @@ def ukey(seed: int | ArrayLike) -> MPObject:
         # Note: key.dtype is jax._src.prng.KeyTy, which could not be handled by MPObject.
         return jax.random.key_data(key)
 
-    return rjax(kernel)  # type: ignore[no-any-return]
+    return run_jax(kernel)  # type: ignore[no-any-return]
 
 
 @prim.function
@@ -61,7 +61,7 @@ def urandint(
 ) -> MPObject:
     """Party uniformly generate a random integer in the range [low, high) with the given shape."""
 
-    return rjax(partial(jr.randint, minval=low, maxval=high, shape=shape), key)  # type: ignore[no-any-return]
+    return run_jax(partial(jr.randint, minval=low, maxval=high, shape=shape), key)  # type: ignore[no-any-return]
 
 
 # Private(different per-party) related functions begin.
@@ -81,7 +81,7 @@ def prandint(low: int, high: int, shape: Shape = ()) -> MPObject:
         return result
 
     rand_u64 = prim.prand(shape)
-    return rjax(kernel, rand_u64)  # type: ignore[no-any-return]
+    return run_jax(kernel, rand_u64)  # type: ignore[no-any-return]
 
 
 @prim.function
@@ -116,6 +116,6 @@ def pperm(key: MPObject) -> MPObject:
     def kernel(key: jax.Array) -> jax.Array:
         return jr.permutation(key, size)
 
-    perm = rjax(kernel, key)
+    perm = run_jax(kernel, key)
     rank = prim.prank()
-    return rjax(lambda perm, rank: perm[rank], perm, rank)  # type: ignore[no-any-return]
+    return run_jax(lambda perm, rank: perm[rank], perm, rank)  # type: ignore[no-any-return]

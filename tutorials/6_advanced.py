@@ -26,7 +26,7 @@ print(mp.fetch(sim3, (x, y)))
 
 def pass_and_capture(x):
     # pass x as a parameter, and capture y from the outer scope
-    return mp.rjax(jnp.multiply, x, y)
+    return mp.run_jax(jnp.multiply, x, y)
 
 
 z = mp.evaluate(sim3, pass_and_capture, x)

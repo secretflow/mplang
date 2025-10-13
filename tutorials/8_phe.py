@@ -35,27 +35,27 @@ def three_party_phe_sum():
     data = mp.prank()
 
     # Step 2: Party 0 generates PHE key pair
-    pkey, skey = mp.rat(0, phe.keygen)
+    pkey, skey = mp.run_at(0, phe.keygen)
 
     # Step 3: Party 0 broadcasts public key to all parties
     world_mask = mp.Mask.all(3)
     pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
 
     # Step 4: Each party encrypts their data
-    encrypted = mp.rjax(phe.encrypt, data, pkey_bcasted)
+    encrypted = mp.run(None, phe.encrypt, data, pkey_bcasted)
 
     # Step 5: All parties send encrypted data to Party 0
     # Gather all encrypted data at Party 0
     e0, e1, e2 = mp.gather_m(world_mask, 0, encrypted)
 
     # Step 6: Party 0 computes sum and decrypts
-    sum_e0_e1 = mp.rat(0, phe.add, e0, e1)
+    sum_e0_e1 = mp.run_at(0, phe.add, e0, e1)
 
     # Add the third encrypted value
-    encrypted_sum = mp.rat(0, phe.add, sum_e0_e1, e2)
+    encrypted_sum = mp.run_at(0, phe.add, sum_e0_e1, e2)
 
     # Decrypt the final result
-    final_result = mp.rat(0, phe.decrypt, encrypted_sum, skey)
+    final_result = mp.run_at(0, phe.decrypt, encrypted_sum, skey)
 
     return final_result
 

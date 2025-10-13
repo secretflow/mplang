@@ -51,13 +51,13 @@ def millionaire():
     return z
 
 # Set up a local simulator with 2 parties
-sim = mplang.Simulator(2)
+sim = mplang.Simulator.simple(2)
 
 # Evaluate the compiled function
-result = mplang.eval(sim, millionaire)
+result = mplang.evaluate(sim, millionaire)
 
-# Securely fetch the result
-print("Is Alice poorer than Bob?", mplang.fetch(sim, result))
+# Securely fetch the result (reveals SPU value)
+print("Is Alice poorer than Bob?", mpd.fetch(sim, result))
 ```
 
 ## Learn More

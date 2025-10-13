@@ -19,7 +19,7 @@ import mplang as mp
 
 # TL;DR / Quick Patterns:
 # - Elementwise / per-party divergent predicate & both sides cheap -> jax.where
-# - Pure local lazy control (no multi-party side-effects) -> jax.lax.cond (via mp.run)
+# - Pure local lazy control (no multi-party side-effects) -> jax.lax.cond (via mp.rjax)
 # - Uniform predicate + expensive multi-party side-effects -> uniform_cond
 # - Divergent structural branching you wish were uniform -> aggregate/reduce to uniform or fallback to elementwise where
 

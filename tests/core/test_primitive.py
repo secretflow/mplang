@@ -1492,7 +1492,7 @@ class TestSetMask:
             const_var = constant(1)
 
             # Combine using the new mp.run API
-            result = run_jax(lambda x, y: x + y, constrained_var, const_var)
+            result = rjax(lambda x, y: x + y, constrained_var, const_var)
 
             return result
 

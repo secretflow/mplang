@@ -15,8 +15,8 @@
 """
 HTTP-based driver implementation for distributed execution.
 
-This module provides an HTTP-based alternative to the gRPC Driver,
-using REST APIs for distributed multi-party computation coordination.
+This module provides an HTTP-based driver, using REST APIs
+for distributed multi-party computation coordination.
 """
 
 from __future__ import annotations

@@ -27,6 +27,7 @@ from mplang.core.comm import (
     ICollective,
     ICommunicator,
 )
+from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
 from mplang.core.dtype import DType
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
@@ -76,6 +77,7 @@ __all__ = [
     "TracedFunction",
     "VarNamer",
     "constant",
+    "cur_ctx",
     "debug_print",
     "function",
     "pconv",
@@ -85,8 +87,10 @@ __all__ = [
     "pshfl",
     "pshfl_s",
     "psize",
+    "set_ctx",
     "set_mask",
     "trace",
     "uniform_cond",
     "while_loop",
+    "with_ctx",
 ]

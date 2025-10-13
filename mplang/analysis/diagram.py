@@ -26,7 +26,7 @@ from typing import TypedDict
 from mplang.core import TracedFunction
 from mplang.core.cluster import ClusterSpec
 from mplang.core.mask import Mask
-from mplang.core.mpir import Writer, get_graph_statistics
+from mplang.core.mpir import IrWriter, get_graph_statistics
 from mplang.protos.v1alpha1 import mpir_pb2
 
 # ----------------------------- Core helpers (copied) -----------------------------
@@ -450,7 +450,7 @@ def dump(
 
     # Build graph once
     expr = traced.make_expr()
-    graph_proto = Writer().dumps(expr)
+    graph_proto = IrWriter().dumps(expr)
 
     # Derive world_size from cluster_spec if provided
     derived_world_size: int | None = None

@@ -16,9 +16,8 @@ import random
 
 import yaml
 
-import mplang
+import mplang as mp
 import mplang.device as mpd
-import mplang.simp as simp
 
 
 def randint(lo, hi):
@@ -27,35 +26,35 @@ def randint(lo, hi):
     return rng.randint(lo, hi)
 
 
-@mplang.function
+@mp.function
 def millionaire():
     # Note: mpl.run(random.randint) will not work, because
     # the random number generator's state is captured and will always
     # return the same number on both parties.
-    x = simp.prandint(0, 10)
-    y = simp.prandint(0, 10)
+    x = mp.prandint(0, 10)
+    y = mp.prandint(0, 10)
 
     # both of them seal it
-    x_ = simp.sealFrom(x, 0)
-    y_ = simp.sealFrom(y, 1)
+    x_ = mp.sealFrom(x, 0)
+    y_ = mp.sealFrom(y, 1)
 
     # compare it seally.
-    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
+    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = simp.reveal(z_)
+    z = mp.reveal(z_)
 
     return x, y, z
 
 
 def simp_main(driver):
-    mplang.set_ctx(driver)
+    mp.set_ctx(driver)
 
     # run the simp function on a given executor
     x, y, z = millionaire()
 
     # result a reference to the resource on the executor
-    hx, hy, hz = mplang.fetch(None, (x, y, z))
+    hx, hy, hz = mp.fetch(None, (x, y, z))
     print("x:", hx)
     print("y:", hy)
     print("z:", hz)
@@ -100,7 +99,7 @@ device_conf = {
 
 # def device_lazy(ectx):
 #     assert ectx.world_size == 3
-#     simp.WORLD_SIZE = 3
+#     mp.WORLD_SIZE = 3
 #     driver = mpd.DeviceDriver(mpd.parse_device_conf(device_conf), ectx)
 
 #     x = alice_input(driver, 0, 10)
@@ -139,8 +138,8 @@ def device_func():
 
 
 def device_eager(ctx):
-    x, y, z = mplang.evaluate(ctx, device_func)
-    hx, hy, hz = mplang.fetch(ctx, (x, y, z))
+    x, y, z = mp.evaluate(ctx, device_func)
+    hx, hy, hz = mp.fetch(ctx, (x, y, z))
     print("hx:", hx)
     print("hy:", hy)
     print("hz:", hz)
@@ -148,8 +147,8 @@ def device_eager(ctx):
 
 def aot_compilation(ectx):
     # This function illustrates the AOT compilation process
-    copts = mplang.CompileOptions(ectx.cluster_spec)
-    compiled = mplang.compile(copts, millionaire)
+    copts = mp.CompileOptions(ectx.cluster_spec)
+    compiled = mp.compile(copts, millionaire)
     print(compiled.compiler_ir())
 
 
@@ -180,13 +179,13 @@ def cmd_main(main_func) -> None:
     # load ClusterSpec from yaml file
     with open(args.config) as file:
         conf = yaml.safe_load(file)
-    cluster_spec = mplang.ClusterSpec.from_dict(conf)
+    cluster_spec = mp.ClusterSpec.from_dict(conf)
 
     if args.command == "sim":
-        sim = mplang.Simulator(cluster_spec)
+        sim = mp.Simulator(cluster_spec)
         main_func(sim)
     elif args.command == "run":
-        driver = mplang.Driver(cluster_spec)
+        driver = mp.Driver(cluster_spec)
         main_func(driver)
     else:
         parser.print_help()

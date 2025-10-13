@@ -41,7 +41,11 @@ mplang-cli = "mplang.runtime.cli:main"
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
 
-examples = ["scikit-learn", "tensorflow"]
+examples = [
+    "scikit-learn",
+    "tensorflow",
+    "xgboost>=2.0.0,<3.0.0", # CPU version, 3.x requires CUDA dependencies
+]
 
 [tool.hatch.metadata.hooks.custom]
 

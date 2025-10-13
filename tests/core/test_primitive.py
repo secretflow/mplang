@@ -1511,7 +1511,7 @@ class TestSetMask:
         print(f"set_mask integration expression:\n{expr_str}")
 
         # The expression should contain multiple operations
-        assert "eval" in expr_str  # From set_mask and mp.run
+        assert "eval" in expr_str  # From set_mask and run_jax
         assert "prank" in expr_str  # From prank()
         assert "pconst" in expr_str  # From constant()
 

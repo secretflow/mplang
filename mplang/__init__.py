@@ -24,7 +24,6 @@ except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
 from mplang import analysis
-from mplang.api import CompileOptions, compile, evaluate, fetch
 from mplang.core import (
     DType,
     InterpContext,
@@ -38,6 +37,7 @@ from mplang.core import (
 )
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
+from mplang.host import CompileOptions, compile, evaluate, fetch
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
 

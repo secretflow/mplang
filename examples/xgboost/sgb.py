@@ -91,7 +91,7 @@ def batch_feature_wise_bucket_sum_mplang(
             def slice_group(sg_map):
                 return sg_map[group_idx]
 
-            return mp.rat(rank, slice_group, subgroup_map)
+            return mp.rjax_at(rank, slice_group, subgroup_map)
 
         # Create modified order_map for each group where mask=0 positions become -1
         def create_masked_order_map(mask, om):
@@ -108,7 +108,7 @@ def batch_feature_wise_bucket_sum_mplang(
                 # Where mask=1, keep original order values
                 return jnp.where(mask_full == 1, order_m, -1)
 
-            return mp.rat(rank, apply_mask, mask, om)
+            return mp.rjax_at(rank, apply_mask, mask, om)
 
         # Extract group masks and create masked order maps for all groups
         group_masks = []
@@ -148,7 +148,7 @@ def batch_feature_wise_bucket_sum_mplang(
                         )
                         return valid_and_in_bucket.astype(jnp.int32)
 
-                    bucket_mask = mp.rat(
+                    bucket_mask = mp.rjax_at(
                         rank,
                         create_bucket_mask,
                         group_order_map,
@@ -161,7 +161,7 @@ def batch_feature_wise_bucket_sum_mplang(
                     def reshape_bucket_mask_to_col(mask):
                         return mask.reshape(-1, 1)  # (sample_size, 1)
 
-                    bucket_mask_col = mp.rat(
+                    bucket_mask_col = mp.rjax_at(
                         rank, reshape_bucket_mask_to_col, bucket_mask
                     )
 
@@ -867,7 +867,7 @@ def build_tree(
     owned_party_ids = mp.rjax(lambda x: x, jnp.full(n_nodes, -1, dtype=jnp.int64))
 
     # only owned by active party
-    values = mp.rat(
+    values = mp.rjax_at(
         active_party_id, lambda x: x, jnp.full(n_nodes, 0.0, dtype=jnp.float32)
     )
 
@@ -893,14 +893,14 @@ def build_tree(
         # 1. Build the histogram & find the best split ,for the current level.
         # 1.1 ap can do the histogram and best split purely locally.
         # ap find the best split for each node at this level.
-        ap_GH_hist = mp.rat(
-            active_party_id, partial(local_build_histogram, t=n_nodes_level, k=k)
-        )(
+        ap_GH_hist = mp.rjax_at(
+            active_party_id,
+            partial(local_build_histogram, t=n_nodes_level, k=k),
             gh_plaintext,
             bt_levels,
             all_bin_indices[0],
         )
-        ap_max_gains, ap_best_features, ap_best_threshold_idxs = mp.rat(
+        ap_max_gains, ap_best_features, ap_best_threshold_idxs = mp.rjax_at(
             active_party_id,
             local_compute_best_split,
             ap_GH_hist,
@@ -923,9 +923,11 @@ def build_tree(
 
             # construct subgroup map from bt_level
             # bt_level: (m,), with values in (0,1,2,...,n_nodes_level-1)
-            cur_pp_subgroup_map = mp.rat(
-                cur_pp_rank, partial(_get_subgroup_map, group_size=n_nodes_level)
-            )(bt_levels)  # (n_nodes_level, m)
+            cur_pp_subgroup_map = mp.rjax_at(
+                cur_pp_rank,
+                partial(_get_subgroup_map, group_size=n_nodes_level),
+                bt_levels,
+            )  # (n_nodes_level, m)
 
             # 1.2.2 pp encrypt the accumulated histogram.
             cur_pp_enc_hist_cumsum: list[mp.MPObject] = (
@@ -959,7 +961,7 @@ def build_tree(
                 cur_pp_best_gains,
                 cur_pp_best_features,
                 cur_pp_best_threshold_idxs,
-            ) = mp.rat(
+            ) = mp.rjax_at(
                 active_party_id,
                 partial(
                     pp_compute_all_best_splits,
@@ -969,7 +971,8 @@ def build_tree(
                     gamma=gamma,
                     min_child_weight=min_child_weight,
                 ),
-            )(cur_pp_dec_hist_cumsum)
+                cur_pp_dec_hist_cumsum,
+            )
             cur_level_best_gains.append(cur_pp_best_gains)
             cur_level_best_features.append(cur_pp_best_features)
             cur_level_best_threshold_idxs.append(cur_pp_best_threshold_idxs)
@@ -986,7 +989,7 @@ def build_tree(
         (
             global_best_gains,
             best_group_indices,
-        ) = mp.rat(
+        ) = mp.rjax_at(
             active_party_id,
             find_global_best_split_local_features,
             cur_level_best_gains,
@@ -994,7 +997,7 @@ def build_tree(
 
         # TODO: not all pp should know the group_indice , features, etc
         # update the is_leaf
-        is_leaf = mp.rat(
+        is_leaf = mp.rjax_at(
             active_party_id,
             _update_is_leaf,
             is_leaf,
@@ -1004,7 +1007,7 @@ def build_tree(
         is_leaf = mp.bcast_m(all_party_mask, active_party_id, is_leaf)
 
         # TODO: can this not be known by all parties?
-        owned_party_ids = mp.rat(
+        owned_party_ids = mp.rjax_at(
             active_party_id,
             _update_owned_party_ids,
             owned_party_ids,
@@ -1029,7 +1032,7 @@ def build_tree(
                 )
 
             # temp bt for each party
-            tmp = mp.rat(
+            tmp = mp.rjax_at(
                 i,
                 _update_bt,
                 bt,
@@ -1043,7 +1046,7 @@ def build_tree(
                 tmp = mp.p2p(passive_party_ids[i - 1], active_party_id, tmp)
             all_cur_tmp_bt.append(tmp)
 
-            all_feats[i] = mp.rat(
+            all_feats[i] = mp.rjax_at(
                 i,
                 _update_best_features,
                 all_feats[i],
@@ -1053,7 +1056,7 @@ def build_tree(
                 is_leaf,
                 i,
             )
-            all_thresholds[i] = mp.rat(
+            all_thresholds[i] = mp.rjax_at(
                 i,
                 _update_best_thresholds,
                 all_thresholds[i],
@@ -1119,7 +1122,7 @@ def build_tree(
             return updated_bt
 
         # Apply the update logic at AP (since AP has all tmp_bt and best_group_indices)
-        bt = mp.rat(
+        bt = mp.rjax_at(
             active_party_id,
             update_bt_with_best_splits,
             bt,
@@ -1159,10 +1162,9 @@ def build_tree(
     # --- Final leaf value calculation ---
     # After the tree structure is built, calculate the value for every node based on final sample assignments.
     # `bt` now contains the final node index for every sample.
-    values = mp.rat(
+    values = mp.rjax_at(
         active_party_id,
         partial(update_values, n_nodes=n_nodes, reg_lambda=reg_lambda),
-    )(
         values,
         gh_plaintext,
         bt,
@@ -1261,7 +1263,7 @@ def _local_try_to_predict(
         )
         return final_locations
 
-    local_pred = mp.rat(
+    local_pred = mp.rjax_at(
         party_id,
         _local_traverse_kernel,
         data,
@@ -1319,7 +1321,7 @@ def predict_tree(
         all_masks.append(mp.p2p(passive_party_ids[i], active_party_id, pp_mask))
 
     # Aggregation and Final Prediction in AP
-    final_pred = mp.rat(
+    final_pred = mp.rjax_at(
         active_party_id, agg_prediction, all_masks, tree.is_leaf, tree.value
     )
     return final_pred
@@ -1332,19 +1334,22 @@ def predict_ensemble(
     passive_party_ids: list[int],
     learning_rate: float,
 ) -> mp.MPObject:
-    y_pred_logits = mp.rat(
+    y_pred_logits = mp.rjax_at(
         active_party_id,
         lambda init_y, m=all_datas[0].shape[0]: init_y * jnp.ones(m),
-    )(model.initial_prediction)
+        model.initial_prediction,
+    )
 
     for tree in model.trees:
         pred = predict_tree(tree, all_datas, active_party_id, passive_party_ids)
-        y_pred_logits = mp.rat(
+        y_pred_logits = mp.rjax_at(
             active_party_id,
             partial(_update_pred, learning_rate=learning_rate),
-        )(y_pred_logits, pred)
+            y_pred_logits,
+            pred,
+        )
 
-    y_pred = mp.rat(active_party_id, sigmoid, y_pred_logits)
+    y_pred = mp.rjax_at(active_party_id, sigmoid, y_pred_logits)
 
     return y_pred
 
@@ -1398,7 +1403,7 @@ def predict_tree_leaf(
         all_masks.append(mp.p2p(passive_party_ids[i], active_party_id, pp_mask))
 
     # Aggregation and Final Prediction in AP
-    final_pred = mp.rat(active_party_id, agg_prediction_leaves, all_masks)
+    final_pred = mp.rjax_at(active_party_id, agg_prediction_leaves, all_masks)
     return final_pred
 
 
@@ -1434,8 +1439,8 @@ def fit_tree_ensemble(
     all_party_pmasks = mp.Mask((1 << (len(passive_party_ids) + 1)) - 1)
     m = y_data.shape[0]
 
-    y_pred_current = mp.rat(active_party_id, lambda init_y, m=m: init_y * jnp.ones(m))(
-        initial_y_pred
+    y_pred_current = mp.rjax_at(
+        active_party_id, lambda init_y, m=m: init_y * jnp.ones(m), initial_y_pred
     )
 
     trees: list[Tree] = []
@@ -1446,7 +1451,7 @@ def fit_tree_ensemble(
 
     # TODO: to support early stopping, maybe we need something like `jax.lax.scan` to store all the trees?
     for _ in range(n_estimators):
-        gh = mp.rat(active_party_id, compute_gh, y_data, y_pred_current)
+        gh = mp.rjax_at(active_party_id, compute_gh, y_data, y_pred_current)
         gh_encrypted = mp.rat(active_party_id, phe.encrypt, gh, pkey)
 
         # known by all parties
@@ -1474,7 +1479,7 @@ def fit_tree_ensemble(
             passive_party_ids,
         )
 
-        y_pred_current = mp.rat(
+        y_pred_current = mp.rjax_at(
             active_party_id, _update_pred, y_pred_current, update, learning_rate
         )
         trees.append(tree)
@@ -1581,20 +1586,22 @@ class SecureBoost:
         # in order to facilitate the subsequent addition of more complex and customized binning mechanisms.
         ap_data = all_datas[0]
         pp_datas = all_datas[1:]
-        all_bins = [mp.rat(self.active_party_id, build_bins_vmapped, ap_data)]
+        all_bins = [mp.rjax_at(self.active_party_id, build_bins_vmapped, ap_data)]
 
         all_bin_indices = [
-            mp.rat(self.active_party_id, compute_indices_vmapped, ap_data, all_bins[0])
+            mp.rjax_at(
+                self.active_party_id, compute_indices_vmapped, ap_data, all_bins[0]
+            )
         ]
         for idx, pp_rank in enumerate(self.passive_party_ids):
-            pp_bin = mp.rat(pp_rank, build_bins_vmapped, pp_datas[idx])
+            pp_bin = mp.rjax_at(pp_rank, build_bins_vmapped, pp_datas[idx])
             all_bins.append(pp_bin)
             all_bin_indices.append(
-                mp.rat(pp_rank, compute_indices_vmapped, pp_datas[idx], pp_bin)
+                mp.rjax_at(pp_rank, compute_indices_vmapped, pp_datas[idx], pp_bin)
             )
 
         # 2. init base pred
-        initial_y_pred = mp.rat(self.active_party_id, compute_init_pred, y_data)
+        initial_y_pred = mp.rjax_at(self.active_party_id, compute_init_pred, y_data)
 
         self.trees = fit_tree_ensemble(
             all_datas,

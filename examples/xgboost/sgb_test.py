@@ -129,7 +129,7 @@ def run_sgb(
 ):
     # 1. load data
     all_datas = [
-        mp.rat(
+        mp.rjax_at(
             all_party_ids_list[0], lambda x: x, X_parts[all_party_ids_list[0]]
         ),  # AP
         *[

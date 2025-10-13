@@ -15,7 +15,7 @@
 """
 HTTP-based driver implementation for distributed execution.
 
-This module provides an HTTP-based gRPC Driver, using REST APIs
+This module provides an HTTP-based driver, using REST APIs
 for distributed multi-party computation coordination.
 """
 

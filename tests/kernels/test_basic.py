@@ -43,15 +43,15 @@ class TestBuiltin:
 
         kernels = list_kernels()
         for expected in [
-            "builtin.identity",
-            "builtin.read",
-            "builtin.write",
-            "builtin.constant",
-            "builtin.rank",
-            "builtin.prand",
-            "builtin.table_to_tensor",
-            "builtin.tensor_to_table",
-            "builtin.debug_print",
+            "basic.identity",
+            "basic.read",
+            "basic.write",
+            "basic.constant",
+            "basic.rank",
+            "basic.prand",
+            "basic.table_to_tensor",
+            "basic.tensor_to_table",
+            "basic.debug_print",
         ]:
             assert expected in kernels
 
@@ -62,7 +62,7 @@ class TestBuiltin:
 
         # Test identity
         identity_pfunc = PFunction(
-            fn_type="builtin.identity",
+            fn_type="basic.identity",
             ins_info=(TensorType.from_obj(test_data),),
             outs_info=(TensorType.from_obj(test_data),),
             fn_name="Identity",
@@ -83,7 +83,7 @@ class TestBuiltin:
         try:
             # Test write
             write_pfunc = PFunction(
-                fn_type="builtin.write",
+                fn_type="basic.write",
                 ins_info=(TensorType.from_obj(test_data),),
                 outs_info=(TensorType.from_obj(test_data),),
                 fn_name="Write",
@@ -99,7 +99,7 @@ class TestBuiltin:
 
             # Test read
             read_pfunc = PFunction(
-                fn_type="builtin.read",
+                fn_type="basic.read",
                 ins_info=(),
                 outs_info=(TensorType.from_obj(test_data),),
                 fn_name="Read",
@@ -126,7 +126,7 @@ class TestBuiltin:
             nested_path = os.path.join(tmp_dir, "nested", "deep", "file.npy")
 
             write_pfunc = PFunction(
-                fn_type="builtin.write",
+                fn_type="basic.write",
                 ins_info=(TensorType.from_obj(test_data),),
                 outs_info=(TensorType.from_obj(test_data),),
                 fn_name="Write",
@@ -161,7 +161,7 @@ class TestBuiltin:
             try:
                 tensor_info = TensorType.from_obj(test_data)
                 write_pfunc = PFunction(
-                    fn_type="builtin.write",
+                    fn_type="basic.write",
                     ins_info=(tensor_info,),
                     outs_info=(tensor_info,),
                     fn_name="Write",
@@ -173,7 +173,7 @@ class TestBuiltin:
 
                 # Read back and verify
                 read_pfunc = PFunction(
-                    fn_type="builtin.read",
+                    fn_type="basic.read",
                     ins_info=(),
                     outs_info=(tensor_info,),
                     fn_name="Read",
@@ -195,7 +195,7 @@ class TestBuiltin:
         """Test identity with wrong number of arguments."""
         # Declare expected single input so runtime enforces arity directly.
         identity_pfunc = PFunction(
-            fn_type="builtin.identity",
+            fn_type="basic.identity",
             ins_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             outs_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             fn_name="Identity",
@@ -210,18 +210,18 @@ class TestBuiltin:
     def test_read_missing_path(self):
         """Test read operation without path attribute."""
         read_pfunc = PFunction(
-            fn_type="builtin.read",
+            fn_type="basic.read",
             ins_info=(),
             outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
         )
-        with pytest.raises(ValueError, match=r"missing path attr for builtin.read"):
+        with pytest.raises(ValueError, match=r"missing path attr for basic.read"):
             self._exec(read_pfunc, [])
 
     def test_read_wrong_args(self):
         """Test read with wrong number of arguments."""
         read_pfunc = PFunction(
-            fn_type="builtin.read",
+            fn_type="basic.read",
             ins_info=(),
             outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
@@ -234,18 +234,18 @@ class TestBuiltin:
         """Test write operation without path attribute."""
         test_data = TensorValue(np.array([1, 2, 3]))
         write_pfunc = PFunction(
-            fn_type="builtin.write",
+            fn_type="basic.write",
             ins_info=(TensorType.from_obj(test_data),),
             outs_info=(TensorType.from_obj(test_data),),
             fn_name="Write",
         )
-        with pytest.raises(ValueError, match=r"missing path attr for builtin.write"):
+        with pytest.raises(ValueError, match=r"missing path attr for basic.write"):
             self._exec(write_pfunc, [test_data])
 
     def test_write_wrong_args(self):
         """Test write with wrong number of arguments."""
         write_pfunc = PFunction(
-            fn_type="builtin.write",
+            fn_type="basic.write",
             ins_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             outs_info=(TensorType.from_obj(np.array(1, dtype=np.int32)),),
             fn_name="Write",
@@ -265,13 +265,13 @@ class TestBuiltin:
     def test_read_nonexistent_file(self):
         """Test reading from a nonexistent file."""
         read_pfunc = PFunction(
-            fn_type="builtin.read",
+            fn_type="basic.read",
             ins_info=(),
             outs_info=(TensorType.from_obj(np.array([1])),),
             fn_name="Read",
             path="nonexistent_file.npy",
         )
-        with pytest.raises(RuntimeError, match=r"builtin.read failed:"):
+        with pytest.raises(RuntimeError, match=r"basic.read failed:"):
             self._exec(read_pfunc, [])
 
     def test_unsupported_function_type(self):

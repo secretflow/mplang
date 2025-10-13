@@ -27,7 +27,7 @@ from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
-from mplang.ops.builtin import table_to_tensor, tensor_to_table
+from mplang.ops.basic import table_to_tensor, tensor_to_table
 
 
 class DummyContext(MPContext):
@@ -87,7 +87,7 @@ def test_table_to_tensor_happy_path_all_columns():
         table_obj,
         number_rows=len(df),
     )
-    assert pfunc.fn_type == "builtin.table_to_tensor"
+    assert pfunc.fn_type == "basic.table_to_tensor"
     out_type = pfunc.outs_info[0]
     assert isinstance(out_type, TensorType)
     assert out_type.shape == (3, 2)
@@ -152,7 +152,7 @@ def test_tensor_to_table_round_trip_schema():
         tensor_obj,
         column_names=["a", "b"],
     )
-    assert pfunc_tbl.fn_type == "builtin.tensor_to_table"
+    assert pfunc_tbl.fn_type == "basic.tensor_to_table"
     out_type = pfunc_tbl.outs_info[0]
     assert isinstance(out_type, TableType)
     assert out_type.has_column("a") and out_type.has_column("b")

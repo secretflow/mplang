@@ -19,12 +19,12 @@ This module contains compilers that transform high-level functions into
 portable, serializable intermediate representations.
 """
 
-from mplang.ops import builtin, crypto, ibis_cc, jax_cc, phe, spu, sql_cc, tee
+from mplang.ops import basic, crypto, ibis_cc, jax_cc, phe, spu, sql_cc, tee
 from mplang.ops.base import FeOperation as FeOperation
 
 __all__ = [
     "FeOperation",
-    "builtin",
+    "basic",
     "crypto",
     "ibis_cc",
     "jax_cc",

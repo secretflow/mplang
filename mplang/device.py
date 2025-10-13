@@ -35,7 +35,7 @@ from mplang.core import InterpContext, MPObject, primitive
 from mplang.core.cluster import ClusterSpec, Device
 from mplang.core.context_mgr import cur_ctx
 from mplang.core.tensor import TensorType
-from mplang.ops import builtin, crypto, ibis_cc, jax_cc, tee
+from mplang.ops import basic, crypto, ibis_cc, jax_cc, tee
 from mplang.ops.base import FeOperation
 from mplang.ops.ibis_cc import IbisRunner
 from mplang.ops.jax_cc import JaxRunner
@@ -209,11 +209,11 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
         # Bytes-only path: pack -> enc -> p2p -> dec -> unpack (with static out type)
         obj_ty = TensorType.from_obj(obj)
-        b = simp.runAt(frm_rank, builtin.pack)(obj)
+        b = simp.runAt(frm_rank, basic.pack)(obj)
         ct = simp.runAt(frm_rank, crypto.enc)(b, sess_p)
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
         b_at_tee = simp.runAt(tee_rank, crypto.dec)(ct_at_tee, sess_t)
-        pt_at_tee = simp.runAt(tee_rank, builtin.unpack)(b_at_tee, out_ty=obj_ty)
+        pt_at_tee = simp.runAt(tee_rank, basic.unpack)(b_at_tee, out_ty=obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEE", "PPU"):
         # Transparent encryption from TEE to a specific PPU using the reverse-direction session key
@@ -223,11 +223,11 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         # Ensure bidirectional session established for this pair
         sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
         obj_ty = TensorType.from_obj(obj)
-        b = simp.runAt(tee_rank, builtin.pack)(obj)
+        b = simp.runAt(tee_rank, basic.pack)(obj)
         ct = simp.runAt(tee_rank, crypto.enc)(b, sess_t)
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
         b_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_p)
-        pt_at_ppu = simp.runAt(ppu_rank, builtin.unpack)(b_at_ppu, out_ty=obj_ty)
+        pt_at_ppu = simp.runAt(ppu_rank, basic.unpack)(b_at_ppu, out_ty=obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         supported = [

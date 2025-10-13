@@ -83,11 +83,11 @@ def millionaire_manual():
     sess0_p = P0.crypto.hkdf(shared0_p, info)
     sess0_t = P2.crypto.hkdf(shared0_t, info)
     out_ty_x = TensorType.from_obj(x)
-    bx = P0.builtin.pack(x)
+    bx = P0.basic.pack(x)
     cx = P0.crypto.enc(bx, sess0_p)
     cx_at_tee = P2P(P0, P2, cx)
     bx_at_tee = P2.crypto.dec(cx_at_tee, sess0_t)
-    x_at_tee = P2.builtin.unpack(bx_at_tee, out_ty_x)
+    x_at_tee = P2.basic.unpack(bx_at_tee, out_ty_x)
 
     # P1 <-> TEE handshake and transfer y (still show original style for contrast)
     tee_sk1, tee_pk1 = P2.crypto.kem_keygen("x25519")
@@ -99,20 +99,20 @@ def millionaire_manual():
     sess1_p = P1.crypto.hkdf(shared1_p, info)
     sess1_t = P2.crypto.hkdf(shared1_t, info)
     out_ty_y = TensorType.from_obj(y)
-    by = P1.builtin.pack(y)
+    by = P1.basic.pack(y)
     cy = P1.crypto.enc(by, sess1_p)
     cy_at_tee = P2P(P1, P2, cy)
     by_at_tee = P2.crypto.dec(cy_at_tee, sess1_t)
-    y_at_tee = P2.builtin.unpack(by_at_tee, out_ty_y)
+    y_at_tee = P2.basic.unpack(by_at_tee, out_ty_y)
 
     # Compute at TEE and send result back to P0
     z_at_tee = P2(lambda a, b: a < b, x_at_tee, y_at_tee)
     out_ty_z = TensorType.from_obj(z_at_tee)
-    bz = P2.builtin.pack(z_at_tee)
+    bz = P2.basic.pack(z_at_tee)
     cz = P2.crypto.enc(bz, sess0_t)
     cz_at_p0 = P2P(P2, P0, cz)
     bz_at_p0 = P0.crypto.dec(cz_at_p0, sess0_p)
-    r_at_p0 = P0.builtin.unpack(bz_at_p0, out_ty_z)
+    r_at_p0 = P0.basic.unpack(bz_at_p0, out_ty_z)
 
     return x, y, z_at_tee, r_at_p0
 

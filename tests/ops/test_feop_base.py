@@ -80,7 +80,7 @@ def test_feop_decorator_inline():
         # Build outs info from x type
         leaves, out_tree = tree_flatten(x.mptype._type)
         pfunc = PFunction(
-            fn_type="builtin.scale",
+            fn_type="basic.scale",
             ins_info=(x.mptype._type,),
             outs_info=tuple(leaves),
             factor=factor,
@@ -94,7 +94,7 @@ def test_feop_decorator_inline():
     x = DummyTensor(np.float32, (3,))
     pfunc, args, out_tree = scale_trace(x, factor=10)
 
-    assert pfunc.fn_type == "builtin.scale"
+    assert pfunc.fn_type == "basic.scale"
     assert len(pfunc.ins_info) == 1 and pfunc.ins_info[0] == x.mptype._type
     assert len(pfunc.outs_info) == 1 and pfunc.outs_info[0] == x.mptype._type
     assert pfunc.attrs["factor"] == 10

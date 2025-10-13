@@ -105,7 +105,7 @@ def run_impl(
         The result of evaluating the function through the appropriate handler
 
     Raises:
-        ValueError: If builtin.write is called without required arguments
+        ValueError: If basic.write is called without required arguments
         TypeError: If the function compilation or evaluation fails
         RuntimeError: If the underlying peval execution encounters errors
 
@@ -114,11 +114,11 @@ def run_impl(
 
         >>> tensor_info = TensorType(shape=(10, 10), dtype=np.float32)
         >>> attrs = {"format": "binary"}
-        >>> result = run_impl(builtin.read, "data/input.bin", tensor_info, attrs)
+        >>> result = run_impl(basic.read, "data/input.bin", tensor_info, attrs)
 
         Writing data to a file:
 
-        >>> run_impl(builtin.write, data, "data/output.bin")
+        >>> run_impl(basic.write, data, "data/output.bin")
 
         Running a JAX function:
 

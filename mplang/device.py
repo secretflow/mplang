@@ -29,7 +29,7 @@ from typing import Any
 
 from jax.tree_util import tree_map
 
-import mplang.api as mapi
+import mplang.host as mapi
 from mplang import simp
 from mplang.core import InterpContext, MPObject, primitive
 from mplang.core.cluster import ClusterSpec, Device

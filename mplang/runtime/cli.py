@@ -195,14 +195,14 @@ def status_command(args: argparse.Namespace) -> int:
     """
 
     async def _get_node_status(
-        node_id: str, endpoint: str, details: bool = False, timeout: int = 60
+        node_id: str, endpoint: str, details: int = 0, timeout: int = 60
     ) -> dict[str, Any]:
         """Get status information for a single node.
 
         Args:
             node_id: Identifier for the node
             endpoint: HTTP endpoint of the node
-            details: Whether to include detailed session information
+            details: Verbosity level (0=basic, 1=-v, 2=-vv)
             timeout: HTTP request timeout in seconds (default: 60)
         """
 
@@ -224,21 +224,26 @@ def status_command(args: argparse.Namespace) -> int:
                 sessions = await client.list_sessions()
                 status["sessions"] = sessions
 
-                # Get detailed session info if requested
-                if details:
+                # Get detailed session info based on verbosity level
+                # details=1 (-v): show session names and basic counts
+                # details=2 (-vv): show full computation and symbol lists
+                if details >= 1:
                     session_details = []
                     for session_name in sessions:
                         try:
                             # Get computations and symbols for each session
                             computations = await client.list_computations(session_name)
                             symbols = await client.list_symbols(session_name)
-                            session_details.append({
+                            session_info = {
                                 "name": session_name,
                                 "computations": len(computations),
                                 "symbols": len(symbols),
-                                "computation_list": computations,
-                                "symbol_list": symbols,
-                            })
+                            }
+                            # Include full lists only at -vv level
+                            if details >= 2:
+                                session_info["computation_list"] = computations
+                                session_info["symbol_list"] = symbols
+                            session_details.append(session_info)
                         except Exception as e:
                             session_details.append({
                                 "name": session_name,
@@ -255,13 +260,13 @@ def status_command(args: argparse.Namespace) -> int:
         return status
 
     async def _collect_cluster_status(
-        nodes: dict[str, str], details: bool = False
+        nodes: dict[str, str], details: int = 0
     ) -> list[dict[str, Any] | BaseException]:
         """Collect status from all nodes concurrently.
 
         Args:
             nodes: Dictionary mapping node IDs to their HTTP endpoints
-            details: Whether to include detailed session information for each node
+            details: Verbosity level (0=basic, 1=-v, 2=-vv)
 
         Returns:
             List of status dictionaries or exceptions for each node
@@ -284,7 +289,8 @@ def status_command(args: argparse.Namespace) -> int:
         node_addrs = {node_id: node.endpoint for node_id, node in nodes.items()}
 
         # Collect status from all nodes
-        cluster_status = asyncio.run(_collect_cluster_status(node_addrs, args.details))
+        verbosity = getattr(args, "verbose", 0)
+        cluster_status = asyncio.run(_collect_cluster_status(node_addrs, verbosity))
 
         # Basic node health check
         print("Node Status:")
@@ -314,8 +320,8 @@ def status_command(args: argparse.Namespace) -> int:
                 print(f"{node_id:<15} {endpoint:<20} UNHEALTHY")
                 all_healthy = False
 
-        # If detailed status is requested, show detailed information
-        if args.details and valid_statuses:
+        # If verbose mode is enabled, show detailed information
+        if verbosity >= 1 and valid_statuses:
             print("\nDetailed Runtime Status:")
             print("-" * 50)
 
@@ -351,6 +357,14 @@ def status_command(args: argparse.Namespace) -> int:
                                 print(
                                     f"  - Session '{session_name}': {computations} computations, {symbols} symbols"
                                 )
+                                # At -vv level, show the actual lists
+                                if verbosity >= 2:
+                                    comp_list = session.get("computation_list", [])
+                                    symbol_list = session.get("symbol_list", [])
+                                    if comp_list:
+                                        print(f"    Computations: {comp_list}")
+                                    if symbol_list:
+                                        print(f"    Symbols: {symbol_list}")
                 elif not sessions:
                     print("  - No active sessions")
 
@@ -381,10 +395,11 @@ def main() -> int:
         "--config", "-c", required=True, help="Path to the YAML configuration file"
     )
     status_parser.add_argument(
-        "--details",
-        "-d",
-        action="store_true",
-        help="Show detailed runtime status including sessions, computations, and symbols",
+        "--verbose",
+        "-v",
+        action="count",
+        default=0,
+        help="Increase verbosity: -v for session details, -vv for full lists",
     )
     status_parser.set_defaults(func=status_command)
 

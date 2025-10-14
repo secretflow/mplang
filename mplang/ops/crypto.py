@@ -26,7 +26,7 @@ Scope and contracts:
 
 from __future__ import annotations
 
-from mplang.core.dtype import UINT8
+from mplang.core.dtypes import UINT8
 from mplang.core.tensor import TensorType
 from mplang.ops.base import stateless_mod
 

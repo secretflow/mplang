@@ -18,7 +18,7 @@ Tests for expression printer module.
 
 import pytest
 
-from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.dtypes import FLOAT32, UINT64
 from mplang.core.expr import (
     AccessExpr,
     CallExpr,

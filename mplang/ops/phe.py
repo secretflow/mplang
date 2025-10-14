@@ -14,7 +14,7 @@
 
 """PHE (Partially Homomorphic Encryption) frontend operations."""
 
-from mplang.core.dtype import UINT8
+from mplang.core.dtypes import UINT8
 from mplang.core.tensor import TensorType
 from mplang.ops.base import stateless_mod
 

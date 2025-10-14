@@ -18,7 +18,7 @@ Shared fixtures for expr tests.
 
 import pytest
 
-from mplang.core.dtype import FLOAT32, INT32, UINT64
+from mplang.core.dtypes import FLOAT32, INT32, UINT64
 from mplang.core.mask import Mask
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType

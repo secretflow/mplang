@@ -14,7 +14,7 @@
 
 import pytest
 
-from mplang.core.dtype import DATE, FLOAT32, INT32, INT64, JSON, STRING
+from mplang.core.dtypes import DATE, FLOAT32, INT32, INT64, JSON, STRING
 from mplang.core.table import TableLike, TableType
 
 

@@ -20,7 +20,7 @@ from typing import Any
 import ibis
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core import dtype
+from mplang.core import dtypes
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
@@ -50,7 +50,7 @@ def ibis2sql(
 
     def _convert(s: ibis.Schema) -> TableType:
         return TableType.from_pairs([
-            (name, dtype.from_numpy(dt.to_numpy())) for name, dt in s.fields.items()
+            (name, dtypes.from_numpy(dt.to_numpy())) for name, dt in s.fields.items()
         ])
 
     ins_info = [_convert(s) for s in in_schemas]

@@ -22,7 +22,7 @@ import numpy as np
 if TYPE_CHECKING:
     from mplang.core.mpobject import MPObject
 
-from mplang.core.dtype import STRING, DType
+from mplang.core.dtypes import STRING, DType
 from mplang.core.mask import Mask
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
@@ -373,7 +373,7 @@ class MPType:
                 import pandas as pd
 
                 if isinstance(obj, pd.DataFrame):
-                    from mplang.core.dtype import DType
+                    from mplang.core.dtypes import DType
 
                     schema_dict = {}
                     for col_name in obj.columns:

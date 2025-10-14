@@ -28,12 +28,40 @@ from mplang.core.comm import (
     ICommunicator,
 )
 from mplang.core.context_mgr import cur_ctx, set_ctx, with_ctx
-from mplang.core.dtype import DType
+from mplang.core.dtypes import (
+    BINARY,
+    BOOL,
+    COMPLEX64,
+    COMPLEX128,
+    DATE,
+    DECIMAL,
+    FLOAT16,
+    FLOAT32,
+    FLOAT64,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    INTERVAL,
+    JSON,
+    STRING,
+    TIME,
+    TIMESTAMP,
+    UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
+    UUID,
+    DType,
+)
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType, Rank, Shape
-from mplang.core.pfunc import PFunction
+from mplang.core.pfunc import PFunction, get_fn_name
+
+# Import primitive-dependent symbols at the end to avoid cycles when frontend ops
+# import from the core facade during package initialization.
 from mplang.core.primitive import (
     constant,
     debug_print,
@@ -50,10 +78,33 @@ from mplang.core.primitive import (
     while_loop,
 )
 from mplang.core.table import TableLike, TableType
-from mplang.core.tensor import TensorLike, TensorType
+from mplang.core.tensor import ScalarType, TensorLike, TensorType
 from mplang.core.tracer import TraceContext, TracedFunction, TraceVar, VarNamer, trace
 
 __all__ = [
+    "BINARY",
+    "BOOL",
+    "COMPLEX64",
+    "COMPLEX128",
+    "DATE",
+    "DECIMAL",
+    "FLOAT16",
+    "FLOAT32",
+    "FLOAT64",
+    "INT8",
+    "INT16",
+    "INT32",
+    "INT64",
+    "INTERVAL",
+    "JSON",
+    "STRING",
+    "TIME",
+    "TIMESTAMP",
+    "UINT8",
+    "UINT16",
+    "UINT32",
+    "UINT64",
+    "UUID",
     "CollectiveMixin",
     "CommunicatorBase",
     "DType",
@@ -67,6 +118,7 @@ __all__ = [
     "Mask",
     "PFunction",
     "Rank",
+    "ScalarType",
     "Shape",
     "TableLike",
     "TableType",
@@ -80,6 +132,7 @@ __all__ = [
     "cur_ctx",
     "debug_print",
     "function",
+    "get_fn_name",
     "pconv",
     "peval",
     "prand",

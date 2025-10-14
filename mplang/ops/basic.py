@@ -15,8 +15,8 @@
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import UINT8, UINT64
-from mplang.core.mpobject import MPObject  # Needed for constant() triad return typing
+from mplang.core.dtypes import UINT8, UINT64
+from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType

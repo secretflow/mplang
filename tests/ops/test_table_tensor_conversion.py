@@ -22,7 +22,7 @@ from mplang.core.cluster import (
     Node,
     RuntimeInfo,
 )
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.table import TableType

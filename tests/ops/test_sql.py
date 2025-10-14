@@ -16,7 +16,7 @@ import pandas as pd
 
 import mplang
 import mplang as mp
-from mplang.core.dtype import INT32
+from mplang.core.dtypes import INT32
 from mplang.core.table import TableType
 from mplang.ops import sql_cc
 

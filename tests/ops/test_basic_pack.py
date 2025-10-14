@@ -20,7 +20,7 @@ import pytest
 
 import mplang
 import mplang as mp
-from mplang.core.dtype import UINT8, DType
+from mplang.core.dtypes import UINT8, DType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
 from mplang.kernels.value import TableValue

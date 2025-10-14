@@ -16,7 +16,7 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import FLOAT32, INT32, DType
+from mplang.core.dtypes import FLOAT32, INT32, DType
 from mplang.core.expr import Expr
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -635,7 +635,7 @@ class TestEdgeCases:
 
     def test_dynamic_pmask(self):
         """Test MPTypeProto serialization/deserialization with dynamic pmask (None)."""
-        from mplang.core.dtype import INT64, STRING
+        from mplang.core.dtypes import INT64, STRING
         from mplang.core.expr.ast import VariableExpr
         from mplang.core.mpir import IrReader, IrWriter
         from mplang.core.table import TableType
@@ -913,7 +913,7 @@ class TestRelationTypeSupport:
 
     def test_relation_dtype_conversion(self):
         """Test dtype conversion for relation-only types."""
-        from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP
+        from mplang.core.dtypes import DATE, JSON, STRING, TIME, TIMESTAMP
         from mplang.core.mpir import dtype_to_proto, proto_to_dtype
 
         # Test relation-only dtypes to proto
@@ -1012,7 +1012,7 @@ class TestRelationTypeSupport:
 
     def test_mptype_with_table_type(self):
         """Test MPType integration with RelationType (table type in proto)."""
-        from mplang.core.dtype import DATE, INT64, STRING
+        from mplang.core.dtypes import DATE, INT64, STRING
         from mplang.core.table import TableType
 
         # Create table type
@@ -1043,7 +1043,7 @@ class TestRelationTypeSupport:
 
     def test_mptype_proto_conversion_round_trip(self):
         """Test full round-trip conversion between MPType and MPTypeProto."""
-        from mplang.core.dtype import INT64, JSON, STRING, TIMESTAMP
+        from mplang.core.dtypes import INT64, JSON, STRING, TIMESTAMP
         from mplang.core.expr.ast import VariableExpr
         from mplang.core.mpir import IrReader, IrWriter
         from mplang.core.table import TableType

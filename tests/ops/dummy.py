@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 from mplang.core.cluster import ClusterSpec
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.table import TableType

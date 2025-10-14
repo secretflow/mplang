@@ -21,7 +21,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.dtype import (
+from mplang.core.dtypes import (
     BOOL,
     FLOAT32,
     FLOAT64,

@@ -23,7 +23,7 @@ import numpy as np
 from lightphe import LightPHE
 from lightphe.models.Ciphertext import Ciphertext
 
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import kernel_def
 from mplang.kernels.value import (

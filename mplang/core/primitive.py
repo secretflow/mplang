@@ -29,7 +29,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.dtype import BOOL
+from mplang.core.dtypes import BOOL
 from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,

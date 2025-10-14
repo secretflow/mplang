@@ -14,27 +14,26 @@
 
 import jax.numpy as jnp
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 
-sim3 = mplang.Simulator.simple(3)
+sim3 = mp.Simulator.simple(3)
 
 # make two variables on the simulator, one is a random integer, the other is a prank.
-x = mplang.evaluate(sim3, simp.prank)
-y = mplang.evaluate(sim3, lambda: simp.prandint(0, 100))
-print(mplang.fetch(sim3, (x, y)))
+x = mp.evaluate(sim3, mp.prank)
+y = mp.evaluate(sim3, lambda: mp.prandint(0, 100))
+print(mp.fetch(sim3, (x, y)))
 
 
 def pass_and_capture(x):
     # pass x as a parameter, and capture y from the outer scope
-    return simp.run(jnp.multiply)(x, y)
+    return mp.run_jax(jnp.multiply, x, y)
 
 
-z = mplang.evaluate(sim3, pass_and_capture, x)
-print(mplang.fetch(sim3, z))
+z = mp.evaluate(sim3, pass_and_capture, x)
+print(mp.fetch(sim3, z))
 
 # jit it, still works.
-jitted = mplang.function(pass_and_capture)
+jitted = mp.function(pass_and_capture)
 
-z1 = mplang.evaluate(sim3, jitted, x)
-print(mplang.fetch(sim3, z1))
+z1 = mp.evaluate(sim3, jitted, x)
+print(mp.fetch(sim3, z1))

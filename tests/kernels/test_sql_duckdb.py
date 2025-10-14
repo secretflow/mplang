@@ -18,7 +18,7 @@ import pandas as pd
 import pytest
 
 import mplang
-from mplang import simp
+import mplang as mp
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
 from mplang.kernels.context import RuntimeContext
@@ -86,8 +86,8 @@ class TestDuckDBKernel:
 
         def example():
             data = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [4.1, 5.1, 6.1]})
-            in_tbl = simp.constant(data)
-            out_tbl = simp.runAt(0, _binary_op)(in_tbl, op)
+            in_tbl = mp.constant(data)
+            out_tbl = mp.run_ibis_at(0, _binary_op, in_tbl, op)
 
             return out_tbl
 
@@ -108,9 +108,9 @@ class TestDuckDBKernel:
 
             df1 = pd.DataFrame({"f0": [0.1, 0.2], "f1": [1, 2]})
             df2 = pd.DataFrame({"f0": [0.3, 0.4], "f1": [3, 4]})
-            t1 = simp.constant(df1)
-            t2 = simp.constant(df2)
-            res = simp.runAt(0, _union)(t1, t2)
+            t1 = mp.constant(df1)
+            t2 = mp.constant(df2)
+            res = mp.run_ibis_at(0, _union, t1, t2)
             return res
 
         sim2 = mplang.Simulator.simple(2)

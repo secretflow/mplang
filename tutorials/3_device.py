@@ -14,10 +14,10 @@
 
 import random
 
-import mplang
+import mplang as mp
 import mplang.device as mpd
 
-cluster_spec = mplang.ClusterSpec.from_dict({
+cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
         {"name": "node_0", "endpoint": "127.0.0.1:61920"},
         {"name": "node_1", "endpoint": "127.0.0.1:61921"},
@@ -79,19 +79,19 @@ def millionaire(dev_name):
 def run_spu():
     print("-" * 10, "millionaire (SPU)", "-" * 10)
 
-    sim = mplang.Simulator(cluster_spec)
-    x, y, z, r = mplang.evaluate(sim, millionaire, "SP0")
+    sim = mp.Simulator(cluster_spec)
+    x, y, z, r = mp.evaluate(sim, millionaire, "SP0")
     print("x:", x, mpd.fetch(sim, x))
     print("y:", y, mpd.fetch(sim, y))
     print("z:", z, mpd.fetch(sim, z))
     print("r:", r, mpd.fetch(sim, r))
 
-    # compiled = mplang.compile(sim, millionaire, "SP0")
+    # compiled = mp.compile(sim, millionaire, "SP0")
     # print("SPU compiled:", compiled.compiler_ir())
 
     # ofcourse we can run other funcs in the same sim instance
     # print("-" * 10, "myfun", "-" * 10)
-    # xx, [yy, _c0], res_dict = mplang.evaluate(sim, myfun, x, y)
+    # xx, [yy, _c0], res_dict = mp.evaluate(sim, myfun, x, y)
     # print("xx:", xx)
     # print("yy:", yy)
     # print("res_dict", res_dict)
@@ -108,15 +108,15 @@ def run_tee():
     # Apply tee bindings across nodes before constructing simulator
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)
-    sim = mplang.Simulator(cluster_spec)
-    x_p0, y_p1, z_t, r_p0 = mplang.evaluate(sim, millionaire, "TEE0")
+    sim = mp.Simulator(cluster_spec)
+    x_p0, y_p1, z_t, r_p0 = mp.evaluate(sim, millionaire, "TEE0")
     print("x_p0:", x_p0, mpd.fetch(sim, x_p0))
     print("y_p1:", y_p1, mpd.fetch(sim, y_p1))
     print("z_t:", z_t, mpd.fetch(sim, z_t))
     print("r_p0:", r_p0, mpd.fetch(sim, r_p0))
 
-    # copts = mplang.CompileOptions(cluster_spec)
-    # compiled = mplang.compile(copts, millionaire, "TEE0")
+    # copts = mp.CompileOptions(cluster_spec)
+    # compiled = mp.compile(copts, millionaire, "TEE0")
     # print("TEE compiled:", compiled.compiler_ir())
 
 

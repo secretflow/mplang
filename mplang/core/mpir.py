@@ -204,7 +204,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
             raise TypeError(f"Unsupported tuple/list type: {type(py_value)}")
     elif isinstance(py_value, FuncDefExpr):
         # Convert FuncDefExpr to GraphProto
-        graph = Writer().dumps(py_value)
+        graph = IrWriter().dumps(py_value)
         attr_proto.type = mpir_pb2.AttrProto.GRAPH
         attr_proto.graph.CopyFrom(graph)
     elif isinstance(py_value, PFunction):
@@ -234,7 +234,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
     return attr_proto
 
 
-class Writer:
+class IrWriter:
     """Writer for serializing Expr-based expressions to GraphProto.
 
     This class traverses an expression tree and converts it into a serialized
@@ -525,7 +525,7 @@ class Writer:
             raise TypeError(f"Unsupported expr type for serialization: {type(expr)}")
 
 
-class Reader:
+class IrReader:
     """Reader for deserializing GraphProto back to Expr-based expressions.
 
     This class is responsible for converting serialized GraphProto representations
@@ -902,7 +902,7 @@ class Reader:
             )
         elif attr_proto.type == mpir_pb2.AttrProto.GRAPH:
             # Handle nested expressions (for control flow)
-            reader = Reader()
+            reader = IrReader()
             return reader.loads(attr_proto.graph)
         else:
             raise TypeError(f"Unsupported attribute type: {attr_proto.type}")

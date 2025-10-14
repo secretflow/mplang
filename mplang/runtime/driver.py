@@ -33,7 +33,7 @@ from mplang.core.cluster import ClusterSpec
 from mplang.core.expr.ast import Expr
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
-from mplang.core.mpir import Writer
+from mplang.core.mpir import IrWriter
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType
 from mplang.kernels.value import TableValue, TensorValue
@@ -198,7 +198,7 @@ class Driver(InterpContext):
 
         var_name_mapping = dict(zip(var_names, party_symbol_names, strict=True))
 
-        writer = Writer(var_name_mapping)
+        writer = IrWriter(var_name_mapping)
         program_proto = writer.dumps(expr)
 
         output_symbols = [self.new_name() for _ in range(expr.num_outputs)]

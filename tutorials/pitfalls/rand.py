@@ -18,8 +18,7 @@ from functools import partial
 import jax.numpy as jnp
 import jax.random as jr
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 
 
 def rand_from_host():
@@ -37,7 +36,7 @@ def rand_from_host():
         my_rand = partial(random.randint, 0, 10)
 
         # all parties will generate the same random number, which is normally not what we want.
-        x = simp.run(my_rand)()
+        x = mp.run_jax(my_rand)
 
         def randint(lo, hi):
             # In this case, host make a 'public' random seed and use jax to generate a random number.
@@ -48,7 +47,7 @@ def rand_from_host():
             return jr.randint(key, shape=(), minval=lo, maxval=hi, dtype=jnp.int32)
 
         # P1 will generate a random number, with the currant random context.
-        y = simp.run(randint)(0, 10)
+        y = mp.run_jax(randint, 0, 10)
 
         def randint2(key, lo, hi):
             # it's OK to use jax.random.split here.
@@ -60,7 +59,7 @@ def rand_from_host():
 
         key = int(time.time_ns()) & 0x0FFFFFFF
         key = jr.PRNGKey(key)
-        z = simp.run(randint2)(key, 0, 10)
+        z = mp.run_jax(randint2, key, 0, 10)
 
         # In short, all parties will generate the same random number if the random state is generated
         # from the host, which is not what we want in a real-world scenario.
@@ -71,15 +70,15 @@ def rand_from_host():
             "comptime seed + jax rand": z[0],
         }
 
-    # copts = simp.CompileOptions(2)
-    # print(simp.compile(copts, func))
+    # copts = mp.CompileOptions(2)
+    # print(mp.compile(copts, func))
 
-    sim5 = mplang.Simulator.simple(5)
-    mplang.set_ctx(sim5)
+    sim5 = mp.Simulator.simple(5)
+    mp.set_ctx(sim5)
     res = func()
     from pprint import pprint
 
-    pprint(mplang.fetch(None, res))
+    pprint(mp.fetch(None, res))
 
 
 def rand_from_parties():
@@ -88,37 +87,37 @@ def rand_from_parties():
 
     def jr_split(key):
         # TODO: since MPObject tensor does not implement slicing yet.
-        # subkey, key = simp.run(jr.split)(key) does not work.
+        # subkey, key = mp.rjax(jr.split, key) does not work.
         # we workaround it by splitting inside tracer.
         subkey, key = jr.split(key)
         return subkey, key
 
-    @mplang.function
+    @mp.function
     def gen_randoms(lo, hi):
-        # use simp.prandint primitive to generate a random seed.
-        seed = simp.prandint(lo, hi)
+        # use mp.prandint primitive to generate a random seed.
+        seed = mp.prandint(lo, hi)
 
         # use jax random module to generate random number for different distribution.
-        key = simp.run(jr.PRNGKey)(seed)
-        subkey, key = simp.run(jr_split)(key)
-        r_int = simp.run(jr.randint)(subkey, shape=(), minval=lo, maxval=hi)
-        subkey, key = simp.run(jr_split)(key)
+        key = mp.run_jax(jr.PRNGKey, seed)
+        subkey, key = mp.run_jax(jr_split, key)
+        r_int = mp.run_jax(jr.randint, subkey, shape=(), minval=lo, maxval=hi)
+        subkey, key = mp.run_jax(jr_split, key)
         jr_normal = partial(jr.normal, shape=(3), dtype=jnp.float32)
-        std_normal = simp.run(jr_normal)(subkey)
-        subkey, key = simp.run(jr_split)(key)
-        bernoulli = simp.run(jr.bernoulli)(subkey, p=0.8)
+        std_normal = mp.run_jax(jr_normal, subkey)
+        subkey, key = mp.run_jax(jr_split, key)
+        bernoulli = mp.run_jax(jr.bernoulli, subkey, p=0.8)
         return {
             "randint": r_int,
             "normal": std_normal,
             "bernoulli": bernoulli,
         }
 
-    sim8 = mplang.Simulator.simple(8)
-    mplang.set_ctx(sim8)
+    sim8 = mp.Simulator.simple(8)
+    mp.set_ctx(sim8)
     res = gen_randoms(0, 100)
     from pprint import pprint
 
-    pprint(mplang.fetch(None, res))
+    pprint(mp.fetch(None, res))
 
 
 if __name__ == "__main__":

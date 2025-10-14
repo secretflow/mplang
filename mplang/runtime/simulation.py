@@ -30,7 +30,7 @@ from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
-from mplang.core.mpir import Reader, Writer
+from mplang.core.mpir import IrReader, IrWriter
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, TensorLike
 from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
@@ -187,10 +187,10 @@ class Simulator(InterpContext):
         This exposes potential MPIR serialization bugs by forcing expressions
         to go through the full serialize->deserialize cycle.
         """
-        writer = Writer()
+        writer = IrWriter()
         graph_proto = writer.dumps(expr)
 
-        reader = Reader()
+        reader = IrReader()
         deserialized_expr = reader.loads(graph_proto)
 
         if deserialized_expr is None:

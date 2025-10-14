@@ -32,7 +32,7 @@ from mplang.core.expr.ast import (
     WhileExpr,
 )
 from mplang.core.mask import Mask
-from mplang.core.mpir import Reader, Writer
+from mplang.core.mpir import IrReader, IrWriter
 from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
@@ -50,10 +50,10 @@ class TestBasicExpressions:
 
         original = TupleExpr([var1, var2])
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         assert isinstance(result, TupleExpr)
@@ -67,10 +67,10 @@ class TestBasicExpressions:
 
         original = AccessExpr(tuple_expr, 1)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         assert isinstance(result, AccessExpr)
@@ -81,10 +81,10 @@ class TestBasicExpressions:
         mptype = MPType.tensor(FLOAT32, (3,), pmask=Mask(7))
         original = VariableExpr("test_var", mptype)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         assert isinstance(result, VariableExpr)
@@ -107,7 +107,7 @@ class TestFunctionExpressions:
 
         original = EvalExpr(pfunc, [var_expr, var_expr], rmask=None)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Just verify serialization works
@@ -127,7 +127,7 @@ class TestFunctionExpressions:
         params = ["x", "y"]
         original = FuncDefExpr(params, body)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Just verify serialization works
@@ -255,7 +255,7 @@ class TestComplexExpressions:
         ]
         original = CondExpr(pred, then_fn, else_fn, args)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Verify serialization works
@@ -287,7 +287,7 @@ class TestComplexExpressions:
         ]
         original = WhileExpr(cond_fn, body_fn, args)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Verify serialization works
@@ -314,7 +314,7 @@ class TestComplexExpressions:
 
         original = ConvExpr([var1, var2])
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Verify serialization works
@@ -332,7 +332,7 @@ class TestComplexExpressions:
 
         original = ShflSExpr(src_val, pmask=Mask(3), src_ranks=[0, 1])
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Verify serialization works
@@ -353,7 +353,7 @@ class TestComplexExpressions:
 
         original = ShflExpr(src, index)
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Verify serialization works
@@ -376,7 +376,7 @@ class TestComplexExpressions:
 
         original = CallExpr("original", fn, [arg])
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Verify serialization works
@@ -394,7 +394,7 @@ class TestWriterReader:
 
     def test_writer_reset(self):
         """Test Writer reset functionality."""
-        writer = Writer()
+        writer = IrWriter()
 
         # Create some expression using VariableExpr
 
@@ -413,7 +413,7 @@ class TestWriterReader:
 
     def test_writer_expr_naming(self):
         """Test Writer expression naming."""
-        writer = Writer()
+        writer = IrWriter()
 
         expr1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         expr2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
@@ -431,7 +431,7 @@ class TestWriterReader:
 
     def test_writer_value_naming(self):
         """Test Writer value naming for multi-output expressions."""
-        writer = Writer()
+        writer = IrWriter()
 
         expr1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         expr2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
@@ -450,7 +450,7 @@ class TestWriterReader:
     def test_reader_empty_graph(self):
         """Test Reader with empty graph."""
 
-        reader = Reader()
+        reader = IrReader()
         empty_graph = mpir_pb2.GraphProto()
 
         result = reader.loads(empty_graph)
@@ -459,7 +459,7 @@ class TestWriterReader:
     def test_reader_invalid_output(self):
         """Test Reader with invalid output reference."""
 
-        reader = Reader()
+        reader = IrReader()
         graph = mpir_pb2.GraphProto()
         graph.outputs.append("nonexistent_node")
 
@@ -476,7 +476,7 @@ class TestWriterReader:
         node.op_type = "unsupported_op"
         graph.outputs.append("%0")
 
-        reader = Reader()
+        reader = IrReader()
         with pytest.raises(ValueError, match="Unsupported node type"):
             reader.loads(graph)
 
@@ -518,7 +518,7 @@ class TestErrorHandling:
         node.inputs.append("nonexistent")  # Missing input
         graph.outputs.append("%0")
 
-        reader = Reader()
+        reader = IrReader()
         with pytest.raises(ValueError, match=r"Input .* not found"):
             reader.loads(graph)
 
@@ -530,7 +530,7 @@ class TestEdgeCases:
         """Test TupleExpr with empty args - serialization only."""
         original = TupleExpr([])
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
         # Empty tuple expr produces a graph with 1 node (the tuple itself)
@@ -553,10 +553,10 @@ class TestEdgeCases:
         access_expr = AccessExpr(inner_tuple, 1)
         outer_tuple = TupleExpr([var1, access_expr])
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(outer_tuple)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         assert isinstance(result, TupleExpr)
@@ -565,7 +565,7 @@ class TestEdgeCases:
 
     def test_multiple_output_expression_naming(self):
         """Test expression naming with multiple outputs."""
-        writer = Writer()
+        writer = IrWriter()
 
         var1 = VariableExpr("x", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
         var2 = VariableExpr("y", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
@@ -580,7 +580,7 @@ class TestEdgeCases:
 
     def test_writer_with_duplicate_expressions(self):
         """Test that Writer properly handles duplicate expression references."""
-        writer = Writer()
+        writer = IrWriter()
 
         shared_var = VariableExpr("shared", MPType.tensor(FLOAT32, (2,), pmask=Mask(7)))
 
@@ -609,10 +609,10 @@ class TestEdgeCases:
             MPType.tensor(FLOAT32, large_shape, pmask=Mask(1)),
         )
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
         assert isinstance(result, VariableExpr)
         assert result.mptypes[0].shape == large_shape
@@ -625,10 +625,10 @@ class TestEdgeCases:
             MPType.tensor(FLOAT32, (2,), pmask=Mask(0)),
         )
 
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
         assert isinstance(result, VariableExpr)
         assert result.mptype.pmask == Mask(0)
@@ -637,7 +637,7 @@ class TestEdgeCases:
         """Test MPTypeProto serialization/deserialization with dynamic pmask (None)."""
         from mplang.core.dtype import INT64, STRING
         from mplang.core.expr.ast import VariableExpr
-        from mplang.core.mpir import Reader, Writer
+        from mplang.core.mpir import IrReader, IrWriter
         from mplang.core.table import TableType
 
         # Create table type with dynamic pmask (None)
@@ -650,10 +650,10 @@ class TestEdgeCases:
         var_expr = VariableExpr("test_dynamic", original_mptype)
 
         # Serialize and deserialize
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(var_expr)
 
-        reader = Reader()
+        reader = IrReader()
         deserialized_expr = reader.loads(proto)
 
         # Verify
@@ -690,7 +690,7 @@ class TestEdgeCases:
 
     def test_expression_dynamic_pmask(self):
         """Test that Expression-level objects can handle dynamic pmask correctly."""
-        from mplang.core.mpir import Reader, Writer
+        from mplang.core.mpir import IrReader, IrWriter
 
         # Test VariableExpr with dynamic pmask
         const_expr = VariableExpr(
@@ -702,10 +702,10 @@ class TestEdgeCases:
         assert const_expr.mptype.pmask is None  # Dynamic pmask is allowed
 
         # Test serialization/deserialization
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(const_expr)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
         assert isinstance(result, VariableExpr)
         assert result.mptype.pmask is None  # Dynamic pmask should be preserved
@@ -713,7 +713,7 @@ class TestEdgeCases:
     def test_reader_proto_to_attr_edge_cases(self):
         """Test Reader._proto_to_attr with edge cases."""
 
-        reader = Reader()
+        reader = IrReader()
 
         # Test empty lists
         attr_proto = mpir_pb2.AttrProto()
@@ -743,7 +743,7 @@ class TestEdgeCases:
 
     def test_writer_counter_overflow_simulation(self):
         """Test that writer can handle many expressions."""
-        writer = Writer()
+        writer = IrWriter()
 
         # Create many expressions to test counter behavior
         expressions = []
@@ -799,10 +799,10 @@ class TestComplexExpressionRoundtrip:
         original = CondExpr(pred, then_fn, else_fn, args)
 
         # Test roundtrip
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         # Verify basic properties
@@ -849,10 +849,10 @@ class TestComplexExpressionRoundtrip:
         original = WhileExpr(cond_fn, body_fn, args)
 
         # Test roundtrip
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         # Verify basic properties and expose issues
@@ -890,10 +890,10 @@ class TestComplexExpressionRoundtrip:
         original = CallExpr("original", fn, [arg])
 
         # Test roundtrip
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(original)
 
-        reader = Reader()
+        reader = IrReader()
         result = reader.loads(proto)
 
         # Verify basic properties and expose issues
@@ -1045,7 +1045,7 @@ class TestRelationTypeSupport:
         """Test full round-trip conversion between MPType and MPTypeProto."""
         from mplang.core.dtype import INT64, JSON, STRING, TIMESTAMP
         from mplang.core.expr.ast import VariableExpr
-        from mplang.core.mpir import Reader, Writer
+        from mplang.core.mpir import IrReader, IrWriter
         from mplang.core.table import TableType
 
         # Create complex table type
@@ -1063,10 +1063,10 @@ class TestRelationTypeSupport:
         var_expr = VariableExpr("test_table", original_mptype)
 
         # Serialize and deserialize
-        writer = Writer()
+        writer = IrWriter()
         proto = writer.dumps(var_expr)
 
-        reader = Reader()
+        reader = IrReader()
         deserialized_expr = reader.loads(proto)
 
         # Verify - the deserialized expression should be a VariableExpr

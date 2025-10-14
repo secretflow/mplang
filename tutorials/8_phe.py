@@ -23,40 +23,39 @@ This tutorial demonstrates a three-party computation using PHE:
 6. Party 0 computes the sum and decrypts the result
 """
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 from mplang.ops import phe
 
 
-@mplang.function
+@mp.function
 def three_party_phe_sum():
     """Perform a three-party PHE computation to sum private values."""
 
     # Step 1: All parties generate random numbers
-    data = simp.prank()
+    data = mp.prank()
 
     # Step 2: Party 0 generates PHE key pair
-    pkey, skey = simp.runAt(0, phe.keygen)()
+    pkey, skey = mp.run_at(0, phe.keygen)
 
     # Step 3: Party 0 broadcasts public key to all parties
-    world_mask = mplang.Mask.all(3)
-    pkey_bcasted = simp.bcast_m(world_mask, 0, pkey)
+    world_mask = mp.Mask.all(3)
+    pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
 
     # Step 4: Each party encrypts their data
-    encrypted = simp.run(phe.encrypt)(data, pkey_bcasted)
+    encrypted = mp.run(None, phe.encrypt, data, pkey_bcasted)
 
     # Step 5: All parties send encrypted data to Party 0
     # Gather all encrypted data at Party 0
-    e0, e1, e2 = simp.gather_m(world_mask, 0, encrypted)
+    e0, e1, e2 = mp.gather_m(world_mask, 0, encrypted)
 
     # Step 6: Party 0 computes sum and decrypts
-    sum_e0_e1 = simp.runAt(0, phe.add)(e0, e1)
+    sum_e0_e1 = mp.run_at(0, phe.add, e0, e1)
 
     # Add the third encrypted value
-    encrypted_sum = simp.runAt(0, phe.add)(sum_e0_e1, e2)
+    encrypted_sum = mp.run_at(0, phe.add, sum_e0_e1, e2)
 
     # Decrypt the final result
-    final_result = simp.runAt(0, phe.decrypt)(encrypted_sum, skey)
+    final_result = mp.run_at(0, phe.decrypt, encrypted_sum, skey)
 
     return final_result
 
@@ -64,12 +63,12 @@ def three_party_phe_sum():
 def run_simulation():
     """Run the PHE simulation locally."""
     # Set up 3-party simulation with PHE support
-    sim = mplang.Simulator.simple(3)
-    result = mplang.evaluate(sim, three_party_phe_sum)
-    print(f"Original PHE sum completed. Final sum: {mplang.fetch(sim, result)}")
+    sim = mp.Simulator.simple(3)
+    result = mp.evaluate(sim, three_party_phe_sum)
+    print(f"Original PHE sum completed. Final sum: {mp.fetch(sim, result)}")
 
     # Show compilation results
-    compiled = mplang.compile(sim, three_party_phe_sum)
+    compiled = mp.compile(sim, three_party_phe_sum)
     print("\n=== Compilation IR ===")
     print("Original function compiled:", compiled.compiler_ir())
 

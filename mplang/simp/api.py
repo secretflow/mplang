@@ -15,11 +15,80 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
-from mplang.core import MPObject, Rank
-from mplang.core.primitive import run, run_at
-from mplang.ops import ibis_cc, jax_cc, sql_cc
+from mplang.core import Mask, MPObject, Rank, peval
+from mplang.core.primitive import builtin_function
+from mplang.core.table import TableLike
+from mplang.core.tensor import ScalarType, Shape, TensorLike
+from mplang.ops import basic, ibis_cc, jax_cc, sql_cc
+from mplang.ops.base import FeOperation
+
+
+def run(
+    pmask: Mask | None,
+    fe_op: FeOperation,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Run an operation in the current context."""
+    pfunc, eval_args, out_tree = fe_op(*args, **kwargs)
+    results = peval(pfunc, eval_args, pmask)
+    return out_tree.unflatten(results)
+
+
+def run_at(rank: Rank, op: Any, *args: Any, **kwargs: Any) -> Any:
+    """Run an operation at a specific rank."""
+    return run(Mask.from_ranks(rank), op, *args, **kwargs)
+
+
+@builtin_function
+def prank() -> MPObject:
+    """Multi-party get the rank (party identifier) of each party.
+
+    Returns an MPObject containing the rank of each party (0 to world_size-1).
+    """
+    return cast(MPObject, run(None, basic.rank))
+
+
+@builtin_function
+def prand(shape: Shape = ()) -> MPObject:
+    """Multi-party generate a private random (uint64) tensor with the given shape.
+
+    Each party independently generates its own local random values.
+    """
+    return cast(MPObject, run(None, basic.prand, shape))
+
+
+def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
+    """Create a constant tensor or table from data.
+
+    The constant value is embedded into the computation graph and is available
+    to all parties.
+    """
+    return cast(MPObject, run(None, basic.constant, data))
+
+
+@builtin_function
+def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
+    """Print local value of obj on owning parties and pass it through.
+
+    Returns the same MPObject to support chaining and prevent DCE.
+    """
+    pfunc, eval_args, out_tree = basic.debug_print(obj, prefix=prefix)
+    results = peval(pfunc, eval_args)
+    return cast(MPObject, out_tree.unflatten(results))
+
+
+def set_mask(arg: MPObject, mask: Mask) -> MPObject:
+    """Set the mask of an MPObject to a new value.
+
+    For dynamic pmask inputs: the return value's pmask will be the specified mask.
+    For static pmask inputs: validates that mask is a subset of arg.pmask.
+    """
+    pfunc, eval_args, out_tree = basic.identity(arg)
+    results = peval(pfunc, eval_args, mask)
+    return cast(MPObject, out_tree.unflatten(results))
 
 
 def run_jax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:

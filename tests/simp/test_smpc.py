@@ -20,7 +20,7 @@ import mplang
 import mplang.core.primitive as prim
 import mplang.simp.random as mpr
 import mplang.simp.smpc as smpc
-from mplang.simp.api import run_jax
+from mplang.simp.api import constant, prank, run_jax
 
 
 class TestSmpcBasics:
@@ -34,7 +34,7 @@ class TestSmpcBasics:
         @mplang.function
         def test_seal_reveal():
             # Each party has some data
-            data = prim.prank()
+            data = prank()
             # Seal the data - returns a list of sealed values
             sealed_list = smpc.seal(data)
             # Use srun to perform computation on sealed values - pass list directly
@@ -192,7 +192,7 @@ class TestSMPCComplexScenarios:
         @mplang.function
         def iterative_secure():
             # Start with small values
-            x = prim.constant(1)
+            x = constant(1)
 
             def cond(x):
                 # Seal and check if sum < 10 - pass list to lambda

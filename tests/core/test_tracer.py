@@ -21,7 +21,7 @@ from unittest.mock import Mock
 import pytest
 
 from mplang.core.cluster import ClusterSpec
-from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.dtypes import FLOAT32, INT32
 from mplang.core.expr.ast import VariableExpr
 from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject

@@ -24,7 +24,7 @@ from typing import cast
 import numpy as np
 import pytest
 
-from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.dtypes import FLOAT32, INT32
 from mplang.kernels.phe import CipherText, PrivateKey, PublicKey
 from mplang.kernels.value import (
     BytesBlob,
@@ -330,7 +330,7 @@ class TestSPUValueSerde:
         share = MockShare(meta=b"mock_meta", chunks=[b"chunk1", b"chunk2"])
         typed_share = cast(libspu.Share, share)
         # Use DType instead of libspu.DataType
-        from mplang.core.dtype import INT32
+        from mplang.core.dtypes import INT32
 
         val = SpuValue(
             shape=(2, 3),

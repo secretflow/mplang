@@ -17,8 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import Rank
+from mplang.core import MPObject, Rank
 from mplang.core.primitive import run, run_at
 from mplang.ops import ibis_cc, jax_cc, sql_cc
 

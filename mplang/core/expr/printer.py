@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,

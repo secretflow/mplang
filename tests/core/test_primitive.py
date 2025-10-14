@@ -29,7 +29,7 @@ import pytest
 
 from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
-from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.dtypes import FLOAT32, UINT64
 from mplang.core.expr.printer import Printer
 from mplang.core.mask import Mask
 from mplang.core.mptype import Rank

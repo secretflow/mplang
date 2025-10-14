@@ -34,7 +34,7 @@ import numpy as np
 import spu.libspu as libspu
 
 from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction

@@ -20,8 +20,7 @@ after the arg_keep_map implementation.
 
 import jax.numpy as jnp
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 
 
 def func_with_unused_params(a, unused_param, b, c):
@@ -53,29 +52,29 @@ class TestUnusedParameterHandling:
 
     def test_basic_unused_param(self):
         """Test function with one unused parameter in middle position."""
-        sim = mplang.Simulator.simple(1)
+        sim = mp.Simulator.simple(1)
 
         # Create traced function
-        @mplang.function
+        @mp.function
         def test_func():
             # Test values - create inside traced context
-            a = simp.constant(1)
-            unused = simp.constant(999)  # This should be eliminated by JAX
-            b = simp.constant(2)
-            c = simp.constant(3)
-            return simp.run(func_with_unused_params)(a, unused, b, c)
+            a = mp.constant(1)
+            unused = mp.constant(999)  # This should be eliminated by JAX
+            b = mp.constant(2)
+            c = mp.constant(3)
+            return mp.run_jax(func_with_unused_params, a, unused, b, c)
 
         expected = 6  # 1 + 2 + 3
 
         # Compile and check that compilation succeeds
-        compiled = mplang.compile(sim, test_func)
+        compiled = mp.compile(sim, test_func)
 
         # The function should compile successfully
         assert compiled is not None
 
         # Execute and verify result
-        result = mplang.evaluate(sim, test_func)
-        output = mplang.fetch(sim, result)
+        result = mp.evaluate(sim, test_func)
+        output = mp.fetch(sim, result)
 
         output = self._extract_scalar(output)
 
@@ -83,60 +82,60 @@ class TestUnusedParameterHandling:
 
     def test_multiple_unused_params(self):
         """Test function with multiple unused parameters."""
-        sim = mplang.Simulator.simple(1)
+        sim = mp.Simulator.simple(1)
 
         b_val = 5
         c_val = 7
         expected = b_val * c_val  # 35
 
-        @mplang.function
+        @mp.function
         def test_func():
-            unused1 = simp.constant(100)
-            b = simp.constant(b_val)
-            c = simp.constant(c_val)
-            unused2 = simp.constant(200)
-            return simp.run(func_first_last_unused)(unused1, b, c, unused2)
+            unused1 = mp.constant(100)
+            b = mp.constant(b_val)
+            c = mp.constant(c_val)
+            unused2 = mp.constant(200)
+            return mp.run_jax(func_first_last_unused, unused1, b, c, unused2)
 
-        result = mplang.evaluate(sim, test_func)
-        output = mplang.fetch(sim, result)
+        result = mp.evaluate(sim, test_func)
+        output = mp.fetch(sim, result)
         output = self._extract_scalar(output)
 
         assert output == expected, f"Expected {expected}, got {output}"
 
     def test_all_params_unused(self):
         """Test function where all parameters are unused (returns constant)."""
-        sim = mplang.Simulator.simple(1)
+        sim = mp.Simulator.simple(1)
         expected = 42
 
-        @mplang.function
+        @mp.function
         def test_func():
-            a = simp.constant(1)
-            unused1 = simp.constant(10)
-            unused2 = simp.constant(20)
-            return simp.run(func_all_unused_returns_constant)(a, unused1, unused2)
+            a = mp.constant(1)
+            unused1 = mp.constant(10)
+            unused2 = mp.constant(20)
+            return mp.run_jax(func_all_unused_returns_constant, a, unused1, unused2)
 
-        result = mplang.evaluate(sim, test_func)
-        output = mplang.fetch(sim, result)
+        result = mp.evaluate(sim, test_func)
+        output = mp.fetch(sim, result)
         output = self._extract_scalar(output)
 
         assert output == expected, f"Expected {expected}, got {output}"
 
     def test_no_unused_params(self):
         """Test function with no unused parameters (regression test)."""
-        sim = mplang.Simulator.simple(1)
+        sim = mp.Simulator.simple(1)
 
         def func_all_used(a, b, c):
             return a + b + c
 
-        @mplang.function
+        @mp.function
         def test_func():
-            a = simp.constant(10)
-            b = simp.constant(20)
-            c = simp.constant(30)
-            return simp.run(func_all_used)(a, b, c)
+            a = mp.constant(10)
+            b = mp.constant(20)
+            c = mp.constant(30)
+            return mp.run_jax(func_all_used, a, b, c)
 
-        result = mplang.evaluate(sim, test_func)
-        output = mplang.fetch(sim, result)
+        result = mp.evaluate(sim, test_func)
+        output = mp.fetch(sim, result)
         output = self._extract_scalar(output)
 
         assert output == 60, f"Expected 60, got {output}"
@@ -172,20 +171,20 @@ class TestUnusedParameterHandling:
 
     def test_different_dtypes_unused(self):
         """Test unused parameter elimination with different data types."""
-        sim = mplang.Simulator.simple(1)
+        sim = mp.Simulator.simple(1)
 
         def func_mixed_types(int_used, float_unused, int_used2):
             return int_used + int_used2  # float_unused is not used
 
-        @mplang.function
+        @mp.function
         def test_func():
-            a = simp.constant(5)
-            unused_float = simp.constant(3.14)  # Different dtype, unused
-            c = simp.constant(7)
-            return simp.run(func_mixed_types)(a, unused_float, c)
+            a = mp.constant(5)
+            unused_float = mp.constant(3.14)  # Different dtype, unused
+            c = mp.constant(7)
+            return mp.run_jax(func_mixed_types, a, unused_float, c)
 
-        result = mplang.evaluate(sim, test_func)
-        output = mplang.fetch(sim, result)
+        result = mp.evaluate(sim, test_func)
+        output = mp.fetch(sim, result)
         output = self._extract_scalar(output)
 
         assert output == 12, f"Expected 12, got {output}"

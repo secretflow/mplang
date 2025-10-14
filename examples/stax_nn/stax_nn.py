@@ -27,9 +27,8 @@ import yaml
 from jax.example_libraries import stax
 from sklearn.metrics import accuracy_score
 
-import mplang
+import mplang as mp
 import mplang.device as mpd
-from mplang.core.cluster import ClusterSpec
 
 parser = argparse.ArgumentParser(description="distributed driver.")
 parser.add_argument("--model", default="network_a", type=str)
@@ -239,9 +238,9 @@ def main():
 
     with open(args.config) as file:
         conf = yaml.safe_load(file)
-    cluster_spec = ClusterSpec.from_dict(conf)
-    driver = mplang.Driver(cluster_spec, timeout=600)
-    mplang.set_ctx(driver)
+    cluster_spec = mp.ClusterSpec.from_dict(conf)
+    driver = mp.Driver(cluster_spec, timeout=600)
+    mp.set_ctx(driver)
 
     # with open(args.config) as file:
     #     conf = json.load(file)

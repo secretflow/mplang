@@ -272,10 +272,9 @@ class Session:
                 f"Expected {len(output_names)} results, got {len(results)}"
             )
         for name, val in zip(output_names, results, strict=True):
-            if val is None:
-                self.delete_symbol(name)
-                continue
-            if not isinstance(val, Value):
+            # In pure SIMP model, all nodes should have the same symbol table.
+            # Non-participating nodes get None values.
+            if val is not None and not isinstance(val, Value):
                 raise TypeError(
                     "Session executions must produce kernel Value outputs; "
                     f"got {type(val).__name__} for symbol '{name}'"

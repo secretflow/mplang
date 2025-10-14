@@ -30,7 +30,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from mplang.core.mpir import Reader
+from mplang.core.mpir import IrReader
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
 from mplang.kernels.base import KernelContext
@@ -309,7 +309,7 @@ def create_and_execute_computation(
             f"Invalid base64 or protobuf for mpprogram: {e!s}"
         ) from e
 
-    reader = Reader()
+    reader = IrReader()
     expr = reader.loads(graph_proto)
 
     if expr is None:
@@ -382,6 +382,11 @@ def get_session_symbol(session_name: str, symbol_name: str) -> SymbolResponse:
             raise HTTPException(
                 status_code=404, detail=f"Symbol {symbol_name} not found"
             )
+
+        # symbol data is None means this party does not participate the computation
+        # that produced the symbol.
+        if symbol.data is None:
+            raise ResourceNotFound(f"Symbol '{symbol_name}' has no data on this party")
 
         # Serialize using Value envelope
         return SymbolResponse(

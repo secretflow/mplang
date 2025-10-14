@@ -26,12 +26,11 @@ from __future__ import annotations
 
 import random
 
-import mplang
+import mplang as mp
 import mplang.device as mpd
-from mplang import ClusterSpec, Simulator, TensorType
-from mplang.simp import P0, P1, P2, P2P
+from mplang import P0, P1, P2, P2P
 
-cluster_spec = ClusterSpec.from_dict({
+cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
         {"name": "node_0", "endpoint": "127.0.0.1:61920"},
         {"name": "node_1", "endpoint": "127.0.0.1:61921"},
@@ -82,7 +81,7 @@ def millionaire_manual():
     shared0_t = P2.crypto.kem_derive(tee_sk0, P2P(P0, P2, v_pk0), "x25519")
     sess0_p = P0.crypto.hkdf(shared0_p, info)
     sess0_t = P2.crypto.hkdf(shared0_t, info)
-    out_ty_x = TensorType.from_obj(x)
+    out_ty_x = mp.TensorType.from_obj(x)
     bx = P0.basic.pack(x)
     cx = P0.crypto.enc(bx, sess0_p)
     cx_at_tee = P2P(P0, P2, cx)
@@ -98,7 +97,7 @@ def millionaire_manual():
     shared1_t = P2.crypto.kem_derive(tee_sk1, P2P(P1, P2, v_pk1), "x25519")
     sess1_p = P1.crypto.hkdf(shared1_p, info)
     sess1_t = P2.crypto.hkdf(shared1_t, info)
-    out_ty_y = TensorType.from_obj(y)
+    out_ty_y = mp.TensorType.from_obj(y)
     by = P1.basic.pack(y)
     cy = P1.crypto.enc(by, sess1_p)
     cy_at_tee = P2P(P1, P2, cy)
@@ -107,7 +106,7 @@ def millionaire_manual():
 
     # Compute at TEE and send result back to P0
     z_at_tee = P2(lambda a, b: a < b, x_at_tee, y_at_tee)
-    out_ty_z = TensorType.from_obj(z_at_tee)
+    out_ty_z = mp.TensorType.from_obj(z_at_tee)
     bz = P2.basic.pack(z_at_tee)
     cz = P2.crypto.enc(bz, sess0_t)
     cz_at_p0 = P2P(P2, P0, cz)
@@ -127,10 +126,10 @@ def main():
     # Apply tee_bindings per-node (preferred) then construct Simulator
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)
-    sim = Simulator(cluster_spec)
+    sim = mp.Simulator(cluster_spec)
 
-    compiled_dev = mplang.compile(sim, millionaire_device)
-    compiled_man = mplang.compile(sim, millionaire_manual)
+    compiled_dev = mp.compile(sim, millionaire_device)
+    compiled_man = mp.compile(sim, millionaire_manual)
     ir_dev = compiled_dev.compiler_ir()
     ir_man = compiled_man.compiler_ir()
 
@@ -151,21 +150,21 @@ def main():
     print("IR:", ir_dev)
 
     # Run both
-    xd, yd, zd, rd = mplang.evaluate(sim, millionaire_device)
-    xm, ym, zm, rm = mplang.evaluate(sim, millionaire_manual)
+    xd, yd, zd, rd = mp.evaluate(sim, millionaire_device)
+    xm, ym, zm, rm = mp.evaluate(sim, millionaire_manual)
     print(
         "device: x, y, z@TEE, r@P0 ->",
-        mplang.fetch(sim, xd),
-        mplang.fetch(sim, yd),
-        mplang.fetch(sim, zd),
-        mplang.fetch(sim, rd),
+        mp.fetch(sim, xd),
+        mp.fetch(sim, yd),
+        mp.fetch(sim, zd),
+        mp.fetch(sim, rd),
     )
     print(
         "manual: x, y, z@TEE, r@P0 ->",
-        mplang.fetch(sim, xm),
-        mplang.fetch(sim, ym),
-        mplang.fetch(sim, zm),
-        mplang.fetch(sim, rm),
+        mp.fetch(sim, xm),
+        mp.fetch(sim, ym),
+        mp.fetch(sim, zm),
+        mp.fetch(sim, rm),
     )
 
 

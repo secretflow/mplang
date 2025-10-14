@@ -27,7 +27,6 @@ For complex operations: define a function and trace it
 import numpy as np
 import pytest
 
-from mplang import simp
 from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
 from mplang.core.dtype import FLOAT32, UINT64
@@ -1479,7 +1478,7 @@ class TestSetMask:
         assert eval_expr.args[0] == input_var.expr
 
     def test_set_mask_integration_with_other_primitives(self, trace_context):
-        """Test set_mask integration with other primitive operations using the new simp.run API."""
+        """Test set_mask integration with other primitive operations using the run_jax API."""
 
         # Create a chain of operations involving set_mask
         def test_func():
@@ -1492,8 +1491,8 @@ class TestSetMask:
             # Use in another operation
             const_var = constant(1)
 
-            # Combine using the new simp.run API
-            result = simp.run(lambda x, y: x + y)(constrained_var, const_var)
+            # Combine using the new mp.run API
+            result = run_jax(lambda x, y: x + y, constrained_var, const_var)
 
             return result
 
@@ -1512,7 +1511,7 @@ class TestSetMask:
         print(f"set_mask integration expression:\n{expr_str}")
 
         # The expression should contain multiple operations
-        assert "eval" in expr_str  # From set_mask and simp.run
+        assert "eval" in expr_str  # From set_mask and run_jax
         assert "prank" in expr_str  # From prank()
         assert "pconst" in expr_str  # From constant()
 

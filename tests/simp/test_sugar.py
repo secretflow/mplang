@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 
 import mplang
-import mplang.simp as simp
+import mplang.simp.party as party
 from mplang.ops import crypto
 
 
@@ -32,12 +32,12 @@ def test_basic_callable_and_namespace():
     @mplang.function
     def prog():
         # universal form
-        a, b = simp.P0(crypto.kem_keygen, "x25519")
+        a, b = party.P0(crypto.kem_keygen, "x25519")
         # namespace form (tee side key, then quote)
-        t_sk, t_pk = simp.P[2].crypto.kem_keygen("x25519")
-        _ = simp.P[2].tee.quote_gen(t_pk)
+        t_sk, t_pk = party.P[2].crypto.kem_keygen("x25519")
+        _ = party.P[2].tee.quote_gen(t_pk)
         # derive something simple at party 0 to ensure run path works
-        _ = simp.P0(lambda x: x + 1, 41)
+        _ = party.P0(lambda x: x + 1, 41)
         return a, b, t_sk, t_pk
 
     a, b, t_sk, t_pk = mplang.evaluate(sim, prog)
@@ -60,9 +60,9 @@ def test_bound_method_style_lambda():
     def prog():
         box = Box(10)
         # Pass bound method directly
-        r1 = simp.P0(box.inc, 5)
+        r1 = party.P0(box.inc, 5)
         # Or via lambda exposing self
-        r2 = simp.P0(lambda fn, d: fn(d), box.inc, 7)
+        r2 = party.P0(lambda fn, d: fn(d), box.inc, 7)
         return r1, r2
 
     r1, r2 = mplang.evaluate(sim, prog)
@@ -74,12 +74,12 @@ def test_bound_method_style_lambda():
 
 def test_load_module_conflict():
     # First registration should succeed
-    simp.load_module("mplang.ops.crypto", alias="crypto_alias")
+    party.load_module("mplang.ops.crypto", alias="crypto_alias")
     # Re-register same alias -> idempotent
-    simp.load_module("mplang.ops.crypto", alias="crypto_alias")
+    party.load_module("mplang.ops.crypto", alias="crypto_alias")
     # Different target with same alias should raise
     with pytest.raises(ValueError):
-        simp.load_module("mplang.ops.tee", alias="crypto_alias")
+        party.load_module("mplang.ops.tee", alias="crypto_alias")
 
 
 def test_non_callable_attribute_raises(monkeypatch: pytest.MonkeyPatch):
@@ -89,9 +89,9 @@ def test_non_callable_attribute_raises(monkeypatch: pytest.MonkeyPatch):
     fake_mod.VALUE = 123  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, module_name, fake_mod)
 
-    simp.load_module(module_name, alias="fakec")
+    party.load_module(module_name, alias="fakec")
     with pytest.raises(AttributeError):
-        _ = simp.P0.fakec.VALUE  # type: ignore[attr-defined]
+        _ = party.P0.fakec.VALUE  # type: ignore[attr-defined]
 
 
 def test_frontend_import_failure_graceful(monkeypatch: pytest.MonkeyPatch):
@@ -103,5 +103,5 @@ def test_frontend_import_failure_graceful(monkeypatch: pytest.MonkeyPatch):
     # Re-trigger prelude load; should not raise
     from importlib import reload
 
-    reload(simp)  # type: ignore
+    reload(party)  # type: ignore
     # No assertion needed; success == no exception

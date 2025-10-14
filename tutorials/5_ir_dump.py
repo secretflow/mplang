@@ -13,28 +13,27 @@
 # limitations under the License.
 
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 from mplang.core import mpir
 
 
-@mplang.function
+@mp.function
 def millionaire():
     # Note: mpl.run(random.randint) will not work, because
     # the random number generator's state is captured and will always
     # return the same number on both parties.
-    x = simp.prandint(0, 10)
-    y = simp.prandint(0, 10)
+    x = mp.prandint(0, 10)
+    y = mp.prandint(0, 10)
 
     # both of them seal it
-    x_ = simp.sealFrom(x, 0)
-    y_ = simp.sealFrom(y, 1)
+    x_ = mp.sealFrom(x, 0)
+    y_ = mp.sealFrom(y, 1)
 
     # compare it seally.
-    z_ = simp.srun(lambda x, y: x < y)(x_, y_)
+    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
 
     # reveal it to all.
-    z = simp.reveal(z_)
+    z = mp.reveal(z_)
 
     return x, y, z
 
@@ -44,11 +43,11 @@ if __name__ == "__main__":
 
     # Create compilation options for ahead-of-time (AOT) compilation
     # This specifies the number of parties and which parties have SPU devices
-    copts = mplang.CompileOptions.simple(world_size)
+    copts = mp.CompileOptions.simple(world_size)
 
     # Compile the function to get the IR representation
     # This traces the function and creates a static computation graph
-    compiled = mplang.compile(copts, millionaire)
+    compiled = mp.compile(copts, millionaire)
     print("Compiled function:", compiled)
     print()
 
@@ -70,7 +69,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Use the IR Writer to serialize the expression tree to protobuf
-    ir_writer = mpir.Writer()
+    ir_writer = mpir.IrWriter()
     func_expr = compiled.make_expr()
     graph_proto = ir_writer.dumps(func_expr)
 

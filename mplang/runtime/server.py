@@ -384,6 +384,11 @@ def get_session_symbol(session_name: str, symbol_name: str) -> SymbolResponse:
                 status_code=404, detail=f"Symbol {symbol_name} not found"
             )
 
+        # symbol data is None means this party does not participate the computation
+        # that produced the symbol.
+        if symbol.data is None:
+            raise ResourceNotFound(f"Symbol '{symbol_name}' has no data on this party")
+
         # Serialize using Value envelope
         return SymbolResponse(
             name=symbol.name,

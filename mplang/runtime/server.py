@@ -30,6 +30,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from mplang.core.cluster import ClusterSpec
 from mplang.core.mpir import Reader
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
@@ -42,7 +43,7 @@ from mplang.runtime.session import (
     Computation,
     Session,
     Symbol,
-    session_from_cluster_spec_dict,
+    create_session_from_spec,
 )
 
 logger = logging.getLogger(__name__)
@@ -267,9 +268,8 @@ def create_session(session_name: str, request: CreateSessionRequest) -> SessionR
     if session_name in _sessions:
         sess = _sessions[session_name]
     else:
-        sess = session_from_cluster_spec_dict(
-            name=session_name, rank=request.rank, spec_dict=request.cluster_spec
-        )
+        spec = ClusterSpec.from_dict(request.cluster_spec)
+        sess = create_session_from_spec(name=session_name, rank=request.rank, spec=spec)
         _sessions[session_name] = sess
     return SessionResponse(name=sess.name)
 

@@ -284,8 +284,7 @@ class Session:
 
 
 # --- Convenience constructor use HttpCommunicator---
-def session_from_cluster_spec_dict(name: str, rank: int, spec_dict: dict) -> Session:
-    spec = ClusterSpec.from_dict(spec_dict)
+def create_session_from_spec(name: str, rank: int, spec: ClusterSpec) -> Session:
     if len(spec.get_devices_by_kind("SPU")) == 0:
         raise RuntimeError("No SPU device found in cluster_spec")
 

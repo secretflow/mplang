@@ -23,7 +23,7 @@ import spu.utils.frontend as spu_fe
 from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core import MPObject, PFunction, TensorType, get_fn_name
+from mplang.core import get_fn_name, MPObject, PFunction, TensorType
 from mplang.ops.base import stateless_mod
 from mplang.utils.func_utils import normalize_fn
 

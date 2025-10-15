@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import tenseal as ts
 
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.mptype import TensorLike
 from mplang.core.pfunc import PFunction
 from mplang.kernels.base import kernel_def
@@ -317,7 +317,10 @@ def _fhe_decrypt(pfunc: PFunction, ciphertext: CipherText, context: FHEContext) 
         # private context provided for decryption.
         try:
             # A ciphertext might not have a context if deserialized, or it might have a public one.
-            if not ct_to_decrypt.context() or not ct_to_decrypt.context().has_secret_key():
+            if (
+                not ct_to_decrypt.context()
+                or not ct_to_decrypt.context().has_secret_key()
+            ):
                 ct_to_decrypt.link_context(context.context)
         except Exception:
             # Fallback for cases where .context() might fail. Linking is the safe action.

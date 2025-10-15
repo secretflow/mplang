@@ -57,9 +57,9 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
     """Gather the object from pmask'ed parties to the root party.
 
     Args:
-        src_pmask: The mask of the parties that will gather the object.
+        src_mask: The mask of the parties that will gather the object.
         root: The rank of the root party.
-        arg: The object to be gathered, which must be the subset of pmask.
+        arg: The object to be gathered. It must be held by all parties specified in `src_mask`.
 
     Returns:
         A list of objects, with length equal to the number of parties in pmask.

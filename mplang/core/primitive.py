@@ -718,7 +718,7 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
 
     Raises:
         ValueError: If the index tensor is not a scalar.
-        RuntimeError: If src[index[i]] is None for any valid index[i] (i.e/,
+        RuntimeError: If src[index[i]] is None for any valid index[i] (i.e.,
                      trying to fetch from a party that doesn't hold the data).
 
     Examples:

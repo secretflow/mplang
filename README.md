@@ -57,7 +57,7 @@ sim = mplang.Simulator.simple(2)
 result = mplang.evaluate(sim, millionaire)
 
 # Securely fetch the result (reveals SPU value)
-print("Is Alice poorer than Bob?", mpd.fetch(sim, result))
+print("Is Alice poorer than Bob?", mplang.fetch(sim, result))
 ```
 
 ## Learn More

@@ -15,7 +15,7 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import DATE, FLOAT32, FLOAT64, INT32, INT64, JSON, STRING
+from mplang.core.dtypes import DATE, FLOAT32, FLOAT64, INT32, INT64, JSON, STRING
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType
 from mplang.core.table import TableType

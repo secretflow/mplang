@@ -49,7 +49,11 @@ dev = [
     "pre-commit",
 ]
 
-examples = ["scikit-learn", "tensorflow"]
+examples = [
+    "scikit-learn",
+    "tensorflow",
+    "xgboost>=2.0.0,<3.0.0", # CPU version, 3.x requires CUDA dependencies
+]
 
 [tool.hatch.metadata.hooks.custom]
 
@@ -160,3 +164,8 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--strict-markers --strict-config"
 markers = ["integration: cross-module or multi-party integration tests"]
+filterwarnings = [
+    # Suppress insecure mock TEE warnings in tests
+    "ignore:Insecure mock TEE kernel 'mock_tee.quote_gen' in use.*:UserWarning",
+    "ignore:Insecure mock TEE kernel 'mock_tee.attest' in use.*:UserWarning",
+]

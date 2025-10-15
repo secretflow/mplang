@@ -150,7 +150,9 @@ def test_communicator_properties(http_servers):  # noqa: F811
     assert id1 != id2  # Should generate unique IDs
 
 
-def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
+def run_party_e2e_process(
+    rank: int, return_dict: dict, assigned_ports: dict, barrier: multiprocessing.Barrier
+):
     """
     Run a complete party process with server and communication logic.
     This is the proper single-process-per-party architecture.
@@ -176,6 +178,10 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
 
         # Import after logging is configured
         from contextlib import asynccontextmanager
+
+        import numpy as np
+
+        from mplang.kernels.value import TensorValue
 
         # Create session in the resource manager
         logger.info(f"Creating session: {session_name}")
@@ -243,11 +249,14 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
         if not server_ready:
             raise RuntimeError("Server failed to start within timeout")
 
+        barrier.wait(timeout=30)  # Synchronize with other parties
+
         # Run party-specific communication logic
         if rank == 0:
             # Party 0: Send message to Party 1
             logger.info("Party 0: Sending message to party 1")
-            test_data = {"message": "Hello from Party 0", "test_value": 42}
+            # Use TensorValue instead of dict for structured data
+            test_data = TensorValue(np.array([42, 100], dtype=np.int32))
 
             sess.communicator.send(to=1, key="test_message", data=test_data)
             logger.info("Party 0: Message sent, waiting for response")
@@ -255,8 +264,10 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
             # Wait for response
             response = sess.communicator.recv(frm=1, key="response_message")
             logger.info(f"Party 0: Received response: {response}")
+            assert isinstance(response, TensorValue)
+            response_arr = response.to_numpy()
 
-            return_dict[rank] = {"status": "success", "received": response}
+            return_dict[rank] = {"status": "success", "received": response_arr.tolist()}
 
         else:  # rank == 1
             # Party 1: Wait for message from Party 0
@@ -264,15 +275,16 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
 
             received_data = sess.communicator.recv(frm=0, key="test_message")
             logger.info(f"Party 1: Received message: {received_data}")
+            assert isinstance(received_data, TensorValue)
 
-            # Send response back
+            # Send response back (echo the received data)
             logger.info("Party 1: Sending response to party 0")
-            response_data = {"status": "received", "original_message": received_data}
+            response_data = received_data  # Echo back the TensorValue
 
             sess.communicator.send(to=0, key="response_message", data=response_data)
             logger.info("Party 1: Response sent")
 
-            return_dict[rank] = {"status": "success", "sent_response": response_data}
+            return_dict[rank] = {"status": "success", "sent_response": "echoed"}
 
         logger.info(f"Party {rank} test completed successfully")
 
@@ -291,21 +303,30 @@ def test_end_to_end_communication():
     # Use multiprocessing to run two party processes
     from tests.utils.server_fixtures import get_free_ports  # type: ignore
 
-    with multiprocessing.Manager() as manager:
+    # Use spawn context to avoid inheriting state that may conflict with JAX or other libs
+    mp_ctx = multiprocessing.get_context("spawn")
+
+    with mp_ctx.Manager() as manager:
         return_dict = manager.dict()
         assigned_ports = manager.dict()
         p0, p1 = get_free_ports(2)
         assigned_ports[0] = p0
         assigned_ports[1] = p1
 
+        worlds = [0, 1]
+        barrier = mp_ctx.Barrier(len(worlds) + 1)  # size(parties) + main process
+
         # Start both party processes
         processes = []
-        for rank in [0, 1]:
-            process = multiprocessing.Process(
-                target=run_party_e2e_process, args=(rank, return_dict, assigned_ports)
+        for rank in worlds:
+            process = mp_ctx.Process(
+                target=run_party_e2e_process,
+                args=(rank, return_dict, assigned_ports, barrier),
             )
             process.start()
             processes.append(process)
+
+        barrier.wait(timeout=30)  # Wait for both parties to be ready
 
         # Wait for both processes to complete
         for process in processes:
@@ -317,7 +338,7 @@ def test_end_to_end_communication():
                     process.kill()
 
         # Validate results
-        for rank in [0, 1]:
+        for rank in worlds:
             assert rank in return_dict, f"Party {rank} did not complete"
             result = return_dict[rank]
             assert result.get("status") == "success", f"Party {rank} failed: {result}"
@@ -326,14 +347,12 @@ def test_end_to_end_communication():
         party0_result = return_dict[0]
         party1_result = return_dict[1]
 
-        # Party 0 should have received the response
+        # Party 0 should have received the echoed TensorValue
         assert "received" in party0_result
         received_response = party0_result["received"]
-        assert received_response["status"] == "received"
-        assert received_response["original_message"]["message"] == "Hello from Party 0"
-        assert received_response["original_message"]["test_value"] == 42
+        # Should be the echoed array [42, 100]
+        assert received_response == [42, 100]
 
         # Party 1 should have sent the response
         assert "sent_response" in party1_result
-        sent_response = party1_result["sent_response"]
-        assert sent_response["status"] == "received"
+        assert party1_result["sent_response"] == "echoed"

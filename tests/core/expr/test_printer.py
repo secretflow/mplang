@@ -18,7 +18,7 @@ Tests for expression printer module.
 
 import pytest
 
-from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.dtypes import FLOAT32, UINT64
 from mplang.core.expr import (
     AccessExpr,
     CallExpr,
@@ -321,7 +321,7 @@ class TestPrinterComplexExpressions:
 
     def test_all_expr_types_printing(self, pmask_2p, pfunc_1i1o):
         """Test printing of a complex expression involving all Expr types with meaningful parameter usage."""
-        printer = Printer(compact_format=False)
+        printer = Printer(compact_format=False, inline_pcall=False)
 
         # 1. Variable expressions
         var1_mptype = MPType.tensor(FLOAT32, (2,), pmask_2p)
@@ -357,7 +357,7 @@ class TestPrinterComplexExpressions:
         var_expr = VariableExpr("input_data", param_type)
         func_body = TupleExpr([var_expr, access_expr])
         func_def = FuncDefExpr(["input_data"], func_body)
-        call_expr = CallExpr(func_def, [var1])
+        call_expr = CallExpr("test", func_def, [var1])
 
         # Access the first output of the call expression to get a single-output expr
         call_expr_first = AccessExpr(call_expr, 0)
@@ -405,7 +405,7 @@ class TestPrinterComplexExpressions:
         assert result == expected.strip()
 
         # Test with optimize_variables=True for comparison
-        printer_optimized = Printer(compact_format=True)
+        printer_optimized = Printer(compact_format=True, inline_pcall=False)
         result_optimized = printer_optimized.print_expr(final_expr)
 
         # Expected output with variable optimization (compact mode uses variable names directly)
@@ -469,7 +469,7 @@ class TestPrinterComplexExpressions:
 
     def test_call_expr_printing(self, pmask_2p):
         """Test printing of CallExpr with nested function that uses its parameters."""
-        printer = Printer(compact_format=False)
+        printer = Printer(compact_format=False, inline_pcall=False)
 
         # Create function body that actually uses the parameters
         x_mptype = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -489,7 +489,7 @@ class TestPrinterComplexExpressions:
         arg2 = VariableExpr("arg2", arg2_mptype)
 
         # Create call expression
-        expr = CallExpr(fn, [arg1, arg2])
+        expr = CallExpr("test", fn, [arg1, arg2])
 
         result = printer.print_expr(expr)
 
@@ -617,7 +617,7 @@ class TestPrinterEdgeCases:
 
     def test_deep_nesting_indentation(self, pmask_2p):
         """Test printer with deeply nested expressions that use parameters meaningfully."""
-        printer = Printer(compact_format=False)
+        printer = Printer(compact_format=False, inline_pcall=False)
 
         # Create nested function definitions with meaningful parameter usage
         inner_param_type = MPType.tensor(FLOAT32, (1,), pmask_2p)
@@ -630,13 +630,13 @@ class TestPrinterEdgeCases:
 
         # Middle function: takes parameter and calls inner function with it
         middle_param = VariableExpr("middle_param", middle_param_type)
-        middle_body = CallExpr(inner_fn, [middle_param])
+        middle_body = CallExpr("middle", inner_fn, [middle_param])
         middle_fn = FuncDefExpr(["middle_param"], middle_body)
 
         # Outer expression: call middle function with a variable expression
         arg_mptype = MPType.tensor(UINT64, (), pmask_2p)
         arg = VariableExpr("arg", arg_mptype)
-        outer_expr = CallExpr(middle_fn, [arg])
+        outer_expr = CallExpr("outer", middle_fn, [arg])
 
         result = printer.print_expr(outer_expr)
 

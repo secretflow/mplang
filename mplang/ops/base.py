@@ -20,10 +20,7 @@ from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
-from mplang.core.tensor import TensorType
+from mplang.core import MPContext, MPObject, PFunction, TableType, TensorType
 
 # -----------------------------------------------------------------------------
 # Triad ABI
@@ -129,7 +126,7 @@ class FeModule(ABC):
         - You need compilation/stateful behavior/dynamic routing, multiple PFunctions, or complex capture flows.
 
     Tips:
-    - Keep routing information in PFunction.fn_type (e.g., "builtin.read", "sql.run", "mlir.stablehlo").
+    - Keep routing information in PFunction.fn_type (e.g., "basic.read", "sql.run", "mlir.stablehlo").
     - Avoid backend-specific logic in kernels; only validate and shape types.
     - Prefer keyword-only attributes in typed_op kernels for clarity (def op(x: MPObject, *, attr: int)).
     """

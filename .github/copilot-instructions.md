@@ -13,7 +13,7 @@ Concise guidance for AI coding agents working in this repo. Keep answers specifi
    - `mpobject.py`, `mptype.py`, `dtype.py`, `tensor.py`, `table.py`, `pfunc.py`, `mask.py`.
 - Expression AST: `mplang/core/expr/` (Expr nodes used by tracing; see imports in `primitive.py`).
 - Runtime: `mplang/runtime/` (`simulation.py` for local multi-threaded runs, `driver.py`, `server.py`, `client.py`, `communicator.py`).
-- Frontends/Backends: `mplang/frontend/*` (builtin, jax, ibis) and `mplang/backend/*` (spu, phe, sql_duckdb, stablehlo).
+- Frontends/Backends: `mplang/ops/*` (basic, jax_cc, ibis_cc, etc.) and `mplang/kernels/*` (std, spu, phe, sql_duckdb, stablehlo).
 - Devices API: `mplang/device.py` (device placement/transforms).
 - Low-level party API: `mplang/simp/*` (MPI-style ops, random, smpc) — used when you need rank-level control.
 - Public API surface: `mplang/__init__.py` (re-exports: `function`, `compile`, `evaluate`, `fetch`, `Simulator`, etc.).
@@ -21,7 +21,7 @@ Concise guidance for AI coding agents working in this repo. Keep answers specifi
 ## Project-specific patterns and conventions
 - Contexts are king: code must work under both `TraceContext` and `InterpContext`.
    - Inside `@primitive` functions, use `cur_ctx()` and do NOT cross-share `TraceVar`/`InterpVar`; capture into the current context (see `_switch_ctx` in `primitive.py`).
-- New primitives: decorate with `@primitive` (or `function` alias). For backend-evaluable ops, route through `frontend/builtin.py` and call `peval(pfunc, eval_args, rmask?)` to create IR; return the unflattened tree.
+- New primitives: decorate with `@primitive` (or `function` alias). For backend-evaluable ops, route through `mplang/ops/basic.py` and call `peval(pfunc, eval_args, rmask?)` to create IR; return the unflattened tree.
 - Masks: `Mask` models which parties hold/execute values. `set_mask` enforces runtime execution mask; static/dynamic pmask rules are documented in its docstring.
 - Control flow: use `cond`, `while_loop`, `peval`, `ConvExpr`/`ShflExpr` via helpers in `primitive.py` instead of ad-hoc Python control flow inside traced code.
 - Devices: prefer `mplang.device` for placement and `@mplang.function` for graph capture; avoid leaking ranks into device-level code (rank-level ops live in `mplang/simp`).
@@ -41,7 +41,7 @@ Concise guidance for AI coding agents working in this repo. Keep answers specifi
 ## Good starting references (read these before changes)
 - How primitives build IR: `mplang/core/primitive.py` (see `peval`, `prand`, `constant`, `cond`).
 - Context behavior: `mplang/core/tracer.py`, `mplang/core/interp.py`, and `_switch_ctx` in `primitive.py`.
-- Runtime simulation and E2E: mplang/runtime/simulation.py, tutorials/*.py, tests in tests/** (e.g., tests/backend/test_builtin.py).
+- Runtime simulation and E2E: mplang/runtime/simulation.py, tutorials/*.py, tests in tests/** (e.g., tests/kernels/test_basic.py).
 
 ## Do/Don’t (project-specific)
 - Do add new high-level APIs by composing existing primitives instead of bypassing trace/IR.

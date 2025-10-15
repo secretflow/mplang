@@ -27,29 +27,25 @@ For complex operations: define a function and trace it
 import numpy as np
 import pytest
 
-from mplang import simp
 from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import with_ctx
-from mplang.core.dtype import FLOAT32, UINT64
+from mplang.core.dtypes import FLOAT32, UINT64
 from mplang.core.expr.printer import Printer
 from mplang.core.mask import Mask
 from mplang.core.mptype import Rank
 from mplang.core.primitive import (
     _switch_ctx,
-    constant,
+    function,
     pconv,
     peval,
-    prand,
-    prank,
-    primitive,
     pshfl,
     pshfl_s,
-    set_mask,
     uniform_cond,
     while_loop,
 )
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.ops import jax_cc
+from mplang.simp.api import constant, prand, prank, set_mask
 
 
 @pytest.fixture
@@ -76,7 +72,7 @@ class TestPrimitiveDecorator:
     def test_primitive_decorator_basic(self, trace_context):
         """Test basic primitive decorator functionality."""
 
-        @primitive
+        @function
         def simple_func():
             return constant(42)
 
@@ -349,9 +345,9 @@ class TestBasicPrimitives:
         expected = """
 () {
   %0 = pconst() {data=42} : i64<3>
-  %1 = peval(%0) {fn_type=builtin.identity, rmask=0x1} : i64<1>
+  %1 = peval(%0) {fn_type=basic.identity, rmask=0x1} : i64<1>
   %2 = pconst() {data=24} : i64<3>
-  %3 = peval(%2) {fn_type=builtin.identity, rmask=0x2} : i64<2>
+  %3 = peval(%2) {fn_type=basic.identity, rmask=0x2} : i64<2>
   %4 = pconv(%1, %3) : i64<3>
   return %4
 }
@@ -1156,7 +1152,7 @@ class TestCompleteExample:
     def test_complete_primitive_example(self, trace_context):
         """Complete example showing the complete testing pattern."""
 
-        @primitive
+        @function
         def example_computation():
             """Example multi-party computation function."""
             my_rank = prank()
@@ -1193,7 +1189,7 @@ class TestComplexExpressions:
     def test_complex_function(self, trace_context):
         """Test function combining multiple primitives."""
 
-        @primitive
+        @function
         def complex_func():
             prank()
             prand((2, 2))
@@ -1226,9 +1222,9 @@ class TestComplexExpressions:
     def test_nested_primitives(self, trace_context):
         """Test nested primitive calls."""
 
-        @primitive
+        @function
         def outer_func():
-            @primitive
+            @function
             def inner_func():
                 return constant(1)
 
@@ -1479,7 +1475,7 @@ class TestSetMask:
         assert eval_expr.args[0] == input_var.expr
 
     def test_set_mask_integration_with_other_primitives(self, trace_context):
-        """Test set_mask integration with other primitive operations using the new simp.run API."""
+        """Test set_mask integration with other primitive operations using the run_jax API."""
 
         # Create a chain of operations involving set_mask
         def test_func():
@@ -1492,8 +1488,8 @@ class TestSetMask:
             # Use in another operation
             const_var = constant(1)
 
-            # Combine using the new simp.run API
-            result = simp.run(lambda x, y: x + y)(constrained_var, const_var)
+            # Combine using the new mp.run API
+            result = run_jax(lambda x, y: x + y, constrained_var, const_var)
 
             return result
 
@@ -1512,8 +1508,8 @@ class TestSetMask:
         print(f"set_mask integration expression:\n{expr_str}")
 
         # The expression should contain multiple operations
-        assert "eval" in expr_str  # From set_mask and simp.run
-        assert "prank" in expr_str  # From prank()
+        assert "eval" in expr_str  # From set_mask and run_jax
+        assert "prank" in expr_str  # From prank() using @builtin_function
         assert "pconst" in expr_str  # From constant()
 
 

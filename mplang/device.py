@@ -29,17 +29,22 @@ from typing import Any
 
 from jax.tree_util import tree_map
 
-import mplang.api as mapi
-from mplang import simp
-from mplang.core import InterpContext, MPObject, primitive
-from mplang.core.cluster import ClusterSpec, Device
-from mplang.core.context_mgr import cur_ctx
-from mplang.core.tensor import TensorType
-from mplang.ops import builtin, crypto, ibis_cc, jax_cc, tee
+import mplang.host as mphost
+from mplang.core import (
+    ClusterSpec,
+    Device,
+    InterpContext,
+    MPObject,
+    TensorType,
+    cur_ctx,
+    primitive,
+)
+from mplang.ops import basic, crypto, ibis_cc, jax_cc, tee
 from mplang.ops.base import FeOperation
-from mplang.ops.ibis_cc import IbisCompiler
-from mplang.ops.jax_cc import JaxCompiler
+from mplang.ops.ibis_cc import IbisRunner
+from mplang.ops.jax_cc import JaxRunner
 from mplang.simp import mpi, smpc
+from mplang.simp.api import run_at
 
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
@@ -82,7 +87,7 @@ _is_mpobj = lambda x: isinstance(x, MPObject)
 def _device_run_spu(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
-    if not isinstance(op, JaxCompiler):
+    if not isinstance(op, JaxRunner):
         raise ValueError("SPU device only supports JAX frontend.")
     fn, *aargs = args
     var = smpc.srun(fn)(*aargs, **kwargs)
@@ -92,11 +97,11 @@ def _device_run_spu(
 def _device_run_tee(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
-    if not isinstance(op, JaxCompiler) and not isinstance(op, IbisCompiler):
+    if not isinstance(op, JaxRunner) and not isinstance(op, IbisRunner):
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
-    var = simp.runAt(rank, op)(*args, **kwargs)
+    var = run_at(rank, op, *args, **kwargs)
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
@@ -105,13 +110,13 @@ def _device_run_ppu(
 ) -> Any:
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
-    var = simp.runAt(rank, op)(*args, **kwargs)
+    var = run_at(rank, op, *args, **kwargs)
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 
 def _device_run(dev_id: str, op: FeOperation, *args: Any, **kwargs: Any) -> Any:
     assert isinstance(op, FeOperation)
-    cluster_spec = mapi.cur_ctx().cluster_spec
+    cluster_spec = mphost.cur_ctx().cluster_spec
     if dev_id not in cluster_spec.devices:
         raise ValueError(f"Device {dev_id} not found in cluster spec.")
 
@@ -159,11 +164,9 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
                 return _device_run(dev_id, fn, *args, **kwargs)
             else:
                 if fe_type == "jax":
-                    return _device_run(dev_id, jax_cc.jax_compile, fn, *args, **kwargs)
+                    return _device_run(dev_id, jax_cc.run_jax, fn, *args, **kwargs)
                 elif fe_type == "ibis":
-                    return _device_run(
-                        dev_id, ibis_cc.ibis_compile, fn, *args, **kwargs
-                    )
+                    return _device_run(dev_id, ibis_cc.run_ibis, fn, *args, **kwargs)
                 else:
                     raise ValueError(f"Unsupported frontend type: {fe_type}")
 
@@ -179,7 +182,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
     if frm_dev_id == to_dev_id:
         return obj
 
-    cluster_spec: ClusterSpec = mapi.cur_ctx().cluster_spec
+    cluster_spec: ClusterSpec = mphost.cur_ctx().cluster_spec
     frm_dev = cluster_spec.devices[frm_dev_id]
     to_dev = cluster_spec.devices[to_dev_id]
     frm_to_pair = (frm_dev.kind.upper(), to_dev.kind.upper())
@@ -207,43 +210,29 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         tee_rank = to_dev.members[0].rank
-        platform = to_dev.config.get("platform")
-        if not platform:
-            raise ValueError(
-                f"TEE device '{to_dev_id}' is missing 'platform' in its config."
-            )
         # Ensure sessions (both directions) exist for this PPU<->TEE pair
-        sess_p, sess_t = _ensure_tee_session(
-            frm_dev_id, to_dev_id, frm_rank, tee_rank, platform
-        )
+        sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
         # Bytes-only path: pack -> enc -> p2p -> dec -> unpack (with static out type)
         obj_ty = TensorType.from_obj(obj)
-        b = simp.runAt(frm_rank, builtin.pack)(obj)
-        ct = simp.runAt(frm_rank, crypto.enc)(b, sess_p)
+        b = run_at(frm_rank, basic.pack, obj)
+        ct = run_at(frm_rank, crypto.enc, b, sess_p)
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
-        b_at_tee = simp.runAt(tee_rank, crypto.dec)(ct_at_tee, sess_t)
-        pt_at_tee = simp.runAt(tee_rank, builtin.unpack)(b_at_tee, out_ty=obj_ty)
+        b_at_tee = run_at(tee_rank, crypto.dec, ct_at_tee, sess_t)
+        pt_at_tee = run_at(tee_rank, basic.unpack, b_at_tee, out_ty=obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_tee)  # type: ignore[no-any-return]
     elif frm_to_pair == ("TEE", "PPU"):
         # Transparent encryption from TEE to a specific PPU using the reverse-direction session key
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         tee_rank = frm_dev.members[0].rank
         ppu_rank = to_dev.members[0].rank
-        platform = frm_dev.config.get("platform")
-        if not platform:
-            raise ValueError(
-                f"TEE device '{frm_dev_id}' is missing 'platform' in its config."
-            )
         # Ensure bidirectional session established for this pair
-        sess_p, sess_t = _ensure_tee_session(
-            to_dev_id, frm_dev_id, ppu_rank, tee_rank, platform
-        )
+        sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
         obj_ty = TensorType.from_obj(obj)
-        b = simp.runAt(tee_rank, builtin.pack)(obj)
-        ct = simp.runAt(tee_rank, crypto.enc)(b, sess_t)
+        b = run_at(tee_rank, basic.pack, obj)
+        ct = run_at(tee_rank, crypto.enc, b, sess_t)
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
-        b_at_ppu = simp.runAt(ppu_rank, crypto.dec)(ct_at_ppu, sess_p)
-        pt_at_ppu = simp.runAt(ppu_rank, builtin.unpack)(b_at_ppu, out_ty=obj_ty)
+        b_at_ppu = run_at(ppu_rank, crypto.dec, ct_at_ppu, sess_p)
+        pt_at_ppu = run_at(ppu_rank, basic.unpack, b_at_ppu, out_ty=obj_ty)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
     else:
         supported = [
@@ -259,7 +248,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
 
 
 def _ensure_tee_session(
-    frm_dev_id: str, to_dev_id: str, frm_rank: int, tee_rank: int, platform: str
+    frm_dev_id: str, to_dev_id: str, frm_rank: int, tee_rank: int
 ) -> tuple[MPObject, MPObject]:
     """Ensure a TEE session (sess_p at sender, sess_t at TEE) exists.
 
@@ -276,27 +265,25 @@ def _ensure_tee_session(
 
     # 1) TEE generates (sk, pk) and quote(pk)
     # KEM suite currently constant; future: read from tee device config (e.g. cluster_spec.devices[dev_id].config)
-    tee_sk, tee_pk = simp.runAt(tee_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
-    quote = simp.runAt(tee_rank, tee.quote_gen)(tee_pk)
+    tee_sk, tee_pk = run_at(tee_rank, crypto.kem_keygen, _TEE_KEM_SUITE)
+    quote = run_at(tee_rank, tee.quote_gen, tee_pk)
 
     # 2) Send quote to sender and attest to obtain TEE pk
     quote_at_sender = mpi.p2p(tee_rank, frm_rank, quote)
-    tee_pk_at_sender = simp.runAt(frm_rank, tee.attest)(quote_at_sender, platform)
+    tee_pk_at_sender = run_at(frm_rank, tee.attest, quote_at_sender)
 
     # 3) Sender generates its ephemeral keypair and sends its pk to TEE
-    v_sk, v_pk = simp.runAt(frm_rank, crypto.kem_keygen)(_TEE_KEM_SUITE)
+    v_sk, v_pk = run_at(frm_rank, crypto.kem_keygen, _TEE_KEM_SUITE)
     v_pk_at_tee = mpi.p2p(frm_rank, tee_rank, v_pk)
 
     # 4) Both sides derive the shared secret and session key
-    shared_p = simp.runAt(frm_rank, crypto.kem_derive)(
-        v_sk, tee_pk_at_sender, _TEE_KEM_SUITE
+    shared_p = run_at(
+        frm_rank, crypto.kem_derive, v_sk, tee_pk_at_sender, _TEE_KEM_SUITE
     )
-    shared_t = simp.runAt(tee_rank, crypto.kem_derive)(
-        tee_sk, v_pk_at_tee, _TEE_KEM_SUITE
-    )
+    shared_t = run_at(tee_rank, crypto.kem_derive, tee_sk, v_pk_at_tee, _TEE_KEM_SUITE)
     # Use a fixed ASCII string literal for HKDF info on both sides
-    sess_p = simp.runAt(frm_rank, crypto.hkdf)(shared_p, _HKDF_INFO_LITERAL)
-    sess_t = simp.runAt(tee_rank, crypto.hkdf)(shared_t, _HKDF_INFO_LITERAL)
+    sess_p = run_at(frm_rank, crypto.hkdf, shared_p, _HKDF_INFO_LITERAL)
+    sess_t = run_at(tee_rank, crypto.hkdf, shared_t, _HKDF_INFO_LITERAL)
 
     cache[key] = (sess_p, sess_t)
     return sess_p, sess_t
@@ -316,25 +303,25 @@ def _fetch(interp: InterpContext, obj: MPObject) -> Any:
 
     dev_info = cluster_spec.devices[dev_id]
     if dev_kind == "SPU":
-        revealed = mapi.evaluate(interp, smpc.reveal, obj)
-        result = mapi.fetch(interp, revealed)
+        revealed = mphost.evaluate(interp, smpc.reveal, obj)
+        result = mphost.fetch(interp, revealed)
         # now all members have the same value, return the one at rank 0
         return result[dev_info.members[0].rank]
     elif dev_kind == "PPU":
         assert len(dev_info.members) == 1
         rank = dev_info.members[0].rank
-        result = mapi.fetch(interp, obj)
+        result = mphost.fetch(interp, obj)
         return result[rank]
     elif dev_kind == "TEE":
         assert len(dev_info.members) == 1
         rank = dev_info.members[0].rank
-        result = mapi.fetch(interp, obj)
+        result = mphost.fetch(interp, obj)
         return result[rank]
     else:
         raise ValueError(f"Unknown device id: {dev_id}")
 
 
 def fetch(interp: InterpContext, objs: Any) -> Any:
-    ctx = interp or mapi.cur_ctx()
+    ctx = interp or mphost.cur_ctx()
     assert isinstance(ctx, InterpContext), f"Expect InterpContext, got {ctx}"
     return tree_map(partial(_fetch, ctx), objs)

@@ -38,6 +38,7 @@ class _DataType:
 class _DataTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_DataType.ValueType], builtins.type):
     DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
     UNDEFINED: _DataType.ValueType  # 0
+    """Undefined data type"""
     U8: _DataType.ValueType  # 1
     """uint8_t"""
     I8: _DataType.ValueType  # 2
@@ -83,6 +84,7 @@ class DataType(_DataType, metaclass=_DataTypeEnumTypeWrapper):
     """Data type enumeration"""
 
 UNDEFINED: DataType.ValueType  # 0
+"""Undefined data type"""
 U8: DataType.ValueType  # 1
 """uint8_t"""
 I8: DataType.ValueType  # 2
@@ -138,14 +140,23 @@ class AttrProto(google.protobuf.message.Message):
     class _AttrTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[AttrProto._AttrType.ValueType], builtins.type):
         DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
         UNDEFINED: AttrProto._AttrType.ValueType  # 0
+        """Undefined attribute type"""
         FLOAT: AttrProto._AttrType.ValueType  # 1
+        """Single float value"""
         INT: AttrProto._AttrType.ValueType  # 2
+        """Single integer value"""
         STRING: AttrProto._AttrType.ValueType  # 3
+        """Single string value"""
         BOOL: AttrProto._AttrType.ValueType  # 4
+        """Single boolean value"""
         BYTES: AttrProto._AttrType.ValueType  # 5
+        """Binary data"""
         FLOATS: AttrProto._AttrType.ValueType  # 6
+        """Array of float values"""
         INTS: AttrProto._AttrType.ValueType  # 7
+        """Array of integer values"""
         STRINGS: AttrProto._AttrType.ValueType  # 8
+        """Array of string values"""
         FUNCTION: AttrProto._AttrType.ValueType  # 10
         """Textual function reference"""
         GRAPH: AttrProto._AttrType.ValueType  # 11
@@ -155,14 +166,23 @@ class AttrProto(google.protobuf.message.Message):
         """Define possible attribute types"""
 
     UNDEFINED: AttrProto.AttrType.ValueType  # 0
+    """Undefined attribute type"""
     FLOAT: AttrProto.AttrType.ValueType  # 1
+    """Single float value"""
     INT: AttrProto.AttrType.ValueType  # 2
+    """Single integer value"""
     STRING: AttrProto.AttrType.ValueType  # 3
+    """Single string value"""
     BOOL: AttrProto.AttrType.ValueType  # 4
+    """Single boolean value"""
     BYTES: AttrProto.AttrType.ValueType  # 5
+    """Binary data"""
     FLOATS: AttrProto.AttrType.ValueType  # 6
+    """Array of float values"""
     INTS: AttrProto.AttrType.ValueType  # 7
+    """Array of integer values"""
     STRINGS: AttrProto.AttrType.ValueType  # 8
+    """Array of string values"""
     FUNCTION: AttrProto.AttrType.ValueType  # 10
     """Textual function reference"""
     GRAPH: AttrProto.AttrType.ValueType  # 11
@@ -182,24 +202,24 @@ class AttrProto(google.protobuf.message.Message):
     type: global___AttrProto.AttrType.ValueType
     """Type of the attribute"""
     f: builtins.float
-    """FLOAT"""
+    """FLOAT value"""
     i: builtins.int
-    """INT"""
+    """INT value"""
     s: builtins.str
-    """STRING"""
+    """STRING value"""
     b: builtins.bool
-    """BOOL"""
+    """BOOL value"""
     raw_bytes: builtins.bytes
     """BYTES - for raw binary data"""
     @property
     def floats(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.float]:
-        """FLOATS"""
+        """FLOATS - array of float values"""
     @property
     def ints(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
-        """INTS"""
+        """INTS - array of integer values"""
     @property
     def strs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
-        """STRINGS"""
+        """STRINGS - array of string values"""
     @property
     def func(self) -> global___FuncProto:
         """FUNCTION - textual function reference"""
@@ -228,6 +248,8 @@ global___AttrProto = AttrProto
 
 @typing_extensions.final
 class FuncProto(google.protobuf.message.Message):
+    """Function prototype message"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing_extensions.final
@@ -254,7 +276,7 @@ class FuncProto(google.protobuf.message.Message):
     DOC_STRING_FIELD_NUMBER: builtins.int
     ATTRS_FIELD_NUMBER: builtins.int
     type: builtins.str
-    """Function type."""
+    """Function type"""
     name: builtins.str
     """Function name"""
     body: builtins.str
@@ -279,13 +301,17 @@ global___FuncProto = FuncProto
 
 @typing_extensions.final
 class TensorTypeProto(google.protobuf.message.Message):
+    """Tensor type definition"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     DTYPE_FIELD_NUMBER: builtins.int
     SHAPE_DIMS_FIELD_NUMBER: builtins.int
     dtype: global___DataType.ValueType
+    """Data type of the tensor elements"""
     @property
-    def shape_dims(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]: ...
+    def shape_dims(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.int]:
+        """Shape dimensions of the tensor"""
     def __init__(
         self,
         *,
@@ -298,16 +324,22 @@ global___TensorTypeProto = TensorTypeProto
 
 @typing_extensions.final
 class TableTypeProto(google.protobuf.message.Message):
+    """Table type definition"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing_extensions.final
     class Column(google.protobuf.message.Message):
+        """Column definition within a table"""
+
         DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
         NAME_FIELD_NUMBER: builtins.int
         DTYPE_FIELD_NUMBER: builtins.int
         name: builtins.str
+        """Name of the column"""
         dtype: global___DataType.ValueType
+        """Data type of the column"""
         def __init__(
             self,
             *,
@@ -318,7 +350,8 @@ class TableTypeProto(google.protobuf.message.Message):
 
     COLUMNS_FIELD_NUMBER: builtins.int
     @property
-    def columns(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___TableTypeProto.Column]: ...
+    def columns(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___TableTypeProto.Column]:
+        """List of columns in the table"""
     def __init__(
         self,
         *,
@@ -330,6 +363,8 @@ global___TableTypeProto = TableTypeProto
 
 @typing_extensions.final
 class MPTypeProto(google.protobuf.message.Message):
+    """Multi-party type definition"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing_extensions.final
@@ -355,14 +390,16 @@ class MPTypeProto(google.protobuf.message.Message):
     PMASK_FIELD_NUMBER: builtins.int
     ATTRS_FIELD_NUMBER: builtins.int
     @property
-    def tensor_type(self) -> global___TensorTypeProto: ...
+    def tensor_type(self) -> global___TensorTypeProto:
+        """Tensor type specification"""
     @property
-    def table_type(self) -> global___TableTypeProto: ...
+    def table_type(self) -> global___TableTypeProto:
+        """Table type specification"""
     pmask: builtins.int
-    """party mask (-1 for dynamic mask, >=0 for static mask)"""
+    """Party mask (-1 for dynamic mask, >=0 for static mask)"""
     @property
     def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
-        """attributes"""
+        """Additional attributes"""
     def __init__(
         self,
         *,
@@ -379,6 +416,8 @@ global___MPTypeProto = MPTypeProto
 
 @typing_extensions.final
 class NodeProto(google.protobuf.message.Message):
+    """Node prototype definition"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing_extensions.final
@@ -406,16 +445,20 @@ class NodeProto(google.protobuf.message.Message):
     ATTRS_FIELD_NUMBER: builtins.int
     DOC_STRING_FIELD_NUMBER: builtins.int
     op_type: builtins.str
+    """Operation type of the node"""
     name: builtins.str
+    """Name of the node"""
     @property
     def inputs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
-        """{name:index}"""
+        """Input specifications in format {name:index}"""
     @property
     def outs_info(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___MPTypeProto]:
-        """"""
+        """Output type information"""
     @property
-    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]: ...
+    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
+        """Node attributes"""
     doc_string: builtins.str
+    """Documentation string"""
     def __init__(
         self,
         *,
@@ -432,6 +475,8 @@ global___NodeProto = NodeProto
 
 @typing_extensions.final
 class VersionInfo(google.protobuf.message.Message):
+    """Version information definition"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     MAJOR_FIELD_NUMBER: builtins.int
@@ -460,6 +505,8 @@ global___VersionInfo = VersionInfo
 
 @typing_extensions.final
 class GraphProto(google.protobuf.message.Message):
+    """Graph prototype definition"""
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     @typing_extensions.final
@@ -485,14 +532,17 @@ class GraphProto(google.protobuf.message.Message):
     OUTPUTS_FIELD_NUMBER: builtins.int
     ATTRS_FIELD_NUMBER: builtins.int
     @property
-    def version(self) -> global___VersionInfo: ...
+    def version(self) -> global___VersionInfo:
+        """Version information"""
     @property
-    def nodes(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___NodeProto]: ...
+    def nodes(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___NodeProto]:
+        """List of nodes in the graph"""
     @property
     def outputs(self) -> google.protobuf.internal.containers.RepeatedScalarFieldContainer[builtins.str]:
-        """{name:index}"""
+        """Output specifications in format {name:index}"""
     @property
-    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]: ...
+    def attrs(self) -> google.protobuf.internal.containers.MessageMap[builtins.str, global___AttrProto]:
+        """Graph attributes"""
     def __init__(
         self,
         *,

@@ -15,8 +15,8 @@
 """
 HTTP-based driver implementation for distributed execution.
 
-This module provides an HTTP-based alternative to the gRPC Driver,
-using REST APIs for distributed multi-party computation coordination.
+This module provides an HTTP-based driver, using REST APIs
+for distributed multi-party computation coordination.
 """
 
 from __future__ import annotations
@@ -27,13 +27,19 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from mplang.core.cluster import ClusterSpec
+import numpy as np
+
+from mplang.core import (
+    ClusterSpec,
+    InterpContext,
+    InterpVar,
+    IrWriter,
+    Mask,
+    MPObject,
+    MPType,
+)
 from mplang.core.expr.ast import Expr
-from mplang.core.interp import InterpContext, InterpVar
-from mplang.core.mask import Mask
-from mplang.core.mpir import Writer
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType
+from mplang.kernels.value import TableValue, TensorValue
 from mplang.runtime.client import HttpExecutorClient
 
 
@@ -195,7 +201,7 @@ class Driver(InterpContext):
 
         var_name_mapping = dict(zip(var_names, party_symbol_names, strict=True))
 
-        writer = Writer(var_name_mapping)
+        writer = IrWriter(var_name_mapping)
         program_proto = writer.dumps(expr)
 
         output_symbols = [self.new_name() for _ in range(expr.num_outputs)]
@@ -257,7 +263,19 @@ class Driver(InterpContext):
             try:
                 # The results will be in the same order as the clients (ranks)
                 results = await asyncio.gather(*tasks)
-                return list(results)
+                converted: list[Any] = []
+                for value in results:
+                    if isinstance(value, TensorValue):
+                        arr = value.to_numpy()
+                        if isinstance(arr, np.ndarray) and arr.size == 1:
+                            converted.append(arr.item())
+                        else:
+                            converted.append(arr)
+                    elif isinstance(value, TableValue):
+                        converted.append(value.to_pandas())
+                    else:
+                        converted.append(value)
+                return converted
             except RuntimeError as e:
                 raise RuntimeError(
                     f"Failed to fetch symbol from one or more parties: {e}"

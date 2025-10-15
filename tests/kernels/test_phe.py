@@ -15,12 +15,13 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import INT32, UINT8
+from mplang.core.dtypes import INT32, UINT8
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.kernels.base import list_kernels
 from mplang.kernels.context import RuntimeContext
 from mplang.kernels.phe import CipherText, PrivateKey, PublicKey
+from mplang.kernels.value import TensorValue
 
 
 class TestPHEKernels:
@@ -31,8 +32,20 @@ class TestPHEKernels:
         self.scheme = "paillier"
         self.key_size = 512
 
+    @staticmethod
+    def _to_value(arg):
+        if isinstance(arg, np.ndarray):
+            return TensorValue(np.array(arg, copy=True))
+        return arg
+
+    @staticmethod
+    def _unwrap(value):
+        return value.to_numpy() if isinstance(value, TensorValue) else value
+
     def _exec(self, p: PFunction, args: list):
-        return self.runtime.run_kernel(p, args)
+        converted = [self._to_value(arg) for arg in args]
+        results = self.runtime.run_kernel(p, converted)
+        return [self._unwrap(res) for res in results]
 
     def _keygen(self):
         p = PFunction(
@@ -228,6 +241,7 @@ class TestPHEKernels:
             outs_info=(TensorType.from_obj(a),),
         )
         ct = self._exec(enc, [a, pk])[0]
+        assert isinstance(ct, CipherText)
         fake = CipherText(
             ct_data=ct.ct_data,
             semantic_dtype=INT32,
@@ -1465,7 +1479,7 @@ class TestPHEKernels:
             ins_info=(TensorType.from_obj(pt), TensorType(UINT8, (-1, 0))),
             outs_info=(TensorType.from_obj(pt),),
         )
-        ct = runtime.run_kernel(enc, [pt, pk])[0]
+        ct = runtime.run_kernel(enc, [TensorValue(pt), pk])[0]
 
         dec = PFunction(
             fn_type="phe.decrypt",
@@ -1473,7 +1487,8 @@ class TestPHEKernels:
             outs_info=(TensorType.from_obj(pt),),
         )
         out = runtime.run_kernel(dec, [ct, sk])[0]
-        assert out.item() == pt.item()
+        assert isinstance(out, TensorValue)
+        assert out.to_numpy().item() == pt.item()
 
     def test_negative_values_comprehensive(self):
         """Test comprehensive negative value handling."""

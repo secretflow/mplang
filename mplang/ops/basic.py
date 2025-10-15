@@ -15,18 +15,25 @@
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtype import UINT8, UINT64
-from mplang.core.mpobject import MPObject  # Needed for constant() triad return typing
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, TableType
-from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
+from mplang.core import (
+    UINT8,
+    UINT64,
+    MPObject,
+    PFunction,
+    ScalarType,
+    Shape,
+    TableLike,
+    TableType,
+    TensorLike,
+    TensorType,
+)
 from mplang.ops.base import stateless_mod
 from mplang.utils import table_utils
 
-_BUILTIN_MOD = stateless_mod("builtin")
+_BASIC_MOD = stateless_mod("basic")
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def identity(x: TensorType) -> TensorType:
     """Return the input type unchanged.
 
@@ -40,7 +47,7 @@ def identity(x: TensorType) -> TensorType:
     return x
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def read(*, path: str, ty: TensorType) -> TensorType:
     """Declare reading a value of type ``ty`` from ``path`` (type-only).
 
@@ -63,7 +70,7 @@ def read(*, path: str, ty: TensorType) -> TensorType:
     return ty
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def write(x: TensorType, *, path: str) -> TensorType:
     """Declare writing the input value to ``path`` and return the same type.
 
@@ -77,7 +84,7 @@ def write(x: TensorType, *, path: str) -> TensorType:
     return x
 
 
-@_BUILTIN_MOD.op_def()
+@_BASIC_MOD.op_def()
 def constant(
     data: TensorLike | ScalarType | TableLike,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
@@ -89,7 +96,7 @@ def constant(
 
     Returns:
         Tuple[PFunction, list[MPObject], PyTreeDef]:
-        - PFunction: ``fn_type='builtin.constant'`` with one output whose type
+        - PFunction: ``fn_type='basic.constant'`` with one output whose type
             matches ``data``; payload serialized via ``data_bytes`` with
             ``data_format`` ('bytes[numpy]' or 'bytes[csv]').
         - list[MPObject]: Empty (no inputs captured).
@@ -120,7 +127,7 @@ def constant(
         data_format = "bytes[numpy]"
 
     pfunc = PFunction(
-        fn_type="builtin.constant",
+        fn_type="basic.constant",
         ins_info=(),
         outs_info=(out_type,),
         data_bytes=data_bytes,
@@ -130,7 +137,7 @@ def constant(
     return pfunc, [], treedef
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def rank() -> TensorType:
     """Return the scalar UINT64 tensor type for the current party rank.
 
@@ -140,7 +147,7 @@ def rank() -> TensorType:
     return TensorType(UINT64, ())
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def prand(*, shape: Shape = ()) -> TensorType:
     """Declare a private random UINT64 tensor with the given shape.
 
@@ -153,7 +160,7 @@ def prand(*, shape: Shape = ()) -> TensorType:
     return TensorType(UINT64, shape)
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def debug_print(
     x: TensorType | TableType, *, prefix: str = ""
 ) -> TableType | TensorType:
@@ -169,7 +176,7 @@ def debug_print(
     return x
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def pack(x: TensorType | TableType) -> TensorType:
     """Serialize a tensor/table into a byte vector (type-only).
 
@@ -189,7 +196,7 @@ def pack(x: TensorType | TableType) -> TensorType:
     return TensorType(UINT8, (-1,))
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def unpack(b: TensorType, *, out_ty: TensorType | TableType) -> TensorType | TableType:
     """Deserialize a byte vector into the explicit output type.
 
@@ -215,7 +222,7 @@ def unpack(b: TensorType, *, out_ty: TensorType | TableType) -> TensorType | Tab
     return out_ty
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
     """Convert a homogeneous-typed table to a dense 2D tensor.
 
@@ -248,7 +255,7 @@ def table_to_tensor(table: TableType, *, number_rows: int) -> TensorType:
     return TensorType(first, shape)  # type: ignore[arg-type]
 
 
-@_BUILTIN_MOD.simple_op()
+@_BASIC_MOD.simple_op()
 def tensor_to_table(tensor: TensorType, *, column_names: list[str]) -> TableType:
     """Convert a rank-2 tensor into a table with named columns.
 

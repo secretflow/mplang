@@ -24,16 +24,22 @@ from typing import Any, cast
 
 import spu.libspu as libspu
 
-from mplang.core.cluster import ClusterSpec
-from mplang.core.comm import CollectiveMixin, CommunicatorBase
+from mplang.core import (
+    ClusterSpec,
+    CollectiveMixin,
+    CommunicatorBase,
+    InterpContext,
+    InterpVar,
+    IrReader,
+    IrWriter,
+    Mask,
+    MPObject,
+    MPType,
+    PFunction,  # for spu.seed_env kernel seeding
+    TensorLike,
+)
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
-from mplang.core.interp import InterpContext, InterpVar
-from mplang.core.mask import Mask
-from mplang.core.mpir import Reader, Writer
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType, TensorLike
-from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
 from mplang.kernels.context import RuntimeContext
 from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol
@@ -73,8 +79,8 @@ class SimVar(InterpVar):
 
     @property
     def values(self) -> list[Any]:
-        """The values of this variable across all ranks."""
-        return self._values
+        """Converted values across all ranks for user inspection."""
+        return [v.to_numpy() if hasattr(v, "to_numpy") else v for v in self._values]
 
     def __repr__(self) -> str:
         return f"SimVar({self.mptype})"
@@ -187,10 +193,10 @@ class Simulator(InterpContext):
         This exposes potential MPIR serialization bugs by forcing expressions
         to go through the full serialize->deserialize cycle.
         """
-        writer = Writer()
+        writer = IrWriter()
         graph_proto = writer.dumps(expr)
 
-        reader = Reader()
+        reader = IrReader()
         deserialized_expr = reader.loads(graph_proto)
 
         if deserialized_expr is None:
@@ -202,8 +208,7 @@ class Simulator(InterpContext):
     def fetch(self, obj: MPObject) -> list[TensorLike]:
         if not isinstance(obj, SimVar):
             raise ValueError(f"Expected SimVar, got {type(obj)}")
-
-        return list(obj.values)
+        return [v.to_numpy() if hasattr(v, "to_numpy") else v for v in obj._values]
 
     # override
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
@@ -213,7 +218,7 @@ class Simulator(InterpContext):
                 raise ValueError(f"Variable {name} not in this context, got {var.ctx}.")
 
         pts_env = [
-            {name: cast(SimVar, var).values[rank] for name, var in bindings.items()}
+            {name: cast(SimVar, var)._values[rank] for name, var in bindings.items()}
             for rank in range(self.world_size())
         ]
 

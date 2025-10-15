@@ -26,23 +26,25 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mplang import simp
-from mplang.core.cluster import ClusterSpec
-from mplang.core.context_mgr import with_ctx
-from mplang.core.dtype import FLOAT32, INT32
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType, Rank
-from mplang.core.primitive import (
-    constant,
-    prank,
+import mplang as mp
+from mplang.core import (
+    FLOAT32,
+    INT32,
+    ClusterSpec,
+    Mask,
+    MPObject,
+    MPType,
+    Rank,
+    TraceContext,
+    TraceVar,
     pshfl_s,
-    set_mask,
+    trace,
     uniform_cond,
     while_loop,
+    with_ctx,
 )
-from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
+from mplang.simp.api import constant, prank, set_mask
 
 # Enable JAX x64 mode to match type expectations
 jax.config.update("jax_enable_x64", True)
@@ -444,14 +446,14 @@ class TestComplexCond:
         def rank_based_func():
             """Function that uses rank as predicate (divergent per-party) – should NOT use uniform_cond.
 
-            Migrated to element-wise selection using jax.where semantics via simp.run.
+            Migrated to element-wise selection using jax.where semantics via mp.run.
             """
             r = prank()
-            is_one = simp.run(lambda v: v == 1)(r)  # bool per-party
+            is_one = mp.run_jax(lambda v: v == 1, r)  # bool per-party
             val_then = constant(100)
             val_else = constant(200)
             # Element-wise select (both sides cheap); result structure matches prior expectations.
-            result = simp.run(jnp.where)(is_one, val_then, val_else)
+            result = mp.run_jax(jnp.where, is_one, val_then, val_else)
             return result
 
         with with_ctx(trace_context):
@@ -485,7 +487,7 @@ class TestComplexCond:
             Inner predicate: uniform False -> shows uniform_cond legitimate usage.
             """
             r = prank()
-            pred1 = simp.run(lambda v: v == 1)(r)  # per-party bool
+            pred1 = mp.run_jax(lambda v: v == 1, r)  # per-party bool
 
             def level1_then(val):  # executes only where pred1 True (conceptually)
                 # Build a uniform predicate (constant False) - safe for uniform_cond
@@ -509,7 +511,7 @@ class TestComplexCond:
             # Both branches evaluated; acceptable for local divergent control.
             val0 = level1_then(constant(0))
             val1 = level1_else(constant(0))
-            combined = simp.run(jnp.where)(pred1, val0, val1)
+            combined = mp.run_jax(jnp.where, pred1, val0, val1)
             return combined
 
         with with_ctx(trace_context):
@@ -545,22 +547,22 @@ class TestComplexCond:
 
         def cond_with_jax():
             # Divergent predicate -> switch to elementwise where
-            pred = simp.run(lambda v: v == 1)(prank())
+            pred = mp.run_jax(lambda v: v == 1, prank())
             input_data = constant(np.array([2.0, 3.0]))
 
             # Extract JAX operations for clarity
             square_plus_one, multiply_and_add = self.simple_arithmetic_ops()
 
             def then_fn(val):
-                return simp.run(square_plus_one)(val)
+                return mp.run_jax(square_plus_one, val)
 
             def else_fn(val):
-                return simp.run(multiply_and_add)(val)
+                return mp.run_jax(multiply_and_add, val)
 
             # Evaluate both, elementwise select
             t_res = then_fn(input_data)
             f_res = else_fn(input_data)
-            return simp.run(jnp.where)(pred, t_res, f_res)
+            return mp.run_jax(jnp.where, pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, cond_with_jax)
@@ -588,7 +590,7 @@ class TestComplexCond:
         """
 
         def cond_with_params():
-            pred = simp.run(lambda v: v == 1)(prank())
+            pred = mp.run_jax(lambda v: v == 1, prank())
 
             # Input parameters
             x = constant(np.array([1.0, 2.0]))
@@ -600,17 +602,17 @@ class TestComplexCond:
                 def matmul_scale(x_val, y_val, scale_val):
                     return x_val * y_val * scale_val + jnp.sum(x_val)
 
-                return simp.run(matmul_scale)(a, b, s)
+                return mp.run_jax(matmul_scale, a, b, s)
 
             def else_fn(a, b, s):
                 def polynomial(x_val, y_val, scale_val):
                     return jnp.power(x_val, 2) + y_val / scale_val
 
-                return simp.run(polynomial)(a, b, s)
+                return mp.run_jax(polynomial, a, b, s)
 
             t_res = then_fn(x, y, scale)
             f_res = else_fn(x, y, scale)
-            return simp.run(jnp.where)(pred, t_res, f_res)
+            return mp.run_jax(jnp.where, pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, cond_with_params)
@@ -638,7 +640,7 @@ class TestComplexCond:
         """
 
         def cond_with_capture():
-            pred = simp.run(lambda v: v == 1)(prank())
+            pred = mp.run_jax(lambda v: v == 1, prank())
 
             # Variables to be captured
             outer_matrix = constant(np.array([[1.0, 2.0], [3.0, 4.0]]))
@@ -649,14 +651,14 @@ class TestComplexCond:
             matrix_op, element_op = self.matrix_operations()
 
             def then_fn(input_val):
-                return simp.run(matrix_op)(input_val, outer_matrix)
+                return mp.run_jax(matrix_op, input_val, outer_matrix)
 
             def else_fn(input_val):
-                return simp.run(element_op)(input_val, outer_vector)
+                return mp.run_jax(element_op, input_val, outer_vector)
 
             t_res = then_fn(input_data)
             f_res = else_fn(input_data)
-            return simp.run(jnp.where)(pred, t_res, f_res)
+            return mp.run_jax(jnp.where, pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, cond_with_capture)
@@ -684,7 +686,7 @@ class TestComplexCond:
         """
 
         def neural_network_cond():
-            pred = simp.run(lambda v: v == 1)(prank())
+            pred = mp.run_jax(lambda v: v == 1, prank())
 
             # Network parameters
             weights = constant(np.array([[0.5, 1.0], [1.5, 2.0]]))
@@ -695,14 +697,14 @@ class TestComplexCond:
             forward_pass, statistical_transform = self.neural_network_ops()
 
             def then_fn(input_val):
-                return simp.run(forward_pass)(input_val, weights, bias)
+                return mp.run_jax(forward_pass, input_val, weights, bias)
 
             def else_fn(input_val):
-                return simp.run(statistical_transform)(input_val, weights)
+                return mp.run_jax(statistical_transform, input_val, weights)
 
             t_res = then_fn(input_data)
             f_res = else_fn(input_data)
-            return simp.run(jnp.where)(pred, t_res, f_res)
+            return mp.run_jax(jnp.where, pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, neural_network_cond)
@@ -732,7 +734,7 @@ class TestComplexCond:
         """
 
         def optimizer_cond():
-            pred = simp.run(lambda v: v == 1)(prank())
+            pred = mp.run_jax(lambda v: v == 1, prank())
 
             # Optimizer parameters
             learning_rate = constant(0.01)
@@ -745,11 +747,11 @@ class TestComplexCond:
             adam_step, sgd_step = self.optimizer_ops()
 
             def adam_optimizer(grad, lr, mom, eps, state):
-                return simp.run(adam_step)(grad, lr, mom, eps, state)
+                return mp.run_jax(adam_step, grad, lr, mom, eps, state)
 
             def sgd_optimizer(grad, lr, mom, eps, state):
                 # Only use first two parameters for SGD
-                return simp.run(sgd_step)(grad, lr)
+                return mp.run_jax(sgd_step, grad, lr)
 
             adam_res = adam_optimizer(
                 gradients, learning_rate, momentum, epsilon, state_vector
@@ -757,7 +759,7 @@ class TestComplexCond:
             sgd_res = sgd_optimizer(
                 gradients, learning_rate, momentum, epsilon, state_vector
             )
-            return simp.run(jnp.where)(pred, adam_res, sgd_res)
+            return mp.run_jax(jnp.where, pred, adam_res, sgd_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, optimizer_cond)
@@ -793,7 +795,7 @@ class TestComplexCond:
         """
 
         def matrix_reshape_cond():
-            pred = simp.run(lambda v: v == 1)(prank())
+            pred = mp.run_jax(lambda v: v == 1, prank())
             input_data = constant(np.array([1.0, 2.0, 3.0, 4.0]))  # Can reshape to 2x2
 
             def matrix_branch(val):
@@ -802,17 +804,17 @@ class TestComplexCond:
                     result_matrix = jnp.transpose(matrix) + jnp.eye(2)
                     return jnp.ravel(result_matrix)  # Flatten back to 1D
 
-                return simp.run(matrix_transform)(val)
+                return mp.run_jax(matrix_transform, val)
 
             def element_branch(val):
                 def element_transform(x):
                     return jnp.roll(x, shift=1) * 2 + jnp.ones_like(x)
 
-                return simp.run(element_transform)(val)
+                return mp.run_jax(element_transform, val)
 
             t_res = matrix_branch(input_data)
             f_res = element_branch(input_data)
-            return simp.run(jnp.where)(pred, t_res, f_res)
+            return mp.run_jax(jnp.where, pred, t_res, f_res)
 
         with with_ctx(trace_context):
             traced_fn = trace(trace_context, matrix_reshape_cond)
@@ -865,11 +867,11 @@ class TestWhileLoop:
 
             def cond_fn(x):
                 # Captures counter_max from outer scope
-                return simp.run(lambda a, b: a < b)(x, counter_max)
+                return mp.run_jax(lambda a, b: a < b, x, counter_max)
 
             def body_fn(x):
                 # Captures increment from outer scope
-                return simp.run(lambda a, b: a + b)(x, increment)
+                return mp.run_jax(lambda a, b: a + b, x, increment)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -956,14 +958,14 @@ class TestWhileLoop:
 
                     return jnp.where(r == 0, False, cnt < 1)
 
-                return simp.run(check)(counter, rank)
+                return mp.run_jax(check, counter, rank)
 
             def body_fn(counter):
                 # Increment by 10
                 def increment(cnt):
                     return cnt + 10
 
-                return simp.run(increment)(counter)
+                return mp.run_jax(increment, counter)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1001,11 +1003,11 @@ class TestWhileLoop:
 
             def cond_fn(x):
                 # Captures counter_max from outer scope
-                return simp.run(lambda a, b: a < b)(x, counter_max)
+                return mp.run_jax(lambda a, b: a < b, x, counter_max)
 
             def body_fn(x):
                 # Captures increment from outer scope
-                return simp.run(lambda a, b: a + b)(x, increment)
+                return mp.run_jax(lambda a, b: a + b, x, increment)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1044,7 +1046,7 @@ class TestWhileLoop:
                 def check_sum(arr, thresh):
                     return jnp.sum(arr) < thresh
 
-                return simp.run(check_sum)(state, threshold)
+                return mp.run_jax(check_sum, state, threshold)
 
             def body_fn(state):
                 # Add [1.0, 1.0] to current state
@@ -1053,7 +1055,7 @@ class TestWhileLoop:
                 def add_increment(arr, inc):
                     return arr + inc
 
-                return simp.run(add_increment)(state, increment)
+                return mp.run_jax(add_increment, state, increment)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1151,7 +1153,7 @@ class TestWhileLoop:
 
                         return jnp.logical_and(val < max_val, val < thresh)
 
-                    return simp.run(check)(x, max_value, threshold)
+                    return mp.run_jax(check, x, max_value, threshold)
 
                 return cond_fn
 
@@ -1163,7 +1165,7 @@ class TestWhileLoop:
                     def transform(val, mult, st):
                         return val * mult + st
 
-                    return simp.run(transform)(x, multiplier, step)
+                    return mp.run_jax(transform, x, multiplier, step)
 
                 return body_fn
 
@@ -1206,14 +1208,14 @@ class TestWhileLoop:
                 def check_sum(arr, thresh):
                     return jnp.sum(arr) < thresh
 
-                return simp.run(check_sum)(state, threshold)
+                return mp.run_jax(check_sum, state, threshold)
 
             def body_fn(state):
                 # Add squares of current state to itself
                 def accumulate_squares(arr):
                     return arr + jnp.square(arr)
 
-                return simp.run(accumulate_squares)(state)
+                return mp.run_jax(accumulate_squares, state)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1258,7 +1260,7 @@ class TestWhileLoop:
                     limit = jnp.where(party_rank == 0, 16, 27)
                     return val < limit
 
-                return simp.run(check_limit)(state, rank)
+                return mp.run_jax(check_limit, state, rank)
 
             def body_fn(state):
                 # Party 0: multiply by 2
@@ -1267,7 +1269,7 @@ class TestWhileLoop:
                     multiplier = jnp.where(party_rank == 0, 2, 3)
                     return val * multiplier
 
-                return simp.run(transform)(state, rank)
+                return mp.run_jax(transform, state, rank)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1307,14 +1309,14 @@ class TestWhileLoop:
                     trace_val = jnp.trace(mat)
                     return trace_val < thresh
 
-                return simp.run(check_trace)(matrix, threshold)
+                return mp.run_jax(check_trace, matrix, threshold)
 
             def body_fn(matrix):
                 # Transform: M' = M + 0.5 * M * M^T
                 def transform_matrix(mat):
                     return mat + 0.5 * jnp.dot(mat, mat.T)
 
-                return simp.run(transform_matrix)(matrix)
+                return mp.run_jax(transform_matrix, matrix)
 
             return while_loop(cond_fn, body_fn, init_matrix)
 
@@ -1370,14 +1372,14 @@ class TestWhileLoop:
                     limit = jnp.where(party_rank == 0, max_iter, max_iter - 1)
                     return cnt < limit
 
-                return simp.run(should_continue)(counter, max_iterations, rank)
+                return mp.run_jax(should_continue, counter, max_iterations, rank)
 
             def body_fn(counter):
                 # Use captured step_size
                 def increment_by_step(cnt, step):
                     return cnt + step
 
-                return simp.run(increment_by_step)(counter, step_size)
+                return mp.run_jax(increment_by_step, counter, step_size)
 
             return while_loop(cond_fn, body_fn, init_val)
 
@@ -1414,11 +1416,13 @@ class TestWhileLoop:
             step = set_mask(constant(np.int64(1)), subset_mask)
 
             def cond_fn(state):
-                subset_pred = simp.run(lambda val, limit: val < limit)(state, threshold)
+                subset_pred = mp.run_jax(
+                    lambda val, limit: val < limit, state, threshold
+                )
                 return pshfl_s(subset_pred, full_mask, [Rank(0), Rank(0), Rank(0)])
 
             def body_fn(state):
-                return simp.run(lambda val, inc: val + inc)(state, step)
+                return mp.run_jax(lambda val, inc: val + inc, state, step)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1460,10 +1464,10 @@ class TestWhileLoop:
 
             def cond_fn(state):
                 # Returns bool with pmask=subset_mask (no broadcast)
-                return simp.run(lambda val, limit: val < limit)(state, threshold)
+                return mp.run_jax(lambda val, limit: val < limit, state, threshold)
 
             def body_fn(state):
-                return simp.run(lambda val, inc: val + inc)(state, step)
+                return mp.run_jax(lambda val, inc: val + inc, state, step)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1502,10 +1506,10 @@ class TestWhileLoop:
 
             def cond_fn(state):
                 # Returns bool with pmask=subset_mask only; no broadcast.
-                return simp.run(lambda val, limit: val < limit)(state, threshold)
+                return mp.run_jax(lambda val, limit: val < limit, state, threshold)
 
             def body_fn(state):
-                return simp.run(lambda val, inc: val + inc)(state, step)
+                return mp.run_jax(lambda val, inc: val + inc, state, step)
 
             return while_loop(cond_fn, body_fn, init_state)
 
@@ -1537,9 +1541,9 @@ class TestWhileLoop:
                 sub_val, aux_val = states
 
                 # Auxiliary party executes a helper kernel (result ignored by others)
-                _ = simp.run(lambda val, inc: val + inc)(aux_val, aux_step)
-                subset_pred = simp.run(lambda val, limit: val < limit)(
-                    sub_val, subset_limit
+                _ = mp.run_jax(lambda val, inc: val + inc, aux_val, aux_step)
+                subset_pred = mp.run_jax(
+                    lambda val, limit: val < limit, sub_val, subset_limit
                 )
                 # Broadcast predicate so every party observes the same boolean
                 return pshfl_s(subset_pred, full_mask, [Rank(0), Rank(0), Rank(0)])
@@ -1547,8 +1551,10 @@ class TestWhileLoop:
             def body_fn(states):
                 sub_val, aux_val = states
 
-                next_sub = simp.run(lambda val, step: val + step)(sub_val, subset_step)
-                next_aux = simp.run(lambda val, inc: val + inc)(aux_val, aux_step)
+                next_sub = mp.run_jax(
+                    lambda val, step: val + step, sub_val, subset_step
+                )
+                next_aux = mp.run_jax(lambda val, inc: val + inc, aux_val, aux_step)
 
                 return (next_sub, next_aux)
 
@@ -1589,19 +1595,19 @@ class TestWhileLoop:
                 def check_target(val, tgt):
                     return val < tgt
 
-                return simp.run(check_target)(state, target)
+                return mp.run_jax(check_target, state, target)
 
             def body_fn(state):
                 # Use conditional logic based on current state value
-                even_check = simp.run(lambda x: x % 2 == 0)(state)
+                even_check = mp.run_jax(lambda x: x % 2 == 0, state)
 
                 def then_fn(val):
                     # If even: multiply by 2
-                    return simp.run(lambda x: x * 2)(val)
+                    return mp.run_jax(lambda x: x * 2, val)
 
                 def else_fn(val):
                     # If odd: add 3
-                    return simp.run(lambda x: x + 3)(val)
+                    return mp.run_jax(lambda x: x + 3, val)
 
                 return uniform_cond(even_check, then_fn, else_fn, state)
 
@@ -1684,7 +1690,7 @@ class TestPShflS:
         def cross_shuffle():
             # Create different data at each party based on rank
             rank_data = prank()  # Party 0 has 0, Party 1 has 1
-            multiplied_data = simp.run(lambda x: x * 10 + 100)(rank_data)
+            multiplied_data = mp.run_jax(lambda x: x * 10 + 100, rank_data)
 
             # Cross shuffle: party 0 gets from rank 1, party 1 gets from rank 0
             pmask = Mask(3)  # 0b11 - both parties receive
@@ -1757,9 +1763,10 @@ class TestPShflS:
         def array_shuffle():
             # Create array data based on rank
             rank = prank()
-            array_data = simp.run(
-                lambda r: jnp.array([r * 10 + 1, r * 10 + 2, r * 10 + 3])
-            )(rank)
+            array_data = mp.run_jax(
+                lambda r: jnp.array([r * 10 + 1, r * 10 + 2, r * 10 + 3]),
+                rank,
+            )
 
             # Cross shuffle
             pmask = Mask(3)  # Both parties receive
@@ -1796,7 +1803,7 @@ class TestPShflS:
         def same_source_shuffle():
             # Create unique data at each party
             rank = prank()
-            unique_data = simp.run(lambda r: (r + 1) * 100)(rank)
+            unique_data = mp.run_jax(lambda r: (r + 1) * 100, rank)
 
             # Both parties receive from rank 0
             pmask = Mask(3)  # Both parties receive
@@ -1833,7 +1840,7 @@ class TestPShflS:
         def computation_shuffle():
             # Step 1: Initial computation
             rank = prank()
-            initial_data = simp.run(lambda r: r * 5 + 10)(rank)
+            initial_data = mp.run_jax(lambda r: r * 5 + 10, rank)
 
             # Step 2: Shuffle the computed data
             pmask = Mask(3)
@@ -1841,7 +1848,7 @@ class TestPShflS:
             shuffled_data = pshfl_s(initial_data, pmask, src_ranks)
 
             # Step 3: Further computation on shuffled data
-            final_result = simp.run(lambda x: x * 2 + 1)(shuffled_data)
+            final_result = mp.run_jax(lambda x: x * 2 + 1, shuffled_data)
 
             return final_result
 
@@ -1876,9 +1883,10 @@ class TestPShflS:
         def matrix_shuffle():
             # Create different matrices at each party
             rank = prank()
-            matrix_data = simp.run(
-                lambda r: jnp.array([[r + 1, r + 2], [r + 3, r + 4]])
-            )(rank)
+            matrix_data = mp.run_jax(
+                lambda r: jnp.array([[r + 1, r + 2], [r + 3, r + 4]]),
+                rank,
+            )
 
             # Shuffle matrices
             pmask = Mask(3)
@@ -1923,14 +1931,14 @@ class TestPShflS:
         def shuffle_chain():
             # Initial data
             rank = prank()
-            initial = simp.run(lambda r: (r + 1) * 10)(rank)
+            initial = mp.run_jax(lambda r: (r + 1) * 10, rank)
 
             # First shuffle: cross pattern
             pmask = Mask(3)
             first_shuffle = pshfl_s(initial, pmask, [Rank(1), Rank(0)])
 
             # Transform the shuffled data
-            transformed = simp.run(lambda x: x + 5)(first_shuffle)
+            transformed = mp.run_jax(lambda x: x + 5, first_shuffle)
 
             # Second shuffle: back to original (reverse cross)
             second_shuffle = pshfl_s(transformed, pmask, [Rank(1), Rank(0)])
@@ -1969,7 +1977,7 @@ class TestPShflS:
         def conditional_shuffle():
             # Use rank as predicate for conditional
             rank = prank()
-            pred = simp.run(lambda r: r == 0)(rank)
+            pred = mp.run_jax(lambda r: r == 0, rank)
 
             def then_fn(r):  # local cheap
                 return constant(100)
@@ -1980,7 +1988,7 @@ class TestPShflS:
             # Divergent predicate (rank==0) → use elementwise selection instead of uniform_cond
             t_val = then_fn(rank)
             f_val = else_fn(rank)
-            cond_result = simp.run(jnp.where)(pred, t_val, f_val)
+            cond_result = mp.run_jax(jnp.where, pred, t_val, f_val)
 
             # Shuffle the conditional result
             pmask = Mask(3)
@@ -2005,3 +2013,43 @@ class TestPShflS:
         # Shuffle: Party 0 gets from rank 0 (100), Party 1 gets from rank 1 (200)
         assert results[0].values[0] == 100  # Party 0 gets from rank 0
         assert results[0].values[1] == 200  # Party 1 gets from rank 1
+
+
+class TestPShfl:
+    """Test pshfl (dynamic shuffle) related functions."""
+
+    def test_pshfl_basic(self):
+        """Test basic pshfl functionality with random permutation."""
+        num_parties = 10
+        sim = Simulator.simple(num_parties)
+
+        @mp.function
+        def create_test_data():
+            # Create random source data and permutation index
+            src = mp.prandint(0, 100)
+            key = mp.ukey(42)
+            index = mp.pperm(key)
+            return src, index
+
+        @mp.function
+        def shuffle_data(src, index):
+            # Shuffle data with permutation index
+            shuffled = mp.pshfl(src, index)
+            return shuffled
+
+        # Generate test data
+        src, index = mp.evaluate(sim, create_test_data)
+
+        # Perform shuffle
+        shuffled = mp.evaluate(sim, shuffle_data, src, index)
+
+        # Fetch results
+        data, index_vals, shuffled_vals = mp.fetch(sim, (src, index, shuffled))
+
+        # Convert to arrays for comparison
+        data_arr = np.stack(data)
+        index_arr = np.stack(index_vals)
+        shuffled_arr = np.stack(shuffled_vals)
+
+        # Verify: shuffled[i] should equal data[index[i]]
+        np.testing.assert_array_equal(data_arr[index_arr], shuffled_arr)

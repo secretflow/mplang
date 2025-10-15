@@ -21,26 +21,25 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax.typing import ArrayLike
 
-import mplang.core.primitive as prim
-from mplang import simp
-from mplang.core import MPObject, Shape
+from mplang.core import MPObject, Shape, function, pmask, psize
+from mplang.simp.api import prand, prank, run_jax
 
 
-@prim.function
+@function
 def key_split(key: MPObject) -> tuple[MPObject, MPObject]:
     """Split the key into two keys."""
 
     def kernel(key: jax.Array) -> tuple[jax.Array, jax.Array]:
         # TODO: since MPObject tensor does not implement slicing yet.
-        # subkey, key = simp.run(jr.split)(key) does not work.
+        # subkey, key = run_jax(jr.split, key) does not work.
         # we workaround it by splitting inside tracer.
         subkey, key = jr.split(key)
         return subkey, key
 
-    return simp.run(kernel)(key)  # type: ignore[no-any-return]
+    return run_jax(kernel, key)  # type: ignore[no-any-return]
 
 
-@prim.function
+@function
 def ukey(seed: int | ArrayLike) -> MPObject:
     """Party uniformly generate a random key."""
 
@@ -49,10 +48,10 @@ def ukey(seed: int | ArrayLike) -> MPObject:
         # Note: key.dtype is jax._src.prng.KeyTy, which could not be handled by MPObject.
         return jax.random.key_data(key)
 
-    return simp.run(kernel)()  # type: ignore[no-any-return]
+    return run_jax(kernel)  # type: ignore[no-any-return]
 
 
-@prim.function
+@function
 def urandint(
     key: MPObject | ArrayLike,
     low: int,
@@ -61,13 +60,13 @@ def urandint(
 ) -> MPObject:
     """Party uniformly generate a random integer in the range [low, high) with the given shape."""
 
-    return simp.run(partial(jr.randint, minval=low, maxval=high, shape=shape))(key)  # type: ignore[no-any-return]
+    return run_jax(partial(jr.randint, minval=low, maxval=high, shape=shape), key)  # type: ignore[no-any-return]
 
 
 # Private(different per-party) related functions begin.
 
 
-@prim.function
+@function
 def prandint(low: int, high: int, shape: Shape = ()) -> MPObject:
     """Party privately generate a random integer in the range [low, high) with the given shape."""
 
@@ -80,11 +79,11 @@ def prandint(low: int, high: int, shape: Shape = ()) -> MPObject:
         result = low + remainder.astype(jnp.int64)
         return result
 
-    rand_u64 = prim.prand(shape)
-    return simp.run(kernel)(rand_u64)  # type: ignore[no-any-return]
+    rand_u64 = prand(shape)
+    return run_jax(kernel, rand_u64)  # type: ignore[no-any-return]
 
 
-@prim.function
+@function
 def pperm(key: MPObject) -> MPObject:
     """Party jointly generate a random permutation.
 
@@ -97,25 +96,25 @@ def pperm(key: MPObject) -> MPObject:
     if key.pmask is None:
         raise ValueError("dynamic pmask is not supported for pperm")
 
-    full_mask = (1 << prim.psize()) - 1
+    full_mask = (1 << psize()) - 1
 
     if key.pmask != full_mask:
         raise ValueError(
             "key must be a MPObject with mask covering all parties, "
-            f"got {key.pmask} with world size {prim.psize()}"
+            f"got {key.pmask} with world size {psize()}"
         )
 
-    if prim.pmask() is None or prim.pmask() != full_mask:
+    if pmask() is None or pmask() != full_mask:
         raise ValueError(
             "pperm must be run with a mask covering all parties, "
-            f"got {key.pmask} with world size {prim.psize()}"
+            f"got {key.pmask} with world size {psize()}"
         )
 
-    size = prim.psize()
+    size = psize()
 
     def kernel(key: jax.Array) -> jax.Array:
         return jr.permutation(key, size)
 
-    perm = simp.run(kernel)(key)
-    rank = prim.prank()
-    return simp.run(lambda perm, rank: perm[rank])(perm, rank)  # type: ignore[no-any-return]
+    perm = run_jax(kernel, key)
+    rank = prank()
+    return run_jax(lambda perm, rank: perm[rank], perm, rank)  # type: ignore[no-any-return]

@@ -3,9 +3,6 @@ version: v2
 plugins:
   - remote: buf.build/protocolbuffers/python:v26.1
     out: .
-  - remote: buf.build/grpc/python:v1.67.1
-    out: .
   - remote: buf.build/community/nipunn1313-mypy:v3.5.0
     out: .
-
 # Inputs are optional in v2; by default use local workspace defined in buf.yaml

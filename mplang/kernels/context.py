@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from mplang.core.dtype import UINT8, DType
+from mplang.core.dtypes import UINT8, DType
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
@@ -35,7 +35,7 @@ def _ensure_impl_imported() -> None:
     global _IMPL_IMPORTED
     if _IMPL_IMPORTED:
         return
-    from mplang.kernels import builtin as _impl_builtin  # noqa: F401
+    from mplang.kernels import basic as _impl_basic  # noqa: F401
     from mplang.kernels import crypto as _impl_crypto  # noqa: F401
     from mplang.kernels import fhe as _impl_fhe  # noqa: F401
     from mplang.kernels import mock_tee as _impl_tee  # noqa: F401
@@ -50,18 +50,18 @@ def _ensure_impl_imported() -> None:
 # imports consolidated above
 
 _DEFAULT_BINDINGS: dict[str, str] = {
-    # builtin
-    "builtin.identity": "builtin.identity",
-    "builtin.read": "builtin.read",
-    "builtin.write": "builtin.write",
-    "builtin.constant": "builtin.constant",
-    "builtin.rank": "builtin.rank",
-    "builtin.prand": "builtin.prand",
-    "builtin.table_to_tensor": "builtin.table_to_tensor",
-    "builtin.tensor_to_table": "builtin.tensor_to_table",
-    "builtin.debug_print": "builtin.debug_print",
-    "builtin.pack": "builtin.pack",
-    "builtin.unpack": "builtin.unpack",
+    # basic
+    "basic.identity": "basic.identity",
+    "basic.read": "basic.read",
+    "basic.write": "basic.write",
+    "basic.constant": "basic.constant",
+    "basic.rank": "basic.rank",
+    "basic.prand": "basic.prand",
+    "basic.table_to_tensor": "basic.table_to_tensor",
+    "basic.tensor_to_table": "basic.tensor_to_table",
+    "basic.debug_print": "basic.debug_print",
+    "basic.pack": "basic.pack",
+    "basic.unpack": "basic.unpack",
     # crypto
     "crypto.keygen": "crypto.keygen",
     "crypto.enc": "crypto.enc",

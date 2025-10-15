@@ -18,11 +18,13 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
-from mplang.core.pfunc import PFunction
+from mplang.core import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
+from mplang.kernels.value import TensorValue
 
 
 @kernel_def("mlir.stablehlo")
@@ -61,13 +63,17 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
         # Filter out arguments that were eliminated by JAX during compilation
         runtime_args = tuple(args[i] for i in keep_indices)
 
-    jax_args = []
-    for arg in runtime_args:
-        if hasattr(arg, "numpy"):
-            jax_arg = jnp.array(arg.numpy())  # type: ignore
-        else:
-            jax_arg = jnp.array(arg)
-        jax_args.append(jax.device_put(jax_arg))
+    tensor_args: list[TensorValue] = []
+    for idx, arg in enumerate(runtime_args):
+        if not isinstance(arg, TensorValue):
+            raise TypeError(
+                f"StableHLO kernel expects TensorValue inputs, got {type(arg).__name__} at position {idx}"
+            )
+        tensor_args.append(arg)
+
+    jax_args = [
+        jax.device_put(jnp.asarray(tensor.to_numpy())) for tensor in tensor_args
+    ]
 
     try:
         result = compiled.execute_sharded(jax_args)
@@ -75,9 +81,9 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
         flat: list[Any] = []
         for lst in arrays:
             if isinstance(lst, list) and len(lst) == 1:
-                flat.append(jnp.array(lst[0]))
+                flat.append(TensorValue(np.asarray(lst[0])))
             else:
-                flat.extend([jnp.array(a) for a in lst])
+                flat.extend(TensorValue(np.asarray(a)) for a in lst)
         return tuple(flat)
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"StableHLO execute failed: {e}") from e

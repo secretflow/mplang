@@ -22,15 +22,17 @@ import logging
 import re
 from typing import Any
 
-import cloudpickle as pickle
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Request,
+)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from mplang.core.mpir import Reader
-from mplang.core.table import TableType
-from mplang.core.tensor import TensorType
+from mplang.core import IrReader, TableType, TensorType
 from mplang.kernels.base import KernelContext
+from mplang.kernels.value import Value, decode_value, encode_value
 from mplang.protos.v1alpha1 import mpir_pb2
 from mplang.runtime.data_providers import DataProvider, ResolvedURI, register_provider
 from mplang.runtime.exceptions import InvalidRequestError, ResourceNotFound
@@ -112,19 +114,11 @@ class _SymbolsProvider(DataProvider):
         ctx: KernelContext,
     ) -> None:  # type: ignore[override]
         name = self._symbol_name(uri)
-        try:
-            data_b64 = base64.b64encode(pickle.dumps(value)).decode("utf-8")
-        except Exception as e:  # pragma: no cover - defensive
+        if not isinstance(value, Value):
             raise InvalidRequestError(
-                f"Failed to encode value for symbols:// write: {e!s}"
-            ) from e
-        try:
-            obj = pickle.loads(base64.b64decode(data_b64))
-        except Exception as e:  # pragma: no cover - defensive
-            raise InvalidRequestError(
-                f"Failed to decode value for symbols:// write: {e!s}"
-            ) from e
-        _global_symbols[name] = Symbol(name=name, mptype={}, data=obj)
+                f"symbols:// write expects Value instance, got {type(value)}"
+            )
+        _global_symbols[name] = Symbol(name=name, mptype={}, data=value)
 
 
 # Register symbols provider explicitly for server runtime
@@ -208,17 +202,17 @@ class ComputationResponse(BaseModel):
 
 class CreateSymbolRequest(BaseModel):
     mptype: dict
-    data: str  # Base64 encoded data
+    data: str  # Base64 encoded Value data
 
 
 class SymbolResponse(BaseModel):
     name: str
     mptype: dict
-    data: str
+    data: str  # Base64 encoded Value data
 
 
 class CommSendRequest(BaseModel):
-    data: str  # Base64 encoded data
+    data: str  # Base64 encoded binary data
 
 
 # Response Models for enhanced status
@@ -233,7 +227,7 @@ class ComputationListResponse(BaseModel):
 class GlobalSymbolResponse(BaseModel):
     name: str
     mptype: dict
-    data: str
+    data: str  # Base64 encoded Value data
 
 
 @app.get("/health")
@@ -314,7 +308,7 @@ def create_and_execute_computation(
             f"Invalid base64 or protobuf for mpprogram: {e!s}"
         ) from e
 
-    reader = Reader()
+    reader = IrReader()
     expr = reader.loads(graph_proto)
 
     if expr is None:
@@ -359,7 +353,7 @@ def create_session_symbol(
     if not sess:
         raise ResourceNotFound(f"Session '{session_name}' not found.")
     try:
-        obj = pickle.loads(base64.b64decode(request.data))
+        obj = decode_value(base64.b64decode(request.data))
     except Exception as e:
         raise InvalidRequestError(f"Invalid symbol data: {e!s}") from e
     symbol = Symbol(name=symbol_name, mptype=request.mptype, data=obj)
@@ -368,7 +362,7 @@ def create_session_symbol(
     return SymbolResponse(
         name=symbol.name,
         mptype=symbol.mptype,
-        data=request.data,
+        data=base64.b64encode(encode_value(symbol.data)).decode("utf-8"),
     )
 
 
@@ -388,13 +382,16 @@ def get_session_symbol(session_name: str, symbol_name: str) -> SymbolResponse:
                 status_code=404, detail=f"Symbol {symbol_name} not found"
             )
 
-        data_bytes = pickle.dumps(symbol.data)
-        data_b64 = base64.b64encode(data_bytes).decode("utf-8")
+        # symbol data is None means this party does not participate the computation
+        # that produced the symbol.
+        if symbol.data is None:
+            raise ResourceNotFound(f"Symbol '{symbol_name}' has no data on this party")
 
+        # Serialize using Value envelope
         return SymbolResponse(
             name=symbol.name,
             mptype=symbol.mptype,
-            data=data_b64,
+            data=base64.b64encode(encode_value(symbol.data)).decode("utf-8"),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -430,12 +427,16 @@ def create_global_symbol(
 ) -> GlobalSymbolResponse:
     validate_name(symbol_name, "symbol")
     try:
-        obj = pickle.loads(base64.b64decode(request.data))
+        obj = decode_value(base64.b64decode(request.data))
     except Exception as e:
         raise InvalidRequestError(f"Invalid global symbol data: {e!s}") from e
     sym = Symbol(name=symbol_name, mptype=request.mptype, data=obj)
     _global_symbols[symbol_name] = sym
-    return GlobalSymbolResponse(name=sym.name, mptype=sym.mptype, data=request.data)
+    return GlobalSymbolResponse(
+        name=sym.name,
+        mptype=sym.mptype,
+        data=base64.b64encode(encode_value(sym.data)).decode("utf-8"),
+    )
 
 
 @app.get("/api/v1/symbols/{symbol_name}", response_model=GlobalSymbolResponse)
@@ -443,9 +444,12 @@ def get_global_symbol(symbol_name: str) -> GlobalSymbolResponse:  # route handle
     sym = _global_symbols.get(symbol_name)
     if not sym:
         raise ResourceNotFound(f"Global symbol '{symbol_name}' not found")
-    data_bytes = pickle.dumps(sym.data)
-    data_b64 = base64.b64encode(data_bytes).decode("utf-8")
-    return GlobalSymbolResponse(name=sym.name, mptype=sym.mptype, data=data_b64)
+    # Serialize using Value envelope
+    return GlobalSymbolResponse(
+        name=sym.name,
+        mptype=sym.mptype,
+        data=base64.b64encode(encode_value(sym.data)).decode("utf-8"),
+    )
 
 
 @app.get("/api/v1/symbols")

@@ -15,17 +15,17 @@
 import pandas as pd
 
 import mplang
-from mplang import simp
-from mplang.core.dtype import INT32
+import mplang as mp
+from mplang.core.dtypes import INT32
 from mplang.core.table import TableType
-from mplang.ops import sql_run
+from mplang.ops import sql_cc
 
 
 def test_sqlrun():
     # test without input
     sql = "select a from 'a.csv'"
     out_type = TableType.from_pairs([("a", INT32)])
-    pfn, input_args, _output_tree = sql_run(sql, out_type)
+    pfn, input_args, _output_tree = sql_cc.run_sql(sql, out_type)
     assert pfn.fn_text == sql
     assert pfn.outs_info[0] == out_type
     assert len(input_args) == 0
@@ -35,12 +35,12 @@ def test_sqlrun():
     mplang.set_ctx(sim2)
 
     data = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6], "c": [4.1, 5.1, 6.1]})
-    in_tbl = simp.constant(data)
+    in_tbl = mp.constant(data)
 
     sql = "select a from table"
     out_type = TableType.from_pairs([("a", INT32)])
     in_tables = {"table": in_tbl}
-    pfn, input_args, _output_tree = sql_run(sql, out_type, in_tables=in_tables)
+    pfn, input_args, _output_tree = sql_cc.run_sql(sql, out_type, in_tables=in_tables)
     assert pfn.fn_text == sql
     assert pfn.outs_info[0] == out_type
     assert len(input_args) == 1

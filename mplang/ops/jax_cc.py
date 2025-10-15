@@ -21,9 +21,7 @@ import jax
 import jax.numpy as jnp
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction, get_fn_name
-from mplang.core.tensor import TensorType
+from mplang.core import MPObject, PFunction, TensorType, get_fn_name
 from mplang.ops.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 
@@ -149,11 +147,11 @@ def jax2stablehlo(
     return pfn, in_vars, out_tree
 
 
-class JaxCompiler(FeOperation):
-    """JAX compiler frontend operation."""
+class JaxRunner(FeOperation):
+    """JAX function runner frontend operation."""
 
     def trace(
-        self, func: Callable, *args: Any, **kwargs: Any
+        self, jax_fn: Callable, *args: Any, **kwargs: Any
     ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
         """
         JAX compilation helper function.
@@ -162,21 +160,21 @@ class JaxCompiler(FeOperation):
         along with variable arguments for evaluation.
 
         Args:
-            func: The JAX function to compile
+            jax_fn: The JAX function to compile
             *args: Positional arguments to the function
             **kwargs: Keyword arguments to the function
 
         Returns:
-            tuple[PFunction, list[MPObject], Any]: The compiled PFunction, input variables, and output tree
+            tuple[PFunction, list[MPObject], PyTreeDef]: The compiled PFunction, input variables, and output tree
         """
 
         def is_variable(arg: Any) -> bool:
             return isinstance(arg, MPObject)
 
-        pfunc, in_vars, out_tree = jax2stablehlo(is_variable, func, *args, **kwargs)
+        pfunc, in_vars, out_tree = jax2stablehlo(is_variable, jax_fn, *args, **kwargs)
         return pfunc, in_vars, out_tree
 
 
 _JAX_MOD = stateless_mod("jax")
 
-jax_compile = JaxCompiler(_JAX_MOD, "compile")
+run_jax = JaxRunner(_JAX_MOD, "run")

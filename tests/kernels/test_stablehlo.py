@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from jax.tree_util import tree_flatten, tree_unflatten
 
@@ -24,6 +25,7 @@ from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.kernels import stablehlo  # noqa: F401
 from mplang.kernels.context import RuntimeContext
+from mplang.kernels.value import TensorValue
 from mplang.ops import jax_cc
 
 # Enable 64-bit precision in JAX for testing different dtypes
@@ -124,10 +126,14 @@ class TestStablehloKernel:
         cfunc, _, out_tree = jax_cc.jax2stablehlo(is_var, test_function, *inputs)
 
         # Execute via evaluator (dispatches kernel by fn_type)
-        result_flat = self.ev._exec_pfunc(cfunc, list(inputs))  # type: ignore[attr-defined]
+        tensor_inputs = [TensorValue(np.asarray(x)) for x in inputs]
+        result_flat = self.ev._exec_pfunc(cfunc, tensor_inputs)  # type: ignore[attr-defined]
+
+        assert all(isinstance(val, TensorValue) for val in result_flat)
+        result_arrays = [val.to_numpy() for val in result_flat]
 
         # Reconstruct nested output structure from flattened results
-        result = tree_unflatten(out_tree, result_flat)
+        result = tree_unflatten(out_tree, result_arrays)
 
         # Validate numerical correctness within tolerance bounds
         expected_flat, _ = tree_flatten(expected)

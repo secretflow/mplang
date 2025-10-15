@@ -39,6 +39,7 @@ from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
 from mplang.kernels.context import RuntimeContext
 from mplang.kernels.spu import PFunction  # type: ignore
+from mplang.kernels.value import Value
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.exceptions import ResourceNotFound
 from mplang.runtime.link_comm import LinkCommunicator
@@ -271,6 +272,13 @@ class Session:
                 f"Expected {len(output_names)} results, got {len(results)}"
             )
         for name, val in zip(output_names, results, strict=True):
+            # In pure SIMP model, all nodes should have the same symbol table.
+            # Non-participating nodes get None values.
+            if val is not None and not isinstance(val, Value):
+                raise TypeError(
+                    "Session executions must produce kernel Value outputs; "
+                    f"got {type(val).__name__} for symbol '{name}'"
+                )
             self.add_symbol(Symbol(name=name, mptype={}, data=val))
 
     # --- Convenience constructor ---

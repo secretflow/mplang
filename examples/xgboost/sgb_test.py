@@ -20,9 +20,7 @@ import pytest
 from sklearn.metrics import accuracy_score, roc_auc_score
 from xgboost import XGBClassifier
 
-import mplang
-import mplang.simp as simp
-import mplang.simp.mpi as mpi
+import mplang as mp
 from examples.xgboost.sgb import (
     SecureBoost,
     batch_feature_wise_bucket_sum_mplang,
@@ -121,7 +119,7 @@ def run_plaintext_xgboost_benchmark(X_np: np.ndarray, y_np: np.ndarray, params: 
     return accuracy, auc
 
 
-@mplang.function
+@mp.function
 def run_sgb(
     model: SecureBoost,
     X_parts: dict,
@@ -131,15 +129,15 @@ def run_sgb(
 ):
     # 1. load data
     all_datas = [
-        simp.runAt(all_party_ids_list[0], lambda x: x)(
-            X_parts[all_party_ids_list[0]]
+        mp.run_jax_at(
+            all_party_ids_list[0], lambda x: x, X_parts[all_party_ids_list[0]]
         ),  # AP
         *[
-            simp.runAt(pp_id, lambda x: x)(X_parts[pp_id])
+            mp.run_jax_at(pp_id, lambda x: x, X_parts[pp_id])
             for pp_id in all_party_ids_list[1:]
         ],  # PPs
     ]
-    y_data = simp.runAt(all_party_ids_list[0], lambda x: x)(y_jax)
+    y_data = mp.run_jax_at(all_party_ids_list[0], lambda x: x, y_jax)
 
     # 2. train process
     model = model.fit(all_datas, y_data)
@@ -158,8 +156,8 @@ def test_setup():
     """Setup fixture for all tests"""
     print(" ========= start test of jit_sgb package ========= \n")
 
-    sim2 = mplang.Simulator.simple(2)
-    sim3 = mplang.Simulator.simple(3)
+    sim2 = mp.Simulator.simple(2)
+    sim3 = mp.Simulator.simple(3)
 
     # fixed dataset params
     n_samples = 10
@@ -240,7 +238,7 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
         **params,
     )
     start_time = time.time()
-    out = mplang.evaluate(
+    out = mp.evaluate(
         sim,
         run_sgb,
         secure_boost,
@@ -249,7 +247,7 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
         all_party_ids_list,
         need_debug_leaves,
     )
-    ret = mplang.fetch(sim, out)
+    ret = mp.fetch(sim, out)
     assert len(ret) == 3  # trees, pred, leaves (if need)
     print("SecureBoost training and prediction completed.")
     # Calculate and print accuracy metrics
@@ -342,7 +340,7 @@ def test_sgb_3pc_debug_leaves(test_setup):
     _sgb_run_main(test_setup, world_size=3, need_debug_leaves=True)
 
 
-@mplang.function
+@mp.function
 def run_bucket_sum_2_groups():
     """Test batch feature-wise bucket sum with 2 groups"""
     # sample_size = 6
@@ -380,17 +378,17 @@ def run_bucket_sum_2_groups():
         dtype=np.int8,
     )
 
-    pkey, skey = simp.runAt(0, phe.keygen)()
-    world_mask = mplang.Mask.all(2)
-    pkey_bcasted = mpi.bcast_m(world_mask, 0, pkey)
+    pkey, skey = mp.run_at(0, phe.keygen)
+    world_mask = mp.Mask.all(2)
+    pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
 
-    m1 = simp.runAt(0, lambda x: x)(m1_np)
+    m1 = mp.run_jax_at(0, lambda x: x, m1_np)
 
-    encrypted_arr = simp.runAt(0, phe.encrypt)(m1, pkey_bcasted)
-    encrypted_arr = mpi.p2p(0, 1, encrypted_arr)
+    encrypted_arr = mp.run_at(0, phe.encrypt, m1, pkey_bcasted)
+    encrypted_arr = mp.p2p(0, 1, encrypted_arr)
 
-    subgroup_map = simp.runAt(1, lambda x: x)(subgroup_map)
-    order_map = simp.runAt(1, lambda x: x)(order_map)
+    subgroup_map = mp.run_jax_at(1, lambda x: x, subgroup_map)
+    order_map = mp.run_jax_at(1, lambda x: x, order_map)
 
     bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
         encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
@@ -399,15 +397,15 @@ def run_bucket_sum_2_groups():
     # Decrypt each group result separately
     decrypted_results = []
     for group_idx in range(group_size):
-        decrypted_group = simp.runAt(0, phe.decrypt)(
-            mpi.p2p(1, 0, bucket_sum_list[group_idx]), skey
+        decrypted_group = mp.run_at(
+            0, phe.decrypt, mp.p2p(1, 0, bucket_sum_list[group_idx]), skey
         )
         decrypted_results.append(decrypted_group)
 
     return decrypted_results
 
 
-@mplang.function
+@mp.function
 def run_bucket_sum_3_groups():
     """Test batch feature-wise bucket sum with 3 groups"""
     # sample_size = 9
@@ -453,17 +451,17 @@ def run_bucket_sum_3_groups():
         dtype=np.int8,
     )
 
-    pkey, skey = simp.runAt(0, phe.keygen)()
-    world_mask = mplang.Mask.all(2)
-    pkey_bcasted = mpi.bcast_m(world_mask, 0, pkey)
+    pkey, skey = mp.run_at(0, phe.keygen)
+    world_mask = mp.Mask.all(2)
+    pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
 
-    m1 = simp.runAt(0, lambda x: x)(m1_np)
+    m1 = mp.run_jax_at(0, lambda x: x, m1_np)
 
-    encrypted_arr = simp.runAt(0, phe.encrypt)(m1, pkey_bcasted)
-    encrypted_arr = mpi.p2p(0, 1, encrypted_arr)
+    encrypted_arr = mp.run_at(0, phe.encrypt, m1, pkey_bcasted)
+    encrypted_arr = mp.p2p(0, 1, encrypted_arr)
 
-    subgroup_map = simp.runAt(1, lambda x: x)(subgroup_map)
-    order_map = simp.runAt(1, lambda x: x)(order_map)
+    subgroup_map = mp.run_jax_at(1, lambda x: x, subgroup_map)
+    order_map = mp.run_jax_at(1, lambda x: x, order_map)
 
     bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
         encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
@@ -472,8 +470,8 @@ def run_bucket_sum_3_groups():
     # Decrypt each group result separately
     decrypted_results = []
     for group_idx in range(group_size):
-        decrypted_group = simp.runAt(0, phe.decrypt)(
-            mpi.p2p(1, 0, bucket_sum_list[group_idx]), skey
+        decrypted_group = mp.run_at(
+            0, phe.decrypt, mp.p2p(1, 0, bucket_sum_list[group_idx]), skey
         )
         decrypted_results.append(decrypted_group)
 
@@ -485,8 +483,8 @@ def test_batch_feature_wise_bucket_sum_2_groups(test_setup):
     print("=== Testing batch_feature_wise_bucket_sum with 2 groups ===")
 
     sim = test_setup["sim2"]
-    result_2_groups = mplang.evaluate(sim, run_bucket_sum_2_groups)
-    fetched_2_groups = mplang.fetch(sim, result_2_groups)
+    result_2_groups = mp.evaluate(sim, run_bucket_sum_2_groups)
+    fetched_2_groups = mp.fetch(sim, result_2_groups)
 
     # fetched_2_groups is [[group0_from_rank0, None], [group1_from_rank0, None]]
     print(f"2-group PHE sum completed. Number of groups: {len(fetched_2_groups)}")
@@ -533,8 +531,8 @@ def test_batch_feature_wise_bucket_sum_3_groups(test_setup):
     print("=== Testing batch_feature_wise_bucket_sum with 3 groups ===")
 
     sim = test_setup["sim2"]
-    result_3_groups = mplang.evaluate(sim, run_bucket_sum_3_groups)
-    fetched_3_groups = mplang.fetch(sim, result_3_groups)
+    result_3_groups = mp.evaluate(sim, run_bucket_sum_3_groups)
+    fetched_3_groups = mp.fetch(sim, result_3_groups)
 
     # fetched_3_groups is [[group0_from_rank0, None], [group1_from_rank0, None], [group2_from_rank0, None]]
     print(f"3-group PHE sum completed. Number of groups: {len(fetched_3_groups)}")

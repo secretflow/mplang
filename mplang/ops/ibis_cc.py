@@ -20,10 +20,7 @@ from typing import Any
 import ibis
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core import dtype
-from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
+from mplang.core import MPObject, PFunction, TableType, dtypes
 from mplang.ops.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 
@@ -50,7 +47,7 @@ def ibis2sql(
 
     def _convert(s: ibis.Schema) -> TableType:
         return TableType.from_pairs([
-            (name, dtype.from_numpy(dt.to_numpy())) for name, dt in s.fields.items()
+            (name, dtypes.from_numpy(dt.to_numpy())) for name, dt in s.fields.items()
         ])
 
     ins_info = [_convert(s) for s in in_schemas]
@@ -95,8 +92,8 @@ def is_ibis_function(func: Callable) -> bool:
 _IBIS_MOD = stateless_mod("ibis")
 
 
-class IbisCompiler(FeOperation):
-    """Ibis compiler frontend operation."""
+class IbisRunner(FeOperation):
+    """Ibis runner frontend operation."""
 
     def trace(
         self, func: Callable, *args: Any, **kwargs: Any
@@ -136,4 +133,4 @@ class IbisCompiler(FeOperation):
         return pfunc, in_vars, treedef
 
 
-ibis_compile = IbisCompiler(_IBIS_MOD, "compile")
+run_ibis = IbisRunner(_IBIS_MOD, "run")

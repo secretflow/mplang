@@ -19,7 +19,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 
 # basic type aliases
 Shape = tuple[int, ...]

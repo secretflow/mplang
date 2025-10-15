@@ -29,9 +29,10 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.dtype import BOOL
+from mplang.core.dtypes import BOOL
 from mplang.core.expr.ast import (
     AccessExpr,
+    CallExpr,
     CondExpr,
     ConvExpr,
     EvalExpr,
@@ -44,10 +45,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import Rank
 from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike
-from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.tracer import TraceContext, TraceVar, trace
-from mplang.ops import builtin
 from mplang.utils.func_utils import var_demorph, var_morph
 
 
@@ -87,30 +85,106 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def primitive(fn: Callable[P, R]) -> Callable[P, R]:
+def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
     """A decorator to make all primitive call in trace context."""
 
     @wraps(fn)
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
         current_ctx = cur_ctx()
         if isinstance(current_ctx, TraceContext):
-            # If we are in a tracer context, just call the function.
-            # Note: switch_ctx will do the capture if needed.
-            args, kwargs = tree_map(partial(_switch_ctx, current_ctx), (args, kwargs))
-            return fn(*args, **kwargs)
+            # If we are already in a tracer context
+            if make_call:
+                # make a primitive call
+                tracer = current_ctx
+                tfn = trace(tracer.fork(), fn, *args, **kwargs)
+                is_mpobj = lambda x: isinstance(x, MPObject)
+                in_vars, in_imms, in_struct = var_morph((args, kwargs), is_mpobj)
+                assert in_struct == tfn.in_struct and in_imms == tfn.in_imms
+                arg_exprs = [arg.expr for arg in in_vars]
+                # re-capture all captured variables into current context if needed.
+                cap_exprs = [tracer.capture(var).expr for var in tfn.capture_map.keys()]
+                caller_expr = CallExpr(
+                    name=fn.__name__, fn=tfn.make_expr(), args=arg_exprs + cap_exprs
+                )
+                out_vars = [
+                    TraceVar(tracer, AccessExpr(caller_expr, idx))
+                    for idx in range(caller_expr.num_outputs)
+                ]
+                return cast(R, var_demorph(out_vars, tfn.out_imms, tfn.out_struct))
+            else:
+                # embed the function call in the current tracer context
+                # Note: switch_ctx will do the capture if needed.
+                args, kwargs = tree_map(
+                    partial(_switch_ctx, current_ctx), (args, kwargs)
+                )
+                return fn(*args, **kwargs)
         elif isinstance(current_ctx, InterpContext):
             trace_ctx = TraceContext(current_ctx.cluster_spec, parent=current_ctx)
             # TODO(jint): should we add trace_and_apply to improve the performance?
-            traced_fn = trace(trace_ctx, fn, *args, **kwargs)
+            tfn = trace(trace_ctx, fn, *args, **kwargs)
             # Return back to the original context.
-            return cast(R, apply(current_ctx, traced_fn, *args, **kwargs))
+            return cast(R, apply(current_ctx, tfn, *args, **kwargs))
         else:
             raise ValueError(f"Unsupported context type: {type(current_ctx)}")
 
     return wrapped
 
 
-function = primitive
+def builtin_function(fn: Callable[P, R]) -> Callable[P, R]:
+    """Decorator to trace a Python function as an opaque primitive call (`CallExpr`).
+
+    When a function decorated with `@builtin_function` is called within a `TraceContext`, it is
+    not inlined. Instead, it is traced separately in a forked context, and a `CallExpr`
+    node is inserted into the main graph. This is useful for encapsulating complex
+    operations or third-party library calls as single, opaque nodes.
+
+    **Implementation Note:**
+    A `CallExpr` represents a call to a single inline lambda (non-recursive, as we don't
+    have Y-combinator support). This single lambda call can be treated as a "primitive call"
+    by the printer/visualizer - hence the name "primitive". The function body is captured
+    once during tracing and represented as an opaque callable unit in the expression graph,
+    maintaining a clear boundary between the caller and callee contexts.
+
+    Args:
+        fn: The function to be traced as a primitive operation.
+
+    Returns:
+        A wrapped function that creates a `CallExpr` node when called in a trace context.
+
+    Example:
+        ```python
+        @builtin_function
+        def my_op(x: MPObject) -> MPObject:
+            # Complex logic traced as a single CallExpr node
+            return x + 1
+        ```
+    """
+    return trace_before_apply(fn, make_call=True)
+
+
+def function(fn: Callable[P, R]) -> Callable[P, R]:
+    """Decorator to trace a Python function by inlining its body.
+
+    When a function decorated with `@function` is called within a `TraceContext`, its
+    underlying primitive operations are expanded and inserted directly into the caller's
+    graph. This is the default tracing behavior and is suitable for most pure-Python
+    multi-party functions.
+
+    Args:
+        fn: The function to be traced and inlined.
+
+    Returns:
+        A wrapped function that inlines its operations into the caller's trace context.
+
+    Example:
+        ```python
+        @function
+        def my_func(x: MPObject, y: MPObject) -> MPObject:
+            # Operations are inlined into the caller's trace
+            return x + y * constant(2)
+        ```
+    """
+    return trace_before_apply(fn, make_call=False)
 
 
 # ============================================================================
@@ -126,18 +200,15 @@ def _tracer() -> TraceContext:
     return ctx
 
 
-@primitive
 def psize() -> int:
     """Get the size of the current party world.
 
     Returns:
         int: The total number of parties in the current multi-party computation context.
     """
-    ctx = _tracer()
-    return ctx.world_size()
+    return cur_ctx().world_size()
 
 
-@primitive
 def pmask() -> Mask:
     """Get the current party mask in this computation context.
 
@@ -145,112 +216,10 @@ def pmask() -> Mask:
         Mask: The current party mask indicating which parties are active
               in the current computation context.
     """
-    ctx = _tracer()
-    return ctx.mask
+    return _tracer().mask
 
 
-@primitive
-def prank() -> MPObject:
-    """Multi-party get the rank (party identifier) of each party.
-
-    This function returns a scalar tensor containing the rank (party identifier)
-    for each party in the current party mask. Each party independently produces
-    its own rank value, which serves as a unique identifier within the multi-party
-    computation context.
-
-    The rank values range from 0 to world_size-1, where world_size is the total
-    number of parties in the computation. Each party's rank is private to that
-    party and represents its position in the multi-party protocol.
-
-    Returns:
-        MPObject: A variable representing a scalar tensor with:
-                  - dtype: UINT64
-                  - shape: () (scalar)
-
-    Note:
-        Each party in the current party mask independently produces its own rank value.
-    """
-    pfunc, eval_args, out_tree = builtin.rank()
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
-
-
-@primitive
-def prand(shape: Shape = ()) -> MPObject:
-    """Multi-party generate a private random (uint64) tensor with the given shape.
-
-    This function creates a private random tensor where each party independently
-    generates its own local random values. Each party's random values are private
-    and unknown to other parties. The output tensor contains 64-bit unsigned
-    integers, with each party holding its own privately generated values.
-
-    Args:
-        shape: The shape of the random tensor to generate.
-               Must be a tuple of positive integers. Defaults to () for scalar.
-
-    Returns:
-        MPObject: A variable representing the generated private random tensor with:
-                  - dtype: UINT64
-                  - shape: As specified by the shape parameter
-
-    Note:
-        Each party in the current party mask independently generates its own
-        private random values. The randomness is local to each party and is
-        not shared or revealed to other parties.
-    """
-    pfunc, eval_args, out_tree = builtin.prand(shape)
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
-
-
-@primitive
-def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
-    """Create a constant tensor or table from data.
-
-    This function creates a constant that can be used in multi-party
-    computations. The constant value is embedded directly into the computation
-    graph and is available to all parties in the current party mask.
-
-    Args:
-        data: The constant data to embed. Can be:
-              - A scalar value (int, float, bool)
-              - A numpy array or other tensor-like object
-              - A pandas DataFrame or other table-like object
-              - Any object that can be converted to tensor
-
-    Returns:
-        MPObject: A variable representing the constant tensor or table with:
-                  - dtype: Inferred from the input data
-                  - shape: Inferred from the input data (for tensors)
-                  - schema: Inferred from the input data (for tables)
-                  - data: The embedded constant values
-
-    Note:
-        The constant data is embedded at graph construction time and is available
-        to all parties during execution. Large constants may impact graph size.
-
-        For table-like objects (e.g., pandas DataFrame), JSON serialization is used.
-        Note that the constant primitive is not designed to carry large tables efficiently -
-        consider using dedicated table loading mechanisms for substantial datasets.
-    """
-    pfunc, eval_args, out_tree = builtin.constant(data)
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
-
-
-@primitive
-def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
-    """Print local value of obj on owning parties and pass it through.
-
-    Returns the same MPObject value to keep it alive against DCE and to
-    support usage like: x = debug_print(x, prefix="x=").
-    """
-    pfunc, eval_args, out_tree = builtin.debug_print(obj, prefix=prefix)
-    results = peval(pfunc, eval_args)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
-
-
-@primitive
+@function
 def peval(
     pfunc: PFunction,
     args: list[MPObject],
@@ -314,71 +283,7 @@ def peval(
     return [TraceVar(ctx, res) for res in ret_exprs]
 
 
-def set_mask(arg: MPObject, mask: Mask) -> MPObject:
-    """Set the mask of an MPObject to a new value.
-
-    This function allows changing the party mask of an existing MPObject variable.
-    The behavior depends on whether the input MPObject has a dynamic or static pmask:
-
-    **Case 1: Dynamic pmask (arg.pmask is None)**
-    - The input MPObject has a runtime-determined pmask
-    - The return value's pmask will be exactly the specified mask
-    - No validation is performed at compile time
-
-    **Case 2: Static pmask (arg.pmask is not None)**
-    - If mask is a subset of arg.pmask: return_var.pmask == arg.pmask (unchanged)
-    - If mask is NOT a subset of arg.pmask: raises ValueError at compile time
-
-    Args:
-        arg: The MPObject whose mask needs to be changed.
-        mask: The target mask to apply. Must be a valid party mask.
-
-    Returns:
-        MPObject: A new variable with the specified mask behavior:
-                 - For dynamic inputs: pmask = mask
-                 - For static inputs (valid subset): pmask = arg.pmask
-
-    Raises:
-        ValueError: When arg has a static pmask and mask is not a subset of arg.pmask.
-                   This validation occurs at compile time during graph construction.
-
-    Examples:
-        **Example 1: Dynamic pmask - mask assignment**
-                     P0   P1   P2
-                     --   --   --
-            Input:   ?    ?    ?     (pmask=None, runtime-determined)
-            mask:    [0,2]            (target mask)
-        -----------------------------------------------------------
-            Output:  x0   -    x2    (pmask=[0,2])
-
-        **Example 2: Static pmask - valid subset**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   x1   x2    (pmask=[0,1,2])
-            mask:    [0,2]            (subset of input pmask)
-        -----------------------------------------------------------
-            Output:  x0   -    x2    (pmask=[0,2])
-
-        **Example 3: Static pmask - invalid subset (compile error)**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   -    x2     (pmask=[0,2])
-            mask:    [1,2]            (NOT subset of [0,2])
-        -----------------------------------------------------------
-            Result:  ValueError at compile time
-
-    Note:
-        This function is typically used for constraining the execution scope
-        of variables or for type casting between different pmask contexts.
-        The underlying implementation uses JAX identity function with the
-        specified execution mask.
-    """
-    pfunc, eval_args, out_tree = builtin.identity(arg)
-    results = peval(pfunc, eval_args, mask)
-    return out_tree.unflatten(results)  # type: ignore[no-any-return]
-
-
-@primitive
+@function
 def uniform_cond(
     pred: MPObject,
     then_fn: Callable[..., Any],
@@ -588,7 +493,7 @@ def uniform_cond(
     return var_demorph(out_vars, then_tfn.out_imms, then_tfn.out_struct)  # type: ignore[no-any-return]
 
 
-@primitive
+@function
 def while_loop(
     cond_fn: Callable[[Any], MPObject],
     body_fn: Callable[[Any], Any],
@@ -781,7 +686,7 @@ def while_loop(
     return var_demorph(out_vars, body_tfn.out_imms, body_tfn.out_struct)
 
 
-@primitive
+@function
 def pshfl(src: MPObject, index: MPObject) -> MPObject:
     """Shuffle the input tensor to the specified index (dynamic version).
 
@@ -851,7 +756,7 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
     return TraceVar(_tracer(), shfl_expr)
 
 
-@primitive
+@function
 def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
     """Shuffle the input tensor to the specified rank, static version.
 
@@ -910,7 +815,7 @@ def pshfl_s(src_val: MPObject, pmask: Mask, src_ranks: list[Rank]) -> MPObject:
     return TraceVar(_tracer(), shfl_s_expr)
 
 
-@primitive
+@function
 def pconv(vars: list[MPObject]) -> MPObject:
     """Combine multiple variables that share the same dtype and shape into one.
 

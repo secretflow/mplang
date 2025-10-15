@@ -19,12 +19,12 @@ import pandas as pd
 import pytest
 
 import mplang
-import mplang.simp as simp
-from mplang.core.dtype import UINT8, DType
+import mplang as mp
+from mplang.core.dtypes import UINT8, DType
 from mplang.core.table import TableType
 from mplang.core.tensor import TensorType
-from mplang.ops import builtin
-from mplang.utils import table_utils
+from mplang.kernels.value import TableValue
+from mplang.ops import basic
 
 
 @pytest.mark.integration
@@ -35,9 +35,9 @@ def test_builtin_pack_unpack_tensor_runtime() -> None:
 
     @mplang.function
     def fn():
-        x = simp.runAt(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))()
-        packed = simp.runAt(0, builtin.pack)(x)
-        unpacked = simp.runAt(0, builtin.unpack)(packed, out_ty=tensor_ty)
+        x = mp.run_jax_at(0, lambda: np.arange(6, dtype=np.int32).reshape(2, 3))
+        packed = mp.run_at(0, basic.pack, x)
+        unpacked = mp.run_at(0, basic.unpack, packed, out_ty=tensor_ty)
         return x, packed, unpacked
 
     x, packed, unpacked = mplang.evaluate(sim, fn)
@@ -59,21 +59,24 @@ def test_builtin_pack_unpack_table_runtime() -> None:
         ("a", DType.from_any("int64")),
         ("b", DType.from_any("float64")),
     ])
-    expected_bytes = table_utils.dataframe_to_csv(pd.DataFrame(data))
+    # With Arrow IPC, packed bytes are not CSV anymore; we validate roundtrip instead
 
     @mplang.function
     def fn():
-        table = simp.constant(pd.DataFrame(data))
-        packed = simp.runAt(0, builtin.pack)(table)
-        unpacked = simp.runAt(0, builtin.unpack)(packed, out_ty=table_schema)
+        table = mp.constant(pd.DataFrame(data))
+        packed = mp.run_at(0, basic.pack, table)
+        unpacked = mp.run_at(0, basic.unpack, packed, out_ty=table_schema)
         return packed, unpacked
 
     packed, unpacked = mplang.evaluate(sim, fn)
     packed_v, unpacked_v = mplang.fetch(sim, (packed, unpacked))
-    pd.testing.assert_frame_equal(unpacked_v[0], pd.DataFrame(data))
+    assert isinstance(unpacked_v[0], TableValue)
+    pd.testing.assert_frame_equal(unpacked_v[0].to_pandas(), pd.DataFrame(data))
     assert packed_v[0].dtype == np.uint8
     assert packed_v[0].ndim == 1
-    assert packed_v[0].tobytes() == expected_bytes
+    # Packed bytes are Arrow IPC stream; just ensure non-empty
+    assert isinstance(packed_v[0], np.ndarray)
+    assert packed_v[0].size > 0
     assert packed.mptype._type.dtype == UINT8
     assert packed.mptype._type.shape == (-1,)
     assert unpacked.mptype._type == table_schema

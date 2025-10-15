@@ -15,35 +15,33 @@
 import jax.numpy as jnp
 import numpy as np
 
-import mplang
-import mplang.simp as simp
-from mplang.core import TensorType
-from mplang.ops import builtin
+import mplang as mp
+from mplang.ops import basic
 
 
-@mplang.function
+@mp.function
 def save_data():
     # Party 0 creates and saves data
-    x = simp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
-    y = simp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
+    x = mp.constant(np.array([[1, 2], [3, 4]], dtype=np.float32))
+    y = mp.constant(np.array([[5, 6], [7, 8]], dtype=np.float32))
 
-    x = simp.runAt(0, builtin.write)(x, path="tmp/x.npy")
-    y = simp.runAt(1, builtin.write)(y, path="tmp/y.npy")
+    x = mp.run_at(0, basic.write, x, path="tmp/x.npy")
+    y = mp.run_at(1, basic.write, y, path="tmp/y.npy")
 
     return x, y
 
 
-@mplang.function
+@mp.function
 def load_data():
-    tensor_info = TensorType(shape=(2, 2), dtype=jnp.float32)
+    tensor_info = mp.TensorType(shape=(2, 2), dtype=jnp.float32)
 
-    x = simp.runAt(0, builtin.read)(path="tmp/x.npy", ty=tensor_info)
-    y = simp.runAt(1, builtin.read)(path="tmp/y.npy", ty=tensor_info)
+    x = mp.run_at(0, basic.read, path="tmp/x.npy", ty=tensor_info)
+    y = mp.run_at(1, basic.read, path="tmp/y.npy", ty=tensor_info)
 
-    x_ = simp.sealFrom(x, 0)
-    y_ = simp.sealFrom(y, 1)
-    z_ = simp.srun(lambda a, b: a + b)(x_, y_)
-    z = simp.reveal(z_)
+    x_ = mp.sealFrom(x, 0)
+    y_ = mp.sealFrom(y, 1)
+    z_ = mp.srun(lambda a, b: a + b)(x_, y_)
+    z = mp.reveal(z_)
 
     return z
 
@@ -54,14 +52,14 @@ def run_stdio_example():
     print("x = [[1, 2], [3, 4]]")
     print("y = [[5, 6], [7, 8]]")
 
-    sim2 = mplang.Simulator.simple(2)
-    _ = mplang.evaluate(sim2, save_data)
+    sim2 = mp.Simulator.simple(2)
+    _ = mp.evaluate(sim2, save_data)
     print("Data saved to files successfully")
 
     print("\n--- Session 2: Loading data and computing x + y ---")
-    sim3 = mplang.Simulator.simple(3)
-    z = mplang.evaluate(sim3, load_data)
-    result = mplang.fetch(sim3, z)
+    sim3 = mp.Simulator.simple(3)
+    z = mp.evaluate(sim3, load_data)
+    result = mp.fetch(sim3, z)
     print(result)
 
 

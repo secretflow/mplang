@@ -25,8 +25,9 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-import cloudpickle as pickle
 import httpx
+
+from mplang.kernels.value import Value, decode_value, encode_value
 
 
 class ExecutionStatus:
@@ -253,8 +254,10 @@ class HttpExecutorClient:
         """
         url = f"/sessions/{session_name}/symbols/{symbol_name}"
 
-        # Serialize data
-        data_bytes = pickle.dumps(data)
+        # Serialize data using Value envelope
+        if not isinstance(data, Value):
+            raise TypeError(f"Data must be a Value instance, got {type(data)}")
+        data_bytes = encode_value(data)
         data_b64 = base64.b64encode(data_bytes).decode("utf-8")
 
         payload = {"data": data_b64, "mptype": mptype or {}}
@@ -286,11 +289,15 @@ class HttpExecutorClient:
             response.raise_for_status()
             symbol_data = response.json()
 
-            # Deserialize data
+            # Deserialize data using Value envelope
             data_bytes = base64.b64decode(symbol_data["data"])
-            return pickle.loads(data_bytes)
+            return decode_value(data_bytes)
 
-        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code == 404:
+                return None
+            raise self._raise_http_error(f"get symbol {symbol_name}", e) from e
+        except httpx.RequestError as e:
             raise self._raise_http_error(f"get symbol {symbol_name}", e) from e
 
     async def delete_symbol(self, session_name: str, symbol_name: str) -> None:
@@ -403,8 +410,12 @@ class HttpExecutorClient:
         """
         url = f"/api/v1/symbols/{symbol_name}"
         try:
+            # Serialize using Value envelope
+            if not isinstance(data, Value):
+                raise TypeError(f"Data must be a Value instance, got {type(data)}")
+            data_bytes = encode_value(data)
             payload = {
-                "data": base64.b64encode(pickle.dumps(data)).decode("utf-8"),
+                "data": base64.b64encode(data_bytes).decode("utf-8"),
                 "mptype": mptype or {},
             }
             resp = await self._client.put(url, json=payload)
@@ -421,7 +432,7 @@ class HttpExecutorClient:
             resp.raise_for_status()
             payload = resp.json()
             data_bytes = base64.b64decode(payload["data"])
-            return pickle.loads(data_bytes)
+            return decode_value(data_bytes)
         except (httpx.HTTPStatusError, httpx.RequestError) as e:
             raise self._raise_http_error(f"get global symbol {symbol_name}", e) from e
 

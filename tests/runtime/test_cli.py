@@ -102,7 +102,7 @@ def test_status_command_success():
             # Create mock args
             args = MagicMock()
             args.config = config_path
-            args.details = True
+            args.verbose = 1  # -v: show session details
 
             # Run the status command
             result = status_command(args)
@@ -146,7 +146,7 @@ def test_status_command_unhealthy_node():
             # Create mock args
             args = MagicMock()
             args.config = config_path
-            args.details = False
+            args.verbose = 0  # No verbose output
 
             # Run the status command
             result = status_command(args)
@@ -178,7 +178,7 @@ def test_status_command_exception():
             # Create mock args
             args = MagicMock()
             args.config = config_path
-            args.details = False
+            args.verbose = 0  # No verbose output
 
             # Run the status command
             result = status_command(args)

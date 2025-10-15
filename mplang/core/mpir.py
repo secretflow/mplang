@@ -32,7 +32,7 @@ from typing import Any
 import numpy as np
 import spu.libspu as spu_api
 
-from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
+from mplang.core.dtypes import DATE, JSON, STRING, TIME, TIMESTAMP, DType
 from mplang.core.expr import Expr, FuncDefExpr
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -204,7 +204,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
             raise TypeError(f"Unsupported tuple/list type: {type(py_value)}")
     elif isinstance(py_value, FuncDefExpr):
         # Convert FuncDefExpr to GraphProto
-        graph = Writer().dumps(py_value)
+        graph = IrWriter().dumps(py_value)
         attr_proto.type = mpir_pb2.AttrProto.GRAPH
         attr_proto.graph.CopyFrom(graph)
     elif isinstance(py_value, PFunction):
@@ -234,7 +234,7 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
     return attr_proto
 
 
-class Writer:
+class IrWriter:
     """Writer for serializing Expr-based expressions to GraphProto.
 
     This class traverses an expression tree and converts it into a serialized
@@ -491,6 +491,7 @@ class Writer:
             op = self._create_node_proto(expr, "call")
             self._add_single_expr_inputs(op, expr.fn)
             self._add_expr_inputs(op, *expr.args)
+            self._add_attrs(op, name=expr.name)
             self._finalize_node(op, expr)
         elif isinstance(expr, WhileExpr):
             op = self._create_node_proto(expr, "while")
@@ -524,7 +525,7 @@ class Writer:
             raise TypeError(f"Unsupported expr type for serialization: {type(expr)}")
 
 
-class Reader:
+class IrReader:
     """Reader for deserializing GraphProto back to Expr-based expressions.
 
     This class is responsible for converting serialized GraphProto representations
@@ -822,8 +823,12 @@ class Reader:
                 arg_exprs.append(self._value_cache[dep_name])
             else:
                 raise ValueError(f"Input {input_name} not found for call node")
+        # Optional call-site name attribute
+        call_name = None
+        if "name" in node_proto.attrs:
+            call_name = self._proto_to_attr(node_proto.attrs["name"])  # type: ignore[assignment]
 
-        return CallExpr(fn_expr, arg_exprs)
+        return CallExpr(call_name or "", fn_expr, arg_exprs)
 
     def _proto_to_mptype(self, type_proto: mpir_pb2.MPTypeProto) -> MPType:
         """Convert MPTypeProto to MPType."""
@@ -897,7 +902,7 @@ class Reader:
             )
         elif attr_proto.type == mpir_pb2.AttrProto.GRAPH:
             # Handle nested expressions (for control flow)
-            reader = Reader()
+            reader = IrReader()
             return reader.loads(attr_proto.graph)
         else:
             raise TypeError(f"Unsupported attribute type: {attr_proto.type}")

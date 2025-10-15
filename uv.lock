@@ -925,7 +925,6 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
-    { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
@@ -955,7 +954,6 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
-    { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
@@ -1333,15 +1331,6 @@ wheels = [
 ]
 
 [[package]]
-name = "py-cpuinfo"
-version = "9.0.0"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/37/a8/d832f7293ebb21690860d2e01d8115e5ff6f2ae8bbdc953f0eb0fa4bd2c7/py-cpuinfo-9.0.0.tar.gz", hash = "sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/e0/a9/023730ba63db1e494a271cb018dcd361bd2c917ba7004c3e49d5daf795a2/py_cpuinfo-9.0.0-py3-none-any.whl", hash = "sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5" },
-]
-
-[[package]]
 name = "pyarrow"
 version = "21.0.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
@@ -1533,19 +1522,6 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/de/b4/0b378b7bf26a8ae161c3890c0b48a91a04106c5713ce81b4b080ea2f4f18/pytest_asyncio-0.23.8.tar.gz", hash = "sha256:759b10b33a6dc61cce40a8bd5205e302978bbbcc00e279a8b61d9a6a3c82e4d3" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/ee/82/62e2d63639ecb0fbe8a7ee59ef0bc69a4669ec50f6d3459f74ad4e4189a2/pytest_asyncio-0.23.8-py3-none-any.whl", hash = "sha256:50265d892689a5faefb84df80819d1ecef566eb3549cf915dfb33569359d1ce2" },
-]
-
-[[package]]
-name = "pytest-benchmark"
-version = "5.0.1"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
-dependencies = [
-    { name = "py-cpuinfo" },
-    { name = "pytest" },
-]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/a3/48/b79272b2b8938513a66a62204a0649ef730dcf6cb52c812f4dc4daa62cd5/pytest-benchmark-5.0.1.tar.gz", hash = "sha256:8138178618c85586ce056c70cc5e92f4283c2e6198e8422c2c825aeb3ace6afd" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/f7/e2/c0da4989a933d6bac364f215217c47de37d2f641953aa69a37b66efd6d1b/pytest_benchmark-5.0.1-py3-none-any.whl", hash = "sha256:d75fec4cbf0d4fd91e020f425ce2d845e9c127c21bae35e77c84db8ed84bfaa6" },
 ]
 
 [[package]]

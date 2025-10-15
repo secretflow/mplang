@@ -27,3 +27,4 @@ uv run python tutorials/7_stdio.py
 uv run python tutorials/8_phe.py
 uv run python tutorials/9_tee.py
 uv run python tutorials/10_analysis.py
+uv run python tutorials/11_fhe.py

@@ -30,9 +30,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from mplang.core.mpir import IrReader
-from mplang.core.table import TableType
-from mplang.core.tensor import TensorType
+from mplang.core import IrReader, TableType, TensorType
 from mplang.kernels.base import KernelContext
 from mplang.kernels.value import Value, decode_value, encode_value
 from mplang.protos.v1alpha1 import mpir_pb2

@@ -17,10 +17,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
-from mplang.core import Mask, MPObject, Rank, peval
-from mplang.core.primitive import builtin_function
-from mplang.core.table import TableLike
-from mplang.core.tensor import ScalarType, Shape, TensorLike
+from mplang.core import (
+    Mask,
+    MPObject,
+    Rank,
+    ScalarType,
+    Shape,
+    TableLike,
+    TensorLike,
+    builtin_function,
+    peval,
+)
 from mplang.ops import basic, ibis_cc, jax_cc, sql_cc
 from mplang.ops.base import FeOperation
 

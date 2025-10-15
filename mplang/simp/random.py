@@ -21,8 +21,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax.typing import ArrayLike
 
-from mplang.core import MPObject, Shape
-from mplang.core.primitive import function, pmask, psize
+from mplang.core import MPObject, Shape, function, pmask, psize
 from mplang.simp.api import prand, prank, run_jax
 
 

@@ -22,7 +22,7 @@ import numpy as np
 from jax._src import xla_bridge
 from jax.lib import xla_client as xc
 
-from mplang.core.pfunc import PFunction
+from mplang.core import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
 from mplang.kernels.value import TensorValue
 

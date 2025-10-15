@@ -20,6 +20,7 @@ from typing import Any
 from jax.tree_util import tree_map
 
 from mplang.core import (
+    ClusterSpec,
     InterpContext,
     MPContext,
     MPObject,
@@ -27,7 +28,6 @@ from mplang.core import (
     TracedFunction,
     trace,
 )
-from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import cur_ctx, with_ctx
 
 

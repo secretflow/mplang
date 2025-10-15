@@ -16,8 +16,7 @@ from __future__ import annotations
 
 import logging
 
-from mplang.core import Mask, MPObject, Rank, function
-from mplang.core.primitive import pconv, pshfl_s
+from mplang.core import Mask, MPObject, Rank, function, pconv, pshfl_s
 
 
 # scatter :: [m a] -> m Rank -> m a

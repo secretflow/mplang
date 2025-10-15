@@ -16,9 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
-from mplang.core.tensor import TensorType
+from mplang.core import PFunction, TableType, TensorType
 from mplang.kernels.base import cur_kctx, kernel_def
 from mplang.kernels.value import TableValue, TensorValue, Value
 from mplang.runtime.data_providers import get_provider, resolve_uri

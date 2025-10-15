@@ -35,20 +35,17 @@ from mplang.core.mask import Mask
 from mplang.core.mptype import Rank
 from mplang.core.primitive import (
     _switch_ctx,
-    constant,
     function,
     pconv,
     peval,
-    prand,
-    prank,
     pshfl,
     pshfl_s,
-    set_mask,
     uniform_cond,
     while_loop,
 )
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.ops import jax_cc
+from mplang.simp.api import constant, prand, prank, set_mask
 
 
 @pytest.fixture
@@ -1512,7 +1509,7 @@ class TestSetMask:
 
         # The expression should contain multiple operations
         assert "eval" in expr_str  # From set_mask and run_jax
-        assert "prank" in expr_str  # From prank()
+        assert "prank" in expr_str  # From prank() using @builtin_function
         assert "pconst" in expr_str  # From constant()
 
 

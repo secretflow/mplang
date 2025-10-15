@@ -34,15 +34,13 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPObject
 from mplang.core.mptype import MPType, Rank
 from mplang.core.primitive import (
-    constant,
-    prank,
     pshfl_s,
-    set_mask,
     uniform_cond,
     while_loop,
 )
 from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
+from mplang.simp.api import constant, prank, set_mask
 
 # Enable JAX x64 mode to match type expectations
 jax.config.update("jax_enable_x64", True)

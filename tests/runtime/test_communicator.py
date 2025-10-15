@@ -313,11 +313,12 @@ def test_end_to_end_communication():
         assigned_ports[0] = p0
         assigned_ports[1] = p1
 
-        barrier = mp_ctx.Barrier(3)  # Two parties + main process
+        worlds = [0, 1]
+        barrier = mp_ctx.Barrier(len(worlds) + 1)  # size(parties) + main process
 
         # Start both party processes
         processes = []
-        for rank in [0, 1]:
+        for rank in worlds:
             process = mp_ctx.Process(
                 target=run_party_e2e_process,
                 args=(rank, return_dict, assigned_ports, barrier),
@@ -337,7 +338,7 @@ def test_end_to_end_communication():
                     process.kill()
 
         # Validate results
-        for rank in [0, 1]:
+        for rank in worlds:
             assert rank in return_dict, f"Party {rank} did not complete"
             result = return_dict[rank]
             assert result.get("status") == "success", f"Party {rank} failed: {result}"

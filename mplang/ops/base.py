@@ -20,10 +20,7 @@ from typing import Any
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.mpobject import MPContext, MPObject
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
-from mplang.core.tensor import TensorType
+from mplang.core import MPContext, MPObject, PFunction, TableType, TensorType
 
 # -----------------------------------------------------------------------------
 # Triad ABI

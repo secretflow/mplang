@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from mplang.core.pfunc import PFunction
+from mplang.core import PFunction
 from mplang.kernels.base import kernel_def
 from mplang.kernels.value import TableValue
 

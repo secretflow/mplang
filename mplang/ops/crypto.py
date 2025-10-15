@@ -26,8 +26,7 @@ Scope and contracts:
 
 from __future__ import annotations
 
-from mplang.core.dtypes import UINT8
-from mplang.core.tensor import TensorType
+from mplang.core import UINT8, TensorType
 from mplang.ops.base import stateless_mod
 
 _CRYPTO_MOD = stateless_mod("crypto")

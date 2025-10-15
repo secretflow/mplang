@@ -20,10 +20,7 @@ from typing import Any
 import ibis
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core import dtypes
-from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
+from mplang.core import MPObject, PFunction, TableType, dtypes
 from mplang.ops.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 

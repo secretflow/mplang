@@ -21,7 +21,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.core.dtypes import (
+from mplang.core import (
     BOOL,
     FLOAT32,
     FLOAT64,
@@ -34,8 +34,8 @@ from mplang.core.dtypes import (
     UINT32,
     UINT64,
     DType,
+    PFunction,
 )
-from mplang.core.pfunc import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
 from mplang.kernels.value import (
     TensorValue,

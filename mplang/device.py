@@ -30,10 +30,15 @@ from typing import Any
 from jax.tree_util import tree_map
 
 import mplang.host as mphost
-from mplang.core import InterpContext, MPObject, primitive
-from mplang.core.cluster import ClusterSpec, Device
-from mplang.core.context_mgr import cur_ctx
-from mplang.core.tensor import TensorType
+from mplang.core import (
+    ClusterSpec,
+    Device,
+    InterpContext,
+    MPObject,
+    TensorType,
+    cur_ctx,
+    primitive,
+)
 from mplang.ops import basic, crypto, ibis_cc, jax_cc, tee
 from mplang.ops.base import FeOperation
 from mplang.ops.ibis_cc import IbisRunner

@@ -25,32 +25,34 @@ except PackageNotFoundError:
 
 from mplang import analysis
 from mplang.core import (
+    ClusterSpec,
+    Device,
     DType,
     InterpContext,
+    IrReader,
+    IrWriter,
     Mask,
     MPContext,
     MPObject,
     MPType,
+    Node,
     Rank,
+    RuntimeInfo,
     TableType,
     TensorType,
     TraceContext,
     TracedFunction,
     cur_ctx,
     function,
-    set_ctx,
-    trace,
-    with_ctx,
-)
-from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
-from mplang.core.mpir import IrReader, IrWriter
-from mplang.core.primitive import (
     pconv,
     peval,
     pshfl,
     pshfl_s,
+    set_ctx,
+    trace,
     uniform_cond,
     while_loop,
+    with_ctx,
 )
 from mplang.host import CompileOptions, compile, evaluate, fetch
 from mplang.runtime.driver import Driver

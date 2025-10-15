@@ -26,7 +26,7 @@ from typing import Any
 import uvicorn
 import yaml
 
-from mplang.core.cluster import ClusterSpec
+from mplang.core import ClusterSpec
 from mplang.runtime.client import HttpExecutorClient
 from mplang.runtime.server import app
 

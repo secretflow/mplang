@@ -21,9 +21,7 @@ import jax
 import jax.numpy as jnp
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction, get_fn_name
-from mplang.core.tensor import TensorType
+from mplang.core import MPObject, PFunction, TensorType, get_fn_name
 from mplang.ops.base import FeOperation, stateless_mod
 from mplang.utils.func_utils import normalize_fn
 

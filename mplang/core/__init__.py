@@ -21,6 +21,7 @@ including type systems, tracing mechanisms, and interpreter contexts.
 
 # Core type system
 # Communication interfaces & core symbols
+from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
 from mplang.core.comm import (
     CollectiveMixin,
     CommunicatorBase,
@@ -56,6 +57,7 @@ from mplang.core.dtypes import (
 )
 from mplang.core.interp import InterpContext, InterpVar
 from mplang.core.mask import Mask
+from mplang.core.mpir import IrReader, IrWriter
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType, Rank, Shape
 from mplang.core.pfunc import PFunction, get_fn_name
@@ -67,6 +69,7 @@ from mplang.core.primitive import (
     function,
     pconv,
     peval,
+    pmask,
     pshfl,
     pshfl_s,
     psize,
@@ -101,19 +104,25 @@ __all__ = [
     "UINT32",
     "UINT64",
     "UUID",
+    "ClusterSpec",
     "CollectiveMixin",
     "CommunicatorBase",
     "DType",
+    "Device",
     "ICollective",
     "ICommunicator",
     "InterpContext",
     "InterpVar",
+    "IrReader",
+    "IrWriter",
     "MPContext",
     "MPObject",
     "MPType",
     "Mask",
+    "Node",
     "PFunction",
     "Rank",
+    "RuntimeInfo",
     "ScalarType",
     "Shape",
     "TableLike",
@@ -130,6 +139,7 @@ __all__ = [
     "get_fn_name",
     "pconv",
     "peval",
+    "pmask",
     "pshfl",
     "pshfl_s",
     "psize",

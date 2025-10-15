@@ -23,10 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
-from mplang.core import TracedFunction
-from mplang.core.cluster import ClusterSpec
-from mplang.core.mask import Mask
-from mplang.core.mpir import IrWriter, get_graph_statistics
+from mplang.core import ClusterSpec, IrWriter, Mask, TracedFunction
+from mplang.core.mpir import get_graph_statistics
 from mplang.protos.v1alpha1 import mpir_pb2
 
 # ----------------------------- Core helpers (copied) -----------------------------

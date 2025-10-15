@@ -29,13 +29,16 @@ from typing import Any
 
 import numpy as np
 
-from mplang.core.cluster import ClusterSpec
+from mplang.core import (
+    ClusterSpec,
+    InterpContext,
+    InterpVar,
+    IrWriter,
+    Mask,
+    MPObject,
+    MPType,
+)
 from mplang.core.expr.ast import Expr
-from mplang.core.interp import InterpContext, InterpVar
-from mplang.core.mask import Mask
-from mplang.core.mpir import IrWriter
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType
 from mplang.kernels.value import TableValue, TensorValue
 from mplang.runtime.client import HttpExecutorClient
 

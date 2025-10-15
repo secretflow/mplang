@@ -150,7 +150,9 @@ def test_communicator_properties(http_servers):  # noqa: F811
     assert id1 != id2  # Should generate unique IDs
 
 
-def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
+def run_party_e2e_process(
+    rank: int, return_dict: dict, assigned_ports: dict, barrier: multiprocessing.Barrier
+):
     """
     Run a complete party process with server and communication logic.
     This is the proper single-process-per-party architecture.
@@ -247,6 +249,8 @@ def run_party_e2e_process(rank: int, return_dict: dict, assigned_ports: dict):
         if not server_ready:
             raise RuntimeError("Server failed to start within timeout")
 
+        barrier.wait(timeout=30)  # Synchronize with other parties
+
         # Run party-specific communication logic
         if rank == 0:
             # Party 0: Send message to Party 1
@@ -309,14 +313,20 @@ def test_end_to_end_communication():
         assigned_ports[0] = p0
         assigned_ports[1] = p1
 
+        worlds = [0, 1]
+        barrier = mp_ctx.Barrier(len(worlds) + 1)  # size(parties) + main process
+
         # Start both party processes
         processes = []
-        for rank in [0, 1]:
+        for rank in worlds:
             process = mp_ctx.Process(
-                target=run_party_e2e_process, args=(rank, return_dict, assigned_ports)
+                target=run_party_e2e_process,
+                args=(rank, return_dict, assigned_ports, barrier),
             )
             process.start()
             processes.append(process)
+
+        barrier.wait(timeout=30)  # Wait for both parties to be ready
 
         # Wait for both processes to complete
         for process in processes:
@@ -328,7 +338,7 @@ def test_end_to_end_communication():
                     process.kill()
 
         # Validate results
-        for rank in [0, 1]:
+        for rank in worlds:
             assert rank in return_dict, f"Party {rank} did not complete"
             result = return_dict[rank]
             assert result.get("status") == "success", f"Party {rank} failed: {result}"

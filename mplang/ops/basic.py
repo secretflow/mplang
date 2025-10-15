@@ -15,11 +15,18 @@
 
 from jax.tree_util import PyTreeDef, tree_flatten
 
-from mplang.core.dtypes import UINT8, UINT64
-from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, TableType
-from mplang.core.tensor import ScalarType, Shape, TensorLike, TensorType
+from mplang.core import (
+    UINT8,
+    UINT64,
+    MPObject,
+    PFunction,
+    ScalarType,
+    Shape,
+    TableLike,
+    TableType,
+    TensorLike,
+    TensorType,
+)
 from mplang.ops.base import stateless_mod
 from mplang.utils import table_utils
 

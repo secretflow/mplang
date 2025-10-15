@@ -146,12 +146,12 @@ def add(operand1: TensorType, operand2: TensorType) -> TensorType:
     Note: At least one operand must be ciphertext. Both operands must have
     the same shape (no broadcasting in Vector backend).
     """
-    assert (
-        operand1.dtype == operand2.dtype
-    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    assert (
-        operand1.shape == operand2.shape
-    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    assert operand1.dtype == operand2.dtype, (
+        f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    )
+    assert operand1.shape == operand2.shape, (
+        f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    )
     return operand1
 
 
@@ -172,12 +172,12 @@ def sub(operand1: TensorType, operand2: TensorType) -> TensorType:
     Note: At least one operand must be ciphertext. Both operands must have
     the same shape (no broadcasting in Vector backend).
     """
-    assert (
-        operand1.dtype == operand2.dtype
-    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    assert (
-        operand1.shape == operand2.shape
-    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    assert operand1.dtype == operand2.dtype, (
+        f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    )
+    assert operand1.shape == operand2.shape, (
+        f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    )
     return operand1
 
 
@@ -199,12 +199,12 @@ def mul(operand1: TensorType, operand2: TensorType) -> TensorType:
     the same shape (no broadcasting in Vector backend).
     For BFV scheme, plaintext operands must be integers.
     """
-    assert (
-        operand1.dtype == operand2.dtype
-    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    assert (
-        operand1.shape == operand2.shape
-    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    assert operand1.dtype == operand2.dtype, (
+        f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    )
+    assert operand1.shape == operand2.shape, (
+        f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    )
     return operand1
 
 

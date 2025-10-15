@@ -30,10 +30,11 @@ FHE vs PHE:
 - BFV scheme: Optimized for exact integer arithmetic
 """
 
+import numpy as np
+
 import mplang
 import mplang.simp as simp
 from mplang.ops import fhe
-import numpy as np
 
 
 @mplang.function

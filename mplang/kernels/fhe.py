@@ -18,9 +18,10 @@ This module provides FHE operations using TenSEAL's vector-based encryption,
 which only supports 1D data. All operations enforce 1D shape constraints.
 """
 
+from typing import Any
+
 import numpy as np
 import tenseal as ts
-from typing import Any, Union
 
 from mplang.core.dtype import DType
 from mplang.core.mptype import TensorLike
@@ -56,24 +57,24 @@ class FHEContext:
         return self._scheme
 
     @property
-    def global_scale(self) -> float:
+    def global_scale(self) -> Any:
         if self._scheme != "CKKS":
             raise ValueError("global_scale is only applicable for CKKS scheme.")
         return self.context.global_scale
 
     @property
-    def is_private(self) -> bool:
+    def is_private(self) -> Any:
         return self.context.is_private()
 
     @property
-    def is_public(self) -> bool:
+    def is_public(self) -> Any:
         return self.context.is_public()
 
     def make_context_public(self) -> None:
         """Remove secret key from context to make it public."""
         self.context.make_context_public()
 
-    def serialize(self, save_secret_key: bool = True) -> bytes:
+    def serialize(self, save_secret_key: bool = True) -> Any:
         """Serialize the context."""
         return self.context.serialize(
             save_public_key=True,
@@ -260,7 +261,7 @@ def _fhe_encrypt(pfunc: PFunction, plaintext: Any, context: FHEContext) -> Any:
         # Handle scalar (convert to 1-element vector)
         if plaintext_np.shape == ():
             plaintext_np = np.array([plaintext_np.item()])
-            semantic_shape = ()
+            semantic_shape: tuple = ()
         else:
             semantic_shape = plaintext_np.shape
 
@@ -320,7 +321,7 @@ def _fhe_decrypt(pfunc: PFunction, ciphertext: CipherText, context: FHEContext) 
             _ = ct_to_decrypt.context().has_secret_key()
             if not ct_to_decrypt.context().has_secret_key():
                 needs_context_linking = True
-        except:
+        except Exception:
             needs_context_linking = True
 
         if needs_context_linking:
@@ -509,7 +510,7 @@ def _fhe_sub_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
     # Shape validation and broadcasting
     if ciphertext.semantic_shape == () and not is_scalar_pt:
         raise ValueError(
-            f"Shape mismatch: cannot subtract vector plaintext from scalar ciphertext"
+            "Shape mismatch: cannot subtract vector plaintext from scalar ciphertext"
         )
     if ciphertext.semantic_shape != () and is_scalar_pt:
         # Broadcast scalar plaintext
@@ -606,7 +607,7 @@ def _fhe_mul_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
     # Shape validation and broadcasting
     if ciphertext.semantic_shape == () and not is_scalar_pt:
         raise ValueError(
-            f"Shape mismatch: cannot multiply scalar ciphertext with vector plaintext"
+            "Shape mismatch: cannot multiply scalar ciphertext with vector plaintext"
         )
     if ciphertext.semantic_shape != () and is_scalar_pt:
         # Broadcast scalar plaintext
@@ -674,7 +675,7 @@ def _fhe_dot_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
 
     if len(ct1.semantic_shape) != 1 or len(ct2.semantic_shape) != 1:
         raise ValueError(
-            f"Vector backend dot product only supports 1D × 1D. "
+            f"Vector backend dot product only supports 1D X 1D. "
             f"Got shapes {ct1.semantic_shape} and {ct2.semantic_shape}"
         )
 
@@ -712,7 +713,7 @@ def _fhe_dot_ct2pt(ciphertext: CipherText, plaintext: TensorLike) -> CipherText:
 
     if len(ciphertext.semantic_shape) != 1 or len(plaintext_np.shape) != 1:
         raise ValueError(
-            f"Vector backend dot product only supports 1D × 1D. "
+            f"Vector backend dot product only supports 1D X 1D. "
             f"Got shapes {ciphertext.semantic_shape} and {plaintext_np.shape}"
         )
 

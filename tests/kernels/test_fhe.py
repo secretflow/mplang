@@ -21,24 +21,23 @@ This test suite validates the vector-based FHE operations which only support
 import numpy as np
 import pytest
 
-from mplang.core.dtype import DType
-from mplang.core.pfunc import PFunction
 from mplang.core.mptype import TensorType
-from mplang.kernels.fhe import (
-    FHEContext,
-    CipherText,
-    _fhe_keygen,
-    _fhe_encrypt,
-    _fhe_decrypt,
-    _fhe_add,
-    _fhe_sub,
-    _fhe_mul,
-    _fhe_dot,
-    _fhe_polyval,
-    _fhe_negate,
-    _fhe_square,
-)
+from mplang.core.pfunc import PFunction
 from mplang.kernels.base import list_kernels
+from mplang.kernels.fhe import (
+    CipherText,
+    FHEContext,
+    _fhe_add,
+    _fhe_decrypt,
+    _fhe_dot,
+    _fhe_encrypt,
+    _fhe_keygen,
+    _fhe_mul,
+    _fhe_negate,
+    _fhe_polyval,
+    _fhe_square,
+    _fhe_sub,
+)
 
 
 def _create_test_pfunc(**attrs) -> PFunction:
@@ -102,7 +101,7 @@ class TestFHEVecContext:
         result = _fhe_keygen(pfunc)
 
         assert len(result) == 3
-        private_context, public_context, eval_context = result
+        private_context, public_context, _ = result
 
         # Check private context
         assert isinstance(private_context, FHEContext)
@@ -235,9 +234,7 @@ class TestFHEVecEncryptDecrypt:
         pfunc = _create_test_pfunc()
         plaintext = np.array([[1.0, 2.0], [3.0, 4.0]])
 
-        with pytest.raises(
-            RuntimeError, match="FHE Vector backend.*only supports 1D data"
-        ):
+        with pytest.raises(RuntimeError, match="only supports 1D data"):
             _fhe_encrypt(pfunc, plaintext, ckks_context)
 
     def test_bfv_float_encryption_error(self, bfv_context):
@@ -724,7 +721,7 @@ class TestFHEVecPolyval:
         plaintext = np.array([0.0, 1.0, -1.0])
         ct = _fhe_encrypt(pfunc, plaintext, ckks_context)[0]
 
-        # Sigmoid approximation: σ(x) ≈ 0.5 + 0.197x - 0.004x³
+        # Sigmoid approximation: sigmoid(x) ≈ 0.5 + 0.197x - 0.004x³
         coeffs = np.array([0.5, 0.197, 0.0, -0.004])
         result = _fhe_polyval(pfunc, ct, coeffs)
         result_ct = result[0]
@@ -733,9 +730,9 @@ class TestFHEVecPolyval:
         decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
 
         # Expected values (approximate)
-        # σ(0) ≈ 0.5
-        # σ(1) ≈ 0.5 + 0.197 - 0.004 = 0.693
-        # σ(-1) ≈ 0.5 - 0.197 + 0.004 = 0.307
+        # sigmoid(0) ≈ 0.5
+        # sigmoid(1) ≈ 0.5 + 0.197 - 0.004 = 0.693
+        # sigmoid(-1) ≈ 0.5 - 0.197 + 0.004 = 0.307
         assert abs(decrypted[0] - 0.5) < 0.1
         assert abs(decrypted[1] - 0.693) < 0.1
         assert abs(decrypted[2] - 0.307) < 0.1

@@ -89,6 +89,9 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     "fhe.mul": "fhe.mul",
     "fhe.dot": "fhe.dot",
     "fhe.polyval": "fhe.polyval",
+    "fhe.sub": "fhe.sub",
+    "fhe.negate": "fhe.negate",
+    "fhe.square": "fhe.square",
     # spu
     "spu.seed_env": "spu.seed_env",
     "spu.makeshares": "spu.makeshares",

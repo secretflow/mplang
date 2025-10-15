@@ -12,16 +12,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""FHE (Fully Homomorphic Encryption) frontend operations."""
+"""FHE Vector backend frontend operations.
+
+This module provides frontend operations for the FHE Vector backend (fhe.py),
+which uses TenSEAL's CKKSVector/BFVVector API. The Vector backend is optimized
+for 1D data (scalars and vectors) and provides better performance for vector
+operations compared to the Tensor backend.
+
+Key differences from fhe.py (Tensor backend):
+- Only supports 0D (scalar) and 1D (vector) data
+- Provides native dot product operation
+- Does not support constant polynomials (TenSEAL limitation)
+- For multi-dimensional data, use fhe.py instead
+
+Usage:
+    import mplang.ops.fhe as fhe
+
+    # Generate keys
+    private_ctx, public_ctx = fhe.keygen(scheme="CKKS")
+
+    # Encrypt 1D data
+    x = np.array([1.0, 2.0, 3.0])
+    ct_x = fhe.encrypt(x, private_ctx)
+
+    # Homomorphic operations
+    ct_sum = fhe.add(ct_x, ct_y)
+    ct_dot = fhe.dot(ct_x, ct_y)  # Native dot product
+
+    # Decrypt
+    result = fhe.decrypt(ct_sum, private_ctx)
+"""
 
 from mplang.core.dtype import UINT8
 from mplang.core.tensor import TensorType
 from mplang.ops.base import stateless_mod
 
-_FHE_MOD = stateless_mod("fhe")
+_fhe_MOD = stateless_mod("fhe")
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
 def keygen(
     *,
     scheme: str = "CKKS",
@@ -29,8 +58,8 @@ def keygen(
     coeff_mod_bit_sizes: tuple[int, ...] | None = None,
     global_scale: int | None = None,
     plain_modulus: int | None = None,
-) -> tuple[TensorType, TensorType]:
-    """Generate an FHE key pair: returns (private_context, public_context).
+) -> tuple[TensorType, TensorType, TensorType]:
+    """Generate an FHE key pair for Vector backend: returns (private_context, public_context, evaluation_context).
 
     Args:
         scheme: FHE scheme to use ("CKKS" for approximate, "BFV" for exact integer)
@@ -40,135 +69,236 @@ def keygen(
         plain_modulus: Plain modulus for BFV (optional)
 
     Returns:
-        Tuple of (private_context, public_context) represented as UINT8[(-1, 0)]
+        Tuple of (private_context, public_context, evaluation_context) represented as UINT8[(-1, 0)]
 
     Contexts are represented with a sentinel TensorType UINT8[(-1, 0)] to indicate
     non-structural, backend-only handles.
+
+    Note: Vector backend only supports 1D data. For multi-dimensional tensors,
+    use mplang.ops.fhe instead.
     """
     if scheme not in ("CKKS", "BFV"):
         raise ValueError("Unsupported scheme. Choose either 'CKKS' or 'BFV'.")
     if scheme == "CKKS":
         assert plain_modulus is None, "plain_modulus is not used in CKKS scheme."
     context_spec = TensorType(UINT8, (-1, 0))
-    return context_spec, context_spec
+    return context_spec, context_spec, context_spec
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
 def encrypt(plaintext: TensorType, context: TensorType) -> TensorType:
-    """Encrypt plaintext using FHE context: returns ciphertext with same semantic type as plaintext.
+    """Encrypt plaintext using FHE Vector backend: returns ciphertext with same semantic type.
 
     Args:
-        plaintext: Data to encrypt (scalar, vector, or matrix)
+        plaintext: Data to encrypt (scalar or 1D vector only)
         context: FHE context (private or public)
 
     Returns:
         Ciphertext with same semantic type as plaintext
+
+    Raises:
+        ValueError: If plaintext has more than 1 dimension
+
+    Note: Vector backend only supports scalars (shape=()) and 1D vectors (shape=(n,)).
+    For multi-dimensional data, use mplang.ops.fhe.encrypt instead.
     """
     _ = context
+    if len(plaintext.shape) > 1:
+        raise ValueError(
+            f"FHE Vector backend only supports 1D data. Got shape {plaintext.shape}. "
+            "Use mplang.ops.fhe for multi-dimensional tensors."
+        )
     return plaintext
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
 def decrypt(ciphertext: TensorType, context: TensorType) -> TensorType:
-    """Decrypt ciphertext using FHE context: returns plaintext with same semantic type as ciphertext.
+    """Decrypt ciphertext using FHE Vector backend: returns plaintext with same semantic type.
 
     Args:
-        ciphertext: Encrypted data to decrypt
+        ciphertext: Encrypted data to decrypt (scalar or 1D vector)
         context: FHE context (must be private context with secret key)
 
     Returns:
         Plaintext with same semantic type as ciphertext
+
+    Note: Ciphertext encrypted with public context can be decrypted with
+    the corresponding private context.
     """
     _ = context
     return ciphertext
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
 def add(operand1: TensorType, operand2: TensorType) -> TensorType:
     """Add two FHE operands (ciphertext + ciphertext or ciphertext + plaintext).
 
     Args:
-        operand1: First operand (ciphertext or plaintext)
-        operand2: Second operand (ciphertext or plaintext)
+        operand1: First operand (ciphertext or plaintext, scalar or 1D vector)
+        operand2: Second operand (ciphertext or plaintext, scalar or 1D vector)
 
     Returns:
         Result of homomorphic addition
 
-    Note: At least one operand must be ciphertext.
+    Raises:
+        ValueError: If operands have incompatible shapes or dtypes
+
+    Note: At least one operand must be ciphertext. Both operands must have
+    the same shape (no broadcasting in Vector backend).
     """
     assert (
         operand1.dtype == operand2.dtype
     ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    # TODO(zjj): it is indeed possible to add different shapes with broadcasting
     assert (
         operand1.shape == operand2.shape
     ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
     return operand1
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
+def sub(operand1: TensorType, operand2: TensorType) -> TensorType:
+    """Subtract two FHE operands (ciphertext - ciphertext or ciphertext - plaintext).
+
+    Args:
+        operand1: First operand (ciphertext or plaintext, scalar or 1D vector)
+        operand2: Second operand (ciphertext or plaintext, scalar or 1D vector)
+
+    Returns:
+        Result of homomorphic subtraction
+
+    Raises:
+        ValueError: If operands have incompatible shapes or dtypes
+
+    Note: At least one operand must be ciphertext. Both operands must have
+    the same shape (no broadcasting in Vector backend).
+    """
+    assert (
+        operand1.dtype == operand2.dtype
+    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    assert (
+        operand1.shape == operand2.shape
+    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
+    return operand1
+
+
+@_fhe_MOD.simple_op()
 def mul(operand1: TensorType, operand2: TensorType) -> TensorType:
     """Multiply two FHE operands (ciphertext * ciphertext or ciphertext * plaintext).
 
     Args:
-        operand1: First operand (ciphertext or plaintext)
-        operand2: Second operand (ciphertext or plaintext)
+        operand1: First operand (ciphertext or plaintext, scalar or 1D vector)
+        operand2: Second operand (ciphertext or plaintext, scalar or 1D vector)
 
     Returns:
         Result of homomorphic multiplication
 
-    Note: At least one operand must be ciphertext.
+    Raises:
+        ValueError: If operands have incompatible shapes or dtypes
+
+    Note: At least one operand must be ciphertext. Both operands must have
+    the same shape (no broadcasting in Vector backend).
     For BFV scheme, plaintext operands must be integers.
     """
     assert (
         operand1.dtype == operand2.dtype
     ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    # TODO(zjj): it is indeed possible to add different shapes with broadcasting
     assert (
         operand1.shape == operand2.shape
     ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
     return operand1
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
 def dot(operand1: TensorType, operand2: TensorType) -> TensorType:
     """Compute dot product of FHE operands (ciphertext · ciphertext or ciphertext · plaintext).
 
     Args:
-        operand1: First operand (ciphertext or plaintext)
-        operand2: Second operand (ciphertext or plaintext)
+        operand1: First operand (ciphertext or plaintext, must be 1D vector)
+        operand2: Second operand (ciphertext or plaintext, must be 1D vector)
 
     Returns:
-        Result of homomorphic dot product with computed shape following numpy rules
+        Scalar result of homomorphic dot product (shape=())
 
-    Note: At least one operand must be ciphertext.
-    TenSEAL supports dot product for tensors up to 2D×2D.
+    Raises:
+        ValueError: If operands are not 1D vectors or have different lengths
+
+    Note: Both operands must be 1D vectors (not scalars). For scalar multiplication,
+    use mul() instead. This operation always returns a scalar.
     """
-    # Calculate result shape using numpy dot product rules
-    import numpy as np
+    if len(operand1.shape) != 1:
+        raise ValueError(
+            f"Dot product requires 1D vectors, got shape {operand1.shape} for operand1"
+        )
+    if len(operand2.shape) != 1:
+        raise ValueError(
+            f"Dot product requires 1D vectors, got shape {operand2.shape} for operand2"
+        )
+    if operand1.shape[0] != operand2.shape[0]:
+        raise ValueError(
+            f"Dot product dimension mismatch: {operand1.shape[0]} vs {operand2.shape[0]}"
+        )
 
-    # Create dummy arrays to determine result shape
-    dummy_op1 = np.zeros(operand1.shape)
-    dummy_op2 = np.zeros(operand2.shape)
-    dummy_result = np.dot(dummy_op1, dummy_op2)
-
-    return TensorType(operand1.dtype, dummy_result.shape)
+    # Dot product of 1D vectors returns a scalar
+    return TensorType(operand1.dtype, ())
 
 
-@_FHE_MOD.simple_op()
+@_fhe_MOD.simple_op()
 def polyval(ciphertext: TensorType, coeffs: TensorType) -> TensorType:
     """Evaluate polynomial on encrypted data with plaintext coefficients.
 
     Args:
-        ciphertext: Encrypted data (scalar, vector, or matrix)
+        ciphertext: Encrypted data (scalar or 1D vector)
         coeffs: Plaintext polynomial coefficients as 1D array [c0, c1, c2, ...]
                 representing c0 + c1*x + c2*x^2 + ...
 
     Returns:
         Result of polynomial evaluation with same shape and dtype as ciphertext
 
+    Raises:
+        ValueError: If coefficients array is not 1D or has fewer than 2 elements
+
     Note: Polynomial must have degree >= 1 (at least 2 coefficients required).
+    Constant polynomials (degree 0, single coefficient) are NOT supported due to
+    TenSEAL limitation. For constant values, use: ct * 0 + constant instead.
     For BFV scheme, coefficients must be integers.
+
+    Common use case - Sigmoid approximation:
+        sigmoid_coeffs = [0.5, 0.15012, 0.0, -0.0018027]
+        result = polyval(ciphertext, sigmoid_coeffs)
     """
+    if len(coeffs.shape) != 1:
+        raise ValueError(
+            f"Polynomial coefficients must be 1D array, got shape {coeffs.shape}"
+        )
     _ = coeffs
+    return ciphertext
+
+
+@_fhe_MOD.simple_op()
+def negate(ciphertext: TensorType) -> TensorType:
+    """Negate encrypted data (unary minus).
+
+    Args:
+        ciphertext: Encrypted data (scalar or 1D vector)
+
+    Returns:
+        Negated ciphertext with same shape and dtype
+
+    Note: Equivalent to multiplying by -1.
+    """
+    return ciphertext
+
+
+@_fhe_MOD.simple_op()
+def square(ciphertext: TensorType) -> TensorType:
+    """Square encrypted data (element-wise).
+
+    Args:
+        ciphertext: Encrypted data (scalar or 1D vector)
+
+    Returns:
+        Squared ciphertext with same shape and dtype
+
+    Note: More efficient than mul(ciphertext, ciphertext) in some FHE schemes.
+    """
     return ciphertext

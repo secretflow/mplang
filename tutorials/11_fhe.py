@@ -42,9 +42,10 @@ def three_party_fhe_sum():
 
     # Step 1: All parties generate random numbers
     data = simp.prank()
+    data = simp.run(lambda x: x.astype(np.float32))(data)
 
     # Step 2: Party 0 generates FHE context pair (using CKKS for floating-point)
-    private_ctx, public_ctx = simp.runAt(0, fhe.keygen)(scheme="CKKS")
+    private_ctx, public_ctx, _ = simp.runAt(0, fhe.keygen)(scheme="CKKS")
 
     # Step 3: Party 0 broadcasts public context to all parties
     world_mask = mplang.Mask.all(3)

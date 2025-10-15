@@ -313,19 +313,14 @@ def _fhe_decrypt(pfunc: PFunction, ciphertext: CipherText, context: FHEContext) 
         # we need to link it to the private context for decryption
         ct_to_decrypt = ciphertext.ct_data
 
-        # Check if ciphertext's context is different from decryption context
-        # by comparing if the ciphertext can decrypt with its own context
-        needs_context_linking = False
+        # Check if the ciphertext's context is missing or public. If so, link it to the
+        # private context provided for decryption.
         try:
-            # Try to decrypt with the ciphertext's own context
-            _ = ct_to_decrypt.context().has_secret_key()
-            if not ct_to_decrypt.context().has_secret_key():
-                needs_context_linking = True
+            # A ciphertext might not have a context if deserialized, or it might have a public one.
+            if not ct_to_decrypt.context() or not ct_to_decrypt.context().has_secret_key():
+                ct_to_decrypt.link_context(context.context)
         except Exception:
-            needs_context_linking = True
-
-        if needs_context_linking:
-            # Link the ciphertext to the private context
+            # Fallback for cases where .context() might fail. Linking is the safe action.
             ct_to_decrypt.link_context(context.context)
 
         # Decrypt

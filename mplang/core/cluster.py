@@ -137,7 +137,7 @@ class ClusterSpec:
         for device in self.devices.values():
             if device.kind.lower() == "ppu" and len(device.members) != 1:
                 raise ValueError(
-                    f"Local device '{device.name}' must have exactly one member"
+                    f"PPU device '{device.name}' must have exactly one member"
                 )
 
     def get_node(self, name: str) -> Node:

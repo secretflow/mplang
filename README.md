@@ -43,11 +43,11 @@ from numpy.random import randint
 @mplang.function
 def millionaire():
     # Alice's value, placed on device P0
-    x = mpd.device("P0")(randint)(0, 1000000)
+    x = mpd.device("local_0")(randint)(0, 1000000)
     # Bob's value, placed on device P1
-    y = mpd.device("P1")(randint)(0, 1000000)
+    y = mpd.device("local_1")(randint)(0, 1000000)
     # The comparison happens on a secure device (SPU)
-    z = mpd.device("SPU")(lambda a, b: a < b)(x, y)
+    z = mpd.device("SP0")(lambda a, b: a < b)(x, y)
     return z
 
 # Set up a local simulator with 2 parties

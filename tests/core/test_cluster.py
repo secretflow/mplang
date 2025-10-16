@@ -182,7 +182,7 @@ class TestLogicalDevice:
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
 
-        device = Device(name="alice", kind="local", members=[node])
+        device = Device(name="alice", kind="ppu", members=[node])
         assert device.config == {}
 
 
@@ -195,7 +195,7 @@ class TestClusterSpec:
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
 
-        device = Device("alice", "local", [node1])
+        device = Device("alice", "ppu", [node1])
 
         cluster = ClusterSpec(
             nodes={"alice_node": node1, "bob_node": node2},
@@ -223,7 +223,7 @@ class TestClusterSpec:
         """Test ClusterSpec.get_device() method."""
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node = Node("alice_node", 0, "127.0.0.1:9001", runtime)
-        device = Device("alice", "local", [node])
+        device = Device("alice", "ppu", [node])
 
         cluster = ClusterSpec(nodes={"alice_node": node}, devices={"alice": device})
         retrieved_device = cluster.get_device("alice")
@@ -258,7 +258,7 @@ class TestClusterSpec:
         runtime = RuntimeInfo(version="2.0.0", platform="cpu", op_bindings={})
         node1 = Node("alice_node", 0, "127.0.0.1:9001", runtime)
         node2 = Node("bob_node", 1, "127.0.0.1:9002", runtime)
-        device = Device("alice", "local", [node1])
+        device = Device("alice", "ppu", [node1])
 
         cluster = ClusterSpec(
             nodes={"alice_node": node1, "bob_node": node2},
@@ -290,7 +290,7 @@ class TestFromDict:
                 }
             ],
             "devices": {
-                "alice": {"kind": "local", "members": ["alice_node"], "config": {}}
+                "alice": {"kind": "ppu", "members": ["alice_node"], "config": {}}
             },
         }
 
@@ -306,7 +306,7 @@ class TestFromDict:
 
         device = cluster.get_device("alice")
         assert device.name == "alice"
-        assert device.kind == "local"
+        assert device.kind == "ppu"
         assert len(device.members) == 1
 
     def test_implicit_rank_assignment(self):
@@ -459,7 +459,7 @@ class TestFromDict:
                 },
             ],
             "devices": {
-                "alice": {"kind": "local", "members": ["alice_node"], "config": {}},
+                "alice": {"kind": "ppu", "members": ["alice_node"], "config": {}},
                 "spu": {
                     "kind": "spu",
                     "members": ["alice_node", "bob_node"],

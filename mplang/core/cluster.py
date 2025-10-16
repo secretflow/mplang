@@ -133,9 +133,9 @@ class ClusterSpec:
                         "which is not defined in nodes"
                     )
 
-        # ensure local devices have exactly one member
+        # ensure ppu devices have exactly one member
         for device in self.devices.values():
-            if device.kind.lower() == "local" and len(device.members) != 1:
+            if device.kind.lower() == "ppu" and len(device.members) != 1:
                 raise ValueError(
                     f"Local device '{device.name}' must have exactly one member"
                 )
@@ -319,7 +319,7 @@ class ClusterSpec:
             for i in range(world_size):
                 devices[f"local_{i}"] = Device(
                     name=f"local_{i}",
-                    kind="local",
+                    kind="ppu",
                     members=[nodes[f"node{i}"]],
                 )
 

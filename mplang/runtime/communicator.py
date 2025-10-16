@@ -33,8 +33,9 @@ class HttpCommunicator(CommunicatorBase):
         self.session_name = session_name
         # Ensure all endpoints have protocol prefix
         self.endpoints = [
-            endpoint if endpoint.startswith(("http://", "https://")) 
-            else f"http://{endpoint}" 
+            endpoint
+            if endpoint.startswith(("http://", "https://"))
+            else f"http://{endpoint}"
             for endpoint in endpoints
         ]
         self._counter = 0

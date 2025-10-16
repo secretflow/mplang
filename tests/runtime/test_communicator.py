@@ -24,7 +24,7 @@ import uvicorn
 from mplang.core.cluster import ClusterSpec
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.server import app, register_session
-from mplang.runtime.session import Session, create_session_from_spec
+from mplang.runtime.session import create_session_from_spec
 from tests.utils.server_fixtures import http_servers  # noqa: F401 (fixture)
 
 

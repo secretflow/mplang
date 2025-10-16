@@ -55,7 +55,8 @@ class ReadmeExampleTest:
 
         return python_blocks
 
-    def _execute_code(self, code: str) -> tuple[str, str, int]:
+    @staticmethod
+    def _execute_code(code: str) -> tuple[str, str, int]:
         """Execute Python code and return stdout, stderr, and return code."""
         try:
             # Create a temporary Python script

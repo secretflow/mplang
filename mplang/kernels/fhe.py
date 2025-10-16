@@ -23,9 +23,7 @@ from typing import Any
 import numpy as np
 import tenseal as ts
 
-from mplang.core.dtypes import DType
-from mplang.core.mptype import TensorLike
-from mplang.core.pfunc import PFunction
+from mplang.core import DType, PFunction, TensorLike
 from mplang.kernels.base import kernel_def
 
 

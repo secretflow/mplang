@@ -21,8 +21,7 @@ This test suite validates the vector-based FHE operations which only support
 import numpy as np
 import pytest
 
-from mplang.core.mptype import TensorType
-from mplang.core.pfunc import PFunction
+from mplang.core import PFunction, TensorType
 from mplang.kernels.base import list_kernels
 from mplang.kernels.fhe import (
     CipherText,

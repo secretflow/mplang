@@ -12,39 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""FHE Vector backend frontend operations.
-
-This module provides frontend operations for the FHE Vector backend (fhe.py),
-which uses TenSEAL's CKKSVector/BFVVector API. The Vector backend is optimized
-for 1D data (scalars and vectors) and provides better performance for vector
-operations compared to the Tensor backend.
-
-Key differences from fhe.py (Tensor backend):
-- Only supports 0D (scalar) and 1D (vector) data
-- Provides native dot product operation
-- Does not support constant polynomials (TenSEAL limitation)
-- For multi-dimensional data, use fhe.py instead
-
-Usage:
-    import mplang.ops.fhe as fhe
-
-    # Generate keys
-    private_ctx, public_ctx = fhe.keygen(scheme="CKKS")
-
-    # Encrypt 1D data
-    x = np.array([1.0, 2.0, 3.0])
-    ct_x = fhe.encrypt(x, private_ctx)
-
-    # Homomorphic operations
-    ct_sum = fhe.add(ct_x, ct_y)
-    ct_dot = fhe.dot(ct_x, ct_y)  # Native dot product
-
-    # Decrypt
-    result = fhe.decrypt(ct_sum, private_ctx)
-"""
-
-from mplang.core.dtype import UINT8
-from mplang.core.tensor import TensorType
+from mplang.core import UINT8, TensorType
 from mplang.ops.base import stateless_mod
 
 _fhe_MOD = stateless_mod("fhe")
@@ -146,12 +114,12 @@ def add(operand1: TensorType, operand2: TensorType) -> TensorType:
     Note: At least one operand must be ciphertext. Both operands must have
     the same shape (no broadcasting in Vector backend).
     """
-    assert operand1.dtype == operand2.dtype, (
-        f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    )
-    assert operand1.shape == operand2.shape, (
-        f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
-    )
+    assert (
+        operand1.dtype == operand2.dtype
+    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    assert (
+        operand1.shape == operand2.shape
+    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
     return operand1
 
 
@@ -172,12 +140,12 @@ def sub(operand1: TensorType, operand2: TensorType) -> TensorType:
     Note: At least one operand must be ciphertext. Both operands must have
     the same shape (no broadcasting in Vector backend).
     """
-    assert operand1.dtype == operand2.dtype, (
-        f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    )
-    assert operand1.shape == operand2.shape, (
-        f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
-    )
+    assert (
+        operand1.dtype == operand2.dtype
+    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    assert (
+        operand1.shape == operand2.shape
+    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
     return operand1
 
 
@@ -199,12 +167,12 @@ def mul(operand1: TensorType, operand2: TensorType) -> TensorType:
     the same shape (no broadcasting in Vector backend).
     For BFV scheme, plaintext operands must be integers.
     """
-    assert operand1.dtype == operand2.dtype, (
-        f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
-    )
-    assert operand1.shape == operand2.shape, (
-        f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
-    )
+    assert (
+        operand1.dtype == operand2.dtype
+    ), f"Operand dtypes must match, got {operand1.dtype} and {operand2.dtype}."
+    assert (
+        operand1.shape == operand2.shape
+    ), f"Operand shapes must match, got {operand1.shape} and {operand2.shape}."
     return operand1
 
 

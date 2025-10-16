@@ -64,7 +64,7 @@ class ReadmeExampleTest:
                 capture_output=True,
                 text=True,
                 timeout=30,  # 30 second timeout
-                cwd=Path.cwd(),
+                cwd=Path(__file__).resolve().parent.parent,
             )
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:

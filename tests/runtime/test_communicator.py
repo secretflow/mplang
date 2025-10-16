@@ -24,7 +24,7 @@ import uvicorn
 from mplang.core.cluster import ClusterSpec
 from mplang.runtime.communicator import HttpCommunicator
 from mplang.runtime.server import app, register_session
-from mplang.runtime.session import Session
+from mplang.runtime.session import Session, create_session_from_spec
 from tests.utils.server_fixtures import http_servers  # noqa: F401 (fixture)
 
 
@@ -194,10 +194,12 @@ def run_party_e2e_process(
             runtime_version="test",
             runtime_platform="test",
         ).to_dict()
-        sess = Session.from_cluster_spec_dict(
+        # Create ClusterSpec from dict, then create session
+        cluster_spec = ClusterSpec.from_dict(cluster_spec_dict)
+        sess = create_session_from_spec(
             name=session_name,
             rank=rank,
-            spec_dict=cluster_spec_dict,
+            spec=cluster_spec,
         )
         register_session(sess)
 

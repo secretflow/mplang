@@ -31,10 +31,15 @@ class HttpCommunicator(CommunicatorBase):
     def __init__(self, session_name: str, rank: int, endpoints: list[str]):
         super().__init__(rank, len(endpoints))
         self.session_name = session_name
-        self.endpoints = endpoints
+        # Ensure all endpoints have protocol prefix
+        self.endpoints = [
+            endpoint if endpoint.startswith(("http://", "https://")) 
+            else f"http://{endpoint}" 
+            for endpoint in endpoints
+        ]
         self._counter = 0
         logging.info(
-            f"HttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={endpoints}"
+            f"HttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={self.endpoints}"
         )
 
     # override

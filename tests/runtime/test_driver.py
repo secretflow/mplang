@@ -37,7 +37,7 @@ def create_test_cluster_spec(node_addrs: dict[str, str]) -> ClusterSpec:
     return ClusterSpec.simple(
         world_size=len(ordered_endpoints),
         endpoints=ordered_endpoints,
-        enable_local_device=True,
+        enable_ppu_device=True,
         spu_protocol="SEMI2K",
         spu_field="FM128",
         runtime_version="test",

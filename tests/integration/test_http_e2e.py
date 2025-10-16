@@ -50,7 +50,7 @@ def create_e2e_cluster_spec(
     for _node_name, node in nodes.items():
         local_devices[f"local_{node.rank}"] = mp.Device(
             name=f"local_{node.rank}",
-            kind="local",
+            kind="ppu",
             members=[node],
         )
 

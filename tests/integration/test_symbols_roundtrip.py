@@ -60,7 +60,7 @@ def test_global_symbol_roundtrip(http_servers):
             ),
         )
     local_devices = {
-        f"local_{n.rank}": mp.Device(name=f"local_{n.rank}", kind="local", members=[n])
+        f"local_{n.rank}": mp.Device(name=f"local_{n.rank}", kind="ppu", members=[n])
         for n in nodes.values()
     }
     spu_device = mp.Device(

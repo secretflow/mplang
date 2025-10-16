@@ -275,7 +275,7 @@ class ClusterSpec:
             Optional list of length ``world_size`` supplying per-node op_bindings
             override dicts (defaults to empty dicts).
         enable_local_device:
-            If True (default), create one ``local_{rank}`` device per node.
+            If True (default), create one ``local_{rank}`` PPU device per node.
         enable_spu_device:
             If True (default) create a shared SPU device named ``SP0``.
         """

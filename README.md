@@ -42,9 +42,9 @@ from numpy.random import randint
 # Use a decorator to compile this function for multi-party execution
 @mplang.function
 def millionaire():
-    # Alice's value, placed on device P0
+    # Alice's value, placed on device local_0
     x = mpd.device("local_0")(randint)(0, 1000000)
-    # Bob's value, placed on device P1
+    # Bob's value, placed on device local_1
     y = mpd.device("local_1")(randint)(0, 1000000)
     # The comparison happens on a secure device (SPU)
     z = mpd.device("SP0")(lambda a, b: a < b)(x, y)

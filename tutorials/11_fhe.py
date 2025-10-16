@@ -32,38 +32,37 @@ FHE vs PHE:
 
 import numpy as np
 
-import mplang
-import mplang.simp as simp
+import mplang as mp
 from mplang.ops import fhe
 
 
-@mplang.function
+@mp.function
 def three_party_fhe_sum():
     """Perform a three-party FHE computation to sum private values (basic example)."""
 
     # Step 1: All parties generate random numbers
-    data = simp.prank()
-    data = simp.run(lambda x: x.astype(np.float32))(data)
+    data = mp.prank()
+    data = mp.run_jax(lambda x: x.astype(np.float32), data)
 
     # Step 2: Party 0 generates FHE context pair (using CKKS for floating-point)
-    private_ctx, public_ctx, _ = simp.runAt(0, fhe.keygen)(scheme="CKKS")
+    private_ctx, public_ctx, _ = mp.run_at(0, fhe.keygen, scheme="CKKS")
 
     # Step 3: Party 0 broadcasts public context to all parties
-    world_mask = mplang.Mask.all(3)
-    public_ctx_bcasted = simp.bcast_m(world_mask, 0, public_ctx)
+    world_mask = mp.Mask.all(3)
+    public_ctx_bcasted = mp.bcast_m(world_mask, 0, public_ctx)
 
     # Step 4: Each party encrypts their data with public context
-    encrypted = simp.run(fhe.encrypt)(data, public_ctx_bcasted)
+    encrypted = mp.run(None, fhe.encrypt, data, public_ctx_bcasted)
 
     # Step 5: All parties send encrypted data to Party 0
-    e0, e1, e2 = simp.gather_m(world_mask, 0, encrypted)
+    e0, e1, e2 = mp.gather_m(world_mask, 0, encrypted)
 
     # Step 6: Party 0 computes homomorphic sum
-    sum_e0_e1 = simp.runAt(0, fhe.add)(e0, e1)
-    encrypted_sum = simp.runAt(0, fhe.add)(sum_e0_e1, e2)
+    sum_e0_e1 = mp.run_at(0, fhe.add, e0, e1)
+    encrypted_sum = mp.run_at(0, fhe.add, sum_e0_e1, e2)
 
     # Step 7: Party 0 decrypts the final result
-    final_result = simp.runAt(0, fhe.decrypt)(encrypted_sum, private_ctx)
+    final_result = mp.run_at(0, fhe.decrypt, encrypted_sum, private_ctx)
 
     return final_result
 
@@ -76,9 +75,9 @@ def run_simulation():
 
     # === Example 1: Basic three-party sum ===
     print("\n--- Example 1: Three-Party FHE Sum (Basic) ---")
-    sim1 = mplang.Simulator.simple(3)
-    result1 = mplang.evaluate(sim1, three_party_fhe_sum)
-    sum_value = mplang.fetch(sim1, result1)
+    sim1 = mp.Simulator.simple(3)
+    result1 = mp.evaluate(sim1, three_party_fhe_sum)
+    sum_value = mp.fetch(sim1, result1)
     # Extract the actual value from party 0's result
     if isinstance(sum_value, (list, tuple)):
         sum_value = sum_value[0]
@@ -87,7 +86,7 @@ def run_simulation():
 
     # === Show compilation IR ===
     print("\n--- Compilation IR (Basic Example) ---")
-    compiled = mplang.compile(sim1, three_party_fhe_sum)
+    compiled = mp.compile(sim1, three_party_fhe_sum)
     print("Function compiled successfully:")
     print(compiled.compiler_ir())
 

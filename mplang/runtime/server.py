@@ -31,6 +31,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from mplang.core import IrReader, TableType, TensorType
+from mplang.core.cluster import ClusterSpec
 from mplang.kernels.base import KernelContext
 from mplang.kernels.value import Value, decode_value, encode_value
 from mplang.protos.v1alpha1 import mpir_pb2
@@ -40,6 +41,7 @@ from mplang.runtime.session import (
     Computation,
     Session,
     Symbol,
+    create_session_from_spec,
 )
 
 logger = logging.getLogger(__name__)
@@ -260,15 +262,12 @@ def list_session_computations(session_name: str) -> ComputationListResponse:
 def create_session(session_name: str, request: CreateSessionRequest) -> SessionResponse:
     validate_name(session_name, "session")
     # Delegate cluster spec parsing & session construction to resource layer
-    from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
 
     if session_name in _sessions:
         sess = _sessions[session_name]
     else:
         spec = ClusterSpec.from_dict(request.cluster_spec)
-        if len(spec.get_devices_by_kind("SPU")) == 0:
-            raise InvalidRequestError("No SPU device found in cluster_spec for session")
-        sess = Session(name=session_name, rank=request.rank, cluster_spec=spec)
+        sess = create_session_from_spec(name=session_name, rank=request.rank, spec=spec)
         _sessions[session_name] = sess
     return SessionResponse(name=sess.name)
 

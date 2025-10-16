@@ -34,6 +34,8 @@ from urllib.parse import urlparse
 
 import spu.libspu as libspu
 
+from mplang.core.cluster import ClusterSpec
+from mplang.core.comm import ICommunicator
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.core.mask import Mask
@@ -96,19 +98,25 @@ class SessionState:
 class Session:
     """Represents the per-rank execution context.
 
-    Immutable config: name, rank, cluster_spec.
+    Immutable config: name, rank, cluster_spec, communicator.
     Derived: node, runtime_info, endpoints, spu_device, spu_mask, protocol/field, is_spu_party.
     Mutable: state (runtime object, symbols, computations, seeded flag).
+
+    Note: communicator is assumed to be initialized with cluster spec info (e.g. endpoints).
     """
 
-    def __init__(self, name: str, rank: int, cluster_spec: ClusterSpec):
+    def __init__(
+        self,
+        name: str,
+        rank: int,
+        cluster_spec: ClusterSpec,
+        communicator: ICommunicator,
+    ):
         self.name = name
         self.rank = rank
         self.cluster_spec = cluster_spec
         self.state = SessionState()
-        self.communicator = HttpCommunicator(
-            session_name=name, rank=rank, endpoints=self.endpoints
-        )
+        self.communicator = communicator
 
     # --- Derived topology ---
     @cached_property
@@ -119,18 +127,9 @@ class Session:
     def runtime_info(self) -> RuntimeInfo:
         return self.node.runtime_info
 
-    @cached_property
+    @property
     def endpoints(self) -> list[str]:
-        eps: list[str] = []
-        for n in sorted(
-            self.cluster_spec.nodes.values(),
-            key=lambda x: x.rank,  # type: ignore[attr-defined]
-        ):
-            ep = n.endpoint
-            if not ep.startswith(("http://", "https://")):
-                ep = f"http://{ep}"
-            eps.append(ep)
-        return eps
+        return self.cluster_spec.endpoints
 
     @cached_property
     def spu_device(self):  # type: ignore
@@ -191,10 +190,11 @@ class Session:
         if self.is_spu_party:
             # Build SPU address list across all endpoints for ranks in mask
             spu_addrs: list[str] = []
-            for r, addr in enumerate(self.communicator.endpoints):
+            for r, addr in enumerate(self.cluster_spec.endpoints):
                 if r in self.spu_mask:
-                    if "//" not in addr:
-                        addr = f"//{addr}"
+                    # TODO(oeqqwq): addr may contain other schema like grpc://
+                    if not addr.startswith(("http://", "https://")):
+                        addr = f"http://{addr}"
                     parsed = urlparse(addr)
                     assert isinstance(parsed.port, int)
                     new_addr = f"{parsed.hostname}:{parsed.port + SPU_PORT_OFFSET}"
@@ -281,12 +281,17 @@ class Session:
                 )
             self.add_symbol(Symbol(name=name, mptype={}, data=val))
 
-    # --- Convenience constructor ---
-    @classmethod
-    def from_cluster_spec_dict(cls, name: str, rank: int, spec_dict: dict) -> Session:
-        from mplang.core.cluster import ClusterSpec  # local import to avoid cycles
 
-        spec = ClusterSpec.from_dict(spec_dict)
-        if len(spec.get_devices_by_kind("SPU")) == 0:
-            raise RuntimeError("No SPU device found in cluster_spec")
-        return cls(name=name, rank=rank, cluster_spec=spec)
+# --- Convenience constructor use HttpCommunicator---
+def create_session_from_spec(name: str, rank: int, spec: ClusterSpec) -> Session:
+    if len(spec.get_devices_by_kind("SPU")) == 0:
+        raise RuntimeError("No SPU device found in cluster_spec")
+
+    # Create HttpCommunicator for the session
+    communicator = HttpCommunicator(
+        session_name=name,
+        rank=rank,
+        endpoints=spec.endpoints,
+    )
+
+    return Session(name=name, rank=rank, cluster_spec=spec, communicator=communicator)

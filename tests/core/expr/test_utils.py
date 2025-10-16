@@ -14,7 +14,7 @@
 
 import pytest
 
-from mplang.core.dtype import FLOAT32, INT32
+from mplang.core.dtypes import FLOAT32, INT32
 from mplang.core.expr import (
     deduce_mask,
     ensure_scalar,

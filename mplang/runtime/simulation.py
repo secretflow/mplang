@@ -24,16 +24,22 @@ from typing import Any, cast
 
 import spu.libspu as libspu
 
-from mplang.core.cluster import ClusterSpec
-from mplang.core.comm import CollectiveMixin, CommunicatorBase
+from mplang.core import (
+    ClusterSpec,
+    CollectiveMixin,
+    CommunicatorBase,
+    InterpContext,
+    InterpVar,
+    IrReader,
+    IrWriter,
+    Mask,
+    MPObject,
+    MPType,
+    PFunction,  # for spu.seed_env kernel seeding
+    TensorLike,
+)
 from mplang.core.expr.ast import Expr
 from mplang.core.expr.evaluator import IEvaluator, create_evaluator
-from mplang.core.interp import InterpContext, InterpVar
-from mplang.core.mask import Mask
-from mplang.core.mpir import IrReader, IrWriter
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType, TensorLike
-from mplang.core.pfunc import PFunction  # for spu.seed_env kernel seeding
 from mplang.kernels.context import RuntimeContext
 from mplang.runtime.link_comm import LinkCommunicator
 from mplang.utils.spu_utils import parse_field, parse_protocol

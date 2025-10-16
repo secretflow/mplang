@@ -16,8 +16,7 @@ from __future__ import annotations
 
 import logging
 
-import mplang.core.primitive as prim
-from mplang.core import Mask, MPObject, Rank, function
+from mplang.core import Mask, MPObject, Rank, function, pconv, pshfl_s
 
 
 # scatter :: [m a] -> m Rank -> m a
@@ -43,11 +42,11 @@ def scatter_m(to_mask: Mask, root: Rank, args: list[MPObject]) -> MPObject:
         raise ValueError(f"Expect {len(to_ranks)} args, got {len(args)}. ")
 
     scattered = [
-        prim.pshfl_s(arg, Mask.from_ranks(to_rank), [root])
+        pshfl_s(arg, Mask.from_ranks(to_rank), [root])
         for to_rank, arg in zip(to_ranks, args, strict=False)
     ]
 
-    result = prim.pconv(scattered)
+    result = pconv(scattered)
     assert result.pmask == to_mask, (result.pmask, to_mask)
     return result  # type: ignore[no-any-return]
 
@@ -58,9 +57,9 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
     """Gather the object from pmask'ed parties to the root party.
 
     Args:
-        src_pmask: The mask of the parties that will gather the object.
+        src_mask: The mask of the parties that will gather the object.
         root: The rank of the root party.
-        arg: The object to be gathered, which must be the subset of pmask.
+        arg: The object to be gathered. It must be held by all parties specified in `src_mask`.
 
     Returns:
         A list of objects, with length equal to the number of parties in pmask.
@@ -76,7 +75,7 @@ def gather_m(src_mask: Mask, root: Rank, arg: MPObject) -> list[MPObject]:
     root_mask = Mask.from_ranks(root)
     for src_rank in Mask(src_mask):
         # Shuffle data from src_rank to root
-        gathered_data = prim.pshfl_s(arg, root_mask, [src_rank])
+        gathered_data = pshfl_s(arg, root_mask, [src_rank])
         result.append(gathered_data)
 
     assert len(result) == Mask(src_mask).num_parties(), (result, src_mask)
@@ -93,7 +92,7 @@ def bcast_m(pmask: Mask, root: Rank, obj: MPObject) -> MPObject:
         if not Mask.from_ranks(root).is_subset(obj.pmask):
             raise ValueError(f"Expect root {root} in obj mask {obj.pmask}.")
 
-    result = prim.pshfl_s(obj, pmask, [root] * Mask(pmask).num_parties())
+    result = pshfl_s(obj, pmask, [root] * Mask(pmask).num_parties())
 
     assert result.pmask == pmask, (result.pmask, pmask)
     return result  # type: ignore[no-any-return]
@@ -114,7 +113,7 @@ def p2p(frm: Rank, to: Rank, obj: MPObject) -> MPObject:
     if frm == to:
         return obj
 
-    return prim.pshfl_s(obj, Mask.from_ranks(to), [frm])  # type: ignore[no-any-return]
+    return pshfl_s(obj, Mask.from_ranks(to), [frm])  # type: ignore[no-any-return]
 
 
 # allgather :: m a -> [m a]

@@ -15,7 +15,7 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import (
+from mplang.core.dtypes import (
     BOOL,
     COMPLEX64,
     COMPLEX128,

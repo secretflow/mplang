@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mplang.core.dtype import INT64  # switched from INT32 to INT64 to match Python int
+from mplang.core.dtypes import INT64  # switched from INT32 to INT64 to match Python int
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.kernels import base

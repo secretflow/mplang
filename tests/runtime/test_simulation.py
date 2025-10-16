@@ -27,22 +27,24 @@ import numpy as np
 import pytest
 
 import mplang as mp
-from mplang.core.cluster import ClusterSpec
-from mplang.core.context_mgr import with_ctx
-from mplang.core.dtype import FLOAT32, INT32
-from mplang.core.mask import Mask
-from mplang.core.mpobject import MPObject
-from mplang.core.mptype import MPType, Rank
-from mplang.core.primitive import (
-    constant,
-    prank,
+from mplang.core import (
+    FLOAT32,
+    INT32,
+    ClusterSpec,
+    Mask,
+    MPObject,
+    MPType,
+    Rank,
+    TraceContext,
+    TraceVar,
     pshfl_s,
-    set_mask,
+    trace,
     uniform_cond,
     while_loop,
+    with_ctx,
 )
-from mplang.core.tracer import TraceContext, TraceVar, trace
 from mplang.runtime.simulation import Simulator, SimVar
+from mplang.simp.api import constant, prank, set_mask
 
 # Enable JAX x64 mode to match type expectations
 jax.config.update("jax_enable_x64", True)

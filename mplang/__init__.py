@@ -25,40 +25,43 @@ except PackageNotFoundError:
 
 from mplang import analysis
 from mplang.core import (
+    ClusterSpec,
+    Device,
     DType,
     InterpContext,
+    IrReader,
+    IrWriter,
     Mask,
     MPContext,
     MPObject,
     MPType,
+    Node,
     Rank,
+    RuntimeInfo,
     TableType,
     TensorType,
     TraceContext,
     TracedFunction,
     cur_ctx,
     function,
-    set_ctx,
-    trace,
-    with_ctx,
-)
-from mplang.core.cluster import ClusterSpec, Device, Node, RuntimeInfo
-from mplang.core.mpir import IrReader, IrWriter
-from mplang.core.primitive import (
-    constant,
     pconv,
     peval,
-    prand,
-    prank,
     pshfl,
     pshfl_s,
+    set_ctx,
+    trace,
     uniform_cond,
     while_loop,
+    with_ctx,
 )
 from mplang.host import CompileOptions, compile, evaluate, fetch
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
 from mplang.simp.api import (
+    constant,
+    debug_print,
+    prand,
+    prank,
     run,
     run_at,
     run_ibis,
@@ -67,6 +70,7 @@ from mplang.simp.api import (
     run_jax_at,
     run_sql,
     run_sql_at,
+    set_mask,
 )
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
 from mplang.simp.party import P0, P1, P2, P2P, P, Party, load_module
@@ -108,6 +112,7 @@ __all__ = [
     "compile",
     "constant",
     "cur_ctx",
+    "debug_print",
     "evaluate",
     "fetch",
     "function",
@@ -137,6 +142,7 @@ __all__ = [
     "seal",
     "sealFrom",
     "set_ctx",
+    "set_mask",
     "srun",
     "trace",
     "ukey",

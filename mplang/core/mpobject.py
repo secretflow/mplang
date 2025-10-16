@@ -17,7 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from mplang.core.dtype import DType
+from mplang.core.dtypes import DType
 from mplang.core.mask import Mask
 from mplang.core.mptype import MPType
 from mplang.core.table import TableType

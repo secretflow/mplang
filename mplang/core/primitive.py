@@ -29,7 +29,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 from jax.tree_util import tree_map
 
 from mplang.core.context_mgr import cur_ctx
-from mplang.core.dtype import BOOL
+from mplang.core.dtypes import BOOL
 from mplang.core.expr.ast import (
     AccessExpr,
     CallExpr,
@@ -45,13 +45,7 @@ from mplang.core.mask import Mask
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import Rank
 from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike
-from mplang.core.tensor import ScalarType, Shape, TensorLike
 from mplang.core.tracer import TraceContext, TraceVar, trace
-from mplang.ops import basic
-from mplang.ops.base import (
-    FeOperation,  # TODO(jint), is this a backward dependency?
-)
 from mplang.utils.func_utils import var_demorph, var_morph
 
 
@@ -136,10 +130,10 @@ def trace_before_apply(fn: Callable[P, R], make_call: bool) -> Callable[P, R]:
     return wrapped
 
 
-def bltin_function(fn: Callable[P, R]) -> Callable[P, R]:
+def builtin_function(fn: Callable[P, R]) -> Callable[P, R]:
     """Decorator to trace a Python function as an opaque primitive call (`CallExpr`).
 
-    When a function decorated with `@bltin_function` is called within a `TraceContext`, it is
+    When a function decorated with `@builtin_function` is called within a `TraceContext`, it is
     not inlined. Instead, it is traced separately in a forked context, and a `CallExpr`
     node is inserted into the main graph. This is useful for encapsulating complex
     operations or third-party library calls as single, opaque nodes.
@@ -159,7 +153,7 @@ def bltin_function(fn: Callable[P, R]) -> Callable[P, R]:
 
     Example:
         ```python
-        @bltin_function
+        @builtin_function
         def my_op(x: MPObject) -> MPObject:
             # Complex logic traced as a single CallExpr node
             return x + 1
@@ -225,100 +219,6 @@ def pmask() -> Mask:
     return _tracer().mask
 
 
-@bltin_function
-def prank() -> MPObject:
-    """Multi-party get the rank (party identifier) of each party.
-
-    This function returns a scalar tensor containing the rank (party identifier)
-    for each party in the current party mask. Each party independently produces
-    its own rank value, which serves as a unique identifier within the multi-party
-    computation context.
-
-    The rank values range from 0 to world_size-1, where world_size is the total
-    number of parties in the computation. Each party's rank is private to that
-    party and represents its position in the multi-party protocol.
-
-    Returns:
-        MPObject: A variable representing a scalar tensor with:
-                  - dtype: UINT64
-                  - shape: () (scalar)
-
-    Note:
-        Each party in the current party mask independently produces its own rank value.
-    """
-    return cast(MPObject, run(None, basic.rank))
-
-
-@bltin_function
-def prand(shape: Shape = ()) -> MPObject:
-    """Multi-party generate a private random (uint64) tensor with the given shape.
-
-    This function creates a private random tensor where each party independently
-    generates its own local random values. Each party's random values are private
-    and unknown to other parties. The output tensor contains 64-bit unsigned
-    integers, with each party holding its own privately generated values.
-
-    Args:
-        shape: The shape of the random tensor to generate.
-               Must be a tuple of positive integers. Defaults to () for scalar.
-
-    Returns:
-        MPObject: A variable representing the generated private random tensor with:
-                  - dtype: UINT64
-                  - shape: As specified by the shape parameter
-
-    Note:
-        Each party in the current party mask independently generates its own
-        private random values. The randomness is local to each party and is
-        not shared or revealed to other parties.
-    """
-    return cast(MPObject, run(None, basic.prand, shape))
-
-
-def constant(data: TensorLike | ScalarType | TableLike) -> MPObject:
-    """Create a constant tensor or table from data.
-
-    This function creates a constant that can be used in multi-party
-    computations. The constant value is embedded directly into the computation
-    graph and is available to all parties in the current party mask.
-
-    Args:
-        data: The constant data to embed. Can be:
-              - A scalar value (int, float, bool)
-              - A numpy array or other tensor-like object
-              - A pandas DataFrame or other table-like object
-              - Any object that can be converted to tensor
-
-    Returns:
-        MPObject: A variable representing the constant tensor or table with:
-                  - dtype: Inferred from the input data
-                  - shape: Inferred from the input data (for tensors)
-                  - schema: Inferred from the input data (for tables)
-                  - data: The embedded constant values
-
-    Note:
-        The constant data is embedded at graph construction time and is available
-        to all parties during execution. Large constants may impact graph size.
-
-        For table-like objects (e.g., pandas DataFrame), JSON serialization is used.
-        Note that the constant primitive is not designed to carry large tables efficiently -
-        consider using dedicated table loading mechanisms for substantial datasets.
-    """
-    return cast(MPObject, run(None, basic.constant, data))
-
-
-@bltin_function
-def debug_print(obj: MPObject, prefix: str = "") -> MPObject:
-    """Print local value of obj on owning parties and pass it through.
-
-    Returns the same MPObject value to keep it alive against DCE and to
-    support usage like: x = debug_print(x, prefix="x=").
-    """
-    pfunc, eval_args, out_tree = basic.debug_print(obj, prefix=prefix)
-    results = peval(pfunc, eval_args)
-    return cast(MPObject, out_tree.unflatten(results))
-
-
 @function
 def peval(
     pfunc: PFunction,
@@ -381,87 +281,6 @@ def peval(
     ret_exprs = [AccessExpr(fn_expr, idx) for idx in range(fn_expr.num_outputs)]
 
     return [TraceVar(ctx, res) for res in ret_exprs]
-
-
-def run(
-    pmask: Mask | None,
-    fe_op: FeOperation,
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
-    """Run an operation in the current context."""
-    pfunc, eval_args, out_tree = fe_op(*args, **kwargs)
-    results = peval(pfunc, eval_args, pmask)
-    return out_tree.unflatten(results)
-
-
-def run_at(rank: Rank, op: Any, *args: Any, **kwargs: Any) -> Any:
-    """Run an operation at a specific rank."""
-    return run(Mask.from_ranks(rank), op, *args, **kwargs)
-
-
-def set_mask(arg: MPObject, mask: Mask) -> MPObject:
-    """Set the mask of an MPObject to a new value.
-
-    This function allows changing the party mask of an existing MPObject variable.
-    The behavior depends on whether the input MPObject has a dynamic or static pmask:
-
-    **Case 1: Dynamic pmask (arg.pmask is None)**
-    - The input MPObject has a runtime-determined pmask
-    - The return value's pmask will be exactly the specified mask
-    - No validation is performed at compile time
-
-    **Case 2: Static pmask (arg.pmask is not None)**
-    - If mask is a subset of arg.pmask: return_var.pmask == arg.pmask (unchanged)
-    - If mask is NOT a subset of arg.pmask: raises ValueError at compile time
-
-    Args:
-        arg: The MPObject whose mask needs to be changed.
-        mask: The target mask to apply. Must be a valid party mask.
-
-    Returns:
-        MPObject: A new variable with the specified mask behavior:
-                 - For dynamic inputs: pmask = mask
-                 - For static inputs (valid subset): pmask = arg.pmask
-
-    Raises:
-        ValueError: When arg has a static pmask and mask is not a subset of arg.pmask.
-                   This validation occurs at compile time during graph construction.
-
-    Examples:
-        **Example 1: Dynamic pmask - mask assignment**
-                     P0   P1   P2
-                     --   --   --
-            Input:   ?    ?    ?     (pmask=None, runtime-determined)
-            mask:    [0,2]            (target mask)
-        -----------------------------------------------------------
-            Output:  x0   -    x2    (pmask=[0,2])
-
-        **Example 2: Static pmask - valid subset**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   x1   x2    (pmask=[0,1,2])
-            mask:    [0,2]            (subset of input pmask)
-        -----------------------------------------------------------
-            Output:  x0   -    x2    (pmask=[0,2])
-
-        **Example 3: Static pmask - invalid subset (compile error)**
-                     P0   P1   P2
-                     --   --   --
-            Input:   x0   -    x2     (pmask=[0,2])
-            mask:    [1,2]            (NOT subset of [0,2])
-        -----------------------------------------------------------
-            Result:  ValueError at compile time
-
-    Note:
-        This function is typically used for constraining the execution scope
-        of variables or for type casting between different pmask contexts.
-        The underlying implementation uses JAX identity function with the
-        specified execution mask.
-    """
-    pfunc, eval_args, out_tree = basic.identity(arg)
-    results = peval(pfunc, eval_args, mask)
-    return cast(MPObject, out_tree.unflatten(results))
 
 
 @function
@@ -899,7 +718,7 @@ def pshfl(src: MPObject, index: MPObject) -> MPObject:
 
     Raises:
         ValueError: If the index tensor is not a scalar.
-        RuntimeError: If src[index[i]] is None for any valid index[i] (i.e/,
+        RuntimeError: If src[index[i]] is None for any valid index[i] (i.e.,
                      trying to fetch from a party that doesn't hold the data).
 
     Examples:

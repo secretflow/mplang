@@ -20,6 +20,7 @@ from typing import Any
 from jax.tree_util import tree_map
 
 from mplang.core import (
+    ClusterSpec,
     InterpContext,
     MPContext,
     MPObject,
@@ -27,7 +28,6 @@ from mplang.core import (
     TracedFunction,
     trace,
 )
-from mplang.core.cluster import ClusterSpec
 from mplang.core.context_mgr import cur_ctx, with_ctx
 
 
@@ -38,6 +38,16 @@ def evaluate(
 
     This function accepts arbitrary types as it's designed to handle
     any multi-party computation function and arguments.
+
+    Args:
+        interp: The interpreter context for evaluating the multi-party function.
+        mpfn: The multi-party function to evaluate.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+
+    Returns:
+        Any: The result of evaluating the multi-party function, which can be
+             any type depending on the function's return type.
     """
     assert isinstance(interp, InterpContext), f"Expect InterpContext, got {interp}"
     with with_ctx(interp):
@@ -49,6 +59,16 @@ def fetch(interp: InterpContext | None, objs: Any) -> Any:  # type: ignore[misc]
 
     This function uses tree_map to handle arbitrary nested structures,
     so it needs to accept and return Any type.
+
+    Args:
+        interp: The interpreter context for fetching results. If None, uses the
+                current context from cur_ctx().
+        objs: The objects containing MPObject instances to fetch. Can be any
+              nested structure.
+
+    Returns:
+        Any: The fetched results with the same structure as the input objects,
+             but with MPObject instances replaced by their computed values.
     """
     ctx = interp or cur_ctx()
     assert isinstance(ctx, InterpContext), f"Expect MPExecutor, got {ctx}"
@@ -94,5 +114,17 @@ class CompileOptions(MPContext):
 def compile(
     mctx: MPContext, fn: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> TracedFunction:
+    """Compile a multi-party function into a TracedFunction.
+
+    Args:
+        mctx: The multi-party context for compilation.
+        fn: The function to compile.
+        *args: Positional arguments to pass during compilation.
+        **kwargs: Keyword arguments to pass during compilation.
+
+    Returns:
+        TracedFunction: The compiled function representation that can be
+                       evaluated in multi-party contexts.
+    """
     trace_ctx = TraceContext(mctx.cluster_spec)
     return trace(trace_ctx, fn, *args, **kwargs)

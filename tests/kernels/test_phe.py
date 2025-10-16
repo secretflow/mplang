@@ -15,7 +15,7 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtype import INT32, UINT8
+from mplang.core.dtypes import INT32, UINT8
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
 from mplang.kernels.base import list_kernels

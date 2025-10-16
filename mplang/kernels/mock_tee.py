@@ -20,7 +20,7 @@ import warnings
 import numpy as np
 from numpy.typing import NDArray
 
-from mplang.core.pfunc import PFunction
+from mplang.core import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
 from mplang.kernels.value import TensorValue
 

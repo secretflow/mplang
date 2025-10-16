@@ -32,7 +32,7 @@ from typing import Any
 import numpy as np
 import spu.libspu as spu_api
 
-from mplang.core.dtype import DATE, JSON, STRING, TIME, TIMESTAMP, DType
+from mplang.core.dtypes import DATE, JSON, STRING, TIME, TIMESTAMP, DType
 from mplang.core.expr import Expr, FuncDefExpr
 from mplang.core.expr.ast import (
     AccessExpr,

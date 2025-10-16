@@ -18,7 +18,7 @@ import os
 
 import numpy as np
 
-from mplang.core.pfunc import PFunction
+from mplang.core import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
 from mplang.kernels.value import TensorValue
 from mplang.utils.crypto import blake2b

@@ -75,7 +75,7 @@ class ReadmeExampleTest:
 
 
 # Initialize the test instance
-readme_test = ReadmeExampleTest()
+readme_test = ReadmeExampleTest(Path(__file__).resolve().parent.parent / "README.md")
 
 
 @pytest.mark.parametrize("block_start_line,python_code", readme_test.code_blocks)

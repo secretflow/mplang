@@ -29,12 +29,14 @@ class TestTableUtilsCSVHelpers:
         from mplang.utils.table_utils import dataframe_to_csv
 
         # Create a test DataFrame
-        df = pd.DataFrame({
-            "id": [1, 2, 3],
-            "name": ["Alice", "Bob", "Charlie"],
-            "score": [95.5, 87.2, 92.0],
-            "active": [True, False, True],
-        })
+        df = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "name": ["Alice", "Bob", "Charlie"],
+                "score": [95.5, 87.2, 92.0],
+                "active": [True, False, True],
+            }
+        )
 
         # Convert to CSV
         csv_bytes = dataframe_to_csv(df)
@@ -191,11 +193,13 @@ class TestTableUtilsCSVHelpers:
         from mplang.utils.table_utils import csv_to_dataframe, dataframe_to_csv
 
         # Create original DataFrame
-        original_df = pd.DataFrame({
-            "id": [1, 2, 3],
-            "name": ["Alice", "Bob", "Charlie"],
-            "score": [95.5, 87.2, 92.0],
-        })
+        original_df = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "name": ["Alice", "Bob", "Charlie"],
+                "score": [95.5, 87.2, 92.0],
+            }
+        )
 
         # Convert to CSV and back
         csv_bytes = dataframe_to_csv(original_df)
@@ -226,11 +230,7 @@ class TestTableUtilsCSVHelpers:
         )
 
         # Define schema with only specific columns
-        schema = TableType.from_dict({
-            "id": INT64,
-            "name": STRING,
-            "salary": FLOAT64
-        })
+        schema = TableType.from_dict({"id": INT64, "name": STRING, "salary": FLOAT64})
 
         # Convert to DataFrame with schema projection
         df = csv_to_dataframe(csv_content, schema=schema)
@@ -257,11 +257,7 @@ class TestTableUtilsCSVHelpers:
 
         from mplang.utils.table_utils import csv_to_dataframe
 
-        csv_content = (
-            b"id,name,age\n"
-            b"1,Alice,25\n"
-            b"2,Bob,30\n"
-        )
+        csv_content = b"id,name,age\n1,Alice,25\n2,Bob,30\n"
 
         # Schema with only one column
         schema = TableType.from_dict({"name": STRING})
@@ -287,11 +283,7 @@ class TestTableUtilsCSVHelpers:
 
         from mplang.utils.table_utils import csv_to_dataframe
 
-        csv_content = (
-            b"id,name,age\n"
-            b"1,Alice,25\n"
-            b"2,Bob,30\n"
-        )
+        csv_content = b"id,name,age\n1,Alice,25\n2,Bob,30\n"
 
         # Pass None schema - should load all columns
         df = csv_to_dataframe(csv_content, schema=None)
@@ -307,11 +299,7 @@ class TestTableUtilsCSVHelpers:
 
         from mplang.utils.table_utils import csv_to_dataframe
 
-        csv_content = (
-            b"id,name,age\n"
-            b"1,Alice,25\n"
-            b"2,Bob,30\n"
-        )
+        csv_content = b"id,name,age\n1,Alice,25\n2,Bob,30\n"
 
         # Pass invalid schema type - should be ignored and load all columns
         df = csv_to_dataframe(csv_content, schema="invalid_type")

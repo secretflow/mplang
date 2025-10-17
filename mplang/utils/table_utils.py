@@ -69,7 +69,7 @@ def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
     try:
         # Decode bytes to string, then parse as CSV
         csv_str = content.decode("utf-8")
-        
+
         # Apply schema projection if provided
         if schema and isinstance(schema, TableType):
             # Extract column names from schema for column selection
@@ -77,7 +77,7 @@ def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
             df = pd.read_csv(StringIO(csv_str), usecols=usecols)
         else:
             df = pd.read_csv(StringIO(csv_str))
-        
+
         return df
     except UnicodeDecodeError as e:
         raise ValueError(f"Invalid UTF-8 encoding in CSV content: {e}") from e

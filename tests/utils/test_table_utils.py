@@ -14,8 +14,8 @@
 
 import pytest
 
-from mplang.core.table import TableType
 from mplang.core.dtypes import INT64, STRING, FLOAT64
+from mplang.core.table import TableType
 
 
 class TestTableUtilsCSVHelpers:

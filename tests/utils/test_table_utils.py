@@ -29,14 +29,12 @@ class TestTableUtilsCSVHelpers:
         from mplang.utils.table_utils import dataframe_to_csv
 
         # Create a test DataFrame
-        df = pd.DataFrame(
-            {
-                "id": [1, 2, 3],
-                "name": ["Alice", "Bob", "Charlie"],
-                "score": [95.5, 87.2, 92.0],
-                "active": [True, False, True],
-            }
-        )
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "name": ["Alice", "Bob", "Charlie"],
+            "score": [95.5, 87.2, 92.0],
+            "active": [True, False, True],
+        })
 
         # Convert to CSV
         csv_bytes = dataframe_to_csv(df)
@@ -193,13 +191,11 @@ class TestTableUtilsCSVHelpers:
         from mplang.utils.table_utils import csv_to_dataframe, dataframe_to_csv
 
         # Create original DataFrame
-        original_df = pd.DataFrame(
-            {
-                "id": [1, 2, 3],
-                "name": ["Alice", "Bob", "Charlie"],
-                "score": [95.5, 87.2, 92.0],
-            }
-        )
+        original_df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "name": ["Alice", "Bob", "Charlie"],
+            "score": [95.5, 87.2, 92.0],
+        })
 
         # Convert to CSV and back
         csv_bytes = dataframe_to_csv(original_df)

@@ -73,7 +73,7 @@ def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
         # Apply schema projection if provided
         if schema and isinstance(schema, TableType):
             # Extract column names from schema for column selection
-            usecols = [name for name, _ in schema.columns]
+            usecols = list(schema.column_names())
             df = pd.read_csv(StringIO(csv_str), usecols=usecols)
         else:
             df = pd.read_csv(StringIO(csv_str))

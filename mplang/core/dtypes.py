@@ -141,7 +141,7 @@ class DType:
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
         # Special handling for PRNG KeyTy: <class jax._src.prng.KeyTy>
-        if hasattr(jax_dtype, "__module__") and "prng" in str(jax_dtype.__module__):
+        if hasattr(jax_dtype, "__module__") and jax_dtype.__module__ in ("jax._src.prng", "jax.prng"):
             return cls.from_numpy(np.uint32)
 
         # JAX dtypes are essentially NumPy dtypes

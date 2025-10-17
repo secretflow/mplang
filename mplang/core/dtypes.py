@@ -140,7 +140,7 @@ class DType:
         """Convert from JAX dtype to custom DType."""
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
-        # Special handling for PRNG KeyTy
+        # Special handling for PRNG KeyTy: <class jax._src.prng.KeyTy>
         if hasattr(jax_dtype, "__module__") and "prng" in str(jax_dtype.__module__):
             return cls.from_numpy(np.uint32)
 

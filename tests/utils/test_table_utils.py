@@ -14,7 +14,7 @@
 
 import pytest
 
-from mplang.core.dtypes import INT64, STRING, FLOAT64
+from mplang.core.dtypes import FLOAT64, INT64, STRING
 from mplang.core.table import TableType
 
 

@@ -133,11 +133,11 @@ class ClusterSpec:
                         "which is not defined in nodes"
                     )
 
-        # ensure local devices have exactly one member
+        # ensure ppu devices have exactly one member
         for device in self.devices.values():
-            if device.kind.lower() == "local" and len(device.members) != 1:
+            if device.kind.lower() == "ppu" and len(device.members) != 1:
                 raise ValueError(
-                    f"Local device '{device.name}' must have exactly one member"
+                    f"PPU device '{device.name}' must have exactly one member"
                 )
 
     def get_node(self, name: str) -> Node:
@@ -253,7 +253,7 @@ class ClusterSpec:
         runtime_version: str = "simulated",
         runtime_platform: str = "simulated",
         op_bindings: list[dict[str, str]] | None = None,
-        enable_local_device: bool = True,
+        enable_ppu_device: bool = True,
         enable_spu_device: bool = True,
     ) -> ClusterSpec:
         """Convenience constructor used heavily in tests.
@@ -274,8 +274,8 @@ class ClusterSpec:
         op_bindings:
             Optional list of length ``world_size`` supplying per-node op_bindings
             override dicts (defaults to empty dicts).
-        enable_local_device:
-            If True (default), create one ``local_{rank}`` device per node.
+        enable_ppu_device:
+            If True (default), create one ``P{rank}`` PPU device per node.
         enable_spu_device:
             If True (default) create a shared SPU device named ``SP0``.
         """
@@ -293,9 +293,9 @@ class ClusterSpec:
                 f"{len(op_bindings)} != {world_size}"
             )
 
-        if not enable_local_device and not enable_spu_device:
+        if not enable_ppu_device and not enable_spu_device:
             raise ValueError(
-                "At least one of enable_local_device or enable_spu_device must be True"
+                "At least one of enable_ppu_device or enable_spu_device must be True"
             )
 
         nodes: dict[str, Node] = {}
@@ -314,12 +314,12 @@ class ClusterSpec:
             )
 
         devices: dict[str, Device] = {}
-        # Optional per-node local devices
-        if enable_local_device:
+        # Optional per-node PPU devices
+        if enable_ppu_device:
             for i in range(world_size):
-                devices[f"local_{i}"] = Device(
-                    name=f"local_{i}",
-                    kind="local",
+                devices[f"P{i}"] = Device(
+                    name=f"P{i}",
+                    kind="ppu",
                     members=[nodes[f"node{i}"]],
                 )
 

@@ -35,7 +35,7 @@ class DummyContext(MPContext):
         # Build minimal single-node, single-device spec
         runtime = RuntimeInfo(version="dev", platform="local", op_bindings={})
         node = Node(name="p0", rank=0, endpoint="local", runtime_info=runtime)
-        device = Device(name="p0_local", kind="local", members=[node])
+        device = Device(name="p0_local", kind="ppu", members=[node])
         spec = ClusterSpec(nodes={node.name: node}, devices={device.name: device})
         super().__init__(spec)
 

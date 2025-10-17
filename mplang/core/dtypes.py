@@ -21,7 +21,8 @@ import numpy as np
 
 try:
     # Check if JAX is available
-    import jax  # noqa: F401
+    import jax
+    import jax.numpy as jnp
 
     _JAX_AVAILABLE = True
 except ImportError:
@@ -141,10 +142,7 @@ class DType:
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
         # Special handling for PRNG KeyTy: <class jax._src.prng.KeyTy>
-        if hasattr(jax_dtype, "__module__") and jax_dtype.__module__ in (
-            "jax._src.prng",
-            "jax.prng",
-        ):
+        if jnp.issubdtype(jax_dtype, jax.dtypes.prng_key):
             return cls.from_numpy(np.uint32)
 
         # JAX dtypes are essentially NumPy dtypes
@@ -235,7 +233,6 @@ class DType:
         """Convert custom DType to JAX dtype."""
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
-        import jax.numpy as jnp
 
         return jnp.dtype(self.name)
 

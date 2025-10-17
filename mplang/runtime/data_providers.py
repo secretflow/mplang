@@ -151,7 +151,8 @@ class FileProvider(DataProvider):
         if isinstance(out_spec, TableType):
             with open(path, "rb") as f:
                 csv_bytes = f.read()
-            return table_utils.csv_to_dataframe(csv_bytes)
+            # Pass schema to enable column projection
+            return table_utils.csv_to_dataframe(csv_bytes, schema=out_spec)
         # tensor path
         return np.load(path)
 

@@ -19,6 +19,8 @@ from typing import Any
 
 import pandas as pd
 
+from mplang.core.table import TableType
+
 __all__ = ["csv_to_dataframe", "dataframe_to_csv"]
 
 
@@ -46,11 +48,13 @@ def dataframe_to_csv(df: Any) -> bytes:
     return csv_str.encode("utf-8")
 
 
-def csv_to_dataframe(content: bytes) -> Any:
+def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
     """Convert CSV bytes to DataFrame.
 
     Args:
         content: CSV formatted data as bytes
+        schema: Optional TableType to specify which columns to read. If provided,
+                only columns specified in the schema will be loaded.
 
     Returns:
         pandas DataFrame
@@ -65,7 +69,15 @@ def csv_to_dataframe(content: bytes) -> Any:
     try:
         # Decode bytes to string, then parse as CSV
         csv_str = content.decode("utf-8")
-        df = pd.read_csv(StringIO(csv_str))
+        
+        # Apply schema projection if provided
+        if schema and isinstance(schema, TableType):
+            # Extract column names from schema for column selection
+            usecols = [name for name, _ in schema.columns]
+            df = pd.read_csv(StringIO(csv_str), usecols=usecols)
+        else:
+            df = pd.read_csv(StringIO(csv_str))
+        
         return df
     except UnicodeDecodeError as e:
         raise ValueError(f"Invalid UTF-8 encoding in CSV content: {e}") from e

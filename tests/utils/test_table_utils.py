@@ -14,6 +14,9 @@
 
 import pytest
 
+from mplang.core.table import TableType
+from mplang.core.dtypes import INT64, STRING, FLOAT64
+
 
 class TestTableUtilsCSVHelpers:
     """Test CSV helper functions."""
@@ -206,3 +209,113 @@ class TestTableUtilsCSVHelpers:
         pd.testing.assert_frame_equal(
             original_df.astype(str), restored_df.astype(str), check_dtype=False
         )
+
+    def test_csv_to_dataframe_with_schema_projection(self):
+        """Test CSV to DataFrame conversion with schema column projection."""
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        from mplang.utils.table_utils import csv_to_dataframe
+
+        # Create test CSV content with more columns than needed
+        csv_content = (
+            b"id,name,age,city,salary,department\n"
+            b"1,Alice,25,New York,75000,Engineering\n"
+            b"2,Bob,30,San Francisco,85000,Marketing\n"
+            b"3,Charlie,28,Chicago,70000,Engineering\n"
+        )
+
+        # Define schema with only specific columns
+        schema = TableType.from_dict({
+            "id": INT64,
+            "name": STRING,
+            "salary": FLOAT64
+        })
+
+        # Convert to DataFrame with schema projection
+        df = csv_to_dataframe(csv_content, schema=schema)
+
+        # Verify only specified columns are loaded
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 3
+        assert list(df.columns) == ["id", "name", "salary"]
+
+        # Check data values
+        assert df.loc[0, "id"] == 1
+        assert df.loc[0, "name"] == "Alice"
+        assert df.loc[0, "salary"] == 75000
+
+        # Verify other columns are not present
+        assert "age" not in df.columns
+        assert "city" not in df.columns
+        assert "department" not in df.columns
+
+    def test_csv_to_dataframe_with_single_column_schema(self):
+        """Test schema projection with single column."""
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        from mplang.utils.table_utils import csv_to_dataframe
+
+        csv_content = (
+            b"id,name,age\n"
+            b"1,Alice,25\n"
+            b"2,Bob,30\n"
+        )
+
+        # Schema with only one column
+        schema = TableType.from_dict({"name": STRING})
+
+        df = csv_to_dataframe(csv_content, schema=schema)
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 2
+        assert list(df.columns) == ["name"]
+        assert df.loc[0, "name"] == "Alice"
+        assert df.loc[1, "name"] == "Bob"
+
+    def test_csv_to_dataframe_with_empty_schema(self):
+        """Test that empty schema raises ValueError."""
+        # Empty schema should raise error during TableType creation
+        with pytest.raises(ValueError, match="TableType cannot be empty"):
+            TableType(())
+
+    def test_csv_to_dataframe_with_none_schema(self):
+        """Test that None schema loads all columns (backward compatibility)."""
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        from mplang.utils.table_utils import csv_to_dataframe
+
+        csv_content = (
+            b"id,name,age\n"
+            b"1,Alice,25\n"
+            b"2,Bob,30\n"
+        )
+
+        # Pass None schema - should load all columns
+        df = csv_to_dataframe(csv_content, schema=None)
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 2
+        assert list(df.columns) == ["id", "name", "age"]
+
+    def test_csv_to_dataframe_with_invalid_schema_type(self):
+        """Test that non-TableType schema is ignored for backward compatibility."""
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        from mplang.utils.table_utils import csv_to_dataframe
+
+        csv_content = (
+            b"id,name,age\n"
+            b"1,Alice,25\n"
+            b"2,Bob,30\n"
+        )
+
+        # Pass invalid schema type - should be ignored and load all columns
+        df = csv_to_dataframe(csv_content, schema="invalid_type")
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 2
+        assert list(df.columns) == ["id", "name", "age"]

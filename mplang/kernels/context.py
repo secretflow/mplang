@@ -37,6 +37,7 @@ def _ensure_impl_imported() -> None:
         return
     from mplang.kernels import basic as _impl_basic  # noqa: F401
     from mplang.kernels import crypto as _impl_crypto  # noqa: F401
+    from mplang.kernels import fhe as _impl_fhe  # noqa: F401
     from mplang.kernels import mock_tee as _impl_tee  # noqa: F401
     from mplang.kernels import phe as _impl_phe  # noqa: F401
     from mplang.kernels import spu as _impl_spu  # noqa: F401
@@ -80,6 +81,17 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     "phe.concat": "phe.concat",
     "phe.reshape": "phe.reshape",
     "phe.transpose": "phe.transpose",
+    # fhe
+    "fhe.keygen": "fhe.keygen",
+    "fhe.encrypt": "fhe.encrypt",
+    "fhe.decrypt": "fhe.decrypt",
+    "fhe.add": "fhe.add",
+    "fhe.mul": "fhe.mul",
+    "fhe.dot": "fhe.dot",
+    "fhe.polyval": "fhe.polyval",
+    "fhe.sub": "fhe.sub",
+    "fhe.negate": "fhe.negate",
+    "fhe.square": "fhe.square",
     # spu
     "spu.seed_env": "spu.seed_env",
     "spu.makeshares": "spu.makeshares",

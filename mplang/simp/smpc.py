@@ -176,7 +176,7 @@ def seal(obj: MPObject, frm_mask: Mask | None = None) -> list[MPObject]:
 
 # seal_at :: m Rank -> m a -> s a
 def seal_at(root: Rank, obj: MPObject) -> MPObject:
-    """Seal an simp object from a specific root party."""
+    """Seal a simp object from a specific root party."""
     return _get_sapi().seal_at(root, obj)
 
 

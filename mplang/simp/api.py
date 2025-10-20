@@ -24,7 +24,9 @@ from mplang.core import (
     ScalarType,
     Shape,
     TableLike,
+    TableType,
     TensorLike,
+    TensorType,
     builtin_function,
     peval,
 )
@@ -220,6 +222,26 @@ def set_mask(arg: MPObject, mask: Mask) -> MPObject:
     pfunc, eval_args, out_tree = basic.identity(arg)
     results = peval(pfunc, eval_args, mask)
     return cast(MPObject, out_tree.unflatten(results))
+
+
+def table_to_tensor(table: MPObject, num_rows: int) -> MPObject:
+    result = run(None, basic.table_to_tensor, table, number_rows=num_rows)
+    return cast(MPObject, result)
+
+
+def tensor_to_table(tensor: MPObject, column_names: list[str]) -> MPObject:
+    result = run(None, basic.tensor_to_table, tensor, column_names=column_names)
+    return cast(MPObject, result)
+
+
+def pack(obj: MPObject) -> MPObject:
+    result = run(None, basic.pack, obj)
+    return cast(MPObject, result)
+
+
+def unpack(b: MPObject, out_ty: TableType | TensorType) -> MPObject:
+    result = run(None, basic.unpack, b, out_ty=out_ty)
+    return cast(MPObject, result)
 
 
 def run_jax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:

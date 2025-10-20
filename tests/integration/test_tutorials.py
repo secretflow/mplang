@@ -37,8 +37,8 @@ class TestTutorialBasicExamples:
             range_rand = partial(random.randint, 0, 10)
             x = mp.run_jax_at(0, range_rand)
             y = mp.run_jax_at(1, range_rand)
-            x_ = mp.sealFrom(x, 0)
-            y_ = mp.sealFrom(y, 1)
+            x_ = mp.seal_at(0, x)
+            y_ = mp.seal_at(1, y)
             z_ = mp.srun(lambda x, y: x < y)(x_, y_)
             z = mp.reveal(z_)
             return x, y, z
@@ -230,8 +230,8 @@ class TestTutorialSimulationExamples:
         def millionaire():
             x = mp.prandint(0, 10)
             y = mp.prandint(0, 10)
-            x_ = mp.sealFrom(x, 0)
-            y_ = mp.sealFrom(y, 1)
+            x_ = mp.seal_at(0, x)
+            y_ = mp.seal_at(1, y)
             z_ = mp.srun(lambda x, y: x < y)(x_, y_)
             z = mp.reveal(z_)
             return x, y, z
@@ -261,7 +261,7 @@ class TestTutorialErrorHandling:
         @mp.function
         def mismatched_seal():
             x = mp.prandint(0, 10)
-            return mp.sealFrom(x, 5)
+            return mp.seal_at(5, x)
 
         with pytest.raises(Exception):
             mp.evaluate(sim2, mismatched_seal)

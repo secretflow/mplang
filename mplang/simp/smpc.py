@@ -34,7 +34,7 @@ class SecureAPI(ABC):
     def seal(self, obj: MPObject, frm_mask: Mask | None) -> list[MPObject]: ...
 
     @abstractmethod
-    def sealFrom(self, obj: MPObject, root: Rank) -> MPObject: ...
+    def seal_at(self, root: Rank, obj: MPObject) -> MPObject: ...
 
     @abstractmethod
     def seval(self, fe_type: str, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
@@ -44,7 +44,7 @@ class SecureAPI(ABC):
     def reveal(self, obj: MPObject, to_mask: Mask) -> MPObject: ...
 
     @abstractmethod
-    def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject: ...
+    def reveal_to(self, to_rank: Rank, obj: MPObject) -> MPObject: ...
 
 
 class Delegation(SecureAPI):
@@ -53,7 +53,7 @@ class Delegation(SecureAPI):
     def seal(self, obj: MPObject, frm_mask: Mask | None = None) -> list[MPObject]:
         raise NotImplementedError("TODO")
 
-    def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
+    def seal_at(self, root: Rank, obj: MPObject) -> MPObject:
         raise NotImplementedError("TODO")
 
     def seval(self, fe_type: str, pyfn: Callable, *args: Any, **kwargs: Any) -> Any:
@@ -62,7 +62,7 @@ class Delegation(SecureAPI):
     def reveal(self, obj: MPObject, to_mask: Mask) -> MPObject:
         raise NotImplementedError("TODO")
 
-    def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
+    def reveal_to(self, to_rank: Rank, obj: MPObject) -> MPObject:
         raise NotImplementedError("TODO")
 
 
@@ -109,7 +109,7 @@ class SPU(SecureAPI):
         # scatter the shares to each party.
         return [mpi.scatter_m(spu_mask, rank, shares) for rank in Mask(frm_mask)]
 
-    def sealFrom(self, obj: MPObject, root: Rank) -> MPObject:
+    def seal_at(self, root: Rank, obj: MPObject) -> MPObject:
         results = seal(obj, frm_mask=Mask.from_ranks(root))
         assert len(results) == 1, f"Expected one result, got {len(results)}"
         return results[0]
@@ -138,7 +138,7 @@ class SPU(SecureAPI):
         pfunc, ins, _ = spu.reconstruct(*shares)
         return peval(pfunc, ins, to_mask)[0]  # type: ignore[no-any-return]
 
-    def revealTo(self, obj: MPObject, to_rank: Rank) -> MPObject:
+    def reveal_to(self, to_rank: Rank, obj: MPObject) -> MPObject:
         return self.reveal(obj, to_mask=Mask.from_ranks(to_rank))
 
 
@@ -174,10 +174,10 @@ def seal(obj: MPObject, frm_mask: Mask | None = None) -> list[MPObject]:
     return _get_sapi().seal(obj, frm_mask=frm_mask)
 
 
-# sealFrom :: m a -> m Rank -> s a
-def sealFrom(obj: MPObject, root: Rank) -> MPObject:
+# seal_from :: m Rank -> m a -> s a
+def seal_at(root: Rank, obj: MPObject) -> MPObject:
     """Seal an simp object from a specific root party."""
-    return _get_sapi().sealFrom(obj, root)
+    return _get_sapi().seal_at(root, obj)
 
 
 # reveal :: s a -> m a
@@ -187,9 +187,9 @@ def reveal(obj: MPObject, to_mask: Mask | None = None) -> MPObject:
     return _get_sapi().reveal(obj, to_mask)
 
 
-# revealTo :: s a -> m Rank -> m a
-def revealTo(obj: MPObject, to_rank: Rank) -> MPObject:
-    return _get_sapi().revealTo(obj, to_rank)
+# reveal_to :: m Rank -> s a -> m a
+def reveal_to(to_rank: Rank, obj: MPObject) -> MPObject:
+    return _get_sapi().reveal_to(to_rank, obj)
 
 
 # srun :: (a -> a) -> s a -> s a

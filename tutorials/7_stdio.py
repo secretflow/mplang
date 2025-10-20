@@ -38,8 +38,8 @@ def load_data():
     x = mp.run_at(0, basic.read, path="tmp/x.npy", ty=tensor_info)
     y = mp.run_at(1, basic.read, path="tmp/y.npy", ty=tensor_info)
 
-    x_ = mp.sealFrom(x, 0)
-    y_ = mp.sealFrom(y, 1)
+    x_ = mp.seal_at(0, x)
+    y_ = mp.seal_at(1, y)
     z_ = mp.srun(lambda a, b: a + b)(x_, y_)
     z = mp.reveal(z_)
 

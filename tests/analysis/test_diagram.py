@@ -21,8 +21,8 @@ from mplang.analysis import diagram as analysis
 def _toy():  # simple function for viz
     x = mp.prandint(0, 10)
     y = mp.prandint(0, 10)
-    x_ = mp.sealFrom(x, 0)
-    y_ = mp.sealFrom(y, 1)
+    x_ = mp.seal_at(0, x)
+    y_ = mp.seal_at(1, y)
     z_ = mp.srun(lambda a, b: a < b)(x_, y_)
     z = mp.reveal(z_)
     return z

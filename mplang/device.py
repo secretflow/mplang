@@ -192,12 +192,12 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
     elif frm_to_pair == ("SPU", "PPU"):
         assert len(to_dev.members) == 1
         to_rank = to_dev.members[0].rank
-        var = smpc.revealTo(obj, to_rank)
+        var = smpc.reveal_to(to_rank, obj)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "SPU"):
         assert len(frm_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
-        var = smpc.sealFrom(obj, frm_rank)
+        var = smpc.seal_at(frm_rank, obj)
         return tree_map(partial(_set_devid, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "PPU"):
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1

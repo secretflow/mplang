@@ -39,9 +39,9 @@ class TestTutorialBasicExamples:
             y = mp.run_jax_at(1, range_rand)
             x_ = mp.seal_at(0, x)
             y_ = mp.seal_at(1, y)
-            z_ = mp.srun(lambda x, y: x < y)(x_, y_)
-            z = mp.reveal(z_)
-            return x, y, z
+            z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
+            r = mp.reveal(z_)
+            return x, y, r
 
         x, y, z = mp.evaluate(sim2, millionaire)
         x_val, y_val, z_val = mp.fetch(sim2, (x, y, z))
@@ -77,7 +77,7 @@ class TestTutorialConditionalExamples:
         def negate_if_shared_cond():
             x = mp.prandint(0, 10)
             xs_ = mp.seal(x)
-            pred_ = mp.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
+            pred_ = mp.srun_jax(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15, xs_)
             pred = mp.reveal(pred_)
             pos = mp.run_jax(lambda x: x, x)
             neg = mp.run_jax(lambda x: -x, x)
@@ -149,7 +149,7 @@ class TestTutorialWhileLoopExamples:
 
             def cond(x: mp.MPObject):
                 xs_ = mp.seal(x)
-                pred_ = mp.srun(lambda i: sum(i) < 15)(xs_)
+                pred_ = mp.srun_jax(lambda i: sum(i) < 15, xs_)
                 return mp.reveal(pred_)
 
             def body(x: mp.MPObject):
@@ -232,7 +232,7 @@ class TestTutorialSimulationExamples:
             y = mp.prandint(0, 10)
             x_ = mp.seal_at(0, x)
             y_ = mp.seal_at(1, y)
-            z_ = mp.srun(lambda x, y: x < y)(x_, y_)
+            z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
             z = mp.reveal(z_)
             return x, y, z
 

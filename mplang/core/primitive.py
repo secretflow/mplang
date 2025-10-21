@@ -298,7 +298,7 @@ def uniform_cond(
 
     1. ``pred`` is a boolean scalar whose runtime value is identical for every enabled party.
     2. At least one branch contains multi-party primitives (``seal`` / ``reveal`` /
-       ``srun`` / ``pshfl`` / mask transformations) whose cost or side-effects you
+       ``srun_jax`` / ``pshfl`` / mask transformations) whose cost or side-effects you
        want to avoid if the branch is not taken.
     3. You require the semantic guarantee that the *non-selected* branch does **not**
        perform communication, allocate intermediate buffers, or leak timing/side-effects.
@@ -559,7 +559,7 @@ def while_loop(
         secret-shared reduction).
 
         cond_fn::
-            sealed_sum = smpc.reveal(smpc.srun(lambda x: jnp.sum(x))(smpc.seal(x)))
+            sealed_sum = smpc.reveal(smpc.srun_jax(lambda x: jnp.sum(x), smpc.seal(x)))
             return sealed_sum < constant(10)
 
         body_fn::

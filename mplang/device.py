@@ -90,7 +90,7 @@ def _device_run_spu(
     if not isinstance(op, JaxRunner):
         raise ValueError("SPU device only supports JAX frontend.")
     fn, *aargs = args
-    var = smpc.srun(fn)(*aargs, **kwargs)
+    var = smpc.srun_jax(fn, *aargs, **kwargs)
     return tree_map(partial(_set_devid, dev_id=dev_info.name), var)
 
 

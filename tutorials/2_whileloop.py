@@ -45,7 +45,7 @@ def while_sum_greater():
         # Seal all parties private
         xs_ = mp.seal(x)
         # Sum them and reveal it.
-        pred_ = mp.srun(lambda i: sum(i) < 15)(xs_)
+        pred_ = mp.srun_jax(lambda i: sum(i) < 15, xs_)
         return mp.reveal(pred_)
 
     def body(x: mp.MPObject):
@@ -76,7 +76,7 @@ def while_until_ascending():
         # seal it, or we can not directly compare all parties numbers.
         xs_ = mp.seal(x)
         # check if parties' numbers are accending
-        p_ = mp.srun(not_ascending)(xs_)
+        p_ = mp.srun_jax(not_ascending, xs_)
         # reveal the result, all parties agree on it.
         return mp.reveal(p_)
 

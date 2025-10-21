@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-from abc import ABC, abstractmethod
 from collections.abc import Callable
-from enum import Enum
-from functools import wraps
 from typing import Any
 
 from jax.tree_util import tree_unflatten
@@ -134,10 +130,18 @@ def reveal_to(to_rank: Rank, obj: MPObject) -> MPObject:
     return spu_reveal_to(to_rank, obj)
 
 
-# srun :: (a -> a) -> s a -> s a
-def srun(pyfn: Callable, *, fe_type: str = "jax") -> Callable:
-    @wraps(pyfn)
-    def wrapped(*args: Any, **kwargs: Any) -> Any:
-        return spu_run(fe_type, pyfn, *args, **kwargs)
+def srun_jax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
+    """Run a jax function on sealed values securely.
 
-    return wrapped
+    This function executes a JAX computation on sealed (secret-shared) values
+    using secure multi-party computation (MPC).
+
+    Args:
+        jax_fn: A JAX function to run on sealed values
+        *args: Positional arguments (sealed values)
+        **kwargs: Keyword arguments (sealed values)
+
+    Returns:
+        The result of the computation, still in sealed form
+    """
+    return spu_run("jax", jax_fn, *args, **kwargs)

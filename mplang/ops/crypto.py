@@ -142,7 +142,7 @@ def dec(
     # Validate minimum ciphertext length
     if length >= 0 and overhead >= 0 and length < overhead:
         raise TypeError(
-            f"dec expects ciphertext with at least {overhead} bytes for algo='{algo}'"
+            f"dec expects ciphertext with at least {overhead} bytes for algo='{algo}', but got {length} bytes"
         )
 
     # Compute output plaintext length

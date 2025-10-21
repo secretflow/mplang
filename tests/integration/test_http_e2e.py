@@ -126,7 +126,9 @@ def test_secure_comparison_e2e(http_driver):
         y_sealed = mp.seal_at(4, y_const)  # P4 provides data
 
         # Perform secure comparison
-        result = mp.srun_jax(lambda a, b: jnp.where(a > b, True, False), x_sealed, y_sealed)
+        result = mp.srun_jax(
+            lambda a, b: jnp.where(a > b, True, False), x_sealed, y_sealed
+        )
 
         # Reveal the result
         revealed = mp.reveal(result)

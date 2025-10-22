@@ -39,9 +39,8 @@ from mplang.core import (
     cur_ctx,
     primitive,
 )
-from mplang.ops import basic, crypto, ibis_cc, jax_cc, tee
+from mplang.ops import basic, crypto, jax_cc, tee
 from mplang.ops.base import FeOperation
-from mplang.ops.ibis_cc import IbisRunner
 from mplang.ops.jax_cc import JaxRunner
 from mplang.simp import mpi, smpc
 from mplang.simp.api import run_at
@@ -97,7 +96,7 @@ def _device_run_spu(
 def _device_run_tee(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
-    if not isinstance(op, JaxRunner) and not isinstance(op, IbisRunner):
+    if not isinstance(op, JaxRunner):
         raise ValueError("TEE device only supports JAX and Ibis frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
@@ -165,8 +164,6 @@ def device(dev_id: str, *, fe_type: str = "jax") -> Callable:
             else:
                 if fe_type == "jax":
                     return _device_run(dev_id, jax_cc.run_jax, fn, *args, **kwargs)
-                elif fe_type == "ibis":
-                    return _device_run(dev_id, ibis_cc.run_ibis, fn, *args, **kwargs)
                 else:
                     raise ValueError(f"Unsupported frontend type: {fe_type}")
 

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 
 import mplang
 import mplang.device as mpd
@@ -76,20 +75,6 @@ def test_fetch_no_list_wrapper():
     assert int(fetched) == 42
 
 
-def test_ibis_on_spu_unsupported():
-    spec = build_cluster()
-    sim = mplang.Simulator(spec)
-
-    # Directly wrap a trivial function; compiler path will reach the SPU gate.
-    @mplang.function
-    def foo():
-        return 1
-
-    with pytest.raises(ValueError, match="SPU device only supports JAX frontend"):
-        # Use evaluate to ensure interpreter context established
-        mplang.evaluate(sim, mpd.device("SP0", fe_type="ibis")(foo))
-
-
 def test_jax_on_ppu_ok():
     spec = build_cluster()
     sim = mplang.Simulator(spec)
@@ -102,27 +87,6 @@ def test_jax_on_ppu_ok():
 
     b = mplang.evaluate(sim, foo)
     assert mpd.fetch(sim, b) == 6
-
-
-def test_ibis_on_ppu_frontend_path_reached():
-    # If ibis not installed or compiler path incomplete, skip.
-    try:
-        import ibis  # noqa: F401
-    except Exception:  # pragma: no cover
-        pytest.skip("ibis not available in test environment")
-
-    spec = build_cluster()
-    mplang.Simulator(spec)  # instantiate to align with other tests; result unused
-
-    # We can't easily craft real MPObject Table inputs here without more plumbing.
-    # This test just ensures routing hits PPU path and fails *after* the frontend check (i.e., not blocked early).
-    @mplang.function
-    def dummy():
-        return 1
-
-    # Should raise because ibis compiler expects MPObject args; but *not* the SPU-only error.
-    with pytest.raises(Exception):  # Frontend compilation / normalization error
-        mpd.device("P0", fe_type="ibis")(dummy)()
 
 
 # Additional test for unsupported d2d pair can be added when new device kinds appear.

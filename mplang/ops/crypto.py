@@ -46,7 +46,7 @@ def _get_algo_overhead(algo: str) -> int:
         int: Number of overhead bytes added to plaintext length
     """
     overhead_map = {
-        "aes-ctr": 12,  # nonce only (legacy compatibility)
+        "aes-ctr": 16,  # nonce only (legacy compatibility)
         "aes-gcm": 28,  # nonce(12) + tag(16) for AES-GCM
         "sm4-gcm": 28,  # nonce(12) + tag(16) for SM4-GCM
     }
@@ -81,7 +81,7 @@ def enc(
     API: enc(plaintext: u8[N], key: u8[M], *, algo: str = "aes-ctr") -> ciphertext: u8[N + overhead]
 
     Supported algorithms and overhead:
-    - "aes-ctr": 12 bytes (nonce only, legacy compatibility)
+    - "aes-ctr": 16 bytes (nonce only, legacy compatibility)
     - "aes-gcm": 28 bytes (nonce + 16-byte authentication tag)
     - "sm4-gcm": 28 bytes (nonce + 16-byte authentication tag)
 
@@ -122,7 +122,7 @@ def dec(
     API: dec(ciphertext: u8[N + overhead], key: u8[M], *, algo: str = "aes-ctr") -> plaintext: u8[N]
 
     Supported algorithms and overhead:
-    - "aes-ctr": 12 bytes (nonce only, legacy compatibility)
+    - "aes-ctr": 16 bytes (nonce only, legacy compatibility)
     - "aes-gcm": 28 bytes (nonce + 16-byte authentication tag)
     - "sm4-gcm": 28 bytes (nonce + 16-byte authentication tag)
 

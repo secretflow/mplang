@@ -56,8 +56,8 @@ def test_enc_default_algorithm():
 
     # Default should be aes-ctr
     assert pfunc.attrs["algo"] == "aes-ctr"
-    # 12-byte overhead for aes-ctr
-    expected_output = TensorType(UINT8, (20,))
+    # 16-byte overhead for aes-ctr
+    expected_output = TensorType(UINT8, (24,))
     assert pfunc.outs_info[0] == expected_output
 
 
@@ -116,7 +116,7 @@ def test_enc_registration():
 @pytest.mark.parametrize(
     "algo,overhead,test_len,key_len",
     [
-        ("aes-ctr", 12, 60, 32),  # General test case
+        ("aes-ctr", 16, 60, 32),  # General test case
         ("aes-gcm", 28, 60, 32),  # General test case
         ("sm4-gcm", 28, 60, 16),  # General test case for SM4
         ("unknown", -1, 60, 32),  # Unknown algorithm
@@ -167,7 +167,7 @@ def test_dec_default_algorithm():
 
     # Default should be aes-ctr
     assert pfunc.attrs["algo"] == "aes-ctr"
-    # 12-byte overhead for aes-ctr
+    # 16-byte overhead for aes-ctr
     expected_output = TensorType(UINT8, (8,))
     assert pfunc.outs_info[0] == expected_output
 
@@ -314,7 +314,7 @@ def test_enc_dec_size_math():
 
             # Calculate overhead
             overhead = ciphertext_len - plaintext_len
-            expected_overhead = 12 if algo == "aes-ctr" else 28
+            expected_overhead = 16 if algo == "aes-ctr" else 28
             assert overhead == expected_overhead
 
 
@@ -334,7 +334,7 @@ def test_dec_registration():
 @pytest.mark.parametrize(
     "algo,overhead,ciphertext_len,key_len",
     [
-        ("aes-ctr", 12, 72, 32),  # General test case: 60+12=72
+        ("aes-ctr", 16, 72, 32),  # General test case: 60+16=76
         ("aes-gcm", 28, 88, 32),  # General test case: 60+28=88
         ("sm4-gcm", 28, 88, 16),  # General test case for SM4
         ("unknown", -1, 60, 32),  # Unknown algorithm

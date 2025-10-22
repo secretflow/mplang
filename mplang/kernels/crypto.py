@@ -45,11 +45,9 @@ def _get_rng() -> np.random.Generator:
 def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
     # WARNING (INSECURE): hash-based keystream (key||nonce||counter)
     out = bytearray()
-    counter = 0
     while len(out) < length:
-        chunk = blake2b(key + nonce + counter.to_bytes(4, "little"))
+        chunk = blake2b(key + nonce)
         out.extend(chunk)
-        counter += 1
     return bytes(out[:length])
 
 
@@ -68,7 +66,7 @@ def _crypto_encrypt(
     pt_bytes_np = pt_bytes.to_numpy().astype(np.uint8, copy=False)
     key_np = key.to_numpy().astype(np.uint8, copy=False)
     rng = _get_rng()
-    nonce = rng.integers(0, 256, size=(12,), dtype=np.uint8)
+    nonce = rng.integers(0, 256, size=(16,), dtype=np.uint8)
     stream = np.frombuffer(
         _keystream(key_np.tobytes(), nonce.tobytes(), pt_bytes_np.size), dtype=np.uint8
     )
@@ -83,8 +81,8 @@ def _crypto_decrypt(
 ) -> TensorValue:
     ct_np = ct_with_nonce.to_numpy().astype(np.uint8, copy=False)
     key_np = key.to_numpy().astype(np.uint8, copy=False)
-    nonce = ct_np[:12]
-    ct = ct_np[12:]
+    nonce = ct_np[:16]
+    ct = ct_np[16:]
     stream = np.frombuffer(
         _keystream(key_np.tobytes(), nonce.tobytes(), len(ct)), dtype=np.uint8
     )

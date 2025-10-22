@@ -102,6 +102,8 @@ class DType:
             "float64": "f64",
             "complex64": "c64",
             "complex128": "c128",
+            # JAX-specific
+            "prng_key": "key",
             # Table-only types
             "string": "str",
             "date": "date",
@@ -143,7 +145,9 @@ class DType:
             raise ImportError("JAX is not available")
         # Special handling for PRNG KeyTy: <class jax._src.prng.KeyTy>
         if jnp.issubdtype(jax_dtype, jax.dtypes.prng_key):
-            return cls.from_numpy(np.uint32)
+            # JAX PRNG keys are uint32 arrays of shape (2,)
+            # Use a specific dtype name that preserves the key structure
+            return cls("prng_key", 64, False, False, False)  # 2 * 32 = 64 bits
 
         # JAX dtypes are essentially NumPy dtypes
         return cls.from_numpy(jax_dtype)
@@ -265,6 +269,9 @@ class DType:
 
     def to_numpy(self) -> np.dtype:
         """Convert custom DType to NumPy dtype."""
+        if self.name == "prng_key":
+            # PRNG keys are fundamentally uint32 arrays in JAX
+            return np.dtype("uint32")
         return np.dtype(self.name)
 
     def to_jax(self) -> Any:
@@ -272,6 +279,9 @@ class DType:
         if not _JAX_AVAILABLE:
             raise ImportError("JAX is not available")
 
+        if self.name == "prng_key":
+            # Return the JAX PRNG key dtype
+            return jax.dtypes.prng_key
         return jnp.dtype(self.name)
 
     def to_python_type(self) -> type:

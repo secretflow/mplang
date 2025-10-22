@@ -38,6 +38,7 @@ from mplang.core.mptype import MPType
 from mplang.core.tensor import TensorType
 
 try:
+    import jax
     import jax.numpy as jnp
 
     JAX_AVAILABLE = True
@@ -205,6 +206,36 @@ class TestDType:
         for dtype, expected_jax_type in test_cases:
             result = dtype.to_jax()
             assert result == expected_jax_type
+
+    @pytest.mark.skipif(not JAX_AVAILABLE, reason="JAX not available")
+    def test_jax_prng_key_conversion(self):
+        """Test JAX PRNG key dtype conversion and detection."""
+        # Test with the actual PRNG key dtype
+        prng_key_dtype = jax.dtypes.prng_key
+        dtype_from_prng = DType.from_jax(prng_key_dtype)
+
+        # Should convert to our custom prng_key dtype
+        assert dtype_from_prng.name == "prng_key"
+        assert dtype_from_prng.short_name() == "key"
+        assert dtype_from_prng.bitwidth == 64  # 2 * 32 bits
+
+        # Convert back to JAX should preserve identity
+        jax_dtype = dtype_from_prng.to_jax()
+        assert jax_dtype is prng_key_dtype
+
+        # Test that regular uint32 arrays remain uint32
+        regular_array = jnp.array([1, 2, 3, 4], dtype=jnp.uint32)
+        dtype_from_regular = DType.from_any(regular_array)
+        assert dtype_from_regular.name == "uint32"
+
+        # Test numpy conversion for prng_key dtype
+        numpy_dtype = dtype_from_prng.to_numpy()
+        assert numpy_dtype == np.dtype("uint32")
+
+        # Test fold_in operation still works with a PRNG key
+        key = jax.random.PRNGKey(42)
+        folded_key = jax.random.fold_in(key, 1)
+        assert folded_key.shape == key.shape
 
     def test_equality(self):
         """Test DType equality comparison."""

@@ -122,8 +122,8 @@ def test_secure_comparison_e2e(http_driver):
         y_const = mp.constant(y)
 
         # Seal them for secure computation - data from P0 and P4
-        x_sealed = mp.sealFrom(x_const, 0)  # P0 provides data
-        y_sealed = mp.sealFrom(y_const, 4)  # P4 provides data
+        x_sealed = mp.seal_at(0, x_const)  # P0 provides data
+        y_sealed = mp.seal_at(4, y_const)  # P4 provides data
 
         # Perform secure comparison
         import jax.numpy as jnp
@@ -164,9 +164,9 @@ def test_three_way_comparison_e2e(http_driver):
         wealth_c_const = mp.constant(wealth_c)
 
         # Seal the wealth values for secure computation
-        wealth_a_sealed = mp.sealFrom(wealth_a_const, 0)  # P0 provides wealth
-        wealth_b_sealed = mp.sealFrom(wealth_b_const, 2)  # P2 provides wealth
-        wealth_c_sealed = mp.sealFrom(wealth_c_const, 4)  # P4 provides wealth
+        wealth_a_sealed = mp.seal_at(0, wealth_a_const)  # P0 provides wealth
+        wealth_b_sealed = mp.seal_at(2, wealth_b_const)  # P2 provides wealth
+        wealth_c_sealed = mp.seal_at(4, wealth_c_const)  # P4 provides wealth
 
         # Perform secure comparison to find the richest
         import jax.numpy as jnp
@@ -216,8 +216,8 @@ def test_multiple_operations_e2e(http_driver):
         b_const = mp.constant(b)
 
         # Seal for secure computation - data from P0 and P3
-        a_sealed = mp.sealFrom(a_const, 0)  # P0 provides data
-        b_sealed = mp.sealFrom(b_const, 3)  # P3 provides data
+        a_sealed = mp.seal_at(0, a_const)  # P0 provides data
+        b_sealed = mp.seal_at(3, b_const)  # P3 provides data
 
         # Multiple operations
         import jax.numpy as jnp

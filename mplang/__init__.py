@@ -76,7 +76,7 @@ from mplang.simp.api import (
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
 from mplang.simp.party import P0, P1, P2, P2P, P, Party, load_module
 from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
-from mplang.simp.smpc import reveal, revealTo, seal, sealFrom, srun
+from mplang.simp.smpc import reveal, reveal_to, seal, seal_at, srun
 
 # Public API
 __all__ = [
@@ -131,7 +131,7 @@ __all__ = [
     "pshfl",
     "pshfl_s",
     "reveal",
-    "revealTo",
+    "reveal_to",
     "run",
     "run_at",
     "run_ibis",
@@ -142,7 +142,7 @@ __all__ = [
     "run_sql_at",
     "scatter_m",
     "seal",
-    "sealFrom",
+    "seal_at",
     "set_ctx",
     "set_mask",
     "srun",

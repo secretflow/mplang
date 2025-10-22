@@ -177,6 +177,13 @@ class DType:
             # TypeError if it's not a pandas dtype we can handle
             pass
 
+        try:
+            return cls._from_arraw_dtype(dtype_like)
+        except (ImportError, TypeError):
+            # ImportError if pyarrow is not installed
+            # TypeError if it's not a pyarrow dtype we can handle
+            print(f"=====> {dtype_like}")
+
         if isinstance(dtype_like, type) and dtype_like in (bool, int, float, complex):
             return cls.from_python_type(dtype_like)
         elif hasattr(dtype_like, "dtype") and not isinstance(dtype_like, type):
@@ -224,6 +231,38 @@ class DType:
             return cls.from_numpy(dtype_like.numpy_dtype)
 
         raise TypeError(f"Unsupported pandas dtype: {dtype_like}")
+
+    @classmethod
+    def _from_arraw_dtype(cls, dtype_like: Any) -> DType:
+        try:
+            import pyarrow as pa
+        except ImportError:
+            raise ImportError("pyarrow not available") from None
+
+        if not isinstance(dtype_like, pa.DataType):
+            raise TypeError("Not a pyarrow dtype")
+
+        if not hasattr(cls, "_ARROW_DTYPE_CACHE"):
+            cls._ARROW_DTYPE_CACHE = {
+                pa.bool_(): BOOL,
+                pa.int8(): INT8,
+                pa.int16(): INT16,
+                pa.int32(): INT32,
+                pa.int64(): INT64,
+                pa.uint8(): UINT8,
+                pa.uint16(): UINT16,
+                pa.uint32(): UINT32,
+                pa.uint64(): UINT64,
+                pa.float16(): FLOAT16,
+                pa.float32(): FLOAT32,
+                pa.float64(): FLOAT64,
+                pa.string(): STRING,
+                pa.large_string(): STRING,
+            }
+        result = cls._ARROW_DTYPE_CACHE.get(dtype_like)
+        if result is not None:
+            return result
+        raise TypeError(f"Unsupported arrow dtype: {dtype_like}")
 
     def to_numpy(self) -> np.dtype:
         """Convert custom DType to NumPy dtype."""

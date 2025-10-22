@@ -14,14 +14,21 @@
 
 from __future__ import annotations
 
-from io import StringIO
+from io import BytesIO, StringIO
 from typing import Any
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.orc as orc
 
 from mplang.core.table import TableType
 
-__all__ = ["csv_to_dataframe", "dataframe_to_csv"]
+__all__ = [
+    "csv_to_dataframe",
+    "dataframe_to_csv",
+    "dataframe_to_orc",
+    "orc_to_dataframe",
+]
 
 
 def dataframe_to_csv(df: Any) -> bytes:
@@ -83,3 +90,55 @@ def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
         raise ValueError(f"Invalid UTF-8 encoding in CSV content: {e}") from e
     except Exception as e:
         raise ValueError(f"Failed to parse CSV content: {e}") from e
+
+
+def dataframe_to_orc(df: Any) -> bytes:
+    """Convert DataFrame to ORC format as bytes.
+
+    Args:
+        df: DataFrame to convert (pandas DataFrame)
+
+    Returns:
+        ORC formatted data as bytes
+
+    Raises:
+        TypeError: If df is not a pandas DataFrame
+        ValueError: If DataFrame is empty or has no columns
+    """
+    if isinstance(df, pa.Table):
+        if len(df.column_names) == 0:
+            raise ValueError("Cannot convert Table with no columns.")
+        buffer = BytesIO()
+        orc.write_table(df, buffer, compression="ZSTD")
+        return buffer.getvalue()
+    elif isinstance(df, pd.DataFrame):
+        if len(df.columns) == 0:
+            raise ValueError("Cannot convert DataFrame with no columns.")
+        buffer = df.to_orc(index=False)
+        return buffer
+    else:
+        raise TypeError(f"Expected DataFrame Type, got {type(df)}")
+
+
+def orc_to_dataframe(content: bytes, columns: list[str] | None = None) -> pa.Table:
+    """Convert ORC bytes to DataFrame.
+
+    Args:
+        content: ORC formatted data as bytes
+        columns: Optional list[str] to specify which columns to read.
+
+    Returns:
+        pa.Table
+
+    Raises:
+        TypeError: If content is not bytes
+        ValueError: If content cannot be parsed as orc
+    """
+    if not isinstance(content, bytes):
+        raise TypeError(f"Expected bytes, got {type(content)}")
+
+    try:
+        table = orc.read_table(BytesIO(content), columns=columns)
+        return table
+    except Exception as e:
+        raise ValueError(f"Failed to parse ORC content: {e}") from e

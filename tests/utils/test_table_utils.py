@@ -303,3 +303,59 @@ class TestTableUtilsCSVHelpers:
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 2
         assert list(df.columns) == ["id", "name", "age"]
+
+
+class TestTableUtilsORCHelpers:
+    def test_orc_readwrite(self):
+        import pandas as pd
+        import pyarrow as pa
+
+        from mplang.utils.table_utils import dataframe_to_orc, orc_to_dataframe
+
+        data = {"a": [1, 2, 3], "b": ["a", None, "c"]}
+
+        test_cases = [
+            {"df": pa.table(data), "columns": None},
+            {"df": pd.DataFrame(data), "columns": ["b"]},
+        ]
+        for cfg in test_cases:
+            df = cfg["df"]
+            columns = cfg["columns"]
+
+            buffer = dataframe_to_orc(df)
+            assert isinstance(buffer, bytes)
+            tbl = orc_to_dataframe(buffer, columns)
+            assert isinstance(tbl, pa.Table)
+            load_data = {col: data[col] for col in columns} if columns else data
+            assert tbl.equals(pa.table(load_data))
+
+    def test_orc_readwrite_fail(self):
+        import pandas as pd
+        import pyarrow as pa
+
+        from mplang.utils.table_utils import dataframe_to_orc, orc_to_dataframe
+
+        # read orc
+        with pytest.raises(TypeError, match="Expected bytes"):
+            orc_to_dataframe("not bytes")
+
+        with pytest.raises(TypeError, match="Expected bytes"):
+            orc_to_dataframe([1, 2, 3])
+
+        with pytest.raises(TypeError, match="Expected bytes"):
+            orc_to_dataframe(None)
+
+        with pytest.raises(ValueError, match="Failed to parse ORC content"):
+            orc_to_dataframe(b"asdf")
+
+        # write orc
+        with pytest.raises(TypeError, match="Expected DataFrame Type"):
+            dataframe_to_orc(b"asdf")
+
+        with pytest.raises(ValueError, match="Cannot convert Table with no columns"):
+            dataframe_to_orc(pa.table({}))
+
+        with pytest.raises(
+            ValueError, match="Cannot convert DataFrame with no columns"
+        ):
+            dataframe_to_orc(pd.DataFrame({}))

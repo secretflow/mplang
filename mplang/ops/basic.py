@@ -108,8 +108,8 @@ def constant(
     out_type: TableType | TensorType
 
     if isinstance(data, TableLike):
-        data_bytes = table_utils.dataframe_to_csv(data)
-        data_format = "bytes[csv]"
+        data_bytes = table_utils.dataframe_to_orc(data)
+        data_format = "bytes[orc]"
         out_type = TableType.from_tablelike(data)
     elif isinstance(data, ScalarType):
         out_type = TensorType.from_obj(data)

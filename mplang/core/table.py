@@ -24,10 +24,10 @@ __all__ = ["TableLike", "TableType"]
 
 
 @runtime_checkable
-class TableLike(Protocol):
+class PandasTableLike(Protocol):
     """
     Protocol for objects structurally resembling tables from common libraries
-    (pandas DataFrame, pyarrow Table, etc.), focusing on dtypes and columns attributes.
+    (pandas DataFrame, polars DataFrame, etc.), focusing on dtypes and columns attributes.
     """
 
     @property
@@ -35,6 +35,26 @@ class TableLike(Protocol):
 
     @property
     def columns(self) -> Any: ...
+
+
+@runtime_checkable
+class ArrowSchema(Protocol):
+    @property
+    def names() -> list[str]: ...
+    @property
+    def types() -> list[Any]: ...
+
+
+@runtime_checkable
+class ArrowTableLike(Protocol):
+    @property
+    def column_names(self) -> list[str]: ...
+
+    @property
+    def schema(self) -> ArrowSchema: ...
+
+
+TableLike = PandasTableLike | ArrowTableLike
 
 
 @dataclass(frozen=True)
@@ -109,11 +129,19 @@ class TableType:
         Returns:
             TableType instance
         """
-        columns = [
-            (name, DType.from_any(dtype))
-            for name, dtype in zip(table.columns, table.dtypes, strict=True)
-        ]
-        return cls(tuple(columns))
+        if isinstance(table, PandasTableLike):
+            columns = [
+                (name, DType.from_any(dtype))
+                for name, dtype in zip(table.columns, table.dtypes, strict=True)
+            ]
+            return cls(tuple(columns))
+        elif isinstance(table, ArrowTableLike):
+            schema = table.schema
+            columns = [
+                (name, DType.from_any(dtype))
+                for name, dtype in zip(schema.names, schema.types, strict=True)
+            ]
+            return cls(tuple(columns))
 
     def column_names(self) -> tuple[str, ...]:
         """Get all column names."""

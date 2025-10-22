@@ -160,7 +160,7 @@ def test_dec_is_feoperation():
 
 def test_dec_default_algorithm():
     """Test dec with default algorithm (aes-ctr)."""
-    ciphertext = DummyTensor(UINT8, (20,))
+    ciphertext = DummyTensor(UINT8, (24,))
     key = DummyTensor(UINT8, (16,))
 
     pfunc, _args, _out_tree = crypto.dec(ciphertext, key)

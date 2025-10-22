@@ -19,7 +19,7 @@ from typing import Any
 
 from mplang.core.dtypes import UINT8, DType
 from mplang.core.pfunc import PFunction
-from mplang.core.table import TableLike, TableType
+from mplang.core.table import PandasTableLike, TableLike, TableType
 from mplang.core.tensor import TensorLike, TensorType
 from mplang.kernels import base
 from mplang.kernels.base import KernelContext, get_kernel_spec, kernel_exists
@@ -317,9 +317,12 @@ def _validate_table_arg(
         raise TypeError(
             f"kernel {fn_type} input[{arg_index}] expects TableLike, got {type(value).__name__}"
         )
-    if len(value.columns) != len(spec.columns):
+    columns = (
+        value.columns if isinstance(value, PandasTableLike) else value.column_names
+    )
+    if len(columns) != len(spec.columns):
         raise ValueError(
-            f"kernel {fn_type} input[{arg_index}] column count mismatch: got {len(value.columns)}, expected {len(spec.columns)}"
+            f"kernel {fn_type} input[{arg_index}] column count mismatch: got {len(columns)}, expected {len(spec.columns)}"
         )
 
 

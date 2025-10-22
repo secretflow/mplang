@@ -242,24 +242,23 @@ class DType:
         if not isinstance(dtype_like, pa.DataType):
             raise TypeError("Not a pyarrow dtype")
 
-        if not hasattr(cls, "_ARROW_DTYPE_CACHE"):
-            cls._ARROW_DTYPE_CACHE = {
-                pa.bool_(): BOOL,
-                pa.int8(): INT8,
-                pa.int16(): INT16,
-                pa.int32(): INT32,
-                pa.int64(): INT64,
-                pa.uint8(): UINT8,
-                pa.uint16(): UINT16,
-                pa.uint32(): UINT32,
-                pa.uint64(): UINT64,
-                pa.float16(): FLOAT16,
-                pa.float32(): FLOAT32,
-                pa.float64(): FLOAT64,
-                pa.string(): STRING,
-                pa.large_string(): STRING,
-            }
-        result = cls._ARROW_DTYPE_CACHE.get(dtype_like)
+        ARROW_DTYPE_MAPPING = {
+            pa.bool_(): BOOL,
+            pa.int8(): INT8,
+            pa.int16(): INT16,
+            pa.int32(): INT32,
+            pa.int64(): INT64,
+            pa.uint8(): UINT8,
+            pa.uint16(): UINT16,
+            pa.uint32(): UINT32,
+            pa.uint64(): UINT64,
+            pa.float16(): FLOAT16,
+            pa.float32(): FLOAT32,
+            pa.float64(): FLOAT64,
+            pa.string(): STRING,
+            pa.large_string(): STRING,
+        }
+        result = ARROW_DTYPE_MAPPING.get(dtype_like)
         if result is not None:
             return result
         raise TypeError(f"Unsupported arrow dtype: {dtype_like}")

@@ -115,8 +115,9 @@ def dataframe_to_orc(df: Any) -> bytes:
     elif isinstance(df, pd.DataFrame):
         if len(df.columns) == 0:
             raise ValueError("Cannot convert DataFrame with no columns.")
-        buffer = df.to_orc(index=False)
-        return buffer
+        result = df.to_orc(index=False)
+        assert isinstance(result, bytes)
+        return result
     else:
         raise TypeError(f"Expected DataFrame Type, got {type(df)}")
 

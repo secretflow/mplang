@@ -182,7 +182,7 @@ class DType:
         except (ImportError, TypeError):
             # ImportError if pyarrow is not installed
             # TypeError if it's not a pyarrow dtype we can handle
-            print(f"=====> {dtype_like}")
+            pass
 
         if isinstance(dtype_like, type) and dtype_like in (bool, int, float, complex):
             return cls.from_python_type(dtype_like)

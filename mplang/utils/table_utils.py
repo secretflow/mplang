@@ -93,17 +93,18 @@ def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
 
 
 def dataframe_to_orc(df: Any) -> bytes:
-    """Convert DataFrame to ORC format as bytes.
+    """
+    Convert DataFrame or Arrow Table to ORC format as bytes.
 
     Args:
-        df: DataFrame to convert (pandas DataFrame)
+        df: DataFrame or Table to convert (pandas.DataFrame or pyarrow.Table)
 
     Returns:
         ORC formatted data as bytes
 
     Raises:
-        TypeError: If df is not a pandas DataFrame
-        ValueError: If DataFrame is empty or has no columns
+        TypeError: If df is not a pandas.DataFrame or pyarrow.Table
+        ValueError: If the input is empty or has no columns
     """
     if isinstance(df, pa.Table):
         if len(df.column_names) == 0:

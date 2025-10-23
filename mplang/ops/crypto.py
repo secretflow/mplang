@@ -167,7 +167,7 @@ def dec(
 def kem_keygen(suite: str = "x25519") -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """KEM-style keypair generation: returns (sk, pk) bytes.
 
-    API: kem_keygen(*, suite: str = "x25519") -> (sk: u8[32], pk: u8[32])
+    API: kem_keygen(suite: str = "x25519") -> (sk: u8[32], pk: u8[32])
 
     The suite parameter is stored in the PFunction attributes for backend use.
     """
@@ -196,7 +196,7 @@ def kem_derive(
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """KEM-style shared secret derivation: returns secret bytes.
 
-    API: kem_derive(sk: u8[32], peer_pk: u8[32], *, suite: str = "x25519") -> secret: u8[32]
+    API: kem_derive(sk: u8[32], peer_pk: u8[32], suite: str = "x25519") -> secret: u8[32]
 
     The suite parameter is stored in the PFunction attributes for backend use.
     """
@@ -234,7 +234,7 @@ def hkdf(
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """HKDF-style key derivation: returns a 32-byte key.
 
-    API: hkdf(secret: u8[N], *, info: str, hash: str = "SHA-256") -> key: u8[32]
+    API: hkdf(secret: u8[N], info: str, hash: str = "SHA-256") -> key: u8[32]
 
     The hash parameter is stored in the PFunction attributes for backend use.
     """

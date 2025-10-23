@@ -128,6 +128,8 @@ enum DataType {
   TIMESTAMP = 19;
   // json (table only)
   JSON = 20;
+  // JAX PRNG key (uint32 array with shape [2])
+  PRNG_KEY = 21;
 }
 
 // Tensor type definition

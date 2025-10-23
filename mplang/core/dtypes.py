@@ -44,6 +44,7 @@ __all__ = [
     "INT64",
     "INTERVAL",
     "JSON",
+    "PRNG_KEY",
     "STRING",
     "TIME",
     "TIMESTAMP",
@@ -317,6 +318,7 @@ FLOAT32 = DType("float32", 32, True, True, False)
 FLOAT64 = DType("float64", 64, True, True, False)
 COMPLEX64 = DType("complex64", 64, True, True, True)
 COMPLEX128 = DType("complex128", 128, True, True, True)
+PRNG_KEY = DType("prng_key", 64, False, False, False)  # JAX PRNG key (2 x uint32)
 
 # Table-only types (marked with is_table_only=True)
 STRING = DType("string", 0, None, False, False, True)  # Variable length string

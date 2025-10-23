@@ -79,6 +79,8 @@ class _DataTypeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumT
     """timestamp (table only)"""
     JSON: _DataType.ValueType  # 20
     """json (table only)"""
+    PRNG_KEY: _DataType.ValueType  # 21
+    """JAX PRNG key (uint32 array with shape [2])"""
 
 class DataType(_DataType, metaclass=_DataTypeEnumTypeWrapper):
     """Data type enumeration"""
@@ -125,6 +127,8 @@ TIMESTAMP: DataType.ValueType  # 19
 """timestamp (table only)"""
 JSON: DataType.ValueType  # 20
 """json (table only)"""
+PRNG_KEY: DataType.ValueType  # 21
+"""JAX PRNG key (uint32 array with shape [2])"""
 global___DataType = DataType
 
 @typing_extensions.final

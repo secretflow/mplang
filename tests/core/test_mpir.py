@@ -16,7 +16,7 @@
 import numpy as np
 import pytest
 
-from mplang.core.dtypes import FLOAT32, INT32, DType
+from mplang.core.dtypes import FLOAT32, INT32, PRNG_KEY, UINT32, DType
 from mplang.core.expr import Expr
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -32,7 +32,7 @@ from mplang.core.expr.ast import (
     WhileExpr,
 )
 from mplang.core.mask import Mask
-from mplang.core.mpir import IrReader, IrWriter
+from mplang.core.mpir import IrReader, IrWriter, dtype_to_proto, proto_to_dtype
 from mplang.core.mptype import MPType
 from mplang.core.pfunc import PFunction
 from mplang.core.tensor import TensorType
@@ -146,7 +146,6 @@ class TestUtilityFunctions:
 
     def test_dtype_to_proto_conversion(self):
         """Test dtype to protobuf conversion."""
-        from mplang.core.mpir import dtype_to_proto
 
         # Test DType conversion
         dtype = DType.from_numpy(np.float32)
@@ -163,7 +162,6 @@ class TestUtilityFunctions:
 
     def test_proto_to_dtype_conversion(self):
         """Test protobuf to dtype conversion."""
-        from mplang.core.mpir import proto_to_dtype
 
         # Test basic conversion
         result = proto_to_dtype(mpir_pb2.DataType.F32)
@@ -486,7 +484,6 @@ class TestErrorHandling:
 
     def test_invalid_dtype_conversion(self):
         """Test error handling for invalid dtype conversions."""
-        from mplang.core.mpir import dtype_to_proto
 
         with pytest.raises(ValueError, match="Invalid dtype"):
             dtype_to_proto(object())
@@ -914,7 +911,6 @@ class TestRelationTypeSupport:
     def test_relation_dtype_conversion(self):
         """Test dtype conversion for relation-only types."""
         from mplang.core.dtypes import DATE, JSON, STRING, TIME, TIMESTAMP
-        from mplang.core.mpir import dtype_to_proto, proto_to_dtype
 
         # Test relation-only dtypes to proto
         test_cases = [
@@ -933,6 +929,87 @@ class TestRelationTypeSupport:
             # Test proto_to_dtype
             dtype_result = proto_to_dtype(expected_proto)
             assert dtype_result == dtype, f"Failed round-trip for {dtype.name}"
+
+    def test_prng_key_serialization_roundtrip(self):
+        """Test PRNG_KEY serialization and deserialization preserves type."""
+        from mplang.core.mpir import dtype_to_proto, proto_to_dtype
+
+        # Test dtype conversion functions
+        proto_enum = dtype_to_proto(PRNG_KEY)
+        assert proto_enum == mpir_pb2.DataType.PRNG_KEY
+
+        restored_dtype = proto_to_dtype(proto_enum)
+        assert restored_dtype == PRNG_KEY
+
+        # Test that PRNG_KEY is not confused with uint32
+        uint32_proto = dtype_to_proto(UINT32)
+        assert proto_enum != uint32_proto
+        assert proto_to_dtype(uint32_proto) == UINT32
+
+        # Test in expression serialization
+        prng_var = VariableExpr(
+            "prng_key_var",
+            MPType.tensor(PRNG_KEY, (2,), pmask=Mask(7))
+        )
+
+        # Serialize
+        writer = IrWriter()
+        proto = writer.dumps(prng_var)
+
+        # Verify protobuf contains PRNG_KEY type
+        var_node = None
+        for node in proto.nodes:
+            if node.op_type == "variable":
+                var_node = node
+                break
+
+        assert var_node is not None
+        assert len(var_node.outs_info) == 1
+        assert var_node.outs_info[0].tensor_type.dtype == mpir_pb2.DataType.PRNG_KEY
+
+        # Deserialize
+        reader = IrReader()
+        recovered_expr = reader.loads(proto)
+
+        # Verify PRNG_KEY type is preserved
+        assert isinstance(recovered_expr, VariableExpr)
+        assert recovered_expr.mptypes[0].dtype == PRNG_KEY
+        assert recovered_expr.mptypes[0].dtype.name == "prng_key"
+
+    def test_prng_key_vs_uint32_distinction_in_graph(self):
+        """Test PRNG_KEY and uint32 are handled distinctly in complex graphs."""
+        from mplang.core.expr.ast import TupleExpr
+
+        # Create variables with different types
+        prng_var = VariableExpr(
+            "prng_key",
+            MPType.tensor(PRNG_KEY, (2,), pmask=Mask(7))
+        )
+
+        uint32_var = VariableExpr(
+            "uint32_val",
+            MPType.tensor(UINT32, (2,), pmask=Mask(7))
+        )
+
+        # Create a tuple containing both
+        original_expr = TupleExpr([prng_var, uint32_var])
+
+        # Serialize and deserialize
+        writer = IrWriter()
+        proto = writer.dumps(original_expr)
+
+        reader = IrReader()
+        recovered_expr = reader.loads(proto)
+
+        # Verify both types are preserved correctly
+        assert isinstance(recovered_expr, TupleExpr)
+        assert len(recovered_expr.args) == 2
+
+        # First argument should have PRNG_KEY type
+        assert recovered_expr.args[0].mptypes[0].dtype == PRNG_KEY
+
+        # Second argument should have uint32 type
+        assert recovered_expr.args[1].mptypes[0].dtype == UINT32
 
     def test_mptype_proto_tensor_type(self):
         """Test MPTypeProto with tensor type."""

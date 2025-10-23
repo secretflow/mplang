@@ -32,7 +32,7 @@ from typing import Any
 import numpy as np
 import spu.libspu as spu_api
 
-from mplang.core.dtypes import DATE, JSON, STRING, TIME, TIMESTAMP, DType
+from mplang.core.dtypes import DATE, JSON, PRNG_KEY, STRING, TIME, TIMESTAMP, DType
 from mplang.core.expr import Expr, FuncDefExpr
 from mplang.core.expr.ast import (
     AccessExpr,
@@ -73,7 +73,7 @@ DTYPE_MAPPING = {
     np.complex128: mpir_pb2.DataType.COMPLEX128,
 }
 
-# Additional mapping for table-only DType constants
+# Additional mapping for table-only DType constants and special types
 DTYPE_TO_PROTO_MAPPING = {
     # Map DType constants to protobuf enums
     STRING: mpir_pb2.DataType.STRING,
@@ -81,6 +81,7 @@ DTYPE_TO_PROTO_MAPPING = {
     TIME: mpir_pb2.DataType.TIME,
     TIMESTAMP: mpir_pb2.DataType.TIMESTAMP,
     JSON: mpir_pb2.DataType.JSON,
+    PRNG_KEY: mpir_pb2.DataType.PRNG_KEY,
 }
 
 

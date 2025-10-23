@@ -14,133 +14,172 @@
 
 from __future__ import annotations
 
-from io import BytesIO, StringIO
+import io
 from typing import Any
 
-import pandas as pd
 import pyarrow as pa
-import pyarrow.orc as orc
+import pyarrow.csv as pa_csv
+import pyarrow.orc as pa_orc
+import pyarrow.parquet as pa_pq
 
-from mplang.core.table import TableType
+from mplang.core.table import TableLike
 
-__all__ = [
-    "csv_to_dataframe",
-    "dataframe_to_csv",
-    "dataframe_to_orc",
-    "orc_to_dataframe",
+__all__ = ["decode_table", "encode_table", "read_table", "write_table"]
+
+
+def _parse_kwargs(kwargs: dict[str, Any], keys: list[str]) -> dict[str, Any] | None:
+    if not kwargs:
+        return None
+
+    return {key: kwargs[key] for key in keys if key in kwargs}
+
+
+_csv_read_option_keys = [
+    "skip_rows",
+    "skip_rows_after_names",
+    "column_names",
+    "autogenerate_column_names",
+    "encoding",
+]
+_csv_parse_option_keys = [
+    "delimiter",
+    "quote_char",
+    "double_quote",
+    "escape_char",
+    "newlines_in_values",
+    "ignore_empty_lines",
+]
+_csv_convert_option_keys = [
+    "check_utf8",
+    "column_types",
+    "null_values",
+    "true_values",
+    "false_values",
+    "decimal_point",
+    "strings_can_be_null",
+    "quoted_strings_can_be_null",
+    "include_columns",
+    "include_missing_columns",
+    "auto_dict_encode",
+    "auto_dict_max_cardinality",
+    "timestamp_parsers",
 ]
 
 
-def dataframe_to_csv(df: Any) -> bytes:
-    """Convert DataFrame to CSV format as bytes.
+def read_table(
+    source: Any,
+    format: str = "parquet",
+    columns: list[str] | None = None,
+    **kwargs: Any,
+) -> pa.Table:
+    """Read data from a file and return a PyArrow table.
 
     Args:
-        df: DataFrame to convert (pandas DataFrame)
+        source: The source to read data from (file path, file-like object, etc.)
+        format: The format of the data source ("parquet", "csv", or "orc")
+        columns: List of column names to read (None means all columns)
+        **kwargs: Additional keyword arguments passed to the underlying reader
 
     Returns:
-        CSV formatted data as bytes
+        A PyArrow Table containing the data from the source
 
     Raises:
-        TypeError: If df is not a pandas DataFrame
-        ValueError: If DataFrame is empty or has no columns
+        ValueError: If an unsupported format is specified
     """
-    if not isinstance(df, pd.DataFrame):
-        raise TypeError(f"Expected pandas DataFrame, got {type(df)}")
+    match format:
+        case "csv":
+            if columns:
+                kwargs["include_columns"] = columns
+            read_args = _parse_kwargs(kwargs, _csv_read_option_keys)
+            parse_args = _parse_kwargs(kwargs, _csv_parse_option_keys)
+            convert_args = _parse_kwargs(kwargs, _csv_convert_option_keys)
 
-    if len(df.columns) == 0:
-        raise ValueError("Cannot convert DataFrame with no columns to CSV")
+            read_opts = pa_csv.ReadOptions(**read_args) if read_args else None
+            parse_opts = pa_csv.ParseOptions(**parse_args) if parse_args else None
+            conv_opts = pa_csv.ConvertOptions(**convert_args) if convert_args else None
+            return pa_csv.read_csv(
+                source,
+                read_options=read_opts,
+                parse_options=parse_opts,
+                convert_options=conv_opts,
+            )
+        case "orc":
+            return pa_orc.read_table(source, columns=columns, **kwargs)
+        case "parquet":
+            return pa_pq.read_table(source, columns=columns)
+        case _:
+            raise ValueError(f"unsupported data format. {format}")
 
-    # Convert DataFrame to CSV string, then to bytes
-    csv_str: str = df.to_csv(index=False)
-    return csv_str.encode("utf-8")
 
-
-def csv_to_dataframe(content: bytes, schema: TableType | None = None) -> Any:
-    """Convert CSV bytes to DataFrame.
+def write_table(
+    data: TableLike,
+    where: Any,
+    format: str = "parquet",
+    **kwargs: Any,
+) -> None:
+    """Write a table-like object to a file in the specified format.
 
     Args:
-        content: CSV formatted data as bytes
-        schema: Optional TableType to specify which columns to read. If provided,
-                only columns specified in the schema will be loaded.
+        data: The table-like object to write (PyArrow Table or other compatible format)
+        where: The destination to write to (file path, file-like object, etc.)
+        format: The format to write the data in ("parquet", "csv", or "orc")
+        **kwargs: Additional keyword arguments passed to the underlying writer
 
     Returns:
-        pandas DataFrame
+        None
 
     Raises:
-        TypeError: If content is not bytes
-        ValueError: If content cannot be parsed as CSV
+        ValueError: If the table has no columns or an unsupported format is specified
     """
-    if not isinstance(content, bytes):
-        raise TypeError(f"Expected bytes, got {type(content)}")
+    # Convert data to PyArrow Table if needed
+    table = data if isinstance(data, pa.Table) else pa.table(data)
+    if len(table.column_names) == 0:
+        raise ValueError("Cannot convert Table with no columns.")
 
-    try:
-        # Decode bytes to string, then parse as CSV
-        csv_str = content.decode("utf-8")
-
-        # Apply schema projection if provided
-        if schema and isinstance(schema, TableType):
-            # Extract column names from schema for column selection
-            usecols = list(schema.column_names())
-            df = pd.read_csv(StringIO(csv_str), usecols=usecols)
-        else:
-            df = pd.read_csv(StringIO(csv_str))
-
-        return df
-    except UnicodeDecodeError as e:
-        raise ValueError(f"Invalid UTF-8 encoding in CSV content: {e}") from e
-    except Exception as e:
-        raise ValueError(f"Failed to parse CSV content: {e}") from e
+    match format:
+        case "csv":
+            options = pa_csv.WriteOptions(**kwargs) if kwargs else None
+            pa_csv.write_csv(table, where, write_options=options)
+        case "orc":
+            pa_orc.write_table(table, where, **kwargs)
+        case "parquet":
+            pa_pq.write_table(table, where, **kwargs)
+        case _:
+            raise ValueError(f"unsupported data format. {format}")
 
 
-def dataframe_to_orc(df: Any) -> bytes:
-    """
-    Convert DataFrame or Arrow Table to ORC format as bytes.
+def decode_table(
+    data: bytes,
+    format: str = "parquet",
+    columns: list[str] | None = None,
+    **kwargs: Any,
+) -> pa.Table:
+    """Decode a bytes object into a PyArrow table.
 
     Args:
-        df: DataFrame or Table to convert (pandas.DataFrame or pyarrow.Table)
+        data: The bytes object containing the encoded table data
+        format: The format of the encoded data ("parquet", "csv", or "orc")
+        columns: List of column names to decode (None means all columns)
+        **kwargs: Additional keyword arguments passed to the underlying reader
 
     Returns:
-        ORC formatted data as bytes
-
-    Raises:
-        TypeError: If df is not a pandas.DataFrame or pyarrow.Table
-        ValueError: If the input is empty or has no columns
+        A PyArrow Table decoded from the bytes data
     """
-    if isinstance(df, pa.Table):
-        if len(df.column_names) == 0:
-            raise ValueError("Cannot convert Table with no columns.")
-        buffer = BytesIO()
-        orc.write_table(df, buffer, compression="ZSTD")
-        return buffer.getvalue()
-    elif isinstance(df, pd.DataFrame):
-        if len(df.columns) == 0:
-            raise ValueError("Cannot convert DataFrame with no columns.")
-        result = df.to_orc(index=False)
-        assert isinstance(result, bytes)
-        return result
-    else:
-        raise TypeError(f"Expected DataFrame Type, got {type(df)}")
+    buffer = io.BytesIO(data)
+    return read_table(buffer, format=format, columns=columns, **kwargs)
 
 
-def orc_to_dataframe(content: bytes, columns: list[str] | None = None) -> pa.Table:
-    """Convert ORC bytes to DataFrame.
+def encode_table(data: TableLike, format: str = "parquet", **kwargs: Any) -> bytes:
+    """Encode a table-like object into bytes.
 
     Args:
-        content: ORC formatted data as bytes
-        columns: Optional list[str] to specify which columns to read.
+        data: The table-like object to encode (PyArrow Table or other compatible format)
+        format: The format to encode the data in ("parquet", "csv", or "orc")
+        **kwargs: Additional keyword arguments passed to the underlying writer
 
     Returns:
-        pa.Table
-
-    Raises:
-        TypeError: If content is not bytes
-        ValueError: If content cannot be parsed as orc
+        Bytes object containing the encoded table data
     """
-    if not isinstance(content, bytes):
-        raise TypeError(f"Expected bytes, got {type(content)}")
-
-    try:
-        table = orc.read_table(BytesIO(content), columns=columns)
-        return table
-    except Exception as e:
-        raise ValueError(f"Failed to parse ORC content: {e}") from e
+    buffer = io.BytesIO()
+    write_table(data, buffer, format, **kwargs)
+    return buffer.getvalue()

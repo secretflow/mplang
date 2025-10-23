@@ -12,350 +12,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pyarrow as pa
 import pytest
 
-from mplang.core.dtypes import FLOAT64, INT64, STRING
-from mplang.core.table import TableType
-
-
-class TestTableUtilsCSVHelpers:
-    """Test CSV helper functions."""
-
-    def test_dataframe_to_csv_basic(self):
-        """Test basic DataFrame to CSV conversion."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import dataframe_to_csv
-
-        # Create a test DataFrame
-        df = pd.DataFrame({
-            "id": [1, 2, 3],
-            "name": ["Alice", "Bob", "Charlie"],
-            "score": [95.5, 87.2, 92.0],
-            "active": [True, False, True],
-        })
-
-        # Convert to CSV
-        csv_bytes = dataframe_to_csv(df)
-
-        # Verify the result
-        assert isinstance(csv_bytes, bytes)
-        csv_str = csv_bytes.decode("utf-8")
-
-        # Check that CSV contains expected headers and data
-        assert "id,name,score,active" in csv_str
-        assert "1,Alice,95.5,True" in csv_str
-        assert "2,Bob,87.2,False" in csv_str
-        assert "3,Charlie,92.0,True" in csv_str
-
-    def test_dataframe_to_csv_empty(self):
-        """Test DataFrame to CSV conversion with empty DataFrame."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import dataframe_to_csv
-
-        # Create an empty DataFrame with schema
-        df = pd.DataFrame(columns=["user_id", "username"])
-        df = df.astype({"user_id": "int64", "username": "string"})
-
-        csv_bytes = dataframe_to_csv(df)
-
-        assert isinstance(csv_bytes, bytes)
-        csv_str = csv_bytes.decode("utf-8")
-        # Should contain headers but no data rows
-        assert "user_id,username" in csv_str
-
-    def test_dataframe_to_csv_no_columns(self):
-        """Test that DataFrame with no columns raises ValueError."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import dataframe_to_csv
-
-        # Create DataFrame with no columns
-        df = pd.DataFrame()
-
-        with pytest.raises(
-            ValueError, match="Cannot convert DataFrame with no columns to CSV"
-        ):
-            dataframe_to_csv(df)
-
-    def test_dataframe_to_csv_wrong_type(self):
-        """Test that non-DataFrame input raises TypeError."""
-        pytest.importorskip("pandas")
-
-        from mplang.utils.table_utils import dataframe_to_csv
-
-        with pytest.raises(TypeError, match="Expected pandas DataFrame"):
-            dataframe_to_csv([1, 2, 3])
-
-        with pytest.raises(TypeError, match="Expected pandas DataFrame"):
-            dataframe_to_csv("not a dataframe")
-
-        with pytest.raises(TypeError, match="Expected pandas DataFrame"):
-            dataframe_to_csv(None)
-
-    def test_csv_to_dataframe_basic(self):
-        """Test basic CSV to DataFrame conversion."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        # Create test CSV content
-        csv_content = b"id,name,score,active\n1,Alice,95.5,True\n2,Bob,87.2,False\n3,Charlie,92.0,True\n"
-
-        # Convert to DataFrame
-        df = csv_to_dataframe(csv_content)
-
-        # Verify the result
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 3
-        assert list(df.columns) == ["id", "name", "score", "active"]
-
-        # Check data values
-        assert df.loc[0, "id"] == 1
-        assert df.loc[0, "name"] == "Alice"
-        assert df.loc[0, "score"] == 95.5
-        # Check boolean value - pandas reads "True" as boolean
-        assert df.loc[0, "active"]
-
-    def test_csv_to_dataframe_empty(self):
-        """Test CSV to DataFrame conversion with empty data."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        # CSV with headers but no data
-        csv_content = b"user_id,username\n"
-
-        df = csv_to_dataframe(csv_content)
-
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 0
-        assert list(df.columns) == ["user_id", "username"]
-
-    def test_csv_to_dataframe_wrong_type(self):
-        """Test that non-bytes input raises TypeError."""
-        pytest.importorskip("pandas")
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        with pytest.raises(TypeError, match="Expected bytes"):
-            csv_to_dataframe("not bytes")
-
-        with pytest.raises(TypeError, match="Expected bytes"):
-            csv_to_dataframe([1, 2, 3])
-
-        with pytest.raises(TypeError, match="Expected bytes"):
-            csv_to_dataframe(None)
-
-    def test_csv_to_dataframe_invalid_utf8(self):
-        """Test that invalid UTF-8 content raises ValueError."""
-        pytest.importorskip("pandas")
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        # Invalid UTF-8 bytes
-        invalid_content = b"\xff\xfe\x00\x00"
-
-        with pytest.raises(ValueError, match="Invalid UTF-8 encoding in CSV content"):
-            csv_to_dataframe(invalid_content)
-
-    def test_csv_to_dataframe_invalid_csv(self):
-        """Test error handling with various edge cases."""
-        pytest.importorskip("pandas")
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        # Test case 1: Invalid UTF-8 encoding should raise ValueError
-        invalid_utf8 = b"invalid\xff\xfe\x00\x00"
-        with pytest.raises(ValueError, match="Invalid UTF-8 encoding in CSV content"):
-            csv_to_dataframe(invalid_utf8)
-
-        # Test case 2: Edge case content that pandas handles gracefully
-        # (pandas is very tolerant, so we mainly test that our function doesn't crash)
-        edge_case_csv = b"this is not really csv content"
-        result = csv_to_dataframe(edge_case_csv)
-        # pandas will treat this as a single column with one row
-        assert len(result.columns) == 1
-
-    def test_roundtrip_conversion(self):
-        """Test that DataFrame -> CSV -> DataFrame roundtrip works correctly."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe, dataframe_to_csv
-
-        # Create original DataFrame
-        original_df = pd.DataFrame({
-            "id": [1, 2, 3],
-            "name": ["Alice", "Bob", "Charlie"],
-            "score": [95.5, 87.2, 92.0],
-        })
-
-        # Convert to CSV and back
-        csv_bytes = dataframe_to_csv(original_df)
-        restored_df = csv_to_dataframe(csv_bytes)
-
-        # Compare DataFrames (accounting for potential type differences)
-        assert len(original_df) == len(restored_df)
-        assert list(original_df.columns) == list(restored_df.columns)
-
-        # Check data values (convert to same types for comparison)
-        pd.testing.assert_frame_equal(
-            original_df.astype(str), restored_df.astype(str), check_dtype=False
-        )
-
-    def test_csv_to_dataframe_with_schema_projection(self):
-        """Test CSV to DataFrame conversion with schema column projection."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        # Create test CSV content with more columns than needed
-        csv_content = (
-            b"id,name,age,city,salary,department\n"
-            b"1,Alice,25,New York,75000,Engineering\n"
-            b"2,Bob,30,San Francisco,85000,Marketing\n"
-            b"3,Charlie,28,Chicago,70000,Engineering\n"
-        )
-
-        # Define schema with only specific columns
-        schema = TableType.from_dict({"id": INT64, "name": STRING, "salary": FLOAT64})
-
-        # Convert to DataFrame with schema projection
-        df = csv_to_dataframe(csv_content, schema=schema)
-
-        # Verify only specified columns are loaded
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 3
-        assert list(df.columns) == ["id", "name", "salary"]
-
-        # Check data values
-        assert df.loc[0, "id"] == 1
-        assert df.loc[0, "name"] == "Alice"
-        assert df.loc[0, "salary"] == 75000
-
-        # Verify other columns are not present
-        assert "age" not in df.columns
-        assert "city" not in df.columns
-        assert "department" not in df.columns
-
-    def test_csv_to_dataframe_with_single_column_schema(self):
-        """Test schema projection with single column."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        csv_content = b"id,name,age\n1,Alice,25\n2,Bob,30\n"
-
-        # Schema with only one column
-        schema = TableType.from_dict({"name": STRING})
-
-        df = csv_to_dataframe(csv_content, schema=schema)
-
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2
-        assert list(df.columns) == ["name"]
-        assert df.loc[0, "name"] == "Alice"
-        assert df.loc[1, "name"] == "Bob"
-
-    def test_csv_to_dataframe_with_empty_schema(self):
-        """Test that empty schema raises ValueError."""
-        # Empty schema should raise error during TableType creation
-        with pytest.raises(ValueError, match="TableType cannot be empty"):
-            TableType(())
-
-    def test_csv_to_dataframe_with_none_schema(self):
-        """Test that None schema loads all columns (backward compatibility)."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        csv_content = b"id,name,age\n1,Alice,25\n2,Bob,30\n"
-
-        # Pass None schema - should load all columns
-        df = csv_to_dataframe(csv_content, schema=None)
-
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2
-        assert list(df.columns) == ["id", "name", "age"]
-
-    def test_csv_to_dataframe_with_invalid_schema_type(self):
-        """Test that non-TableType schema is ignored for backward compatibility."""
-        pytest.importorskip("pandas")
-        import pandas as pd
-
-        from mplang.utils.table_utils import csv_to_dataframe
-
-        csv_content = b"id,name,age\n1,Alice,25\n2,Bob,30\n"
-
-        # Pass invalid schema type - should be ignored and load all columns
-        df = csv_to_dataframe(csv_content, schema="invalid_type")
-
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2
-        assert list(df.columns) == ["id", "name", "age"]
-
-
-class TestTableUtilsORCHelpers:
-    def test_orc_readwrite(self):
-        import pandas as pd
-        import pyarrow as pa
-
-        from mplang.utils.table_utils import dataframe_to_orc, orc_to_dataframe
-
-        data = {"a": [1, 2, 3], "b": ["a", None, "c"]}
-
-        test_cases = [
-            {"df": pa.table(data), "columns": None},
-            {"df": pd.DataFrame(data), "columns": ["b"]},
-        ]
-        for cfg in test_cases:
-            df = cfg["df"]
-            columns = cfg["columns"]
-
-            buffer = dataframe_to_orc(df)
-            assert isinstance(buffer, bytes)
-            tbl = orc_to_dataframe(buffer, columns)
-            assert isinstance(tbl, pa.Table)
-            load_data = {col: data[col] for col in columns} if columns else data
-            assert tbl.equals(pa.table(load_data))
-
-    def test_orc_readwrite_fail(self):
-        import pandas as pd
-        import pyarrow as pa
-
-        from mplang.utils.table_utils import dataframe_to_orc, orc_to_dataframe
-
-        # read orc
-        with pytest.raises(TypeError, match="Expected bytes"):
-            orc_to_dataframe("not bytes")
-
-        with pytest.raises(TypeError, match="Expected bytes"):
-            orc_to_dataframe([1, 2, 3])
-
-        with pytest.raises(TypeError, match="Expected bytes"):
-            orc_to_dataframe(None)
-
-        with pytest.raises(ValueError, match="Failed to parse ORC content"):
-            orc_to_dataframe(b"asdf")
-
-        # write orc
-        with pytest.raises(TypeError, match="Expected DataFrame Type"):
-            dataframe_to_orc(b"asdf")
-
-        with pytest.raises(ValueError, match="Cannot convert Table with no columns"):
-            dataframe_to_orc(pa.table({}))
-
-        with pytest.raises(
-            ValueError, match="Cannot convert DataFrame with no columns"
-        ):
-            dataframe_to_orc(pd.DataFrame({}))
+from mplang.utils.table_utils import decode_table, encode_table
+
+
+@pytest.mark.parametrize("format", ["csv", "orc", "parquet"])
+def test_readwrite_table(format: str):
+    data = {
+        "a": [1, 2, 3],
+        "b": ["a", None, "c"],
+        "c": [1.1, 2.1, 3.1],
+        "d": [True, False, None],
+    }
+    columns = ["a", "c"]
+    csv_options = {"null_values": [""], "strings_can_be_null": True}
+    options = csv_options if format == "csv" else {}
+    buffer = encode_table(data, format=format)
+    result_all = decode_table(buffer, format=format, **options)
+    result_sub = decode_table(buffer, format=format, columns=columns, **options)
+
+    assert result_all.equals(pa.table(data))
+    assert result_sub.equals(pa.table({col: data[col] for col in columns}))
+
+
+def test_write_dataframe():
+    import pandas as pd
+
+    data = {
+        "a": [1, 2, 3],
+        "b": ["a", None, "c"],
+        "c": [1.1, 2.1, 3.1],
+        "d": [True, False, None],
+    }
+
+    df = pd.DataFrame(data)
+    buffer = encode_table(df)
+    result = decode_table(buffer)
+    assert result.equals(pa.table(data))
+
+
+def test_readwrite_table_fail():
+    data = pa.table({})
+    with pytest.raises(ValueError, match="Cannot convert Table with no columns"):
+        encode_table(data)
+
+    with pytest.raises(ValueError, match="unsupported data format"):
+        encode_table({"a": [1, 2, 3]}, format="")
+    with pytest.raises(ValueError, match="unsupported data format"):
+        decode_table(b"1,2,3", format="")

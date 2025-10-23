@@ -19,9 +19,8 @@ from typing import Any
 from urllib.parse import ParseResult, urlparse
 
 import numpy as np
-import pandas as pd
 
-from mplang.core import TableType, TensorType
+from mplang.core import TableLike, TableType, TensorType
 from mplang.kernels.base import KernelContext
 from mplang.utils import table_utils
 
@@ -149,10 +148,11 @@ class FileProvider(DataProvider):
     ) -> Any:
         path = uri.local_path or uri.raw
         if isinstance(out_spec, TableType):
+            # TODO: parse format from uri
             with open(path, "rb") as f:
-                csv_bytes = f.read()
-            # Pass schema to enable column projection
-            return table_utils.csv_to_dataframe(csv_bytes, schema=out_spec)
+                return table_utils.read_table(
+                    f, format="csv", columns=list(out_spec.column_names())
+                )
         # tensor path
         return np.load(path)
 
@@ -164,10 +164,9 @@ class FileProvider(DataProvider):
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
         # Table-like to CSV bytes
-        if hasattr(value, "__dataframe__") or isinstance(value, pd.DataFrame):
-            csv_bytes = table_utils.dataframe_to_csv(value)  # type: ignore
+        if isinstance(value, TableLike):
             with open(path, "wb") as f:
-                f.write(csv_bytes)
+                table_utils.write_table(value, f, format="csv")
             return
         # Tensor-like via numpy
         np.save(path, np.asarray(value))

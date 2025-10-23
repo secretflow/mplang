@@ -108,8 +108,9 @@ def constant(
     out_type: TableType | TensorType
 
     if isinstance(data, TableLike):
-        data_bytes = table_utils.dataframe_to_orc(data)
-        data_format = "bytes[orc]"
+        format = "parquet"
+        data_bytes = table_utils.encode_table(data, format=format)
+        data_format = f"bytes[{format}]"
         out_type = TableType.from_tablelike(data)
     elif isinstance(data, ScalarType):
         out_type = TensorType.from_obj(data)

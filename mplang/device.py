@@ -97,7 +97,7 @@ def _device_run_tee(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
     if not isinstance(op, JaxRunner):
-        raise ValueError("TEE device only supports JAX and Ibis frontend.")
+        raise ValueError("TEE device only supports JAX frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
     var = run_at(rank, op, *args, **kwargs)

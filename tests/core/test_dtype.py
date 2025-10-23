@@ -235,9 +235,8 @@ class TestDType:
         assert numpy_dtype == np.dtype("uint32")
 
         # Test protobuf serialization roundtrip
-        from mplang.core.expr.ast import VariableExpr
         from mplang.core.mpir import IrReader, IrWriter
-        from mplang.core.mptype import MPType
+        from mplang.core.expr.ast import VariableExpr
 
         # Convert PRNG_KEY to protobuf and back
         proto_dtype = dtype_to_proto(PRNG_KEY)

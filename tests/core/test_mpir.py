@@ -638,12 +638,10 @@ class TestEdgeCases:
         from mplang.core.table import TableType
 
         # Create table type with dynamic pmask (None)
-        schema = TableType.from_dict(
-            {
-                "id": INT64,
-                "name": STRING,
-            }
-        )
+        schema = TableType.from_dict({
+            "id": INT64,
+            "name": STRING,
+        })
 
         original_mptype = MPType.table(schema, pmask=None)  # Dynamic pmask
         var_expr = VariableExpr("test_dynamic", original_mptype)
@@ -816,12 +814,12 @@ class TestComplexExpressionRoundtrip:
         print(
             f"Deserialized else_fn type: {type(result.else_fn)}"
         )  # These assertions should expose the bug
-        assert isinstance(
-            result.then_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.then_fn)}"
-        assert isinstance(
-            result.else_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.else_fn)}"
+        assert isinstance(result.then_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.then_fn)}"
+        )
+        assert isinstance(result.else_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.else_fn)}"
+        )
 
     def test_while_expr_roundtrip(self):
         """Test WhileExpr roundtrip - this should expose similar issues."""
@@ -863,12 +861,12 @@ class TestComplexExpressionRoundtrip:
         print(f"Deserialized body_fn type: {type(result.body_fn)}")
 
         # These assertions should expose the bug
-        assert isinstance(
-            result.cond_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.cond_fn)}"
-        assert isinstance(
-            result.body_fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.body_fn)}"
+        assert isinstance(result.cond_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.cond_fn)}"
+        )
+        assert isinstance(result.body_fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.body_fn)}"
+        )
 
     def test_call_expr_roundtrip(self):
         """Test CallExpr roundtrip - this should expose the evaluator assertion error."""
@@ -902,9 +900,9 @@ class TestComplexExpressionRoundtrip:
         print(f"Deserialized fn type: {type(result.fn)}")
 
         # This assertion should expose the bug that causes the evaluator to fail
-        assert isinstance(
-            result.fn, FuncDefExpr
-        ), f"Expected FuncDefExpr, got {type(result.fn)}"
+        assert isinstance(result.fn, FuncDefExpr), (
+            f"Expected FuncDefExpr, got {type(result.fn)}"
+        )
 
 
 class TestRelationTypeSupport:
@@ -1090,13 +1088,11 @@ class TestRelationTypeSupport:
         from mplang.core.table import TableType
 
         # Create table type
-        schema = TableType.from_dict(
-            {
-                "user_id": INT64,
-                "username": STRING,
-                "signup_date": DATE,
-            }
-        )
+        schema = TableType.from_dict({
+            "user_id": INT64,
+            "username": STRING,
+            "signup_date": DATE,
+        })
 
         # Create MPType with table
         pmask = Mask(0b1101)  # parties 0, 2, 3
@@ -1125,14 +1121,12 @@ class TestRelationTypeSupport:
         from mplang.core.table import TableType
 
         # Create complex table type
-        schema = TableType.from_dict(
-            {
-                "id": INT64,
-                "name": STRING,
-                "created_at": TIMESTAMP,
-                "metadata": JSON,
-            }
-        )
+        schema = TableType.from_dict({
+            "id": INT64,
+            "name": STRING,
+            "created_at": TIMESTAMP,
+            "metadata": JSON,
+        })
 
         pmask = Mask(0b11110000)  # parties 4, 5, 6, 7
         original_mptype = MPType.table(schema, pmask)

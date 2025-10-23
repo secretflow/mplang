@@ -54,19 +54,19 @@ def uniform_multi_party_cond():
 
     Steps:
         1. Each party generates a private ``x``.
-        2. Perform ``seal -> srun`` aggregation (derive a secret statistic) -> ``reveal`` to get a uniform bool.
+        2. Perform ``seal -> srun_jax`` aggregation (derive a secret statistic) -> ``reveal`` to get a uniform bool.
         3. ``then`` branch simulates an expensive path (extra seal + reveal round).
         4. ``else`` branch performs a light-weight local transform.
     """
     x = mp.prandint(0, 10)
     xs_ = mp.seal(x)
-    pred_secret = mp.srun(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15)(xs_)
+    pred_secret = mp.srun_jax(lambda xs: jnp.sum(jnp.stack(xs), axis=0) < 15, xs_)
     pred = mp.reveal(pred_secret)  # public & uniform
 
     def then_branch(v):
         # Simulate expensive multi-party path: seal + aggregation + reveal
         sealed_v = mp.seal(v)
-        agg = mp.srun(lambda parts: jnp.sum(jnp.stack(parts), axis=0))(sealed_v)
+        agg = mp.srun_jax(lambda parts: jnp.sum(jnp.stack(parts), axis=0), sealed_v)
         return mp.reveal(agg)
 
     def else_branch(v):

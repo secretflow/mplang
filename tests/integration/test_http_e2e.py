@@ -126,9 +126,9 @@ def test_secure_comparison_e2e(http_driver):
         y_sealed = mp.seal_at(4, y_const)  # P4 provides data
 
         # Perform secure comparison
-        import jax.numpy as jnp
-
-        result = mp.srun(lambda a, b: jnp.where(a > b, True, False))(x_sealed, y_sealed)
+        result = mp.srun_jax(
+            lambda a, b: jnp.where(a > b, True, False), x_sealed, y_sealed
+        )
 
         # Reveal the result
         revealed = mp.reveal(result)
@@ -172,13 +172,19 @@ def test_three_way_comparison_e2e(http_driver):
         import jax.numpy as jnp
 
         # Find who has the maximum wealth
-        max_ab = mp.srun(jnp.maximum)(wealth_a_sealed, wealth_b_sealed)
-        max_wealth = mp.srun(jnp.maximum)(max_ab, wealth_c_sealed)
+        max_ab = mp.srun_jax(jnp.maximum, wealth_a_sealed, wealth_b_sealed)
+        max_wealth = mp.srun_jax(jnp.maximum, max_ab, wealth_c_sealed)
 
         # Check if each party is the richest
-        a_is_richest = mp.srun(lambda a, max_w: a >= max_w)(wealth_a_sealed, max_wealth)
-        b_is_richest = mp.srun(lambda b, max_w: b >= max_w)(wealth_b_sealed, max_wealth)
-        c_is_richest = mp.srun(lambda c, max_w: c >= max_w)(wealth_c_sealed, max_wealth)
+        a_is_richest = mp.srun_jax(
+            lambda a, max_w: a >= max_w, wealth_a_sealed, max_wealth
+        )
+        b_is_richest = mp.srun_jax(
+            lambda b, max_w: b >= max_w, wealth_b_sealed, max_wealth
+        )
+        c_is_richest = mp.srun_jax(
+            lambda c, max_w: c >= max_w, wealth_c_sealed, max_wealth
+        )
 
         # Reveal the results
         a_result = mp.reveal(a_is_richest)
@@ -223,13 +229,13 @@ def test_multiple_operations_e2e(http_driver):
         import jax.numpy as jnp
 
         # Addition
-        sum_result = mp.srun(jnp.add)(a_sealed, b_sealed)
+        sum_result = mp.srun_jax(jnp.add, a_sealed, b_sealed)
 
         # Multiplication
-        mul_result = mp.srun(jnp.multiply)(a_sealed, b_sealed)
+        mul_result = mp.srun_jax(jnp.multiply, a_sealed, b_sealed)
 
         # Comparison
-        cmp_result = mp.srun(lambda x, y: x > y)(a_sealed, b_sealed)
+        cmp_result = mp.srun_jax(lambda x, y: x > y, a_sealed, b_sealed)
 
         # Reveal all results
         sum_revealed = mp.reveal(sum_result)

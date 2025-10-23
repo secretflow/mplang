@@ -37,8 +37,8 @@ class TestSmpcBasics:
             data = prank()
             # Seal the data - returns a list of sealed values
             sealed_list = smpc.seal(data)
-            # Use srun to perform computation on sealed values - pass list directly
-            sum_result = smpc.srun(lambda xs: xs[0] + xs[1])(sealed_list)
+            # Use srun_jax to perform computation on sealed values - pass list directly
+            sum_result = smpc.srun_jax(lambda xs: xs[0] + xs[1], sealed_list)
             # Reveal the result
             revealed = smpc.reveal(sum_result)
             return data, revealed
@@ -57,7 +57,7 @@ class TestSmpcBasics:
         assert all(r == expected_sum for r in revealed_vals)
 
     def test_srun_basic(self):
-        """Test basic secure computation with srun"""
+        """Test basic secure computation with srun_jax"""
         num_parties = 2
         sim = mplang.Simulator.simple(num_parties)
 
@@ -68,7 +68,7 @@ class TestSmpcBasics:
             # Seal the data - returns a list
             sealed_list = smpc.seal(data)
             # Compute sum securely - pass list directly to lambda
-            sum_result = smpc.srun(lambda xs: xs[0] + xs[1])(sealed_list)
+            sum_result = smpc.srun_jax(lambda xs: xs[0] + xs[1], sealed_list)
             # Reveal the result
             revealed_sum = smpc.reveal(sum_result)
             return data, revealed_sum
@@ -97,7 +97,7 @@ class TestSMPCComplexScenarios:
             sealed_wealth = smpc.seal(wealth)
 
             # Secure comparison: is party 0's wealth < party 1's wealth?
-            comparison = smpc.srun(lambda w0, w1: w0 < w1)(*sealed_wealth)
+            comparison = smpc.srun_jax(lambda w0, w1: w0 < w1, *sealed_wealth)
 
             # Reveal the result
             result = smpc.reveal(comparison)
@@ -124,9 +124,10 @@ class TestSMPCComplexScenarios:
             sealed_data = smpc.seal(local_data)
 
             # Compute secure average using all sealed data - pass list to lambda
-            avg_result = smpc.srun(
-                lambda data_list: jnp.mean(jnp.stack(data_list), axis=0)
-            )(sealed_data)
+            avg_result = smpc.srun_jax(
+                lambda data_list: jnp.mean(jnp.stack(data_list), axis=0),
+                sealed_data,
+            )
 
             # Reveal the average
             revealed_avg = smpc.reveal(avg_result)
@@ -154,7 +155,7 @@ class TestSMPCComplexScenarios:
 
             # Secure condition: sum > threshold - pass list to lambda
             threshold = 15
-            sum_result = smpc.srun(lambda xs: xs[0] + xs[1] > threshold)(sealed_x)
+            sum_result = smpc.srun_jax(lambda xs: xs[0] + xs[1] > threshold, sealed_x)
             condition = smpc.reveal(sum_result)
 
             # Conditional execution based on secure condition
@@ -197,7 +198,7 @@ class TestSMPCComplexScenarios:
             def cond(x):
                 # Seal and check if sum < 10 - pass list to lambda
                 sealed = smpc.seal(x)
-                sum_result = smpc.srun(lambda xs: xs[0] + xs[1] < 10)(sealed)
+                sum_result = smpc.srun_jax(lambda xs: xs[0] + xs[1] < 10, sealed)
                 return smpc.reveal(sum_result)
 
             def body(x):

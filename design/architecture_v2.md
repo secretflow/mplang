@@ -162,7 +162,7 @@ Users are responsible for the correctness and security of their code.
 - `run`, `run_at` executes functions on specific Physical Nodes by rank
 - `bcast`, `scatter`, `gather`, `allgather` provide MPI-style communication primitives
 - `cond`, `while_loop`, `pconv` enable low-level control flow programming
-- `seal`, `reveal`, `srun` offer direct SMPC operations without abstraction
+- `seal`, `reveal`, `srun_jax` offer direct SMPC operations without abstraction
 - `pshfl`, `pshfl_s` provide secure shuffling capabilities
 
 **Example**:

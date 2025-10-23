@@ -39,7 +39,7 @@ def millionaire():
     y_ = mp.seal_at(1, y)
 
     # compare it seally.
-    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
+    z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
 
     # reveal it to all.
     z = mp.reveal(z_)

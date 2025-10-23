@@ -34,7 +34,7 @@ def millionaire():
     y_ = mp.seal_at(1, y)
 
     # compare it securely.
-    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
+    z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
 
     # reveal it to all.
     z = mp.reveal(z_)
@@ -83,7 +83,7 @@ def millionaire_simp():
     # assert len(xs_) == 2  # Fixed from mp.cur_ctx().psize()
 
     # compare it securely.
-    z_ = mp.srun(lambda x, y: x < y)(*xs_)
+    z_ = mp.srun_jax(lambda x, y: x < y, *xs_)
 
     # reveal it to all.
     z = mp.reveal(z_)
@@ -161,7 +161,7 @@ def myfun(*args, **kwargs):
 
     x_ = mp.seal_at(0, x)
     y_ = mp.seal_at(1, y)
-    z_ = mp.srun(lambda x, y: x < y)(x_, y_)
+    z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
     c = mp.reveal(z_)
 
     # return complicated result.

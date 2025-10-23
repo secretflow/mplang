@@ -248,6 +248,7 @@ class ClusterSpec:
         world_size: int,
         *,
         endpoints: list[str] | None = None,
+        spu_world_size: int | None = None,
         spu_protocol: str = "SEMI2K",
         spu_field: str = "FM128",
         runtime_version: str = "simulated",
@@ -325,10 +326,14 @@ class ClusterSpec:
 
         # Shared SPU device
         if enable_spu_device:
+            if spu_world_size is None:
+                spu_world_size = world_size
+            spu_members = [nodes[f"node{i}"] for i in range(spu_world_size)]
+
             devices["SP0"] = Device(
                 name="SP0",
                 kind="SPU",
-                members=list(nodes.values()),
+                members=spu_members,
                 config={
                     "protocol": spu_protocol,
                     "field": spu_field,

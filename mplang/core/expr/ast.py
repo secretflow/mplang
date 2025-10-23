@@ -398,9 +398,7 @@ class ShflSExpr(Expr):
     def _compute_mptypes(self) -> list[MPType]:
         # The types are the same as the source value, but with a new pmask.
         src_type = self.src_val.mptype
-        return [
-            MPType.tensor(src_type.dtype, src_type.shape, self.pmask, **src_type.attrs)
-        ]
+        return [MPType(src_type._type, self.pmask, src_type.attrs)]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_shfl_s(self)

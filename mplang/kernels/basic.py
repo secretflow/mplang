@@ -85,9 +85,9 @@ def _constant(pfunc: PFunction) -> Value:
     out_t = pfunc.outs_info[0]
     fmt = pfunc.attrs.get("data_format")
     if isinstance(out_t, TableType):
-        if fmt != "bytes[csv]":
+        if fmt != "bytes[parquet]":
             raise ValueError(f"unsupported table constant format {fmt}")
-        df = table_utils.csv_to_dataframe(data_bytes)
+        df = table_utils.decode_table(data_bytes, format="parquet")
         return TableValue(df)
     # tensor path
     shape = out_t.shape  # type: ignore[attr-defined,union-attr]

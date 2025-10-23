@@ -591,7 +591,7 @@ class TableValue(Value):  # well-known table (Arrow IPC) Value
 
         Note: This creates a copy and converts from Arrow to pandas format.
         For better performance, consider using to_arrow() and working with
-        Arrow-native APIs (DuckDB, Ibis, etc.) directly.
+        Arrow-native APIs (DuckDB, etc.) directly.
 
         Returns:
             pandas.DataFrame: Converted dataframe

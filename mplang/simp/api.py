@@ -28,7 +28,7 @@ from mplang.core import (
     builtin_function,
     peval,
 )
-from mplang.ops import basic, ibis_cc, jax_cc, sql_cc
+from mplang.ops import basic, jax_cc, sql_cc
 from mplang.ops.base import FeOperation
 
 
@@ -271,15 +271,6 @@ def run_jax(jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
 
 def run_jax_at(rank: Rank, jax_fn: Callable, *args: Any, **kwargs: Any) -> Any:
     return run_at(rank, jax_cc.run_jax, jax_fn, *args, **kwargs)
-
-
-def run_ibis(ibis_expr: Any, *args: Any, **kwargs: Any) -> Any:
-    # TODO(jint): add docstring, add type hints, describe args and kwargs constraints.
-    return run(None, ibis_cc.run_ibis, ibis_expr, *args, **kwargs)
-
-
-def run_ibis_at(rank: Rank, ibis_fn: Any, *args: Any, **kwargs: Any) -> Any:
-    return run_at(rank, ibis_cc.run_ibis, ibis_fn, *args, **kwargs)
 
 
 def run_sql(

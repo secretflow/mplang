@@ -164,7 +164,7 @@ def dec(
 
 
 @_CRYPTO_MOD.op_def()
-def kem_keygen(*, suite: str = "x25519") -> tuple[PFunction, list[MPObject], PyTreeDef]:
+def kem_keygen(suite: str = "x25519") -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """KEM-style keypair generation: returns (sk, pk) bytes.
 
     API: kem_keygen(*, suite: str = "x25519") -> (sk: u8[32], pk: u8[32])
@@ -192,7 +192,7 @@ def kem_keygen(*, suite: str = "x25519") -> tuple[PFunction, list[MPObject], PyT
 
 @_CRYPTO_MOD.op_def()
 def kem_derive(
-    sk: MPObject, peer_pk: MPObject, *, suite: str = "x25519"
+    sk: MPObject, peer_pk: MPObject, suite: str = "x25519"
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """KEM-style shared secret derivation: returns secret bytes.
 
@@ -230,7 +230,7 @@ def kem_derive(
 
 @_CRYPTO_MOD.op_def()
 def hkdf(
-    secret: MPObject, *, info: str, hash: str = "SHA-256"
+    secret: MPObject, info: str, hash: str = "SHA-256"
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
     """HKDF-style key derivation: returns a 32-byte key.
 

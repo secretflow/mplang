@@ -163,26 +163,100 @@ def dec(
     return pfunc, [ciphertext, key], treedef
 
 
-@_CRYPTO_MOD.simple_op()
-def kem_keygen(*, suite: str = "x25519") -> tuple[TensorType, TensorType]:
-    """KEM-style keypair generation: returns (sk, pk) bytes."""
-    sk_ty = TensorType(UINT8, (32,))
-    pk_ty = TensorType(UINT8, (32,))
-    return sk_ty, pk_ty
+@_CRYPTO_MOD.op_def()
+def kem_keygen(suite: str = "x25519") -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """KEM-style keypair generation: returns (sk, pk) bytes.
+
+    API: kem_keygen(suite: str = "x25519") -> (sk: u8[32], pk: u8[32])
+
+    The suite parameter is stored in the PFunction attributes for backend use.
+    """
+    if suite == "x25519":
+        sk_ty = TensorType(UINT8, (32,))
+        pk_ty = TensorType(UINT8, (32,))
+    else:
+        # Unknown suite, return dynamic lengths
+        sk_ty = TensorType(UINT8, (-1,))
+        pk_ty = TensorType(UINT8, (-1,))
+    outs_info = (sk_ty, pk_ty)
+
+    pfunc = PFunction(
+        fn_type="crypto.kem_keygen",
+        ins_info=(),
+        outs_info=outs_info,
+        suite=suite,
+    )
+    _, treedef = tree_flatten(outs_info)
+    return pfunc, [], treedef
 
 
-@_CRYPTO_MOD.simple_op()
+@_CRYPTO_MOD.op_def()
 def kem_derive(
-    sk: TensorType, peer_pk: TensorType, *, suite: str = "x25519"
-) -> TensorType:
-    """KEM-style shared secret derivation: returns secret bytes."""
-    _ = sk
-    _ = peer_pk
-    return TensorType(UINT8, (32,))
+    sk: MPObject, peer_pk: MPObject, suite: str = "x25519"
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """KEM-style shared secret derivation: returns secret bytes.
+
+    API: kem_derive(sk: u8[32], peer_pk: u8[32], suite: str = "x25519") -> secret: u8[32]
+
+    The suite parameter is stored in the PFunction attributes for backend use.
+    """
+    # Validate input types
+    if sk.dtype != UINT8:
+        raise TypeError("kem_derive expects UINT8 secret key")
+    if peer_pk.dtype != UINT8:
+        raise TypeError("kem_derive expects UINT8 peer public key")
+    if len(sk.shape) != 1 or len(peer_pk.shape) != 1:
+        raise TypeError("kem_derive expects 1-D inputs")
+
+    if suite == "x25519":
+        if sk.shape[0] != 32 or peer_pk.shape[0] != 32:
+            raise TypeError("kem_derive expects 32-byte keys for suite 'x25519'")
+        secret_ty = TensorType(UINT8, (32,))
+    else:
+        # Unknown suite, return dynamic length
+        secret_ty = TensorType(UINT8, (-1,))
+    outs_info = (secret_ty,)
+
+    ins_info = (TensorType.from_obj(sk), TensorType.from_obj(peer_pk))
+    pfunc = PFunction(
+        fn_type="crypto.kem_derive",
+        ins_info=ins_info,
+        outs_info=outs_info,
+        suite=suite,
+    )
+    _, treedef = tree_flatten(outs_info[0])
+    return pfunc, [sk, peer_pk], treedef
 
 
-@_CRYPTO_MOD.simple_op()
-def hkdf(secret: TensorType, *, info: str) -> TensorType:
-    """HKDF-style key derivation: returns a 32-byte key."""
-    _ = secret
-    return TensorType(UINT8, (32,))
+@_CRYPTO_MOD.op_def()
+def hkdf(
+    secret: MPObject, info: str, hash: str = "SHA-256"
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """HKDF-style key derivation: returns a 32-byte key.
+
+    API: hkdf(secret: u8[N], info: str, hash: str = "SHA-256") -> key: u8[32]
+
+    The hash parameter is stored in the PFunction attributes for backend use.
+    """
+    # Validate input types
+    if secret.dtype != UINT8:
+        raise TypeError("hkdf expects UINT8 secret")
+    if len(secret.shape) != 1:
+        raise TypeError("hkdf expects 1-D secret")
+
+    if hash == "SHA-256" or hash == "SM3":
+        outs_info = (TensorType(UINT8, (32,)),)
+    else:
+        # Unknown hash, return dynamic length
+        outs_info = (TensorType(UINT8, (-1,)),)
+
+    ins_info = (TensorType.from_obj(secret),)
+    pfunc = PFunction(
+        fn_type="crypto.hkdf",
+        ins_info=ins_info,
+        outs_info=outs_info,
+        hash=hash,
+        info=info,
+    )
+    _, treedef = tree_flatten(outs_info[0])
+    return pfunc, [secret], treedef

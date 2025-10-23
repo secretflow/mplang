@@ -178,7 +178,7 @@ class DType:
             pass
 
         try:
-            return cls._from_arraw_dtype(dtype_like)
+            return cls._from_arrow_dtype(dtype_like)
         except (ImportError, TypeError):
             # ImportError if pyarrow is not installed
             # TypeError if it's not a pyarrow dtype we can handle
@@ -233,7 +233,7 @@ class DType:
         raise TypeError(f"Unsupported pandas dtype: {dtype_like}")
 
     @classmethod
-    def _from_arraw_dtype(cls, dtype_like: Any) -> DType:
+    def _from_arrow_dtype(cls, dtype_like: Any) -> DType:
         try:
             import pyarrow as pa
         except ImportError:

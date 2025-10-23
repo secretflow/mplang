@@ -3,7 +3,7 @@
 ## Overview
 
 Provide the thinnest possible bridge between a fully‑prepared homogeneous table and a dense 2‑D tensor `[N, F]`.
-All semantic preprocessing (projection, casting, encoding, null handling, ordering) must occur upstream (e.g. ibis → SQL).
+All semantic preprocessing (projection, casting, encoding, null handling, ordering) must occur upstream (e.g. SQL).
 These Frontend Ops are purely structural: they express layout, shape, and column names (analogous to `df.columns`) in MPLang IR without triggering runtime work during tracing.
 
 ## Scope (What This Covers)
@@ -25,10 +25,10 @@ Excluded (must be done upstream before calling these ops):
 
 ## API Contract
 
-| FEOp | fn_type | Direction | Inputs (runtime args) | Attributes (captured) | Output |
-|------|---------|-----------|-----------------------|------------------------|--------|
-| `table_to_tensor` | `basic.table_to_tensor` | Table → Tensor | (table, number_rows:int) | none | `TensorType(d, (N,F))` where d is the shared column dtype |
-| `tensor_to_table` | `basic.tensor_to_table` | Tensor → Table | (tensor, column_names:list[str]) | column_names | `TableType([(name,d) * F])` (names preserved order) |
+| FEOp              | fn_type                 | Direction      | Inputs (runtime args)            | Attributes (captured) | Output                                                    |
+| ----------------- | ----------------------- | -------------- | -------------------------------- | --------------------- | --------------------------------------------------------- |
+| `table_to_tensor` | `basic.table_to_tensor` | Table → Tensor | (table, number_rows:int)         | none                  | `TensorType(d, (N,F))` where d is the shared column dtype |
+| `tensor_to_table` | `basic.tensor_to_table` | Tensor → Table | (tensor, column_names:list[str]) | column_names          | `TableType([(name,d) * F])` (names preserved order)       |
 
 Where:
 
@@ -56,24 +56,24 @@ Homogeneous dtype is required symmetrically in both directions. No implicit cast
 
 ## Error Semantics (Summary)
 
-| Op | Condition | Exception |
-|----|-----------|-----------|
-| table_to_tensor | empty schema | ValueError |
-| table_to_tensor | heterogeneous dtypes | TypeError |
-| table_to_tensor | number_rows < 0 | ValueError |
-| tensor_to_table | tensor rank != 2 | TypeError |
-| tensor_to_table | bad / empty names | ValueError |
-| tensor_to_table | name count ≠ F | ValueError |
+| Op              | Condition            | Exception  |
+| --------------- | -------------------- | ---------- |
+| table_to_tensor | empty schema         | ValueError |
+| table_to_tensor | heterogeneous dtypes | TypeError  |
+| table_to_tensor | number_rows < 0      | ValueError |
+| tensor_to_table | tensor rank != 2     | TypeError  |
+| tensor_to_table | bad / empty names    | ValueError |
+| tensor_to_table | name count ≠ F       | ValueError |
 
 ## Rationale (Why So Minimal?)
 
-| Choice | Why | Consequence |
-|--------|-----|-------------|
-| Mandatory `number_rows` | Prevents hidden COUNT(*) / ensures static shape for backends | Caller must know N (explicitness over hidden scan) |
-| No column projection | Keeps IR node deterministic & simple | Upstream must project |
-| No casting / encoding | Separation of concerns; fail fast | Upstream adds preprocessing stage |
-| Homogeneous only | Simplifies tensor typing; avoids per‑column packing metadata | Mixed schemas require upstream normalization |
-| Explicit names on unpack | Eliminates guesswork, stable schema reconstruction | Slight verbosity |
+| Choice                   | Why                                                           | Consequence                                        |
+| ------------------------ | ------------------------------------------------------------- | -------------------------------------------------- |
+| Mandatory `number_rows`  | Prevents hidden COUNT(\*) / ensures static shape for backends | Caller must know N (explicitness over hidden scan) |
+| No column projection     | Keeps IR node deterministic & simple                          | Upstream must project                              |
+| No casting / encoding    | Separation of concerns; fail fast                             | Upstream adds preprocessing stage                  |
+| Homogeneous only         | Simplifies tensor typing; avoids per‑column packing metadata  | Mixed schemas require upstream normalization       |
+| Explicit names on unpack | Eliminates guesswork, stable schema reconstruction            | Slight verbosity                                   |
 
 ## Backend Behavior
 
@@ -87,7 +87,7 @@ Backends MAY implement equivalent logic with their native arrays; semantics must
 ## Example
 
 ```python
-# Preprocess upstream (ibis/pandas) → homogeneous DataFrame df_h
+# Preprocess upstream (pandas) → homogeneous DataFrame df_h
 pfunc_pack, inputs_pack, _ = table_to_tensor(table=df_h_mp, number_rows=len(df_h))
 
 # Later, to reconstruct a logical table

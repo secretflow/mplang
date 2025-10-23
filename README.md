@@ -14,7 +14,7 @@ multiple parties in a synchronous, SPMD (Single Program, Multiple Data) fashion.
 - **Single-Controller SPMD**: Write one program that runs across multiple parties in lockstep.
 - **Explicit Device Placement**: Clearly annotate and control where data lives and computation happens (e.g., on party `P0`, `P1`, or a secure `SPU`).
 - **Function-Level Compilation**: Use the `@mplang.function` decorator to compile Python functions into an auditable, optimizable graph representation.
-- **Pluggable Architecture**: Easily extend MPLang with new frontends (like JAX, Ibis) and backends (like StableHLO, SPU).
+- **Pluggable Architecture**: Easily extend MPLang with new frontends (like JAX) and backends (like StableHLO, SPU).
 
 ## Getting Started
 

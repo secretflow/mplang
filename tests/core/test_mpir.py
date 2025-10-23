@@ -932,7 +932,6 @@ class TestRelationTypeSupport:
 
     def test_prng_key_serialization_roundtrip(self):
         """Test PRNG_KEY serialization and deserialization preserves type."""
-        from mplang.core.mpir import dtype_to_proto, proto_to_dtype
 
         # Test dtype conversion functions
         proto_enum = dtype_to_proto(PRNG_KEY)
@@ -978,7 +977,6 @@ class TestRelationTypeSupport:
 
     def test_prng_key_vs_uint32_distinction_in_graph(self):
         """Test PRNG_KEY and uint32 are handled distinctly in complex graphs."""
-        from mplang.core.expr.ast import TupleExpr
 
         # Create variables with different types
         prng_var = VariableExpr(

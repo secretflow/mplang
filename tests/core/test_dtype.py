@@ -15,7 +15,6 @@
 import numpy as np
 import pytest
 
-import mplang.protos.v1alpha1.mpir_pb2 as mpir_pb2
 from mplang.core.dtypes import (
     BOOL,
     COMPLEX64,
@@ -35,7 +34,7 @@ from mplang.core.dtypes import (
     DType,
 )
 from mplang.core.mask import Mask
-from mplang.core.mpir import dtype_to_proto, proto_to_dtype
+from mplang.core.mpir import dtype_to_proto
 from mplang.core.mptype import MPType
 from mplang.core.tensor import TensorType
 
@@ -216,7 +215,8 @@ class TestDType:
         prng_key_dtype = jax.dtypes.prng_key
         dtype_from_prng = DType.from_jax(prng_key_dtype)
 
-        # Should convert to our custom prng_key dtype
+        # Should convert to our custom prng_key dtype and return the constant
+        assert dtype_from_prng is PRNG_KEY
         assert dtype_from_prng.name == "prng_key"
         assert dtype_from_prng.short_name() == "key"
         assert dtype_from_prng.bitwidth == 64  # 2 * 32 bits
@@ -233,52 +233,6 @@ class TestDType:
         # Test numpy conversion for prng_key dtype
         numpy_dtype = dtype_from_prng.to_numpy()
         assert numpy_dtype == np.dtype("uint32")
-
-        # Test protobuf serialization roundtrip
-        from mplang.core.mpir import IrReader, IrWriter
-        from mplang.core.expr.ast import VariableExpr
-
-        # Convert PRNG_KEY to protobuf and back
-        proto_dtype = dtype_to_proto(PRNG_KEY)
-        assert proto_dtype == mpir_pb2.DataType.PRNG_KEY
-
-        # Convert back from protobuf
-        restored_dtype = proto_to_dtype(proto_dtype)
-        assert restored_dtype.name == "prng_key"
-        assert restored_dtype.bitwidth == 64
-        assert restored_dtype is PRNG_KEY
-
-        # Test PRNG_KEY serialization/deserialization in expression graph
-        # Create a variable with PRNG_KEY type
-        original_expr = VariableExpr(
-            "prng_var",
-            MPType.tensor(PRNG_KEY, (2,), pmask=Mask(7))
-        )
-
-        # Serialize to GraphProto
-        writer = IrWriter()
-        proto = writer.dumps(original_expr)
-
-        # Verify the tensor type in protobuf has PRNG_KEY dtype
-        var_node = None
-        for node in proto.nodes:
-            if node.op_type == "variable":
-                var_node = node
-                break
-
-        assert var_node is not None
-        assert len(var_node.outs_info) == 1
-        assert var_node.outs_info[0].tensor_type.dtype == mpir_pb2.DataType.PRNG_KEY
-
-        # Deserialize back from GraphProto
-        reader = IrReader()
-        recovered_expr = reader.loads(proto)
-
-        # Verify the PRNG_KEY type is correctly preserved
-        assert isinstance(recovered_expr, VariableExpr)
-        assert recovered_expr.mptypes[0].dtype == PRNG_KEY
-        assert recovered_expr.mptypes[0].dtype.name == "prng_key"
-        assert recovered_expr.name == "prng_var"
 
     def test_equality(self):
         """Test DType equality comparison."""

@@ -148,7 +148,7 @@ class DType:
         if jnp.issubdtype(jax_dtype, jax.dtypes.prng_key):
             # JAX PRNG keys are uint32 arrays of shape (2,)
             # Use a specific dtype name that preserves the key structure
-            return cls("prng_key", 64, False, False, False)  # 2 * 32 = 64 bits
+            return PRNG_KEY
 
         # JAX dtypes are essentially NumPy dtypes
         return cls.from_numpy(jax_dtype)

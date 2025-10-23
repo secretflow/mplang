@@ -106,7 +106,7 @@ def read_table(
         case "orc":
             return pa_orc.read_table(source, columns=columns, **kwargs)
         case "parquet":
-            return pa_pq.read_table(source, columns=columns)
+            return pa_pq.read_table(source, columns=columns, **kwargs)
         case _:
             raise ValueError(f"unsupported data format. {format}")
 

@@ -30,8 +30,8 @@ def millionaire():
     y = mp.run_jax_at(1, range_rand)
 
     # both of them seal it
-    x_ = mp.seal_at(0, x)
-    y_ = mp.seal_at(1, y)
+    x_ = mp.seal_from(0, x)
+    y_ = mp.seal_from(1, y)
 
     # compare it securely.
     z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
@@ -159,8 +159,8 @@ def myfun(*args, **kwargs):
     a = mp.run_jax_at(0, lambda v: v * 2, u)
     b = mp.run_jax_at(1, lambda v: v + 5, v)
 
-    x_ = mp.seal_at(0, x)
-    y_ = mp.seal_at(1, y)
+    x_ = mp.seal_from(0, x)
+    y_ = mp.seal_from(1, y)
     z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
     c = mp.reveal(z_)
 

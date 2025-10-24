@@ -15,7 +15,6 @@
 import random
 
 import mplang as mp
-import mplang.device as mpd
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
@@ -43,36 +42,36 @@ cluster_spec = mp.ClusterSpec.from_dict({
 })
 
 
-@mpd.function
+@mp.function
 def alice_input(a, b):
-    return mpd.device("P0")(random.randint)(a, b)
+    return mp.device("P0")(random.randint)(a, b)
 
 
-@mpd.function
+@mp.function
 def bob_input(a, b):
-    return mpd.device("P1")(random.randint)(a, b)
+    return mp.device("P1")(random.randint)(a, b)
 
 
-@mpd.function
+@mp.function
 def myfun(x, y):
     c0 = 10
     c1 = "hello"
 
-    x = mpd.device("P0")(lambda x: x + 1)(x)
-    y = mpd.device("P1")(lambda y: y * 2)(y)
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
+    x = mp.device("P0")(lambda x: x + 1)(x)
+    y = mp.device("P1")(lambda y: y * 2)(y)
+    z = mp.device("SP0")(lambda x, y: x < y)(x, y)
 
     return x, [y, c0], {"z": z, "s": c1}
 
 
-@mpd.function
+@mp.function
 def millionaire(dev_name):
-    x = mpd.device("P0")(random.randint)(0, 10)
-    y = mpd.device("P1")(random.randint)(0, 10)
+    x = mp.device("P0")(random.randint)(0, 10)
+    y = mp.device("P1")(random.randint)(0, 10)
     # Run comparison inside secure device.
-    z = mpd.device(dev_name)(lambda x, y: x < y)(x, y)
+    z = mp.device(dev_name)(lambda x, y: x < y)(x, y)
     # Bring result back to P0
-    r = mpd.put("P0", z)
+    r = mp.put("P0", z)
     return x, y, z, r
 
 
@@ -81,10 +80,10 @@ def run_spu():
 
     sim = mp.Simulator(cluster_spec)
     x, y, z, r = mp.evaluate(sim, millionaire, "SP0")
-    print("x:", x, mpd.fetch(sim, x))
-    print("y:", y, mpd.fetch(sim, y))
-    print("z:", z, mpd.fetch(sim, z))
-    print("r:", r, mpd.fetch(sim, r))
+    print("x:", x, mp.fetch(sim, x))
+    print("y:", y, mp.fetch(sim, y))
+    print("z:", z, mp.fetch(sim, z))
+    print("r:", r, mp.fetch(sim, r))
 
     # compiled = mp.compile(sim, millionaire, "SP0")
     # print("SPU compiled:", compiled.compiler_ir())
@@ -110,10 +109,10 @@ def run_tee():
         n.runtime_info.op_bindings.update(tee_bindings)
     sim = mp.Simulator(cluster_spec)
     x_p0, y_p1, z_t, r_p0 = mp.evaluate(sim, millionaire, "TEE0")
-    print("x_p0:", x_p0, mpd.fetch(sim, x_p0))
-    print("y_p1:", y_p1, mpd.fetch(sim, y_p1))
-    print("z_t:", z_t, mpd.fetch(sim, z_t))
-    print("r_p0:", r_p0, mpd.fetch(sim, r_p0))
+    print("x_p0:", x_p0, mp.fetch(sim, x_p0))
+    print("y_p1:", y_p1, mp.fetch(sim, y_p1))
+    print("z_t:", z_t, mp.fetch(sim, z_t))
+    print("r_p0:", r_p0, mp.fetch(sim, r_p0))
 
     # copts = mp.CompileOptions(cluster_spec)
     # compiled = mp.compile(copts, millionaire, "TEE0")

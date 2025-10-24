@@ -252,9 +252,8 @@ class MPType:
         if not isinstance(other, MPType):
             return False
         return (
-            self._type == other._type
-            and self._pmask == other._pmask
-            and self._attrs == other._attrs
+            self._type == other._type and self._pmask == other._pmask
+            # and self._attrs == other._attrs # TODO(jint): attrs should be optional
         )
 
     def __hash__(self) -> int:

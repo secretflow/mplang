@@ -24,6 +24,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
 from mplang import analysis
+from mplang._device import device, get_dev_attr, is_device_obj, put, set_dev_attr
 from mplang.core import (
     ClusterSpec,
     Device,
@@ -74,7 +75,7 @@ from mplang.simp.api import (
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
 from mplang.simp.party import P0, P1, P2, P2P, P, Party, load_module
 from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
-from mplang.simp.smpc import reveal, reveal_to, seal, seal_at, srun_jax
+from mplang.simp.smpc import reveal, reveal_to, seal, seal_from, srun_jax
 
 # Public API
 __all__ = [
@@ -113,10 +114,13 @@ __all__ = [
     "constant",
     "cur_ctx",
     "debug_print",
+    "device",
     "evaluate",
     "fetch",
     "function",
     "gather_m",
+    "get_dev_attr",
+    "is_device_obj",
     "key_split",
     "load_module",
     "p2p",
@@ -128,6 +132,7 @@ __all__ = [
     "prank",
     "pshfl",
     "pshfl_s",
+    "put",
     "reveal",
     "reveal_to",
     "run",
@@ -138,8 +143,9 @@ __all__ = [
     "run_sql_at",
     "scatter_m",
     "seal",
-    "seal_at",
+    "seal_from",
     "set_ctx",
+    "set_dev_attr",
     "set_mask",
     "srun_jax",
     "trace",

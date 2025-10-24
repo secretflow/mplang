@@ -76,10 +76,10 @@ def fetch(interp: InterpContext | None, objs: Any) -> Any:  # type: ignore[misc]
     evaluated = evaluate(ctx, lambda x: x, objs)
 
     def fetch_impl(arg: MPObject | Any) -> Any:
-        if isinstance(arg, MPObject):
-            return ctx.fetch(arg)
-        else:
+        if not isinstance(arg, MPObject):
             return arg
+
+        return ctx.fetch(arg)
 
     return tree_map(fetch_impl, evaluated)
 

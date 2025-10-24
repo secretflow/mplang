@@ -17,7 +17,6 @@ import random
 import yaml
 
 import mplang as mp
-import mplang.device as mpd
 
 
 def randint(lo, hi):
@@ -35,8 +34,8 @@ def millionaire():
     y = mp.prandint(0, 10)
 
     # both of them seal it
-    x_ = mp.seal_at(0, x)
-    y_ = mp.seal_at(1, y)
+    x_ = mp.seal_from(0, x)
+    y_ = mp.seal_from(3, y)
 
     # compare it seally.
     z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)
@@ -60,79 +59,40 @@ def simp_main(driver):
     print("z:", hz)
 
 
-@mpd.function
+@mp.function
 def alice_input(a, b):
-    return mpd.device("P0")(randint)(a, b)
+    return mp.device("P0")(randint)(a, b)
 
 
-@mpd.function
+@mp.function
 def bob_input(a, b):
-    return mpd.device("P1")(randint)(a, b)
+    return mp.device("P1")(randint)(a, b)
 
 
-@mpd.function
+@mp.function
 def myfun(x, y):
     c0 = 10
     c1 = "hello"
 
-    x = mpd.device("P0")(lambda x: x + 1)(x)
-    y = mpd.device("P1")(lambda y: y * 2)(y)
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
+    x = mp.device("P0")(lambda x: x + 1)(x)
+    y = mp.device("P1")(lambda y: y * 2)(y)
+    z = mp.device("SP0")(lambda x, y: x < y)(x, y)
 
     return x, [y, c0], {"z": z, "s": c1}
 
 
-device_conf = {
-    "SP0": {
-        "type": "SPU",
-        "node_ids": ["node:0", "node:1", "node:2"],
-        "configs": {
-            "protocol": "SEMI2K",
-            "field": "FM128",
-            "enable_pphlo_profile": True,
-        },
-    },
-    "P0": {"type": "PPU", "node_ids": ["node:0"]},
-    "P1": {"type": "PPU", "node_ids": ["node:1"]},
-}
-
-
-# def device_lazy(ectx):
-#     assert ectx.world_size == 3
-#     mp.WORLD_SIZE = 3
-#     driver = mpd.DeviceDriver(mpd.parse_device_conf(device_conf), ectx)
-
-#     x = alice_input(driver, 0, 10)
-#     assert isinstance(x, mpd.DeviceObject) and x.owner() == "P0", x
-
-#     y = bob_input(driver, 0, 10)
-#     assert isinstance(y, mpd.DeviceObject) and y.owner() == "P1", y
-
-#     xx, [yy, c0], res_dict = myfun(driver, x, y)
-#     # print("xx:", xx)
-#     # print("yy:", yy)
-#     # print("z:", res_dict["z"])
-
-#     x, y, xx, yy, z = mpd.fetch(driver, (x, y, xx, yy, res_dict["z"]))
-#     print("x:", x)
-#     print("y:", y)
-#     print("xx:", xx)
-#     print("yy:", yy)
-#     print("z:", z)
-
-
-@mpd.function
+@mp.function
 def device_func():
     # Use the custom randint function instead of random.randint
     # to avoid the random state capture issue
-    x = mpd.device("P0")(randint)(0, 10)
-    assert mpd._get_devid(x) == "P0", x
+    x = mp.device("P0")(randint)(0, 10)
+    assert mp.get_dev_attr(x) == "P0", x
 
-    y = mpd.device("P1")(randint)(0, 10)
-    assert mpd._get_devid(y) == "P1", y
+    y = mp.device("P1")(randint)(0, 10)
+    assert mp.get_dev_attr(y) == "P1", y
 
-    z = mpd.device("SP0")(lambda x, y: x < y)(x, y)
-    assert mpd._get_devid(z) == "SP0", z
+    z = mp.device("SP0")(lambda x, y: x < y)(x, y)
+    assert mp.get_dev_attr(z) == "SP0", z
 
     return x, y, z
 

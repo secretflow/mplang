@@ -12,20 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tutorial 10: IR & Graph Analysis Report Generation.
+"""Device: IR Dump and Graph Analysis
 
-This tutorial demonstrates how to generate a unified analysis report for a
-multi-party device function using:
-  * textual compiler IR
-  * structural graph statistics (always included)
-  * optional Mermaid sequence / flowchart diagrams
+Learning objectives:
+1. Compile functions to MPIR for inspection
+2. Generate analysis reports with statistics
+3. Export Mermaid diagrams for visualization
+4. Debug and optimize multi-party programs
 
-Artifacts written:
-  * simple.mpir - raw MPIR graph proto (text form)
-  * simple.md   - markdown report (IR + stats + diagrams)
-
-The previous Mermaid-focused tutorial (10_mermaid.py) has been replaced by this
-more general analysis-centric version.
+Key tools:
+- mp.compile: generate MPIR representation
+- mp.analysis.dump: create comprehensive reports
+- Mermaid diagrams: sequence and flowcharts
 """
 
 from __future__ import annotations

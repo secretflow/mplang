@@ -147,7 +147,7 @@ def main():
 
     # Pattern 4: Cross-device pipeline
     print("\n--- Pattern 4: Cross-Device Pipeline ---")
-    # TODO(jint): fixme, hang
+    # TODO(jint): fixme, hang - cross-device pipeline involving SPU->TEE transfer is not yet supported and causes deadlock. See issue tracker for details.
     # r4 = mp.evaluate(sim, cross_device_pipeline)
     # print(f"Pipeline result: {mp.fetch(sim, r4)}")
 

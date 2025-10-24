@@ -85,9 +85,17 @@ def jax2stablehlo(
     normalized_fn, in_vars = normalize_fn(flat_fn, args, kwargs, is_variable)
 
     # Convert TensorType in_vars to ShapeDtypeStruct for JAX tracing
-    jax_params = [
-        jax.ShapeDtypeStruct(arg.shape, jnp.dtype(arg.dtype.name)) for arg in in_vars
-    ]
+    jax_params = []
+    for arg in in_vars:
+        # Convert to TensorType if needed to handle special dtypes like PRNG keys
+        if hasattr(arg, 'dtype') and hasattr(arg, 'shape'):
+            # This is a tensor-like object (JAX array, NumPy array, etc.)
+            tensor_type = TensorType.from_obj(arg)
+            jax_dtype = tensor_type.dtype.to_jax()
+        else:
+            # This shouldn't happen in normal cases, but fall back to direct conversion
+            jax_dtype = jnp.dtype(arg.dtype)
+        jax_params.append(jax.ShapeDtypeStruct(arg.shape, jax_dtype))
 
     # Standard JAX serialization pipeline: jit → trace → lower → StableHLO MLIR
     jitted_fn = jax.jit(normalized_fn)

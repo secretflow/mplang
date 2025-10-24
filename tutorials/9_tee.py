@@ -27,7 +27,6 @@ from __future__ import annotations
 import random
 
 import mplang as mp
-import mplang.device as mpd
 from mplang import P0, P1, P2, P2P
 
 cluster_spec = mp.ClusterSpec.from_dict({
@@ -53,22 +52,22 @@ cluster_spec = mp.ClusterSpec.from_dict({
 })
 
 
-@mpd.function
+@mp.function
 def millionaire_device():
-    x = mpd.device("P0")(random.randint)(0, 100)
-    y = mpd.device("P1")(random.randint)(0, 100)
+    x = mp.device("P0")(random.randint)(0, 100)
+    y = mp.device("P1")(random.randint)(0, 100)
     # Compare at TEE with transparent PPU->TEE encryption
-    z = mpd.device("TEE0")(lambda a, b: a < b)(x, y)
+    z = mp.device("TEE0")(lambda a, b: a < b)(x, y)
     # Bring result back to P0 (TEE->PPU transparent encryption)
-    r = mpd.put("P0", z)
+    r = mp.put("P0", z)
     return x, y, z, r
 
 
-@mpd.function
+@mp.function
 def millionaire_manual():
     # Inputs at data parties
-    x = mpd.device("P0")(random.randint)(0, 100)
-    y = mpd.device("P1")(random.randint)(0, 100)
+    x = mp.device("P0")(random.randint)(0, 100)
+    y = mp.device("P1")(random.randint)(0, 100)
 
     info = "mplang/device/tee/v1"
 

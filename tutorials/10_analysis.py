@@ -33,7 +33,6 @@ from __future__ import annotations
 import random
 
 import mplang as mp
-import mplang.device as mpd
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
@@ -54,12 +53,12 @@ cluster_spec = mp.ClusterSpec.from_dict({
 })
 
 
-@mpd.function
+@mp.function
 def millionaire_device():
-    x = mpd.device("P0")(random.randint)(0, 100)
-    y = mpd.device("P1")(random.randint)(0, 100)
-    z = mpd.device("TEE0")(lambda a, b: a < b)(x, y)
-    r = mpd.put("P0", z)
+    x = mp.device("P0")(random.randint)(0, 100)
+    y = mp.device("P1")(random.randint)(0, 100)
+    z = mp.device("TEE0")(lambda a, b: a < b)(x, y)
+    r = mp.put("P0", z)
     return x, y, z, r
 
 

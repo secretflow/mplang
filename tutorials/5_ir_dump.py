@@ -26,8 +26,8 @@ def millionaire():
     y = mp.prandint(0, 10)
 
     # both of them seal it
-    x_ = mp.seal_at(0, x)
-    y_ = mp.seal_at(1, y)
+    x_ = mp.seal_from(0, x)
+    y_ = mp.seal_from(1, y)
 
     # compare it seally.
     z_ = mp.srun_jax(lambda x, y: x < y, x_, y_)

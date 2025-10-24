@@ -28,7 +28,6 @@ from jax.example_libraries import stax
 from sklearn.metrics import accuracy_score
 
 import mplang as mp
-import mplang.device as mpd
 
 parser = argparse.ArgumentParser(description="distributed driver.")
 parser.add_argument("--model", default="network_a", type=str)
@@ -97,7 +96,7 @@ def train(
     print("Start training...")
 
     # when 'mpd.function' is used, the function will be compiled, or it will be run eagerly.
-    @mpd.function
+    @mp.function
     def do_train(opt_state):
         for i in range(1, epochs + 1):
             for batch_idx in range(math.ceil(len(train_x) / batch_size)):
@@ -113,12 +112,12 @@ def train(
                 )
                 if run_on_spu:
                     # mpd.function could be added recursively inside another mpd.function.
-                    @mpd.function
+                    @mp.function
                     def secure_update_model(opt_state):
-                        p1_batch_images = mpd.device("P0")(identity)(batch_images)
-                        p2_batch_labels = mpd.device("P1")(identity)(batch_labels)
+                        p1_batch_images = mp.device("P0")(identity)(batch_images)
+                        p2_batch_labels = mp.device("P1")(identity)(batch_labels)
                         # return mpd.device("TEE0")(update_model)(
-                        return mpd.device("SP0")(update_model)(
+                        return mp.device("SP0")(update_model)(
                             opt_state, p1_batch_images, p2_batch_labels, it
                         )
 
@@ -134,7 +133,7 @@ def train(
     if run_on_spu:
         # FIXME: hosts variable is not 'reconstructed' variable.
         print("opt_state:", opt_state)
-        opt_state = mpd.fetch(None, opt_state)
+        opt_state = mp.fetch(None, opt_state)
     return get_params(opt_state)
 
 

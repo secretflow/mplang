@@ -35,29 +35,28 @@ uv pip install mplang
 Here's a taste of what MPLang looks like. This example shows a "millionaire's problem" where two parties compare their wealth without revealing it.
 
 ```python
-import mplang
-import mplang.device as mpd
+import mplang as mp
 from numpy.random import randint
 
 # Use a decorator to compile this function for multi-party execution
-@mplang.function
+@mp.function
 def millionaire():
     # Alice's value, placed on device P0
-    x = mpd.device("P0")(randint)(0, 1000000)
+    x = mp.device("P0")(randint)(0, 1000000)
     # Bob's value, placed on device P1
-    y = mpd.device("P1")(randint)(0, 1000000)
+    y = mp.device("P1")(randint)(0, 1000000)
     # The comparison happens on a secure device (SPU)
-    z = mpd.device("SP0")(lambda a, b: a < b)(x, y)
+    z = mp.device("SP0")(lambda a, b: a < b)(x, y)
     return z
 
 # Set up a local simulator with 2 parties
-sim = mplang.Simulator.simple(2)
+sim = mp.Simulator.simple(2)
 
 # Evaluate the compiled function
-result = mplang.evaluate(sim, millionaire)
+result = mp.evaluate(sim, millionaire)
 
 # Securely fetch the result (reveals SPU value)
-print("Is Alice poorer than Bob?", mplang.fetch(sim, result))
+print("Is Alice poorer than Bob?", mp.fetch(sim, result))
 ```
 
 ## Learn More

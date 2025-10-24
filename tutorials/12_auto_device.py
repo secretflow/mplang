@@ -31,25 +31,8 @@ def example_1_explicit_device():
     """Original explicit device specification (still supported)."""
     print("\n=== Example 1: Explicit Device (Original Syntax) ===")
 
-    cluster_config = {
-        "nodes": [
-            {"name": "node_0", "endpoint": "localhost:9001"},
-            {"name": "node_1", "endpoint": "localhost:9002"},
-            {"name": "node_2", "endpoint": "localhost:9003"},
-        ],
-        "devices": {
-            "P0": {"kind": "PPU", "members": ["node_0"]},
-            "P1": {"kind": "PPU", "members": ["node_1"]},
-            "SPU": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1", "node_2"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-        },
-    }
-
-    cluster = mp.ClusterSpec.from_dict(cluster_config)
-    sim = mp.Simulator(cluster)
+    # Use simple simulator with 2 parties (creates P0, P1, SP0 devices)
+    sim = mp.Simulator.simple(2)
 
     @mp.function
     def compute():
@@ -67,25 +50,7 @@ def example_2_auto_device_same_ppu():
     """Auto device inference when all args are on the same PPU."""
     print("\n=== Example 2: Auto Device - Same PPU ===")
 
-    cluster_config = {
-        "nodes": [
-            {"name": "node_0", "endpoint": "localhost:9001"},
-            {"name": "node_1", "endpoint": "localhost:9002"},
-            {"name": "node_2", "endpoint": "localhost:9003"},
-        ],
-        "devices": {
-            "P0": {"kind": "PPU", "members": ["node_0"]},
-            "P1": {"kind": "PPU", "members": ["node_1"]},
-            "SPU": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1", "node_2"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-        },
-    }
-
-    cluster = mp.ClusterSpec.from_dict(cluster_config)
-    sim = mp.Simulator(cluster)
+    sim = mp.Simulator.simple(2)
 
     @mp.function
     def compute():
@@ -107,25 +72,7 @@ def example_3_decorator_style():
     """Using @device decorator with auto inference."""
     print("\n=== Example 3: Decorator Style with Auto Device ===")
 
-    cluster_config = {
-        "nodes": [
-            {"name": "node_0", "endpoint": "localhost:9001"},
-            {"name": "node_1", "endpoint": "localhost:9002"},
-            {"name": "node_2", "endpoint": "localhost:9003"},
-        ],
-        "devices": {
-            "P0": {"kind": "PPU", "members": ["node_0"]},
-            "P1": {"kind": "PPU", "members": ["node_1"]},
-            "SPU": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1", "node_2"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-        },
-    }
-
-    cluster = mp.ClusterSpec.from_dict(cluster_config)
-    sim = mp.Simulator(cluster)
+    sim = mp.Simulator.simple(2)
 
     # Define a reusable function with auto device
     @mp.device
@@ -160,25 +107,7 @@ def example_4_inline_usage():
     """Inline lambda usage with auto device."""
     print("\n=== Example 4: Inline Lambda with Auto Device ===")
 
-    cluster_config = {
-        "nodes": [
-            {"name": "node_0", "endpoint": "localhost:9001"},
-            {"name": "node_1", "endpoint": "localhost:9002"},
-            {"name": "node_2", "endpoint": "localhost:9003"},
-        ],
-        "devices": {
-            "P0": {"kind": "PPU", "members": ["node_0"]},
-            "P1": {"kind": "PPU", "members": ["node_1"]},
-            "SPU": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1", "node_2"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-        },
-    }
-
-    cluster = mp.ClusterSpec.from_dict(cluster_config)
-    sim = mp.Simulator(cluster)
+    sim = mp.Simulator.simple(2)
 
     @mp.function
     def compute():
@@ -200,25 +129,7 @@ def example_5_error_cases():
     """Demonstrate error cases that require explicit device."""
     print("\n=== Example 5: Error Cases ===")
 
-    cluster_config = {
-        "nodes": [
-            {"name": "node_0", "endpoint": "localhost:9001"},
-            {"name": "node_1", "endpoint": "localhost:9002"},
-            {"name": "node_2", "endpoint": "localhost:9003"},
-        ],
-        "devices": {
-            "P0": {"kind": "PPU", "members": ["node_0"]},
-            "P1": {"kind": "PPU", "members": ["node_1"]},
-            "SPU": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1", "node_2"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-        },
-    }
-
-    cluster = mp.ClusterSpec.from_dict(cluster_config)
-    sim = mp.Simulator(cluster)
+    sim = mp.Simulator.simple(2)
 
     print("\n1. No device objects in arguments:")
 

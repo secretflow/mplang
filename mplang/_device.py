@@ -64,14 +64,14 @@ def is_device_obj(obj: Any) -> bool:
 
 def set_dev_attr(obj: MPObject, dev_id: str) -> MPObject:
     if not isinstance(obj, MPObject):
-        raise TypeError(f"Input must be an instance of Object, {obj}")
+        raise TypeError(f"Input must be an instance of MPObject, {obj}")
     obj.attrs[DEVICE_ATTR_NAME] = dev_id
     return obj
 
 
 def get_dev_attr(obj: MPObject) -> str:
     if not isinstance(obj, MPObject):
-        raise TypeError("Input must be an instance of Object")
+        raise TypeError("Input must be an instance of MPObject")
 
     return obj.attrs[DEVICE_ATTR_NAME]
 
@@ -117,7 +117,7 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
                 raise ValueError(
                     "MPObject is missing device attribute. "
                     "If you're mixing device-level and simp-level code, "
-                    "use set_devid(obj, 'device_id') to mark the device explicitly."
+                    "use set_dev_attr(obj, 'device_id') to mark the device explicitly."
                 )
             device_objs.append(obj)
 

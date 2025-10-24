@@ -133,11 +133,15 @@ def seal(obj: MPObject) -> list[MPObject] | MPObject:
         return _device._d2d(sdev.name, obj)
     else:
         # it's a normal plaintext simp object, treat as a list of PPU objects
-        rets = []
+        rets: list[MPObject] = []
         for rank in obj.pmask:
             ppu_obj = set_mask(obj, Mask.from_ranks([rank]))
             _device.set_dev_attr(ppu_obj, _get_ppu_from_rank(rank).name)
-            rets.append(seal(ppu_obj))
+            sealed = seal(ppu_obj)
+            assert isinstance(sealed, MPObject), (
+                "Expected single sealed object per rank"
+            )
+            rets.append(sealed)
         return rets
 
 

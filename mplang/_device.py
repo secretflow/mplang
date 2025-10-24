@@ -73,7 +73,7 @@ def get_dev_attr(obj: MPObject) -> str:
     if not isinstance(obj, MPObject):
         raise TypeError("Input must be an instance of MPObject")
 
-    return obj.attrs[DEVICE_ATTR_NAME]
+    return str(obj.attrs[DEVICE_ATTR_NAME])
 
 
 def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
@@ -428,13 +428,13 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         assert len(to_dev.members) == 1
         to_rank = to_dev.members[0].rank
         var = _spu_reveal(frm_dev, obj, Mask.from_ranks([to_rank]))
-        return tree_map(partial(set_dev_attr, dev_id=to_dev_id), var)
+        return tree_map(partial(set_dev_attr, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "SPU"):
         assert len(frm_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         vars = _spu_seal(to_dev, obj)
         assert len(vars) == 1, "Expected single share from PPU to SPU seal."
-        return tree_map(partial(set_dev_attr, dev_id=to_dev_id), vars[0])
+        return tree_map(partial(set_dev_attr, dev_id=to_dev_id), vars[0])  # type: ignore[no-any-return]
     elif frm_to_pair == ("PPU", "PPU"):
         assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
         frm_rank = frm_dev.members[0].rank

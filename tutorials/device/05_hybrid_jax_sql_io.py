@@ -26,4 +26,4 @@ Key operations:
 """
 
 if __name__ == "__main__":
-    print("TODO: Implement ME")
+    print("This tutorial is under development. Check back soon or see examples/ for current SQL/JAX capabilities.")

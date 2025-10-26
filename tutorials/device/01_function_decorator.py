@@ -102,9 +102,9 @@ def main():
     elapsed = time.time() - start
     print(f"Computed without @mp.function in {elapsed:.4f}s")
 
-    jitted_heavy_computation = mp.function(heavy_computation)
+    heavy_computation_jitted = mp.function(heavy_computation)
     start = time.time()
-    _ = mp.evaluate(sim, jitted_heavy_computation)
+    _ = mp.evaluate(sim, heavy_computation_jitted)
     elapsed = time.time() - start
     print(f"Computed with @mp.function in {elapsed:.4f}s")
     # Note: on simulator, the driver call overhead is trivial compared to real network latency.

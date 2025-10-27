@@ -74,6 +74,7 @@ def ss_share_from(owner: int, value: mp.MPObject) -> mp.MPObject:
       - Owner samples random r, computes other = value - r (mod 2^64)
       - Create [s0, s1] list at owner and scatter to both parties
     """
+
     world_mask = mp.Mask.all(2)
 
     # sample r at owner (party-local random u64)
@@ -81,11 +82,7 @@ def ss_share_from(owner: int, value: mp.MPObject) -> mp.MPObject:
     # compute other share at owner (cast value to u64 to ensure Z_{2^64} semantics)
     other = mp.run_jax_at(owner, lambda v, r_: to_u64_j(v) - r_, value, r)
 
-    # assemble shares list at owner and scatter: index 0 -> P0, index 1 -> P1
-    shares_list = mp.run_jax_at(
-        owner, lambda r_, o_: [r_, o_] if owner == 0 else [o_, r_], r, other
-    )
-    s = mp.scatter_m(world_mask, owner, shares_list)
+    s = mp.scatter_m(world_mask, owner, [r, other])
     return s
 
 
@@ -145,12 +142,12 @@ def beaver_gen() -> tuple[mp.MPObject, mp.MPObject, mp.MPObject]:
 
     # Homomorphic linear combination at P1
     a1b1_plus_r = mp.run_jax_at(1, lambda a1, b1, r_: a1 * b1 + r_, a_, b_, r)
-    enc_a1b1_r = mp.run_at(1, phe.encrypt, a1b1_plus_r, pk_all)
 
     A0_mul_b1 = mp.run_at(1, phe.mul, A0_p1, b_)
     B0_mul_a1 = mp.run_at(1, phe.mul, B0_p1, a_)
     T_partial_ct = mp.run_at(1, phe.add, A0_mul_b1, B0_mul_a1)
-    T_ct = mp.run_at(1, phe.add, T_partial_ct, enc_a1b1_r)
+    # Add plaintext term (a1*b1 + r) to ciphertext directly; kernel encrypts internally
+    T_ct = mp.run_at(1, phe.add, T_partial_ct, a1b1_plus_r)
 
     # Send T back to P0 and decrypt
     T_ct_p0 = mp.p2p(1, 0, T_ct)
@@ -193,37 +190,31 @@ def ss_mul(x_: mp.MPObject, y_: mp.MPObject) -> mp.MPObject:
 
     If a_, b_, c_ are not provided, a PHE-based triple is generated internally.
     """
-    # Optionally generate triple inline for convenience
+    # Generate Beaver triple (a, b, c) where c = a*b
     a_, b_, c_ = beaver_gen()
     # Local differences
     d_ = mp.run_jax(lambda x, a: x - a, x_, a_)
     e_ = mp.run_jax(lambda y, b: y - b, y_, b_)
 
-    # Open d, e (sum to P0 then broadcast)
+    # Open d, e to all parties
     d_open = ss_open(d_)
     e_open = ss_open(e_)
 
-    # z0 = c0 + d*b0 + e*a0 + d*e at P0
-    z0 = mp.run_jax_at(
-        0,
-        lambda c0, b0, a0, d_, e_: c0 + (d_ * b0 + e_ * a0) + d_ * e_,
-        c_,
-        b_,
-        a_,
-        d_open,
-        e_open,
-    )
+    # Beaver reconstruction formulas:
+    # z = c + d*b + e*a + d*e (where each party computes on local shares)
+    # P0 computes: z0 = c0 + d*b0 + e*a0 + d*e
+    def beaver_reconstruct_p0(c0, b0, a0, d, e):
+        """P0's share: includes the constant term d*e."""
+        return c0 + (d * b0 + e * a0) + d * e
 
-    # z1 = c1 + d*b1 + e*a1 at P1
-    z1 = mp.run_jax_at(
-        1,
-        lambda c1, b1, a1, d_, e_: c1 + (d_ * b1 + e_ * a1),
-        c_,
-        b_,
-        a_,
-        d_open,
-        e_open,
-    )
+    z0 = mp.run_jax_at(0, beaver_reconstruct_p0, c_, b_, a_, d_open, e_open)
+
+    # P1 computes: z1 = c1 + d*b1 + e*a1
+    def beaver_reconstruct_p1(c1, b1, a1, d, e):
+        """P1's share: no constant term."""
+        return c1 + (d * b1 + e * a1)
+
+    z1 = mp.run_jax_at(1, beaver_reconstruct_p1, c_, b_, a_, d_open, e_open)
 
     # Package z0,z1 into a single distributed value
     z_ = mp.pconv([z0, z1])

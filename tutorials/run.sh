@@ -36,7 +36,7 @@ echo -e "\n[Device 04] Run SQL..."
 uv run python tutorials/device/04_run_sql.py
 
 echo -e "\n[Device 05] Hybrid JAX/SQL IO..."
-uv run python tutorials/device/05_hybrid_jax_sql_io.py
+uv run python tutorials/device/05_pipeline.py
 
 echo -e "\n[Device 06] IR Dump and Analysis..."
 uv run python tutorials/device/06_ir_dump_and_analysis.py

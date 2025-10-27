@@ -54,8 +54,8 @@ cluster_spec = mp.ClusterSpec.from_dict({
 def millionaire():
     """Explicitly specify device for each operation."""
     # Generate data on specific parties
-    x = mp.put("P0", 100)
-    y = mp.put("P1", 200)
+    x = mp.device("P0")(lambda: 100)()
+    y = mp.device("P1")(lambda: 200)()
 
     # Secure comparison on SPU
     result = mp.device("SP0")(lambda a, b: a < b)(x, y)

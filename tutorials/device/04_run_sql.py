@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Device: SQL on PPU/TEE and SPU JAX pipeline
+"""Device: SQL on PPU and TEE
 
 Learning objectives:
 1. Execute SQL queries on PPU for plaintext table processing
 2. Execute SQL queries on TEE for secure data processing
-3. Build a cross-device pipeline: PPU tables → tensor → SPU JAX compute
+3. Understand table placement and privacy domains
 
 Key concepts:
 - PPU: fast SQL, no privacy protection
@@ -26,12 +26,10 @@ Key concepts:
 - run_sql2: execute DuckDB SQL queries with automatic schema inference
 """
 
-import jax.numpy as jnp
 import pandas as pd
 
 import mplang as mp
 from mplang.core.dtypes import INT64
-from mplang.ops import basic as basic_ops
 from mplang.ops import sql_cc
 
 cluster_spec = mp.ClusterSpec.from_dict({
@@ -111,47 +109,12 @@ def sql_on_tee():
     return result
 
 
-@mp.function
-def sql_pipeline():
-    """Pattern 3: PPU tables -> tensor -> SPU JAX compute pipeline.
-
-    Steps:
-    1) Load tables on P0 and P1 via host put (simulate per-party loading).
-    2) Convert each table to a dense tensor using basic.table_to_tensor.
-    3) Move tensors to SPU (PPU -> SPU secure transfer).
-    4) Run a JAX numeric computation on SPU (sum of elements from both tensors).
-
-    Returns:
-        Result tensor (scalar) placed on P0 for fetching on host.
-    """
-    # 1) Host-side data, placed to P0/P1 (simulate each party loading their own table)
-    df_p0 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-    df_p1 = pd.DataFrame({"a": [7, 8, 9], "b": [10, 11, 12]})
-    tbl_p0 = mp.put("P0", df_p0)
-    tbl_p1 = mp.put("P1", df_p1)
-
-    # 2) Convert tables to tensors on their respective PPUs
-    t_p0 = mp.device("P0")(basic_ops.table_to_tensor)(tbl_p0, number_rows=3)
-    t_p1 = mp.device("P1")(basic_ops.table_to_tensor)(tbl_p1, number_rows=3)
-
-    # 3) Move tensors to SPU (PPU -> SPU device-to-device transfer)
-    t_spu_0 = mp.put("SP0", t_p0)
-    t_spu_1 = mp.put("SP0", t_p1)
-
-    # 4) Run JAX numeric computation on SPU, e.g., sum of all elements
-    res_spu = mp.device("SP0")(lambda a, b: jnp.sum(a) + jnp.sum(b))(t_spu_0, t_spu_1)
-
-    # Bring the scalar result back to P0 for host fetching
-    result = mp.put("P0", res_spu)
-    return result
-
-
 # Removed: Pattern 4 (single-party CASE query) to keep tutorial concise
 
 
 def main():
     print("=" * 70)
-    print("Device: SQL on PPU/TEE and SPU JAX pipeline")
+    print("Device: SQL on PPU and TEE")
     print("=" * 70)
 
     # Helper to check inferred schema matches expectation
@@ -191,14 +154,8 @@ def main():
     print("TEE UNION result (combined rows from P0 and P1):")
     print(result2)
 
-    # Pattern 3: PPU Tables -> Tensor -> SPU JAX Compute
-    print("\n--- Pattern 3: PPU Tables -> Tensor -> SPU JAX Compute ---")
-    r3 = mp.evaluate(sim, sql_pipeline)
-    result3 = mp.fetch(sim, r3)
-    print("SPU JAX result (sum over both tables):")
-    print(result3)
-
-    # Note: Removed the single-party CASE query example for brevity.
+    # Note: See tutorials/device/05_pipeline.py for a hybrid
+    # PPU->SPU pipeline demo using basic.read/write and JAX on SPU.
 
     print("\n" + "=" * 70)
     print("Key takeaways:")
@@ -209,9 +166,7 @@ def main():
     )
     print("4. TableType: define schema for SQL inputs/outputs")
     print("5. mp.put: move tables between devices safely")
-    print(
-        "6. SQL ops: WHERE, UNION, SUM, AVG, ORDER BY; plus table_to_tensor + SPU JAX pipeline"
-    )
+    print("6. SQL ops: WHERE, UNION, SUM, AVG, ORDER BY")
     print("=" * 70)
 
 

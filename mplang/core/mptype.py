@@ -195,6 +195,10 @@ class MPType:
         information about the object."""
         return self._attrs
 
+    def raw_type(self) -> TensorType | TableType:
+        """Get the raw type information (TensorType or TableType)."""
+        return self._type
+
     def set_attr(self, key: str, value: Any) -> None:
         """Set an attribute for this type."""
         self._attrs[key] = value

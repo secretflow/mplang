@@ -876,6 +876,7 @@ dependencies = [
     { name = "protobuf" },
     { name = "pyarrow" },
     { name = "spu" },
+    { name = "sqlglot" },
     { name = "tenseal" },
     { name = "typing-extensions" },
     { name = "uvicorn", extra = ["standard"] },
@@ -906,6 +907,7 @@ requires-dist = [
     { name = "protobuf", specifier = ">=5.0,<6.0" },
     { name = "pyarrow", specifier = ">=14.0.0" },
     { name = "spu", specifier = "==0.9.4.dev20250827" },
+    { name = "sqlglot", specifier = ">=23.0.0" },
     { name = "tenseal", specifier = "==0.3.16" },
     { name = "typing-extensions" },
     { name = "uvicorn", extras = ["standard"] },
@@ -1829,6 +1831,15 @@ wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/61/38/f75b4dd42103d672f2f1108ab08684e4d1f35e3f5edef11ede1d5244ef16/spu-0.9.4.dev20250827-cp310-none-macosx_14_0_arm64.whl", hash = "sha256:28ae067de92b4bd95a82a4eae34aa2195425e5b55628248a87f7eeba31287aad" },
     { url = "https://mirrors.aliyun.com/pypi/packages/bd/6c/bc96f752b23b2bfafebd7d1982bf3eabbb3e2ff56efe41c6cad731fc6d3e/spu-0.9.4.dev20250827-cp310-none-manylinux_2_17_x86_64.whl", hash = "sha256:d9271bc2a6b3372ca164cdea51d9df400a223513970c31f80eba1124b12525cf" },
     { url = "https://mirrors.aliyun.com/pypi/packages/68/6e/901ddea34a66fc9cbe18f8e1067e874e978fbc26fb170020204d03ace156/spu-0.9.4.dev20250827-cp310-none-manylinux_2_28_aarch64.whl", hash = "sha256:0889db84acfffb6444206d175ce73a791a3d0442c428a52b64b99bcb75f9df59" },
+]
+
+[[package]]
+name = "sqlglot"
+version = "27.28.1"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/b5/3d/bf8b4a96b934c26ec83f94048ec201d17cd95fb3c2e6930bbcfaaaad6813/sqlglot-27.28.1.tar.gz", hash = "sha256:01c03da1aa0c7773002cfb4a58bd4b0656196e0164aee1d83104b3d3cc1475f3" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/7c/5e/ba248f9ed18593e68c90f0ce07844ea7b6231c05913431cf38972e9f6778/sqlglot-27.28.1-py3-none-any.whl", hash = "sha256:035e8a905a52a4bdbf0d7c590d8ea98fa4d4195b509b35e20c33dd462ec17b82" },
 ]
 
 [[package]]

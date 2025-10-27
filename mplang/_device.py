@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial, wraps
-from typing import Any
+from typing import Any, cast
 
 from jax.tree_util import tree_map, tree_unflatten
 
@@ -34,7 +34,8 @@ from mplang.core import (
     Device,
     Mask,
     MPObject,
-    TensorType,
+    TableLike,
+    TensorLike,
     cur_ctx,
     peval,
 )
@@ -210,8 +211,6 @@ def _device_run_tee(
     dev_info: Device, op: FeOperation, *args: Any, **kwargs: Any
 ) -> Any:
     # TODO(jint): should we filter out all IO operations?
-    if not isinstance(op, JaxRunner):
-        raise ValueError("TEE device only supports JAX frontend.")
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
     var = run_at(rank, op, *args, **kwargs)
@@ -449,7 +448,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         # Ensure sessions (both directions) exist for this PPU<->TEE pair
         sess_p, sess_t = _ensure_tee_session(frm_dev_id, to_dev_id, frm_rank, tee_rank)
         # Bytes-only path: pack -> enc -> p2p -> dec -> unpack (with static out type)
-        obj_ty = TensorType.from_obj(obj)
+        obj_ty = obj.mptype.raw_type()
         b = run_at(frm_rank, basic.pack, obj)
         ct = run_at(frm_rank, crypto.enc, b, sess_p)
         ct_at_tee = mpi.p2p(frm_rank, tee_rank, ct)
@@ -463,7 +462,7 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         ppu_rank = to_dev.members[0].rank
         # Ensure bidirectional session established for this pair
         sess_p, sess_t = _ensure_tee_session(to_dev_id, frm_dev_id, ppu_rank, tee_rank)
-        obj_ty = TensorType.from_obj(obj)
+        obj_ty = obj.mptype.raw_type()
         b = run_at(tee_rank, basic.pack, obj)
         ct = run_at(tee_rank, crypto.enc, b, sess_t)
         ct_at_ppu = mpi.p2p(tee_rank, ppu_rank, ct)
@@ -525,8 +524,29 @@ def _ensure_tee_session(
     return sess_p, sess_t
 
 
+def _host_to_device(to_dev_id: str, obj: Any) -> MPObject:
+    if isinstance(obj, TensorLike):
+        # run jax identity on the target device to put the tensor there
+        return device(to_dev_id)(lambda x: x)(obj)  # type: ignore[no-any-return]
+    elif isinstance(obj, TableLike):
+        dev_info = cur_ctx().cluster_spec.devices[to_dev_id]
+        if dev_info.kind.upper() not in ["PPU", "TEE"]:
+            raise ValueError(
+                f"TableLike put() only supports PPU or TEE devices, got {dev_info.kind}"
+            )
+        assert len(dev_info.members) == 1
+        rank = dev_info.members[0].rank
+        obj_mp = cast(MPObject, run_at(rank, basic.constant, obj))
+        set_dev_attr(obj_mp, to_dev_id)
+        return obj_mp
+    else:
+        raise TypeError(
+            f"put() only supports TensorLike or TableLike objects, got {type(obj)}"
+        )
+
+
 def put(to_dev_id: str, obj: Any) -> MPObject:
     if not isinstance(obj, MPObject):
-        return device(to_dev_id)(lambda x: x)(obj)  # type: ignore[no-any-return]
+        return _host_to_device(to_dev_id, obj)
     assert isinstance(obj, MPObject)
     return _d2d(to_dev_id, obj)

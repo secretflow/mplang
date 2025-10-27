@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial, wraps
-from typing import Any
+from typing import Any, cast
 
 from jax.tree_util import tree_map, tree_unflatten
 
@@ -536,9 +536,9 @@ def _host_to_device(to_dev_id: str, obj: Any) -> MPObject:
             )
         assert len(dev_info.members) == 1
         rank = dev_info.members[0].rank
-        obj = run_at(rank, basic.constant, obj)
-        set_dev_attr(obj, to_dev_id)
-        return obj
+        obj_mp = cast(MPObject, run_at(rank, basic.constant, obj))
+        set_dev_attr(obj_mp, to_dev_id)
+        return obj_mp
     else:
         raise TypeError(
             f"put() only supports TensorLike or TableLike objects, got {type(obj)}"

@@ -997,10 +997,7 @@ def _phe_decrypt(
         if target_dtype.kind in "iu":  # integer types
             # Convert floats back to integers for integer semantic types
             # decoded_data are numeric (ints or floats); normalize to Python int
-            ints = []
-            for v in decoded_data:
-                iv = round(v) if isinstance(v, float) else v
-                ints.append(iv)
+            ints = [round(v) if isinstance(v, float) else v for v in decoded_data]
             if np.issubdtype(target_dtype, np.unsignedinteger):
                 # Reduce modulo 2^k for unsigned to preserve ring semantics
                 width = np.iinfo(target_dtype).bits

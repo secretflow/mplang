@@ -22,13 +22,26 @@ _PHE_MOD = stateless_mod("phe")
 
 @_PHE_MOD.simple_op()
 def keygen(
-    *, scheme: str = "paillier", key_size: int = 2048
+    *,
+    scheme: str = "paillier",
+    key_size: int = 2048,
+    max_value: int | None = None,
+    fxp_bits: int | None = None,
 ) -> tuple[TensorType, TensorType]:
     """Generate a PHE key pair: returns (public_key, private_key).
 
     Keys are represented with a sentinel TensorType UINT8[(-1, 0)] to indicate
     non-structural, backend-only handles. Runtime validation will treat this
     shape as an opaque placeholder and skip dtype/shape checks.
+
+    Attributes (forwarded to backend):
+        scheme: PHE scheme (default: 'paillier')
+        key_size: Modulus size in bits (default: 2048)
+        max_value: Optional range-encoding bound B. If provided, the backend will
+            encode/decode integers/floats within [-B, B] and treat (B, N-B) as overflow.
+            Pick B to exceed the largest intermediate magnitude you expect in homomorphic
+            combinations. If omitted, backend default is used (currently 2**32).
+        fxp_bits: Optional fixed-point fractional bits for float encoding (default backend value).
     """
     key_spec = TensorType(UINT8, (-1, 0))
     return key_spec, key_spec

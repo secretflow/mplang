@@ -473,10 +473,9 @@ def _phe_keygen(pfunc: PFunction) -> Any:
     # use small key_size to speed up tests
     # in production use at least 2048 bits or 3072 bits for better security
     key_size = pfunc.attrs.get("key_size", 2048)
-    max_value = pfunc.attrs.get(
-        "max_value", 2**32
-    )  # Use larger range to avoid overflow
-    fxp_bits = pfunc.attrs.get("fxp_bits", 12)
+    # Accept very large max_value; allow decimal string input, kept simple like other attrs
+    max_value = int(pfunc.attrs.get("max_value", 2**32))
+    fxp_bits = int(pfunc.attrs.get("fxp_bits", 12))
 
     # Validate scheme
     if scheme.lower() not in ["paillier"]:
@@ -997,12 +996,17 @@ def _phe_decrypt(
         # Convert to target dtype
         if target_dtype.kind in "iu":  # integer types
             # Convert floats back to integers for integer semantic types
-            processed_data = [round(val) for val in decoded_data]
-            # Handle overflow for smaller integer types
-            info = np.iinfo(target_dtype)
-            processed_data = [
-                max(info.min, min(info.max, val)) for val in processed_data
-            ]
+            # decoded_data are numeric (ints or floats); normalize to Python int
+            ints = [round(v) if isinstance(v, float) else v for v in decoded_data]
+            if np.issubdtype(target_dtype, np.unsignedinteger):
+                # Reduce modulo 2^k for unsigned to preserve ring semantics
+                width = np.iinfo(target_dtype).bits
+                mod = 1 << width
+                processed_data = [v % mod for v in ints]
+            else:
+                # Signed integers: clamp to dtype range
+                info = np.iinfo(target_dtype)
+                processed_data = [max(info.min, min(info.max, v)) for v in ints]
         else:  # float types
             processed_data = decoded_data
 

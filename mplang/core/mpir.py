@@ -217,7 +217,9 @@ def attr_to_proto(py_value: Any) -> mpir_pb2.AttrProto:
         # Serialize attrs dictionary
         if py_value.attrs:
             for attr_name, attr_value in py_value.attrs.items():
-                attr_proto.func.attrs[attr_name].CopyFrom(attr_to_proto(attr_value))
+                # Skip None-valued attributes to align with top-level attr handling
+                if attr_value is not None:
+                    attr_proto.func.attrs[attr_name].CopyFrom(attr_to_proto(attr_value))
 
         # Note: We don't serialize ins_info and outs_info since they can be
         # inferred from the input expressions during deserialization

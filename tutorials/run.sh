@@ -69,6 +69,9 @@ uv run python tutorials/simp/06_fhe.py
 echo -e "\n[Simp 07] Advanced..."
 uv run python tutorials/simp/07_advanced.py
 
+echo -e "\n[Simp 08] Simple Secret Sharing..."
+uv run python tutorials/simp/08_simple_secret_sharing.py
+
 echo -e "\n================================"
 echo "All tutorials completed successfully!"
 echo "================================"

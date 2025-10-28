@@ -203,7 +203,7 @@ def run_sql(
     - If ``out_type`` is not provided, attempts to deduce the output table schema using sqlglot (qualify + annotate types).
     - Returns a triad consisting of the constructed PFunction (``fn_type='sql.run'``), the ordered list of input MPObjects, and the output PyTreeDef.
 
-    Difference vs ``run_sql``: this op can infer ``out_type`` and will parse the SQL to filter inputs; ``run_sql`` requires an explicit ``out_type`` and does not parse/filter inputs.
+    Difference vs ``run_sql_raw``: this op can infer ``out_type`` and will parse the SQL to filter inputs; ``run_sql_raw`` requires an explicit ``out_type`` and does not parse/filter inputs.
     """
     # Extract required table names from SQL (order by first appearance)
     parsed = sg.parse_one(query, read=dialect)

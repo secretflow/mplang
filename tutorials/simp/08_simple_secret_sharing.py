@@ -111,7 +111,7 @@ def beaver_gen() -> tuple[mp.MPObject, mp.MPObject, mp.MPObject]:
       - P0 keygen, broadcast pub
       - Each party locally samples its shares a_i, b_i
       - P0 encrypts a0, b0 and sends to P1
-      - P1 computes T = A*b1 + B*a1 + Enc(a1*b1 + r) and sends back
+      - P1 computes T = Enc(a0)*b1 + Enc(b0)*a1 + a1*b1 + r and sends back
       - P0 decrypts T to get C = a0*b1 + b0*a1 + a1*b1 + r
       - Set shares for c = a*b: at P0 set c0 = a0*b0 + C, at P1 set c1 = -r (all mod 2^64)
     """

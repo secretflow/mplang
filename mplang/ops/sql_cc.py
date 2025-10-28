@@ -285,7 +285,7 @@ def run_sql_raw(
         for name, tbl in in_tables.items():
             if not isinstance(tbl, MPObject):
                 raise TypeError(f"Input table '{name}' is not an MPObject {type(tbl)}")
-            assert tbl.schema is not None
+            assert tbl.schema is not None, f"Input table '{name}' is missing a schema"
             in_names.append(name)
             ins_info.append(tbl.schema)
             in_vars.append(tbl)

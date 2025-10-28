@@ -20,6 +20,7 @@ from sqlglot import exp as sge
 from sqlglot.optimizer import annotate_types as opt_annot
 from sqlglot.optimizer import qualify as opt_qualify
 
+from mplang.core import MPObject, PFunction, TableType
 from mplang.core.dtypes import (
     BINARY,
     BOOL,
@@ -43,9 +44,6 @@ from mplang.core.dtypes import (
     UUID,
     DType,
 )
-from mplang.core.mpobject import MPObject
-from mplang.core.pfunc import PFunction
-from mplang.core.table import TableType
 from mplang.ops.base import stateless_mod
 
 _SQL_MOD = stateless_mod("sql")

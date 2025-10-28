@@ -274,7 +274,7 @@ def run_sql_raw(
     - Requires an explicit ``out_type``; no schema deduction is attempted.
     - Returns a triad consisting of the constructed PFunction (``fn_type='sql.run'``), the ordered list of input MPObjects, and the output PyTreeDef.
 
-    Difference vs ``run_sql``: this op requires ``out_type`` and does not parse/filter inputs; ```` can infer ``out_type`` and selects only tables referenced by the query.
+    Difference vs ``run_sql``: this op requires ``out_type`` and does not parse/filter inputs; ``run_sql`` can infer ``out_type`` and selects only tables referenced by the query.
     """
 
     # Collect inputs strictly as provided by caller

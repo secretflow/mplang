@@ -46,7 +46,7 @@ from mplang.core.dtypes import (
 from mplang.core.mpobject import MPObject
 from mplang.core.pfunc import PFunction
 from mplang.core.table import TableType
-from mplang.ops.base import FeOperation, stateless_mod
+from mplang.ops.base import stateless_mod
 
 _SQL_MOD = stateless_mod("sql")
 
@@ -189,18 +189,23 @@ def _deduce_out_schema(
 
 
 @_SQL_MOD.op_def()
-def run_sql2(
+def run_sql(
     query: str,
     *,
     out_type: TableType | None = None,
     dialect: str = "duckdb",
     **in_tables: Any,
 ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-    """Frontend SQL op that returns a Triad (PFunction, inputs, PyTreeDef).
+    """Build a sql.run PFunction from a SQL query with optional schema deduction.
 
-    - Builds a generic sql.run PFunction routed via kernel bindings to duckdb.
-    - Registers input tables by their kwarg names (order preserved).
-    - If out_type is not provided, attempts to deduce schema via sqlglot.
+    API: run_sql(query: str, *, out_type: TableType | None = None, dialect: str = "duckdb", **in_tables) -> (PFunction, [MPObject], PyTreeDef)
+
+    Semantics:
+    - Parses the SQL and binds only the tables that are actually referenced in the query by name.
+    - If ``out_type`` is not provided, attempts to deduce the output table schema using sqlglot (qualify + annotate types).
+    - Returns a triad consisting of the constructed PFunction (``fn_type='sql.run'``), the ordered list of input MPObjects, and the output PyTreeDef.
+
+    Difference vs ``run_sql``: this op can infer ``out_type`` and will parse the SQL to filter inputs; ``run_sql`` requires an explicit ``out_type`` and does not parse/filter inputs.
     """
     # Extract required table names from SQL (order by first appearance)
     parsed = sg.parse_one(query, read=dialect)
@@ -254,43 +259,47 @@ def run_sql2(
     return pfn, in_vars, treedef
 
 
-class SqlRunner(FeOperation):
-    def __init__(self, dialect: str = "duckdb"):
-        # Bind to sql module with a stable op name for registry/dispatch
-        super().__init__(_SQL_MOD, "run")
-        self._dialect = dialect
+@_SQL_MOD.op_def()
+def run_sql_raw(
+    query: str,
+    out_type: TableType,
+    *,
+    dialect: str = "duckdb",
+    in_tables: dict[str, MPObject] | None = None,
+) -> tuple[PFunction, list[MPObject], PyTreeDef]:
+    """Build a sql.run PFunction from a SQL query with an explicit output schema.
 
-    # TODO(jint): we should deduce out_type according to query and in_tables' schema
-    def trace(
-        self,
-        query: str,
-        out_type: TableType,
-        in_tables: dict[str, MPObject] | None = None,
-    ) -> tuple[PFunction, list[MPObject], PyTreeDef]:
-        in_names: list[str] = []
-        ins_info: list[TableType] = []
-        in_vars: list[MPObject] = []
-        if in_tables:
-            for name, tbl in in_tables.items():
-                assert isinstance(tbl, MPObject), (
-                    f"Input table '{name}' is not an MPObject {type(tbl)}"
-                )
-                assert tbl.schema is not None
-                in_names.append(name)
-                ins_info.append(tbl.schema)
-                in_vars.append(tbl)
+    API: run_sql_raw(query: str, out_type: TableType, *, dialect: str = "duckdb", in_tables: dict[str, MPObject] | None = None) -> (PFunction, [MPObject], PyTreeDef)
 
-        pfn = PFunction(
-            fn_type="sql.run",
-            fn_name="",
-            fn_text=query,
-            ins_info=tuple(ins_info),
-            outs_info=(out_type,),
-            in_names=tuple(in_names),
-            dialect=self._dialect,
-        )
-        _, treedef = tree_flatten(out_type)
-        return pfn, in_vars, treedef
+    Semantics:
+    - Does not parse the SQL; carries all tables provided via ``in_tables`` in the mapping's iteration order.
+    - Requires an explicit ``out_type``; no schema deduction is attempted.
+    - Returns a triad consisting of the constructed PFunction (``fn_type='sql.run'``), the ordered list of input MPObjects, and the output PyTreeDef.
 
+    Difference vs ``run_sql``: this op requires ``out_type`` and does not parse/filter inputs; ```` can infer ``out_type`` and selects only tables referenced by the query.
+    """
 
-run_sql = SqlRunner("duckdb")
+    # Collect inputs strictly as provided by caller
+    in_names: list[str] = []
+    ins_info: list[TableType] = []
+    in_vars: list[MPObject] = []
+    if in_tables:
+        for name, tbl in in_tables.items():
+            if not isinstance(tbl, MPObject):
+                raise TypeError(f"Input table '{name}' is not an MPObject {type(tbl)}")
+            assert tbl.schema is not None
+            in_names.append(name)
+            ins_info.append(tbl.schema)
+            in_vars.append(tbl)
+
+    pfn = PFunction(
+        fn_type="sql.run",
+        fn_name="",
+        fn_text=query,
+        ins_info=tuple(ins_info),
+        outs_info=(out_type,),
+        in_names=tuple(in_names),
+        dialect=dialect,
+    )
+    _, treedef = tree_flatten(out_type)
+    return pfn, in_vars, treedef

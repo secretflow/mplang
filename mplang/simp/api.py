@@ -277,10 +277,10 @@ def run_sql(
     query: str, out_type: Any, in_tables: dict[str, MPObject] | None = None
 ) -> Any:
     # TODO(jint): add docstring, drop out_type.
-    return run(None, sql_cc.run_sql, query, out_type, in_tables)
+    return run(None, sql_cc.run_sql_raw, query, out_type, in_tables)
 
 
 def run_sql_at(
     rank: Rank, query: str, out_type: Any, in_tables: dict[str, MPObject] | None = None
 ) -> Any:
-    return run_at(rank, sql_cc.run_sql, query, out_type, in_tables)
+    return run_at(rank, sql_cc.run_sql_raw, query, out_type, in_tables)

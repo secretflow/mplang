@@ -23,7 +23,7 @@ Key concepts:
 - PPU: fast SQL, no privacy protection
 - TEE: SQL in trusted execution environment
 - TableType: define table schema for SQL operations (schema can be inferred)
-- run_sql2: execute DuckDB SQL queries with automatic schema inference
+- run_sql: execute DuckDB SQL queries with automatic schema inference
 """
 
 import pandas as pd
@@ -65,8 +65,8 @@ def sql_on_ppu():
 
     # Run SQL on P0: double the values
     query = "SELECT id, value * 2 as doubled FROM input_table"
-    # Schema is inferred automatically by run_sql2
-    result = mp.device("P0")(sql_cc.run_sql2)(query, input_table=input_table)
+    # Schema is inferred automatically by run_sql
+    result = mp.device("P0")(sql_cc.run_sql)(query, input_table=input_table)
 
     return result
 
@@ -104,7 +104,7 @@ def sql_on_tee():
 
     # Run SQL UNION on TEE (inside device context) and return the result table
     query = "SELECT * FROM tbl1 UNION ALL SELECT * FROM tbl2 ORDER BY user_id"
-    result = mp.device("TEE0")(sql_cc.run_sql2)(query, tbl1=tbl_tee_0, tbl2=tbl_tee_1)
+    result = mp.device("TEE0")(sql_cc.run_sql)(query, tbl1=tbl_tee_0, tbl2=tbl_tee_1)
 
     return result
 
@@ -162,7 +162,7 @@ def main():
     print("1. PPU: fast plaintext SQL, no privacy")
     print("2. TEE: SQL in trusted isolated environment")
     print(
-        "3. sql_cc.run_sql2: execute DuckDB queries on tables (schema inferred via sqlglot)"
+        "3. sql_cc.run_sql: execute DuckDB queries on tables (schema inferred via sqlglot)"
     )
     print("4. TableType: define schema for SQL inputs/outputs")
     print("5. mp.put: move tables between devices safely")

@@ -19,7 +19,7 @@ import mplang as mp
 from mplang.core.dtypes import FLOAT32, INT32
 from mplang.core.mpobject import MPContext, MPObject
 from mplang.core.mptype import MPType
-from mplang.ops.sql_cc import run_sql2
+from mplang.ops.sql_cc import run_sql
 from mplang.runtime.simulation import Simulator
 
 
@@ -38,7 +38,7 @@ def test_run_sql2_happy_path_with_out_type(sim):
         tbl = mp.constant(df)
         return mp.run_at(
             0,
-            run_sql2,
+            run_sql,
             "SELECT a, b, c, a+b as d FROM t",
             out_type=mp.TableType.from_dict(out_schema),
             t=tbl,
@@ -76,7 +76,7 @@ def test_run_sql2_schema_deduction(sim):
     tbl = DummyTable(schema)
 
     # No out_type provided; should deduce: a, b, c, d=int32 (a+b)
-    pfunc, _inputs, _ = run_sql2("SELECT a, b, c, a+b as d FROM t", t=tbl)
+    pfunc, _inputs, _ = run_sql("SELECT a, b, c, a+b as d FROM t", t=tbl)
     assert pfunc.fn_type == "sql.run"
     assert pfunc.attrs.get("dialect") == "duckdb"
     assert pfunc.attrs.get("in_names") == ("t",)
@@ -108,7 +108,7 @@ def test_run_sql2_function_type_inference_via_optimizer(sim):
     tbl = DummyTable({"a": INT32})
 
     # Function call should be supported via optimizer-based type inference
-    pfunc, _inputs, _ = run_sql2("SELECT ABS(a) FROM t", t=tbl)
+    pfunc, _inputs, _ = run_sql("SELECT ABS(a) FROM t", t=tbl)
     out = pfunc.outs_info[0]
     assert isinstance(out, mp.TableType)
     cols = dict(out.columns)

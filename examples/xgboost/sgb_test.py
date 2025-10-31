@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import time
+from functools import partial
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -23,10 +25,10 @@ from xgboost import XGBClassifier
 import mplang as mp
 from examples.xgboost.sgb import (
     SecureBoost,
-    batch_feature_wise_bucket_sum_mplang,
+    batch_feature_wise_bucket_sum_fhe_vector,
     pretty_print_ensemble,
 )
-from mplang.ops import phe
+from mplang.ops import fhe
 
 
 def load_dataset(
@@ -278,18 +280,21 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
         for sample_idx in range(test_setup["DEBUG_SAMPLES"]):
             ap_row_idx = sample_idx * n_parties + 0  # AP row
             pp1_row_idx = sample_idx * n_parties + 1  # PP1 row
+            pp2_row_idx = -1
             if n_parties == 3:
                 pp2_row_idx = sample_idx * n_parties + 2  # PP2 row
 
             ap_leaves = leaves_data[ap_row_idx]
             pp1_leaves = leaves_data[pp1_row_idx]
+            pp2_leaves = None
             if n_parties == 3:
                 pp2_leaves = leaves_data[pp2_row_idx]
 
             # Find non-zero leaf nodes for each party
             ap_active_nodes = [i for i, val in enumerate(ap_leaves) if val > 0]
             pp1_active_nodes = [i for i, val in enumerate(pp1_leaves) if val > 0]
-            if n_parties == 3:
+            pp2_active_nodes = []
+            if n_parties == 3 and pp2_leaves is not None:
                 pp2_active_nodes = [i for i, val in enumerate(pp2_leaves) if val > 0]
 
             # Get ground truth and prediction for context
@@ -341,11 +346,162 @@ def test_sgb_3pc_debug_leaves(test_setup):
 
 
 @mp.function
+def _run_pp_fhe_cumulative_once(X_parts, y_jax, all_party_ids_list, params):
+    """Return decrypted PP cumulative GH for level-0 (t=1) using FHE path, for debugging."""
+    ap_id = all_party_ids_list[0]
+    pp_id = all_party_ids_list[1]
+
+    # Build bins and bin indices for AP/PP in their parties
+
+    from examples.xgboost.sgb import (
+        DEFAULT_FXP_BITS,
+        batch_feature_wise_bucket_sum_fhe_vector,
+        build_bins_equi_width,
+        compute_bin_indices,
+        compute_gh,
+        compute_init_pred,
+        quantize_gh,
+    )
+
+    build_bins_vmapped = jax.vmap(
+        partial(build_bins_equi_width, max_bin=params["max_bin"]), in_axes=1
+    )
+    compute_indices_vmapped = jax.vmap(compute_bin_indices, in_axes=(1, 0), out_axes=1)
+
+    X_ap = mp.run_jax_at(ap_id, lambda x: x, X_parts[ap_id])
+    X_pp = mp.run_jax_at(pp_id, lambda x: x, X_parts[pp_id])
+    y_data = mp.run_jax_at(ap_id, lambda x: x, y_jax)
+
+    _ = mp.run_jax_at(
+        ap_id, build_bins_vmapped, X_ap
+    )  # not used downstream, keep binning consistent
+    bins_pp = mp.run_jax_at(pp_id, build_bins_vmapped, X_pp)
+    bin_idx_pp = mp.run_jax_at(pp_id, compute_indices_vmapped, X_pp, bins_pp)
+
+    # GH at AP
+    init_pred = mp.run_jax_at(ap_id, compute_init_pred, y_data)
+    logits0 = mp.run_jax_at(
+        ap_id, lambda p, m=X_ap.shape[0]: p * jnp.ones(m), init_pred
+    )
+    GH = mp.run_jax_at(ap_id, compute_gh, y_data, logits0)
+
+    # Quantize and encrypt at AP
+    fxp_scale = 1 << DEFAULT_FXP_BITS
+    Q = mp.run_jax_at(ap_id, quantize_gh, GH, fxp_scale)
+    qg = mp.run_jax_at(ap_id, lambda a: a[:, 0].astype(jnp.int64), Q)
+    qh = mp.run_jax_at(ap_id, lambda a: a[:, 1].astype(jnp.int64), Q)
+    priv_ctx, pub_ctx, _ = mp.run_at(ap_id, fhe.keygen, scheme="BFV")
+    # Move pub_ctx to PP for local encryption
+    pub_ctx_pp = mp.p2p(ap_id, pp_id, pub_ctx)
+    g_ct = mp.run_at(ap_id, fhe.encrypt, qg, pub_ctx)
+    h_ct = mp.run_at(ap_id, fhe.encrypt, qh, pub_ctx)
+
+    # Level-0 subgroup map (all samples in group 0)
+    subgroup_map = mp.run_jax_at(
+        pp_id, lambda m: jnp.ones((1, m), dtype=jnp.int8), X_pp.shape[0]
+    )
+
+    # Compute cumulative via FHE dot; return decrypted lists
+    g_lists, h_lists = batch_feature_wise_bucket_sum_fhe_vector(
+        g_ct,
+        h_ct,
+        subgroup_map,
+        bin_idx_pp,
+        pub_ctx_pp,
+        params["max_bin"],
+        1,
+        rank=pp_id,
+        ap_rank=ap_id,
+    )
+    enc_g_list = g_lists[0]
+    enc_h_list = h_lists[0]
+
+    dec_g = [mp.run_at(ap_id, fhe.decrypt, ct, priv_ctx) for ct in enc_g_list]
+    dec_h = [mp.run_at(ap_id, fhe.decrypt, ct, priv_ctx) for ct in enc_h_list]
+
+    return dec_g, dec_h, fxp_scale, bins_pp.shape[1]
+
+
+def test_pp_fhe_cumulative_matches_plain(test_setup):
+    # Setup a 2PC environment and dataset
+    sim = test_setup["sim2"]
+    params = test_setup["XGB_PARAMS"].copy()
+    (
+        all_party_ids_list,
+        X_parts,
+        y_jax,
+        X_plaintext,
+        y_plaintext,
+    ) = load_dataset(
+        n_samples=test_setup["n_samples"],
+        n_total_features=test_setup["n_total_features"],
+        n_features_ap=test_setup["n_features_ap"],
+        pp_parties=1,
+        random_state=test_setup["random_state"],
+    )
+
+    out = mp.evaluate(
+        sim, _run_pp_fhe_cumulative_once, X_parts, y_jax, all_party_ids_list, params
+    )
+    dec_g, dec_h, fxp_scale, n_features_pp = mp.fetch(sim, out)
+    print("Debug dec_g sample:", dec_g[:3])
+    # Assemble vectors in Python
+    # Each decrypt fetch returns [value, None]; take the first element
+    g_vec_q = np.array([np.array(x[0]) for x in dec_g]).astype(np.int64).reshape(-1)
+    h_vec_q = np.array([np.array(x[0]) for x in dec_h]).astype(np.int64).reshape(-1)
+    g_vec = g_vec_q.astype(np.float32) / fxp_scale
+    h_vec = h_vec_q.astype(np.float32) / fxp_scale
+    gh_flat_fhe = np.stack([g_vec, h_vec], axis=1)
+
+    # Plaintext cumulative construction
+    k = params["max_bin"]
+    # Recompute plaintext GH and PP bin indices using numpy to avoid MP fetch shape issues
+    y_np = y_plaintext
+    X_pp_np = X_plaintext[:, test_setup["n_features_ap"] :]
+    p_base = np.clip(np.mean(y_np), 1e-15, 1 - 1e-15)
+    init_pred = np.log(p_base / (1 - p_base))
+    p = 1 / (1 + np.exp(-init_pred))
+    g = p - y_np
+    h_scalar = p * (1 - p)
+    h = np.full_like(g, h_scalar)
+    GH_np = np.stack([g, h], axis=1).astype(np.float32)
+    # Bins and indices for PP features
+    n_features_pp = X_pp_np.shape[1]
+    bin_idx_np = np.zeros((X_pp_np.shape[0], n_features_pp), dtype=np.int64)
+    for f in range(n_features_pp):
+        x = X_pp_np[:, f]
+        if x.shape[0] >= 2:
+            min_val, max_val = np.min(x), np.max(x)
+            if max_val - min_val < 1e-9:
+                bins = np.full((k - 1,), np.inf, dtype=np.float32)
+            else:
+                boundaries = np.linspace(min_val, max_val, num=k + 1)
+                bins = boundaries[1:-1]
+        else:
+            bins = np.full((k - 1,), np.inf, dtype=np.float32)
+        bin_idx_np[:, f] = np.digitize(x, bins, right=True)
+    flat_cumul = []
+    for f in range(n_features_pp):
+        bins_f = bin_idx_np[:, f]
+        per_bin = np.zeros((k, 2), dtype=np.float32)
+        for i in range(GH_np.shape[0]):
+            b = int(bins_f[i])
+            per_bin[b, 0] += GH_np[i, 0]
+            per_bin[b, 1] += GH_np[i, 1]
+        cumul = np.cumsum(per_bin, axis=0)
+        flat_cumul.append(cumul)
+    gh_flat_plain = np.stack(flat_cumul, axis=0).reshape((n_features_pp * k, 2))
+
+    diff = np.linalg.norm(gh_flat_fhe - gh_flat_plain)
+    print("PP cumulative L2 diff:", diff)
+    print("FHE g first 12:", g_vec[:12])
+    print("Plain g first 12:", gh_flat_plain[:12, 0])
+    assert diff < 1e-4
+
+
+@mp.function
 def run_bucket_sum_2_groups():
-    """Test batch feature-wise bucket sum with 2 groups"""
-    # sample_size = 6
-    # feature_size = 2
-    # gh_size = 2
+    """Test batch feature-wise bucket sum with 2 groups using FHE(BFV) vector dot"""
     bucket_num = 3
     group_size = 2
 
@@ -378,39 +534,55 @@ def run_bucket_sum_2_groups():
         dtype=np.int8,
     )
 
-    pkey, skey = mp.run_at(0, phe.keygen)
-    world_mask = mp.Mask.all(2)
-    pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
+    # Keygen (BFV)
+    priv_ctx, pub_ctx, _ = mp.run_at(0, fhe.keygen, scheme="BFV")
+    # Move pub_ctx to PP(1) for local encryption
+    pub_ctx_pp = mp.p2p(0, 1, pub_ctx)
 
+    # Prepare g/h integer vectors at AP
     m1 = mp.run_jax_at(0, lambda x: x, m1_np)
+    g = mp.run_jax_at(0, lambda a: a[:, 0].astype(jnp.int64), m1)
+    h = mp.run_jax_at(0, lambda a: a[:, 1].astype(jnp.int64), m1)
 
-    encrypted_arr = mp.run_at(0, phe.encrypt, m1, pkey_bcasted)
-    encrypted_arr = mp.p2p(0, 1, encrypted_arr)
+    # Encrypt and send to PP(1)
+    g_ct = mp.run_at(0, fhe.encrypt, g, pub_ctx)
+    h_ct = mp.run_at(0, fhe.encrypt, h, pub_ctx)
 
+    # Move masks and order map to PP(1)
     subgroup_map = mp.run_jax_at(1, lambda x: x, subgroup_map)
     order_map = mp.run_jax_at(1, lambda x: x, order_map)
 
-    bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
-        encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
+    # Compute encrypted sums via vector dot
+    g_lists, h_lists = batch_feature_wise_bucket_sum_fhe_vector(
+        g_ct,
+        h_ct,
+        subgroup_map,
+        order_map,
+        pub_ctx_pp,
+        bucket_num,
+        group_size,
+        rank=1,
+        ap_rank=0,
     )
 
-    # Decrypt each group result separately
+    # Decrypt each group's results at AP and return lists of scalars per group
     decrypted_results = []
     for group_idx in range(group_size):
-        decrypted_group = mp.run_at(
-            0, phe.decrypt, mp.p2p(1, 0, bucket_sum_list[group_idx]), skey
-        )
-        decrypted_results.append(decrypted_group)
+        enc_g_list = g_lists[group_idx]
+        enc_h_list = h_lists[group_idx]
+
+        # Decrypt scalars
+        dec_g_scalars = [mp.run_at(0, fhe.decrypt, ct, priv_ctx) for ct in enc_g_list]
+        dec_h_scalars = [mp.run_at(0, fhe.decrypt, ct, priv_ctx) for ct in enc_h_list]
+        # Append decrypted scalar lists; we'll assemble vectors on fetch side in Python
+        decrypted_results.append((dec_g_scalars, dec_h_scalars))
 
     return decrypted_results
 
 
 @mp.function
 def run_bucket_sum_3_groups():
-    """Test batch feature-wise bucket sum with 3 groups"""
-    # sample_size = 9
-    # feature_size = 2
-    # gh_size = 2
+    """Test batch feature-wise bucket sum with 3 groups using FHE(BFV) vector dot"""
     bucket_num = 3
     group_size = 3
 
@@ -451,29 +623,48 @@ def run_bucket_sum_3_groups():
         dtype=np.int8,
     )
 
-    pkey, skey = mp.run_at(0, phe.keygen)
-    world_mask = mp.Mask.all(2)
-    pkey_bcasted = mp.bcast_m(world_mask, 0, pkey)
+    # Keygen (BFV)
+    priv_ctx, pub_ctx, _ = mp.run_at(0, fhe.keygen, scheme="BFV")
+    # Move pub_ctx to PP(1) for local encryption
+    pub_ctx_pp = mp.p2p(0, 1, pub_ctx)
 
+    # Prepare g/h integer vectors at AP
     m1 = mp.run_jax_at(0, lambda x: x, m1_np)
+    g = mp.run_jax_at(0, lambda a: a[:, 0].astype(jnp.int64), m1)
+    h = mp.run_jax_at(0, lambda a: a[:, 1].astype(jnp.int64), m1)
 
-    encrypted_arr = mp.run_at(0, phe.encrypt, m1, pkey_bcasted)
-    encrypted_arr = mp.p2p(0, 1, encrypted_arr)
+    # Encrypt and send to PP(1)
+    g_ct = mp.run_at(0, fhe.encrypt, g, pub_ctx)
+    h_ct = mp.run_at(0, fhe.encrypt, h, pub_ctx)
 
+    # Move masks and order map to PP(1)
     subgroup_map = mp.run_jax_at(1, lambda x: x, subgroup_map)
     order_map = mp.run_jax_at(1, lambda x: x, order_map)
 
-    bucket_sum_list = batch_feature_wise_bucket_sum_mplang(
-        encrypted_arr, subgroup_map, order_map, bucket_num, group_size, rank=1
+    # Compute encrypted sums via vector dot
+    g_lists, h_lists = batch_feature_wise_bucket_sum_fhe_vector(
+        g_ct,
+        h_ct,
+        subgroup_map,
+        order_map,
+        pub_ctx_pp,
+        bucket_num,
+        group_size,
+        rank=1,
+        ap_rank=0,
     )
 
-    # Decrypt each group result separately
+    # Decrypt each group's results at AP and return lists of scalars per group
     decrypted_results = []
     for group_idx in range(group_size):
-        decrypted_group = mp.run_at(
-            0, phe.decrypt, mp.p2p(1, 0, bucket_sum_list[group_idx]), skey
-        )
-        decrypted_results.append(decrypted_group)
+        enc_g_list = g_lists[group_idx]
+        enc_h_list = h_lists[group_idx]
+
+        # Decrypt scalars
+        dec_g_scalars = [mp.run_at(0, fhe.decrypt, ct, priv_ctx) for ct in enc_g_list]
+        dec_h_scalars = [mp.run_at(0, fhe.decrypt, ct, priv_ctx) for ct in enc_h_list]
+        # Append decrypted scalar lists; assemble vectors on fetch side
+        decrypted_results.append((dec_g_scalars, dec_h_scalars))
 
     return decrypted_results
 
@@ -483,24 +674,41 @@ def test_batch_feature_wise_bucket_sum_2_groups(test_setup):
     print("=== Testing batch_feature_wise_bucket_sum with 2 groups ===")
 
     sim = test_setup["sim2"]
+    print("[dbg] evaluating run_bucket_sum_2_groups...")
     result_2_groups = mp.evaluate(sim, run_bucket_sum_2_groups)
+    print("[dbg] fetch run_bucket_sum_2_groups result...")
     fetched_2_groups = mp.fetch(sim, result_2_groups)
+    print("[dbg] fetched run_bucket_sum_2_groups result")
 
-    # fetched_2_groups is [[group0_from_rank0, None], [group1_from_rank0, None]]
-    print(f"2-group PHE sum completed. Number of groups: {len(fetched_2_groups)}")
+    # fetched_2_groups is [[(g_list,h_list) from rank0, None], ...]
+    print(f"2-group FHE sum completed. Number of groups: {len(fetched_2_groups)}")
+
+    def extract_ap_values(x):
+        # Recursively extract the first non-None value for party 0
+        if isinstance(x, (list, tuple)):
+            # Two-party case: leaf MPObject fetch yields [val_at_p0, None]
+            if len(x) == 2 and x[1] is None:
+                return extract_ap_values(x[0])
+            return [extract_ap_values(e) for e in x]
+        return x
+
+    # Build numpy arrays for each group from decrypted scalar lists
+    gh_groups = []
     for i, group_item in enumerate(fetched_2_groups):
-        group_result = group_item[0] if group_item[0] is not None else group_item[1]
-        if group_result is not None:
-            print(f"Group {i} shape: {group_result.shape}")
-        else:
-            raise ValueError(f"Group {i} result is None")
+        print(f"[dbg] group_item[{i}] type={type(group_item)}, len={len(group_item)}")
+        assert isinstance(group_item, (list, tuple)) and len(group_item) == 2
+        g_item, h_item = group_item
+        print(f"[dbg] g_item[{i}] type={type(g_item)}; h_item type={type(h_item)}")
+        g_list = extract_ap_values(g_item)
+        h_list = extract_ap_values(h_item)
+        g_vec = np.array(g_list, dtype=np.int64)
+        h_vec = np.array(h_list, dtype=np.int64)
+        gh_flat = np.stack([g_vec, h_vec], axis=1)
+        print(f"Group {i} gh_flat shape: {gh_flat.shape}")
+        gh_groups.append(gh_flat)
 
-    # Extract group results
-    out_2_0 = fetched_2_groups[0][0]  # First group's result
-    out_2_1 = fetched_2_groups[1][0]  # Second group's result
-
-    print(f"group 0 sum: {out_2_0}")
-    print(f"group 1 sum: {out_2_1}")
+    out_2_0 = gh_groups[0]
+    out_2_1 = gh_groups[1]
 
     # Verify 2-group test correctness
     expected_2_0 = np.array([
@@ -531,26 +739,37 @@ def test_batch_feature_wise_bucket_sum_3_groups(test_setup):
     print("=== Testing batch_feature_wise_bucket_sum with 3 groups ===")
 
     sim = test_setup["sim2"]
+    print("[dbg] evaluating run_bucket_sum_3_groups...")
     result_3_groups = mp.evaluate(sim, run_bucket_sum_3_groups)
+    print("[dbg] fetch run_bucket_sum_3_groups result...")
     fetched_3_groups = mp.fetch(sim, result_3_groups)
+    print("[dbg] fetched run_bucket_sum_3_groups result")
 
-    # fetched_3_groups is [[group0_from_rank0, None], [group1_from_rank0, None], [group2_from_rank0, None]]
-    print(f"3-group PHE sum completed. Number of groups: {len(fetched_3_groups)}")
+    # fetched_3_groups is [[(g_list,h_list) from rank0, None], ...]
+    print(f"3-group FHE sum completed. Number of groups: {len(fetched_3_groups)}")
+
+    def extract_ap_values(x):
+        if isinstance(x, (list, tuple)):
+            if len(x) == 2 and x[1] is None:
+                return extract_ap_values(x[0])
+            return [extract_ap_values(e) for e in x]
+        return x
+
+    gh_groups = []
     for i, group_item in enumerate(fetched_3_groups):
-        group_result = group_item[0] if group_item[0] is not None else group_item[1]
-        if group_result is not None:
-            print(f"Group {i} shape: {group_result.shape}")
-        else:
-            raise ValueError(f"Group {i} result is None")
+        assert isinstance(group_item, (list, tuple)) and len(group_item) == 2
+        g_item, h_item = group_item
+        g_list = extract_ap_values(g_item)
+        h_list = extract_ap_values(h_item)
+        g_vec = np.array(g_list, dtype=np.int64)
+        h_vec = np.array(h_list, dtype=np.int64)
+        gh_flat = np.stack([g_vec, h_vec], axis=1)
+        print(f"Group {i} gh_flat shape: {gh_flat.shape}")
+        gh_groups.append(gh_flat)
 
-    # Extract group results
-    out_3_0 = fetched_3_groups[0][0]  # First group's result
-    out_3_1 = fetched_3_groups[1][0]  # Second group's result
-    out_3_2 = fetched_3_groups[2][0]  # Third group's result
-
-    print(f"group 0 sum: {out_3_0}")
-    print(f"group 1 sum: {out_3_1}")
-    print(f"group 2 sum: {out_3_2}")
+    out_3_0 = gh_groups[0]
+    out_3_1 = gh_groups[1]
+    out_3_2 = gh_groups[2]
 
     # Verify 3-group test correctness
     # Group 0: samples 0,2,5 with values [1,10], [3,30], [6,60]

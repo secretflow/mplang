@@ -25,6 +25,7 @@ import tenseal as ts
 
 from mplang.core import DType, PFunction, TensorLike
 from mplang.kernels.base import kernel_def
+from mplang.kernels.value import TensorValue
 
 
 class FHEContext:
@@ -337,13 +338,14 @@ def _fhe_decrypt(pfunc: PFunction, ciphertext: CipherText, context: FHEContext) 
 
         # Restore original shape
         if ciphertext.semantic_shape == ():
-            # Was a scalar, extract single value
-            result = decrypted_np[0:1].reshape(())
+            # Was a scalar, extract single value and wrap as TensorValue scalar
+            result_np = decrypted_np[0:1].reshape(())
         else:
             # Keep as vector
-            result = decrypted_np
+            result_np = decrypted_np
 
-        return (result,)
+        # Always return TensorValue to be compatible with downstream StableHLO kernels
+        return (TensorValue(np.asarray(result_np)),)
 
     except Exception as e:
         raise RuntimeError(f"FHE vector decryption failed: {e}") from e

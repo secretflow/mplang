@@ -391,8 +391,6 @@ def _run_pp_fhe_cumulative_once(X_parts, y_jax, all_party_ids_list, params):
     qg = mp.run_jax_at(ap_id, lambda a: a[:, 0].astype(jnp.int64), Q)
     qh = mp.run_jax_at(ap_id, lambda a: a[:, 1].astype(jnp.int64), Q)
     priv_ctx, pub_ctx, _ = mp.run_at(ap_id, fhe.keygen, scheme="BFV")
-    # Move pub_ctx to PP for local encryption
-    pub_ctx_pp = mp.p2p(ap_id, pp_id, pub_ctx)
     g_ct = mp.run_at(ap_id, fhe.encrypt, qg, pub_ctx)
     h_ct = mp.run_at(ap_id, fhe.encrypt, qh, pub_ctx)
 
@@ -407,7 +405,6 @@ def _run_pp_fhe_cumulative_once(X_parts, y_jax, all_party_ids_list, params):
         h_ct,
         subgroup_map,
         bin_idx_pp,
-        pub_ctx_pp,
         params["max_bin"],
         1,
         rank=pp_id,
@@ -536,8 +533,6 @@ def run_bucket_sum_2_groups():
 
     # Keygen (BFV)
     priv_ctx, pub_ctx, _ = mp.run_at(0, fhe.keygen, scheme="BFV")
-    # Move pub_ctx to PP(1) for local encryption
-    pub_ctx_pp = mp.p2p(0, 1, pub_ctx)
 
     # Prepare g/h integer vectors at AP
     m1 = mp.run_jax_at(0, lambda x: x, m1_np)
@@ -558,7 +553,6 @@ def run_bucket_sum_2_groups():
         h_ct,
         subgroup_map,
         order_map,
-        pub_ctx_pp,
         bucket_num,
         group_size,
         rank=1,
@@ -625,8 +619,6 @@ def run_bucket_sum_3_groups():
 
     # Keygen (BFV)
     priv_ctx, pub_ctx, _ = mp.run_at(0, fhe.keygen, scheme="BFV")
-    # Move pub_ctx to PP(1) for local encryption
-    pub_ctx_pp = mp.p2p(0, 1, pub_ctx)
 
     # Prepare g/h integer vectors at AP
     m1 = mp.run_jax_at(0, lambda x: x, m1_np)
@@ -647,7 +639,6 @@ def run_bucket_sum_3_groups():
         h_ct,
         subgroup_map,
         order_map,
-        pub_ctx_pp,
         bucket_num,
         group_size,
         rank=1,

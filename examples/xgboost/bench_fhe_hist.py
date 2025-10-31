@@ -295,7 +295,6 @@ def _bench_once(
                     h_ct,
                     subgroup_map_pp,
                     pp_idx[i],
-                    pub_ctx_pp,
                     k,
                     t,
                     rank=pp,

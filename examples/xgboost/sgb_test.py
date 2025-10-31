@@ -459,8 +459,8 @@ def test_pp_fhe_cumulative_matches_plain(test_setup):
     print("Debug dec_g sample:", dec_g[:3])
     # Assemble vectors in Python
     # Each decrypt fetch returns [value, None]; take the first element
-    g_vec_q = np.array([np.array(x[0]) for x in dec_g]).astype(np.int64).reshape(-1)
-    h_vec_q = np.array([np.array(x[0]) for x in dec_h]).astype(np.int64).reshape(-1)
+    g_vec_q = np.array(extract_ap_values(dec_g)).astype(np.int64).reshape(-1)
+    h_vec_q = np.array(extract_ap_values(dec_h)).astype(np.int64).reshape(-1)
     g_vec = g_vec_q.astype(np.float32) / fxp_scale
     h_vec = h_vec_q.astype(np.float32) / fxp_scale
     gh_flat_fhe = np.stack([g_vec, h_vec], axis=1)

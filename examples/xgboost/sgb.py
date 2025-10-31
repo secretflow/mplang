@@ -148,17 +148,26 @@ def batch_feature_wise_bucket_sum_fhe_vector(
         h_bucket_ct_list: list[mp.MPObject] = []
 
         for feature_idx in range(feature_size):
-            for bucket_idx in range(bucket_num):
-
-                def create_bucket_mask(gom_, f_idx, b_idx):
-                    feature_buckets = gom_[:, f_idx]
+            # Build all bucket masks at once using vmap: (bucket_num, m)
+            def build_bucket_masks(gom_, f_idx, num_buckets):
+                def mask_for_b(b_idx, gom_i, f_i):
+                    feature_buckets = gom_i[:, f_i]
                     valid_and_in_bucket = (feature_buckets >= 0) & (
                         feature_buckets <= b_idx
                     )
                     return valid_and_in_bucket.astype(jnp.int64)
 
+                bs = jnp.arange(num_buckets, dtype=jnp.int64)
+                return jax.vmap(mask_for_b, in_axes=(0, None, None))(bs, gom_, f_idx)
+
+            bucket_masks = mp.run_jax_at(
+                rank, build_bucket_masks, gom, feature_idx, bucket_num
+            )  # (bucket_num, m)
+
+            # Process each bucket mask
+            for bucket_idx in range(bucket_num):
                 bucket_mask = mp.run_jax_at(
-                    rank, create_bucket_mask, gom, feature_idx, bucket_idx
+                    rank, lambda M, bi: M[bi], bucket_masks, bucket_idx
                 )  # (m,)
 
                 # Compute ct·pt dot LOCALLY at PP using Enc(G/H) and plaintext mask, then send scalar ct to AP
@@ -277,6 +286,9 @@ def compute_gh(y_true: jnp.ndarray, y_pred_logits: jnp.ndarray) -> jnp.ndarray:
 
 
 # Fixed-point quantization helpers for BFV
+# 15 bits is chosen to balance precision and ciphertext size in BFV.
+# More bits increase precision but also enlarge ciphertexts and may exceed BFV modulus constraints.
+# 15 is a typical value that works well for SecureBoost histogram aggregation under standard BFV parameters.
 DEFAULT_FXP_BITS = 15
 
 
@@ -784,10 +796,73 @@ def update_values(
     return values
 
 
+def _decrypt_and_assemble_histograms(
+    enc_g_lists: list[list[mp.MPObject]],
+    enc_h_lists: list[list[mp.MPObject]],
+    priv_ctx: mp.MPObject,
+    fxp_scale: int,
+    n_nodes_level: int,
+    active_party_id: int,
+) -> list[mp.MPObject]:
+    """
+    Helper function to decrypt scalar ciphertext lists and assemble flat cumulative GH arrays.
+
+    Args:
+        enc_g_lists: List of encrypted gradient scalar lists (one per group/node).
+        enc_h_lists: List of encrypted hessian scalar lists (one per group/node).
+        priv_ctx: Private FHE context for decryption.
+        fxp_scale: Fixed-point scale for dequantization.
+        n_nodes_level: Number of nodes at this level.
+        active_party_id: Active party rank for decryption operations.
+
+    Returns:
+        List of flat cumulative GH arrays (one per node), each shape (n_features*max_bin, 2).
+    """
+    dec_hist_cumsum: list[mp.MPObject] = []
+
+    for grp in range(n_nodes_level):
+        enc_g_list = enc_g_lists[grp]
+        enc_h_list = enc_h_lists[grp]
+
+        # Decrypt scalars
+        dec_g_scalars = [
+            mp.run_at(active_party_id, fhe.decrypt, enc_g_list[i], priv_ctx)
+            for i in range(len(enc_g_list))
+        ]
+        dec_h_scalars = [
+            mp.run_at(active_party_id, fhe.decrypt, enc_h_list[i], priv_ctx)
+            for i in range(len(enc_h_list))
+        ]
+
+        # Stack into vectors of shape (flat_len,)
+        def _stack_to_vec(*xs):
+            return jnp.stack(xs)
+
+        g_vec_q = mp.run_jax_at(active_party_id, _stack_to_vec, *dec_g_scalars)
+        h_vec_q = mp.run_jax_at(active_party_id, _stack_to_vec, *dec_h_scalars)
+
+        # Dequantize to float
+        def _deq(v, s):
+            return v.astype(jnp.float32) / s
+
+        g_vec = mp.run_jax_at(active_party_id, _deq, g_vec_q, fxp_scale)
+        h_vec = mp.run_jax_at(active_party_id, _deq, h_vec_q, fxp_scale)
+
+        # Combine to (flat_len, 2)
+        def _combine_gh(gv, hv):
+            return jnp.stack([gv, hv], axis=1)
+
+        gh_flat = mp.run_jax_at(active_party_id, _combine_gh, g_vec, h_vec)
+
+        dec_hist_cumsum.append(gh_flat)
+
+    return dec_hist_cumsum
+
+
 def build_tree(
     gh_plaintext: mp.MPObject,
-    g_ct: mp.MPObject | None,
-    h_ct: mp.MPObject | None,
+    g_ct: mp.MPObject,
+    h_ct: mp.MPObject,
     all_bins: list[jnp.ndarray],
     all_bin_indices: list[mp.MPObject],
     priv_ctx: mp.MPObject,  # private FHE context owned by active party (for decrypt)
@@ -804,8 +879,8 @@ def build_tree(
 
     Args:
         gh_plaintext (mp.MPObject): The plaintext gradients and hessians. Shape (m, 2).
-        g_ct (mp.MPObject | None): Encrypted gradient vector (m,) owned by AP.
-        h_ct (mp.MPObject | None): Encrypted hessian vector (m,) owned by AP.
+        g_ct (mp.MPObject): Encrypted gradient vector (m,) owned by AP.
+        h_ct (mp.MPObject): Encrypted hessian vector (m,) owned by AP.
         all_bins (list[jnp.ndarray]): Bin boundaries. Shape (n, k-1).
         all_bin_indices (list[jnp.ndarray]): Binned input data. Shape (m, n).
         active_party_id (int): The active party id.
@@ -915,8 +990,8 @@ def build_tree(
                 cur_pp_enc_g_lists,
                 cur_pp_enc_h_lists,
             ) = batch_feature_wise_bucket_sum_fhe_vector(
-                g_ct,  # type: ignore[arg-type]
-                h_ct,  # type: ignore[arg-type]
+                g_ct,
+                h_ct,
                 cur_pp_subgroup_map,
                 cur_pp_bin_indices,
                 k,  # bucket_size
@@ -931,45 +1006,14 @@ def build_tree(
             # 1.2.3 Lists are now at AP after p2p transfer from PP.
 
             # 1.2.4 ap decrypt the scalar lists and assemble flat cumulative GH arrays
-            cur_pp_dec_hist_cumsum: list[mp.MPObject] = []
-
-            for grp in range(n_nodes_level):
-                enc_g_list = cur_pp_enc_g_lists[grp]
-                enc_h_list = cur_pp_enc_h_lists[grp]
-
-                # Decrypt scalars
-                dec_g_scalars = [
-                    mp.run_at(active_party_id, fhe.decrypt, enc_g_list[i], priv_ctx)
-                    for i in range(len(enc_g_list))
-                ]
-                dec_h_scalars = [
-                    mp.run_at(active_party_id, fhe.decrypt, enc_h_list[i], priv_ctx)
-                    for i in range(len(enc_h_list))
-                ]
-
-                # Stack into vectors of shape (flat_len,)
-                def _stack_to_vec(*xs):
-                    return jnp.stack(xs)
-
-                g_vec_q = mp.run_jax_at(active_party_id, _stack_to_vec, *dec_g_scalars)
-                h_vec_q = mp.run_jax_at(active_party_id, _stack_to_vec, *dec_h_scalars)
-
-                # Dequantize to float
-                def _deq(v, s):
-                    return v.astype(jnp.float32) / s
-
-                g_vec = mp.run_jax_at(active_party_id, _deq, g_vec_q, fxp_scale)
-                h_vec = mp.run_jax_at(active_party_id, _deq, h_vec_q, fxp_scale)
-
-                # Combine to (flat_len, 2)
-                def _combine_gh(gv, hv):
-                    return jnp.stack([gv, hv], axis=1)
-
-                gh_flat = mp.run_jax_at(active_party_id, _combine_gh, g_vec, h_vec)
-
-                cur_pp_dec_hist_cumsum.append(gh_flat)
-
-            # End assemble decrypted cumulative GH for PP
+            cur_pp_dec_hist_cumsum = _decrypt_and_assemble_histograms(
+                cur_pp_enc_g_lists,
+                cur_pp_enc_h_lists,
+                priv_ctx,
+                fxp_scale,
+                n_nodes_level,
+                active_party_id,
+            )
 
             # 1.2.5 ap find the best split for each node at this level.
             # Stack decrypted cumulative GH for this PP at AP: shape (t, n_features*max_bin, 2)

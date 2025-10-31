@@ -31,6 +31,21 @@ from examples.xgboost.sgb import (
 from mplang.ops import fhe
 
 
+def extract_ap_values(x):
+    """
+    Recursively extract the first non-None value for party 0 (Active Party).
+
+    Two-party case: leaf MPObject fetch yields [val_at_p0, None].
+    Multi-party case: may have nested lists with None values.
+    """
+    if isinstance(x, (list, tuple)):
+        # Two-party case: leaf MPObject fetch yields [val_at_p0, None]
+        if len(x) == 2 and x[1] is None:
+            return extract_ap_values(x[0])
+        return [extract_ap_values(e) for e in x]
+    return x
+
+
 def load_dataset(
     n_samples=400,
     n_total_features=10,
@@ -280,14 +295,14 @@ def _sgb_run_main(test_setup, world_size: int, need_debug_leaves: bool):
         for sample_idx in range(test_setup["DEBUG_SAMPLES"]):
             ap_row_idx = sample_idx * n_parties + 0  # AP row
             pp1_row_idx = sample_idx * n_parties + 1  # PP1 row
-            pp2_row_idx = -1
+            pp2_row_idx = None
             if n_parties == 3:
                 pp2_row_idx = sample_idx * n_parties + 2  # PP2 row
 
             ap_leaves = leaves_data[ap_row_idx]
             pp1_leaves = leaves_data[pp1_row_idx]
             pp2_leaves = None
-            if n_parties == 3:
+            if n_parties == 3 and pp2_row_idx is not None:
                 pp2_leaves = leaves_data[pp2_row_idx]
 
             # Find non-zero leaf nodes for each party
@@ -674,15 +689,6 @@ def test_batch_feature_wise_bucket_sum_2_groups(test_setup):
     # fetched_2_groups is [[(g_list,h_list) from rank0, None], ...]
     print(f"2-group FHE sum completed. Number of groups: {len(fetched_2_groups)}")
 
-    def extract_ap_values(x):
-        # Recursively extract the first non-None value for party 0
-        if isinstance(x, (list, tuple)):
-            # Two-party case: leaf MPObject fetch yields [val_at_p0, None]
-            if len(x) == 2 and x[1] is None:
-                return extract_ap_values(x[0])
-            return [extract_ap_values(e) for e in x]
-        return x
-
     # Build numpy arrays for each group from decrypted scalar lists
     gh_groups = []
     for i, group_item in enumerate(fetched_2_groups):
@@ -738,13 +744,6 @@ def test_batch_feature_wise_bucket_sum_3_groups(test_setup):
 
     # fetched_3_groups is [[(g_list,h_list) from rank0, None], ...]
     print(f"3-group FHE sum completed. Number of groups: {len(fetched_3_groups)}")
-
-    def extract_ap_values(x):
-        if isinstance(x, (list, tuple)):
-            if len(x) == 2 and x[1] is None:
-                return extract_ap_values(x[0])
-            return [extract_ap_values(e) for e in x]
-        return x
 
     gh_groups = []
     for i, group_item in enumerate(fetched_3_groups):

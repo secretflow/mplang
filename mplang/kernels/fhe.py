@@ -338,13 +338,13 @@ def _fhe_decrypt(pfunc: PFunction, ciphertext: CipherText, context: FHEContext) 
 
         # Restore original shape
         if ciphertext.semantic_shape == ():
-            # Was a scalar, extract single value and wrap as TensorValue scalar
+            # Scalar: shape ()
             result_np = decrypted_np[0:1].reshape(())
         else:
-            # Keep as vector
+            # Vector: keep 1D array
             result_np = decrypted_np
 
-        # Always return TensorValue to be compatible with downstream StableHLO kernels
+        # Return TensorValue to adhere to kernel Value I/O convention
         return (TensorValue(np.asarray(result_np)),)
 
     except Exception as e:

@@ -10,14 +10,14 @@ iterate with more ops, verifiers, canonicalizations, and Python bindings.
 - CMake >= 3.20, Ninja (recommended)
 - A C++17 toolchain
 
-Set `MLIR_DIR` to the MLIR CMake package path, e.g.:
+Set `MLIR_DIR` to the MLIR CMake package path, e.g. `<prefix>/lib/cmake/mlir`.
 
-```
-<prefix>/lib/cmake/mlir
-```
+- Conda MLIR 18 example (recommended):
+  - `conda activate mlir-env`
+  - `MLIR_DIR="$CONDA_PREFIX/lib/cmake/mlir"`
 
-If you built LLVM/MLIR from source with `LLVM_ENABLE_PROJECTS=mlir`, the
-CMake package is under your build/install prefix.
+If you built LLVM/MLIR from source with `LLVM_ENABLE_PROJECTS=mlir`, the CMake
+package is under your build/install prefix.
 
 ## Build
 
@@ -26,19 +26,19 @@ CMake package is under your build/install prefix.
 # conda activate mlir-env
 
 # Configure (example: conda MLIR package)
-cmake -S . -B build -G Ninja -DMLIR_DIR="$CONDA_PREFIX/lib/cmake/mlir"
+cmake -S . -B built -G Ninja -DMLIR_DIR="$CONDA_PREFIX/lib/cmake/mlir"
 
 # Or configure with a custom install prefix
-# cmake -S . -B build -G Ninja -DMLIR_DIR=/path/to/lib/cmake/mlir
+# cmake -S . -B built -G Ninja -DMLIR_DIR=/path/to/lib/cmake/mlir
 
 # Build
-cmake --build build -j
+cmake --build built -j
 ```
 
 Artifacts:
 
-- `build/lib/libMLIRMPLANG.*` — the dialect library
-- `build/tools/mplang-opt/mplang-opt` — a tiny opt-like driver
+- `built/lib/libMLIRMPLANG.*` — the dialect library
+- `built/tools/mplang-opt/mplang-opt` — a tiny opt-like driver
 
 ## Try it (parse/print roundtrip)
 
@@ -56,7 +56,7 @@ module {
 Then run:
 
 ```sh
-build/tools/mplang-opt/mplang-opt test.mlir -o -
+built/tools/mplang-opt/mplang-opt test.mlir -o -
 ```
 
 Expected output (printer may elide the implicit yield):
@@ -73,6 +73,24 @@ Notes:
 - The tool currently only registers the MPLANG dialect to keep linking small.
   If you include ops from other dialects (e.g., `func.func`), add
   `-allow-unregistered-dialect` or extend the tool to register additional dialects.
+
+## Troubleshooting
+
+- Configure fails with MLIR_DIR: ensure your conda env is active and
+  `$CONDA_PREFIX/lib/cmake/mlir` exists. Example:
+
+  ```sh
+  echo $CONDA_PREFIX
+  ls "$CONDA_PREFIX/lib/cmake/mlir"
+  ```
+
+- Switched build directory: if you previously configured `build/` with a wrong
+  `MLIR_DIR`, prefer using the clean `built/` directory as shown above, or
+  delete the stale `CMakeCache.txt` before re-configuring.
+
+- Link errors referencing many MLIR passes/dialects: this scaffold’s tool only
+  registers the MPLANG dialect. If you add `mlir/InitAllPasses.h` or register
+  extra dialects, you must also link the corresponding MLIR libraries.
 
 ## Next steps (short-term)
 

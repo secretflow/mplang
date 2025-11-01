@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from jax.ops import segment_sum
 
 import mplang as mp
-from mplang.ops import phe
+from mplang.ops import fhe
 
 # ==============================================================================
 # Naming Conventions for Shapes & Variables
@@ -41,6 +41,48 @@ from mplang.ops import phe
 #   all_xxx (List[mp.MPObject]) :  index 0 for ap, others for pp
 
 # ==============================================================================
+# Dataflow Legend: SecureBoost histogram
+#   binning -> masks -> encrypted histogram -> gain computation
+# ==============================================================================
+# Roles
+# - AP (Active Party): holds gradients/hessians (GH), owns FHE secret key, computes
+#   decryptions and split gains. Does NOT have raw features.
+# - PP (Passive Party): holds features, computes per-(group,feature,bucket) masks,
+#   and uses plaintext masks for ct·pt with AP's ciphertext vectors. Does NOT have GH or secret key.
+#
+# Inputs
+# - subgroup_map: (group_size, m), 1 where sample belongs to a tree node (group)
+# - order_map:    (m, n), bucket index per (sample, feature), -1 for invalid/masked
+# - GH on AP (ciphertexts) are shared to PPs:
+#     classic:   g_ct (m,), h_ct (m,)           # separate ciphertext vectors
+#     interleave: gh_ct (2m,) as [g0,h0,g1,h1,...]  # single interleaved ciphertext
+#
+# Pipeline (per group g, feature f, cumulative bucket b)
+# 1) Binning (PP):
+#    order_map[:, f] gives bucket ids per sample; subgroup_map[g] selects the group.
+#
+# 2) Mask building (PP):
+#    mask[i] = 1 iff subgroup_map[g][i] == 1 and order_map[i, f] <= b else 0  # shape (m,)
+#    interleaved path duplicates mask to inter_mask (2m,) => [mask, mask] at even/odd positions.
+#
+# 3) Encrypted histogram (PP side computation):
+#    AP sends Enc(G/H) vectors to PP. PP computes ct·pt dot locally with plaintext masks:
+#    - classic:
+#        g_sum_ct = dot(g_ct, mask_pt)  # run at PP
+#        h_sum_ct = dot(h_ct, mask_pt)  # run at PP
+#    - interleaved-fused (if used): compute fused masked reductions on PP with selectors.
+#    PP then sends only scalar ciphertexts back to AP.
+#
+# 4) Decrypt & gain (AP):
+#    AP decrypts all bucket sums, forms cumulative histograms, evaluates split gains,
+#    and chooses the best (feature, threshold) per node.
+#
+# Security model
+# - PP never learns GH or decrypted sums; only builds/encrypts masks.
+# - AP never learns raw features or masks; only receives ciphertexts and decrypts aggregates.
+# - Only aggregate bucket-level statistics are revealed to AP, matching SecureBoost.
+
+# ==============================================================================
 # Part 0: Some Helper Functions
 # ==============================================================================
 
@@ -49,165 +91,98 @@ def p2p_list(frm: mp.Rank, to: mp.Rank, objs: list[mp.MPObject]) -> list[mp.MPOb
     return [mp.p2p(frm, to, obj) for obj in objs]
 
 
-def batch_feature_wise_bucket_sum_mplang(
-    arr: mp.MPObject,  # encrypted
-    subgroup_map: mp.MPObject,  # plaintext
-    order_map: mp.MPObject,  # plaintext
+def batch_feature_wise_bucket_sum_fhe_vector(
+    g_ct: mp.MPObject,  # ciphertext vector (m,)
+    h_ct: mp.MPObject,  # ciphertext vector (m,)
+    subgroup_map: mp.MPObject,  # plaintext (group_size, m)
+    order_map: mp.MPObject,  # plaintext (m, feature_size)
     bucket_num: int,
     group_size: int,
     rank: int,
-) -> list[mp.MPObject]:
+    ap_rank: int,
+) -> tuple[list[list[mp.MPObject]], list[list[mp.MPObject]]]:
     """
-    Compute batch feature-wise bucket cumulative sums for XGBoost gradient histogram using PHE.
+    Compute batch feature-wise bucket cumulative sums for XGBoost gradient histogram using FHE vector backend.
 
-    This is the encrypted version of batch_feature_wise_bucket_sum_np using mplang PHE operations.
-
-    Args:
-        arr: Encrypted gradient and Hessian values, shape (sample_size, gh_size)
-        subgroup_map: Plaintext subgroup masks, shape (group_size, sample_size)
-        order_map: Plaintext feature bucket mapping, shape (sample_size, feature_size)
-        bucket_num: Number of buckets per feature
-        group_size: Number of subgroups
-        rank: Execution rank for mp.rat operations
+        Strategy: for each group and for each feature/bucket, build a plaintext 0/1 mask of shape (m,)
+        and perform encrypted dot products securely without leaking masks:
+            - AP sends Enc(G), Enc(H) vectors to PP once (safe under public-key FHE)
+            - PP computes ct·pt dot locally: Enc(G)·mask and Enc(H)·mask to get scalar ciphertexts
+            - PP sends only scalar ciphertexts to AP for decryption
 
     Returns:
-        List of encrypted cumulative sums, each element shape (feature_size * bucket_num, gh_size)
+        A pair (g_ct_sums, h_ct_sums), where each is a list (len=group_size). Each element is a flat list
+        of scalar ciphertexts with length feature_size * bucket_num. The flat order is by feature major then bucket.
     """
 
     feature_size = order_map.shape[1]
 
-    def compute_using_mask_multiplication():
-        """
-        Use mask multiplication and inner product to avoid dynamic shape operations.
+    def extract_group_mask(group_idx):
+        def slice_group(sg_map):
+            return sg_map[group_idx]
 
-        Key idea:
-        1. For each group, multiply order_map with group mask to get order_map_new where
-           mask=0 positions become -1 (invalid)
-        2. For each bucket, create 0/1 vectors for bucket membership
-        3. Use inner product to sum samples belonging to each bucket
-        """
+        return mp.run_jax_at(rank, slice_group, subgroup_map)
 
-        def extract_group_mask(group_idx):
-            def slice_group(sg_map):
-                return sg_map[group_idx]
+    def create_masked_order_map(mask, om):
+        """Multiply order_map with mask, setting invalid positions to -1"""
 
-            return mp.run_jax_at(rank, slice_group, subgroup_map)
+        def apply_mask(m, order_m):
+            mask_expanded = jnp.expand_dims(m, axis=1)  # (m,1)
+            mask_full = jnp.broadcast_to(mask_expanded, order_m.shape)  # (m,n)
+            return jnp.where(mask_full == 1, order_m, -1)
 
-        # Create modified order_map for each group where mask=0 positions become -1
-        def create_masked_order_map(mask, om):
-            """Multiply order_map with mask, setting invalid positions to -1"""
+        return mp.run_jax_at(rank, apply_mask, mask, om)
 
-            def apply_mask(m, order_m):
-                # Expand mask to match order_map shape: (sample_size,) -> (sample_size, feature_size)
-                mask_expanded = jnp.expand_dims(m, axis=1)  # (sample_size, 1)
-                mask_full = jnp.broadcast_to(
-                    mask_expanded, order_m.shape
-                )  # (sample_size, feature_size)
+    g_group_results: list[list[mp.MPObject]] = []
+    h_group_results: list[list[mp.MPObject]] = []
 
-                # Where mask=0, set order values to -1 (invalid bucket)
-                # Where mask=1, keep original order values
-                return jnp.where(mask_full == 1, order_m, -1)
+    # Move Enc(G), Enc(H) once from AP -> PP for local ct·pt operations on masks
+    g_ct_on_pp = mp.p2p(ap_rank, rank, g_ct)
+    h_ct_on_pp = mp.p2p(ap_rank, rank, h_ct)
 
-            return mp.run_jax_at(rank, apply_mask, mask, om)
+    for group_idx in range(group_size):
+        group_mask = extract_group_mask(group_idx)  # (m,)
+        gom = create_masked_order_map(group_mask, order_map)  # (m, n)
 
-        # Extract group masks and create masked order maps for all groups
-        group_masks = []
-        group_order_maps = []
-        for group_idx in range(group_size):
-            group_mask = extract_group_mask(group_idx)  # shape: (sample_size,)
-            group_masks.append(group_mask)
+        g_bucket_ct_list: list[mp.MPObject] = []
+        h_bucket_ct_list: list[mp.MPObject] = []
 
-            group_order_map = create_masked_order_map(
-                group_mask, order_map
-            )  # (sample_size, feature_size)
-            group_order_maps.append(group_order_map)
-
-        # Now compute bucket sums for each group using inner products
-        def compute_group_bucket_sums(group_order_map):
-            """Compute bucket sums for one group using inner product approach"""
-
-            # Initialize result list to store all bucket results
-            bucket_results = []
-
-            # Process each feature
-            for feature_idx in range(feature_size):
-                # Process each bucket for this feature
-                for bucket_idx in range(bucket_num):
-                    # Create bucket membership vector: 1 if sample belongs to bucket <= bucket_idx, 0 otherwise
-                    def create_bucket_mask(gom, f_idx, b_idx):
-                        """Create mask for samples in buckets <= b_idx for feature f_idx"""
-
-                        feature_buckets = gom[
-                            :, f_idx
-                        ]  # bucket values for this feature
-
-                        # Create cumulative bucket mask: 1 if bucket_value <= b_idx AND bucket_value >= 0
-                        # (bucket_value >= 0 ensures we only include valid samples from this group)
-                        valid_and_in_bucket = (feature_buckets >= 0) & (
-                            feature_buckets <= b_idx
-                        )
-                        return valid_and_in_bucket.astype(jnp.int32)
-
-                    bucket_mask = mp.run_jax_at(
-                        rank,
-                        create_bucket_mask,
-                        group_order_map,
-                        feature_idx,
-                        bucket_idx,
+        for feature_idx in range(feature_size):
+            # Build all bucket masks at once using vmap: (bucket_num, m)
+            def build_bucket_masks(gom_, f_idx, num_buckets):
+                def mask_for_b(b_idx, gom_i, f_i):
+                    feature_buckets = gom_i[:, f_i]
+                    valid_and_in_bucket = (feature_buckets >= 0) & (
+                        feature_buckets <= b_idx
                     )
+                    return valid_and_in_bucket.astype(jnp.int64)
 
-                    # Use inner product to sum encrypted values for this bucket
-                    # bucket_mask: (sample_size,) -> bucket_mask_col: (sample_size, 1) for matrix multiplication
-                    def reshape_bucket_mask_to_col(mask):
-                        return mask.reshape(-1, 1)  # (sample_size, 1)
+                bs = jnp.arange(num_buckets, dtype=jnp.int64)
+                return jax.vmap(mask_for_b, in_axes=(0, None, None))(bs, gom_, f_idx)
 
-                    bucket_mask_col = mp.run_jax_at(
-                        rank, reshape_bucket_mask_to_col, bucket_mask
-                    )
+            bucket_masks = mp.run_jax_at(
+                rank, build_bucket_masks, gom, feature_idx, bucket_num
+            )  # (bucket_num, m)
 
-                    # Compute weighted sum: arr.T @ bucket_mask_col -> (gh_size, 1)
-                    # arr: (sample_size, gh_size) -> arr.T: (gh_size, sample_size)
-                    # bucket_mask_col: (sample_size, 1)
-                    # Result: (gh_size, 1)
+            # Process each bucket mask
+            for bucket_idx in range(bucket_num):
+                bucket_mask = mp.run_jax_at(
+                    rank, lambda M, bi: M[bi], bucket_masks, bucket_idx
+                )  # (m,)
 
-                    arr_transposed = mp.run_at(
-                        rank, phe.transpose, arr
-                    )  # (gh_size, sample_size)
+                # Compute ct·pt dot LOCALLY at PP using Enc(G/H) and plaintext mask, then send scalar ct to AP
+                g_sum_ct_pp = mp.run_at(rank, fhe.dot, g_ct_on_pp, bucket_mask)
+                h_sum_ct_pp = mp.run_at(rank, fhe.dot, h_ct_on_pp, bucket_mask)
+                g_sum_ct = mp.p2p(rank, ap_rank, g_sum_ct_pp)
+                h_sum_ct = mp.p2p(rank, ap_rank, h_sum_ct_pp)
 
-                    # Now we can do: encrypted_matrix @ plaintext_matrix
-                    bucket_sum_col = mp.run_at(
-                        rank, phe.dot, arr_transposed, bucket_mask_col
-                    )  # (gh_size, 1)
+                g_bucket_ct_list.append(g_sum_ct)
+                h_bucket_ct_list.append(h_sum_ct)
 
-                    # Use PHE transpose to convert (gh_size, 1) to (1, gh_size)
-                    bucket_sum = mp.run_at(
-                        rank, phe.transpose, bucket_sum_col
-                    )  # (1, gh_size)
+        g_group_results.append(g_bucket_ct_list)
+        h_group_results.append(h_bucket_ct_list)
 
-                    # Reshape to (1, gh_size) and add to results
-                    bucket_results.append(bucket_sum)
-
-            # Concatenate all bucket results: list of (1, gh_size) -> (feature_size * bucket_num, gh_size)
-            # Since we need to concatenate multiple tensors, do it step by step
-            first_result = bucket_results[0]
-            for i in range(1, len(bucket_results)):
-                first_result = mp.run_at(
-                    rank, phe.concat, first_result, bucket_results[i], axis=0
-                )
-
-            return first_result
-
-        # Compute bucket sums for all groups and return as list
-        group_bucket_results = []
-        for group_idx in range(group_size):
-            group_buckets = compute_group_bucket_sums(
-                group_order_maps[group_idx]
-            )  # (feature_size * bucket_num, gh_size)
-            group_bucket_results.append(group_buckets)
-
-        return group_bucket_results
-
-    return compute_using_mask_multiplication()
+    return g_group_results, h_group_results
 
 
 # ==============================================================================
@@ -308,6 +283,22 @@ def compute_gh(y_true: jnp.ndarray, y_pred_logits: jnp.ndarray) -> jnp.ndarray:
     h = hessian(y_true, y_pred_logits)
     # concat g and h along the column
     return jnp.c_[g, h]
+
+
+# Fixed-point quantization helpers for BFV
+# 15 bits is chosen to balance precision and ciphertext size in BFV.
+# More bits increase precision but also enlarge ciphertexts and may exceed BFV modulus constraints.
+# 15 is a typical value that works well for SecureBoost histogram aggregation under standard BFV parameters.
+DEFAULT_FXP_BITS = 15
+
+
+@jax.jit
+def quantize_gh(gh: jnp.ndarray, scale: int) -> jnp.ndarray:
+    """
+    Quantize floating-point GH (m,2) to int64 using given scale.
+    """
+    q = jnp.round(gh * scale)
+    return q.astype(jnp.int64)
 
 
 def build_bins_equi_width(x: jnp.ndarray, max_bin: int) -> jnp.ndarray:
@@ -697,7 +688,7 @@ def _find_best_split_for_one_node_from_flat_cumulative(
 
 
 def pp_compute_all_best_splits(
-    list_of_histograms: list[jnp.ndarray],
+    stacked_histograms: jnp.ndarray,
     n_features: int,
     max_bin: int,
     reg_lambda: float,
@@ -708,9 +699,8 @@ def pp_compute_all_best_splits(
     Efficiently computes the best split for all nodes in a tree level.
 
     Args:
-        list_of_histograms (List[jnp.ndarray]): A list of flat cumulative histograms.
-                                                List length is `t`. Each element has
-                                                shape (n_features * max_bin, 2).
+        stacked_histograms (jnp.ndarray): Stacked flat cumulative histograms.
+            Shape (t, n_features * max_bin, 2), where t is the number of nodes.
         n_features (int): The number of features.
         max_bin (int): The number of bins.
         reg_lambda (float): L2 regularization term.
@@ -723,12 +713,7 @@ def pp_compute_all_best_splits(
             - best_features (jnp.ndarray): Best feature index for each node. Shape (t,).
             - best_threshold_idxs (jnp.ndarray): Best threshold bin index for each node. Shape (t,).
     """
-    # 1. Stack the list of arrays into a single JAX array.
-    # This is the key step to enable vectorization.
-    # Shape: (t, n_features * max_bin, 2)
-    stacked_histograms = jnp.stack(list_of_histograms, axis=0)
-
-    # 2. Vmap the single-node function over the stacked histograms.
+    # Vmap the single-node function over the stacked histograms.
     # `in_axes=(0, None, ...)` means we iterate over the first axis of the first argument
     # (the `t` dimension of `stacked_histograms`), while other args are broadcast.
     vmapped_splitter = jax.vmap(
@@ -736,7 +721,7 @@ def pp_compute_all_best_splits(
         in_axes=(0, None, None, None, None, None),
     )
 
-    # 3. Execute the vectorized computation.
+    # Execute the vectorized computation.
     max_gains, best_features, best_threshold_idxs = vmapped_splitter(
         stacked_histograms, n_features, max_bin, reg_lambda, gamma, min_child_weight
     )
@@ -746,25 +731,22 @@ def pp_compute_all_best_splits(
 
 @jax.jit
 def find_global_best_split_local_features(
-    cur_level_best_gains: list[jnp.ndarray],
+    gains_stacked: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """
     Finds the global best split for each node from results across multiple feature groups,
     returning the LOCAL feature index within the winning group.
 
     Args:
-        cur_level_best_gains (List[jnp.ndarray]): A list of gain vectors.
-            List length `p`. Each element has shape (t,).
+        gains_stacked (jnp.ndarray): Stacked gain vectors from parties.
+            Shape (p, t), where p is number of parties contributing features.
 
     Returns:
         Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
             - global_best_gains (jnp.ndarray): Global best gain for each node. Shape (t,).
             - best_group_indices (jnp.ndarray): The index of the feature group that provided the best split. Shape (t,).
     """
-    # 1. Stack the lists into single JAX arrays.
-    # This creates a new leading dimension representing the feature groups (parties).
-    # Shape of each: (p, t)
-    gains_stacked = jnp.stack(cur_level_best_gains, axis=0)
+    # gains_stacked already provided with shape (p, t)
 
     # 2. Find the index of the best group for each node.
     # jnp.argmax along axis=0 (the group dimension) finds the index of the maximum gain.
@@ -814,13 +796,77 @@ def update_values(
     return values
 
 
+def _decrypt_and_assemble_histograms(
+    enc_g_lists: list[list[mp.MPObject]],
+    enc_h_lists: list[list[mp.MPObject]],
+    priv_ctx: mp.MPObject,
+    fxp_scale: int,
+    n_nodes_level: int,
+    active_party_id: int,
+) -> list[mp.MPObject]:
+    """
+    Helper function to decrypt scalar ciphertext lists and assemble flat cumulative GH arrays.
+
+    Args:
+        enc_g_lists: List of encrypted gradient scalar lists (one per group/node).
+        enc_h_lists: List of encrypted hessian scalar lists (one per group/node).
+        priv_ctx: Private FHE context for decryption.
+        fxp_scale: Fixed-point scale for dequantization.
+        n_nodes_level: Number of nodes at this level.
+        active_party_id: Active party rank for decryption operations.
+
+    Returns:
+        List of flat cumulative GH arrays (one per node), each shape (n_features*max_bin, 2).
+    """
+    dec_hist_cumsum: list[mp.MPObject] = []
+
+    for grp in range(n_nodes_level):
+        enc_g_list = enc_g_lists[grp]
+        enc_h_list = enc_h_lists[grp]
+
+        # Decrypt scalars
+        dec_g_scalars = [
+            mp.run_at(active_party_id, fhe.decrypt, enc_g_list[i], priv_ctx)
+            for i in range(len(enc_g_list))
+        ]
+        dec_h_scalars = [
+            mp.run_at(active_party_id, fhe.decrypt, enc_h_list[i], priv_ctx)
+            for i in range(len(enc_h_list))
+        ]
+
+        # Stack into vectors of shape (flat_len,)
+        def _stack_to_vec(*xs):
+            return jnp.stack(xs)
+
+        g_vec_q = mp.run_jax_at(active_party_id, _stack_to_vec, *dec_g_scalars)
+        h_vec_q = mp.run_jax_at(active_party_id, _stack_to_vec, *dec_h_scalars)
+
+        # Dequantize to float
+        def _deq(v, s):
+            return v.astype(jnp.float32) / s
+
+        g_vec = mp.run_jax_at(active_party_id, _deq, g_vec_q, fxp_scale)
+        h_vec = mp.run_jax_at(active_party_id, _deq, h_vec_q, fxp_scale)
+
+        # Combine to (flat_len, 2)
+        def _combine_gh(gv, hv):
+            return jnp.stack([gv, hv], axis=1)
+
+        gh_flat = mp.run_jax_at(active_party_id, _combine_gh, g_vec, h_vec)
+
+        dec_hist_cumsum.append(gh_flat)
+
+    return dec_hist_cumsum
+
+
 def build_tree(
     gh_plaintext: mp.MPObject,
-    gh_encrypted: mp.MPObject,
+    g_ct: mp.MPObject,
+    h_ct: mp.MPObject,
     all_bins: list[jnp.ndarray],
     all_bin_indices: list[mp.MPObject],
-    pkey: mp.MPObject,  # broadcasted public key
-    skey: mp.MPObject,  # private secret key owned by active party
+    priv_ctx: mp.MPObject,  # private FHE context owned by active party (for decrypt)
+    fxp_scale: int,
     active_party_id: int,
     passive_party_ids: list[int],
     max_depth: int,
@@ -833,7 +879,8 @@ def build_tree(
 
     Args:
         gh_plaintext (mp.MPObject): The plaintext gradients and hessians. Shape (m, 2).
-        gh_encrypted (mp.MPObject): The encrypted gradients and hessians. Shape (m, 2).
+        g_ct (mp.MPObject): Encrypted gradient vector (m,) owned by AP.
+        h_ct (mp.MPObject): Encrypted hessian vector (m,) owned by AP.
         all_bins (list[jnp.ndarray]): Bin boundaries. Shape (n, k-1).
         all_bin_indices (list[jnp.ndarray]): Binned input data. Shape (m, n).
         active_party_id (int): The active party id.
@@ -899,10 +946,12 @@ def build_tree(
         # ap find the best split for each node at this level.
         ap_GH_hist = mp.run_jax_at(
             active_party_id,
-            partial(local_build_histogram, t=n_nodes_level, k=k),
+            local_build_histogram,
             gh_plaintext,
             bt_levels,
             all_bin_indices[0],
+            n_nodes_level,
+            k,
         )
         ap_max_gains, ap_best_features, ap_best_threshold_idxs = mp.run_jax_at(
             active_party_id,
@@ -912,6 +961,8 @@ def build_tree(
             gamma,
             min_child_weight,
         )
+
+        # AP best gains/features/thresholds computed for this level.
 
         cur_level_best_gains = [ap_max_gains]
         cur_level_best_features = [ap_best_features]
@@ -929,54 +980,63 @@ def build_tree(
             # bt_level: (m,), with values in (0,1,2,...,n_nodes_level-1)
             cur_pp_subgroup_map = mp.run_jax_at(
                 cur_pp_rank,
-                partial(_get_subgroup_map, group_size=n_nodes_level),
+                _get_subgroup_map,
                 bt_levels,
+                n_nodes_level,
             )  # (n_nodes_level, m)
 
-            # 1.2.2 pp encrypt the accumulated histogram.
-            cur_pp_enc_hist_cumsum: list[mp.MPObject] = (
-                batch_feature_wise_bucket_sum_mplang(
-                    gh_encrypted,
-                    cur_pp_subgroup_map,
-                    cur_pp_bin_indices,
-                    k,  # bucket_size
-                    n_nodes_level,  # group_size
-                    cur_pp_rank,  # rank
-                )
+            # 1.2.2 pp compute encrypted accumulated histogram using FHE vector dot
+            (
+                cur_pp_enc_g_lists,
+                cur_pp_enc_h_lists,
+            ) = batch_feature_wise_bucket_sum_fhe_vector(
+                g_ct,
+                h_ct,
+                cur_pp_subgroup_map,
+                cur_pp_bin_indices,
+                k,  # bucket_size
+                n_nodes_level,  # group_size
+                cur_pp_rank,  # rank
+                active_party_id,  # ap_rank
             )
 
-            assert len(cur_pp_enc_hist_cumsum) == n_nodes_level, (
-                f"Expect {n_nodes_level} outputs, got {len(cur_pp_enc_hist_cumsum)}"
-            )
+            assert len(cur_pp_enc_g_lists) == n_nodes_level
+            assert len(cur_pp_enc_h_lists) == n_nodes_level
 
-            # 1.2.3 pp send the encrypted histogram to ap.
-            cur_pp_enc_hist_cumsum: list[mp.MPObject] = p2p_list(
-                cur_pp_rank, active_party_id, cur_pp_enc_hist_cumsum
-            )
+            # 1.2.3 Lists are now at AP after p2p transfer from PP.
 
-            # 1.2.4 ap decrypt the histogram.
-            cur_pp_dec_hist_cumsum: list[mp.MPObject] = [
-                mp.run_at(active_party_id, phe.decrypt, cur_pp_enc_hist_cumsum[i], skey)
-                for i in range(len(cur_pp_enc_hist_cumsum))
-            ]
+            # 1.2.4 ap decrypt the scalar lists and assemble flat cumulative GH arrays
+            cur_pp_dec_hist_cumsum = _decrypt_and_assemble_histograms(
+                cur_pp_enc_g_lists,
+                cur_pp_enc_h_lists,
+                priv_ctx,
+                fxp_scale,
+                n_nodes_level,
+                active_party_id,
+            )
 
             # 1.2.5 ap find the best split for each node at this level.
+            # Stack decrypted cumulative GH for this PP at AP: shape (t, n_features*max_bin, 2)
+            cur_pp_stacked = mp.run_jax_at(
+                active_party_id,
+                lambda *hs: jnp.stack(hs, axis=0),
+                *cur_pp_dec_hist_cumsum,
+            )
             (
                 cur_pp_best_gains,
                 cur_pp_best_features,
                 cur_pp_best_threshold_idxs,
             ) = mp.run_jax_at(
                 active_party_id,
-                partial(
-                    pp_compute_all_best_splits,
-                    n_features=cur_pp_bin_indices.shape[1],
-                    max_bin=k,
-                    reg_lambda=reg_lambda,
-                    gamma=gamma,
-                    min_child_weight=min_child_weight,
-                ),
-                cur_pp_dec_hist_cumsum,
+                pp_compute_all_best_splits,
+                cur_pp_stacked,
+                cur_pp_bin_indices.shape[1],
+                k,
+                reg_lambda,
+                gamma,
+                min_child_weight,
             )
+            # Append PP best results for this level
             cur_level_best_gains.append(cur_pp_best_gains)
             cur_level_best_features.append(cur_pp_best_features)
             cur_level_best_threshold_idxs.append(cur_pp_best_threshold_idxs)
@@ -990,14 +1050,20 @@ def build_tree(
         assert len(cur_level_best_gains) == 1 + len(passive_party_ids)
 
         # all shape (t, )
+        # Stack per-party gains at AP to form (p, t) tensor
+        gains_stacked = mp.run_jax_at(
+            active_party_id, lambda *gs: jnp.stack(gs, axis=0), *cur_level_best_gains
+        )
         (
             global_best_gains,
             best_group_indices,
         ) = mp.run_jax_at(
             active_party_id,
             find_global_best_split_local_features,
-            cur_level_best_gains,
+            gains_stacked,
         )
+
+        # Use the combined best gains and group indices
 
         # TODO: not all pp should know the group_indice , features, etc
         # update the is_leaf
@@ -1168,11 +1234,13 @@ def build_tree(
     # `bt` now contains the final node index for every sample.
     values = mp.run_jax_at(
         active_party_id,
-        partial(update_values, n_nodes=n_nodes, reg_lambda=reg_lambda),
+        update_values,
         values,
         gh_plaintext,
         bt,
         is_leaf,
+        reg_lambda,
+        n_nodes,
     )
 
     return Tree(
@@ -1281,9 +1349,9 @@ def _local_try_to_predict(
 
 @jax.jit
 def agg_prediction(
-    all_masks: list[jnp.ndarray], is_leaf: jnp.ndarray, values: jnp.ndarray
+    stacked_masks: jnp.ndarray, is_leaf: jnp.ndarray, values: jnp.ndarray
 ):
-    stacked_masks = jnp.stack(all_masks)
+    # stacked_masks shape: (n_parties, n_samples, n_nodes)
     consensus_mask = jnp.all(stacked_masks > 0, axis=0)
     final_leaf_mask = consensus_mask * is_leaf
     # argmax will always return the first non-zero index, which is the left and upper most leaf node.
@@ -1325,8 +1393,12 @@ def predict_tree(
         all_masks.append(mp.p2p(passive_party_ids[i], active_party_id, pp_mask))
 
     # Aggregation and Final Prediction in AP
+    # Stack masks at AP to form a single tensor argument for StableHLO kernel
+    masks_stacked = mp.run_jax_at(
+        active_party_id, lambda *ms: jnp.stack(ms), *all_masks
+    )
     final_pred = mp.run_jax_at(
-        active_party_id, agg_prediction, all_masks, tree.is_leaf, tree.value
+        active_party_id, agg_prediction, masks_stacked, tree.is_leaf, tree.value
     )
     return final_pred
 
@@ -1348,9 +1420,10 @@ def predict_ensemble(
         pred = predict_tree(tree, all_datas, active_party_id, passive_party_ids)
         y_pred_logits = mp.run_jax_at(
             active_party_id,
-            partial(_update_pred, learning_rate=learning_rate),
+            _update_pred,
             y_pred_logits,
             pred,
+            learning_rate,
         )
 
     y_pred = mp.run_jax_at(active_party_id, sigmoid, y_pred_logits)
@@ -1359,9 +1432,8 @@ def predict_ensemble(
 
 
 @jax.jit
-def agg_prediction_leaves(all_masks: list[jnp.ndarray]):
-    # Original stacking: (n_parties, n_samples, n_nodes)
-    stacked_masks = jnp.stack(all_masks)
+def agg_prediction_leaves(stacked_masks: jnp.ndarray):
+    # Input stacked_masks shape: (n_parties, n_samples, n_nodes)
 
     # Transpose to (n_samples, n_parties, n_nodes)
     transposed_masks = stacked_masks.transpose(1, 0, 2)
@@ -1407,7 +1479,11 @@ def predict_tree_leaf(
         all_masks.append(mp.p2p(passive_party_ids[i], active_party_id, pp_mask))
 
     # Aggregation and Final Prediction in AP
-    final_pred = mp.run_jax_at(active_party_id, agg_prediction_leaves, all_masks)
+    # Stack masks at AP before calling the kernel to avoid Python list inputs
+    masks_stacked = mp.run_jax_at(
+        active_party_id, lambda *ms: jnp.stack(ms), *all_masks
+    )
+    final_pred = mp.run_jax_at(active_party_id, agg_prediction_leaves, masks_stacked)
     return final_pred
 
 
@@ -1440,7 +1516,7 @@ def fit_tree_ensemble(
     active_party_id: int,
     passive_party_ids: list[int],
 ) -> TreeEnsemble:
-    all_party_pmasks = mp.Mask((1 << (len(passive_party_ids) + 1)) - 1)
+    # Note: ciphertexts stay at AP; we do not need party pmask for broadcasting here.
     m = y_data.shape[0]
 
     y_pred_current = mp.run_jax_at(
@@ -1448,26 +1524,36 @@ def fit_tree_ensemble(
     )
 
     trees: list[Tree] = []
-    # TODO: add more controls of keygen, e.g., key size
-    pkey, skey = mp.run_at(active_party_id, phe.keygen)
-    world_mask = mp.Mask.all(1 + len(passive_party_ids))
-    pkey = mp.bcast_m(world_mask, active_party_id, pkey)
+    # FHE(BFV) keygen: private/public contexts
+    priv_ctx, pub_ctx, _ = mp.run_at(active_party_id, fhe.keygen, scheme="BFV")
 
     # TODO: to support early stopping, maybe we need something like `jax.lax.scan` to store all the trees?
     for _ in range(n_estimators):
         gh = mp.run_jax_at(active_party_id, compute_gh, y_data, y_pred_current)
-        gh_encrypted = mp.run_at(active_party_id, phe.encrypt, gh, pkey)
 
-        # known by all parties
-        gh_encrypted = mp.bcast_m(all_party_pmasks, active_party_id, gh_encrypted)
+        # Quantize GH to int64
+        fxp_scale = 1 << DEFAULT_FXP_BITS
+        qgh = mp.run_jax_at(active_party_id, quantize_gh, gh, fxp_scale)
+        qg = mp.run_jax_at(
+            active_party_id, lambda arr: arr[:, 0].astype(jnp.int64), qgh
+        )
+        qh = mp.run_jax_at(
+            active_party_id, lambda arr: arr[:, 1].astype(jnp.int64), qgh
+        )
+        # Encrypt g/h vectors with public context
+        g_ct = mp.run_at(active_party_id, fhe.encrypt, qg, pub_ctx)
+        h_ct = mp.run_at(active_party_id, fhe.encrypt, qh, pub_ctx)
+
+        # Ciphertexts at AP; PP computes ct·pt locally and sends scalar ciphertexts to AP
 
         tree = build_tree(
             gh,
-            gh_encrypted,
+            g_ct,
+            h_ct,
             all_bins,
             all_bin_indices,
-            pkey,
-            skey,
+            priv_ctx,
+            fxp_scale,
             active_party_id,
             passive_party_ids,
             max_depth,
@@ -1716,8 +1802,8 @@ def pretty_print_ensemble(ensemble: TreeEnsemble, party_ids: list[int]):
             # Print information about the MPObjects rather than trying to index them
             print(f"    - Feature mp.MPObject:     {tree.feature[party_idx]}")
             print(f"    - Threshold mp.MPObject:   {tree.threshold[party_idx]}")
-            print(f"    - Is Leaf mp.MPObject:     {tree.is_leaf[party_idx]}")
-            print(f"    - Owner ID mp.MPObject:    {tree.owned_party_id[party_idx]}")
+            print(f"    - Is Leaf mp.MPObject:     {tree.is_leaf}")
+            print(f"    - Owner ID mp.MPObject:    {tree.owned_party_id}")
 
         # --- Print AP's exclusive 'value' array ---
         # This is the only array that is not a list and belongs solely to the AP.

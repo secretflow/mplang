@@ -39,6 +39,15 @@ from mplang.kernels.fhe import (
 )
 
 
+def _as_np(x):
+    """Return numpy array/scalar from TensorValue or pass-through numpy."""
+    from mplang.kernels.value import TensorValue
+
+    if isinstance(x, TensorValue):
+        return x.to_numpy()
+    return x
+
+
 def _create_test_pfunc(**attrs) -> PFunction:
     """Helper to create a test PFunction with dummy type info."""
     dummy_tensor = TensorType.from_obj(np.array(0.0))
@@ -178,7 +187,7 @@ class TestFHEVecEncryptDecrypt:
         # Decrypt
         result = _fhe_decrypt(pfunc, ciphertext, ckks_context)
         assert len(result) == 1
-        decrypted = result[0]
+        decrypted = _as_np(result[0])
         assert abs(decrypted.item() - 3.14) < 1e-3
 
     def test_ckks_vector_encrypt_decrypt(self, ckks_context):
@@ -193,7 +202,7 @@ class TestFHEVecEncryptDecrypt:
 
         # Decrypt
         result = _fhe_decrypt(pfunc, ciphertext, ckks_context)
-        decrypted = result[0]
+        decrypted = _as_np(result[0])
         assert decrypted.shape == (3,)
         np.testing.assert_allclose(decrypted, plaintext, atol=1e-3)
 
@@ -210,7 +219,7 @@ class TestFHEVecEncryptDecrypt:
 
         # Decrypt
         result = _fhe_decrypt(pfunc, ciphertext, bfv_context)
-        decrypted = result[0]
+        decrypted = _as_np(result[0])
         assert decrypted.item() == 42
 
     def test_bfv_vector_encrypt_decrypt(self, bfv_context):
@@ -225,7 +234,7 @@ class TestFHEVecEncryptDecrypt:
 
         # Decrypt
         result = _fhe_decrypt(pfunc, ciphertext, bfv_context)
-        decrypted = result[0]
+        decrypted = _as_np(result[0])
         np.testing.assert_array_equal(decrypted, plaintext)
 
     def test_2d_array_encryption_error(self, ckks_context):
@@ -306,7 +315,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = plaintext1 + plaintext2
         np.testing.assert_allclose(decrypted, expected, atol=1e-3)
 
@@ -324,7 +333,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = plaintext1 + plaintext2
         np.testing.assert_allclose(decrypted, expected, atol=1e-3)
 
@@ -343,7 +352,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         assert abs(decrypted.item() - 8.0) < 1e-3
 
     def test_bfv_ciphertext_addition(self, bfv_context):
@@ -361,7 +370,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, bfv_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, bfv_context)[0])
         expected = plaintext1 + plaintext2
         np.testing.assert_array_equal(decrypted, expected)
 
@@ -380,7 +389,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = plaintext1 - plaintext2
         np.testing.assert_allclose(decrypted, expected, atol=1e-3)
 
@@ -398,7 +407,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = plaintext * scalar
         np.testing.assert_allclose(decrypted, expected, atol=1e-2)
 
@@ -417,7 +426,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = plaintext1 * plaintext2
         np.testing.assert_allclose(decrypted, expected, atol=1e-2)
 
@@ -435,7 +444,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, bfv_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, bfv_context)[0])
         expected = plaintext * scalar
         np.testing.assert_array_equal(decrypted, expected)
 
@@ -454,7 +463,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, bfv_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, bfv_context)[0])
         expected = plaintext1 * plaintext2
         np.testing.assert_array_equal(decrypted, expected)
 
@@ -484,7 +493,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = -plaintext
         np.testing.assert_allclose(decrypted, expected, atol=1e-3)
 
@@ -500,7 +509,7 @@ class TestFHEVecArithmetic:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = plaintext**2
         np.testing.assert_allclose(decrypted, expected, atol=1e-2)
 
@@ -536,7 +545,7 @@ class TestFHEVecDot:
         assert result_ct.semantic_shape == ()
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = np.dot(plaintext1, plaintext2)
         assert abs(decrypted.item() - expected) < 0.1
 
@@ -557,7 +566,7 @@ class TestFHEVecDot:
         assert result_ct.semantic_shape == ()
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = np.dot(plaintext1, plaintext2)
         assert abs(decrypted.item() - expected) < 0.1
 
@@ -576,7 +585,7 @@ class TestFHEVecDot:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, bfv_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, bfv_context)[0])
         expected = np.dot(plaintext1, plaintext2)
         assert decrypted.item() == expected
 
@@ -632,7 +641,7 @@ class TestFHEVecPolyval:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = 1.0 + 2.0 * 2.0 + 3.0 * (2.0**2)  # = 1 + 4 + 12 = 17
         assert abs(decrypted.item() - expected) < 0.1
 
@@ -649,7 +658,7 @@ class TestFHEVecPolyval:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = 2.0 + 3.0 * plaintext  # Element-wise
         np.testing.assert_allclose(decrypted, expected, atol=0.1)
 
@@ -666,7 +675,7 @@ class TestFHEVecPolyval:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, bfv_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, bfv_context)[0])
         expected = 1 + 2 * 3  # = 7
         assert decrypted.item() == expected
 
@@ -683,7 +692,7 @@ class TestFHEVecPolyval:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, bfv_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, bfv_context)[0])
         expected = 5 + 2 * plaintext
         np.testing.assert_array_equal(decrypted, expected)
 
@@ -709,7 +718,7 @@ class TestFHEVecPolyval:
         result_ct = result[0]
 
         # Decrypt and verify (result should be all 5s)
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
         expected = np.array([5.0, 5.0, 5.0])
         np.testing.assert_allclose(decrypted, expected, atol=0.1)
 
@@ -726,7 +735,7 @@ class TestFHEVecPolyval:
         result_ct = result[0]
 
         # Decrypt and verify
-        decrypted = _fhe_decrypt(pfunc, result_ct, ckks_context)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, ckks_context)[0])
 
         # Expected values (approximate)
         # sigmoid(0) ≈ 0.5
@@ -797,7 +806,7 @@ class TestFHEVecPublicContext:
         assert isinstance(ct, CipherText)
 
         # Decrypt with private context
-        decrypted = _fhe_decrypt(pfunc, ct, private_ctx)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, ct, private_ctx)[0])
         assert abs(decrypted.item() - 3.14) < 1e-3
 
     def test_ckks_public_vector(self, ckks_contexts):
@@ -811,7 +820,7 @@ class TestFHEVecPublicContext:
         ct = _fhe_encrypt(pfunc, plaintext, public_ctx)[0]
 
         # Decrypt with private context
-        decrypted = _fhe_decrypt(pfunc, ct, private_ctx)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, ct, private_ctx)[0])
         np.testing.assert_allclose(decrypted, plaintext, atol=1e-3)
 
     def test_mixed_context_computation(self, ckks_contexts):
@@ -830,7 +839,7 @@ class TestFHEVecPublicContext:
         result_ct = _fhe_add(pfunc, ct1, ct2)[0]
 
         # Decrypt
-        decrypted = _fhe_decrypt(pfunc, result_ct, private_ctx)[0]
+        decrypted = _as_np(_fhe_decrypt(pfunc, result_ct, private_ctx)[0])
         expected = plaintext1 + plaintext2
         np.testing.assert_allclose(decrypted, expected, atol=1e-3)
 

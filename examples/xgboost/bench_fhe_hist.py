@@ -176,14 +176,16 @@ def _bench_once(
     # Optional: precompute and encrypt all bucket masks per-PP for cached modes
     cached_masks = None
     pre_dt = mp.run_jax_at(ap_id, lambda: jnp.array(0.0, dtype=jnp.float64))
-    if mode in ("interleaved_cached",):
-        # helper: duplicate mask to interleaved length
+    if mode in ("interleaved_cached", "classic_cached"):
+        # Helper function to duplicate mask to interleaved length (used only for interleaved mode)
         def _dup2(mask):
             n = mask.shape[0]
             out = jnp.empty((n * 2,), dtype=jnp.int64)
             out = out.at[0::2].set(mask)
             out = out.at[1::2].set(mask)
             return out
+
+        use_interleave = mode == "interleaved_cached"
 
         cached_masks = []  # list per PP: [ [list per group: [list per feature: [mask_ct per bucket]]] ]
         tpre0 = mp.run_jax_at(ap_id, lambda: jnp.array(time.time(), dtype=jnp.float64))
@@ -217,57 +219,18 @@ def _bench_once(
                     bucket_masks = mp.run_jax_at(
                         pp, build_bucket_masks, gom_map, feature_idx, k
                     )
-                    # Encrypt each duplicated bucket mask
+                    # Encrypt each bucket mask (with optional duplication for interleaved mode)
                     masks_ct = []
                     for b in range(k):
                         row_b = mp.run_jax_at(pp, lambda M, bi: M[bi], bucket_masks, b)
-                        inter_mask = mp.run_jax_at(pp, _dup2, row_b)
-                        mask_ct_pp = mp.run_at(pp, fhe.encrypt, inter_mask, pub_ctx_pp)
-                        mask_ct_ap = mp.p2p(pp, ap_id, mask_ct_pp)
-                        masks_ct.append(mask_ct_ap)
-                    feat_masks.append(masks_ct)
-                grp_masks.append(feat_masks)
-            cached_masks.append(grp_masks)
-        tpre1 = mp.run_jax_at(ap_id, lambda: jnp.array(time.time(), dtype=jnp.float64))
-        pre_dt = mp.run_jax_at(ap_id, lambda a, b: a - b, tpre1, tpre0)
-
-    if mode == "classic_cached":
-        cached_masks = []  # list per PP: [ [list per group: [list per feature: [mask_ct per bucket]]] ]
-        tpre0 = mp.run_jax_at(ap_id, lambda: jnp.array(time.time(), dtype=jnp.float64))
-        for i, (pp, pub_ctx_pp, subgroup_map_pp) in enumerate(subgroup_maps):
-            feature_size = pp_idx[i].shape[1]
-            grp_masks = []
-            for grp in range(t):
-                gom = mp.run_jax_at(pp, lambda m, idx: m[idx], subgroup_map_pp, grp)
-
-                def create_masked_order_map(m, om):
-                    mask_expanded = jnp.expand_dims(m, axis=1)
-                    mask_full = jnp.broadcast_to(mask_expanded, om.shape)
-                    return jnp.where(mask_full == 1, om, -1)
-
-                gom_map = mp.run_jax_at(pp, create_masked_order_map, gom, pp_idx[i])
-
-                feat_masks = []
-                for feature_idx in range(feature_size):
-
-                    def build_bucket_masks(gom_, f_idx, num_buckets):
-                        def mask_for_b(b_idx, gom_i, f_i):
-                            fb = gom_i[:, f_i]
-                            valid_and_in_bucket = (fb >= 0) & (fb <= b_idx)
-                            return valid_and_in_bucket.astype(jnp.int64)
-
-                        bs = jnp.arange(num_buckets, dtype=jnp.int64)
-                        return jax.vmap(mask_for_b, in_axes=(0, None, None))(
-                            bs, gom_, f_idx
+                        # Apply _dup2 transformation only for interleaved mode
+                        if use_interleave:
+                            mask_to_encrypt = mp.run_jax_at(pp, _dup2, row_b)
+                        else:
+                            mask_to_encrypt = row_b
+                        mask_ct_pp = mp.run_at(
+                            pp, fhe.encrypt, mask_to_encrypt, pub_ctx_pp
                         )
-
-                    bucket_masks = mp.run_jax_at(
-                        pp, build_bucket_masks, gom_map, feature_idx, k
-                    )
-                    masks_ct = []
-                    for b in range(k):
-                        row_b = mp.run_jax_at(pp, lambda M, bi: M[bi], bucket_masks, b)
-                        mask_ct_pp = mp.run_at(pp, fhe.encrypt, row_b, pub_ctx_pp)
                         mask_ct_ap = mp.p2p(pp, ap_id, mask_ct_pp)
                         masks_ct.append(mask_ct_ap)
                     feat_masks.append(masks_ct)

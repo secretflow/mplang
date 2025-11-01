@@ -22,37 +22,57 @@ CMake package is under your build/install prefix.
 ## Build
 
 ```sh
-cmake -S . -B build -G Ninja -DMLIR_DIR=/path/to/lib/cmake/mlir
+# If using conda MLIR 18, activate your env first so $CONDA_PREFIX is set
+# conda activate mlir-env
+
+# Configure (example: conda MLIR package)
+cmake -S . -B build -G Ninja -DMLIR_DIR="$CONDA_PREFIX/lib/cmake/mlir"
+
+# Or configure with a custom install prefix
+# cmake -S . -B build -G Ninja -DMLIR_DIR=/path/to/lib/cmake/mlir
+
+# Build
 cmake --build build -j
 ```
 
 Artifacts:
+
 - `build/lib/libMLIRMPLANG.*` — the dialect library
 - `build/tools/mplang-opt/mplang-opt` — a tiny opt-like driver
 
 ## Try it (parse/print roundtrip)
 
-Create a file `test.mlir` with a minimal module that uses region-form eval:
+Create a file `test.mlir` with a minimal module that uses mplang.eval and the
+implicit mplang.yield (generic assembly form recommended for now):
 
-```
+```mlir
 module {
-  func.func @main(%x: i32) -> i32 {
-    %0 = mplang.eval(%x) () : (i32) -> i32
-    return %0 : i32
-  }
+  "mplang.eval"() ({
+    "mplang.yield"() : () -> ()
+  }) : () -> ()
 }
 ```
-
-Note: Types/semantics are not yet enforced; this is a parse/print smoke test.
 
 Then run:
 
 ```sh
-build/tools/mplang-opt/mplang-opt test.mlir -split-input-file -o -
+build/tools/mplang-opt/mplang-opt test.mlir -o -
 ```
 
-If the dialect is registered correctly, `mplang-opt` will parse and print it
-back (potentially with minor formatting differences).
+Expected output (printer may elide the implicit yield):
+
+```mlir
+module {
+  mplang.eval()({
+  }) : () -> ()
+}
+```
+
+Notes:
+
+- The tool currently only registers the MPLANG dialect to keep linking small.
+  If you include ops from other dialects (e.g., `func.func`), add
+  `-allow-unregistered-dialect` or extend the tool to register additional dialects.
 
 ## Next steps (short-term)
 

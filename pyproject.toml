@@ -24,7 +24,7 @@ dependencies = [
     "protobuf>=5.0,<6.0",
     "typing_extensions",
     # both FE & BE
-    "spu==0.9.4.dev20250827", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "spu==0.9.4",
     "pyarrow>=14.0.0",
     # runtime only
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation

@@ -906,7 +906,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "protobuf", specifier = ">=5.0,<6.0" },
     { name = "pyarrow", specifier = ">=14.0.0" },
-    { name = "spu", specifier = "==0.9.4.dev20250827" },
+    { name = "spu", specifier = "==0.9.4" },
     { name = "sqlglot", specifier = ">=23.0.0" },
     { name = "tenseal", specifier = "==0.3.16" },
     { name = "typing-extensions" },
@@ -1817,7 +1817,7 @@ wheels = [
 
 [[package]]
 name = "spu"
-version = "0.9.4.dev20250827"
+version = "0.9.4"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
 dependencies = [
     { name = "cachetools" },
@@ -1828,9 +1828,9 @@ dependencies = [
     { name = "termcolor" },
 ]
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/61/38/f75b4dd42103d672f2f1108ab08684e4d1f35e3f5edef11ede1d5244ef16/spu-0.9.4.dev20250827-cp310-none-macosx_14_0_arm64.whl", hash = "sha256:28ae067de92b4bd95a82a4eae34aa2195425e5b55628248a87f7eeba31287aad" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/bd/6c/bc96f752b23b2bfafebd7d1982bf3eabbb3e2ff56efe41c6cad731fc6d3e/spu-0.9.4.dev20250827-cp310-none-manylinux_2_17_x86_64.whl", hash = "sha256:d9271bc2a6b3372ca164cdea51d9df400a223513970c31f80eba1124b12525cf" },
-    { url = "https://mirrors.aliyun.com/pypi/packages/68/6e/901ddea34a66fc9cbe18f8e1067e874e978fbc26fb170020204d03ace156/spu-0.9.4.dev20250827-cp310-none-manylinux_2_28_aarch64.whl", hash = "sha256:0889db84acfffb6444206d175ce73a791a3d0442c428a52b64b99bcb75f9df59" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/61/38/f75b4dd42103d672f2f1108ab08684e4d1f35e3f5edef11ede1d5244ef16/spu-0.9.4-cp310-none-macosx_14_0_arm64.whl", hash = "sha256:28ae067de92b4bd95a82a4eae34aa2195425e5b55628248a87f7eeba31287aad" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/bd/6c/bc96f752b23b2bfafebd7d1982bf3eabbb3e2ff56efe41c6cad731fc6d3e/spu-0.9.4-cp310-none-manylinux_2_17_x86_64.whl", hash = "sha256:d9271bc2a6b3372ca164cdea51d9df400a223513970c31f80eba1124b12525cf" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/68/6e/901ddea34a66fc9cbe18f8e1067e874e978fbc26fb170020204d03ace156/spu-0.9.4-cp310-none-manylinux_2_28_aarch64.whl", hash = "sha256:0889db84acfffb6444206d175ce73a791a3d0442c428a52b64b99bcb75f9df59" },
 ]
 
 [[package]]

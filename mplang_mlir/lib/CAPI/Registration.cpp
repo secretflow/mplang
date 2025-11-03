@@ -23,5 +23,6 @@ void mlirContextLoadMpirDialect(MlirContext context) {
 }
 
 MlirStringRef mlirMpirDialectGetNamespace() {
-  return wrap(mlir::mpir::MpirDialect::getDialectNamespace());
+  auto ns = mlir::mpir::MpirDialect::getDialectNamespace();
+  return mlirStringRefCreate(ns.data(), ns.size());
 }

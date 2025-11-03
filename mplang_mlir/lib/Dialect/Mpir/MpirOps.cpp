@@ -114,5 +114,24 @@ mlir::LogicalResult mpir::ConvOp::verify() {
 // We'll use a simpler approach - let TableGen generate most of it
 // and just customize what we need via assemblyFormat in ODS
 
+//===----------------------------------------------------------------------===//
+// ShuffleStaticOp verifier (TODO: implement pmask checks)
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mlir::mpir::ShuffleStaticOp::verify() {
+  // TODO: Check src_ranks validity against input pmask
+  // TODO: Verify input/output types match (element type, shape)
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShuffleDynOp verifier (TODO: implement inner type checks)
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mlir::mpir::ShuffleDynOp::verify() {
+  // TODO: Check inner type consistency between input and output
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "MpirOps.cpp.inc"

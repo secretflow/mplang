@@ -12,6 +12,9 @@
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 
+// Include types before ops, as ops reference type classes
+#include "mplang/Dialect/Mpir/MpirTypes.h"
+
 // Generate op class declarations.
 #define GET_OP_CLASSES
 #include "MpirOps.h.inc"

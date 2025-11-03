@@ -13,7 +13,7 @@
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
-  registry.insert<mpir::MpirDialect>();
+  registry.insert<mlir::mpir::MpirDialect>();
   registry.insert<mlir::arith::ArithDialect>();
   registry.insert<mlir::func::FuncDialect>();
   registry.insert<mlir::tensor::TensorDialect>();

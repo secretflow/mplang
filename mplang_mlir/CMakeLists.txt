@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MPLANG_Dialect LANGUAGES CXX C)
+project(MPIR_Dialect LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,9 +21,9 @@ include(HandleLLVMOptions)
 include(TableGen)
 include(AddMLIR)
 
-add_subdirectory(lib/Dialect/Mplang)
+add_subdirectory(lib/Dialect/Mpir)
 add_subdirectory(lib/CAPI)
-add_subdirectory(tools/mplang-opt)
+add_subdirectory(tools/mpir-opt)
 
 # Python bindings
 if(MLIR_ENABLE_BINDINGS_PYTHON)

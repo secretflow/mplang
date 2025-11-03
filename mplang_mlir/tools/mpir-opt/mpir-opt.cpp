@@ -1,5 +1,5 @@
-//===- mplang-opt.cpp ---------------------------------------------------===//
-// A tiny opt-like driver that registers the Mplang dialect and runs mlir-opt.
+//===- mpir-opt.cpp ---------------------------------------------------===//
+// A tiny opt-like driver that registers the Mpir dialect and runs mlir-opt.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
@@ -9,11 +9,11 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
-#include "MplangDialect.h.inc"
+#include "MpirDialect.h.inc"
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
-  registry.insert<mplang::MplangDialect>();
+  registry.insert<mpir::MpirDialect>();
   registry.insert<mlir::arith::ArithDialect>();
   registry.insert<mlir::func::FuncDialect>();
   registry.insert<mlir::tensor::TensorDialect>();

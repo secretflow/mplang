@@ -4,11 +4,11 @@
 
 """Extensions for Mplang dialect ops.
 
-This module extends the auto-generated ops from _mplang_ops_gen.py
+This module extends the auto-generated ops from _mpir_ops_gen.py
 with more Pythonic builders following MLIR best practices.
 
 Pattern (from mlir/python/mlir/dialects/arith.py):
-1. TableGen generates _mplang_ops_gen.py with default builders
+1. TableGen generates _mpir_ops_gen.py with default builders
 2. Use @_ods_cext.register_operation(_Dialect, replace=True) to extend ops
 3. Override __init__ to provide Pythonic API, call super().__init__()
 4. NO manual builder functions or monkey-patching
@@ -30,8 +30,8 @@ try:
         Type,
         Value,
     )
-    from . import _mplang_ops_gen as _cext
-    from ._mplang_ops_gen import _Dialect
+    from . import _mpir_ops_gen as _cext
+    from ._mpir_ops_gen import _Dialect
 except ImportError:
     pass
 

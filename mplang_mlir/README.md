@@ -1,6 +1,6 @@
-# MPLANG MLIR dialect (scaffold)
+# MPLang MLIR dialect (scaffold)
 
-This directory contains a minimal MLIR dialect scaffold for MPLang's SPMD IR.
+This directory contains a minimal MLIR dialect scaffold for MPLang's Multi-Party IR.
 It is intentionally small to get parse/print working early, then we will
 iterate with more ops, verifiers, canonicalizations, and Python bindings.
 
@@ -37,18 +37,18 @@ cmake --build built -j
 
 Artifacts:
 
-- `built/lib/libMLIRMPLANG.*` — the dialect library
-- `built/tools/mplang-opt/mplang-opt` — a tiny opt-like driver
+- `built/lib/libMLIRMPIR.*` — the dialect library
+- `built/tools/mpir-opt/mpir-opt` — a tiny opt-like driver
 
 ## Try it (parse/print roundtrip)
 
-Create a file `test.mlir` with a minimal module that uses mplang.eval and the
-implicit mplang.yield (generic assembly form recommended for now):
+Create a file `test.mlir` with a minimal module that uses mpir.peval and the
+implicit mpir.yield (generic assembly form recommended for now):
 
 ```mlir
 module {
-  "mplang.eval"() ({
-    "mplang.yield"() : () -> ()
+  "mpir.peval"() ({
+    "mpir.yield"() : () -> ()
   }) : () -> ()
 }
 ```
@@ -56,21 +56,21 @@ module {
 Then run:
 
 ```sh
-built/tools/mplang-opt/mplang-opt test.mlir -o -
+built/tools/mpir-opt/mpir-opt test.mlir -o -
 ```
 
 Expected output (printer may elide the implicit yield):
 
 ```mlir
 module {
-  mplang.eval()({
+  mpir.peval()({
   }) : () -> ()
 }
 ```
 
 Notes:
 
-- The tool currently only registers the MPLANG dialect to keep linking small.
+- The tool currently only registers the MPIR dialect to keep linking small.
   If you include ops from other dialects (e.g., `func.func`), add
   `-allow-unregistered-dialect` or extend the tool to register additional dialects.
 
@@ -89,14 +89,14 @@ Notes:
   delete the stale `CMakeCache.txt` before re-configuring.
 
 - Link errors referencing many MLIR passes/dialects: this scaffold’s tool only
-  registers the MPLANG dialect. If you add `mlir/InitAllPasses.h` or register
+  registers the MPIR dialect. If you add `mlir/InitAllPasses.h` or register
   extra dialects, you must also link the corresponding MLIR libraries.
 
 ## Next steps (short-term)
 
-- Flesh out `!mplang.tensor` / `!mplang.table` type params (dtype/shape/pmask)
-- `mplang.eval` attributes (e.g. rmask/backend/attrs) and verifier
-- Add ops: `mplang.cond`, `mplang.while`, `mplang.conv`, `mplang.shfl_s`, `mplang.shfl`
+- Flesh out `!mpir.tensor` / `!mpir.table` type params (dtype/shape/pmask)
+- `mpir.peval` attributes (e.g. rmask/backend/attrs) and verifier
+- Add ops: `mpir.cond`, `mpir.while_loop`, `mpir.conv`, `mpir.shfl`, `mpir.shfl_dyn`
 - Canonicalization: eval region <-> callee symref (outline/inline)
 - Python bindings (pybind11 + MLIR C-API) to register/parse/print from Python
 

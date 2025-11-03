@@ -1,12 +1,12 @@
-//===- MplangTypes.td -------------------------------------------*- tablegen -*-===//
+//===- MpirTypes.td -------------------------------------------*- tablegen -*-===//
 // Mplang type ODS declarations.
 //===----------------------------------------------------------------------===//
 
 include "mlir/IR/OpBase.td"
-include "MplangDialect.td"
+include "MpirDialect.td"
 
 // TableType: multi-party table with columns (similar to DataFrame)
-def MPLANG_TableType : TypeDef<Mplang_Dialect, "Table"> {
+def MPIR_TableType : TypeDef<Mpir_Dialect, "Table"> {
   let typeName = "mplang.table";
   let summary = "Table type with schema (tuple of column types)";
   let description = [{
@@ -14,7 +14,7 @@ def MPLANG_TableType : TypeDef<Mplang_Dialect, "Table"> {
     - schema: a tuple type describing column types
 
     Example:
-      !mplang.table<schema = tuple<f32, i64>>
+      !mpir.table<schema = tuple<f32, i64>>
   }];
 
   let parameters = (

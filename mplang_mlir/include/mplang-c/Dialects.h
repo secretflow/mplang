@@ -1,4 +1,4 @@
-//===- Dialects.h - CAPI for Mplang dialect --------------------*- C -*-===//
+//===- Dialects.h - CAPI for Mpir dialect --------------------*- C -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM
 // Exceptions.
@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Mplang, mplang);
+MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Mpir, mpir);
 
 #ifdef __cplusplus
 }

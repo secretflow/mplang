@@ -1,5 +1,5 @@
-//===- MplangDialect.cpp -----------------------------------------------===//
-// Mplang dialect registration glue.
+//===- MpirDialect.cpp -----------------------------------------------===//
+// Mpir dialect registration glue.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/DialectImplementation.h"
@@ -8,13 +8,13 @@
 #include "mlir/IR/BuiltinTypes.h"
 
 // Public wrappers for generated decls referenced in addOperations/addTypes
-#include "mplang/Dialect/Mplang/MplangOps.h"
-#include "mplang/Dialect/Mplang/MplangTypes.h"
+#include "mplang/Dialect/Mpir/MplangOps.h"
+#include "mplang/Dialect/Mpir/MplangTypes.h"
 
-#include "MplangDialect.h.inc"
+#include "MpirDialect.h.inc"
 
 using namespace mlir;
-using namespace mplang;
+using namespace mpir;
 
 // Include generated type class implementations in this TU so that when
 // addTypes<...>() is instantiated, the Storage classes are complete and
@@ -22,7 +22,7 @@ using namespace mplang;
 #define GET_TYPEDEF_CLASSES
 #include "MplangTypes.cpp.inc"
 
-void MplangDialect::initialize() {
+void MpirDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "MplangOps.cpp.inc"
@@ -34,4 +34,4 @@ void MplangDialect::initialize() {
 }
 
 // Define the dialect constructor/destructor and type ID.
-#include "MplangDialect.cpp.inc"
+#include "MpirDialect.cpp.inc"

@@ -1,5 +1,5 @@
-//===- MplangOps.cpp ----------------------------------------------------===//
-// Mplang ops implementation.
+//===- MpirOps.cpp ----------------------------------------------------===//
+// Mpir ops implementation.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/OpImplementation.h"
@@ -8,16 +8,16 @@
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
-#include "mplang/Dialect/Mplang/MplangOps.h"
+#include "mplang/Dialect/Mpir/MpirOps.h"
 
 using namespace mlir;
-using namespace mplang;
+using namespace mpir;
 
 //===----------------------------------------------------------------------===//
 // PEvalOp verifier
 //===----------------------------------------------------------------------===//
 
-mlir::LogicalResult mplang::PEvalOp::verify() {
+mlir::LogicalResult mpir::PEvalOp::verify() {
   auto calleeAttr = getCalleeAttr();
   auto fnTypeAttr = getFnTypeAttr();
   auto fnAttrsAttr = getFnAttrsAttr();
@@ -45,7 +45,7 @@ mlir::LogicalResult mplang::PEvalOp::verify() {
 // PEvalDynOp verifier
 //===----------------------------------------------------------------------===//
 
-mlir::LogicalResult mplang::PEvalDynOp::verify() {
+mlir::LogicalResult mpir::PEvalDynOp::verify() {
   auto calleeAttr = getCalleeAttr();
   auto fnTypeAttr = getFnTypeAttr();
   auto fnAttrsAttr = getFnAttrsAttr();
@@ -73,7 +73,7 @@ mlir::LogicalResult mplang::PEvalDynOp::verify() {
 // ConvOp verifier
 //===----------------------------------------------------------------------===//
 
-mlir::LogicalResult mplang::ConvOp::verify() {
+mlir::LogicalResult mpir::ConvOp::verify() {
   // Must have at least one input
   if (getInputs().empty()) {
     return emitOpError("requires at least one input");
@@ -115,4 +115,4 @@ mlir::LogicalResult mplang::ConvOp::verify() {
 // and just customize what we need via assemblyFormat in ODS
 
 #define GET_OP_CLASSES
-#include "MplangOps.cpp.inc"
+#include "MpirOps.cpp.inc"

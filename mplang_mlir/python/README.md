@@ -1,6 +1,6 @@
-# Mplang Python Bindings
+# Mpir Python Bindings
 
-Python bindings for the Mplang MLIR dialect, enabling Python-based construction and manipulation of Mplang IR.
+Python bindings for the Mpir MLIR dialect, enabling Python-based construction and manipulation of Mpir IR.
 
 ## Building
 
@@ -41,17 +41,17 @@ export PYTHONPATH=${BUILD_DIR}/python_packages/mplang_mlir:$PYTHONPATH
 
 ```python
 from mplang_mlir import ir
-from mplang_mlir.dialects import mplang
+from mplang_mlir.dialects import mpir
 
 # Create context and register dialect
 ctx = ir.Context()
-mplang.register_dialect(ctx)
+mpir.register_dialect(ctx)
 
-# Parse Mplang IR
+# Parse Mpir IR
 module_str = """
 module {
   func.func @example(%arg0: tensor<3xf32>, %mask: tensor<3xi1>) -> tensor<3xf32> {
-    %result = mplang.peval @callee(%arg0, %mask) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
+    %result = mpir.peval @callee(%arg0, %mask) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
     return %result : tensor<3xf32>
   }
 }
@@ -68,7 +68,7 @@ from mplang_mlir import ir
 from mplang_mlir.dialects import func, mplang
 
 ctx = ir.Context()
-mplang.register_dialect(ctx)
+mpir.register_dialect(ctx)
 
 with ir.Location.unknown(ctx):
     module = ir.Module.create()
@@ -90,7 +90,7 @@ with ir.Location.unknown(ctx):
             mask = func_op.arguments[1]
 
             # Build peval op (MLIR function mode)
-            result = mplang.PEvalOp(
+            result = mpir.PEvalOp(
                 [tensor_type],  # result_types
                 [arg0],         # args
                 mask,           # mask
@@ -106,7 +106,7 @@ print(module)
 
 ```python
 # Build peval op with external backend (e.g., PHE)
-result = mplang.PEvalOp(
+result = mpir.PEvalOp(
     [tensor_type],      # result_types
     [pk, plaintext],    # args
     mask,               # mask
@@ -125,7 +125,7 @@ result = mplang.PEvalOp(
 
 This implementation follows MLIR's official extension pattern (see `llvm-project/mlir/python/mlir/dialects/arith.py`):
 
-1. **TableGen** auto-generates `_mplang_ops_gen.py` from `MplangOps.td`
+1. **TableGen** auto-generates `_mpir_ops_gen.py` from `MpirOps.td`
 2. **Extension classes** use `@_cext.register_operation(_Dialect, replace=True)` to extend generated ops
 3. **Override `__init__`** to provide Pythonic API, call `super().__init__()` to leverage generated builders
 
@@ -135,8 +135,8 @@ This implementation follows MLIR's official extension pattern (see `llvm-project
 
 - `mplang_mlir/__init__.py` - Package entry point
 - `mplang_mlir/dialects/mplang.py` - Dialect wrapper (imports generated + extension code)
-- `mplang_mlir/dialects/_mplang_ops_ext.py` - Op extensions (PEvalOp, PEvalDynOp)
-- `MplangExtension.cpp` - C++ CAPI bridge (pybind11)
+- `mplang_mlir/dialects/_mpir_ops_ext.py` - Op extensions (PEvalOp, PEvalDynOp)
+- `MpirExtension.cpp` - C++ CAPI bridge (pybind11)
 - `lib/CAPI/` - C API for Python/C++ interop
 
 ## Operations
@@ -146,8 +146,8 @@ This implementation follows MLIR's official extension pattern (see `llvm-project
 Static private evaluation with execution mask.
 
 **Modes:**
-1. MLIR function: `mplang.peval @callee(%args, %mask)`
-2. External backend: `mplang.peval fn_type="phe" fn_name="encrypt" fn_attrs={...}(%args, %mask)`
+1. MLIR function: `mpir.peval @callee(%args, %mask)`
+2. External backend: `mpir.peval fn_type="phe" fn_name="encrypt" fn_attrs={...}(%args, %mask)`
 
 ### PEvalDynOp (Dynamic Private Evaluation)
 
@@ -174,19 +174,19 @@ python python/test_bindings.py
 ```
 Python Code (user)
     ↓
-PEvalOp(...) [_mplang_ops_ext.py]
+PEvalOp(...) [_mpir_ops_ext.py]
     ↓
-super().__init__(...) [_mplang_ops_gen.py - auto-generated]
+super().__init__(...) [_mpir_ops_gen.py - auto-generated]
     ↓
-_mplang C++ extension [MplangExtension.cpp]
+_mplang C++ extension [MpirExtension.cpp]
     ↓
 CAPI [lib/CAPI/]
     ↓
-MLIR Dialect [lib/Dialect/Mplang/]
+MLIR Dialect [lib/Dialect/Mpir/]
 ```
 
 ## References
 
 - [Quick Start Guide](QUICKSTART.md) - 5-minute examples
 - [MLIR Python Bindings Docs](https://mlir.llvm.org/docs/Bindings/Python/)
-- [Mplang Dialect Spec](../include/mplang/Dialect/Mplang/MplangOps.td)
+- [Mplang Dialect Spec](../include/mplang/Dialect/Mpir/MpirOps.td)

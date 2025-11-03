@@ -7,22 +7,22 @@
 
 ## What's This?
 
-Python bindings for the Mplang MLIR dialect, enabling Python-based construction and manipulation of Mplang IR.
+Python bindings for the Mpir MLIR dialect, enabling Python-based construction and manipulation of Mpir IR.
 
 ## Quick Example
 
 ```python
 from mplang_mlir import ir
-from mplang_mlir.dialects import mplang
+from mplang_mlir.dialects import mpir
 
 ctx = ir.Context()
-mplang.register_dialect(ctx)
+mpir.register_dialect(ctx)
 
 # Mode 1: MLIR function
-result = mplang.PEvalOp([result_type], [args], mask, callee="@func")
+result = mpir.PEvalOp([result_type], [args], mask, callee="@func")
 
 # Mode 2: External backend (PHE, SPU, TEE)
-result = mplang.PEvalOp(
+result = mpir.PEvalOp(
     [result_type], [args], mask,
     fn_type="phe",
     fn_name="encrypt",
@@ -39,7 +39,7 @@ cmake -G Ninja ../llvm \
   -DLLVM_EXTERNAL_MPLANG_SOURCE_DIR=/path/to/mplang_mlir \
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON
 
-ninja MplangPythonModules
+ninja MpirPythonModules
 ```
 
 ## Files
@@ -51,19 +51,19 @@ python/
 ├── INDEX.md               - This file
 ├── test_bindings.py       - Test script
 ├── CMakeLists.txt         - Build configuration
-├── MplangExtension.cpp    - C++ extension
+├── MpirExtension.cpp    - C++ extension
 └── mplang_mlir/
     ├── __init__.py
     └── dialects/
         ├── __init__.py
         ├── mplang.py          - Dialect wrapper
-        └── _mplang_ops_ext.py - Op extensions (PEvalOp, etc.)
+        └── _mpir_ops_ext.py - Op extensions (PEvalOp, etc.)
 ```
 
 ## Implementation
 
 Follows MLIR's **Extension Pattern** (from `arith.py`):
-- TableGen generates `_mplang_ops_gen.py` from ODS
+- TableGen generates `_mpir_ops_gen.py` from ODS
 - Extension classes use `@register_operation` to extend ops
 - Override `__init__` for Pythonic API, call `super().__init__()`
 

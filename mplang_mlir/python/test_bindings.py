@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Test script for Mplang Python bindings.
+"""Test script for Mpir Python bindings.
 
-This script tests basic functionality of the Mplang dialect Python bindings.
+This script tests basic functionality of the Mpir dialect Python bindings.
 Run after building with MLIR_ENABLE_BINDINGS_PYTHON=ON.
 """
 
@@ -23,13 +23,13 @@ def test_import():
 def test_dialect_registration():
     """Test dialect registration with MLIR context."""
     try:
-        from mplang_mlir.dialects import mplang
+        from mplang_mlir.dialects import mpir
 
         from mplang_mlir import ir
 
         ctx = ir.Context()
-        mplang.register_dialect(ctx)
-        print("✓ Successfully registered Mplang dialect")
+        mpir.register_dialect(ctx)
+        print("✓ Successfully registered Mpir dialect")
         return True
     except Exception as e:
         print(f"✗ Failed to register dialect: {e}")
@@ -39,13 +39,13 @@ def test_dialect_registration():
 def test_dialect_load():
     """Test loading dialect into context."""
     try:
-        from mplang_mlir.dialects import mplang
+        from mplang_mlir.dialects import mpir
 
         from mplang_mlir import ir
 
         ctx = ir.Context()
-        mplang.load_dialect(ctx)
-        print("✓ Successfully loaded Mplang dialect")
+        mpir.load_dialect(ctx)
+        print("✓ Successfully loaded Mpir dialect")
         return True
     except Exception as e:
         print(f"✗ Failed to load dialect: {e}")
@@ -55,12 +55,12 @@ def test_dialect_load():
 def test_parse_peval():
     """Test parsing a peval operation."""
     try:
-        from mplang_mlir.dialects import mplang
+        from mplang_mlir.dialects import mpir
 
         from mplang_mlir import ir
 
         ctx = ir.Context()
-        mplang.register_dialect(ctx)
+        mpir.register_dialect(ctx)
         ctx.allow_unregistered_dialects = True
 
         module_str = """
@@ -68,7 +68,7 @@ def test_parse_peval():
           func.func @simple() {
             %mask = arith.constant dense<true> : tensor<3xi1>
             %arg0 = arith.constant dense<1.0> : tensor<3xf32>
-            %result = mplang.peval @callee(%arg0, %mask) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
+            %result = mpir.peval @callee(%arg0, %mask) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
             return
           }
         }
@@ -85,7 +85,7 @@ def test_parse_peval():
 
 def main():
     """Run all tests."""
-    print("Testing Mplang Python bindings")
+    print("Testing Mpir Python bindings")
     print("=" * 60)
 
     tests = [

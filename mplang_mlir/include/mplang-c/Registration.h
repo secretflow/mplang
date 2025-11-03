@@ -1,4 +1,4 @@
-//===- Registration.h - C API for Mplang dialect registration --*- C -*-===//
+//===- Registration.h - C API for Mpir dialect registration --*- C -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM
 // Exceptions.
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This header declares the C API for Mplang dialect registration.
+// This header declares the C API for Mpir dialect registration.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,13 +20,13 @@
 extern "C" {
 #endif
 
-/// Register the Mplang dialect with the given context.
+/// Register the Mpir dialect with the given context.
 MLIR_CAPI_EXPORTED void mlirContextRegisterMplangDialect(MlirContext context);
 
-/// Load the Mplang dialect into the given context.
+/// Load the Mpir dialect into the given context.
 MLIR_CAPI_EXPORTED void mlirContextLoadMplangDialect(MlirContext context);
 
-/// Get the namespace string for the Mplang dialect.
+/// Get the namespace string for the Mpir dialect.
 MLIR_CAPI_EXPORTED MlirStringRef mlirMplangDialectGetNamespace(void);
 
 #ifdef __cplusplus

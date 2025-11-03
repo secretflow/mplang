@@ -1,4 +1,4 @@
-# Mplang Python Bindings - Quick Start
+# Mpir Python Bindings - Quick Start
 
 ## 1-Minute Setup
 
@@ -11,27 +11,27 @@ cmake -G Ninja ../llvm \
   -DLLVM_EXTERNAL_MPLANG_SOURCE_DIR=/path/to/mplang_mlir \
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON
 
-ninja MplangPythonModules
+ninja MpirPythonModules
 ```
 
 ### Test Installation
 ```bash
 export PYTHONPATH=$LLVM_BUILD_DIR/python_packages/mplang_mlir:$PYTHONPATH
-python -c "from mplang_mlir.dialects import mplang; print('Success!')"
+python -c "from mplang_mlir.dialects import mpir; print('Success!')"
 ```
 
 ## 5-Minute Example
 
 ```python
 #!/usr/bin/env python3
-"""Example: Building Mplang IR from Python"""
+"""Example: Building Mpir IR from Python"""
 
 from mplang_mlir import ir
 from mplang_mlir.dialects import func, mplang
 
 # Create context
 ctx = ir.Context()
-mplang.register_dialect(ctx)
+mpir.register_dialect(ctx)
 
 # Build a simple module
 with ir.Location.unknown(ctx):
@@ -56,7 +56,7 @@ with ir.Location.unknown(ctx):
             arg0, mask = f.arguments
 
             # Call external PHE backend
-            result = mplang.PEvalOp(
+            result = mpir.PEvalOp(
                 [tensor_3xf32],  # result_types
                 [arg0],          # args
                 mask,            # mask
@@ -74,7 +74,7 @@ Expected output:
 ```mlir
 module {
   func.func @example(%arg0: tensor<3xf32>, %arg1: tensor<3xi1>) -> tensor<3xf32> {
-    %0 = mplang.peval fn_type = "phe" fn_name = "encrypt"
+    %0 = mpir.peval fn_type = "phe" fn_name = "encrypt"
          fn_attrs = {scheme = "paillier", key_size = 2048 : i64}
          (%arg0, %arg1) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
     return %0 : tensor<3xf32>
@@ -88,7 +88,7 @@ module {
 
 **MLIR Function Mode:**
 ```python
-result = mplang.PEvalOp(
+result = mpir.PEvalOp(
     [result_type],           # result_types
     [input_tensors],         # args
     execution_mask,          # mask
@@ -98,7 +98,7 @@ result = mplang.PEvalOp(
 
 **External Backend Mode:**
 ```python
-result = mplang.PEvalOp(
+result = mpir.PEvalOp(
     [result_type],
     [inputs],
     mask,
@@ -115,7 +115,7 @@ result = mplang.PEvalOp(
 
 No static mask, execution determined at runtime:
 ```python
-result = mplang.PEvalDynOp(
+result = mpir.PEvalDynOp(
     [result_type],
     [inputs],
     fn_type="phe",
@@ -127,7 +127,7 @@ result = mplang.PEvalDynOp(
 
 Static pattern:
 ```python
-result = mplang.ShuffleStaticOp(
+result = mpir.ShuffleStaticOp(
     result_types=[result_type],
     inputs=[input_val],
     mask=target_mask
@@ -136,7 +136,7 @@ result = mplang.ShuffleStaticOp(
 
 Dynamic pattern:
 ```python
-result = mplang.ShuffleDynOp(
+result = mpir.ShuffleDynOp(
     result_types=[result_type],
     inputs=[input_val],
     pmask=dynamic_pattern
@@ -147,7 +147,7 @@ result = mplang.ShuffleDynOp(
 
 Multi-party convergence:
 ```python
-result = mplang.ConvOp(
+result = mpir.ConvOp(
     result_types=[result_type],
     inputs=[val1, val2, val3]
 )
@@ -157,17 +157,17 @@ result = mplang.ConvOp(
 
 ```python
 from mplang_mlir import ir
-from mplang_mlir.dialects import mplang
+from mplang_mlir.dialects import mpir
 
 ctx = ir.Context()
-mplang.register_dialect(ctx)
+mpir.register_dialect(ctx)
 
 # Parse from string
 mlir_code = """
 module {
   func.func @test(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %mask = arith.constant dense<true> : tensor<3xi1>
-    %0 = mplang.peval @compute(%arg0, %mask) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
+    %0 = mpir.peval @compute(%arg0, %mask) : (tensor<3xf32>, tensor<3xi1>) -> tensor<3xf32>
     return %0 : tensor<3xf32>
   }
 }
@@ -202,15 +202,15 @@ ImportError: No module named 'mplang_mlir'
 
 **Dialect Not Found:**
 ```
-error: 'mplang.peval' op is not registered
+error: 'mpir.peval' op is not registered
 ```
-→ Call `mplang.register_dialect(ctx)` or `mplang.load_dialect(ctx)`
+→ Call `mpir.register_dialect(ctx)` or `mpir.load_dialect(ctx)`
 
 **Build Error:**
 ```
-ninja: error: 'MLIRMplangCAPI', needed by 'MplangPythonModules', missing
+ninja: error: 'MLIRMpirCAPI', needed by 'MpirPythonModules', missing
 ```
-→ Build CAPI first: `ninja MLIRMplangCAPI`
+→ Build CAPI first: `ninja MLIRMpirCAPI`
 
 ## Next Steps
 

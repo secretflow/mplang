@@ -7,9 +7,9 @@
 
 try:
     from ..ir import *  # noqa: F403
-    from ._mplang_enum_gen import *  # noqa: F403
-    from ._mplang_ops_gen import *  # noqa: F403
+    from ._mpir_enum_gen import *  # noqa: F403
+    from ._mpir_ops_gen import *  # noqa: F403
 except ImportError:
     pass
 
-from ._mplang_ops_ext import *  # noqa: F403
+from ._mpir_ops_ext import *  # noqa: F403

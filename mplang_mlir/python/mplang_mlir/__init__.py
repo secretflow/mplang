@@ -1,6 +1,6 @@
-"""Python bindings for Mplang MLIR dialect."""
+"""Python bindings for Mpir MLIR dialect."""
 
-from .dialects import mplang
+from .dialects import mpir
 from .ir import *  # noqa: F403
 
-__all__ = ["mplang"]
+__all__ = ["mpir"]

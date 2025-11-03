@@ -1,4 +1,4 @@
-//===- Registration.cpp - C API for Mplang dialect registration ----------===//
+//===- Registration.cpp - C API for Mpir dialect registration ----------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM
 // Exceptions.
@@ -8,20 +8,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "mplang-c/Registration.h"
-#include "mplang/Dialect/Mplang/MplangDialect.h"
+#include "mplang/Dialect/Mpir/MpirDialect.h"
 
 #include "mlir/CAPI/IR.h"
 
-void mlirContextRegisterMplangDialect(MlirContext context) {
+void mlirContextRegisterMpirDialect(MlirContext context) {
   mlir::DialectRegistry registry;
-  registry.insert<mlir::mplang::MplangDialect>();
+  registry.insert<mlir::mpir::MpirDialect>();
   unwrap(context)->appendDialectRegistry(registry);
 }
 
-void mlirContextLoadMplangDialect(MlirContext context) {
-  unwrap(context)->loadDialect<mlir::mplang::MplangDialect>();
+void mlirContextLoadMpirDialect(MlirContext context) {
+  unwrap(context)->loadDialect<mlir::mpir::MpirDialect>();
 }
 
-MlirStringRef mlirMplangDialectGetNamespace() {
-  return wrap(mlir::mplang::MplangDialect::getDialectNamespace());
+MlirStringRef mlirMpirDialectGetNamespace() {
+  return wrap(mlir::mpir::MpirDialect::getDialectNamespace());
 }

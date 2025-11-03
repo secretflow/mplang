@@ -1,8 +1,8 @@
-add_mlir_public_c_api_library(MLIRMplangCAPI
+add_mlir_public_c_api_library(MLIRMpirCAPI
   Dialects.cpp
   Registration.cpp
 
   LINK_LIBS PUBLIC
-    MLIRMplang
+    MLIRMpir
     MLIRCAPIIR
 )

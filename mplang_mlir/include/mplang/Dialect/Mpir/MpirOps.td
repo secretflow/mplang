@@ -1,29 +1,29 @@
-//===- MplangOps.td ---------------------------------------------*- tablegen -*-===//
-// Mplang SPMD operations: call, shuffle, convergence.
+//===- MpirOps.td ---------------------------------------------*- tablegen -*-===//
+// Mpir SPMD operations: call, shuffle, convergence.
 // All ops describe multi-party behavior in a homogeneous/isomorphic IR.
 //===----------------------------------------------------------------------===//
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "MplangDialect.td"
+include "MpirDialect.td"
 
 //===----------------------------------------------------------------------===//
 // PEvalOp - Multi-party evaluation with static execution mask
 //===----------------------------------------------------------------------===//
 
-def MPLANG_PEvalOp : Op<Mplang_Dialect, "peval", [Pure]> {
+def MPIR_PEvalOp : Op<Mpir_Dialect, "peval", [Pure]> {
   let summary = "SPMD multi-party evaluation with static execution mask";
   let description = [{
     Evaluates a single-party function on a statically-specified subset of parties (mask).
     Supports two modes:
 
     Mode 1 (MLIR function): Use 'callee' to reference an MLIR function symbol
-      %0 = mplang.peval @my_func(%arg0) {mask = 7 : i64}
+      %0 = mpir.peval @my_func(%arg0) {mask = 7 : i64}
            : (tensor<10xf32>) -> tensor<10xf32>
 
     Mode 2 (External backend): Use 'fn_type' to specify an external kernel
-      %1 = mplang.peval (%arg0) {fn_type = "phe.encrypt", mask = 7 : i64}
+      %1 = mpir.peval (%arg0) {fn_type = "phe.encrypt", mask = 7 : i64}
            : (tensor<10xf32>) -> tensor<10xf32>
 
     Single-party semantics: If this party's rank is in the mask, execute the function;
@@ -49,22 +49,22 @@ def MPLANG_PEvalOp : Op<Mplang_Dialect, "peval", [Pure]> {
 
     Examples:
       // Mode 1: Call MLIR function @compute on parties 0,1,2
-      %0 = mplang.peval @compute(%x, %y) {mask = 7 : i64}
+      %0 = mpir.peval @compute(%x, %y) {mask = 7 : i64}
            : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 
       // Mode 2: Call PHE keygen with custom attributes
-      %pk, %sk = mplang.peval () {
+      %pk, %sk = mpir.peval () {
         fn_type = "phe.keygen",
         fn_attrs = {scheme = "paillier", key_size = 2048 : i64},
         mask = 1 : i64
-      } : () -> (!mplang.public_key, !mplang.private_key)
+      } : () -> (!mpir.public_key, !mpir.private_key)
 
       // Mode 2: Call PHE encrypt
-      %ct = mplang.peval (%data, %pk) {
+      %ct = mpir.peval (%data, %pk) {
         fn_type = "phe.encrypt",
         fn_attrs = {fxp_bits = 12 : i64},
         mask = 1 : i64
-      } : (tensor<10xf32>, !mplang.public_key) -> !mplang.ciphertext
+      } : (tensor<10xf32>, !mpir.public_key) -> !mpir.ciphertext
   }];
 
   let arguments = (ins
@@ -91,17 +91,17 @@ def MPLANG_PEvalOp : Op<Mplang_Dialect, "peval", [Pure]> {
 // PEvalDynOp - Multi-party evaluation with dynamic execution
 //===----------------------------------------------------------------------===//
 
-def MPLANG_PEvalDynOp : Op<Mplang_Dialect, "peval_dyn", [Pure]> {
+def MPIR_PEvalDynOp : Op<Mpir_Dialect, "peval_dyn", [Pure]> {
   let summary = "SPMD multi-party evaluation with dynamic execution (mask inferred from args)";
   let description = [{
     Evaluates a single-party function where execution is determined by argument
     availability at runtime. Supports two modes:
 
     Mode 1 (MLIR function): Use 'callee' to reference an MLIR function symbol
-      %0 = mplang.peval_dyn @my_func(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
+      %0 = mpir.peval_dyn @my_func(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
 
     Mode 2 (External backend): Use 'fn_type' to specify an external kernel
-      %1 = mplang.peval_dyn (%arg0) {fn_type = "phe.decrypt"}
+      %1 = mpir.peval_dyn (%arg0) {fn_type = "phe.decrypt"}
            : (tensor<10xf32>) -> tensor<10xf32>
 
     Single-party semantics: If this party has valid arguments (determined by runtime
@@ -125,18 +125,18 @@ def MPLANG_PEvalDynOp : Op<Mplang_Dialect, "peval_dyn", [Pure]> {
 
     Examples:
       // Mode 1: Call MLIR function, execution based on arg availability
-      %0 = mplang.peval_dyn @compute(%x, %y)
+      %0 = mpir.peval_dyn @compute(%x, %y)
            : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 
       // Mode 2: Call basic.read with path attribute
-      %1 = mplang.peval_dyn (%rank) {
+      %1 = mpir.peval_dyn (%rank) {
         fn_type = "basic.read",
         fn_attrs = {path = "/data/file.csv"}
       } : (i64) -> tensor<?x?xf32>
 
       // Mode 2: Call PHE decrypt
-      %2 = mplang.peval_dyn (%ct, %sk) {fn_type = "phe.decrypt"}
-           : (!mplang.ciphertext, !mplang.private_key) -> tensor<10xf32>
+      %2 = mpir.peval_dyn (%ct, %sk) {fn_type = "phe.decrypt"}
+           : (!mpir.ciphertext, !mpir.private_key) -> tensor<10xf32>
   }];
 
   let arguments = (ins
@@ -162,7 +162,7 @@ def MPLANG_PEvalDynOp : Op<Mplang_Dialect, "peval_dyn", [Pure]> {
 // ShuffleStaticOp - Static shuffle with explicit source routing
 //===----------------------------------------------------------------------===//
 
-def MPLANG_ShuffleStaticOp : Op<Mplang_Dialect, "shfl", [Pure]> {
+def MPIR_ShuffleStaticOp : Op<Mpir_Dialect, "shfl", [Pure]> {
   let summary = "SPMD shuffle with static mask and source ranks (pull model)";
   let description = [{
     Redistributes data using a "pull" model: each receiving party specifies which
@@ -189,7 +189,7 @@ def MPLANG_ShuffleStaticOp : Op<Mplang_Dialect, "shfl", [Pure]> {
       - Input/output element types and shapes match
 
     Example:
-      %0 = mplang.shfl %input {mask = 5 : i64, src_ranks = array<i64: 1, 3>}
+      %0 = mpir.shfl %input {mask = 5 : i64, src_ranks = array<i64: 1, 3>}
            : tensor<10xf32> -> tensor<10xf32>
       // mask=5=0b101: parties 0 and 2 receive output
       // Party 0 pulls from rank 1, party 2 pulls from rank 3
@@ -209,7 +209,7 @@ def MPLANG_ShuffleStaticOp : Op<Mplang_Dialect, "shfl", [Pure]> {
 // ShuffleDynOp - Dynamic shuffle
 //===----------------------------------------------------------------------===//
 
-def MPLANG_ShuffleDynOp : Op<Mplang_Dialect, "shfl_dyn", [Pure]> {
+def MPIR_ShuffleDynOp : Op<Mpir_Dialect, "shfl_dyn", [Pure]> {
   let summary = "SPMD shuffle with dynamic mask and source ranks";
   let description = [{
     Dynamic version of shuffle where mask and source routing are runtime values.
@@ -230,7 +230,7 @@ def MPLANG_ShuffleDynOp : Op<Mplang_Dialect, "shfl_dyn", [Pure]> {
     Example:
       %mask = arith.constant 5 : i64
       %ranks = tensor.from_elements %c1, %c3 : tensor<2xi64>
-      %0 = mplang.shfl_dyn %input, %mask, %ranks
+      %0 = mpir.shfl_dyn %input, %mask, %ranks
            : tensor<10xf32>, i64, tensor<2xi64> -> tensor<10xf32>
   }];
 
@@ -248,7 +248,7 @@ def MPLANG_ShuffleDynOp : Op<Mplang_Dialect, "shfl_dyn", [Pure]> {
 // ConvOp - Multi-party convergence (disjoint merge)
 //===----------------------------------------------------------------------===//
 
-def MPLANG_ConvOp : Op<Mplang_Dialect, "conv", [Pure]> {
+def MPIR_ConvOp : Op<Mpir_Dialect, "conv", [Pure]> {
   let summary = "SPMD convergence: merge disjoint-masked values";
   let description = [{
     Logical merge of multiple values with disjoint pmasks into a single distributed
@@ -277,7 +277,7 @@ def MPLANG_ConvOp : Op<Mplang_Dialect, "conv", [Pure]> {
 
     Example:
       // Party 0 has %a (pmask=0b001), party 2 has %b (pmask=0b100)
-      %merged = mplang.conv(%a, %b)
+      %merged = mpir.conv(%a, %b)
                 : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
       // Result has pmask=0b101; party 0 sees %a, party 2 sees %b
   }];

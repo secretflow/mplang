@@ -1,9 +1,9 @@
-//===- MplangOps.h -----------------------------------------------------===//
-// Wrapper header for generated Mplang ops declarations.
+//===- MpirOps.h -------------------------------------------------------===//
+// Wrapper header for generated Mpir ops declarations.
 //===----------------------------------------------------------------------===//
 
-#ifndef MPLANG_DIALECT_MPLANG_MPLANGOPS_H
-#define MPLANG_DIALECT_MPLANG_MPLANGOPS_H
+#ifndef MPLANG_DIALECT_MPIR_MPIROPS_H
+#define MPLANG_DIALECT_MPIR_MPIROPS_H
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/CallInterfaces.h"
@@ -14,6 +14,6 @@
 
 // Generate op class declarations.
 #define GET_OP_CLASSES
-#include "MplangOps.h.inc"
+#include "MpirOps.h.inc"
 
-#endif // MPLANG_DIALECT_MPLANG_MPLANGOPS_H
+#endif // MPLANG_DIALECT_MPIR_MPIROPS_H

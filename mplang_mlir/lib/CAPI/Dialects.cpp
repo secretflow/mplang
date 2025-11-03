@@ -1,4 +1,4 @@
-//===- Dialects.cpp - CAPI for Mplang dialect registration ---------------===//
+//===- Dialects.cpp - CAPI for Mpir dialect registration ---------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM
 // Exceptions.
@@ -8,9 +8,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mplang-c/Dialects.h"
-#include "mplang/Dialect/Mplang/MplangDialect.h"
+#include "mplang/Dialect/Mpir/MpirDialect.h"
 
 #include "mlir/CAPI/Registration.h"
 
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Mplang, mplang,
-                                       mlir::mplang::MplangDialect)
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(Mpir, mpir,
+                                       mlir::mpir::MpirDialect)

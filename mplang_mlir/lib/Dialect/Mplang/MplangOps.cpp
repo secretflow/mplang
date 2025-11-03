@@ -14,6 +14,62 @@ using namespace mlir;
 using namespace mplang;
 
 //===----------------------------------------------------------------------===//
+// PEvalOp verifier
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mplang::PEvalOp::verify() {
+  auto calleeAttr = getCalleeAttr();
+  auto fnTypeAttr = getFnTypeAttr();
+  auto fnAttrsAttr = getFnAttrsAttr();
+
+  // Must have exactly one of callee or fn_type
+  if (!calleeAttr && !fnTypeAttr) {
+    return emitOpError("must specify either 'callee' or 'fn_type'");
+  }
+  if (calleeAttr && fnTypeAttr) {
+    return emitOpError("cannot specify both 'callee' and 'fn_type'");
+  }
+
+  // fn_attrs should only be used with fn_type (Mode 2)
+  if (fnAttrsAttr && calleeAttr) {
+    return emitOpError("'fn_attrs' can only be used with 'fn_type' (external backend mode), not with 'callee'");
+  }
+
+  // TODO: If callee is specified, verify symbol exists and signature matches
+  // TODO: Add pmask validation when pmask attributes are available
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PEvalDynOp verifier
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mplang::PEvalDynOp::verify() {
+  auto calleeAttr = getCalleeAttr();
+  auto fnTypeAttr = getFnTypeAttr();
+  auto fnAttrsAttr = getFnAttrsAttr();
+
+  // Must have exactly one of callee or fn_type
+  if (!calleeAttr && !fnTypeAttr) {
+    return emitOpError("must specify either 'callee' or 'fn_type'");
+  }
+  if (calleeAttr && fnTypeAttr) {
+    return emitOpError("cannot specify both 'callee' and 'fn_type'");
+  }
+
+  // fn_attrs should only be used with fn_type (Mode 2)
+  if (fnAttrsAttr && calleeAttr) {
+    return emitOpError("'fn_attrs' can only be used with 'fn_type' (external backend mode), not with 'callee'");
+  }
+
+  // TODO: If callee is specified, verify symbol exists and signature matches
+  // TODO: Add pmask validation when pmask attributes are available
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConvOp verifier
 //===----------------------------------------------------------------------===//
 
@@ -41,6 +97,22 @@ mlir::LogicalResult mplang::ConvOp::verify() {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// PEvalOp custom assembly format
+// Simplified: use declarative format with custom handling
+//===----------------------------------------------------------------------===//
+
+// We'll use a simpler approach - let TableGen generate most of it
+// and just customize what we need via assemblyFormat in ODS
+
+//===----------------------------------------------------------------------===//
+// PEvalDynOp custom assembly format
+// Simplified: use declarative format with custom handling
+//===----------------------------------------------------------------------===//
+
+// We'll use a simpler approach - let TableGen generate most of it
+// and just customize what we need via assemblyFormat in ODS
 
 #define GET_OP_CLASSES
 #include "MplangOps.cpp.inc"

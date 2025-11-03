@@ -9,103 +9,153 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "MplangDialect.td"
 
 //===----------------------------------------------------------------------===//
-// PCallStaticOp - Static mask private call
+// PEvalOp - Multi-party evaluation with static execution mask
 //===----------------------------------------------------------------------===//
 
-def MPLANG_PCallStaticOp : Op<Mplang_Dialect, "pcall", [Pure, CallOpInterface]> {
-  let summary = "SPMD private call with static execution mask";
+def MPLANG_PEvalOp : Op<Mplang_Dialect, "peval", [Pure]> {
+  let summary = "SPMD multi-party evaluation with static execution mask";
   let description = [{
-    Calls a single-party (private) function on a statically-specified subset of parties (mask).
+    Evaluates a single-party function on a statically-specified subset of parties (mask).
+    Supports two modes:
 
-    Single-party semantics: If this party's rank is in the mask, execute the call;
+    Mode 1 (MLIR function): Use 'callee' to reference an MLIR function symbol
+      %0 = mplang.peval @my_func(%arg0) {mask = 7 : i64}
+           : (tensor<10xf32>) -> tensor<10xf32>
+
+    Mode 2 (External backend): Use 'fn_type' to specify an external kernel
+      %1 = mplang.peval (%arg0) {fn_type = "phe.encrypt", mask = 7 : i64}
+           : (tensor<10xf32>) -> tensor<10xf32>
+
+    Single-party semantics: If this party's rank is in the mask, execute the function;
     otherwise, this is a no-op (does not execute, no side effects).
 
     IR is homogeneous: all parties see the same op in their IR, but only those in
-    the mask actually invoke the callee at runtime.
+    the mask actually invoke the function at runtime.
 
     Attributes:
-      - callee: Symbol reference to the called function
-      - mask: i64 bit-mask indicating which parties execute (bit i = party i)
+      - callee: (Optional) Symbol reference to MLIR function (Mode 1)
+      - fn_type: (Optional) External backend identifier like "basic.add", "phe.encrypt" (Mode 2)
+      - fn_name: (Optional) Function name for debugging/display
+      - fn_attrs: (Optional) Dictionary of attributes passed to backend function (Mode 2 only)
+                  This corresponds to PFunction.attrs in Python (e.g., scheme, key_size, etc.)
+      - mask: (Required) i64 bit-mask indicating which parties execute (bit i = party i)
+
+    At least one of 'callee' or 'fn_type' must be specified.
 
     Verifier checks:
-      - Callee symbol exists and signature matches
-      - Mask is non-negative
-      - (Optional) If arg pmasks are statically known, validate consistency
+      - Exactly one of callee or fn_type is present
+      - If callee exists, verify symbol exists and signature matches
+      - fn_attrs should only be used with fn_type (Mode 2)
 
-    Example:
-      %0 = mplang.pcall @foo(%arg0, %arg1) {mask = 7 : i64}
+    Examples:
+      // Mode 1: Call MLIR function @compute on parties 0,1,2
+      %0 = mplang.peval @compute(%x, %y) {mask = 7 : i64}
            : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-      // Parties 0,1,2 execute @foo; party 3+ see this op but don't execute
+
+      // Mode 2: Call PHE keygen with custom attributes
+      %pk, %sk = mplang.peval () {
+        fn_type = "phe.keygen",
+        fn_attrs = {scheme = "paillier", key_size = 2048 : i64},
+        mask = 1 : i64
+      } : () -> (!mplang.public_key, !mplang.private_key)
+
+      // Mode 2: Call PHE encrypt
+      %ct = mplang.peval (%data, %pk) {
+        fn_type = "phe.encrypt",
+        fn_attrs = {fxp_bits = 12 : i64},
+        mask = 1 : i64
+      } : (tensor<10xf32>, !mplang.public_key) -> !mplang.ciphertext
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$callee,
+    OptionalAttr<SymbolRefAttr>:$callee,
+    OptionalAttr<StrAttr>:$fn_type,
+    OptionalAttr<StrAttr>:$fn_name,
+    OptionalAttr<DictionaryAttr>:$fn_attrs,
     I64Attr:$mask,
     Variadic<AnyType>:$args
   );
   let results = (outs Variadic<AnyType>:$results);
 
-  let assemblyFormat = "$callee `(` $args `)` attr-dict `:` functional-type($args, $results)";
-
-  let extraClassDeclaration = [{
-    /// CallOpInterface methods
-    mlir::Operation::operand_range getArgOperands() { return getArgs(); }
-    mlir::MutableOperandRange getArgOperandsMutable() { return getArgsMutable(); }
-    mlir::CallInterfaceCallable getCallableForCallee() {
-      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-    }
-    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
-    }
+  let assemblyFormat = [{
+    ( $callee^ )?
+    `(` $args `)`
+    attr-dict
+    `:` functional-type($args, $results)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
-// PCallDynOp - Dynamic mask private call
+// PEvalDynOp - Multi-party evaluation with dynamic execution
 //===----------------------------------------------------------------------===//
 
-def MPLANG_PCallDynOp : Op<Mplang_Dialect, "pcall_dyn", [Pure, CallOpInterface]> {
-  let summary = "SPMD private call with dynamic execution (args presence determines execution)";
+def MPLANG_PEvalDynOp : Op<Mplang_Dialect, "peval_dyn", [Pure]> {
+  let summary = "SPMD multi-party evaluation with dynamic execution (mask inferred from args)";
   let description = [{
-    Calls a single-party (private) function where execution is determined by argument
-    availability at runtime.
+    Evaluates a single-party function where execution is determined by argument
+    availability at runtime. Supports two modes:
+
+    Mode 1 (MLIR function): Use 'callee' to reference an MLIR function symbol
+      %0 = mplang.peval_dyn @my_func(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
+
+    Mode 2 (External backend): Use 'fn_type' to specify an external kernel
+      %1 = mplang.peval_dyn (%arg0) {fn_type = "phe.decrypt"}
+           : (tensor<10xf32>) -> tensor<10xf32>
 
     Single-party semantics: If this party has valid arguments (determined by runtime
-    pmask intersection), execute the call; otherwise, no-op.
+    pmask intersection), execute the function; otherwise, no-op.
 
     This models the Python AST's EvalExpr behavior where mask is deduced from args.
 
     Attributes:
-      - callee: Symbol reference to the called function
+      - callee: (Optional) Symbol reference to MLIR function (Mode 1)
+      - fn_type: (Optional) External backend identifier like "basic.add", "phe.decrypt" (Mode 2)
+      - fn_name: (Optional) Function name for debugging/display
+      - fn_attrs: (Optional) Dictionary of attributes passed to backend function (Mode 2 only)
+                  This corresponds to PFunction.attrs in Python
+
+    At least one of 'callee' or 'fn_type' must be specified.
 
     Verifier checks:
-      - Callee symbol exists and signature matches
+      - Exactly one of callee or fn_type is present
+      - If callee exists, verify symbol exists and signature matches
+      - fn_attrs should only be used with fn_type (Mode 2)
 
-    Example:
-      %0 = mplang.pcall_dyn @bar(%arg0, %arg1)
+    Examples:
+      // Mode 1: Call MLIR function, execution based on arg availability
+      %0 = mplang.peval_dyn @compute(%x, %y)
            : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-      // Each party executes if it has both arg0 and arg1 at runtime
+
+      // Mode 2: Call basic.read with path attribute
+      %1 = mplang.peval_dyn (%rank) {
+        fn_type = "basic.read",
+        fn_attrs = {path = "/data/file.csv"}
+      } : (i64) -> tensor<?x?xf32>
+
+      // Mode 2: Call PHE decrypt
+      %2 = mplang.peval_dyn (%ct, %sk) {fn_type = "phe.decrypt"}
+           : (!mplang.ciphertext, !mplang.private_key) -> tensor<10xf32>
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$callee,
+    OptionalAttr<SymbolRefAttr>:$callee,
+    OptionalAttr<StrAttr>:$fn_type,
+    OptionalAttr<StrAttr>:$fn_name,
+    OptionalAttr<DictionaryAttr>:$fn_attrs,
     Variadic<AnyType>:$args
   );
   let results = (outs Variadic<AnyType>:$results);
 
-  let assemblyFormat = "$callee `(` $args `)` attr-dict `:` functional-type($args, $results)";
-
-  let extraClassDeclaration = [{
-    /// CallOpInterface methods
-    mlir::Operation::operand_range getArgOperands() { return getArgs(); }
-    mlir::MutableOperandRange getArgOperandsMutable() { return getArgsMutable(); }
-    mlir::CallInterfaceCallable getCallableForCallee() {
-      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-    }
-    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
-    }
+  let assemblyFormat = [{
+    ( $callee^ )?
+    `(` $args `)`
+    attr-dict
+    `:` functional-type($args, $results)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

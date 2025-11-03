@@ -1,22 +1,57 @@
-// SPMD OpSet test for MPLANG dialect
+// SPMD OpSet test for Mplang dialect
 // RUN: mplang-opt %s | FileCheck %s
 
-// CHECK-LABEL: @test_pcall_static
-func.func @test_pcall_static(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
-  // Test static mask private call - parties 0,1,2 execute
-  // CHECK: mplang.pcall @compute
+// CHECK-LABEL: @test_peval_mlir_func
+func.func @test_peval_mlir_func(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
+  // Test peval with MLIR function reference (Mode 1) - parties 0,1,2 execute
+  // CHECK: mplang.peval @compute
   // CHECK-SAME: mask = 7
-  %0 = mplang.pcall @compute(%arg0, %arg1) {mask = 7 : i64}
+  %0 = mplang.peval @compute(%arg0, %arg1) {mask = 7 : i64}
        : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
 
-// CHECK-LABEL: @test_pcall_dyn
-func.func @test_pcall_dyn(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
-  // Test dynamic private call - execution determined by arg availability
-  // CHECK: mplang.pcall_dyn @compute
-  %0 = mplang.pcall_dyn @compute(%arg0, %arg1)
+// CHECK-LABEL: @test_peval_external
+func.func @test_peval_external(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  // Test peval with external backend (Mode 2) - party 0 executes
+  // CHECK: mplang.peval
+  // CHECK-SAME: fn_type = "phe.encrypt"
+  // CHECK-SAME: mask = 1
+  %0 = mplang.peval (%arg0) {fn_type = "phe.encrypt", mask = 1 : i64}
+       : (tensor<10xf32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @test_peval_with_fn_attrs
+func.func @test_peval_with_fn_attrs() -> (tensor<1xi8>, tensor<1xi8>) {
+  // Test peval with fn_attrs for backend parameters
+  // CHECK: mplang.peval
+  // CHECK-SAME: fn_attrs = {key_size = 2048 : i64, scheme = "paillier"}
+  // CHECK-SAME: fn_type = "phe.keygen"
+  %pk, %sk = mplang.peval () {
+    fn_type = "phe.keygen",
+    fn_attrs = {scheme = "paillier", key_size = 2048 : i64},
+    mask = 1 : i64
+  } : () -> (tensor<1xi8>, tensor<1xi8>)
+  func.return %pk, %sk : tensor<1xi8>, tensor<1xi8>
+}
+
+// CHECK-LABEL: @test_peval_dyn_mlir
+func.func @test_peval_dyn_mlir(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
+  // Test peval_dyn with MLIR function - execution determined by arg availability
+  // CHECK: mplang.peval_dyn @compute
+  %0 = mplang.peval_dyn @compute(%arg0, %arg1)
        : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  func.return %0 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @test_peval_dyn_external
+func.func @test_peval_dyn_external(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  // Test peval_dyn with external backend
+  // CHECK: mplang.peval_dyn
+  // CHECK-SAME: fn_type = "basic.identity"
+  %0 = mplang.peval_dyn (%arg0) {fn_type = "basic.identity"}
+       : (tensor<10xf32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
 

@@ -22,7 +22,7 @@ using namespace mplang;
 #define GET_TYPEDEF_CLASSES
 #include "MPLANGTypes.cpp.inc"
 
-void MPLANGDialect::initialize() {
+void MplangDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "MPLANGOps.cpp.inc"

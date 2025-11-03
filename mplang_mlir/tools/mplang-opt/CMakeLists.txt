@@ -5,6 +5,9 @@ target_link_libraries(mplang-opt PRIVATE
   MLIRParser
   MLIROptLib
   MLIRSupport
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRTensorDialect
 )
 
 # Ensure MLIR headers are available to this tool

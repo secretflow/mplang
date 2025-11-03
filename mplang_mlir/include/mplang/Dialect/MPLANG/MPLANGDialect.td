@@ -4,7 +4,7 @@
 
 include "mlir/IR/DialectBase.td"
 
-def MPLANG_Dialect : Dialect {
+def Mplang_Dialect : Dialect {
   let name = "mplang";
   let cppNamespace = "mplang";
   let summary = "MPLang SPMD dialect (distributed types and SPMD ops)";

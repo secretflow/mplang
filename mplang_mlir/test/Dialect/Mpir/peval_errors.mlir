@@ -107,3 +107,45 @@ module {
     return %pk : !mpir.mp<tensor<0xi8>, 1>
   }
 }
+
+// -----
+
+module {
+  func.func @invalid_output_pmask_exceeds_rmask(%x: !mpir.mp<tensor<10xf32>, 7>)
+                                                -> !mpir.mp<tensor<10xf32>, 7> {
+    // Invalid: rmask=3 (parties 0,1 execute), but output pmask=7 (claims parties 0,1,2 have results)
+    // Only parties that execute (in rmask) can have results
+    // expected-error @+1 {{result pmask 7 is not a subset of rmask 3. Only parties in rmask can have results.}}
+    %result = mpir.peval @compute(%x) {rmask = 3 : i64}
+              : (!mpir.mp<tensor<10xf32>, 7>)
+              -> !mpir.mp<tensor<10xf32>, 7>
+    return %result : !mpir.mp<tensor<10xf32>, 7>
+  }
+}
+
+// -----
+
+module {
+  func.func @valid_output_pmask_subset_of_rmask(%x: !mpir.mp<tensor<10xf32>, 7>)
+                                                -> !mpir.mp<tensor<10xf32>, 3> {
+    // Valid: rmask=7, but only parties 0,1 have output (pmask=3 ⊆ rmask=7)
+    %result = mpir.peval @compute(%x) {rmask = 7 : i64}
+              : (!mpir.mp<tensor<10xf32>, 7>)
+              -> !mpir.mp<tensor<10xf32>, 3>
+    return %result : !mpir.mp<tensor<10xf32>, 3>
+  }
+}
+
+// -----
+
+module {
+  func.func @invalid_single_party_output_wrong_rmask(%x: !mpir.mp<tensor<10xf32>, 3>)
+                                                      -> !mpir.mp<tensor<10xf32>, 2> {
+    // Invalid: Only party 1 executes (rmask=2), but claims party 1 has result while input has parties 0,1
+    // This should actually be valid! rmask=2 ⊆ 3, output pmask=2 ⊆ rmask=2
+    %result = mpir.peval @compute(%x) {rmask = 2 : i64}
+              : (!mpir.mp<tensor<10xf32>, 3>)
+              -> !mpir.mp<tensor<10xf32>, 2>
+    return %result : !mpir.mp<tensor<10xf32>, 2>
+  }
+}

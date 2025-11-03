@@ -60,6 +60,21 @@ mlir::LogicalResult mpir::PEvalOp::verify() {
              << inputPmaskUnion << ". rmask can only execute on parties "
              << "that have input data.";
     }
+
+    // Check output pmask constraint: output_pmask ⊆ rmask
+    // Only parties that execute can have results
+    for (Value result : getResults()) {
+      if (auto mpType = result.getType().dyn_cast<mpir::MPType>()) {
+        int64_t resultPmask = mpType.getPmask();
+
+        // Result pmask must be subset of rmask
+        if ((resultPmask & rmask) != resultPmask) {
+          return emitOpError("result pmask ")
+                 << resultPmask << " is not a subset of rmask "
+                 << rmask << ". Only parties in rmask can have results.";
+        }
+      }
+    }
   }
 
   // TODO: If callee is specified, verify symbol exists and signature matches
@@ -198,12 +213,55 @@ mlir::LogicalResult mpir::ConvOp::verify() {
 // and just customize what we need via assemblyFormat in ODS
 
 //===----------------------------------------------------------------------===//
-// ShuffleStaticOp verifier (TODO: implement pmask checks)
+// ShuffleStaticOp verifier
 //===----------------------------------------------------------------------===//
 
 mlir::LogicalResult mlir::mpir::ShuffleStaticOp::verify() {
-  // TODO: Check src_ranks validity against input pmask
-  // TODO: Verify input/output types match (element type, shape)
+  auto inputType = getInput().getType().cast<mpir::MPType>();
+  auto outputType = getResult().getType().cast<mpir::MPType>();
+
+  // Check 1: Inner types must match (shfl doesn't change values)
+  Type inputInnerType = inputType.getInnerType();
+  Type outputInnerType = outputType.getInnerType();
+
+  if (inputInnerType != outputInnerType) {
+    return emitOpError("shfl does not change value type. ")
+           << "Input inner type: " << inputInnerType
+           << ", output inner type: " << outputInnerType;
+  }
+
+  // Check 2: src_ranks length must equal popcount(output_pmask)
+  auto srcRanks = getSrcRanks();
+  int64_t outputPmask = outputType.getPmask();
+  unsigned numOutputParties = __builtin_popcountll(outputPmask);
+
+  if (srcRanks.size() != numOutputParties) {
+    return emitOpError("src_ranks length (")
+           << srcRanks.size() << ") must equal number of output parties ("
+           << numOutputParties << ", pmask=" << outputPmask << ")";
+  }
+
+  // Check 3: All src_ranks must be valid and in input pmask
+  int64_t inputPmask = inputType.getPmask();
+
+  for (size_t i = 0; i < srcRanks.size(); ++i) {
+    int64_t srcRank = srcRanks[i];
+
+    // Check rank is in valid range [0, 64)
+    if (srcRank < 0 || srcRank >= 64) {
+      return emitOpError("src_ranks[")
+             << i << "] = " << srcRank << " is out of valid range [0, 64)";
+    }
+
+    // Check rank is in input pmask (source party must have data)
+    int64_t srcMask = 1LL << srcRank;
+    if ((inputPmask & srcMask) == 0) {
+      return emitOpError("src_ranks[")
+             << i << "] = " << srcRank << " is not in input pmask "
+             << inputPmask << ". Source party must have data.";
+    }
+  }
+
   return success();
 }
 

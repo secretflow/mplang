@@ -10,17 +10,17 @@ module {
   }
 
   // CHECK-LABEL: func.func @test_encrypted_type
-  func.func @test_encrypted_type(%arg0: !mpir.encrypted<tensor<10xf32>, "paillier">)
-                                 -> !mpir.encrypted<tensor<10xf32>, "paillier"> {
-    // CHECK: %arg0 : !mpir.encrypted<tensor<10xf32>, "paillier">
-    return %arg0 : !mpir.encrypted<tensor<10xf32>, "paillier">
+  func.func @test_encrypted_type(%arg0: !mpir.enc<tensor<10xf32>, "paillier">)
+                                 -> !mpir.enc<tensor<10xf32>, "paillier"> {
+    // CHECK: %arg0 : !mpir.enc<tensor<10xf32>, "paillier">
+    return %arg0 : !mpir.enc<tensor<10xf32>, "paillier">
   }
 
   // CHECK-LABEL: func.func @test_mp_encrypted_type
-  func.func @test_mp_encrypted_type(%arg0: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>)
-                                    -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3> {
-    // CHECK: %arg0 : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>
-    return %arg0 : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>
+  func.func @test_mp_encrypted_type(%arg0: !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>)
+                                    -> !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3> {
+    // CHECK: %arg0 : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>
+    return %arg0 : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>
   }
 
   // CHECK-LABEL: func.func @test_mp_dynamic_type
@@ -47,9 +47,9 @@ module {
   }
 
   // CHECK-LABEL: func.func @test_encrypted_ckks
-  func.func @test_encrypted_ckks(%arg0: !mpir.encrypted<tensor<128xf32>, "ckks">)
-                                 -> !mpir.encrypted<tensor<128xf32>, "ckks"> {
-    // CHECK: %arg0 : !mpir.encrypted<tensor<128xf32>, "ckks">
-    return %arg0 : !mpir.encrypted<tensor<128xf32>, "ckks">
+  func.func @test_encrypted_ckks(%arg0: !mpir.enc<tensor<128xf32>, "ckks">)
+                                 -> !mpir.enc<tensor<128xf32>, "ckks"> {
+    // CHECK: %arg0 : !mpir.enc<tensor<128xf32>, "ckks">
+    return %arg0 : !mpir.enc<tensor<128xf32>, "ckks">
   }
 }

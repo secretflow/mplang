@@ -21,37 +21,46 @@ include "mlir/IR/AttrTypeBase.td"
 include "MpirDialect.td"
 
 //===----------------------------------------------------------------------===//
-// Layer 1: Security/Crypto Types
+// Layer 1: Encoding Types
 //===----------------------------------------------------------------------===//
 
-def MPIR_Encrypted : TypeDef<Mpir_Dialect, "Encrypted"> {
-  let mnemonic = "encrypted";
-  let summary = "Encrypted data with cryptographic schema";
+def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
+  let mnemonic = "enc";
+  let summary = "Encoded data with transformation schema";
   let description = [{
-    Represents encrypted data that preserves the structure of the inner type
-    while adding cryptographic properties.
+    Represents encoded/transformed data that preserves the structure of the inner type
+    while applying an encoding transformation.
 
     The inner type can be any MLIR type (typically tensor or tuple).
-    The schema specifies the encryption algorithm (e.g., "paillier", "ckks", "aes-gcm").
-    Optional crypto_attrs store algorithm-specific parameters (key sizes, scales, etc.).
+    The schema specifies the encoding method, which can be:
+    - Encryption: "paillier", "ckks", "bfv", "aes-gcm", etc.
+    - Secret Sharing: "aby3", "replicated", "additive", "shamir", etc.
+    - Garbled Circuits: "garbled_circuit", "yao", etc.
+    - Plain (identity): "plain" (explicitly unencoded)
 
-    Key insight: Encrypted<T> is still "T-like" - it supports operations on T
-    (e.g., homomorphic addition on Encrypted<tensor>).
+    Optional encoding_attrs store scheme-specific parameters (key sizes, scales, ring size, threshold, etc.).
+
+    Key insight: Encoded<T, schema> is still "T-like" - it supports operations on T
+    under the encoding (e.g., homomorphic ops on encrypted data, MPC ops on secret shares).
 
     Examples:
-      !mpir.encrypted<tensor<10xf32>, "paillier">
-      !mpir.encrypted<tensor<10xf32>, "paillier", {key_size = 2048}>
-      !mpir.encrypted<tensor<10xf32>, "ckks", {scale = 40, level = 5}>
-      !mpir.encrypted<tuple<f32, i64>, "fpe">  // Format-preserving encryption
+      !mpir.enc<tensor<10xf32>, "paillier">                    // PHE encryption
+      !mpir.enc<tensor<10xf32>, "paillier", {key_size = 2048}> // PHE with params
+      !mpir.enc<tensor<10xf32>, "ckks", {scale = 40, level = 5}> // FHE
+      !mpir.enc<tensor<10xf32>, "aby3">                        // ABY3 secret sharing
+      !mpir.enc<tensor<10xf32>, "additive">                    // Additive shares
+      !mpir.enc<tensor<10xf32>, "shamir", {threshold = 2, n = 5}> // Shamir secret sharing
+      !mpir.enc<tuple<f32, i64>, "garbled_circuit">           // Garbled circuit
+      !mpir.enc<tensor<10xf32>, "plain">                      // Explicitly plain
   }];
 
   let parameters = (ins
     "::mlir::Type":$innerType,
     "::std::string":$schema,
-    OptionalParameter<"::mlir::DictionaryAttr">:$cryptoAttrs
+    OptionalParameter<"::mlir::DictionaryAttr">:$encodingAttrs
   );
 
-  let assemblyFormat = "`<` $innerType `,` $schema (`,` $cryptoAttrs^)? `>`";
+  let assemblyFormat = "`<` $innerType `,` $schema (`,` $encodingAttrs^)? `>`";
 
   let builders = [
     TypeBuilderWithInferredContext<(ins
@@ -63,29 +72,29 @@ def MPIR_Encrypted : TypeDef<Mpir_Dialect, "Encrypted"> {
     TypeBuilderWithInferredContext<(ins
       "::mlir::Type":$innerType,
       "::llvm::StringRef":$schema,
-      "::mlir::DictionaryAttr":$cryptoAttrs
+      "::mlir::DictionaryAttr":$encodingAttrs
     ), [{
-      return $_get(innerType.getContext(), innerType, schema.str(), cryptoAttrs);
+      return $_get(innerType.getContext(), innerType, schema.str(), encodingAttrs);
     }]>
   ];
 
   let extraClassDeclaration = [{
-    /// Check if this encrypts a tensor type
-    bool isTensorEncrypted() const {
+    /// Check if this encodes a tensor type
+    bool isTensorEncoded() const {
       return ::mlir::isa<::mlir::TensorType>(getInnerType());
     }
 
-    /// Check if this encrypts a tuple type
-    bool isTupleEncrypted() const {
+    /// Check if this encodes a tuple type
+    bool isTupleEncoded() const {
       return ::mlir::isa<::mlir::TupleType>(getInnerType());
     }
 
-    /// Get the underlying tensor type if this encrypts a tensor
+    /// Get the underlying tensor type if this encodes a tensor
     ::mlir::TensorType getTensorType() const {
       return ::mlir::dyn_cast<::mlir::TensorType>(getInnerType());
     }
 
-    /// Get the underlying tuple type if this encrypts a tuple
+    /// Get the underlying tuple type if this encodes a tuple
     ::mlir::TupleType getTupleType() const {
       return ::mlir::dyn_cast<::mlir::TupleType>(getInnerType());
     }
@@ -104,7 +113,7 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
 
     The inner type can be:
     - MLIR builtin types (tensor, tuple, etc.)
-    - Encrypted types (!mpir.encrypted<...>)
+    - Encoded types (!mpir.enc<...>) for encrypted/secret-shared data
     - Any other type that makes sense in multi-party context
 
     The pmask (party mask) is a 64-bit integer where bit i indicates party i
@@ -113,13 +122,14 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
     Design Philosophy:
     - pmask is a SEMANTIC property: "who holds this data"
     - Distinct from execution mask (rmask): "who executes this operation"
-    - Type composition enables: MP<Encrypted<Tensor>> = encrypted tensor held by subset of parties
+    - Type composition enables: MP<Encoded<Tensor>> = encoded tensor held by subset of parties
 
     Examples:
-      !mpir.mp<tensor<10xf32>, 7>                               // Plaintext on parties 0,1,2
-      !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 1>  // Ciphertext on party 0
-      !mpir.mp<tuple<f32, i64>, 3>                              // Tuple on parties 0,1
-      !mpir.mp<!mpir.encrypted<tuple<f32, i64>, "fpe">, 15>     // Encrypted tuple on parties 0-3
+      !mpir.mp<tensor<10xf32>, 7>                          // Plaintext on parties 0,1,2
+      !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>   // Encrypted on party 0
+      !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3">, 7>       // Secret shares on parties 0,1,2
+      !mpir.mp<tuple<f32, i64>, 3>                         // Tuple on parties 0,1
+      !mpir.mp<!mpir.enc<tuple<f32, i64>, "additive">, 3>  // Additive shares on parties 0,1
   }];
 
   let parameters = (ins
@@ -162,50 +172,50 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
       return __builtin_popcountll(getPmask());
     }
 
-    /// Check if inner type is a tensor (direct or through encryption)
+    /// Check if inner type is a tensor (direct or through encoding)
     bool isTensor() const {
       if (::mlir::isa<::mlir::TensorType>(getInnerType()))
         return true;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
-        return enc.isTensorEncrypted();
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.isTensorEncoded();
       return false;
     }
 
-    /// Check if inner type is a tuple (direct or through encryption)
+    /// Check if inner type is a tuple (direct or through encoding)
     bool isTuple() const {
       if (::mlir::isa<::mlir::TupleType>(getInnerType()))
         return true;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
-        return enc.isTupleEncrypted();
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.isTupleEncoded();
       return false;
     }
 
-    /// Check if inner type is encrypted
-    bool isEncrypted() const {
-      return ::mlir::isa<::mlir::mpir::EncryptedType>(getInnerType());
+    /// Check if inner type is encoded
+    bool isEncoded() const {
+      return ::mlir::isa<::mlir::mpir::EncodedType>(getInnerType());
     }
 
-    /// Get the underlying tensor type (works through encrypted wrapper)
+    /// Get the underlying tensor type (works through encoded wrapper)
     ::mlir::TensorType getTensorType() const {
       if (auto tensor = ::mlir::dyn_cast<::mlir::TensorType>(getInnerType()))
         return tensor;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
         return enc.getTensorType();
       return nullptr;
     }
 
-    /// Get the underlying tuple type (works through encrypted wrapper)
+    /// Get the underlying tuple type (works through encoded wrapper)
     ::mlir::TupleType getTupleType() const {
       if (auto tuple = ::mlir::dyn_cast<::mlir::TupleType>(getInnerType()))
         return tuple;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
         return enc.getTupleType();
       return nullptr;
     }
 
-    /// Get encryption schema if inner type is encrypted
-    ::std::optional<::llvm::StringRef> getEncryptionSchema() const {
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
+    /// Get encoding schema if inner type is encoded
+    ::std::optional<::llvm::StringRef> getEncodingSchema() const {
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
         return enc.getSchema();
       return ::std::nullopt;
     }
@@ -229,7 +239,7 @@ def MPIR_MPDynamic : TypeDef<Mpir_Dialect, "MPDynamic"> {
 
     Example:
       !mpir.mp_dynamic<tensor<10xf32>>
-      !mpir.mp_dynamic<!mpir.encrypted<tensor<10xf32>, "ckks">>
+      !mpir.mp_dynamic<!mpir.enc<tensor<10xf32>, "ckks">>
   }];
 
   let parameters = (ins "::mlir::Type":$innerType);
@@ -246,21 +256,21 @@ def MPIR_MPDynamic : TypeDef<Mpir_Dialect, "MPDynamic"> {
     bool isTensor() const {
       if (::mlir::isa<::mlir::TensorType>(getInnerType()))
         return true;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
-        return enc.isTensorEncrypted();
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.isTensorEncoded();
       return false;
     }
 
-    /// Check if inner type is encrypted
-    bool isEncrypted() const {
-      return ::mlir::isa<::mlir::mpir::EncryptedType>(getInnerType());
+    /// Check if inner type is encoded
+    bool isEncoded() const {
+      return ::mlir::isa<::mlir::mpir::EncodedType>(getInnerType());
     }
 
-    /// Get the underlying tensor type (works through encrypted wrapper)
+    /// Get the underlying tensor type (works through encoded wrapper)
     ::mlir::TensorType getTensorType() const {
       if (auto tensor = ::mlir::dyn_cast<::mlir::TensorType>(getInnerType()))
         return tensor;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncryptedType>(getInnerType()))
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
         return enc.getTensorType();
       return nullptr;
     }
@@ -272,8 +282,8 @@ def MPIR_MPDynamic : TypeDef<Mpir_Dialect, "MPDynamic"> {
 //===----------------------------------------------------------------------===//
 
 // Base type constraints
-def MPIR_EncryptedType : Type<CPred<"::llvm::isa<::mlir::mpir::EncryptedType>($_self)">,
-                               "Encrypted type", "::mlir::mpir::EncryptedType">;
+def MPIR_EncodedType : Type<CPred<"::llvm::isa<::mlir::mpir::EncodedType>($_self)">,
+                             "Encoded type", "::mlir::mpir::EncodedType">;
 
 def MPIR_MPType : Type<CPred<"::llvm::isa<::mlir::mpir::MPType>($_self)">,
                        "Multi-party type (static pmask)", "::mlir::mpir::MPType">;
@@ -293,51 +303,51 @@ def MPIR_AnyMPType : AnyTypeOf<[MPIR_MPType, MPIR_MPDynamicType],
 def MPIR_MPTensor : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
         "::llvm::cast<::mlir::mpir::MPType>($_self).isTensor() && "
-        "!::llvm::cast<::mlir::mpir::MPType>($_self).isEncrypted()">,
+        "!::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
   "Multi-party plaintext tensor",
   "::mlir::mpir::MPType"
 >;
 
-// Pattern: MP<Encrypted<Tensor>> - encrypted tensor distributed across parties (METensor)
+// Pattern: MP<Encoded<Tensor>> - encoded tensor distributed across parties (METensor)
 def MPIR_METensor : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
         "::llvm::cast<::mlir::mpir::MPType>($_self).isTensor() && "
-        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncrypted()">,
-  "Multi-party encrypted tensor",
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
+  "Multi-party encoded tensor",
   "::mlir::mpir::MPType"
 >;
 
-// Pattern: MP<Tensor> | MP<Encrypted<Tensor>> - any tensor (plain or encrypted)
+// Pattern: MP<Tensor> | MP<Encoded<Tensor>> - any tensor (plain or encoded)
 def MPIR_MPAnyTensor : AnyTypeOf<[MPIR_MPTensor, MPIR_METensor],
-                                 "Multi-party tensor (plaintext or encrypted)">;
+                                 "Multi-party tensor (plaintext or encoded)">;
 
 // Pattern: MP<Tuple> - plaintext table distributed across parties
 def MPIR_MPTable : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
         "::llvm::cast<::mlir::mpir::MPType>($_self).isTuple() && "
-        "!::llvm::cast<::mlir::mpir::MPType>($_self).isEncrypted()">,
+        "!::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
   "Multi-party plaintext table",
   "::mlir::mpir::MPType"
 >;
 
-// Pattern: MP<Encrypted<Tuple>> - encrypted table distributed across parties
+// Pattern: MP<Encoded<Tuple>> - encoded table distributed across parties
 def MPIR_METable : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
         "::llvm::cast<::mlir::mpir::MPType>($_self).isTuple() && "
-        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncrypted()">,
-  "Multi-party encrypted table",
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
+  "Multi-party encoded table",
   "::mlir::mpir::MPType"
 >;
 
-// Pattern: MP<Tuple> | MP<Encrypted<Tuple>> - any table (plain or encrypted)
+// Pattern: MP<Tuple> | MP<Encoded<Tuple>> - any table (plain or encoded)
 def MPIR_MPAnyTable : AnyTypeOf<[MPIR_MPTable, MPIR_METable],
-                                "Multi-party table (plaintext or encrypted)">;
+                                "Multi-party table (plaintext or encoded)">;
 
-// Pattern: MP<Encrypted<*>> - any encrypted multi-party value
-def MPIR_MPEncrypted : Type<
+// Pattern: MP<Encoded<*>> - any encoded multi-party value
+def MPIR_MPEncoded : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
-        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncrypted()">,
-  "Multi-party encrypted value",
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
+  "Multi-party encoded value",
   "::mlir::mpir::MPType"
 >;
 

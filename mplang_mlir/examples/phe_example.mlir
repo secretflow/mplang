@@ -34,8 +34,8 @@ module {
   func.func @phe_encrypt(%x0: !mpir.mp<tensor<100xf32>, 1>,
                          %x1: !mpir.mp<tensor<100xf32>, 2>,
                          %pk: !mpir.mp<tensor<0xi8>, 1>)
-                         -> (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>,
-                             !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>) {
+                         -> (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>,
+                             !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>) {
     // Broadcast pk to Party 1 for encryption
     // conv combines Party 0's pk into a value visible to both parties
     %pk_shared = mpir.conv(%pk) : (!mpir.mp<tensor<0xi8>, 1>)
@@ -45,48 +45,48 @@ module {
     %enc_x0 = mpir.peval @phe_encrypt_op(%x0, %pk_shared) {
       rmask = 1 : i64
     } : (!mpir.mp<tensor<100xf32>, 1>, !mpir.mp<tensor<0xi8>, 3>)
-      -> !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>
+      -> !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>
 
     // Party 1 encrypts x1 with pk
     %enc_x1 = mpir.peval @phe_encrypt_op(%x1, %pk_shared) {
       rmask = 2 : i64
     } : (!mpir.mp<tensor<100xf32>, 2>, !mpir.mp<tensor<0xi8>, 3>)
-      -> !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>
+      -> !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>
 
-    return %enc_x0, %enc_x1 : !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>,
-                              !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>
+    return %enc_x0, %enc_x1 : !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>,
+                              !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>
   }
 
   // Step 4: Homomorphic computation
   // Add encrypted values from both parties
-  func.func @phe_add(%enc_x0: !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>,
-                     %enc_x1: !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>)
-                     -> !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3> {
+  func.func @phe_add(%enc_x0: !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>,
+                     %enc_x1: !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>)
+                     -> !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3> {
     // Combine encrypted values from both parties
     %enc_combined = mpir.conv(%enc_x0, %enc_x1)
-                    : (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>,
-                       !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>)
-                    -> !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>
+                    : (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>,
+                       !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>)
+                    -> !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>
 
     // Perform homomorphic addition
     // Both parties can compute on encrypted data without decryption
     %result = mpir.peval @phe_add_op(%enc_combined) {
       rmask = 3 : i64
-    } : (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>)
-      -> !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>
+    } : (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>)
+      -> !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>
 
-    return %result : !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>
+    return %result : !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>
   }
 
   // Step 5: Decryption
   // Party 0 decrypts the final result using secret key
-  func.func @phe_decrypt(%enc_result: !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>,
+  func.func @phe_decrypt(%enc_result: !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>,
                          %sk: !mpir.mp<tensor<0xi8>, 1>)
                          -> !mpir.mp<tensor<100xf32>, 1> {
     // Only Party 0 performs decryption (has secret key)
     %result = mpir.peval @phe_decrypt_op(%enc_result, %sk) {
       rmask = 1 : i64
-    } : (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>,
+    } : (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>,
          !mpir.mp<tensor<0xi8>, 1>)
       -> !mpir.mp<tensor<100xf32>, 1>
 
@@ -105,18 +105,18 @@ module {
                        : (!mpir.mp<tensor<100xf32>, 1>,
                           !mpir.mp<tensor<100xf32>, 2>,
                           !mpir.mp<tensor<0xi8>, 1>)
-                       -> (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>,
-                           !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>)
+                       -> (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>,
+                           !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>)
 
     // Compute on encrypted data
     %enc_result = call @phe_add(%enc_x0, %enc_x1)
-                  : (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 1>,
-                     !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 2>)
-                  -> !mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>
+                  : (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 1>,
+                     !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 2>)
+                  -> !mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>
 
     // Decrypt result
     %result = call @phe_decrypt(%enc_result, %sk)
-              : (!mpir.mp<!mpir.encrypted<tensor<100xf32>, paillier>, 3>,
+              : (!mpir.mp<!mpir.enc<tensor<100xf32>, paillier>, 3>,
                  !mpir.mp<tensor<0xi8>, 1>)
               -> !mpir.mp<tensor<100xf32>, 1>
 

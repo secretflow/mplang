@@ -109,8 +109,8 @@ bool mlir::mpir::isMPDynamicType(Type type) {
   return type.isa<MPDynamicType>();
 }
 
-bool mlir::mpir::isEncryptedType(Type type) {
-  return type.isa<EncryptedType>();
+bool mlir::mpir::isEncodedType(Type type) {
+  return type.isa<EncodedType>();
 }
 
 Type mlir::mpir::extractInnerType(Type type) {

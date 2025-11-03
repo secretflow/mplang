@@ -19,7 +19,7 @@ namespace mpir {
 // Forward declarations of generated types
 class MPType;
 class MPDynamicType;
-class EncryptedType;
+class EncodedType;
 
 //===----------------------------------------------------------------------===//
 // Pmask Extraction and Manipulation
@@ -69,8 +69,8 @@ bool isMPType(Type type);
 /// Check if type is MPDynamicType.
 bool isMPDynamicType(Type type);
 
-/// Check if type is EncryptedType.
-bool isEncryptedType(Type type);
+/// Check if type is EncodedType.
+bool isEncodedType(Type type);
 
 /// Extract inner type from MP<T, pmask> or MPDynamic<T>.
 /// Returns the T part, or Type() if not an MP type.

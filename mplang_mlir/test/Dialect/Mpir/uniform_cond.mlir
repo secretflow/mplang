@@ -34,17 +34,17 @@ module {
 
   // CHECK-LABEL: func.func @uniform_cond_encrypted
   func.func @uniform_cond_encrypted(%pred: !mpir.mp<i1, 3>,
-                                    %enc_a: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>,
-                                    %enc_b: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>)
-                                    -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3> {
-    // CHECK: mpir.uniform_cond %{{.*}} : !mpir.mp<i1, 3> -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>
+                                    %enc_a: !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>,
+                                    %enc_b: !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>)
+                                    -> !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3> {
+    // CHECK: mpir.uniform_cond %{{.*}} : !mpir.mp<i1, 3> -> !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>
     %result = mpir.uniform_cond %pred : !mpir.mp<i1, 3>
-              -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3> {
-      mpir.return %enc_a : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>
+              -> !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3> {
+      mpir.return %enc_a : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>
     } {
-      mpir.return %enc_b : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>
+      mpir.return %enc_b : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>
     }
-    return %result : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 3>
+    return %result : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>
   }
 
   // CHECK-LABEL: func.func @uniform_cond_with_peval

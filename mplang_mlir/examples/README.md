@@ -17,13 +17,13 @@ The Mpir dialect is an MLIR-based IR designed for expressing multi-party computa
 Demonstrates a complete Paillier encryption workflow:
 - Key generation on a single party
 - Encryption of private data from multiple parties
-- Homomorphic addition on encrypted data
+- Homomorphic addition on encoded data
 - Decryption of results
 
 **Key concepts:**
 - `peval` operation with `rmask` to control execution parties
-- `conv` operation to share public keys and combine encrypted values
-- `MP<Encrypted<T, schema>, pmask>` type for encrypted data
+- `conv` operation to share public keys and combine encoded values
+- `MP<Encoded<T, schema>, pmask>` type for encoded data
 
 **Run:**
 ```bash
@@ -82,10 +82,10 @@ The Mpir type system tracks data ownership and encryption:
 !mpir.mp<tensor<10xf32>, 7>        // Parties 0,1,2 have tensor<10xf32>
 
 // Encrypted value
-!mpir.encrypted<tensor<10xf32>, paillier>  // Paillier-encrypted tensor
+!mpir.enc<tensor<10xf32>, paillier>  // Paillier-encrypted tensor
 
 // Multi-party encrypted value
-!mpir.mp<!mpir.encrypted<tensor<10xf32>, paillier>, 3>  // Parties 0,1 have encrypted data
+!mpir.mp<!mpir.enc<tensor<10xf32>, paillier>, 3>  // Parties 0,1 have encoded data
 
 // Dynamic party mask (runtime-determined)
 !mpir.mp_dynamic<tensor<10xf32>>   // Party ownership determined at runtime

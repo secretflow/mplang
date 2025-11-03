@@ -23,12 +23,12 @@ module {
   }
 
   // Shuffle encrypted data
-  func.func @shfl_encrypted(%enc: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 1>)
-                            -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 2> {
+  func.func @shfl_encrypted(%enc: !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>)
+                            -> !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 2> {
     %result = mpir.shfl %enc {src_ranks = array<i64: 0>}
-              : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 1>
-              -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 2>
-    return %result : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 2>
+              : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>
+              -> !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 2>
+    return %result : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 2>
   }
 
   // Multiple sources: parties 0,1 -> parties 2,3
@@ -56,30 +56,30 @@ module {
   }
 
   // Secret sharing distribution pattern
-  func.func @shfl_share_distribution(%share0: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>,
-                                     %share1: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>,
-                                     %share2: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>)
-                                     -> (!mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>,
-                                         !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 2>,
-                                         !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 4>) {
+  func.func @shfl_share_distribution(%share0: !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>,
+                                     %share1: !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>,
+                                     %share2: !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>)
+                                     -> (!mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>,
+                                         !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 2>,
+                                         !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 4>) {
     // Party 0 keeps share0
     %s0_at_p0 = mpir.shfl %share0 {src_ranks = array<i64: 0>}
-                : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>
-                -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>
+                : !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>
+                -> !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>
 
     // Share1 goes to party 1
     %s1_at_p1 = mpir.shfl %share1 {src_ranks = array<i64: 0>}
-                : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>
-                -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 2>
+                : !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>
+                -> !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 2>
 
     // Share2 goes to party 2
     %s2_at_p2 = mpir.shfl %share2 {src_ranks = array<i64: 0>}
-                : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>
-                -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 4>
+                : !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>
+                -> !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 4>
 
     return %s0_at_p0, %s1_at_p1, %s2_at_p2
-           : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 1>,
-             !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 2>,
-             !mpir.mp<!mpir.encrypted<tensor<10xf32>, "aby3_share">, 4>
+           : !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 1>,
+             !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 2>,
+             !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3_share">, 4>
   }
 }

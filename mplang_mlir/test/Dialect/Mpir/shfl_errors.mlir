@@ -59,13 +59,13 @@ module {
 // -----
 
 module {
-  func.func @shfl_encryption_schema_mismatch(%x: !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 1>)
-                                             -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "ckks">, 2> {
+  func.func @shfl_encryption_schema_mismatch(%x: !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>)
+                                             -> !mpir.mp<!mpir.enc<tensor<10xf32>, "ckks">, 2> {
     // Invalid: encryption schema changes (paillier -> ckks)
     // expected-error @+1 {{shfl does not change value type}}
     %result = mpir.shfl %x {src_ranks = array<i64: 0>}
-              : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "paillier">, 1>
-              -> !mpir.mp<!mpir.encrypted<tensor<10xf32>, "ckks">, 2>
-    return %result : !mpir.mp<!mpir.encrypted<tensor<10xf32>, "ckks">, 2>
+              : !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>
+              -> !mpir.mp<!mpir.enc<tensor<10xf32>, "ckks">, 2>
+    return %result : !mpir.mp<!mpir.enc<tensor<10xf32>, "ckks">, 2>
   }
 }

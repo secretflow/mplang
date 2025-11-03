@@ -7,6 +7,7 @@
 
 #include "mlir/IR/Types.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 
 // Generate typedef class declarations.
 #define GET_TYPEDEF_CLASSES

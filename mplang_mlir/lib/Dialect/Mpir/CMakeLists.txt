@@ -22,6 +22,7 @@ add_mlir_library(MLIRMPIR
   MpirDialect.cpp
   MpirOps.cpp
   MpirTypes.cpp
+  MpirTypeUtils.cpp
 
   DEPENDS
     MLIRMPIRIncGen

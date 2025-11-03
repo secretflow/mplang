@@ -9,19 +9,19 @@ set(LLVM_TARGET_DEFINITIONS ${MLIR_MPIR_TD_DIR}/MpirOps.td)
 mlir_tablegen(MpirOps.h.inc -gen-op-decls -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
 mlir_tablegen(MpirOps.cpp.inc -gen-op-defs -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
 
-set(LLVM_TARGET_DEFINITIONS ${MLIR_MPIR_TD_DIR}/MplangTypes.td)
-mlir_tablegen(MplangTypes.h.inc -gen-typedef-decls -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
-mlir_tablegen(MplangTypes.cpp.inc -gen-typedef-defs -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
+set(LLVM_TARGET_DEFINITIONS ${MLIR_MPIR_TD_DIR}/MpirTypes.td)
+mlir_tablegen(MpirTypes.h.inc -gen-typedef-decls -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
+mlir_tablegen(MpirTypes.cpp.inc -gen-typedef-defs -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
 
 set(LLVM_TARGET_DEFINITIONS ${MLIR_MPIR_TD_DIR}/MpirDialect.td)
-mlir_tablegen(MpirDialect.h.inc -gen-dialect-decls -dialect=mplang -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
-mlir_tablegen(MpirDialect.cpp.inc -gen-dialect-defs -dialect=mplang -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
+mlir_tablegen(MpirDialect.h.inc -gen-dialect-decls -dialect=mpir -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
+mlir_tablegen(MpirDialect.cpp.inc -gen-dialect-defs -dialect=mpir -I ${MLIR_INCLUDE_DIRS} -I ${MLIR_MPIR_TD_DIR})
 add_public_tablegen_target(MLIRMPIRIncGen)
 
 add_mlir_library(MLIRMPIR
   MpirDialect.cpp
   MpirOps.cpp
-  MplangTypes.cpp
+  MpirTypes.cpp
 
   DEPENDS
     MLIRMPIRIncGen

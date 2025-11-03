@@ -2,10 +2,11 @@
 // Wrapper header for generated Mpir types declarations.
 //===----------------------------------------------------------------------===//
 
-#ifndef MPLANG_DIALECT_MPIR_MPLANGTYPES_H
-#define MPLANG_DIALECT_MPIR_MPLANGTYPES_H
+#ifndef MPLANG_DIALECT_MPIR_MPIRTYPES_H
+#define MPLANG_DIALECT_MPIR_MPIRTYPES_H
 
 #include "mlir/IR/Types.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 // Generate typedef class declarations.
 #define GET_TYPEDEF_CLASSES
@@ -22,4 +23,4 @@ namespace mpir {
 void registerMpirTypes(::mlir::Dialect &dialect);
 }
 
-#endif // MPLANG_DIALECT_MPIR_MPLANGTYPES_H
+#endif // MPLANG_DIALECT_MPIR_MPIRTYPES_H

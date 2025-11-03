@@ -35,23 +35,26 @@ mlir::LogicalResult mpir::PEvalOp::verify() {
     return emitOpError("'fn_attrs' can only be used with 'fn_type' (external backend mode), not with 'callee'");
   }
 
-  // Check rmask constraint: rmask ⊆ input pmask union
+  // Check rmask constraint: rmask ⊆ input pmask union (only if there are MP inputs)
   auto rmaskAttr = getRmaskAttr();
   if (rmaskAttr) {
     int64_t rmask = rmaskAttr.getInt();
 
     // Compute union of input pmasks
     int64_t inputPmaskUnion = 0;
+    bool hasMPInputs = false;
     for (Value arg : getArgs()) {
       Type argType = arg.getType();
       if (auto mpType = argType.dyn_cast<mpir::MPType>()) {
         inputPmaskUnion |= mpType.getPmask();
+        hasMPInputs = true;
       }
       // Non-MP types don't contribute to pmask union
     }
 
-    // Check if rmask is subset of input pmask union
-    if ((rmask & inputPmaskUnion) != rmask) {
+    // Check if rmask is subset of input pmask union (only if there are MP inputs)
+    // For operations without MP inputs (e.g., keygen), rmask can be freely specified
+    if (hasMPInputs && (rmask & inputPmaskUnion) != rmask) {
       return emitOpError("rmask ")
              << rmask << " is not a subset of input pmask union "
              << inputPmaskUnion << ". rmask can only execute on parties "

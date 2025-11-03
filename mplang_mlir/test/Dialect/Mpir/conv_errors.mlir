@@ -51,7 +51,7 @@ module {
                                               %b: !mpir.mp<tensor<10xi32>, 2>)
                                               -> !mpir.mp<tensor<10xf32>, 3> {
     // Invalid: inner types don't match (f32 vs i32)
-    // expected-error @+1 {{all inputs must have same inner type, got MP<tensor<10xf32>> and MP<tensor<10xi32>>}}
+    // expected-error @+1 {{all inputs must have same inner type, got MP<'tensor<10xf32>'> and MP<'tensor<10xi32>'>}}
     %result = mpir.conv(%a, %b)
               : (!mpir.mp<tensor<10xf32>, 1>, !mpir.mp<tensor<10xi32>, 2>)
               -> !mpir.mp<tensor<10xf32>, 3>

@@ -7,7 +7,7 @@ module {
                                   %a: !mpir.mp<tensor<10xf32>, 7>,
                                   %b: !mpir.mp<tensor<10xf32>, 7>)
                                   -> !mpir.mp<tensor<10xf32>, 7> {
-    // expected-error @+1 {{condition must be MP<i1, pmask>, got MP<tensor<10xi1>, pmask>}}
+    // expected-error @+1 {{condition must be MP<i1, pmask>, got MP<'tensor<10xi1>', pmask>}}
     %result = mpir.uniform_cond %pred : !mpir.mp<tensor<10xi1>, 7>
               -> !mpir.mp<tensor<10xf32>, 7> {
       mpir.return %a : !mpir.mp<tensor<10xf32>, 7>
@@ -43,7 +43,7 @@ module {
                                      %a: !mpir.mp<tensor<10xf32>, 7>,
                                      %b: !mpir.mp<tensor<20xf32>, 7>)
                                      -> !mpir.mp<tensor<10xf32>, 7> {
-    // expected-error @+1 {{then branch returns type !mpir.mp<tensor<10xf32>, 7> at position 0, but else branch returns type !mpir.mp<tensor<20xf32>, 7>}}
+    // expected-error @+1 {{then branch returns type '!mpir.mp<tensor<10xf32>, 7>' at position 0, but else branch returns type '!mpir.mp<tensor<20xf32>, 7>'}}
     %result = mpir.uniform_cond %pred : !mpir.mp<i1, 7>
               -> !mpir.mp<tensor<10xf32>, 7> {
       mpir.return %a : !mpir.mp<tensor<10xf32>, 7>

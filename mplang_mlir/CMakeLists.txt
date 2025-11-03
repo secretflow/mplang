@@ -22,4 +22,10 @@ include(TableGen)
 include(AddMLIR)
 
 add_subdirectory(lib/Dialect/Mplang)
+add_subdirectory(lib/CAPI)
 add_subdirectory(tools/mplang-opt)
+
+# Python bindings
+if(MLIR_ENABLE_BINDINGS_PYTHON)
+  add_subdirectory(python)
+endif()

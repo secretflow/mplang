@@ -1,0 +1,239 @@
+#  Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+#  See https://llvm.org/LICENSE.txt for license information.
+#  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+"""Extensions for Mplang dialect ops.
+
+This module extends the auto-generated ops from _mplang_ops_gen.py
+with more Pythonic builders following MLIR best practices.
+
+Pattern (from mlir/python/mlir/dialects/arith.py):
+1. TableGen generates _mplang_ops_gen.py with default builders
+2. Use @_ods_cext.register_operation(_Dialect, replace=True) to extend ops
+3. Override __init__ to provide Pythonic API, call super().__init__()
+4. NO manual builder functions or monkey-patching
+"""
+
+from collections.abc import Sequence
+from typing import Any
+
+try:
+    from ..ir import (
+        Attribute,
+        BoolAttr,
+        DictionaryAttr,
+        FlatSymbolRefAttr,
+        FloatAttr,
+        IntegerAttr,
+        IntegerType,
+        StringAttr,
+        Type,
+        Value,
+    )
+    from . import _mplang_ops_gen as _cext
+    from ._mplang_ops_gen import _Dialect
+except ImportError:
+    pass
+
+
+def _python_value_to_attribute(value: Any) -> Attribute:
+    """Convert Python value to MLIR attribute.
+
+    This helper enables natural Python syntax for backend attributes:
+        fn_attrs = {"scheme": "paillier", "key_size": 2048}
+
+    Args:
+        value: Python value (int, float, str, bool, dict)
+
+    Returns:
+        Corresponding MLIR attribute
+
+    Raises:
+        TypeError: If value type cannot be converted
+    """
+    if isinstance(value, bool):
+        return BoolAttr.get(value)
+    if isinstance(value, int):
+        return IntegerAttr.get(IntegerType.get_signless(64), value)
+    if isinstance(value, float):
+        return FloatAttr.get_f64(value)
+    if isinstance(value, str):
+        return StringAttr.get(value)
+    if isinstance(value, dict):
+        # Recursive conversion for nested dicts
+        attr_dict = {k: _python_value_to_attribute(v) for k, v in value.items()}
+        return DictionaryAttr.get(attr_dict)
+
+    msg = f"Cannot convert Python value of type {type(value)} to MLIR attribute"
+    raise TypeError(msg)
+
+
+# Register extended PEvalOp with more Pythonic __init__
+# This follows the pattern from mlir/python/mlir/dialects/arith.py
+@_cext.register_operation(_Dialect, replace=True)
+class PEvalOp(_cext.PEvalOp):
+    """Specialization for PEval operation.
+
+    Provides dual-mode construction:
+    1. MLIR function mode: callee="@func"
+    2. External backend mode: fn_type="phe", fn_name="encrypt", fn_attrs={...}
+
+    Example:
+        # Mode 1: MLIR function
+        result = PEvalOp(
+            [tensor_type],  # result types
+            [arg0],         # args
+            mask,           # mask
+            callee="@compute"
+        )
+
+        # Mode 2: External backend
+        result = PEvalOp(
+            [tensor_type],
+            [arg0],
+            mask,
+            fn_type="phe",
+            fn_name="encrypt",
+            fn_attrs={"scheme": "paillier", "key_size": 2048}
+        )
+    """
+
+    def __init__(
+        self,
+        result_types: Sequence[Type],
+        args: Sequence[Value],
+        mask: Value,
+        *,
+        callee: str | None = None,
+        fn_type: str | None = None,
+        fn_name: str | None = None,
+        fn_attrs: dict[str, Any] | None = None,
+        loc=None,
+        ip=None,
+    ):
+        """Initialize PEvalOp.
+
+        Args:
+            result_types: Result types
+            args: Input arguments
+            mask: Execution mask
+            callee: MLIR function symbol (mode 1)
+            fn_type: Backend type (mode 2)
+            fn_name: Backend function name (mode 2)
+            fn_attrs: Backend attributes as Python dict (mode 2)
+            loc: Source location
+            ip: Insertion point
+
+        Raises:
+            ValueError: If mode constraints are violated
+        """
+        # Validate dual-mode constraints
+        if (callee is None) == (fn_type is None):
+            msg = "Exactly one of callee or fn_type must be specified"
+            raise ValueError(msg)
+
+        if fn_attrs and not fn_type:
+            msg = "fn_attrs can only be used with fn_type (external backend mode)"
+            raise ValueError(msg)
+
+        # Build attributes dict
+        attributes = {}
+        if callee:
+            attributes["callee"] = FlatSymbolRefAttr.get(callee)
+        if fn_type:
+            attributes["fn_type"] = StringAttr.get(fn_type)
+        if fn_name:
+            attributes["fn_name"] = StringAttr.get(fn_name)
+        if fn_attrs:
+            # Convert Python dict to DictionaryAttr
+            attr_dict = {
+                k: v if isinstance(v, Attribute) else _python_value_to_attribute(v)
+                for k, v in fn_attrs.items()
+            }
+            attributes["fn_attrs"] = DictionaryAttr.get(attr_dict)
+
+        # Call parent __init__ (generated by TableGen)
+        # Note: results_ (with underscore) is the parameter name in generated code
+        super().__init__(
+            results_=result_types,
+            operands=[*args, mask],
+            attributes=attributes,
+            loc=loc,
+            ip=ip,
+        )
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class PEvalDynOp(_cext.PEvalDynOp):
+    """Specialization for PEvalDyn operation.
+
+    Dynamic execution without static mask.
+
+    Example:
+        result = PEvalDynOp(
+            [tensor_type],
+            [arg0],
+            fn_type="phe",
+            fn_name="decrypt"
+        )
+    """
+
+    def __init__(
+        self,
+        result_types: Sequence[Type],
+        args: Sequence[Value],
+        *,
+        callee: str | None = None,
+        fn_type: str | None = None,
+        fn_name: str | None = None,
+        fn_attrs: dict[str, Any] | None = None,
+        loc=None,
+        ip=None,
+    ):
+        """Initialize PEvalDynOp.
+
+        Args:
+            result_types: Result types
+            args: Input arguments
+            callee: MLIR function symbol (mode 1)
+            fn_type: Backend type (mode 2)
+            fn_name: Backend function name (mode 2)
+            fn_attrs: Backend attributes as Python dict (mode 2)
+            loc: Source location
+            ip: Insertion point
+
+        Raises:
+            ValueError: If mode constraints are violated
+        """
+        # Validate dual-mode constraints
+        if (callee is None) == (fn_type is None):
+            msg = "Exactly one of callee or fn_type must be specified"
+            raise ValueError(msg)
+
+        if fn_attrs and not fn_type:
+            msg = "fn_attrs can only be used with fn_type (external backend mode)"
+            raise ValueError(msg)
+
+        # Build attributes dict
+        attributes = {}
+        if callee:
+            attributes["callee"] = FlatSymbolRefAttr.get(callee)
+        if fn_type:
+            attributes["fn_type"] = StringAttr.get(fn_type)
+        if fn_name:
+            attributes["fn_name"] = StringAttr.get(fn_name)
+        if fn_attrs:
+            attr_dict = {
+                k: v if isinstance(v, Attribute) else _python_value_to_attribute(v)
+                for k, v in fn_attrs.items()
+            }
+            attributes["fn_attrs"] = DictionaryAttr.get(attr_dict)
+
+        # Call parent __init__
+        super().__init__(
+            results_=result_types,
+            operands=args,
+            attributes=attributes,
+            loc=loc,
+            ip=ip,
+        )

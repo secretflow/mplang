@@ -1,9 +1,9 @@
-//===- MPLANGTypes.td -------------------------------------------*- tablegen -*-===//
-// Minimal MPLANG type ODS declarations.
+//===- MplangTypes.td -------------------------------------------*- tablegen -*-===//
+// Mplang type ODS declarations.
 //===----------------------------------------------------------------------===//
 
 include "mlir/IR/OpBase.td"
-include "MPLANGDialect.td"
+include "MplangDialect.td"
 
 // TableType: multi-party table with columns (similar to DataFrame)
 def MPLANG_TableType : TypeDef<Mplang_Dialect, "Table"> {

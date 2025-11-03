@@ -1,12 +1,12 @@
-//===- MPLANGOps.td ---------------------------------------------*- tablegen -*-===//
-// MPLANG SPMD operations: call, shuffle, convergence.
+//===- MplangOps.td ---------------------------------------------*- tablegen -*-===//
+// Mplang SPMD operations: call, shuffle, convergence.
 // All ops describe multi-party behavior in a homogeneous/isomorphic IR.
 //===----------------------------------------------------------------------===//
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "MPLANGDialect.td"
+include "MplangDialect.td"
 
 //===----------------------------------------------------------------------===//
 // PCallStaticOp - Static mask private call

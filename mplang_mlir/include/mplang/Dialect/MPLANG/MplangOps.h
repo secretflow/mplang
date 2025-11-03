@@ -1,5 +1,5 @@
-//===- MPLANGOps.h -----------------------------------------------------===//
-// Wrapper header for generated MPLANG ops declarations.
+//===- MplangOps.h -----------------------------------------------------===//
+// Wrapper header for generated Mplang ops declarations.
 //===----------------------------------------------------------------------===//
 
 #ifndef MPLANG_DIALECT_MPLANG_MPLANGOPS_H
@@ -14,6 +14,6 @@
 
 // Generate op class declarations.
 #define GET_OP_CLASSES
-#include "MPLANGOps.h.inc"
+#include "MplangOps.h.inc"
 
 #endif // MPLANG_DIALECT_MPLANG_MPLANGOPS_H

@@ -1,5 +1,5 @@
-//===- MPLANGDialect.td -----------------------------------------*- tablegen -*-===//
-// Minimal MPLANG dialect ODS declaration.
+//===- MplangDialect.td -----------------------------------------*- tablegen -*-===//
+// Mplang SPMD dialect ODS declaration.
 //===----------------------------------------------------------------------===//
 
 include "mlir/IR/DialectBase.td"

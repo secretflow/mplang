@@ -1,5 +1,5 @@
-//===- MPLANGOps.cpp ----------------------------------------------------===//
-// Minimal ops glue to include generated implementation.
+//===- MplangOps.cpp ----------------------------------------------------===//
+// Mplang ops implementation.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/OpImplementation.h"
@@ -8,7 +8,7 @@
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
-#include "mplang/Dialect/MPLANG/MPLANGOps.h"
+#include "mplang/Dialect/MPLANG/MplangOps.h"
 
 using namespace mlir;
 using namespace mplang;
@@ -43,4 +43,4 @@ mlir::LogicalResult mplang::ConvOp::verify() {
 }
 
 #define GET_OP_CLASSES
-#include "MPLANGOps.cpp.inc"
+#include "MplangOps.cpp.inc"

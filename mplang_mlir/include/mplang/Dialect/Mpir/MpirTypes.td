@@ -21,6 +21,88 @@ include "mlir/IR/AttrTypeBase.td"
 include "MpirDialect.td"
 
 //===----------------------------------------------------------------------===//
+// Layer 0: Basic Data Types
+//===----------------------------------------------------------------------===//
+
+def MPIR_Table : TypeDef<Mpir_Dialect, "Table"> {
+  let mnemonic = "table";
+  let summary = "Table/dataframe type for structured data";
+  let description = [{
+    Represents a table (structured data with named columns), similar to a dataframe
+    in pandas or a table in SQL databases.
+
+    A table has:
+    - Column names (array of strings)
+    - Column types (array of MLIR types, typically scalar types like i64, f32, etc.)
+    - Rows are implicit (no row count in the type, determined at runtime)
+
+    Tables are used for:
+    - Database-style operations (SQL kernels)
+    - Structured multi-party computation (PSI, join, aggregation)
+    - Data serialization/deserialization
+
+    Note: Computation operations typically don't work directly on encoded tables
+    (!mpir.enc<table<...>, "paillier"> for example). However, encoding is useful
+    for transmission and storage:
+      - !mpir.enc<table<...>, "parquet"> - Parquet format encoding
+      - !mpir.enc<table<...>, "csv"> - CSV format encoding
+      - !mpir.enc<table<...>, "aes-gcm"> - Encrypted table for secure storage/transmission
+
+    Examples:
+      !mpir.table<["id", "age", "salary"], [i64, i32, f32]>
+      !mpir.table<["name", "score"], [!llvm.ptr, f64]>
+  }];
+
+  let parameters = (ins
+    ArrayRefParameter<"::std::string">:$columnNames,
+    ArrayRefParameter<"::mlir::Type">:$columnTypes
+  );
+
+  let assemblyFormat = "`<` `[` $columnNames `]` `,` `[` $columnTypes `]` `>`";
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins
+      "::llvm::ArrayRef<::std::string>":$columnNames,
+      "::llvm::ArrayRef<::mlir::Type>":$columnTypes
+    ), [{
+      return $_get(columnTypes[0].getContext(), columnNames, columnTypes);
+    }]>
+  ];
+
+  let extraClassDeclaration = [{
+    /// Get number of columns
+    size_t getNumColumns() const {
+      return getColumnNames().size();
+    }
+
+    /// Get type of a specific column by index
+    ::mlir::Type getColumnType(size_t idx) const {
+      auto types = getColumnTypes();
+      if (idx >= types.size())
+        return nullptr;
+      return types[idx];
+    }
+
+    /// Get type of a specific column by name
+    ::mlir::Type getColumnType(::llvm::StringRef name) const {
+      auto names = getColumnNames();
+      auto types = getColumnTypes();
+      for (size_t i = 0; i < names.size(); ++i) {
+        if (names[i] == name)
+          return types[i];
+      }
+      return nullptr;
+    }
+
+    /// Check if table has a column with given name
+    bool hasColumn(::llvm::StringRef name) const {
+      auto names = getColumnNames();
+      return ::llvm::any_of(names, [&](const std::string& n) { return n == name; });
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Layer 1: Encoding Types
 //===----------------------------------------------------------------------===//
 
@@ -89,6 +171,11 @@ def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
       return ::mlir::isa<::mlir::TupleType>(getInnerType());
     }
 
+    /// Check if this encodes a table type
+    bool isTableEncoded() const {
+      return ::mlir::isa<::mlir::mpir::TableType>(getInnerType());
+    }
+
     /// Get the underlying tensor type if this encodes a tensor
     ::mlir::TensorType getTensorType() const {
       return ::mlir::dyn_cast<::mlir::TensorType>(getInnerType());
@@ -97,6 +184,11 @@ def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
     /// Get the underlying tuple type if this encodes a tuple
     ::mlir::TupleType getTupleType() const {
       return ::mlir::dyn_cast<::mlir::TupleType>(getInnerType());
+    }
+
+    /// Get the underlying table type if this encodes a table
+    ::mlir::mpir::TableType getTableType() const {
+      return ::mlir::dyn_cast<::mlir::mpir::TableType>(getInnerType());
     }
   }];
 }
@@ -125,11 +217,13 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
     - Type composition enables: MP<Encoded<Tensor>> = encoded tensor held by subset of parties
 
     Examples:
-      !mpir.mp<tensor<10xf32>, 7>                          // Plaintext on parties 0,1,2
-      !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>   // Encrypted on party 0
-      !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3">, 7>       // Secret shares on parties 0,1,2
-      !mpir.mp<tuple<f32, i64>, 3>                         // Tuple on parties 0,1
-      !mpir.mp<!mpir.enc<tuple<f32, i64>, "additive">, 3>  // Additive shares on parties 0,1
+      !mpir.mp<tensor<10xf32>, 7>                            // Plaintext tensor on parties 0,1,2
+      !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>     // Encrypted tensor on party 0
+      !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3">, 7>         // Secret shares on parties 0,1,2
+      !mpir.mp<tuple<f32, i64>, 3>                           // Tuple on parties 0,1
+      !mpir.mp<!mpir.enc<tuple<f32, i64>, "additive">, 3>    // Additive shares on parties 0,1
+      !mpir.mp<!mpir.table<["id"], [i64]>, 1>                // Table on party 0
+      !mpir.mp<!mpir.enc<!mpir.table<["id"], [i64]>, "parquet">, 1>  // Parquet-encoded table
   }];
 
   let parameters = (ins
@@ -190,6 +284,15 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
       return false;
     }
 
+    /// Check if inner type is a table (direct or through encoding)
+    bool isTable() const {
+      if (::mlir::isa<::mlir::mpir::TableType>(getInnerType()))
+        return true;
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.isTableEncoded();
+      return false;
+    }
+
     /// Check if inner type is encoded
     bool isEncoded() const {
       return ::mlir::isa<::mlir::mpir::EncodedType>(getInnerType());
@@ -210,6 +313,15 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
         return tuple;
       if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
         return enc.getTupleType();
+      return nullptr;
+    }
+
+    /// Get the underlying table type (works through encoded wrapper)
+    ::mlir::mpir::TableType getTableType() const {
+      if (auto table = ::mlir::dyn_cast<::mlir::mpir::TableType>(getInnerType()))
+        return table;
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.getTableType();
       return nullptr;
     }
 
@@ -261,6 +373,15 @@ def MPIR_MPDynamic : TypeDef<Mpir_Dialect, "MPDynamic"> {
       return false;
     }
 
+    /// Check if inner type is a table
+    bool isTable() const {
+      if (::mlir::isa<::mlir::mpir::TableType>(getInnerType()))
+        return true;
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.isTableEncoded();
+      return false;
+    }
+
     /// Check if inner type is encoded
     bool isEncoded() const {
       return ::mlir::isa<::mlir::mpir::EncodedType>(getInnerType());
@@ -274,6 +395,15 @@ def MPIR_MPDynamic : TypeDef<Mpir_Dialect, "MPDynamic"> {
         return enc.getTensorType();
       return nullptr;
     }
+
+    /// Get the underlying table type (works through encoded wrapper)
+    ::mlir::mpir::TableType getTableType() const {
+      if (auto table = ::mlir::dyn_cast<::mlir::mpir::TableType>(getInnerType()))
+        return table;
+      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
+        return enc.getTableType();
+      return nullptr;
+    }
   }];
 }
 
@@ -282,6 +412,9 @@ def MPIR_MPDynamic : TypeDef<Mpir_Dialect, "MPDynamic"> {
 //===----------------------------------------------------------------------===//
 
 // Base type constraints
+def MPIR_TableType : Type<CPred<"::llvm::isa<::mlir::mpir::TableType>($_self)">,
+                           "Table type", "::mlir::mpir::TableType">;
+
 def MPIR_EncodedType : Type<CPred<"::llvm::isa<::mlir::mpir::EncodedType>($_self)">,
                              "Encoded type", "::mlir::mpir::EncodedType">;
 
@@ -321,7 +454,29 @@ def MPIR_METensor : Type<
 def MPIR_MPAnyTensor : AnyTypeOf<[MPIR_MPTensor, MPIR_METensor],
                                  "Multi-party tensor (plaintext or encoded)">;
 
-// Pattern: MP<Tuple> - plaintext table distributed across parties
+// Pattern: MP<Table> - plaintext table (using TableType) distributed across parties
+def MPIR_MPTableType : Type<
+  CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isTable() && "
+        "!::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
+  "Multi-party plaintext table (TableType)",
+  "::mlir::mpir::MPType"
+>;
+
+// Pattern: MP<Encoded<Table>> - encoded table (using TableType) distributed across parties
+def MPIR_METableType : Type<
+  CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isTable() && "
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
+  "Multi-party encoded table (TableType)",
+  "::mlir::mpir::MPType"
+>;
+
+// Pattern: MP<Table> | MP<Encoded<Table>> - any table (plain or encoded, using TableType)
+def MPIR_MPAnyTableType : AnyTypeOf<[MPIR_MPTableType, MPIR_METableType],
+                                    "Multi-party table (plaintext or encoded, using TableType)">;
+
+// Pattern: MP<Tuple> - plaintext table (legacy tuple-based) distributed across parties
 def MPIR_MPTable : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
         "::llvm::cast<::mlir::mpir::MPType>($_self).isTuple() && "

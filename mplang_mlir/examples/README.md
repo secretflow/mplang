@@ -75,21 +75,29 @@ mpir-opt control_flow_patterns.mlir
 
 ### Type System
 
-The Mpir type system tracks data ownership and encryption:
+The Mpir type system tracks data ownership and encoding:
 
 ```mlir
-// Plain multi-party value
-!mpir.mp<tensor<10xf32>, 7>        // Parties 0,1,2 have tensor<10xf32>
+// Basic types
+!mpir.mp<tensor<10xf32>, 7>                    // Plaintext tensor on parties 0,1,2
+!mpir.table<["id", "age"], [i64, i32]>         // Table with named columns
 
-// Encrypted value
-!mpir.enc<tensor<10xf32>, paillier>  // Paillier-encrypted tensor
+// Encoded values (encryption, secret sharing, serialization)
+!mpir.enc<tensor<10xf32>, "paillier">          // PHE-encrypted tensor
+!mpir.enc<!mpir.table<["id"], [i64]>, "parquet">  // Parquet-encoded table
 
-// Multi-party encrypted value
-!mpir.mp<!mpir.enc<tensor<10xf32>, paillier>, 3>  // Parties 0,1 have encoded data
+// Multi-party encoded values
+!mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 3>  // Parties 0,1 have encrypted data
+!mpir.mp<!mpir.enc<!mpir.table<["data"], [f32]>, "csv">, 1>  // CSV-encoded table on party 0
 
 // Dynamic party mask (runtime-determined)
 !mpir.mp_dynamic<tensor<10xf32>>   // Party ownership determined at runtime
 ```
+
+**TableType** (`!mpir.table<...>`): Represents structured data (dataframe/SQL table) with named columns.
+- Used for database-style operations (SQL kernels, PSI, join, aggregation)
+- Can be encoded for transmission/storage (e.g., `"parquet"`, `"csv"`, `"aes-gcm"`)
+- Note: Computation typically doesn't work on encoded tables directly, but encoding is useful for I/O
 
 ### pmask (Party Mask)
 

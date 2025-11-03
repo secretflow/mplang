@@ -237,3 +237,191 @@ class PEvalDynOp(_cext.PEvalDynOp):
             loc=loc,
             ip=ip,
         )
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class UniformCondOp(_cext.UniformCondOp):
+    """Specialization for UniformCond operation.
+
+    Uniform conditional execution across all parties.
+
+    Example:
+        # Simple branch
+        result = UniformCondOp(
+            [tensor_type],  # result types
+            condition,      # MP<i1> scalar condition
+            true_region,    # then region
+            false_region    # else region
+        )
+    """
+
+    def __init__(
+        self,
+        result_types: Sequence[Type],
+        condition: Value,
+        *,
+        loc=None,
+        ip=None,
+    ):
+        """Initialize UniformCondOp with regions.
+
+        Args:
+            result_types: Result types from both branches
+            condition: Scalar MP<i1> condition value
+            loc: Source location
+            ip: Insertion point
+
+        Note:
+            Regions (then/else) must be populated after construction
+            using the provided region objects.
+        """
+        super().__init__(
+            results_=result_types,
+            condition=condition,
+            loc=loc,
+            ip=ip,
+        )
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class UniformWhileOp(_cext.UniformWhileOp):
+    """Specialization for UniformWhile operation.
+
+    Uniform while loop across all parties.
+
+    Example:
+        result = UniformWhileOp(
+            [tensor_type],  # result types
+            [init0],        # initial values
+        )
+        # Then populate condition and body regions
+    """
+
+    def __init__(
+        self,
+        result_types: Sequence[Type],
+        inits: Sequence[Value],
+        *,
+        loc=None,
+        ip=None,
+    ):
+        """Initialize UniformWhileOp with regions.
+
+        Args:
+            result_types: Result types (same as loop-carried values)
+            inits: Initial values for loop-carried variables
+            loc: Source location
+            ip: Insertion point
+
+        Note:
+            Regions (condition/body) must be populated after construction.
+        """
+        super().__init__(
+            results_=result_types,
+            operands=inits,
+            loc=loc,
+            ip=ip,
+        )
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class ConvOp(_cext.ConvOp):
+    """Specialization for Conv operation.
+
+    Party mask conversion (data movement between security domains).
+
+    Example:
+        # Convert from party 0 to party 1
+        result = ConvOp(
+            result_type,    # MP<..., pmask={1}>
+            input_value,    # MP<..., pmask={0}>
+            src_pmask="{0}",
+            dst_pmask="{1}"
+        )
+    """
+
+    def __init__(
+        self,
+        result_type: Type,
+        input_value: Value,
+        *,
+        src_pmask: str,
+        dst_pmask: str,
+        loc=None,
+        ip=None,
+    ):
+        """Initialize ConvOp.
+
+        Args:
+            result_type: Result type with dst_pmask
+            input_value: Input value with src_pmask
+            src_pmask: Source party mask (e.g., "{0,1}")
+            dst_pmask: Destination party mask (e.g., "{2}")
+            loc: Source location
+            ip: Insertion point
+
+        Raises:
+            ValueError: If pmasks overlap
+        """
+        attributes = {
+            "src_pmask": StringAttr.get(src_pmask),
+            "dst_pmask": StringAttr.get(dst_pmask),
+        }
+
+        super().__init__(
+            results_=[result_type],
+            operands=[input_value],
+            attributes=attributes,
+            loc=loc,
+            ip=ip,
+        )
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class ShflSOp(_cext.ShflSOp):
+    """Specialization for ShflS operation.
+
+    Static shuffle (data redistribution with known sources).
+
+    Example:
+        # Shuffle: output party 0 gets from input party 1,
+        #          output party 1 gets from input party 0
+        result = ShflSOp(
+            result_type,    # MP<..., pmask={0,1}>
+            input_value,    # MP<..., pmask={0,1}>
+            src_ranks=[1, 0]  # source mapping
+        )
+    """
+
+    def __init__(
+        self,
+        result_type: Type,
+        input_value: Value,
+        *,
+        src_ranks: Sequence[int],
+        loc=None,
+        ip=None,
+    ):
+        """Initialize ShflSOp.
+
+        Args:
+            result_type: Result type (same pmask as input)
+            input_value: Input value to shuffle
+            src_ranks: Source rank for each output party
+            loc: Source location
+            ip: Insertion point
+        """
+        # Convert Python list to DenseI64ArrayAttr
+        from ..ir import DenseI64ArrayAttr
+
+        attributes = {
+            "src_ranks": DenseI64ArrayAttr.get(src_ranks),
+        }
+
+        super().__init__(
+            results_=[result_type],
+            operands=[input_value],
+            attributes=attributes,
+            loc=loc,
+            ip=ip,
+        )

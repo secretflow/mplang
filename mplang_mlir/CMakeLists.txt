@@ -21,5 +21,5 @@ include(HandleLLVMOptions)
 include(TableGen)
 include(AddMLIR)
 
-add_subdirectory(lib/Dialect/MPLANG)
+add_subdirectory(lib/Dialect/Mplang)
 add_subdirectory(tools/mplang-opt)

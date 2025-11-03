@@ -8,7 +8,7 @@
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Bytecode/BytecodeReader.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
-#include "mplang/Dialect/MPLANG/MplangOps.h"
+#include "mplang/Dialect/Mplang/MplangOps.h"
 
 using namespace mlir;
 using namespace mplang;

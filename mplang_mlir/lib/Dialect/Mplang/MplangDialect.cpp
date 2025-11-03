@@ -8,8 +8,8 @@
 #include "mlir/IR/BuiltinTypes.h"
 
 // Public wrappers for generated decls referenced in addOperations/addTypes
-#include "mplang/Dialect/MPLANG/MplangOps.h"
-#include "mplang/Dialect/MPLANG/MplangTypes.h"
+#include "mplang/Dialect/Mplang/MplangOps.h"
+#include "mplang/Dialect/Mplang/MplangTypes.h"
 
 #include "MplangDialect.h.inc"
 

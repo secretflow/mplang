@@ -14,7 +14,7 @@ target_link_libraries(mplang-opt PRIVATE
 target_include_directories(mplang-opt PRIVATE
   ${MLIR_INCLUDE_DIRS}
   ${LLVM_INCLUDE_DIRS}
-  ${CMAKE_BINARY_DIR}/lib/Dialect/MPLANG
+  ${CMAKE_BINARY_DIR}/lib/Dialect/Mplang
 )
 
 install(TARGETS mplang-opt RUNTIME DESTINATION bin)

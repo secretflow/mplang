@@ -2,7 +2,7 @@
 
 set(MLIR_MPLANG_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(MLIR_MPLANG_INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../include)
-set(MLIR_MPLANG_TD_DIR ${MLIR_MPLANG_INC_DIR}/mplang/Dialect/MPLANG)
+set(MLIR_MPLANG_TD_DIR ${MLIR_MPLANG_INC_DIR}/mplang/Dialect/Mplang)
 
 # TableGen: generate ops/types/dialect decls & defs
 set(LLVM_TARGET_DEFINITIONS ${MLIR_MPLANG_TD_DIR}/MplangOps.td)

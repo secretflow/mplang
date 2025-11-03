@@ -133,5 +133,29 @@ mlir::LogicalResult mlir::mpir::ShuffleDynOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// UniformCondOp verifier (TODO: implement uniform predicate checks)
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mlir::mpir::UniformCondOp::verify() {
+  // TODO: Check condition is scalar i1 type (boolean scalar, not tensor<i1>)
+  // TODO: Verify both branches return same types
+  // TODO: Check branch result types match op result types
+  // TODO: Add compile-time warning if verify_uniform=false (unsafe path)
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// UniformWhileOp verifier (TODO: implement uniform condition checks)
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult mlir::mpir::UniformWhileOp::verify() {
+  // TODO: Check condition region returns scalar MP<i1> (not tensor<i1>)
+  // TODO: Verify body region yields match init args types
+  // TODO: Check regions have correct terminator ops (ConditionOp, YieldOp)
+  // TODO: Add compile-time warning if verify_uniform=false (unsafe path)
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "MpirOps.cpp.inc"

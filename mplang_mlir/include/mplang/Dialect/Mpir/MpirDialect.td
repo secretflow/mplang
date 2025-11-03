@@ -8,4 +8,5 @@ def Mpir_Dialect : Dialect {
   let name = "mpir";
   let cppNamespace = "::mlir::mpir";
   let summary = "Multi-Party Intermediate Representation SPMD dialect";
+  let useDefaultTypePrinterParser = 1;
 }

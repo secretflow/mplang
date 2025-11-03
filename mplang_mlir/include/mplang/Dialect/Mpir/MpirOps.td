@@ -6,6 +6,7 @@
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "MpirTypes.td"  // This will transitively include MpirDialect.td
 
 //===----------------------------------------------------------------------===//
@@ -373,6 +374,287 @@ def MPIR_ConvOp : Op<Mpir_Dialect, "conv", [Pure]> {
   let results = (outs MPIR_MPTensorOrTable:$result);
 
   let assemblyFormat = "`(` $inputs `)` attr-dict `:` `(` type($inputs) `)` `->` type($result)";
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// Terminator Operations (must be defined before control flow ops)
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// ReturnOp - Return from peval/cond regions
+//===----------------------------------------------------------------------===//
+
+def MPIR_ReturnOp : Op<Mpir_Dialect, "return", [
+    Pure, Terminator
+  ]> {
+  let summary = "Return values from MPIR regions";
+  let description = [{
+    Terminates a region and returns zero or more values. Used in:
+    - peval/peval_dyn regions: returns computed values
+    - cond then/else branches: returns branch results
+
+    The returned values must match the expected types of the parent operation.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+
+  let builders = [
+    OpBuilder<(ins), [{ /* nothing to do */ }]>
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// ConditionOp - Return condition from while loop condition region
+//===----------------------------------------------------------------------===//
+
+def MPIR_ConditionOp : Op<Mpir_Dialect, "condition", [
+    Pure, Terminator
+  ]> {
+  let summary = "Return condition from while loop condition region";
+  let description = [{
+    Terminates the condition region of a while loop and returns the
+    boolean condition that determines whether to continue looping.
+
+    The condition must be an MP<i1, pmask> value.
+  }];
+
+  let arguments = (ins AnyTypeOf<[MPIR_MPType, MPIR_MPDynamicType]>:$condition);
+
+  let assemblyFormat = "$condition attr-dict `:` type($condition)";
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp - Yield values from while loop body region
+//===----------------------------------------------------------------------===//
+
+def MPIR_YieldOp : Op<Mpir_Dialect, "yield", [
+    Pure, Terminator
+  ]> {
+  let summary = "Yield values from while loop body region";
+  let description = [{
+    Terminates the body region of a while loop and returns the next
+    iteration state values.
+
+    The yielded values become the arguments to the next iteration's
+    condition and body regions.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$results);
+
+  let assemblyFormat = "attr-dict ($results^ `:` type($results))?";
+}
+
+//===----------------------------------------------------------------------===//
+// Control Flow Operations
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// UniformCondOp - Uniform conditional with short-circuit execution
+//===----------------------------------------------------------------------===//
+
+def MPIR_UniformCondOp : Op<Mpir_Dialect, "uniform_cond", [
+    RecursiveMemoryEffects,
+    SingleBlockImplicitTerminator<"ReturnOp">
+  ]> {
+  let summary = "Uniform SPMD conditional with short-circuit execution";
+  let description = [{
+    CRITICAL: Conditional execution where the predicate MUST be uniform across
+    all parties (i.e., all parties must have the same boolean value).
+
+    *** WHY UNIFORM? ***
+    Non-uniform predicates cause DEADLOCK in multi-party protocols:
+    - If P0/P2 have pred=true (execute then), P1 has pred=false (execute else)
+    - Then branch calls smpc.seal() (needs all parties P0/P1/P2)
+    - Else branch calls smpc.reveal() (needs all parties)
+    - Result: P0/P2 wait for P1 in seal(), P1 waits for P0/P2 in reveal()
+    - DEADLOCK: All parties hang forever!
+
+    *** SHORT-CIRCUIT SEMANTICS ***
+    Unlike data-parallel elementwise blend (jax.where):
+    - Only the CHOSEN branch executes (if pred=true: then, else: else)
+    - Unchosen branch has ZERO side-effects (not executed at all)
+    - This allows skipping expensive multi-party protocols in unchosen branch
+    - Performance: O(expensive_then) + O(cheap_else) becomes O(expensive_then)
+      or O(cheap_else) depending on pred, not their sum
+
+    *** RUNTIME VERIFICATION ***
+    When verify_uniform=true (default):
+    - Runtime checks predicate uniformity via O(P²) all-gather
+    - If non-uniform detected: raises ValueError with diagnostic info
+    - Can disable for trusted/performance-critical paths (use carefully!)
+
+    *** FOR DIVERGENT PREDICATES ***
+    If predicates can diverge (e.g., per-sample masks), use:
+    - mpir.peval with jax.where/jax.select inside the region
+    - Both values computed, elementwise blend based on mask
+    - No structural control flow divergence (safe for multi-party ops)
+
+    Key design:
+    - Predicate: MP<i1, pmask> or MP<tensor<i1>, pmask> (scalar only!)
+    - Uniformity: All parties MUST have identical boolean value
+    - Execution: Short-circuit - only chosen branch executes
+    - Verification: Runtime uniformity check (optional, default on)
+    - Both branches must return same types (structural consistency)
+
+    Semantics (aligned with mplang/core/primitive.py uniform_cond):
+    - All parties evaluate predicate to same boolean
+    - If pred=true: execute then branch, skip else branch
+    - If pred=false: skip then branch, execute else branch
+    - Non-uniform pred + verify_uniform=true: runtime error
+
+    Example (uniform decision - all parties agree):
+      %pred = ... : !mpir.mp<i1, 7>  // All parties have same value
+      %result = mpir.uniform_cond %pred : !mpir.mp<i1, 7>
+                -> !mpir.mp<tensor<10xf32>, 7> {
+        // Then branch - expensive multi-party protocol
+        %a = mpir.peval @expensive_smpc() {rmask = 7 : i64}
+             : () -> !mpir.mp<tensor<10xf32>, 7>
+        mpir.return %a : !mpir.mp<tensor<10xf32>, 7>
+      } {
+        // Else branch - cheap local computation
+        %b = mpir.peval @cheap_local() {rmask = 7 : i64}
+             : () -> !mpir.mp<tensor<10xf32>, 7>
+        mpir.return %b : !mpir.mp<tensor<10xf32>, 7>
+      }
+      // If pred=true: only expensive_smpc runs (else branch skipped)
+      // If pred=false: only cheap_local runs (then branch skipped)
+
+    Example (disable verification for trusted path):
+      %pred = ... : !mpir.mp<i1, 3>
+      %result = mpir.uniform_cond %pred {verify_uniform = false}
+                : !mpir.mp<i1, 3> -> !mpir.mp<tensor<10xf32>, 3> {
+        %a = ... : !mpir.mp<tensor<10xf32>, 3>
+        mpir.return %a : !mpir.mp<tensor<10xf32>, 3>
+      } {
+        %b = ... : !mpir.mp<tensor<10xf32>, 3>
+        mpir.return %b : !mpir.mp<tensor<10xf32>, 3>
+      }
+  }];
+
+  let arguments = (ins
+    AnyTypeOf<[MPIR_MPType, MPIR_MPDynamicType]>:$condition,
+    DefaultValuedAttr<BoolAttr, "true">:$verify_uniform
+  );
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$thenRegion, SizedRegion<1>:$elseRegion);
+
+  let assemblyFormat = "$condition attr-dict `:` type($condition) `->` type($results) $thenRegion $elseRegion";
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// UniformWhileOp - Uniform while loop with synchronous iterations
+//===----------------------------------------------------------------------===//
+
+def MPIR_UniformWhileOp : Op<Mpir_Dialect, "uniform_while", [
+    RecursiveMemoryEffects
+  ]> {
+  let summary = "Uniform SPMD while loop with synchronous iteration";
+  let description = [{
+    CRITICAL: While loop where the condition MUST be uniform across all parties
+    (i.e., all parties must agree whether to continue or exit at each iteration).
+
+    *** WHY UNIFORM? ***
+    Non-uniform loop conditions cause similar DEADLOCK issues as uniform_cond:
+    - If P0/P2 have cond=true (continue iteration), P1 has cond=false (exit)
+    - P0/P2 enter loop body, call multi-party ops (e.g., smpc.matmul)
+    - P1 exits loop, proceeds to next code (e.g., different multi-party op)
+    - Result: Protocol mismatch, parties call different operations
+    - DEADLOCK or PROTOCOL ERROR!
+
+    *** SYNCHRONOUS ITERATION ***
+    All parties must:
+    - Enter/exit iterations together (lockstep execution)
+    - Evaluate condition to same boolean at each iteration
+    - Execute loop body together or exit together
+    - Conservative: If ANY party wants to exit, ALL parties exit
+
+    *** RUNTIME VERIFICATION ***
+    When verify_uniform=true (default):
+    - Runtime checks condition uniformity at each iteration via O(P²) all-gather
+    - If non-uniform detected: raises ValueError with iteration info
+    - Can disable for trusted/performance-critical loops (use carefully!)
+
+    *** FOR DIVERGENT LOOPS ***
+    If loop conditions can diverge (e.g., per-party convergence), use:
+    - Fixed iteration count with mpir.peval and masking inside body
+    - Or refactor to ensure uniform termination condition
+    - Divergent loops are NOT safe for multi-party protocols!
+
+    Key design:
+    - Loop state: MP values passed to condition and body regions
+    - Condition region: evaluates to MP<i1, pmask> (scalar only!)
+    - Uniformity: All parties MUST agree on continue/exit decision
+    - Execution: All parties execute iterations synchronously
+    - Verification: Runtime uniformity check at each iteration (optional)
+
+    Semantics (aligned with mplang/core/primitive.py uniform_while):
+    - Initialize loop state with init_args
+    - Condition region receives current state, returns MP<i1>
+    - All parties check: if uniform true, execute body; if false, exit
+    - Body region receives current state, returns next state
+    - Repeat until condition becomes uniform false
+    - Conservative: If non-uniform condition detected, exit (safe default)
+
+    Example (uniform counter - all parties agree on max):
+      %init = ... : !mpir.mp<tensor<i32>, 7>
+      %max = ... : !mpir.mp<tensor<i32>, 7>  // All parties have same max
+      %result = mpir.uniform_while (%arg = %init) : (!mpir.mp<tensor<i32>, 7>)
+                -> !mpir.mp<tensor<i32>, 7> {
+        // Condition region
+        ^cond(%state: !mpir.mp<tensor<i32>, 7>):
+          %cmp = mpir.peval(%state, %max) {
+            ^bb0(%s: tensor<i32>, %m: tensor<i32>):
+              %c = arith.cmpi slt, %s, %m : tensor<i32>
+              mpir.return %c : i1
+          } {rmask = 7 : i64} : (!mpir.mp<tensor<i32>, 7>, !mpir.mp<tensor<i32>, 7>)
+                             -> !mpir.mp<i1, 7>
+          mpir.condition %cmp : !mpir.mp<i1, 7>
+      } do {
+        // Body region - can safely call multi-party ops
+        ^body(%state: !mpir.mp<tensor<i32>, 7>):
+          %next = mpir.peval(%state) {
+            ^bb0(%s: tensor<i32>):
+              %c1 = arith.constant 1 : i32
+              %inc = arith.addi %s, %c1 : tensor<i32>
+              mpir.return %inc : tensor<i32>
+          } {rmask = 7 : i64} : (!mpir.mp<tensor<i32>, 7>)
+                             -> !mpir.mp<tensor<i32>, 7>
+          mpir.yield %next : !mpir.mp<tensor<i32>, 7>
+      }
+      // All parties increment together, exit together when state >= max
+
+    Example (disable verification for trusted fixed iterations):
+      %init = ... : !mpir.mp<tensor<i32>, 3>
+      %result = mpir.uniform_while (%i = %init) {verify_uniform = false}
+                : (!mpir.mp<tensor<i32>, 3>) -> !mpir.mp<tensor<i32>, 3> {
+        ^cond(%state: !mpir.mp<tensor<i32>, 3>):
+          // Trusted: know condition is always uniform
+          %cmp = ... : !mpir.mp<i1, 3>
+          mpir.condition %cmp : !mpir.mp<i1, 3>
+      } do {
+        ^body(%state: !mpir.mp<tensor<i32>, 3>):
+          %next = ... : !mpir.mp<tensor<i32>, 3>
+          mpir.yield %next : !mpir.mp<tensor<i32>, 3>
+      }
+  }];
+
+  let arguments = (ins
+    Variadic<AnyType>:$initArgs,
+    DefaultValuedAttr<BoolAttr, "true">:$verify_uniform
+  );
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$before, SizedRegion<1>:$after);
+
+  let assemblyFormat = [{
+    `(` $initArgs `)` attr-dict `:` functional-type($initArgs, $results)
+    $before `do` $after
+  }];
 
   let hasVerifier = 1;
 }

@@ -10,7 +10,7 @@
 //     - MPDynamic<T>: Multi-party value with runtime-determined pmask
 //
 // Key Design Decisions:
-//   - Use MLIR builtin types (tensor, tuple) for data representation
+//   - Use MLIR builtin types (tensor) and custom types (table) for data representation
 //   - Encrypted<T> preserves T's structure (allows homomorphic ops)
 //   - MP<T> wraps any type to add distribution semantics
 //   - Composition: MP<Encrypted<tensor>> = encrypted tensor distributed across parties
@@ -113,12 +113,13 @@ def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
     Represents encoded/transformed data that preserves the structure of the inner type
     while applying an encoding transformation.
 
-    The inner type can be any MLIR type (typically tensor or tuple).
+    The inner type can be tensor or table.
     The schema specifies the encoding method, which can be:
     - Encryption: "paillier", "ckks", "bfv", "aes-gcm", etc.
     - Secret Sharing: "aby3", "replicated", "additive", "shamir", etc.
     - Garbled Circuits: "garbled_circuit", "yao", etc.
     - Plain (identity): "plain" (explicitly unencoded)
+    - I/O formats (for tables): "parquet", "csv", "json", etc.
 
     Optional encoding_attrs store scheme-specific parameters (key sizes, scales, ring size, threshold, etc.).
 
@@ -132,7 +133,7 @@ def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
       !mpir.enc<tensor<10xf32>, "aby3">                        // ABY3 secret sharing
       !mpir.enc<tensor<10xf32>, "additive">                    // Additive shares
       !mpir.enc<tensor<10xf32>, "shamir", {threshold = 2, n = 5}> // Shamir secret sharing
-      !mpir.enc<tuple<f32, i64>, "garbled_circuit">           // Garbled circuit
+      !mpir.enc<!mpir.table<["id"], [i64]>, "parquet">         // Table I/O encoding
       !mpir.enc<tensor<10xf32>, "plain">                      // Explicitly plain
   }];
 
@@ -166,11 +167,6 @@ def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
       return ::mlir::isa<::mlir::TensorType>(getInnerType());
     }
 
-    /// Check if this encodes a tuple type
-    bool isTupleEncoded() const {
-      return ::mlir::isa<::mlir::TupleType>(getInnerType());
-    }
-
     /// Check if this encodes a table type
     bool isTableEncoded() const {
       return ::mlir::isa<::mlir::mpir::TableType>(getInnerType());
@@ -179,11 +175,6 @@ def MPIR_Encoded : TypeDef<Mpir_Dialect, "Encoded"> {
     /// Get the underlying tensor type if this encodes a tensor
     ::mlir::TensorType getTensorType() const {
       return ::mlir::dyn_cast<::mlir::TensorType>(getInnerType());
-    }
-
-    /// Get the underlying tuple type if this encodes a tuple
-    ::mlir::TupleType getTupleType() const {
-      return ::mlir::dyn_cast<::mlir::TupleType>(getInnerType());
     }
 
     /// Get the underlying table type if this encodes a table
@@ -204,9 +195,9 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
     Represents a value distributed across multiple parties in SPMD computation.
 
     The inner type can be:
-    - MLIR builtin types (tensor, tuple, etc.)
+    - MLIR builtin tensor type
+    - Table types (!mpir.table<...>) for structured data
     - Encoded types (!mpir.enc<...>) for encrypted/secret-shared data
-    - Any other type that makes sense in multi-party context
 
     The pmask (party mask) is a 64-bit integer where bit i indicates party i
     holds this value.
@@ -220,8 +211,6 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
       !mpir.mp<tensor<10xf32>, 7>                            // Plaintext tensor on parties 0,1,2
       !mpir.mp<!mpir.enc<tensor<10xf32>, "paillier">, 1>     // Encrypted tensor on party 0
       !mpir.mp<!mpir.enc<tensor<10xf32>, "aby3">, 7>         // Secret shares on parties 0,1,2
-      !mpir.mp<tuple<f32, i64>, 3>                           // Tuple on parties 0,1
-      !mpir.mp<!mpir.enc<tuple<f32, i64>, "additive">, 3>    // Additive shares on parties 0,1
       !mpir.mp<!mpir.table<["id"], [i64]>, 1>                // Table on party 0
       !mpir.mp<!mpir.enc<!mpir.table<["id"], [i64]>, "parquet">, 1>  // Parquet-encoded table
   }];
@@ -275,15 +264,6 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
       return false;
     }
 
-    /// Check if inner type is a tuple (direct or through encoding)
-    bool isTuple() const {
-      if (::mlir::isa<::mlir::TupleType>(getInnerType()))
-        return true;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
-        return enc.isTupleEncoded();
-      return false;
-    }
-
     /// Check if inner type is a table (direct or through encoding)
     bool isTable() const {
       if (::mlir::isa<::mlir::mpir::TableType>(getInnerType()))
@@ -304,15 +284,6 @@ def MPIR_MP : TypeDef<Mpir_Dialect, "MP"> {
         return tensor;
       if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
         return enc.getTensorType();
-      return nullptr;
-    }
-
-    /// Get the underlying tuple type (works through encoded wrapper)
-    ::mlir::TupleType getTupleType() const {
-      if (auto tuple = ::mlir::dyn_cast<::mlir::TupleType>(getInnerType()))
-        return tuple;
-      if (auto enc = ::mlir::dyn_cast<::mlir::mpir::EncodedType>(getInnerType()))
-        return enc.getTupleType();
       return nullptr;
     }
 
@@ -476,25 +447,24 @@ def MPIR_METableType : Type<
 def MPIR_MPAnyTableType : AnyTypeOf<[MPIR_MPTableType, MPIR_METableType],
                                     "Multi-party table (plaintext or encoded, using TableType)">;
 
-// Pattern: MP<Tuple> - plaintext table (legacy tuple-based) distributed across parties
+// Legacy aliases for backward compatibility (now just TableType, not tuple-based)
 def MPIR_MPTable : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
-        "::llvm::cast<::mlir::mpir::MPType>($_self).isTuple() && "
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isTable() && "
         "!::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
   "Multi-party plaintext table",
   "::mlir::mpir::MPType"
 >;
 
-// Pattern: MP<Encoded<Tuple>> - encoded table distributed across parties
 def MPIR_METable : Type<
   CPred<"::llvm::isa<::mlir::mpir::MPType>($_self) && "
-        "::llvm::cast<::mlir::mpir::MPType>($_self).isTuple() && "
+        "::llvm::cast<::mlir::mpir::MPType>($_self).isTable() && "
         "::llvm::cast<::mlir::mpir::MPType>($_self).isEncoded()">,
   "Multi-party encoded table",
   "::mlir::mpir::MPType"
 >;
 
-// Pattern: MP<Tuple> | MP<Encoded<Tuple>> - any table (plain or encoded)
+// Pattern: MP<Table> | MP<Encoded<Table>> - any table (plain or encoded)
 def MPIR_MPAnyTable : AnyTypeOf<[MPIR_MPTable, MPIR_METable],
                                 "Multi-party table (plaintext or encoded)">;
 

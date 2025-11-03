@@ -362,10 +362,10 @@ def MPIR_ConvOp : Op<Mpir_Dialect, "conv", [Pure]> {
 
     Example (table convergence):
       %table_merged = mpir.conv(%t0, %t1)
-                      : (!mpir.mp<tuple<tensor<10xi32>, tensor<10xf32>>, 1>,
-                         !mpir.mp<tuple<tensor<10xi32>, tensor<10xf32>>, 2>)
-                      -> !mpir.mp<tuple<tensor<10xi32>, tensor<10xf32>>, 3>
-      // Tables (represented as tuples) can also converge
+                      : (!mpir.mp<!mpir.table<["id", "value"], [i32, f32]>, 1>,
+                         !mpir.mp<!mpir.table<["id", "value"], [i32, f32]>, 2>)
+                      -> !mpir.mp<!mpir.table<["id", "value"], [i32, f32]>, 3>
+      // Tables can also converge
   }];
 
   let arguments = (ins

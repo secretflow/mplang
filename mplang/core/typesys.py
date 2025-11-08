@@ -101,6 +101,19 @@ class Type(ABC):
 # ============================================================================
 
 
+def is_scalar_like(ty: Type) -> bool:
+    """Check if type is scalar-like (TensorType with shape ())."""
+    raise NotImplementedError("is_scalar_like not implemented yet")
+
+
+def unwrap_scalar_like(ty: Type) -> DType:
+    """Unwrap scalar-like Type to DType."""
+    if is_scalar_like(ty):
+        return ty.semantic_dtype()
+    else:
+        raise TypeError(f"Type {ty} is not scalar-like.")
+
+
 @dataclass(frozen=True)
 class TensorType(Type):
     """Tensor type with dtype and shape.
@@ -113,14 +126,24 @@ class TensorType(Type):
         f32[3, 4]
     """
 
-    dtype: DType
+    dtype: DType | Type
     shape: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        if not isinstance(self.dtype, DType):
-            raise TypeError(f"TensorType.dtype must be DType, got {type(self.dtype)}")
         if not all(isinstance(d, int) for d in self.shape):
             raise TypeError("TensorType.shape dims must all be ints")
+        if isinstance(self.dtype, DType):
+            pass
+        elif isinstance(self.dtype, Type):
+            # ensure it's ScalarLike, we don't allow arbitrary Type as dtype
+            if not is_scalar_like(self.dtype):
+                raise TypeError(
+                    f"TensorType.dtype must be scalar-like, got {self.dtype}"
+                )
+        else:
+            raise TypeError(
+                f"TensorType.dtype must be DType or Type, got {type(self.dtype)}"
+            )
 
     def __repr__(self) -> str:
         shape_str = ", ".join(str(d) for d in self.shape)

@@ -48,7 +48,7 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     compiled = rt.get_state(key)
     if compiled is None:
         client = jxt.backend.get_backend()
-        compile_options = compiler.get_compile_options(1, 1)
+        compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
         try:
             compiled = client.compile(mlir_text, compile_options)
         except Exception as e:  # pragma: no cover

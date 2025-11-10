@@ -17,10 +17,10 @@ from __future__ import annotations
 from typing import Any
 
 import jax
+import jax.extend as jxt
 import jax.numpy as jnp
 import numpy as np
-from jax._src import xla_bridge
-from jax.lib import xla_client as xc
+from jax._src import compiler
 
 from mplang.core import PFunction
 from mplang.kernels.base import cur_kctx, kernel_def
@@ -47,9 +47,8 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     key = f"stablehlo.compile_cache.{h}"
     compiled = rt.get_state(key)
     if compiled is None:
-        backend = jax.default_backend()
-        client = xla_bridge.get_backend(backend)
-        compile_options = xc.CompileOptions()
+        client = jxt.backend.get_backend()
+        compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
         try:
             compiled = client.compile(mlir_text, compile_options)
         except Exception as e:  # pragma: no cover

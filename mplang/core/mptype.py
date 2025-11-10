@@ -32,9 +32,16 @@ Rank = int
 
 
 class MPType:
-    """A type that describes the type information of an MPObject."""
+    """A type that describes the type information of an MPObject.
 
-    _type: TensorType | TableType
+    **DEPRECATED**: This class is being phased out in favor of using
+    BaseType directly (from mplang.core.typing). New code should use
+    MPObject._type,
+
+    Legacy usage for backward compatibility only.
+    """
+
+    _type: TensorType | TableType  # Old system: tensor.TensorType
     _pmask: Mask | None
     _attrs: dict[str, Any]
 
@@ -48,6 +55,7 @@ class MPType:
 
         Args:
             type_info: The type information (TensorType for tensors, TableType for tables).
+                NOTE: This is the old tensor.TensorType, not typing.TensorType
             pmask: The party mask, used for compile/trace time determine which party holds the object.
             attrs: Attributes are key-value pairs that can be used to store additional information about the object.
         """

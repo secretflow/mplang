@@ -15,10 +15,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from mplang.core.dtypes import DType
-from mplang.core.mask import Mask
 from mplang.core.mptype import MPType
 from mplang.core.table import TableType
 from mplang.core.tensor import Shape
@@ -67,17 +66,84 @@ class MPContext:
 
 
 class MPObject(ABC):
-    """The base class for all objects in mp-system."""
+    """The base class for all objects in mp-system.
+
+    Supports type annotation syntax with type expressions::
+
+        from mplang.core.typing import Tensor, SIMD_HE, f32
+
+
+        # Generic (backward compatible)
+        def process(x: MPObject) -> MPObject: ...
+
+
+        # Type-specific (with type expression)
+        def encrypt(
+            x: MPObject[Tensor[f32, (4096,)]],
+        ) -> MPObject[SIMD_HE[f32, (4096,)]]: ...
+
+    The subscript syntax ``MPObject[TypeExpr]`` is equivalent to
+    ``Annotated[MPObject, TypeExpr]`` and follows the PEP 585 pattern.
+
+    Note:
+        This is for type annotations only. Runtime indexing (e.g., ``x[i]``)
+        uses the instance-level ``__getitem__`` method and is unaffected.
+    """
+
+    @classmethod
+    def __class_getitem__(cls, type_expr):
+        """Enable type-annotated MPObject[TypeExpr] syntax.
+
+        This allows attaching type expressions to MPObject annotations::
+
+            # Type aliases
+            PlaintextVec = MPObject[Tensor[f32, (4096,)]]
+            CiphertextVec = MPObject[SIMD_HE[f32, (4096,)]]
+            EncryptionKey = MPObject[CustomType("EncryptionKey")]
+
+
+            # Function signatures
+            def encrypt(x: PlaintextVec) -> CiphertextVec: ...
+
+        Args:
+            type_expr: A type expression from mplang.core.typing
+                (e.g., Tensor[f32, (10,)], SIMD_HE[f32], CustomType(...))
+
+        Returns:
+            Annotated[MPObject, type_expr]: Type annotation with metadata
+
+        Note:
+            This is invoked during type annotation processing (static/compile-time),
+            not during runtime indexing. Runtime ``x[i]`` uses ``__getitem__``.
+        """
+        return Annotated[cls, type_expr]
+
+    @property
+    @abstractmethod
+    def _type(self) -> Any:  # BaseType, but avoid circular import
+        """The type expression of this object.
+
+        This is the unified type representation from mplang.core.typing
+        (e.g., Tensor[f32, (10,)], SIMD_HE[f32, (4096,)], CustomType(...)).
+
+        Long-term replacement for mptype. New code should use this property.
+        """
 
     @property
     @abstractmethod
     def mptype(self) -> MPType:
         """The type information of the object.
 
+        **DEPRECATED**: Use ``_type``, ``pmask``, and ``attrs`` instead.
+
         This property is readonly (mandatory) and will be used for JAX compilation
         to determine the appropriate data type during trace and compilation phases.
         MPType can be passed between different MPObjects as a value.
         """
+
+    # -------------------------------------------------------------------------
+    # Convenience properties (derived from mptype for backward compatibility)
+    # -------------------------------------------------------------------------
 
     @property
     def dtype(self) -> DType:
@@ -94,14 +160,6 @@ class MPObject(ABC):
         Only available for table types.
         """
         return self.mptype.schema
-
-    @property
-    def pmask(self) -> Mask | None:
-        return self.mptype.pmask
-
-    @property
-    def attrs(self) -> dict[str, Any]:
-        return self.mptype.attrs
 
     @property
     @abstractmethod

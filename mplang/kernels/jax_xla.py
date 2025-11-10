@@ -46,7 +46,7 @@ def _jax_exec(pfunc: PFunction, *args: Any) -> Any:
 
     try:
         export_bytes = base64.b64decode(export_text)
-    except Exception as e:
+    except ValueError as e:
         raise ValueError(f"Failed to decode base64 export data: {e}") from e
 
     try:
@@ -57,21 +57,16 @@ def _jax_exec(pfunc: PFunction, *args: Any) -> Any:
     # Convert TensorValue arguments to JAX arrays
     jax_args = []
     for i, arg in enumerate(args):
+        value_to_convert = arg
         if isinstance(arg, TensorValue):
-            # Convert TensorValue to JAX array
-            jax_array = jnp.array(arg.to_numpy())
-            jax_args.append(jax_array)
-        elif isinstance(arg, (jnp.ndarray, np.ndarray)):
-            # Already a JAX/NumPy array
-            jax_args.append(jnp.array(arg))
-        else:
-            # Try to convert to JAX array
-            try:
-                jax_args.append(jnp.array(arg))
-            except Exception as e:
-                raise ValueError(
-                    f"Cannot convert argument {i} of type {type(arg)} to JAX array: {e}"
-                ) from e
+            value_to_convert = arg.to_numpy()
+
+        try:
+            jax_args.append(jnp.array(value_to_convert))
+        except Exception as e:
+            raise ValueError(
+                f"Cannot convert argument {i} of type {type(arg)} to JAX array: {e}"
+            ) from e
 
     # Execute the exported function
     # The normalized function expects a single list argument containing all variables

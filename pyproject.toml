@@ -35,20 +35,15 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "sqlglot>=23.0.0",
+    "absl-py>=2.3.1",
+    "flatbuffers>=25.2.10",
 ]
 
 [project.scripts]
 mplang-cli = "mplang.runtime.cli:main"
 
 [dependency-groups]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "pytest-asyncio",
-    "ruff",
-    "mypy",
-    "pre-commit",
-]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
 
 examples = [
     "scikit-learn",

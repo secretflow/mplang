@@ -868,8 +868,10 @@ wheels = [
 name = "mplang"
 source = { editable = "." }
 dependencies = [
+    { name = "absl-py" },
     { name = "duckdb" },
     { name = "fastapi" },
+    { name = "flatbuffers" },
     { name = "httpx" },
     { name = "lightphe" },
     { name = "pandas" },
@@ -899,8 +901,10 @@ examples = [
 
 [package.metadata]
 requires-dist = [
+    { name = "absl-py", specifier = ">=2.3.1" },
     { name = "duckdb", specifier = ">=1.0.0" },
     { name = "fastapi" },
+    { name = "flatbuffers", specifier = ">=25.2.10" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lightphe", specifier = ">=0.0.15,<0.1.0" },
     { name = "pandas", specifier = ">=2.0.0" },

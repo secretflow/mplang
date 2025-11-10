@@ -38,6 +38,7 @@ def _ensure_impl_imported() -> None:
     from mplang.kernels import basic as _impl_basic  # noqa: F401
     from mplang.kernels import crypto as _impl_crypto  # noqa: F401
     from mplang.kernels import fhe as _impl_fhe  # noqa: F401
+    from mplang.kernels import jax_xla as _impl_jax_xla  # noqa: F401
     from mplang.kernels import mock_tee as _impl_tee  # noqa: F401
     from mplang.kernels import phe as _impl_phe  # noqa: F401
     from mplang.kernels import spu as _impl_spu  # noqa: F401
@@ -99,6 +100,7 @@ _DEFAULT_BINDINGS: dict[str, str] = {
     "spu.run_pphlo": "spu.run_pphlo",
     # stablehlo
     "mlir.stablehlo": "mlir.stablehlo",
+    "jax.exec": "jax.exec",
     # sql
     # generic SQL op; backend-specific kernel id for duckdb
     "sql.run": "duckdb.run_sql",

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import base64
+
 import jax
 import jax.numpy as jnp
 import pytest
@@ -278,3 +280,122 @@ class TestJax2StableHLO:
             assert isinstance(keep_map, list)
             assert len(keep_map) < 3  # Should be fewer than original 3 params
             assert 1 not in keep_map  # Index 1 (unused) should not be kept
+
+
+class TestJaxExportFrontend:
+    """Test suite for JAX export frontend generation."""
+
+    def test_jax_export_basic_function(self):
+        """Test jax_export with a basic function."""
+
+        def add_fn(x, y):
+            return x + y
+
+        # Test data
+        x = jnp.array([1.0, 2.0, 3.0])
+        y = jnp.array([4.0, 5.0, 6.0])
+
+        # Use jax_export directly
+        is_variable = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
+        pfunc, in_vars, _out_tree = jax_cc.jax_export(is_variable, add_fn, x, y)
+
+        # Verify PFunction properties
+        assert pfunc.fn_type == "jax.exec"
+        assert pfunc.fn_name == "add_fn"
+        assert len(pfunc.ins_info) == 2
+        assert len(pfunc.outs_info) == 1
+        assert pfunc.fn_text is not None
+        assert len(pfunc.fn_text) > 0
+
+        # Verify input info
+        assert pfunc.ins_info[0].shape == x.shape
+        assert pfunc.ins_info[1].shape == y.shape
+
+        # Verify that fn_text is valid base64
+        try:
+            base64.b64decode(pfunc.fn_text)
+        except Exception:
+            pytest.fail("fn_text should be valid base64")
+
+        # Verify in_vars
+        assert len(in_vars) == 2
+        assert in_vars[0].shape == x.shape
+        assert in_vars[1].shape == y.shape
+
+    def test_jax_export_with_constants(self):
+        """Test jax_export with mixed variables and constants."""
+
+        def multiply_with_constant(x, factor=2.0):
+            return x * factor
+
+        # Test data
+        x = jnp.array([1.0, 2.0, 3.0])
+
+        # Use jax_export with constant
+        is_variable = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
+        pfunc, in_vars, _out_tree = jax_cc.jax_export(
+            is_variable, multiply_with_constant, x, factor=5.0
+        )
+
+        # Only x should be a variable, factor should be captured as constant
+        assert len(in_vars) == 1
+        assert len(pfunc.ins_info) == 1
+        assert pfunc.ins_info[0].shape == x.shape
+
+    def test_jax_export_complex_function(self):
+        """Test jax_export with a complex function."""
+
+        def complex_fn(x, y):
+            intermediate = jnp.sin(x) * jnp.cos(y)
+            result = jnp.sum(intermediate) + jnp.mean(x**2 + y**2)
+            return result, intermediate
+
+        # Test data
+        x = jnp.array([0.5, 1.0, 1.5])
+        y = jnp.array([0.3, 0.7, 1.1])
+
+        # Use jax_export
+        is_variable = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
+        pfunc, _in_vars, _out_tree = jax_cc.jax_export(is_variable, complex_fn, x, y)
+
+        # Verify multiple outputs
+        assert len(pfunc.outs_info) == 2
+        assert pfunc.outs_info[0].shape == ()  # scalar result
+        assert pfunc.outs_info[1].shape == x.shape  # intermediate array
+
+    def test_jax_export_different_dtypes(self):
+        """Test jax_export with different data types."""
+
+        def mixed_dtype_fn(x, y):
+            return x.astype(jnp.float32) + y.astype(jnp.int32)
+
+        # Test data with different dtypes
+        x = jnp.array([1.5, 2.5], dtype=jnp.float64)
+        y = jnp.array([10, 20], dtype=jnp.int64)
+
+        # Use jax_export
+        is_variable = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
+        pfunc, _in_vars, _out_tree = jax_cc.jax_export(
+            is_variable, mixed_dtype_fn, x, y
+        )
+
+        # Verify dtype preservation in input info
+        assert pfunc.ins_info[0].dtype.name == "float64"
+        assert pfunc.ins_info[1].dtype.name == "int64"
+
+    def test_jax_export_high_dimensional(self):
+        """Test jax_export with high-dimensional arrays."""
+
+        def reduce_fn(x):
+            return jnp.sum(x, axis=(1, 2))
+
+        # Create 4D tensor
+        x = jnp.ones((2, 3, 4, 5))
+
+        # Use jax_export
+        is_variable = lambda obj: hasattr(obj, "dtype") and hasattr(obj, "shape")
+        pfunc, _in_vars, _out_tree = jax_cc.jax_export(is_variable, reduce_fn, x)
+
+        # Verify shapes
+        assert pfunc.ins_info[0].shape == (2, 3, 4, 5)
+        assert pfunc.outs_info[0].shape == (2, 5)

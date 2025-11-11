@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
 from typing import Any
 
 import jax
 import jax.numpy as jnp
+from jax import export
 from jax.tree_util import PyTreeDef, tree_flatten
 
 from mplang.core import MPObject, PFunction, TensorType, get_fn_name
@@ -27,6 +29,62 @@ from mplang.utils.func_utils import normalize_fn
 
 # Enable 64-bit precision for JAX to match tensor types
 jax.config.update("jax_enable_x64", True)
+
+USE_JAX_EXPORT = False
+
+
+def jax_export(
+    is_variable: Callable[[Any], bool], flat_fn: Any, *args: Any, **kwargs: Any
+) -> tuple[PFunction, list, PyTreeDef]:
+    """Compile JAX function to JAX export format for remote execution.
+
+    Args:
+        is_variable: Predicate function to classify parameters as variables vs. constants.
+                    Returns True for parameters that should be treated as PFunction inputs.
+        flat_fn: JAX function to be compiled into export format
+        *args: Positional arguments passed to the function during compilation
+        **kwargs: Keyword arguments passed to the function during compilation
+    Returns:
+        tuple[PFunction, list, PyTreeDef]: Compilation artifacts containing:
+            - PFunction: Serialized function with embedded export data and type metadata
+            - list: Extracted variable parameters (those satisfying is_variable predicate).
+                   Non-variable parameters are captured as compile-time constants within
+                   the PFunction body, while variables become runtime input parameters.
+            - PyTreeDef: Tree structure template for reconstructing nested output values
+    """
+    # Flatten (args, kwargs) and capture immediates using the moved logic from primitive.py
+    normalized_fn, in_vars = normalize_fn(flat_fn, args, kwargs, is_variable)
+
+    # Convert TensorType in_vars to ShapeDtypeStruct for JAX tracing
+    jax_params = [
+        jax.ShapeDtypeStruct(arg.shape, jnp.dtype(arg.dtype.name)) for arg in in_vars
+    ]
+
+    # Standard JAX serialization pipeline: jit → trace → lower → export
+    jitted_fn = jax.jit(normalized_fn)
+    traced = jitted_fn.trace(jax_params)
+    lowered = traced.lower()
+
+    # Get JAX export representation - the portable format
+    exported = export.export(jitted_fn)(jax_params)
+
+    # Get output info and tree structure for result reconstruction after remote execution
+    out_info_flat, out_tree = tree_flatten(lowered.out_info)
+    out_info_flat = [TensorType.from_obj(info) for info in out_info_flat]
+
+    # This format tells JaxRT how to handle the compiled result
+    pfn_kwargs: dict[str, Any] = {
+        "fn_type": "jax.exec",
+        "ins_info": tuple(TensorType.from_obj(x) for x in in_vars),
+        "outs_info": tuple(out_info_flat),
+        "fn_name": get_fn_name(flat_fn),
+        "fn_text": base64.b64encode(exported.serialize()).decode(
+            "utf-8"
+        ),  # Serialized export data, serializable for transmission
+    }
+
+    pfn = PFunction(**pfn_kwargs)
+    return pfn, in_vars, out_tree
 
 
 def jax2stablehlo(
@@ -171,7 +229,12 @@ class JaxRunner(FeOperation):
         def is_variable(arg: Any) -> bool:
             return isinstance(arg, MPObject)
 
-        pfunc, in_vars, out_tree = jax2stablehlo(is_variable, jax_fn, *args, **kwargs)
+        if USE_JAX_EXPORT:
+            pfunc, in_vars, out_tree = jax_export(is_variable, jax_fn, *args, **kwargs)
+        else:
+            pfunc, in_vars, out_tree = jax2stablehlo(
+                is_variable, jax_fn, *args, **kwargs
+            )
         return pfunc, in_vars, out_tree
 
 

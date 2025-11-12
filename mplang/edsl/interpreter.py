@@ -12,18 +12,86 @@ from typing import TYPE_CHECKING, Any
 
 from mplang.edsl.context import Context
 from mplang.edsl.graph import Graph
+from mplang.edsl.object import Object
+from mplang.edsl.typing import BaseType
 
 if TYPE_CHECKING:
-    from mplang.edsl.object import InterpObject, Object
+    from mplang.edsl.primitive import Primitive
+
+
+class InterpObject(Object):
+    """Interp-time object (during eager execution).
+
+    Holds a runtime object (the actual data/handle owned by the backend executor)
+    and a reference to the Interpreter (Context).
+    Operations delegate to primitives which execute immediately.
+
+    The runtime object can be:
+    - FHE backend: Local TenSEAL/SEAL ciphertext
+    - JAX backend: Local jax.Array
+    - MP backend: Backend handle (pointer to party-side data)
+    - SQL backend: DatabaseHandle
+    - etc.
+
+    Example:
+        >>> # FHE backend (local execution)
+        >>> x = fhe.encrypt([1, 2, 3])  # InterpObject with local ciphertext
+        >>> y = fhe.encrypt([4, 5, 6])
+        >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
+
+        >>> # MP backend (distributed execution)
+        >>> x = mp.random.uniform(shape=(10,))  # InterpObject with backend handle
+        >>> y = mp.random.uniform(shape=(10,))
+        >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
+    """
+
+    def __init__(
+        self,
+        runtime_obj: Any,
+        obj_type: BaseType,
+        interpreter: Interpreter | None = None,
+    ):
+        """Initialize InterpObject.
+
+        Args:
+            runtime_obj: Backend-specific runtime object (ciphertext, array, handle, etc.)
+            obj_type: Type of the object (BaseType from edsl.typing)
+            interpreter: Interpreter context (if None, uses default interpreter)
+        """
+        self._runtime_obj = runtime_obj
+        self._type = obj_type
+        self._context = interpreter  # InterpObject holds its Interpreter (Context)
+
+    @property
+    def type(self) -> BaseType:
+        return self._type
+
+    @property
+    def runtime_obj(self) -> Any:
+        """Get the underlying runtime object (backend-specific)."""
+        return self._runtime_obj
+
+    def __add__(self, other: Object) -> Object:
+        """Delegate addition to add primitive."""
+        from mplang.edsl.primitive import add_p
+
+        return add_p.bind(self, other)
+
+    def __repr__(self) -> str:
+        runtime_repr = repr(self._runtime_obj)
+        # Truncate long representations
+        if len(runtime_repr) > 50:
+            runtime_repr = runtime_repr[:47] + "..."
+        return f"InterpObject({runtime_repr}, type={self.type})"
 
 
 class Interpreter(Context):
     """Execution context for eager execution.
 
-    Inherits from Context and implements execute_add() by executing immediately.
+    Inherits from Context and implements bind_primitive() by executing immediately.
 
     Responsibilities:
-    1. Execute operations on InterpObject immediately
+    1. Execute primitives on InterpObject immediately
     2. Delegate to backend-specific executors
     3. Execute Graph IR (via GraphInterpreter)
 
@@ -31,63 +99,38 @@ class Interpreter(Context):
         >>> interp = Interpreter()
         >>> x = InterpObject(np.array([1, 2, 3]), Tensor[f32, (3,)])
         >>> y = InterpObject(np.array([4, 5, 6]), Tensor[f32, (3,)])
-        >>> z = interp.execute_add(x, y)  # Executes immediately
+        >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
     """
 
     def __init__(self):
         # TODO: Backend executor registry
         self._executors = {}
 
-    def execute_add(self, left: Object, right: Object) -> InterpObject:
-        """Execute addition immediately.
-
-        This is the Context.execute_add() implementation for Interpreter.
-        Called by InterpObject.__add__() during eager execution.
+    def bind_primitive(
+        self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
+    ) -> InterpObject:
+        """Execute primitive immediately (eager execution).
 
         Args:
-            left: Left operand (must be InterpObject)
-            right: Right operand (must be InterpObject)
+            primitive: The primitive to execute
+            args: Positional arguments (Objects)
+            kwargs: Keyword arguments (plain values)
 
         Returns:
-            InterpObject containing the result
+            InterpObject wrapping the result runtime object
 
         Raises:
-            TypeError: If operands are not InterpObject
+            RuntimeError: If primitive has no implementation
         """
-        from mplang.edsl.object import InterpObject
+        if primitive._impl is None:
+            raise RuntimeError(
+                f"Primitive '{primitive.name}' has no implementation. "
+                f"Define it using @{primitive.name}_p.def_impl"
+            )
 
-        if not isinstance(left, InterpObject) or not isinstance(right, InterpObject):
-            raise TypeError("Both operands must be InterpObject for eager execution")
-
-        # TODO: Dispatch to appropriate backend executor based on type
-        # For now, simple numpy addition (assumes runtime_obj supports +)
-        result_data = left.runtime_obj + right.runtime_obj
-        return InterpObject(result_data, left.type)
-
-
-class GraphInterpreter:
-    """Interpreter for Graph IR.
-
-    Traverses the Graph's operations and executes them one by one.
-
-    TODO: Implement complete interpretation logic.
-    """
-
-    def __init__(self):
-        pass
-
-    def run(self, graph: Graph, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Execute a Graph.
-
-        Args:
-            graph: Graph IR to execute
-            inputs: Input values (name → value)
-
-        Returns:
-            Output values (name → value)
-        """
-        # TODO: Implement
-        raise NotImplementedError("GraphInterpreter not yet implemented")
+        # Execute implementation
+        result = primitive._impl(*args, **kwargs)
+        return result
 
 
 def interpret(graph: Graph, args: tuple) -> Any:
@@ -100,7 +143,4 @@ def interpret(graph: Graph, args: tuple) -> Any:
     Returns:
         Execution result
     """
-    GraphInterpreter()
-    # TODO: Convert args to inputs dict
-    # TODO: Call interpreter.run()
     raise NotImplementedError("interpret() not yet implemented")

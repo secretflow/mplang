@@ -99,25 +99,29 @@ This is the cutting edge of MPLang development. If you want to contribute:
 
 # Type System (ready to use)
 # Context (ready to use)
-from mplang.edsl.context import Context, ExecutionContext, get_context
+from mplang.edsl.context import (
+    Context,
+    get_current_context,
+    get_default_interpreter,
+    pop_context,
+    push_context,
+)
 
 # Graph IR (ready to use)
 from mplang.edsl.graph import Graph, Operation, Value
 
 # Interpreter (ready to use)
-from mplang.edsl.interpreter import GraphInterpreter, Interpreter, interpret
+from mplang.edsl.interpreter import InterpObject, Interpreter, interpret
 
 # JIT (ready to use)
 from mplang.edsl.jit import jit
 
 # Object Hierarchy (ready to use)
-from mplang.edsl.object import InterpObject, Object, TraceObject
+from mplang.edsl.object import Object
 
 # Primitive (ready to use)
 from mplang.edsl.primitive import Primitive, add_p, div_p, mul_p, primitive, sub_p
-
-# Tracer (ready to use)
-from mplang.edsl.tracer import Tracer, trace
+from mplang.edsl.tracer import TraceObject, Tracer, trace
 from mplang.edsl.typing import (
     HE,
     MP,
@@ -153,10 +157,8 @@ __all__ = [
     "Context",
     "Custom",
     "CustomType",
-    "ExecutionContext",
     # Graph IR
     "Graph",
-    "GraphInterpreter",
     "InterpObject",
     # Interpreter
     "Interpreter",
@@ -185,14 +187,17 @@ __all__ = [
     # Scalar types
     "f32",
     "f64",
-    "get_context",
+    "get_current_context",
+    "get_default_interpreter",
     "i32",
     "i64",
     "interpret",
     # JIT
     "jit",
     "mul_p",
+    "pop_context",
     "primitive",
+    "push_context",
     "sub_p",
     "trace",
 ]

@@ -1,116 +1,89 @@
 """Context: EDSL Execution Context Abstraction.
 
 This module defines the Context hierarchy:
-- Context: Abstract base class for EDSL execution contexts
+- Context: Base class for EDSL execution contexts (with bind_primitive method)
 - Tracer: Tracing context (records operations to Graph IR)
 - Interpreter: Execution context (executes operations immediately)
 
-The context stack is managed globally via ExecutionContext.
+The context stack is managed globally via simple stack operations.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mplang.edsl.interpreter import Interpreter
     from mplang.edsl.object import Object
-    from mplang.edsl.tracer import Tracer
+    from mplang.edsl.primitive import Primitive
 
 
 class Context(ABC):
-    """Abstract base class for EDSL execution contexts.
+    """Base class for EDSL execution contexts.
 
-    A Context represents an environment where operations are executed.
+    A Context represents an environment where primitives are executed.
     There are two types of contexts:
     - Tracer: Records operations to Graph IR (compile-time)
     - Interpreter: Executes operations immediately (runtime)
 
+    Each context decides how to handle primitive operations by implementing
+    the bind_primitive() method.
+
     This abstraction provides:
-    1. Conceptual symmetry: Both Tracer and Interpreter are Context types
-    2. Unified operation interface: execute_add(), execute_mul(), etc.
+    1. Clear responsibility: Context knows how to execute primitives
+    2. Context management: enter/exit context for operation tracing/execution
     3. Extensibility: Easy to add new context types (Profiler, Debugger, etc.)
     """
 
     @abstractmethod
-    def execute_add(self, left: Object, right: Object) -> Object:
-        """Execute addition operation.
+    def bind_primitive(
+        self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
+    ) -> Object:
+        """Execute a primitive in this context.
 
-        In Tracer: Records to Graph IR
-        In Interpreter: Executes immediately
+        Args:
+            primitive: The primitive to execute
+            args: Positional arguments (Objects)
+            kwargs: Keyword arguments (plain values)
+
+        Returns:
+            Result Object (TraceObject in Tracer, InterpObject in Interpreter)
         """
 
-    # TODO: Add more operations
-    # @abstractmethod
-    # def execute_mul(self, left: Object, right: Object) -> Object: ...
-    # @abstractmethod
-    # def execute_sub(self, left: Object, right: Object) -> Object: ...
+
+# ============================================================================
+# Global Context Stack Management
+# ============================================================================
+
+_context_stack: list[Context] = []
+_default_interpreter: Interpreter | None = None
 
 
-class ExecutionContext:
-    """Global execution context manager.
+def get_current_context() -> Context | None:
+    """Get the current active context.
 
-    Manages:
-    - Current mode (tracing vs eager execution)
-    - Context stack (Tracer or Interpreter contexts)
-    - Default interpreter (for eager execution)
+    Returns None if no context is active (will use default interpreter).
     """
-
-    def __init__(self):
-        self._mode: Literal["eager", "tracing"] = "eager"
-        self._context_stack: list[Context] = []
-        self._default_interpreter: Interpreter | None = None
-
-    @property
-    def is_tracing(self) -> bool:
-        """Check if currently in tracing mode."""
-        return self._mode == "tracing"
-
-    @property
-    def current_context(self) -> Context | None:
-        """Get current context (Tracer or Interpreter).
-
-        Returns None if no context is active (should use default interpreter).
-        """
-        return self._context_stack[-1] if self._context_stack else None
-
-    @property
-    def current_tracer(self) -> Tracer | None:
-        """Get current tracer (None if not tracing)."""
-        from mplang.edsl.tracer import Tracer
-
-        ctx = self.current_context
-        return ctx if isinstance(ctx, Tracer) else None
-
-    @property
-    def default_interpreter(self) -> Interpreter:
-        """Get the default interpreter for eager execution."""
-        if self._default_interpreter is None:
-            from mplang.edsl.interpreter import Interpreter
-
-            self._default_interpreter = Interpreter()
-        return self._default_interpreter
-
-    def enter_context(self, context: Context):
-        """Enter a context (Tracer or Interpreter)."""
-        from mplang.edsl.tracer import Tracer
-
-        self._context_stack.append(context)
-        if isinstance(context, Tracer):
-            self._mode = "tracing"
-
-    def exit_context(self):
-        """Exit current context."""
-        self._context_stack.pop()
-        if not self._context_stack or not self.is_tracing:
-            self._mode = "eager"
+    return _context_stack[-1] if _context_stack else None
 
 
-# Global context (singleton)
-_global_context = ExecutionContext()
+def push_context(context: Context):
+    """Push a context onto the stack (enter context)."""
+    _context_stack.append(context)
 
 
-def get_context() -> ExecutionContext:
-    """Get the global ExecutionContext."""
-    return _global_context
+def pop_context():
+    """Pop a context from the stack (exit context)."""
+    if _context_stack:
+        _context_stack.pop()
+
+
+def get_default_interpreter() -> Interpreter:
+    """Get the default interpreter for eager execution."""
+    global _default_interpreter
+    if _default_interpreter is None:
+        from mplang.edsl.interpreter import Interpreter
+
+        _default_interpreter = Interpreter()
+    return _default_interpreter

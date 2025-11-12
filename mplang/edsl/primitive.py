@@ -26,8 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mplang.edsl.object import InterpObject, Object, TraceObject
-    from mplang.edsl.tracer import Tracer
+    from mplang.edsl.object import Object
     from mplang.edsl.typing import BaseType
 
 
@@ -118,7 +117,7 @@ class Primitive:
         self._impl = fn
         return fn
 
-    def bind(self, *args: Object, **kwargs: Any) -> TraceObject | InterpObject:
+    def bind(self, *args: Object, **kwargs: Any) -> Object:
         """Bind arguments and execute/trace the primitive.
 
         This is the main user-facing API. It automatically chooses between:
@@ -130,7 +129,7 @@ class Primitive:
             **kwargs: Keyword arguments (plain Python values, not Objects)
 
         Returns:
-            TraceObject (if tracing) or InterpObject (if interpreting)
+            Object (TraceObject if tracing, InterpObject if interpreting)
 
         Raises:
             RuntimeError: If neither abstract_eval nor impl is defined
@@ -145,7 +144,7 @@ class Primitive:
             >>> # In eager mode
             >>> z = add_p.bind(x, y)  # Returns InterpObject
         """
-        from mplang.edsl.context import get_context
+        from mplang.edsl.context import get_current_context, get_default_interpreter
 
         # Validate kwargs: must not contain Objects
         for key, value in kwargs.items():
@@ -159,97 +158,14 @@ class Primitive:
                 )
 
         # Get current context
-        ctx = get_context()
-        current_tracer = ctx.current_tracer
+        ctx = get_current_context()
 
-        if current_tracer is not None:
-            # Trace mode: Record to Graph IR
-            return self._bind_trace(current_tracer, args, kwargs)
+        if ctx is not None:
+            # Use current context (Tracer or Interpreter)
+            return ctx.bind_primitive(self, args, kwargs)
         else:
-            # Interp mode: Execute immediately
-            return self._bind_interp(args, kwargs)
-
-    def _bind_trace(
-        self, tracer: Tracer, args: tuple[Object, ...], kwargs: dict[str, Any]
-    ) -> TraceObject:
-        """Bind in trace mode (record to Graph IR).
-
-        Args:
-            tracer: Current Tracer context
-            args: Positional arguments (Objects)
-            kwargs: Keyword arguments (plain values)
-
-        Returns:
-            TraceObject wrapping the result Value
-
-        Raises:
-            RuntimeError: If abstract_eval is not defined
-        """
-        if self._abstract_eval is None:
-            raise RuntimeError(
-                f"Primitive '{self.name}' has no abstract_eval rule. "
-                f"Define it using @{self.name}_p.def_abstract_eval"
-            )
-
-        from mplang.edsl.object import TraceObject
-
-        # Promote InterpObjects to TraceObjects if needed
-        trace_args = []
-        for arg in args:
-            if isinstance(arg, TraceObject):
-                trace_args.append(arg)
-            else:
-                # InterpObject → TraceObject (promote to graph)
-                trace_args.append(tracer.promote(arg))
-
-        # Get input types
-        input_types = [arg.type for arg in trace_args]
-
-        # Infer output type using abstract_eval
-        output_type = self._abstract_eval(*input_types, **kwargs)
-
-        # Add operation to graph using tracer.graph.add_op()
-        input_values = [arg._graph_value for arg in trace_args]
-
-        # Use Graph.add_op() which handles Value creation and Operation registration
-        result_value = tracer.graph.add_op(
-            opcode=self.name,
-            inputs=input_values,
-            output_types=[output_type],
-            attrs=kwargs,
-        )
-
-        # add_op returns Value or list[Value], we know it's Value for single output
-        if isinstance(result_value, list):
-            result_value = result_value[0]
-
-        # Return TraceObject wrapping the result Value
-        return TraceObject(result_value, tracer)
-
-    def _bind_interp(
-        self, args: tuple[Object, ...], kwargs: dict[str, Any]
-    ) -> InterpObject:
-        """Bind in interp mode (execute immediately).
-
-        Args:
-            args: Positional arguments (Objects)
-            kwargs: Keyword arguments (plain values)
-
-        Returns:
-            InterpObject wrapping the result runtime object
-
-        Raises:
-            RuntimeError: If impl is not defined
-        """
-        if self._impl is None:
-            raise RuntimeError(
-                f"Primitive '{self.name}' has no implementation. "
-                f"Define it using @{self.name}_p.def_impl"
-            )
-
-        # Execute implementation
-        result = self._impl(*args, **kwargs)
-        return result
+            # No context: use default interpreter (eager mode)
+            return get_default_interpreter().bind_primitive(self, args, kwargs)
 
 
 # ============================================================================
@@ -305,8 +221,86 @@ mul_p = Primitive("mul")
 sub_p = Primitive("sub")
 div_p = Primitive("div")
 
-# TODO: Define abstract_eval and impl for these primitives
-# This will be done in a follow-up PR along with kernel integration
+
+# Define abstract_eval for arithmetic primitives
+@add_p.def_abstract_eval
+def _add_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
+    """Type inference for addition: returns the type of the first operand."""
+    # TODO: Add proper type checking and unification
+    return x_type
+
+
+@mul_p.def_abstract_eval
+def _mul_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
+    """Type inference for multiplication: returns the type of the first operand."""
+    # TODO: Add proper type checking and unification
+    return x_type
+
+
+@sub_p.def_abstract_eval
+def _sub_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
+    """Type inference for subtraction: returns the type of the first operand."""
+    # TODO: Add proper type checking and unification
+    return x_type
+
+
+@div_p.def_abstract_eval
+def _div_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
+    """Type inference for division: returns the type of the first operand."""
+    # TODO: Add proper type checking and unification
+    return x_type
+
+
+# Define impl for arithmetic primitives (eager execution)
+@add_p.def_impl
+def _add_impl(x: Object, y: Object) -> Object:
+    """Eager execution of addition."""
+    from mplang.edsl.interpreter import InterpObject
+
+    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
+        raise TypeError("add_p.impl expects InterpObject operands")
+
+    # TODO: Dispatch to appropriate backend executor based on type
+    # For now, simple addition (assumes runtime_obj supports +)
+    result_data = x.runtime_obj + y.runtime_obj
+    return InterpObject(result_data, x.type)
+
+
+@mul_p.def_impl
+def _mul_impl(x: Object, y: Object) -> Object:
+    """Eager execution of multiplication."""
+    from mplang.edsl.interpreter import InterpObject
+
+    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
+        raise TypeError("mul_p.impl expects InterpObject operands")
+
+    result_data = x.runtime_obj * y.runtime_obj
+    return InterpObject(result_data, x.type)
+
+
+@sub_p.def_impl
+def _sub_impl(x: Object, y: Object) -> Object:
+    """Eager execution of subtraction."""
+    from mplang.edsl.interpreter import InterpObject
+
+    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
+        raise TypeError("sub_p.impl expects InterpObject operands")
+
+    result_data = x.runtime_obj - y.runtime_obj
+    return InterpObject(result_data, x.type)
+
+
+@div_p.def_impl
+def _div_impl(x: Object, y: Object) -> Object:
+    """Eager execution of division."""
+    from mplang.edsl.interpreter import InterpObject
+
+    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
+        raise TypeError("div_p.impl expects InterpObject operands")
+
+    result_data = x.runtime_obj / y.runtime_obj
+    return InterpObject(result_data, x.type)
+
 
 __all__ = [
     "Primitive",

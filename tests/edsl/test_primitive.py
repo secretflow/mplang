@@ -17,10 +17,10 @@
 import numpy as np
 import pytest
 
-from mplang.edsl.context import get_context
-from mplang.edsl.object import InterpObject, TraceObject
+from mplang.edsl.context import pop_context, push_context
+from mplang.edsl.interpreter import InterpObject
 from mplang.edsl.primitive import Primitive, add_p, primitive
-from mplang.edsl.tracer import Tracer
+from mplang.edsl.tracer import TraceObject, Tracer
 from mplang.edsl.typing import Tensor, f32
 
 
@@ -76,8 +76,7 @@ class TestPrimitiveTraceMode:
         y = InterpObject(y_data, Tensor[f32, (3,)])
 
         # Enter trace mode
-        ctx = get_context()
-        ctx.enter_context(tracer)
+        push_context(tracer)
         try:
             # Call primitive.bind()
             z = my_add_p.bind(x, y)
@@ -93,7 +92,7 @@ class TestPrimitiveTraceMode:
             assert len(op.inputs) == 2
             assert len(op.outputs) == 1
         finally:
-            ctx.exit_context()
+            pop_context()
 
     def test_bind_in_trace_mode_with_attrs(self):
         """Test primitive.bind() with attrs (kwargs) in trace mode."""
@@ -111,8 +110,7 @@ class TestPrimitiveTraceMode:
         x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
         y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
 
-        ctx = get_context()
-        ctx.enter_context(tracer)
+        push_context(tracer)
         try:
             # Call with attrs
             z = scaled_add_p.bind(x, y, scale=2.5)
@@ -124,7 +122,7 @@ class TestPrimitiveTraceMode:
             assert op.attrs == {"scale": 2.5}
             assert isinstance(z, TraceObject)
         finally:
-            ctx.exit_context()
+            pop_context()
 
     def test_bind_rejects_object_in_kwargs(self):
         """Test that primitive.bind() rejects Object in kwargs."""
@@ -138,14 +136,13 @@ class TestPrimitiveTraceMode:
         x = InterpObject(np.array([1.0]), Tensor[f32, (1,)])
         y = InterpObject(np.array([2.0]), Tensor[f32, (1,)])
 
-        ctx = get_context()
-        ctx.enter_context(tracer)
+        push_context(tracer)
         try:
             # Try to pass Object as kwarg (should fail)
             with pytest.raises(TypeError, match="cannot be an Object"):
                 my_op_p.bind(x, other=y)  # y is Object, not allowed in kwargs
         finally:
-            ctx.exit_context()
+            pop_context()
 
     def test_bind_without_abstract_eval_fails(self):
         """Test that bind() fails in trace mode without abstract_eval."""
@@ -155,13 +152,12 @@ class TestPrimitiveTraceMode:
         tracer = Tracer()
         x = InterpObject(np.array([1.0]), Tensor[f32, (1,)])
 
-        ctx = get_context()
-        ctx.enter_context(tracer)
+        push_context(tracer)
         try:
             with pytest.raises(RuntimeError, match="no abstract_eval rule"):
                 p.bind(x)
         finally:
-            ctx.exit_context()
+            pop_context()
 
 
 class TestPrimitiveInterpMode:
@@ -275,11 +271,37 @@ class TestPredefinedPrimitives:
         assert isinstance(add_p, Primitive)
         assert add_p.name == "add"
 
-    def test_predefined_primitives_need_implementation(self):
-        """Test that pre-defined primitives need abstract_eval and impl."""
-        # add_p is defined but has no abstract_eval yet
-        assert add_p._abstract_eval is None
-        assert add_p._impl is None
+    def test_predefined_primitives_have_implementation(self):
+        """Test that pre-defined primitives have abstract_eval and impl."""
+        # add_p now has abstract_eval and impl
+        assert add_p._abstract_eval is not None
+        assert add_p._impl is not None
+
+    def test_add_p_works_in_trace_mode(self):
+        """Test that add_p works correctly in trace mode."""
+        from mplang.edsl.tracer import Tracer
+
+        tracer = Tracer()
+        x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
+        y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
+
+        push_context(tracer)
+        try:
+            result = add_p.bind(x, y)
+            assert isinstance(result, TraceObject)
+            assert len(tracer.graph.operations) == 1
+            assert tracer.graph.operations[0].opcode == "add"
+        finally:
+            pop_context()
+
+    def test_add_p_works_in_interp_mode(self):
+        """Test that add_p works correctly in interp mode."""
+        x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
+        y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
+
+        result = add_p.bind(x, y)
+        assert isinstance(result, InterpObject)
+        np.testing.assert_array_equal(result.runtime_obj, np.array([4.0, 6.0]))
 
 
 class TestPrimitiveComplexScenarios:
@@ -305,8 +327,7 @@ class TestPrimitiveComplexScenarios:
         y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
         z = InterpObject(np.array([5.0, 6.0]), Tensor[f32, (2,)])
 
-        ctx = get_context()
-        ctx.enter_context(tracer)
+        push_context(tracer)
         try:
             # (x + y) * z
             temp = add_p.bind(x, y)
@@ -318,7 +339,7 @@ class TestPrimitiveComplexScenarios:
             assert tracer.graph.operations[1].opcode == "mul"
             assert isinstance(result, TraceObject)
         finally:
-            ctx.exit_context()
+            pop_context()
 
     def test_primitive_with_multiple_attrs(self):
         """Test primitive with multiple attributes."""
@@ -339,8 +360,7 @@ class TestPrimitiveComplexScenarios:
         x = InterpObject(np.random.randn(1, 3, 32, 32), Tensor[f32, (1, 3, 32, 32)])
         kernel = InterpObject(np.random.randn(16, 3, 3, 3), Tensor[f32, (16, 3, 3, 3)])
 
-        ctx = get_context()
-        ctx.enter_context(tracer)
+        push_context(tracer)
         try:
             result = conv_p.bind(x, kernel, stride=2, padding=1, groups=1)
 
@@ -349,8 +369,56 @@ class TestPrimitiveComplexScenarios:
             assert op.attrs == {"stride": 2, "padding": 1, "groups": 1}
             assert isinstance(result, TraceObject)
         finally:
-            ctx.exit_context()
+            pop_context()
 
         # Test in interp mode
         result2 = conv_p.bind(x, kernel, stride=2, padding=1, groups=1)
         assert isinstance(result2, InterpObject)
+
+    def test_trace_primitive_directly(self):
+        """Test tracing a Primitive directly (not a lambda)."""
+        from mplang.edsl.tracer import trace
+
+        # Define a primitive
+        my_add_p = Primitive("my_add")
+
+        @my_add_p.def_abstract_eval
+        def my_add_abstract(x_type, y_type):
+            return x_type
+
+        # Trace the primitive directly
+        x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
+        y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
+
+        graph = trace(my_add_p, x, y)
+
+        # Verify graph structure
+        assert len(graph.operations) == 1
+        assert graph.operations[0].opcode == "my_add"
+        assert len(graph.inputs) == 2
+        assert len(graph.outputs) == 1
+
+    def test_add_operator_uses_primitive(self):
+        """Test that __add__ operator uses add_p primitive."""
+        from mplang.edsl.tracer import Tracer
+
+        tracer = Tracer()
+        x_interp = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
+        y_interp = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
+
+        push_context(tracer)
+        try:
+            # Use __add__ operator
+            result = x_interp + y_interp
+
+            # Should create TraceObject via add_p primitive
+            assert isinstance(result, TraceObject)
+            assert len(tracer.graph.operations) == 1
+            assert tracer.graph.operations[0].opcode == "add"
+        finally:
+            pop_context()
+
+        # Test in interp mode (eager execution)
+        result_interp = x_interp + y_interp
+        assert isinstance(result_interp, InterpObject)
+        np.testing.assert_array_equal(result_interp.runtime_obj, np.array([4.0, 6.0]))

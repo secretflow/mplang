@@ -14,29 +14,10 @@
 
 """Primitive: User-facing API for building atomic operations.
 
-This module provides the Primitive abstraction for defining atomic operations
-in the MPLang EDSL. Similar to JAX's Primitive system, it separates:
+Provides the Primitive class for defining operations that automatically work in
+both trace mode (record to Graph IR) and interp mode (execute immediately).
 
-1. **Abstract evaluation**: Type inference rules (trace-time)
-2. **Implementation**: Concrete execution logic (interp-time)
-
-Example:
-    >>> # Define a new primitive
-    >>> add_p = Primitive("add")
-    >>>
-    >>> @add_p.def_abstract_eval
-    >>> def add_abstract(x_type, y_type):
-    >>> # Type inference: both inputs must have same type
-    >>>     assert x_type == y_type
-    >>>     return x_type
-    >>>
-    >>> @add_p.def_impl
-    >>> def add_impl(x, y):
-    >>> # Implementation: actual execution logic
-    >>>     return x.runtime_obj + y.runtime_obj
-    >>>
-    >>> # Use the primitive
-    >>> z = add_p.bind(x, y)  # Traces or executes based on context
+See Primitive class documentation for detailed usage examples.
 """
 
 from __future__ import annotations

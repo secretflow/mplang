@@ -76,25 +76,30 @@ mplang/edsl/
 │   ├── type_system.md   # Type system design
 │   └── migration.md     # Migration from mplang.core
 │
-├── typing.py            # Unified type system
-├── graph.py             # IR: Operation List + SSA
-├── builder.py           # Graph builder API
-├── tracer.py            # Explicit tracer
-├── context.py           # Context management
-│
-└── primitives/          # Control flow primitives
-    ├── __init__.py
-    ├── cond.py          # Conditional
-    └── loop.py          # While loop
+├── typing.py            # ✅ Unified type system
+├── graph.py             # ✅ IR: Operation List + SSA
+├── primitive.py         # ✅ Primitive abstraction
+├── object.py            # ✅ TraceObject/InterpObject
+├── context.py           # ✅ Context management
+├── tracer.py            # ✅ Explicit tracer
+├── interpreter.py       # ✅ Interpreter + GraphInterpreter
+└── jit.py               # ✅ @jit decorator
 ```
 
 ## Implementation Status
 
-### ✅ Completed
+### ✅ Completed (Phase 1-4)
 
-- [x] Type system design (`typing.py`)
+- [x] Type system (`typing.py`) - 649 lines
+- [x] Graph IR (`graph.py`) - 388 lines
+- [x] Primitive abstraction (`primitive.py`) - 338 lines
+- [x] Object hierarchy (`object.py`) - 153 lines
+- [x] Context system (`context.py`) - 117 lines
+- [x] Tracer (`tracer.py`) - 201 lines
+- [x] Interpreter (`interpreter.py`) - 66 lines
+- [x] JIT decorator (`jit.py`) - 42 lines
 - [x] Design documents
-- [x] Project structure
+- [x] **153 tests passing** (140 edsl + 13 core2)
 
 ### 🚧 In Progress
 

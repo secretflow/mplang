@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Any
 from mplang.edsl.typing import BaseType
 
 if TYPE_CHECKING:
-    from mplang.core2.interp import Interpreter
-    from mplang.core2.tracer import Tracer
     from mplang.edsl.graph import Value as GraphValue
+    from mplang.edsl.interpreter import Interpreter
+    from mplang.edsl.tracer import Tracer
 
 
 class Object(ABC):
@@ -50,7 +50,7 @@ class TraceObject(Object):
     All operations delegate to Tracer.execute_add() which records into Graph.
 
     Example:
-        >>> from mplang.core2 import trace
+        >>> from mplang.edsl import trace
         >>> def compute(x, y):
         ...     z = x + y  # TraceObject.__add__ → Tracer.execute_add()
         ...     return z
@@ -132,7 +132,7 @@ class InterpObject(Object):
 
     def __add__(self, other: Object) -> InterpObject:
         """Delegate addition to Interpreter.execute_add()."""
-        from mplang.core2.context import get_context
+        from mplang.edsl.context import get_context
 
         # Get the interpreter context
         interpreter = self._context

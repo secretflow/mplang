@@ -13,12 +13,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from mplang.core2.context import Context
+from mplang.edsl.context import Context
 from mplang.edsl.graph import Graph
 from mplang.edsl.graph import Value as GraphValue
 
 if TYPE_CHECKING:
-    from mplang.core2.object import InterpObject, Object, TraceObject
+    from mplang.edsl.object import InterpObject, Object, TraceObject
 
 
 class Tracer(Context):
@@ -58,7 +58,7 @@ class Tracer(Context):
         Returns:
             TraceObject containing the result Value in Graph
         """
-        from mplang.core2.object import InterpObject, TraceObject
+        from mplang.edsl.object import InterpObject, TraceObject
 
         # Promote InterpObject to TraceObject if needed
         if isinstance(left, InterpObject):
@@ -90,7 +90,7 @@ class Tracer(Context):
         Returns:
             Constructed Graph IR
         """
-        from mplang.core2.context import get_context
+        from mplang.edsl.context import get_context
 
         # 1. Convert arguments to TraceObject
         trace_args = []
@@ -141,7 +141,7 @@ class Tracer(Context):
         Returns:
             TraceObject (containing corresponding Graph input)
         """
-        from mplang.core2.object import TraceObject
+        from mplang.edsl.object import TraceObject
 
         obj_id = id(obj)
 
@@ -162,7 +162,7 @@ class Tracer(Context):
         """Convert Python constant to TraceObject."""
         import numpy as np
 
-        from mplang.core2.object import TraceObject
+        from mplang.edsl.object import TraceObject
         from mplang.edsl.typing import Tensor, f32
 
         if isinstance(value, (int, float)):

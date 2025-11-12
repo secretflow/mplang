@@ -98,6 +98,26 @@ This is the cutting edge of MPLang development. If you want to contribute:
 """
 
 # Type System (ready to use)
+# Context (ready to use)
+from mplang.edsl.context import Context, ExecutionContext, get_context
+
+# Graph IR (ready to use)
+from mplang.edsl.graph import Graph, Operation, Value
+
+# Interpreter (ready to use)
+from mplang.edsl.interpreter import GraphInterpreter, Interpreter, interpret
+
+# JIT (ready to use)
+from mplang.edsl.jit import jit
+
+# Object Hierarchy (ready to use)
+from mplang.edsl.object import InterpObject, Object, TraceObject
+
+# Primitive (ready to use)
+from mplang.edsl.primitive import Primitive, add_p, div_p, mul_p, primitive, sub_p
+
+# Tracer (ready to use)
+from mplang.edsl.tracer import Tracer, trace
 from mplang.edsl.typing import (
     HE,
     MP,
@@ -129,9 +149,23 @@ __all__ = [
     "SS",
     # Type System
     "BaseType",
+    # Context
+    "Context",
     "Custom",
     "CustomType",
+    "ExecutionContext",
+    # Graph IR
+    "Graph",
+    "GraphInterpreter",
+    "InterpObject",
+    # Interpreter
+    "Interpreter",
     "MPType",
+    # Object Hierarchy
+    "Object",
+    "Operation",
+    # Primitive
+    "Primitive",
     "SIMDHEType",
     "SSType",
     "ScalarHEType",
@@ -141,12 +175,26 @@ __all__ = [
     "TableType",
     "Tensor",
     "TensorType",
+    "TraceObject",
+    # Tracer
+    "Tracer",
+    "Value",
+    # Primitive operations
+    "add_p",
+    "div_p",
     # Scalar types
     "f32",
     "f64",
+    "get_context",
     "i32",
     "i64",
-    # Future: Graph, Tracer, Builder, etc.
+    "interpret",
+    # JIT
+    "jit",
+    "mul_p",
+    "primitive",
+    "sub_p",
+    "trace",
 ]
 
 # Version info

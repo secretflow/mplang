@@ -14,9 +14,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from mplang.core2.interp import Interpreter
-    from mplang.core2.object import Object
-    from mplang.core2.tracer import Tracer
+    from mplang.edsl.interpreter import Interpreter
+    from mplang.edsl.object import Object
+    from mplang.edsl.tracer import Tracer
 
 
 class Context(ABC):
@@ -78,7 +78,7 @@ class ExecutionContext:
     @property
     def current_tracer(self) -> Tracer | None:
         """Get current tracer (None if not tracing)."""
-        from mplang.core2.tracer import Tracer
+        from mplang.edsl.tracer import Tracer
 
         ctx = self.current_context
         return ctx if isinstance(ctx, Tracer) else None
@@ -87,14 +87,14 @@ class ExecutionContext:
     def default_interpreter(self) -> Interpreter:
         """Get the default interpreter for eager execution."""
         if self._default_interpreter is None:
-            from mplang.core2.interp import Interpreter
+            from mplang.edsl.interpreter import Interpreter
 
             self._default_interpreter = Interpreter()
         return self._default_interpreter
 
     def enter_context(self, context: Context):
         """Enter a context (Tracer or Interpreter)."""
-        from mplang.core2.tracer import Tracer
+        from mplang.edsl.tracer import Tracer
 
         self._context_stack.append(context)
         if isinstance(context, Tracer):

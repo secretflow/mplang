@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from mplang.core2.context import Context
+from mplang.edsl.context import Context
 from mplang.edsl.graph import Graph
 
 if TYPE_CHECKING:
-    from mplang.core2.object import InterpObject, Object
+    from mplang.edsl.object import InterpObject, Object
 
 
 class Interpreter(Context):
@@ -54,7 +54,7 @@ class Interpreter(Context):
         Raises:
             TypeError: If operands are not InterpObject
         """
-        from mplang.core2.object import InterpObject
+        from mplang.edsl.object import InterpObject
 
         if not isinstance(left, InterpObject) or not isinstance(right, InterpObject):
             raise TypeError("Both operands must be InterpObject for eager execution")

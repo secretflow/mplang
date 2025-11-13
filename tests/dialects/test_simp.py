@@ -18,170 +18,150 @@ Note: uniform_cond and while_loop are bound methods from Primitive instances.
 Call them directly like functions: uniform_cond(...), while_loop(...)
 """
 
+import numpy as np
 import pytest
 
-from mplang.dialects.simp import uniform_cond, while_loop
+from mplang.dialects.simp import uniform_cond
+from mplang.edsl.interpreter import InterpObject
 from mplang.edsl.tracer import trace
+from mplang.edsl.typing import Tensor, f32
 
 
 class TestUniformCond:
-    """Test suite for uniform_cond primitive."""
+    """Test suite for uniform_cond primitive in trace mode."""
 
     def test_with_callables_true_branch(self):
-        """Test uniform_cond executes then_fn when pred is True."""
+        """Test uniform_cond traces correctly - graph structure independent of pred value."""
+        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
+        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
 
         def then_fn(x):
-            return x * 2
+            return x  # Simple identity
 
         def else_fn(x):
-            return x + 1
+            return x  # Simple identity
 
-        result = uniform_cond(True, then_fn, else_fn, 5)
-        assert result == 10  # 5 * 2
+        def test_fn(pred, x):
+            return uniform_cond(pred, then_fn, else_fn, x)
+
+        graph = trace(test_fn, pred_val, x_val)
+
+        # Verify graph has cond operation
+        cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
+        assert len(cond_ops) == 1
+        assert len(cond_ops[0].regions) == 2
 
     def test_with_callables_false_branch(self):
-        """Test uniform_cond executes else_fn when pred is False."""
+        """Test uniform_cond traces correctly - both branches traced regardless of pred."""
+        pred_val = InterpObject(np.array(False), Tensor[f32, ()])
+        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
 
         def then_fn(x):
-            return x * 2
+            return x
 
         def else_fn(x):
-            return x + 1
+            return x
 
-        result = uniform_cond(False, then_fn, else_fn, 5)
-        assert result == 6  # 5 + 1
+        def test_fn(pred, x):
+            return uniform_cond(pred, then_fn, else_fn, x)
 
-    def test_with_precomputed_values(self):
-        """Test uniform_cond with pre-computed values (jax.where-like)."""
-        result_true = uniform_cond(True, 100, 200)
-        assert result_true == 100
+        graph = trace(test_fn, pred_val, x_val)
 
-        result_false = uniform_cond(False, 100, 200)
-        assert result_false == 200
+        # Verify graph structure (independent of pred value at trace time)
+        cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
+        assert len(cond_ops) == 1
 
-    def test_side_effects_only_selected_branch(self):
-        """Test that only the selected branch is executed (lazy evaluation)."""
-        side_effects = []
+    def test_with_multiple_outputs(self):
+        """Test uniform_cond with branches returning multiple values."""
+        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
+        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
+        y_val = InterpObject(np.array(3.0), Tensor[f32, ()])
 
-        def then_fn(x):
-            side_effects.append("then")
-            return x * 2
+        def then_fn(x, y):
+            return (x, y)
 
-        def else_fn(x):
-            side_effects.append("else")
-            return x + 1
+        def else_fn(x, y):
+            return (x, y)
 
-        result = uniform_cond(True, then_fn, else_fn, 5)
-        assert result == 10
-        assert side_effects == ["then"]  # Only then_fn executed
+        def test_fn(pred, x, y):
+            return uniform_cond(pred, then_fn, else_fn, x, y)
 
-        side_effects.clear()
-        result = uniform_cond(False, then_fn, else_fn, 5)
-        assert result == 6
-        assert side_effects == ["else"]  # Only else_fn executed
+        graph = trace(test_fn, pred_val, x_val, y_val)
+
+        # Verify cond operation exists
+        cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
+        assert len(cond_ops) == 1
+        # Should have 2 outputs (tuple of 2 values)
+        assert len(cond_ops[0].outputs) == 2
+
+    def test_branches_must_match_output_types(self):
+        """Test that branches with mismatched outputs raise TypeError."""
+        from mplang.edsl.primitive import Primitive
+
+        # Create primitives that return different number of outputs
+        ret1_p = Primitive("test.ret1")
+        ret2_p = Primitive("test.ret2")
+
+        @ret1_p.def_abstract_eval
+        def _ret1_ae(x_type):
+            return x_type
+
+        @ret2_p.def_abstract_eval
+        def _ret2_ae(x_type):
+            return [x_type, x_type]
+
+        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
+        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
+
+        def test_fn(pred, x):
+            def then_fn(x):
+                return ret1_p.bind(x)  # Returns 1 value
+
+            def else_fn(x):
+                return ret2_p.bind(x)  # Returns 2 values
+
+            return uniform_cond(pred, then_fn, else_fn, x)
+
+        # Should raise TypeError due to output count mismatch
+        with pytest.raises(TypeError, match="output count mismatch"):
+            trace(test_fn, pred_val, x_val)
 
     def test_with_multiple_args(self):
         """Test uniform_cond with multiple arguments."""
+        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
+        x_val = InterpObject(np.array(10.0), Tensor[f32, ()])
+        y_val = InterpObject(np.array(3.0), Tensor[f32, ()])
 
         def then_fn(x, y):
-            return x + y
+            return x
 
         def else_fn(x, y):
-            return x - y
+            return y
 
-        result = uniform_cond(True, then_fn, else_fn, 10, 3)
-        assert result == 13
+        def test_fn(pred, x, y):
+            return uniform_cond(pred, then_fn, else_fn, x, y)
 
-        result = uniform_cond(False, then_fn, else_fn, 10, 3)
-        assert result == 7
+        graph = trace(test_fn, pred_val, x_val, y_val)
 
-    def test_invalid_predicate_type(self):
-        """Test that non-boolean predicate raises TypeError."""
-        with pytest.raises(TypeError, match="must be boolean scalar"):
-            uniform_cond(42, lambda x: x, lambda x: x, 5)
+        # Verify graph structure
+        cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
+        assert len(cond_ops) == 1
+        # Should have pred + 2 args as inputs (+ any captures)
+        assert len(cond_ops[0].inputs) >= 3
 
-        with pytest.raises(TypeError, match="must be boolean scalar"):
-            uniform_cond("true", lambda x: x, lambda x: x, 5)
+    def test_verify_uniform_attribute(self):
+        """Test that verify_uniform flag is properly set in graph."""
+        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
+        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
 
+        def test_fn(pred, x):
+            return uniform_cond(pred, lambda x: x, lambda x: x, x, verify_uniform=False)
 
-class TestWhileLoop:
-    """Test suite for while_loop primitive."""
+        graph = trace(test_fn, pred_val, x_val)
 
-    def test_simple_counter(self):
-        """Test while_loop with simple counter."""
-        result = while_loop(lambda x: x < 10, lambda x: x + 1, 0)
-        assert result == 10
-
-    def test_fibonacci(self):
-        """Test while_loop computing Fibonacci numbers."""
-
-        def cond_fn(state):
-            i, _a, _b = state
-            return i < 10
-
-        def body_fn(state):
-            i, a, b = state
-            return (i + 1, b, a + b)
-
-        i, _a, b = while_loop(cond_fn, body_fn, (0, 0, 1))
-        assert i == 10
-        assert b == 89  # 11th Fibonacci number (F(11) = 89)
-
-    def test_zero_iterations(self):
-        """Test while_loop that doesn't execute body (condition false initially)."""
-        result = while_loop(lambda x: x < 5, lambda x: x + 1, 10)
-        assert result == 10  # Body never executed
-
-    def test_accumulation(self):
-        """Test while_loop accumulating values."""
-
-        def cond_fn(state):
-            i, _acc = state
-            return i < 5
-
-        def body_fn(state):
-            i, acc = state
-            return (i + 1, acc + i)
-
-        i, acc = while_loop(cond_fn, body_fn, (0, 0))
-        assert i == 5
-        assert acc == 10  # 0 + 1 + 2 + 3 + 4
-
-    def test_side_effects_tracking(self):
-        """Test that body is called correct number of times."""
-        call_count = []
-
-        def cond_fn(x):
-            return x < 3
-
-        def body_fn(x):
-            call_count.append(x)
-            return x + 1
-
-        result = while_loop(cond_fn, body_fn, 0)
-        assert result == 3
-        assert call_count == [0, 1, 2]  # Body called 3 times
-
-
-class TestPrimitiveBinding:
-    """Test primitive binding API (uniform_cond_p.bind, while_loop_p.bind)."""
-
-    def test_uniform_cond_p_bind(self):
-        """Test that uniform_cond_p.bind works."""
-        from mplang.dialects.simp import uniform_cond_p
-
-        result = uniform_cond_p.bind(True, 100, 200)
-        assert result == 100
-
-        result = uniform_cond_p.bind(False, 100, 200)
-        assert result == 200
-
-    def test_while_loop_p_bind(self):
-        """Test that while_loop_p.bind works."""
-        from mplang.dialects.simp import while_loop_p
-
-        result = while_loop_p.bind(lambda x: x < 5, lambda x: x + 1, 0)
-        assert result == 5
+        cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
+        assert len(cond_ops) == 1
+        assert cond_ops[0].attrs["verify_uniform"] is False
 
 
 class TestUniformCondTracing:

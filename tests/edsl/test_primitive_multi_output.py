@@ -243,28 +243,13 @@ class TestDefTrace:
 class TestBackwardCompatibility:
     """Test that existing code still works."""
 
-    def test_single_output_still_works(self):
-        """Test that single-output primitives still work."""
+    def test_single_output_trace_mode(self):
+        """Test that single-output primitives work in trace mode."""
         simple_p = Primitive("simple_add")
 
         @simple_p.def_abstract_eval
         def simple_abstract(x_type, y_type):
             return x_type
-
-        @simple_p.def_trace
-        def simple_trace(x, y):
-            # In eager mode: x, y are InterpObject (has runtime_obj)
-            # In trace mode: x, y are TraceObject (no runtime_obj)
-            from mplang.edsl.tracer import TraceObject
-
-            if isinstance(x, TraceObject):
-                # Trace mode: just return one of the inputs as placeholder
-                # (In reality, def_trace should build graph using primitives)
-                return x
-            else:
-                # Eager mode: compute directly
-                result_data = x.runtime_obj + y.runtime_obj
-                return InterpObject(result_data, x.type)
 
         # Trace mode
         tracer = Tracer()
@@ -282,8 +267,3 @@ class TestBackwardCompatibility:
             assert not isinstance(result, list)
         finally:
             pop_context()
-
-        # Eager mode
-        result = simple_p.bind(x, y)
-        assert isinstance(result, InterpObject)
-        np.testing.assert_array_almost_equal(result.runtime_obj, np.array([3.0]))

@@ -19,7 +19,7 @@ import pytest
 
 from mplang.edsl.context import pop_context, push_context
 from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.primitive import Primitive, add_p, primitive
+from mplang.edsl.primitive import Primitive, primitive
 from mplang.edsl.tracer import TraceObject, Tracer
 from mplang.edsl.typing import Tensor, f32
 
@@ -262,45 +262,7 @@ class TestPrimitiveDecorator:
         np.testing.assert_array_almost_equal(z.runtime_obj, np.array([2.0, 3.0, 4.0]))
 
 
-class TestPredefinedPrimitives:
-    """Test pre-defined primitives."""
-
-    def test_add_p_exists(self):
-        """Test that add_p is pre-defined."""
-        assert isinstance(add_p, Primitive)
-        assert add_p.name == "add"
-
-    def test_predefined_primitives_have_abstract_eval(self):
-        """Test that pre-defined primitives have abstract_eval defined."""
-        # add_p has abstract_eval but not trace (relies on Graph IR execution)
-        assert add_p._abstract_eval is not None
-        # No def_trace needed - works via default Graph IR path
-
-    def test_add_p_works_in_trace_mode(self):
-        """Test that add_p works correctly in trace mode."""
-        from mplang.edsl.tracer import Tracer
-
-        tracer = Tracer()
-        x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
-        y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
-
-        push_context(tracer)
-        try:
-            result = add_p.bind(x, y)
-            assert isinstance(result, TraceObject)
-            assert len(tracer.graph.operations) == 1
-            assert tracer.graph.operations[0].opcode == "add"
-        finally:
-            pop_context()
-
-    def test_add_p_works_in_interp_mode(self):
-        """Test that add_p raises NotImplementedError in interp mode (Graph IR not ready)."""
-        x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
-        y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
-
-        # add_p doesn't have def_trace, so execution via Graph IR is not yet implemented
-        with pytest.raises(NotImplementedError, match="Graph IR not yet implemented"):
-            add_p.bind(x, y)
+# TestPredefinedPrimitives removed - primitives should be defined in dialects/backends
 
 
 class TestPrimitiveComplexScenarios:
@@ -393,25 +355,4 @@ class TestPrimitiveComplexScenarios:
         assert len(graph.inputs) == 2
         assert len(graph.outputs) == 1
 
-    def test_add_operator_uses_primitive(self):
-        """Test that __add__ operator uses add_p primitive."""
-        from mplang.edsl.tracer import Tracer
-
-        tracer = Tracer()
-        x_interp = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
-        y_interp = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
-
-        push_context(tracer)
-        try:
-            # Use __add__ operator
-            result = x_interp + y_interp
-
-            # Should create TraceObject via add_p primitive
-            assert isinstance(result, TraceObject)
-            assert len(tracer.graph.operations) == 1
-            assert tracer.graph.operations[0].opcode == "add"
-        finally:
-            pop_context()
-
-        # Eager mode not supported without backend
-        # (add_p has no def_trace, only def_abstract_eval)
+    # test_add_operator_uses_primitive removed - operator overloading moved to future dispatch module

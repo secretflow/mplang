@@ -71,12 +71,6 @@ class InterpObject(Object):
         """Get the underlying runtime object (backend-specific)."""
         return self._runtime_obj
 
-    def __add__(self, other: Object) -> Object:
-        """Delegate addition to add primitive."""
-        from mplang.edsl.primitive import add_p
-
-        return add_p.bind(self, other)
-
     def __repr__(self) -> str:
         runtime_repr = repr(self._runtime_obj)
         # Truncate long representations

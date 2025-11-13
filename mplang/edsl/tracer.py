@@ -54,12 +54,6 @@ class TraceObject(Object):
         """Backward compatibility: access Tracer via _context."""
         return self._context
 
-    def __add__(self, other: Object) -> Object:
-        """Delegate addition to add primitive."""
-        from mplang.edsl.primitive import add_p
-
-        return add_p.bind(self, other)
-
     def __repr__(self) -> str:
         return f"TraceObject({self._graph_value.name}: {self.type})"
 

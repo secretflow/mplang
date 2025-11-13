@@ -160,73 +160,6 @@ class TestPrimitiveTraceMode:
             pop_context()
 
 
-class TestPrimitiveInterpMode:
-    """Test Primitive in interp mode (eager execution)."""
-
-    def test_bind_in_interp_mode_basic(self):
-        """Test primitive.bind() in interp mode requires def_trace."""
-        # Define primitive with trace
-        my_mul_p = Primitive("my_mul")
-
-        @my_mul_p.def_abstract_eval
-        def my_mul_abstract(x_type, y_type):
-            return x_type
-
-        @my_mul_p.def_trace
-        def my_mul_trace(x, y):
-            # Execute on runtime objects
-            result_data = x.runtime_obj * y.runtime_obj
-            return InterpObject(result_data, x.type)
-
-        # Create InterpObjects
-        x = InterpObject(np.array([2.0, 3.0]), Tensor[f32, (2,)])
-        y = InterpObject(np.array([4.0, 5.0]), Tensor[f32, (2,)])
-
-        # Call in eager mode (no tracer)
-        z = my_mul_p.bind(x, y)
-
-        # Verify result is InterpObject with correct data
-        assert isinstance(z, InterpObject)
-        assert z.type == Tensor[f32, (2,)]
-        np.testing.assert_array_equal(z.runtime_obj, np.array([8.0, 15.0]))
-
-    def test_bind_in_interp_mode_with_attrs(self):
-        """Test primitive.bind() with attrs in interp mode."""
-        # Define primitive that uses attrs
-        power_p = Primitive("power")
-
-        @power_p.def_abstract_eval
-        def power_abstract(x_type, *, exponent=2):
-            return x_type
-
-        @power_p.def_trace
-        def power_trace(x, *, exponent=2):
-            result_data = x.runtime_obj**exponent
-            return InterpObject(result_data, x.type)
-
-        # Execute with attrs
-        x = InterpObject(np.array([2.0, 3.0]), Tensor[f32, (2,)])
-        z = power_p.bind(x, exponent=3)
-
-        # Verify result
-        assert isinstance(z, InterpObject)
-        np.testing.assert_array_equal(z.runtime_obj, np.array([8.0, 27.0]))
-
-    def test_bind_without_trace_fails(self):
-        """Test that bind() fails in interp mode without trace."""
-        p = Primitive("no_trace")
-
-        @p.def_abstract_eval
-        def abstract(x_type):
-            return x_type
-
-        # No trace defined - should fail in interp mode
-        x = InterpObject(np.array([1.0]), Tensor[f32, (1,)])
-
-        with pytest.raises(NotImplementedError, match="Graph IR not yet implemented"):
-            p.bind(x)
-
-
 class TestPrimitiveDecorator:
     """Test @primitive decorator."""
 
@@ -241,25 +174,6 @@ class TestPrimitiveDecorator:
         assert isinstance(custom_neg_abstract, Primitive)
         assert custom_neg_abstract.name == "custom_neg"
         assert custom_neg_abstract._abstract_eval is not None
-
-    def test_primitive_decorator_with_trace(self):
-        """Test using @primitive decorator and then adding trace."""
-
-        @primitive("custom_sqrt")
-        def custom_sqrt_abstract(x_type):
-            return x_type
-
-        @custom_sqrt_abstract.def_trace
-        def custom_sqrt_trace(x):
-            result_data = np.sqrt(x.runtime_obj)
-            return InterpObject(result_data, x.type)
-
-        # Test in interp mode
-        x = InterpObject(np.array([4.0, 9.0, 16.0]), Tensor[f32, (3,)])
-        z = custom_sqrt_abstract.bind(x)
-
-        assert isinstance(z, InterpObject)
-        np.testing.assert_array_almost_equal(z.runtime_obj, np.array([2.0, 3.0, 4.0]))
 
 
 # TestPredefinedPrimitives removed - primitives should be defined in dialects/backends

@@ -226,7 +226,7 @@ class TensorType(BaseType):
                         f"Invalid dimension {dim}: must be positive or -1 for dynamic"
                     )
 
-    def __class_getitem__(cls, params):
+    def __class_getitem__(cls, params: tuple) -> "TensorType":  # type: ignore[misc]
         """Enables the syntax `Tensor[element_type, shape]`.
 
         Args:

@@ -51,6 +51,21 @@ class Context(ABC):
             Result Object (TraceObject in Tracer, InterpObject in Interpreter)
         """
 
+    @abstractmethod
+    def lift(self, obj: Any) -> Object:
+        """Lift an object to this context's native Object type.
+
+        Converts objects to the appropriate type for this context:
+        - Tracer: InterpObject → TraceObject (via promote), constants → TraceObject
+        - Interpreter: keeps InterpObject as-is, may convert constants
+
+        Args:
+            obj: Object to lift (Object, constant, etc.)
+
+        Returns:
+            Object in the context's native type (TraceObject or InterpObject)
+        """
+
 
 # ============================================================================
 # Global Context Stack Management

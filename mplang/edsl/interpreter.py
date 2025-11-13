@@ -108,29 +108,70 @@ class Interpreter(Context):
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
-    ) -> InterpObject:
-        """Execute primitive immediately (eager execution).
+    ) -> InterpObject | list[InterpObject] | Any:
+        """Execute primitive by building and executing Graph IR.
+
+        All primitives (both def_abstract_eval and def_trace) produce Graph IR
+        which is then executed by the backend.
 
         Args:
             primitive: The primitive to execute
-            args: Positional arguments (Objects)
-            kwargs: Keyword arguments (plain values)
+            args: Positional arguments (Objects or plain values)
+            kwargs: Keyword arguments (Objects or plain values)
 
         Returns:
-            InterpObject wrapping the result runtime object
+            InterpObject, list[InterpObject], or PyTree containing InterpObjects
 
         Raises:
-            RuntimeError: If primitive has no implementation
+            RuntimeError: If primitive has neither trace nor abstract_eval defined
         """
-        if primitive._impl is None:
-            raise RuntimeError(
-                f"Primitive '{primitive.name}' has no implementation. "
-                f"Define it using @{primitive.name}_p.def_impl"
+        # For now, primitives with def_trace are called directly
+        # In the future, all primitives will build Graph IR that backends execute
+        if primitive._trace is not None:
+            # Execute the trace function with actual Objects
+            # This allows code like run_jax to work in eager mode
+            result = primitive._trace(*args, **kwargs)
+            return result
+
+        # For primitives with only def_abstract_eval, we need to build a simple Graph
+        # This will be implemented when we have backend execution infrastructure
+        if primitive._abstract_eval is not None:
+            # TODO: Build Graph IR and execute via backend
+            # For now, raise NotImplementedError
+            raise NotImplementedError(
+                f"Primitive '{primitive.name}' execution via Graph IR not yet implemented. "
+                f"Use def_trace() to provide custom execution logic."
             )
 
-        # Execute implementation
-        result = primitive._impl(*args, **kwargs)
-        return result
+        # No implementation
+        raise RuntimeError(
+            f"Primitive '{primitive.name}' has neither trace nor abstract_eval defined. "
+            f"Define one using @{primitive.name}_p.def_trace or @{primitive.name}_p.def_abstract_eval"
+        )
+
+    def lift(self, obj: Any) -> InterpObject:
+        """Lift an object to InterpObject.
+
+        For Interpreter, most objects are already InterpObject.
+        Non-Object values are kept as-is (will be handled by primitives).
+
+        Args:
+            obj: Object to lift
+
+        Returns:
+            The object (InterpObject or constant)
+        """
+        # InterpObject: already correct type
+        if isinstance(obj, InterpObject):
+            return obj
+        # TraceObject: should not happen in eager mode
+        elif isinstance(obj, Object):
+            raise TypeError(
+                f"Cannot lift {type(obj).__name__} to InterpObject in Interpreter context"
+            )
+        # Constants: return as-is (primitives will handle)
+        else:
+            return obj
 
 
 def interpret(graph: Graph, args: tuple) -> Any:

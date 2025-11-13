@@ -32,7 +32,7 @@ class TestPrimitiveBasics:
         p = Primitive("test_op")
         assert p.name == "test_op"
         assert p._abstract_eval is None
-        assert p._impl is None
+        assert p._trace is None
 
     def test_def_abstract_eval(self):
         """Test defining abstract_eval rule."""
@@ -44,15 +44,15 @@ class TestPrimitiveBasics:
 
         assert p._abstract_eval is test_abstract
 
-    def test_def_impl(self):
-        """Test defining implementation."""
+    def test_def_trace(self):
+        """Test defining trace logic."""
         p = Primitive("test_op")
 
-        @p.def_impl
-        def test_impl(x):
+        @p.def_trace
+        def test_trace(x):
             return x
 
-        assert p._impl is test_impl
+        assert p._trace is test_trace
 
 
 class TestPrimitiveTraceMode:
@@ -145,16 +145,16 @@ class TestPrimitiveTraceMode:
             pop_context()
 
     def test_bind_without_abstract_eval_fails(self):
-        """Test that bind() fails in trace mode without abstract_eval."""
+        """Test that bind() fails in trace mode without abstract_eval or trace."""
         p = Primitive("no_abstract")
-        # No abstract_eval defined
+        # No abstract_eval or trace defined
 
         tracer = Tracer()
         x = InterpObject(np.array([1.0]), Tensor[f32, (1,)])
 
         push_context(tracer)
         try:
-            with pytest.raises(RuntimeError, match="no abstract_eval rule"):
+            with pytest.raises(RuntimeError, match="neither trace nor abstract_eval"):
                 p.bind(x)
         finally:
             pop_context()
@@ -164,16 +164,16 @@ class TestPrimitiveInterpMode:
     """Test Primitive in interp mode (eager execution)."""
 
     def test_bind_in_interp_mode_basic(self):
-        """Test primitive.bind() in interp mode (eager execution)."""
-        # Define primitive with implementation
+        """Test primitive.bind() in interp mode requires def_trace."""
+        # Define primitive with trace
         my_mul_p = Primitive("my_mul")
 
         @my_mul_p.def_abstract_eval
         def my_mul_abstract(x_type, y_type):
             return x_type
 
-        @my_mul_p.def_impl
-        def my_mul_impl(x, y):
+        @my_mul_p.def_trace
+        def my_mul_trace(x, y):
             # Execute on runtime objects
             result_data = x.runtime_obj * y.runtime_obj
             return InterpObject(result_data, x.type)
@@ -199,8 +199,8 @@ class TestPrimitiveInterpMode:
         def power_abstract(x_type, *, exponent=2):
             return x_type
 
-        @power_p.def_impl
-        def power_impl(x, *, exponent=2):
+        @power_p.def_trace
+        def power_trace(x, *, exponent=2):
             result_data = x.runtime_obj**exponent
             return InterpObject(result_data, x.type)
 
@@ -212,19 +212,18 @@ class TestPrimitiveInterpMode:
         assert isinstance(z, InterpObject)
         np.testing.assert_array_equal(z.runtime_obj, np.array([8.0, 27.0]))
 
-    def test_bind_without_impl_fails(self):
-        """Test that bind() fails in interp mode without impl."""
-        p = Primitive("no_impl")
+    def test_bind_without_trace_fails(self):
+        """Test that bind() fails in interp mode without trace."""
+        p = Primitive("no_trace")
 
         @p.def_abstract_eval
         def abstract(x_type):
             return x_type
 
-        # No impl defined
-
+        # No trace defined - should fail in interp mode
         x = InterpObject(np.array([1.0]), Tensor[f32, (1,)])
 
-        with pytest.raises(RuntimeError, match="no implementation"):
+        with pytest.raises(NotImplementedError, match="Graph IR not yet implemented"):
             p.bind(x)
 
 
@@ -243,15 +242,15 @@ class TestPrimitiveDecorator:
         assert custom_neg_abstract.name == "custom_neg"
         assert custom_neg_abstract._abstract_eval is not None
 
-    def test_primitive_decorator_with_impl(self):
-        """Test using @primitive decorator and then adding impl."""
+    def test_primitive_decorator_with_trace(self):
+        """Test using @primitive decorator and then adding trace."""
 
         @primitive("custom_sqrt")
         def custom_sqrt_abstract(x_type):
             return x_type
 
-        @custom_sqrt_abstract.def_impl
-        def custom_sqrt_impl(x):
+        @custom_sqrt_abstract.def_trace
+        def custom_sqrt_trace(x):
             result_data = np.sqrt(x.runtime_obj)
             return InterpObject(result_data, x.type)
 
@@ -271,11 +270,11 @@ class TestPredefinedPrimitives:
         assert isinstance(add_p, Primitive)
         assert add_p.name == "add"
 
-    def test_predefined_primitives_have_implementation(self):
-        """Test that pre-defined primitives have abstract_eval and impl."""
-        # add_p now has abstract_eval and impl
+    def test_predefined_primitives_have_abstract_eval(self):
+        """Test that pre-defined primitives have abstract_eval defined."""
+        # add_p has abstract_eval but not trace (relies on Graph IR execution)
         assert add_p._abstract_eval is not None
-        assert add_p._impl is not None
+        # No def_trace needed - works via default Graph IR path
 
     def test_add_p_works_in_trace_mode(self):
         """Test that add_p works correctly in trace mode."""
@@ -295,13 +294,13 @@ class TestPredefinedPrimitives:
             pop_context()
 
     def test_add_p_works_in_interp_mode(self):
-        """Test that add_p works correctly in interp mode."""
+        """Test that add_p raises NotImplementedError in interp mode (Graph IR not ready)."""
         x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
         y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
 
-        result = add_p.bind(x, y)
-        assert isinstance(result, InterpObject)
-        np.testing.assert_array_equal(result.runtime_obj, np.array([4.0, 6.0]))
+        # add_p doesn't have def_trace, so execution via Graph IR is not yet implemented
+        with pytest.raises(NotImplementedError, match="Graph IR not yet implemented"):
+            add_p.bind(x, y)
 
 
 class TestPrimitiveComplexScenarios:
@@ -350,10 +349,11 @@ class TestPrimitiveComplexScenarios:
             # Simplified type inference
             return x_type
 
-        @conv_p.def_impl
-        def conv_impl(x, kernel, *, stride=1, padding=0, groups=1):
-            # Dummy implementation
-            return InterpObject(x.runtime_obj, x.type)
+        @conv_p.def_trace
+        def conv_trace(x, kernel, *, stride=1, padding=0, groups=1):
+            # Dummy implementation - just return x as placeholder
+            # (In real code, def_trace would use primitives to build the graph)
+            return x
 
         # Test in trace mode
         tracer = Tracer()
@@ -364,9 +364,10 @@ class TestPrimitiveComplexScenarios:
         try:
             result = conv_p.bind(x, kernel, stride=2, padding=1, groups=1)
 
-            # Verify attrs
+            # When using def_trace, attrs include morph info
             op = tracer.graph.operations[0]
-            assert op.attrs == {"stride": 2, "padding": 1, "groups": 1}
+            assert "_in_morph" in op.attrs  # Morph info is stored
+            assert "_out_tree" in op.attrs
             assert isinstance(result, TraceObject)
         finally:
             pop_context()
@@ -418,7 +419,5 @@ class TestPrimitiveComplexScenarios:
         finally:
             pop_context()
 
-        # Test in interp mode (eager execution)
-        result_interp = x_interp + y_interp
-        assert isinstance(result_interp, InterpObject)
-        np.testing.assert_array_equal(result_interp.runtime_obj, np.array([4.0, 6.0]))
+        # Eager mode not supported without backend
+        # (add_p has no def_trace, only def_abstract_eval)

@@ -38,8 +38,8 @@ class Context(ABC):
 
     @abstractmethod
     def bind_primitive(
-        self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
-    ) -> Object:
+        self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> Any:
         """Execute a primitive in this context.
 
         Args:

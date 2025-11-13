@@ -126,10 +126,11 @@ class TestDefTrace:
 
             assert isinstance(result, TraceObject)
 
-            # Verify graph has custom_op and add
+            # def_trace mode: only operations from called primitives appear
+            # custom_p calls add_p.bind(), so only "add" operation is in graph
             opcodes = [op.opcode for op in tracer.graph.operations]
             assert "add" in opcodes
-            assert "custom_op" in opcodes
+            assert "custom_op" not in opcodes  # def_trace doesn't create its own op
         finally:
             pop_context()
 
@@ -166,11 +167,11 @@ class TestDefTrace:
             assert isinstance(result["sum"], TraceObject)
             assert isinstance(result["prod"], TraceObject)
 
-            # Verify graph
+            # def_trace mode: only operations from called primitives appear
             opcodes = [op.opcode for op in tracer.graph.operations]
             assert "add" in opcodes
             assert "mul" in opcodes
-            assert "pytree_op" in opcodes
+            assert "pytree_op" not in opcodes  # def_trace doesn't create its own op
         finally:
             pop_context()
 
@@ -202,16 +203,10 @@ class TestDefTrace:
 
             assert isinstance(result, TraceObject)
 
-            # Verify graph recorded mixed_op
+            # def_trace mode: only operations from called primitives appear
             opcodes = [op.opcode for op in tracer.graph.operations]
-            assert "mixed_op" in opcodes
-
-            # Check that morph info was stored
-            mixed_op = next(
-                op for op in tracer.graph.operations if op.opcode == "mixed_op"
-            )
-            assert "_in_morph" in mixed_op.attrs
-            assert "_out_tree" in mixed_op.attrs
+            assert "add" in opcodes
+            assert "mixed_op" not in opcodes  # def_trace doesn't create its own op
         finally:
             pop_context()
 

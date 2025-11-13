@@ -25,6 +25,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from jax.tree_util import tree_map
+
 from mplang.edsl.context import get_current_context, get_default_interpreter
 from mplang.edsl.object import Object
 
@@ -217,20 +219,10 @@ class Primitive:
         if ctx is None:
             ctx = get_default_interpreter()
 
-        # Lift args to context's native Object type
-        # This ensures all Objects are in the correct form for the context:
-        # - Tracer: InterpObject → TraceObject, constants → TraceObject
-        # - Interpreter: keeps InterpObject, constants as-is
-        lifted_args = tuple(ctx.lift(arg) for arg in args)
+        def lift_if_object(x):
+            return ctx.lift(x) if isinstance(x, Object) else x
 
-        # For kwargs: only lift if it's an Object (for def_trace with Objects in kwargs)
-        # Keep non-Object kwargs as-is (they are attributes, not graph inputs)
-        lifted_kwargs = {}
-        for k, v in kwargs.items():
-            if isinstance(v, Object):
-                lifted_kwargs[k] = ctx.lift(v)
-            else:
-                lifted_kwargs[k] = v
+        lifted_args, lifted_kwargs = tree_map(lift_if_object, (args, kwargs))
 
         # Execute in context
         return ctx.bind_primitive(self, lifted_args, lifted_kwargs)

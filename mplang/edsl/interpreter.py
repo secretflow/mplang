@@ -107,7 +107,7 @@ class Interpreter(Context):
         self._executors = {}
 
     def bind_primitive(
-        self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
+        self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> InterpObject | list[InterpObject] | Any:
         """Execute primitive by building and executing Graph IR.
 
@@ -116,8 +116,8 @@ class Interpreter(Context):
 
         Args:
             primitive: The primitive to execute
-            args: Positional arguments (Objects or plain values)
-            kwargs: Keyword arguments (Objects or plain values)
+            args: Positional arguments (can be Objects, opaques like callables, or constants)
+            kwargs: Keyword arguments (can be Objects, opaques, or constants)
 
         Returns:
             InterpObject, list[InterpObject], or PyTree containing InterpObjects

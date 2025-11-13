@@ -10,8 +10,11 @@ Tracer is a Context (inherits from Context abstract base class).
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from mplang.edsl.context import Context, pop_context, push_context
 from mplang.edsl.graph import Graph
@@ -21,6 +24,7 @@ from mplang.edsl.typing import BaseType
 
 if TYPE_CHECKING:
     from mplang.edsl.primitive import Primitive
+    from mplang.edsl.typing import Tensor, f32
 
 
 class TraceObject(Object):
@@ -85,18 +89,18 @@ class Tracer(Context):
         self._params: list[GraphValue] = []
 
     def bind_primitive(
-        self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
+        self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> TraceObject | list[TraceObject] | Any:
         """Execute primitive by recording to Graph IR (trace mode).
 
         Handles two modes:
-        1. def_trace: Custom trace logic with PyTree support
-        2. def_abstract_eval: Automatic type inference with input/output separation
+        1. def_trace: Primitive has full control - builds graph via other primitives
+        2. def_abstract_eval: Tracer controls - infers types and builds operation
 
         Args:
             primitive: The primitive to trace
-            args: Positional arguments (Objects or plain values)
-            kwargs: Keyword arguments (Objects or plain values)
+            args: Positional arguments (can be Objects, opaques like callables, or constants)
+            kwargs: Keyword arguments (can be Objects, opaques, or constants)
 
         Returns:
             TraceObject, list[TraceObject], or PyTree containing TraceObjects
@@ -104,72 +108,14 @@ class Tracer(Context):
         Raises:
             RuntimeError: If primitive has neither trace nor abstract_eval defined
         """
-        # Mode 1: Custom trace (full control)
+        # Mode 1: def_trace - Primitive has full control
+        # The primitive builds the graph by calling other primitives.
+        # Tracer simply returns the result without adding extra operations.
         if primitive._trace is not None:
-            from jax.tree_util import tree_flatten, tree_unflatten
+            return primitive._trace(*args, **kwargs)
 
-            from mplang.utils.func_utils import var_morph
-
-            # Call the custom trace function
-            # It can access other primitives and construct arbitrary output structure
-            result = primitive._trace(*args, **kwargs)
-
-            # Extract Objects from inputs (for IR recording)
-            in_vars, _, in_morph = var_morph(
-                (args, kwargs), is_variable=lambda x: isinstance(x, Object)
-            )
-
-            # All Objects should already be TraceObjects (lifted by Primitive.bind)
-            trace_in_vars = []
-            for var in in_vars:
-                if isinstance(var, TraceObject):
-                    trace_in_vars.append(var)
-                else:
-                    raise TypeError(
-                        f"Expected TraceObject in bind_primitive, got {type(var)}. "
-                        f"Objects should be lifted by Primitive.bind() before reaching here."
-                    )
-
-            # Flatten output to extract Objects
-            result_flat, out_tree = tree_flatten(result)
-            out_vars = [v for v in result_flat if isinstance(v, Object)]
-            out_types = [v.type for v in out_vars]
-
-            # Record operation with morph info in attrs
-            input_values = [v._graph_value for v in trace_in_vars]
-            result_values = self.graph.add_op(
-                opcode=primitive.name,
-                inputs=input_values,
-                output_types=out_types,
-                attrs={
-                    "_in_morph": in_morph,  # Input structure (for reconstruction)
-                    "_out_tree": out_tree,  # Output structure
-                },
-            )
-
-            # Ensure result_values is a list
-            if not isinstance(result_values, list):
-                result_values = [result_values]
-
-            # Replace Objects in result_flat with TraceObjects
-            trace_objects = [TraceObject(v, self) for v in result_values]
-            obj_idx = 0
-            reconstructed_flat = []
-            for item in result_flat:
-                if isinstance(item, Object):
-                    reconstructed_flat.append(trace_objects[obj_idx])
-                    obj_idx += 1
-                else:
-                    # Keep non-Object values (constants)
-                    reconstructed_flat.append(item)
-
-            # Reconstruct output PyTree
-            return tree_unflatten(out_tree, reconstructed_flat)
-
-        # Mode 2: Abstract eval (automatic)
+        # Mode 2: def_abstract_eval - Tracer controls graph construction
         if primitive._abstract_eval is not None:
-            import inspect
-
             # All Objects should already be TraceObjects (lifted by Primitive.bind)
             trace_args = list(args)  # args already lifted
 
@@ -227,19 +173,48 @@ class Tracer(Context):
         """Lift an object to TraceObject.
 
         Converts objects to TraceObject for use in tracing:
-        - TraceObject: return as-is
+        - TraceObject (same context): return as-is (idempotent)
+        - TraceObject (different context): capture as input (cross-context reference)
         - InterpObject: promote to TraceObject (as captured input)
-        - Numeric constants (int, float, np.ndarray): convert to TraceObject
-        - Other types (callable, etc.): return as-is (opaque)
+        - Non-Object types: return as-is (handled by primitives or opaque)
+
+        Note on non-Object types:
+            This method is only called on Objects (via Primitive.bind's lift_if_object).
+            Non-Object types (int, float, np.ndarray, callables, etc.) are passed
+            directly to primitives without lifting.
+
+        Note on cross-context references:
+            When inner tracer (e.g., in run_jax, cond) captures outer TraceObject,
+            we need to create a captured input in the inner graph. This handles
+            nested tracing scenarios correctly.
 
         Args:
-            obj: Object to lift
+            obj: Object to lift (should always be an Object subclass in practice)
 
         Returns:
-            TraceObject for traceable values, or original value for opaque types
+            TraceObject, or original value for non-Object types (though these
+            shouldn't be passed in via normal Primitive.bind flow)
         """
         if isinstance(obj, TraceObject):
-            return obj
+            # Check if TraceObject belongs to this context
+            if obj._context is self:
+                # Same context: idempotent
+                return obj
+            else:
+                # Different context: capture as input (cross-context reference)
+                # This handles nested tracers (e.g., run_jax, cond, while_loop)
+                obj_id = id(obj)
+                if obj_id in self._captured_vars:
+                    # Already captured
+                    graph_value = self._captured_vars[obj_id]
+                else:
+                    # Create new input node for captured TraceObject
+                    graph_value = self.graph.add_input(
+                        name=f"captured_{len(self._captured_vars)}",
+                        type=obj.type,
+                    )
+                    self._captured_vars[obj_id] = graph_value
+                return TraceObject(graph_value, self)
         elif isinstance(obj, Object):
             # InterpObject → TraceObject (promote)
             from mplang.edsl.interpreter import InterpObject
@@ -260,21 +235,11 @@ class Tracer(Context):
                 return TraceObject(graph_value, self)
             else:
                 raise TypeError(f"Unknown Object type: {type(obj)}")
-        elif callable(obj):
-            # Functions/callables are opaque - don't trace them
-            return obj
-        elif isinstance(obj, (int, float)):
-            # Numeric constants → TraceObject
-            return self.make_constant(obj)
         else:
-            # For other types (e.g., np.ndarray), try to make constant
-            import numpy as np
-
-            if isinstance(obj, np.ndarray):
-                return self.make_constant(obj)
-            else:
-                # Unknown type - pass through as opaque
-                return obj
+            # Non-Object types: pass through as-is (should be rare in normal flow)
+            # Primitives.bind filters Objects before calling lift, so constants,
+            # callables, etc. are passed directly to primitives
+            return obj
 
     def trace(self, fn: Callable | Primitive, *args) -> Graph:
         """Trace a Python function or Primitive into Graph IR.
@@ -355,10 +320,6 @@ class Tracer(Context):
 
     def make_constant(self, value: Any) -> TraceObject:
         """Convert Python constant to TraceObject."""
-        import numpy as np
-
-        from mplang.edsl.typing import Tensor, f32
-
         if isinstance(value, (int, float)):
             # Scalar constant
             graph_value = self.graph.add_constant(

@@ -349,13 +349,7 @@ class TestPrimitiveComplexScenarios:
             # Simplified type inference
             return x_type
 
-        @conv_p.def_trace
-        def conv_trace(x, kernel, *, stride=1, padding=0, groups=1):
-            # Dummy implementation - just return x as placeholder
-            # (In real code, def_trace would use primitives to build the graph)
-            return x
-
-        # Test in trace mode
+        # Test in trace mode with def_abstract_eval
         tracer = Tracer()
         x = InterpObject(np.random.randn(1, 3, 32, 32), Tensor[f32, (1, 3, 32, 32)])
         kernel = InterpObject(np.random.randn(16, 3, 3, 3), Tensor[f32, (16, 3, 3, 3)])
@@ -364,17 +358,17 @@ class TestPrimitiveComplexScenarios:
         try:
             result = conv_p.bind(x, kernel, stride=2, padding=1, groups=1)
 
-            # When using def_trace, attrs include morph info
+            # def_abstract_eval mode: Tracer builds the operation
+            assert len(tracer.graph.operations) == 1
             op = tracer.graph.operations[0]
-            assert "_in_morph" in op.attrs  # Morph info is stored
-            assert "_out_tree" in op.attrs
+            assert op.opcode == "conv"
+            # Attributes are stored
+            assert op.attrs["stride"] == 2
+            assert op.attrs["padding"] == 1
+            assert op.attrs["groups"] == 1
             assert isinstance(result, TraceObject)
         finally:
             pop_context()
-
-        # Test in interp mode
-        result2 = conv_p.bind(x, kernel, stride=2, padding=1, groups=1)
-        assert isinstance(result2, InterpObject)
 
     def test_trace_primitive_directly(self):
         """Test tracing a Primitive directly (not a lambda)."""

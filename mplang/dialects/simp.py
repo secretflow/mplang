@@ -1,71 +1,27 @@
-"""SIMP dialect (experimental, EDSL-based)
+"""SIMP dialect: SPMD multi-party primitives for EDSL.
 
-Goal
------
-Migrate a subset of `mplang.core.primitive` into an EDSL-first dialect named
-"simp" to support SPMD multi-party programming in the new architecture.
+Provides control flow and communication primitives:
+- uniform_cond: Uniform conditional (eager mode)
+- while_loop: While loop (eager mode)
+- pshfl, pshfl_s, pconv: Communication ops (scaffolded)
 
-Design principles
------------------
-- Keep primitives as thin EDSL `Primitive`s with clear namespaced opcodes, e.g.:
-  - "simp.add", "simp.uniform_cond", "simp.while", "simp.pshfl", ...
-- For eager mode, implementations operate on `InterpObject`.
-- For trace mode, we record Graph ops via Tracer.bind_primitive; initially single-output.
-- Reuse existing generic EDSL arithmetic where possible; add SIMP-specific ops separately.
+Primitive definition guideline:
+- Simple ops (add, mul) → use def_abstract_eval
+- Complex ops (control flow, fork tracer) → use def_trace
 
-Initial scope
--------------
-- Re-export basic arithmetic (add/mul/sub/div) under the SIMP namespace.
-- Scaffold control-flow and communication primitives with clear contracts:
-  - uniform_cond, while_loop (placeholders for region-based ops)
-  - pshfl, pshfl_s, pconv (placeholders with signatures and TODOs)
-
-Limitations (today)
--------------------
-- EDSL Tracer.bind_primitive supports single-output, no regions; control-flow will
-  be stubbed for tracing and only work in eager mode initially.
-- Mask/party types are not modeled in edsl.typing; SIMP primitives will annotate
-  expected semantics in docstrings and raise NotImplementedError where needed.
-
-Usage
------
->>> from mplang.dialects import simp
->>> # arithmetic works immediately (re-exported)
->>> z = simp.add.bind(x, y)
-
-Roadmap
--------
-This file is the starting point for incremental migration. See the docstring of
-each primitive for planned semantics and TODOs.
+See individual primitive docstrings for detailed documentation.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
-from mplang.edsl.primitive import (
-    Primitive,
-)
-from mplang.edsl.primitive import (
-    add_p as _add,
-)
-from mplang.edsl.primitive import (
-    div_p as _div,
-)
-from mplang.edsl.primitive import (
-    mul_p as _mul,
-)
-from mplang.edsl.primitive import (
-    sub_p as _sub,
-)
+import numpy as np
+
+from mplang.edsl.object import Object
+from mplang.edsl.primitive import Primitive
 from mplang.edsl.typing import BaseType
-
-# Namespace: expose arithmetic under SIMP names for consistency with dialects
-add = _add  # opcode currently "add"; may be renamed to "simp.add" later
-mul = _mul
-sub = _sub
-div = _div
-
 
 # ---------------------------------------------------------------------------
 # Control flow (scaffold)
@@ -74,48 +30,126 @@ div = _div
 uniform_cond_p = Primitive("simp.uniform_cond")
 
 
-@uniform_cond_p.def_abstract_eval
-def _uniform_cond_ae(
-    pred_t: BaseType,
-    then_t: BaseType,
-    else_t: BaseType,
-    *args_t: BaseType,
+@uniform_cond_p.def_trace
+def _uniform_cond_trace(
+    pred: Object,
+    then_fn: Callable[..., Any],
+    else_fn: Callable[..., Any],
+    *args: Any,
     verify_uniform: bool = True,
-) -> BaseType:
-    """Abstract evaluation for uniform_cond.
-
-    Contract (target):
-    - pred_t: boolean scalar (to be enforced when edsl.typing has BOOL)
-    - then/else result types must match exactly and are returned
-    - verify_uniform is a static attribute that may guide lowering/runtime checks
-
-    Current: placeholder returns then_t (caller responsible for ensuring match).
-    """
-    # TODO: validate pred_t is bool scalar when edsl.typing exposes BOOL/shape
-    # TODO: ensure then_t == else_t; for now return then_t
-    return then_t
-
-
-@uniform_cond_p.def_impl
-def _uniform_cond_impl(
-    pred: Any, then_res: Any, else_res: Any, *args: Any, verify_uniform: bool = True
 ) -> Any:
-    """Eager implementation for uniform_cond (scaffold).
+    """Implementation for uniform_cond (def_trace mode for complex control flow).
 
-    Current behavior:
-    - If pred is a Python/NumPy boolean, returns then_res or else_res.
-    - This is not side-effect safe for branch functions; this scaffold assumes
-      the caller has pre-computed branch results (mirrors jax.where-like usage).
+    Uses def_trace (not def_abstract_eval) because uniform_cond is a complex
+    control flow primitive that needs full control over execution:
+    - Eager mode: Direct branch execution
+    - Trace mode: Fork tracer, build CondExpr (requires region-based ops)
 
-    Planned behavior:
-    - Accept callables for then_fn/else_fn and execute only one branch.
-    - When tracing, record a region-based op with two regions and proper inputs.
+    Current implementation: Eager mode only (Interpreter context).
+    Future: Trace mode when EDSL Graph supports region-based operations.
+
+    Args:
+        pred: Boolean scalar value (Python bool or NumPy bool).
+             Must be uniform across all parties in multi-party context.
+        then_fn: Either a callable (args -> T) to execute when pred is True,
+                or a pre-computed value of type T to return.
+        else_fn: Either a callable (args -> T) to execute when pred is False,
+                or a pre-computed value of type T to return.
+        *args: Arguments to pass to the selected branch function if it's callable.
+        verify_uniform: Whether to verify predicate uniformity at runtime.
+                       (Currently no-op in eager mode; future: enforce in trace mode)
+
+    Returns:
+        Result from executing the selected branch (if callable) or the pre-computed value.
+        Type is inferred from then_fn/else_fn return type or value type.
+
+    Raises:
+        TypeError: If pred is not a boolean scalar (bool or np.bool_).
+
+    Design Note:
+        This uses def_trace (not def_abstract_eval) because:
+        - Complex operation requiring tracer fork (in future trace mode)
+        - Type inference depends on tracing branch functions
+        - Needs full control over graph construction
+
+        Simple primitives (add, mul) should use def_abstract_eval.
+        Complex primitives (control flow, custom integrations) use def_trace.
     """
-    import numpy as np
-
+    # Convert pred to boolean
     if isinstance(pred, (bool, np.bool_)):
-        return then_res if bool(pred) else else_res
-    raise NotImplementedError("uniform_cond eager impl expects boolean predicate value")
+        pred_val = bool(pred)
+    else:
+        raise TypeError(
+            f"uniform_cond predicate must be boolean scalar, got {type(pred)}"
+        )
+
+    # Select the branch
+    selected = then_fn if pred_val else else_fn
+
+    # If selected is callable, execute it with args and return the result
+    if callable(selected):
+        return selected(*args)
+
+    # Otherwise return the pre-computed value
+    return selected
+
+
+# Public API: Expose .bind method as a callable function
+# Users can call: uniform_cond(pred, then_fn, else_fn, *args, verify_uniform=True)
+uniform_cond = uniform_cond_p.bind
+
+
+# ---------------------------------------------------------------------------
+# While loop (scaffold)
+# ---------------------------------------------------------------------------
+
+while_loop_p = Primitive("simp.while_loop")
+
+
+@while_loop_p.def_trace
+def _while_loop_trace(
+    cond_fn: Callable[[Object], Any],
+    body_fn: Callable[[Object], Any],
+    init: Object,
+) -> Any:
+    """Implementation for while_loop (def_trace mode for complex control flow).
+
+    Uses def_trace (not def_abstract_eval) because while_loop is a complex
+    control flow primitive that needs full control over execution:
+    - Eager mode: Direct Python while loop
+    - Trace mode: Fork tracer for cond/body, build WhileExpr (requires region ops)
+
+    Current implementation: Eager mode only (Interpreter context).
+    Future: Trace mode when EDSL Graph supports region-based operations.
+
+    Args:
+        cond_fn: Function that takes loop state (type T) and returns boolean scalar.
+                Must return True to continue looping, False to terminate.
+        body_fn: Function that takes loop state (type T) and returns updated state (type T).
+                Must preserve the type of the loop state across iterations.
+        init: Initial loop state value of type T.
+
+    Returns:
+        Final loop state (type T) after cond_fn returns False.
+
+    Design Note:
+        This uses def_trace (not def_abstract_eval) because:
+        - Complex operation requiring tracer fork (in future trace mode)
+        - Type inference depends on tracing cond_fn/body_fn
+        - Needs full control over graph construction
+
+        Simple primitives (add, mul) should use def_abstract_eval.
+        Complex primitives (control flow, custom integrations) use def_trace.
+    """
+    state = init
+    while cond_fn(state):
+        state = body_fn(state)
+    return state
+
+
+# Public API: Expose .bind method as a callable function
+# Users can call: while_loop(cond_fn, body_fn, init)
+while_loop = while_loop_p.bind
 
 
 # ---------------------------------------------------------------------------
@@ -149,29 +183,30 @@ def _pconv_ae(*vars_t: BaseType) -> BaseType:
 
 
 # No eager impls for communication yet; they depend on runtime/party environment
-# Define stubs that make that explicit.
-@pshfl_p.def_impl
-def _pshfl_impl(*_args: Any, **_kwargs: Any) -> Any:
-    raise NotImplementedError("simp.pshfl eager execution is not implemented yet")
+# Use def_trace to make that explicit.
+@pshfl_p.def_trace
+def _pshfl_trace(*_args: Any, **_kwargs: Any) -> Any:
+    raise NotImplementedError("simp.pshfl execution is not implemented yet")
 
 
-@pshfl_s_p.def_impl
-def _pshfl_s_impl(*_args: Any, **_kwargs: Any) -> Any:
-    raise NotImplementedError("simp.pshfl_s eager execution is not implemented yet")
+@pshfl_s_p.def_trace
+def _pshfl_s_trace(*_args: Any, **_kwargs: Any) -> Any:
+    raise NotImplementedError("simp.pshfl_s execution is not implemented yet")
 
 
-@pconv_p.def_impl
-def _pconv_impl(*_args: Any, **_kwargs: Any) -> Any:
-    raise NotImplementedError("simp.pconv eager execution is not implemented yet")
+@pconv_p.def_trace
+def _pconv_trace(*_args: Any, **_kwargs: Any) -> Any:
+    raise NotImplementedError("simp.pconv execution is not implemented yet")
 
 
 __all__ = [
-    "add",
-    "div",
-    "mul",
+    # Communication
     "pconv_p",
     "pshfl_p",
     "pshfl_s_p",
-    "sub",
+    # Control flow
+    "uniform_cond",
     "uniform_cond_p",
+    "while_loop",
+    "while_loop_p",
 ]

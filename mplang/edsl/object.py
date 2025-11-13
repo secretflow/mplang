@@ -31,8 +31,6 @@ class Object(ABC):
     def type(self) -> BaseType:
         """Type of the object (available in both trace and interp modes)."""
 
-    @abstractmethod
-    def __add__(self, other: Object) -> Object:
-        """Arithmetic addition (intercepted by Tracer or executed immediately)."""
-
-        # TODO: Other operators (__mul__, __sub__, __matmul__, etc.)
+    # Note: Arithmetic operators (__add__, __mul__, etc.) are NOT defined here.
+    # They should be provided by dialect-specific dispatch mechanisms since
+    # different types (Tensor, SIMD_HE, SS) require different implementations.

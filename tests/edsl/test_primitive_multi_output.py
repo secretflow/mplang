@@ -22,6 +22,22 @@ from mplang.edsl.primitive import Primitive
 from mplang.edsl.tracer import Tracer
 from mplang.edsl.typing import Tensor, f32
 
+# Test helper primitives (for testing purposes only)
+add_p = Primitive("add")
+
+
+@add_p.def_abstract_eval
+def _add_abstract(x_type, y_type):
+    return x_type
+
+
+mul_p = Primitive("mul")
+
+
+@mul_p.def_abstract_eval
+def _mul_abstract(x_type, y_type):
+    return x_type
+
 
 class TestMultiOutputPrimitives:
     """Test primitives with multiple outputs."""
@@ -107,8 +123,6 @@ class TestDefTrace:
         @custom_p.def_trace
         def custom_trace(x, y, *, factor: int):
             # Custom trace: call other primitives
-            from mplang.edsl.primitive import add_p
-
             temp = add_p.bind(x, y)
             # Note: mul with scalar not implemented, simplified here
             return temp
@@ -140,8 +154,6 @@ class TestDefTrace:
 
         @pytree_p.def_trace
         def pytree_trace(x, y):
-            from mplang.edsl.primitive import add_p, mul_p
-
             sum_result = add_p.bind(x, y)
             prod_result = mul_p.bind(x, y)
 
@@ -183,8 +195,6 @@ class TestDefTrace:
         def mixed_trace(fn, x, const_val, *, k):
             # fn is a callable, x is Object, const_val is constant
             # This demonstrates mixing args/kwargs
-            from mplang.edsl.primitive import add_p
-
             # Simplified: just add x to itself
             return add_p.bind(x, x)
 
@@ -217,8 +227,6 @@ class TestDefTrace:
         @eager_p.def_trace
         def eager_trace(x, y):
             # In eager mode, this works directly
-            from mplang.edsl.primitive import add_p
-
             return add_p.bind(x, y)
 
         # Eager mode (no tracer) - will fail since add_p doesn't work in eager

@@ -120,7 +120,7 @@ from mplang.edsl.jit import jit
 from mplang.edsl.object import Object
 
 # Primitive (ready to use)
-from mplang.edsl.primitive import Primitive, add_p, div_p, mul_p, primitive, sub_p
+from mplang.edsl.primitive import Primitive, primitive
 from mplang.edsl.tracer import TraceObject, Tracer, trace
 from mplang.edsl.typing import (
     HE,
@@ -181,9 +181,6 @@ __all__ = [
     # Tracer
     "Tracer",
     "Value",
-    # Primitive operations
-    "add_p",
-    "div_p",
     # Scalar types
     "f32",
     "f64",
@@ -194,11 +191,9 @@ __all__ = [
     "interpret",
     # JIT
     "jit",
-    "mul_p",
     "pop_context",
     "primitive",
     "push_context",
-    "sub_p",
     "trace",
 ]
 

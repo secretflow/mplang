@@ -266,57 +266,7 @@ def primitive(name: str) -> Callable[[Callable], Primitive]:
     return decorator
 
 
-# ============================================================================
-# Pre-defined Primitives (common operations)
-# ============================================================================
-
-# Arithmetic primitives
-add_p = Primitive("add")
-mul_p = Primitive("mul")
-sub_p = Primitive("sub")
-div_p = Primitive("div")
-
-
-# Define abstract_eval for arithmetic primitives
-@add_p.def_abstract_eval
-def _add_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
-    """Type inference for addition: returns the type of the first operand."""
-    # TODO: Add proper type checking and unification
-    return x_type
-
-
-@mul_p.def_abstract_eval
-def _mul_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
-    """Type inference for multiplication: returns the type of the first operand."""
-    # TODO: Add proper type checking and unification
-    return x_type
-
-
-@sub_p.def_abstract_eval
-def _sub_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
-    """Type inference for subtraction: returns the type of the first operand."""
-    # TODO: Add proper type checking and unification
-    return x_type
-
-
-@div_p.def_abstract_eval
-def _div_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
-    """Type inference for division: returns the type of the first operand."""
-    # TODO: Add proper type checking and unification
-    return x_type
-
-
-# Define trace for arithmetic primitives
-# For now, we don't define trace - let them use default abstract_eval path
-# When backend execution is ready, these will work automatically via Graph IR
-
-
 __all__ = [
     "Primitive",
-    # Pre-defined primitives
-    "add_p",
-    "div_p",
-    "mul_p",
     "primitive",
-    "sub_p",
 ]

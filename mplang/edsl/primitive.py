@@ -25,8 +25,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from mplang.edsl.context import get_current_context, get_default_interpreter
+from mplang.edsl.object import Object
+
 if TYPE_CHECKING:
-    from mplang.edsl.object import Object
     from mplang.edsl.typing import BaseType
 
 
@@ -34,13 +36,13 @@ class Primitive:
     """Atomic operation definition (similar to JAX Primitive).
 
     A Primitive represents an atomic operation that can be:
-    1. **Traced**: Records operation to Graph IR (via abstract_eval)
-    2. **Executed**: Runs immediately on runtime objects (via impl)
+    1. **Traced**: Records operation to Graph IR (via abstract_eval or trace)
+    2. **Executed**: Runs via backend execution of Graph IR
 
     Attributes:
         name: Unique name of the primitive (e.g., "add", "mul", "encrypt")
         _abstract_eval: Type inference function (type → type)
-        _impl: Concrete implementation function (runtime_obj → runtime_obj)
+        _trace: Custom trace logic for complex operations
 
     Example:
         >>> # Define custom FHE encryption primitive
@@ -51,15 +53,12 @@ class Primitive:
         >>>     from mplang.edsl.typing import SIMD_HE
         >>>     return SIMD_HE[x_type.dtype, x_type.shape]
         >>>
-        >>> @encrypt_p.def_impl
-        >>> def encrypt_impl(x):
-        >>>     import tenseal as ts
-        >>>     encrypted = ts.encrypt(x.runtime_obj)
-        >>>     return InterpObject(encrypted, encrypt_abstract(x.type))
+        >>> # Execution happens via Graph IR → Backend
+        >>> # Backend handles FHE library calls based on operation type
         >>>
         >>> # Usage
-        >>> plaintext = InterpObject(jnp.array([1, 2, 3]), Tensor[f32, (3,)])
-        >>> ciphertext = encrypt_p.bind(plaintext)
+        >>> plaintext = TraceObject(...)
+        >>> ciphertext = encrypt_p.bind(plaintext)  # Records to Graph IR
     """
 
     def __init__(self, name: str):
@@ -69,13 +68,26 @@ class Primitive:
             name: Unique identifier for this primitive (e.g., "add", "encrypt")
         """
         self.name = name
-        self._abstract_eval: Callable[..., BaseType] | None = None
-        self._impl: Callable[..., Any] | None = None
+        self._abstract_eval: Callable[..., BaseType | list[BaseType]] | None = None
+        self._trace: Callable[..., Any] | None = None
 
-    def def_abstract_eval(self, fn: Callable[..., BaseType]) -> Callable[..., BaseType]:
+    def def_abstract_eval(
+        self, fn: Callable[..., BaseType | list[BaseType]]
+    ) -> Callable[..., BaseType | list[BaseType]]:
         """Define type inference rule for this primitive.
 
         This function is called during tracing to infer output types from input types.
+        Supports both single-output and multi-output primitives.
+
+        Supported signatures:
+        1. Positional form (single output):
+           (*in_types: BaseType, **attrs) -> BaseType
+
+        2. Positional form (multi output):
+           (*in_types: BaseType, **attrs) -> list[BaseType]
+
+        3. Flat form (multi output, for variable number of inputs):
+           (in_types: list[BaseType], attrs: dict) -> list[BaseType]
 
         Args:
             fn: Function that takes input types and returns output type(s)
@@ -83,89 +95,145 @@ class Primitive:
         Returns:
             The same function (for decorator pattern)
 
-        Example:
+        Example (single output):
             >>> add_p = Primitive("add")
             >>>
             >>> @add_p.def_abstract_eval
             >>> def add_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
             >>>     assert x_type == y_type, "Inputs must have same type"
             >>>     return x_type
+
+        Example (multi output):
+            >>> split_p = Primitive("split")
+            >>>
+            >>> @split_p.def_abstract_eval
+            >>> def split_abstract(x_type: BaseType, *, num_splits: int) -> list[BaseType]:
+            >>>     return [x_type] * num_splits
+
+        Example (flat form):
+            >>> concat_p = Primitive("concat")
+            >>>
+            >>> @concat_p.def_abstract_eval
+            >>> def concat_abstract(in_types: list[BaseType], attrs: dict) -> list[BaseType]:
+            >>> # Variable number of inputs
+            >>>     return [in_types[0]]  # Concatenated type
         """
         self._abstract_eval = fn
         return fn
 
-    def def_impl(self, fn: Callable[..., Any]) -> Callable[..., Any]:
-        """Define concrete implementation for this primitive.
+    def def_trace(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Define custom trace logic for this primitive.
 
-        This function is called during interpretation to execute the operation
-        on runtime objects.
+        This method enables full control over the tracing process, suitable for
+        complex scenarios like:
+        - Integrating external functions (JAX, FHE, etc.)
+        - Accepting arbitrary PyTree inputs mixing Objects and constants
+        - Producing arbitrary PyTree outputs
+
+        The decorated function receives raw args/kwargs and returns the result PyTree.
+        The tracer automatically handles:
+        - Extracting Objects from input PyTree (via var_morph)
+        - Recording morph structure to Operation attrs
+        - Flattening output PyTree
+        - Reconstructing output structure during interpretation
+
+        Signature: (*args, **kwargs) -> Object | PyTree[Object]
 
         Args:
-            fn: Function that takes InterpObjects and returns result
+            fn: Custom trace function that takes arbitrary args/kwargs and
+                returns result PyTree (can contain Objects and constants)
 
         Returns:
             The same function (for decorator pattern)
 
-        Example:
-            >>> add_p = Primitive("add")
+        Example (JAX integration):
+            >>> run_jax_p = Primitive("run_jax")
             >>>
-            >>> @add_p.def_impl
-            >>> def add_impl(x: InterpObject, y: InterpObject) -> InterpObject:
-            >>>     result = x.runtime_obj + y.runtime_obj
-            >>>     return InterpObject(result, x.type)
+            >>> @run_jax_p.def_trace
+            >>> def run_jax_trace(jax_fn: Callable, *args, **kwargs):
+            >>> # args/kwargs can mix Objects and constants
+            >>> # Compile JAX function and execute
+            >>>     result = compile_and_run(jax_fn, args, kwargs)
+            >>>     return result  # Can be any PyTree structure
+            >>>
+            >>> # Example (multi-output):
+            >>> split_p = Primitive("split")
+            >>>
+            >>> @split_p.def_trace
+            >>> def split_trace(x: Object, *, num_splits: int):
+            >>> # Call underlying operations
+            >>>     parts = [slice_p.bind(x, i) for i in range(num_splits)]
+            >>>     return parts  # Returns list of Objects
         """
-        self._impl = fn
+        self._trace = fn
         return fn
 
-    def bind(self, *args: Object, **kwargs: Any) -> Object:
+    def bind(self, *args, **kwargs: Any):
         """Bind arguments and execute/trace the primitive.
 
         This is the main user-facing API. It automatically chooses between:
         - **Trace mode**: Record operation to Graph IR (if in Tracer context)
-        - **Interp mode**: Execute immediately (if in Interpreter context or eager mode)
+        - **Interp mode**: Execute Graph IR via backend (if in Interpreter context)
+
+        Behavior depends on which method was used to define the primitive:
+        - **def_abstract_eval**: Positional args must be Objects (inputs),
+          kwargs must be plain values (attrs). Returns single Object or list[Object].
+        - **def_trace**: Both args and kwargs can mix Objects and plain values.
+          Returns arbitrary PyTree structure.
 
         Args:
-            *args: Positional arguments (Object instances)
-            **kwargs: Keyword arguments (plain Python values, not Objects)
+            *args: Positional arguments
+            **kwargs: Keyword arguments
 
         Returns:
-            Object (TraceObject if tracing, InterpObject if interpreting)
+            Object | PyTree[Object] - Result structure depends on primitive definition
 
         Raises:
-            RuntimeError: If neither abstract_eval nor impl is defined
-            TypeError: If kwargs contain Object instances (not allowed)
+            RuntimeError: If neither abstract_eval nor trace is defined
+            TypeError: If using def_abstract_eval and kwargs contain Object instances
 
         Example:
-            >>> # In trace mode
-            >>> tracer = Tracer()
-            >>> with tracer:
-            >>>     z = add_p.bind(x, y)  # Returns TraceObject
+            >>> # With def_abstract_eval (simple form)
+            >>> z = add_p.bind(x, y)  # x, y are Objects
             >>>
-            >>> # In eager mode
-            >>> z = add_p.bind(x, y)  # Returns InterpObject
+            >>> # With def_trace (full form)
+            >>> result = run_jax_p.bind(fn, obj1, 42, obj2, k=3.14)
+            >>> # Mixing Objects (obj1, obj2) and constants (42, 3.14)
         """
-        from mplang.edsl.context import get_current_context, get_default_interpreter
 
-        # Validate kwargs: must not contain Objects
-        for key, value in kwargs.items():
-            from mplang.edsl.object import Object
-
-            if isinstance(value, Object):
-                raise TypeError(
-                    f"Keyword argument '{key}' cannot be an Object. "
-                    f"Only positional arguments can be Objects. "
-                    f"Use plain Python values (int, float, str, etc.) for kwargs."
-                )
+        # Validate kwargs for def_abstract_eval: must not contain Objects
+        # (def_trace allows Objects in kwargs)
+        if self._trace is None:
+            for key, value in kwargs.items():
+                if isinstance(value, Object):
+                    raise TypeError(
+                        f"Keyword argument '{key}' cannot be an Object when using def_abstract_eval. "
+                        f"Only positional arguments can be Objects. "
+                        f"Use def_trace() if you need Objects in kwargs."
+                    )
 
         # Get current context
         ctx = get_current_context()
+        if ctx is None:
+            ctx = get_default_interpreter()
 
-        if ctx is not None:
-            # Use current context (Tracer or Interpreter)
-            return ctx.bind_primitive(self, args, kwargs)
-        else:
-            # No context: use default interpreter (eager mode)
-            return get_default_interpreter().bind_primitive(self, args, kwargs)
+        # Lift args to context's native Object type
+        # This ensures all Objects are in the correct form for the context:
+        # - Tracer: InterpObject → TraceObject, constants → TraceObject
+        # - Interpreter: keeps InterpObject, constants as-is
+        lifted_args = tuple(ctx.lift(arg) for arg in args)
+
+        # For kwargs: only lift if it's an Object (for def_trace with Objects in kwargs)
+        # Keep non-Object kwargs as-is (they are attributes, not graph inputs)
+        lifted_kwargs = {}
+        for k, v in kwargs.items():
+            if isinstance(v, Object):
+                lifted_kwargs[k] = ctx.lift(v)
+            else:
+                lifted_kwargs[k] = v
+
+        # Execute in context
+        return ctx.bind_primitive(self, lifted_args, lifted_kwargs)
 
 
 # ============================================================================
@@ -194,12 +262,7 @@ def primitive(name: str) -> Callable[[Callable], Primitive]:
         >>> # The decorator returns a Primitive instance
         >>> my_op_p = my_op_abstract
         >>>
-        >>> # Define implementation separately
-        >>> @my_op_p.def_impl
-        >>> def my_op_impl(x, y):
-        >>>     return x.runtime_obj + y.runtime_obj
-        >>>
-        >>> # Use it
+        >>> # Use it (execution via Graph IR → Backend)
         >>> z = my_op_p.bind(x, y)
     """
 
@@ -251,55 +314,9 @@ def _div_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
     return x_type
 
 
-# Define impl for arithmetic primitives (eager execution)
-@add_p.def_impl
-def _add_impl(x: Object, y: Object) -> Object:
-    """Eager execution of addition."""
-    from mplang.edsl.interpreter import InterpObject
-
-    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
-        raise TypeError("add_p.impl expects InterpObject operands")
-
-    # TODO: Dispatch to appropriate backend executor based on type
-    # For now, simple addition (assumes runtime_obj supports +)
-    result_data = x.runtime_obj + y.runtime_obj
-    return InterpObject(result_data, x.type)
-
-
-@mul_p.def_impl
-def _mul_impl(x: Object, y: Object) -> Object:
-    """Eager execution of multiplication."""
-    from mplang.edsl.interpreter import InterpObject
-
-    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
-        raise TypeError("mul_p.impl expects InterpObject operands")
-
-    result_data = x.runtime_obj * y.runtime_obj
-    return InterpObject(result_data, x.type)
-
-
-@sub_p.def_impl
-def _sub_impl(x: Object, y: Object) -> Object:
-    """Eager execution of subtraction."""
-    from mplang.edsl.interpreter import InterpObject
-
-    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
-        raise TypeError("sub_p.impl expects InterpObject operands")
-
-    result_data = x.runtime_obj - y.runtime_obj
-    return InterpObject(result_data, x.type)
-
-
-@div_p.def_impl
-def _div_impl(x: Object, y: Object) -> Object:
-    """Eager execution of division."""
-    from mplang.edsl.interpreter import InterpObject
-
-    if not isinstance(x, InterpObject) or not isinstance(y, InterpObject):
-        raise TypeError("div_p.impl expects InterpObject operands")
-
-    result_data = x.runtime_obj / y.runtime_obj
-    return InterpObject(result_data, x.type)
+# Define trace for arithmetic primitives
+# For now, we don't define trace - let them use default abstract_eval path
+# When backend execution is ready, these will work automatically via Graph IR
 
 
 __all__ = [

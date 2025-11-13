@@ -20,7 +20,6 @@ from mplang.edsl.object import Object
 from mplang.edsl.typing import BaseType
 
 if TYPE_CHECKING:
-    from mplang.edsl.interpreter import InterpObject
     from mplang.edsl.primitive import Primitive
 
 
@@ -87,58 +86,195 @@ class Tracer(Context):
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Object, ...], kwargs: dict[str, Any]
-    ) -> TraceObject:
+    ) -> TraceObject | list[TraceObject] | Any:
         """Execute primitive by recording to Graph IR (trace mode).
+
+        Handles two modes:
+        1. def_trace: Custom trace logic with PyTree support
+        2. def_abstract_eval: Automatic type inference with input/output separation
 
         Args:
             primitive: The primitive to trace
-            args: Positional arguments (Objects)
-            kwargs: Keyword arguments (plain values)
+            args: Positional arguments (Objects or plain values)
+            kwargs: Keyword arguments (Objects or plain values)
 
         Returns:
-            TraceObject wrapping the result Value
+            TraceObject, list[TraceObject], or PyTree containing TraceObjects
 
         Raises:
-            RuntimeError: If primitive has no abstract_eval rule
+            RuntimeError: If primitive has neither trace nor abstract_eval defined
         """
-        if primitive._abstract_eval is None:
-            raise RuntimeError(
-                f"Primitive '{primitive.name}' has no abstract_eval rule. "
-                f"Define it using @{primitive.name}_p.def_abstract_eval"
+        # Mode 1: Custom trace (full control)
+        if primitive._trace is not None:
+            from jax.tree_util import tree_flatten, tree_unflatten
+
+            from mplang.utils.func_utils import var_morph
+
+            # Call the custom trace function
+            # It can access other primitives and construct arbitrary output structure
+            result = primitive._trace(*args, **kwargs)
+
+            # Extract Objects from inputs (for IR recording)
+            in_vars, _, in_morph = var_morph(
+                (args, kwargs), is_variable=lambda x: isinstance(x, Object)
             )
 
-        # Promote InterpObjects to TraceObjects if needed
-        trace_args = []
-        for arg in args:
-            if isinstance(arg, TraceObject):
-                trace_args.append(arg)
+            # All Objects should already be TraceObjects (lifted by Primitive.bind)
+            trace_in_vars = []
+            for var in in_vars:
+                if isinstance(var, TraceObject):
+                    trace_in_vars.append(var)
+                else:
+                    raise TypeError(
+                        f"Expected TraceObject in bind_primitive, got {type(var)}. "
+                        f"Objects should be lifted by Primitive.bind() before reaching here."
+                    )
+
+            # Flatten output to extract Objects
+            result_flat, out_tree = tree_flatten(result)
+            out_vars = [v for v in result_flat if isinstance(v, Object)]
+            out_types = [v.type for v in out_vars]
+
+            # Record operation with morph info in attrs
+            input_values = [v._graph_value for v in trace_in_vars]
+            result_values = self.graph.add_op(
+                opcode=primitive.name,
+                inputs=input_values,
+                output_types=out_types,
+                attrs={
+                    "_in_morph": in_morph,  # Input structure (for reconstruction)
+                    "_out_tree": out_tree,  # Output structure
+                },
+            )
+
+            # Ensure result_values is a list
+            if not isinstance(result_values, list):
+                result_values = [result_values]
+
+            # Replace Objects in result_flat with TraceObjects
+            trace_objects = [TraceObject(v, self) for v in result_values]
+            obj_idx = 0
+            reconstructed_flat = []
+            for item in result_flat:
+                if isinstance(item, Object):
+                    reconstructed_flat.append(trace_objects[obj_idx])
+                    obj_idx += 1
+                else:
+                    # Keep non-Object values (constants)
+                    reconstructed_flat.append(item)
+
+            # Reconstruct output PyTree
+            return tree_unflatten(out_tree, reconstructed_flat)
+
+        # Mode 2: Abstract eval (automatic)
+        if primitive._abstract_eval is not None:
+            import inspect
+
+            # All Objects should already be TraceObjects (lifted by Primitive.bind)
+            trace_args = list(args)  # args already lifted
+
+            # Extract Object inputs and their types
+            input_objects = [arg for arg in trace_args if isinstance(arg, TraceObject)]
+            input_types = [obj.type for obj in input_objects]
+
+            # Detect signature style (positional vs flat)
+            sig = inspect.signature(primitive._abstract_eval)
+            params = list(sig.parameters.values())
+
+            # Check if it's flat style: (in_types: list[BaseType], attrs: dict)
+            is_flat_style = (
+                len(params) >= 2
+                and params[0].name == "in_types"
+                and params[1].name == "attrs"
+            )
+
+            # Call abstract_eval to get output types
+            if is_flat_style:
+                output_types = primitive._abstract_eval(input_types, kwargs)
             else:
-                # InterpObject → TraceObject (promote to graph)
-                trace_args.append(self.promote(arg))
+                output_types = primitive._abstract_eval(*input_types, **kwargs)
 
-        # Get input types
-        input_types = [arg.type for arg in trace_args]
+            # Normalize output_types to list
+            if not isinstance(output_types, list):
+                output_types = [output_types]
 
-        # Infer output type using abstract_eval
-        output_type = primitive._abstract_eval(*input_types, **kwargs)
+            # Add operation to graph
+            input_values = [obj._graph_value for obj in input_objects]
+            result_values = self.graph.add_op(
+                opcode=primitive.name,
+                inputs=input_values,
+                output_types=output_types,
+                attrs=kwargs,
+            )
 
-        # Add operation to graph using self.graph.add_op()
-        input_values = [arg._graph_value for arg in trace_args]
+            # Ensure result_values is a list
+            if not isinstance(result_values, list):
+                result_values = [result_values]
 
-        # Use Graph.add_op() which handles Value creation and Operation registration
-        result_value = self.graph.add_op(
-            opcode=primitive.name,
-            inputs=input_values,
-            output_types=[output_type],
-            attrs=kwargs,
+            # Return TraceObject(s)
+            if len(result_values) == 1:
+                return TraceObject(result_values[0], self)
+            else:
+                return [TraceObject(v, self) for v in result_values]
+
+        # No trace or abstract_eval defined
+        raise RuntimeError(
+            f"Primitive '{primitive.name}' has neither trace nor abstract_eval defined. "
+            f"Define one using @{primitive.name}_p.def_trace or @{primitive.name}_p.def_abstract_eval"
         )
 
-        # add_op returns Value or list[Value], we know it's Value for single output
-        if isinstance(result_value, list):
-            result_value = result_value[0]
+    def lift(self, obj: Any) -> Any:
+        """Lift an object to TraceObject.
 
-        # Return TraceObject wrapping the result Value
-        return TraceObject(result_value, self)
+        Converts objects to TraceObject for use in tracing:
+        - TraceObject: return as-is
+        - InterpObject: promote to TraceObject (as captured input)
+        - Numeric constants (int, float, np.ndarray): convert to TraceObject
+        - Other types (callable, etc.): return as-is (opaque)
+
+        Args:
+            obj: Object to lift
+
+        Returns:
+            TraceObject for traceable values, or original value for opaque types
+        """
+        if isinstance(obj, TraceObject):
+            return obj
+        elif isinstance(obj, Object):
+            # InterpObject → TraceObject (promote)
+            from mplang.edsl.interpreter import InterpObject
+
+            if isinstance(obj, InterpObject):
+                # Promote: introduce eager value as captured variable in Graph
+                obj_id = id(obj)
+                if obj_id in self._captured_vars:
+                    # Already promoted
+                    graph_value = self._captured_vars[obj_id]
+                else:
+                    # Create new input node (representing captured variable)
+                    graph_value = self.graph.add_input(
+                        name=f"captured_{len(self._captured_vars)}",
+                        type=obj.type,
+                    )
+                    self._captured_vars[obj_id] = graph_value
+                return TraceObject(graph_value, self)
+            else:
+                raise TypeError(f"Unknown Object type: {type(obj)}")
+        elif callable(obj):
+            # Functions/callables are opaque - don't trace them
+            return obj
+        elif isinstance(obj, (int, float)):
+            # Numeric constants → TraceObject
+            return self.make_constant(obj)
+        else:
+            # For other types (e.g., np.ndarray), try to make constant
+            import numpy as np
+
+            if isinstance(obj, np.ndarray):
+                return self.make_constant(obj)
+            else:
+                # Unknown type - pass through as opaque
+                return obj
 
     def trace(self, fn: Callable | Primitive, *args) -> Graph:
         """Trace a Python function or Primitive into Graph IR.
@@ -216,32 +352,6 @@ class Tracer(Context):
                     self.graph.add_output(r._graph_value)
 
         return self.graph
-
-    def promote(self, obj: InterpObject) -> TraceObject:
-        """Promote InterpObject → TraceObject.
-
-        Introduces the eager execution value as a captured variable into the Graph.
-
-        Args:
-            obj: InterpObject (eager execution object)
-
-        Returns:
-            TraceObject (containing corresponding Graph input)
-        """
-        obj_id = id(obj)
-
-        if obj_id in self._captured_vars:
-            # Already promoted
-            graph_value = self._captured_vars[obj_id]
-        else:
-            # Create new input node (representing captured variable)
-            graph_value = self.graph.add_input(
-                name=f"captured_{len(self._captured_vars)}",
-                type=obj.type,
-            )
-            self._captured_vars[obj_id] = graph_value
-
-        return TraceObject(graph_value, self)
 
     def make_constant(self, value: Any) -> TraceObject:
         """Convert Python constant to TraceObject."""

@@ -169,7 +169,7 @@ class Tracer(Context):
         Converts objects to TraceObject for use in tracing:
         - TraceObject (same context): return as-is (idempotent)
         - TraceObject (different context): capture as input (cross-context reference)
-        - InterpObject: promote to TraceObject (as captured input)
+        - InterpObject: promote to TraceObject (uses obj id as value name)
         - Non-Object types: return as-is (handled by primitives or opaque)
 
         Note on non-Object types:
@@ -215,14 +215,16 @@ class Tracer(Context):
 
             if isinstance(obj, InterpObject):
                 # Promote: introduce eager value as captured variable in Graph
+                # Use object id as value name to enable runtime lookup
+                # Format: interp://<obj_id>
                 obj_id = id(obj)
                 if obj_id in self._captured_vars:
                     # Already promoted
                     graph_value = self._captured_vars[obj_id]
                 else:
-                    # Create new input node (representing captured variable)
+                    # Create new input node with URI-style name
                     graph_value = self.graph.add_input(
-                        name=f"captured_{len(self._captured_vars)}",
+                        name=f"interp://{obj_id}",
                         type=obj.type,
                     )
                     self._captured_vars[obj_id] = graph_value

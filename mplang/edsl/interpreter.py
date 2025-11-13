@@ -99,77 +99,155 @@ class Interpreter(Context):
     def __init__(self):
         # TODO: Backend executor registry
         self._executors = {}
+        # Object registry: id(InterpObject) -> InterpObject
+        # Used to resolve graph.inputs back to runtime objects
+        self._objects: dict[int, InterpObject] = {}
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> InterpObject | list[InterpObject] | Any:
-        """Execute primitive by tracing to Graph IR then executing.
+        """Execute primitive by tracing and interpreting.
 
-        Execution flow:
-        1. Create temporary Tracer
-        2. Trace primitive into Graph IR
-        3. Execute Graph via interpret() (implemented by subclasses)
-
-        This unified flow works for both def_trace and def_abstract_eval primitives.
+        Implements the unified trace → interpret flow:
+        1. All InterpObject arguments already registered via lift()
+        2. Create a Tracer and push it as context
+        3. Call primitive.bind() to build Graph IR (uses obj id in value names)
+        4. Execute the graph via interpret() (resolves inputs via registry)
 
         Args:
             primitive: The primitive to execute
-            args: Positional arguments (can be Objects, opaques like callables, or constants)
-            kwargs: Keyword arguments (can be Objects, opaques, or constants)
+            args: Positional arguments (already lifted by Primitive.bind)
+            kwargs: Keyword arguments (already lifted by Primitive.bind)
 
         Returns:
-            InterpObject, list[InterpObject], or PyTree containing InterpObjects
-
-        Raises:
-            RuntimeError: If primitive has neither trace nor abstract_eval defined
+            Execution result (InterpObject or list of InterpObject)
         """
+        from mplang.edsl.context import pop_context, push_context
         from mplang.edsl.tracer import Tracer
 
-        # Step 1: Create temporary Tracer to build Graph IR
+        # Create tracer and build graph
         tracer = Tracer()
+        push_context(tracer)
+        try:
+            # all args/kwargs are already lifted InterpObject
+            result_traced = primitive.bind(*args, **kwargs)
+        finally:
+            pop_context()
 
-        # Step 2: Trace the primitive into Graph IR
-        graph = tracer.trace(primitive, *args)
+        # Execute graph (uses self._objects to resolve inputs)
+        result_runtime = interpret(tracer.graph, self)
 
-        # Step 3: Execute the Graph IR
-        # Subclasses (Simulator, Driver) implement the actual execution
-        result = interpret(graph, args)
+        # Wrap result back to InterpObject
+        # TODO: Get result type from graph outputs
+        if isinstance(result_traced, list):
+            # Multiple outputs
+            if not isinstance(result_runtime, (list, tuple)):
+                raise RuntimeError(
+                    f"Graph returned {len(result_traced)} outputs but interpret() returned single value"
+                )
+            return [
+                InterpObject(rt, tr.type, self)
+                for rt, tr in zip(result_runtime, result_traced, strict=True)
+            ]
+        else:
+            # Single output
+            return InterpObject(result_runtime, result_traced.type, self)
 
-        return result
+    def lift(self, obj: Any) -> InterpObject | Any:
+        """Lift an object to the Interpreter's native representation.
 
-    def lift(self, obj: Any) -> InterpObject:
-        """Lift an object to InterpObject.
+        This is THE central method that manages the boundary between
+        InterpObject and TraceObject:
 
-        For Interpreter, most objects are already InterpObject.
-        Non-Object values are kept as-is (will be handled by primitives).
+        1. **InterpObject → TraceObject** (during nested tracing):
+           - Register the InterpObject in self._objects for later resolution
+           - The InterpObject must belong to this Interpreter
+           - When the object flows into Tracer.lift() during bind_primitive,
+             it will be captured as input with name "interp://<obj_id>"
+
+        2. **TraceObject → InterpObject** (evaluate traced computation):
+           - Extract the graph from the TraceObject's context (Tracer)
+           - Execute the graph via interpret() to get runtime result
+           - Wrap result as InterpObject and register it
+
+        3. **Constants**: Pass through unchanged
 
         Args:
-            obj: Object to lift
+            obj: Object to lift (InterpObject, TraceObject, or constant)
 
         Returns:
-            The object (InterpObject or constant)
+            InterpObject (if Object input) or constant (pass-through)
+
+        Example:
+            >>> # InterpObject case
+            >>> x = InterpObject(np.array([1, 2]), Tensor[f32, (2,)])
+            >>> x_lifted = interp.lift(x)  # registers in _objects, returns x
+            >>>
+            >>> # TraceObject case
+            >>> tracer = Tracer()
+            >>> push_context(tracer)
+            >>> z_trace = some_primitive.bind(x, y)  # TraceObject
+            >>> pop_context()
+            >>> interp = Interpreter()
+            >>> z_interp = interp.lift(z_trace)  # evaluate graph → InterpObject
         """
-        # InterpObject: already correct type
+        from mplang.edsl.tracer import TraceObject
+
         if isinstance(obj, InterpObject):
+            # InterpObject must belong to this interpreter
+            # (In future: verify obj._context is self or None)
+
+            # Register for later resolution when graph inputs are processed
+            obj_id = id(obj)
+            if obj_id not in self._objects:
+                self._objects[obj_id] = obj
+
+            # Return as-is (will be captured by nested Tracer.lift if tracing)
             return obj
-        # TraceObject: should not happen in eager mode
-        elif isinstance(obj, Object):
-            raise TypeError(
-                f"Cannot lift {type(obj).__name__} to InterpObject in Interpreter context"
-            )
-        # Constants: return as-is (primitives will handle)
+
+        elif isinstance(obj, TraceObject):
+            # TraceObject → InterpObject: evaluate the traced computation
+            # Get the graph from the TraceObject's tracer context
+            tracer = obj._context
+            graph = tracer.graph
+
+            # Execute the graph to get runtime result
+            result_runtime = interpret(graph, self)
+
+            # Wrap as InterpObject and register
+            result_obj = InterpObject(result_runtime, obj.type, self)
+            self._objects[id(result_obj)] = result_obj
+
+            return result_obj
+
         else:
+            # Constants: pass through unchanged
             return obj
 
 
-def interpret(graph: Graph, args: tuple) -> Any:
-    """Convenience function: Interpret and execute a Graph.
+def interpret(graph: Graph, interpreter: Interpreter) -> Any:
+    """Execute a Graph IR with runtime data from Interpreter.
 
     Args:
-        graph: Graph IR
-        args: Input arguments
+        graph: Graph IR to execute (defines the computation structure)
+        interpreter: Interpreter context that owns the runtime objects
+                    - graph.inputs have names like "interp://<obj_id>"
+                    - interpreter._objects[obj_id] provides the runtime data
 
     Returns:
-        Execution result
+        Execution result (backend-specific runtime objects)
+
+    Note:
+        This function should be implemented by concrete interpreters:
+        - Simulator: Local multi-threaded execution
+        - Driver: Distributed execution coordinator
+        - BackendInterpreter: Single-backend execution (JAX, FHE, etc.)
+
+    Example:
+        >>> graph = trace(lambda x, y: x + y, x_val, y_val)
+        >>> result = interpret(graph, interpreter)
+        >>> # Internally: parse graph.inputs[0].name -> "interp://123"
+        >>> # Lookup: interpreter._objects[123] -> InterpObject
+        >>> # Extract: InterpObject.runtime_obj -> actual data
     """
     raise NotImplementedError("interpret() not yet implemented")

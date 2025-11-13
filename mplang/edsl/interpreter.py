@@ -103,10 +103,14 @@ class Interpreter(Context):
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> InterpObject | list[InterpObject] | Any:
-        """Execute primitive by building and executing Graph IR.
+        """Execute primitive by tracing to Graph IR then executing.
 
-        All primitives (both def_abstract_eval and def_trace) produce Graph IR
-        which is then executed by the backend.
+        Execution flow:
+        1. Create temporary Tracer
+        2. Trace primitive into Graph IR
+        3. Execute Graph via interpret() (implemented by subclasses)
+
+        This unified flow works for both def_trace and def_abstract_eval primitives.
 
         Args:
             primitive: The primitive to execute
@@ -119,29 +123,19 @@ class Interpreter(Context):
         Raises:
             RuntimeError: If primitive has neither trace nor abstract_eval defined
         """
-        # For now, primitives with def_trace are called directly
-        # In the future, all primitives will build Graph IR that backends execute
-        if primitive._trace is not None:
-            # Execute the trace function with actual Objects
-            # This allows code like run_jax to work in eager mode
-            result = primitive._trace(*args, **kwargs)
-            return result
+        from mplang.edsl.tracer import Tracer
 
-        # For primitives with only def_abstract_eval, we need to build a simple Graph
-        # This will be implemented when we have backend execution infrastructure
-        if primitive._abstract_eval is not None:
-            # TODO: Build Graph IR and execute via backend
-            # For now, raise NotImplementedError
-            raise NotImplementedError(
-                f"Primitive '{primitive.name}' execution via Graph IR not yet implemented. "
-                f"Use def_trace() to provide custom execution logic."
-            )
+        # Step 1: Create temporary Tracer to build Graph IR
+        tracer = Tracer()
 
-        # No implementation
-        raise RuntimeError(
-            f"Primitive '{primitive.name}' has neither trace nor abstract_eval defined. "
-            f"Define one using @{primitive.name}_p.def_trace or @{primitive.name}_p.def_abstract_eval"
-        )
+        # Step 2: Trace the primitive into Graph IR
+        graph = tracer.trace(primitive, *args)
+
+        # Step 3: Execute the Graph IR
+        # Subclasses (Simulator, Driver) implement the actual execution
+        result = interpret(graph, args)
+
+        return result
 
     def lift(self, obj: Any) -> InterpObject:
         """Lift an object to InterpObject.

@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from jax import tree_flatten
 
 from mplang.edsl.context import Context, pop_context, push_context
 from mplang.edsl.graph import Graph
@@ -237,12 +238,46 @@ class Tracer(Context):
             # callables, etc. are passed directly to primitives
             return obj
 
-    def trace(self, fn: Callable | Primitive, *args) -> Graph:
+    def finalize(self, result: Any) -> Graph:
+        """Finalize the graph by setting outputs.
+
+        This marks the traced result as the outputs of the graph,
+        completing the graph construction. After this, the graph
+        is ready for interpretation or transformation.
+
+        Args:
+            result: Traced result - can be:
+                - Single TraceObject
+                - List/tuple of TraceObjects
+                - PyTree containing TraceObjects (TODO)
+
+        Returns:
+            The finalized graph (self.graph with outputs set)
+
+        Example:
+            >>> tracer = Tracer()
+            >>> push_context(tracer)
+            >>> result = some_primitive.bind(x, y)
+            >>> pop_context()
+            >>> graph = tracer.finalize(result)
+        """
+        out_flat, _out_tree = tree_flatten(result)
+        for out in out_flat:
+            if not isinstance(out, TraceObject) or out._context is not self:
+                raise TypeError(
+                    f"Graph output must be TraceObject from this Tracer context, got: {type(out)}"
+                )
+            self.graph.add_output(out._graph_value)
+
+        return self.graph
+
+    def trace(self, fn: Callable | Primitive, *args, **kwargs) -> Graph:
         """Trace a Python function or Primitive into Graph IR.
 
         Args:
             fn: Function or Primitive to trace
             *args: Function arguments (can be InterpObject, TraceObject, or constants)
+            **kwargs: Function keyword arguments
 
         Returns:
             Constructed Graph IR
@@ -253,26 +288,16 @@ class Tracer(Context):
             promotion.
         """
 
-        # Handle Primitive directly
-        from mplang.edsl.primitive import Primitive
-
         if isinstance(fn, Primitive):
             # Enter trace context
             push_context(self)
             try:
-                result = fn.bind(*args)
+                result = fn.bind(*args, **kwargs)
             finally:
                 pop_context()
 
-            # Mark output
-            if isinstance(result, TraceObject):
-                self.graph.add_output(result._graph_value)
-            elif isinstance(result, (tuple, list)):
-                for r in result:
-                    if isinstance(r, TraceObject):
-                        self.graph.add_output(r._graph_value)
-
-            return self.graph
+            # Finalize graph with outputs
+            return self.finalize(result)
 
         # Handle Callable
         # 1. Convert arguments to TraceObject
@@ -304,15 +329,8 @@ class Tracer(Context):
         finally:
             pop_context()
 
-        # 3. Mark outputs
-        if isinstance(result, TraceObject):
-            self.graph.add_output(result._graph_value)
-        elif isinstance(result, (tuple, list)):
-            for r in result:
-                if isinstance(r, TraceObject):
-                    self.graph.add_output(r._graph_value)
-
-        return self.graph
+        # 3. Finalize graph with outputs
+        return self.finalize(result)
 
     def make_constant(self, value: Any) -> TraceObject:
         """Convert Python constant to TraceObject."""
@@ -334,7 +352,7 @@ class Tracer(Context):
             raise NotImplementedError(f"Unsupported constant type: {type(value)}")
 
 
-def trace(fn: Callable | Primitive, *args) -> Graph:
+def trace(fn: Callable | Primitive, *args, **kwargs) -> Graph:
     """Convenience function: Trace a Python function or Primitive into Graph IR.
 
     Args:
@@ -352,4 +370,9 @@ def trace(fn: Callable | Primitive, *args) -> Graph:
         >>> graph = trace(add_p, x_interp, y_interp)
     """
     tracer = Tracer()
-    return tracer.trace(fn, *args)
+    push_context(tracer)
+    try:
+        result = fn(*args, **kwargs)
+    finally:
+        pop_context()
+    return tracer.finalize(result)

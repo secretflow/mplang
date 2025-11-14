@@ -2,7 +2,7 @@
 
 Responsible for converting Python functions to Graph IR, handling:
 - Function parameters
-- Captured variables (external references)
+- Free variables (external references including captures)
 - Polymorphic handling of TraceObject/InterpObject
 
 Tracer is a Context (inherits from Context abstract base class).
@@ -64,7 +64,7 @@ class Tracer(Context):
 
     Responsibilities:
     1. Convert Python functions to Graph IR
-    2. Manage captured variables (function params and external references)
+    2. Manage free variables (function params and captured external references)
     3. Handle Object Hierarchy (TraceObject/InterpObject)
     4. Promote InterpObject → TraceObject
     5. Implement Context.bind_primitive() by recording to Graph
@@ -77,7 +77,7 @@ class Tracer(Context):
 
     def __init__(self):
         self.graph = Graph()
-        self._captured_vars: dict[int, GraphValue] = {}
+        self._freevars: dict[int, GraphValue] = {}
         self._arg_counter = 0
 
     def bind_primitive(
@@ -146,10 +146,14 @@ class Tracer(Context):
         )
 
     def _capture_as_input(self, obj: Object) -> TraceObject:
-        """Capture an object as graph input.
+        """Capture an object as graph input (free variable).
 
         Helper to avoid code duplication in lift(). Creates a new graph input
-        for the object and maintains the obj_id -> Value and name -> obj mappings.
+        for the object and maintains the obj_id → Value mapping for deduplication.
+
+        Free variables include:
+        - Function parameters (from outer context)
+        - Captured external variables (from outer context)
 
         Args:
             obj: Object to capture (InterpObject or TraceObject from different context)
@@ -158,8 +162,8 @@ class Tracer(Context):
             TraceObject wrapping the newly created input Value
         """
         obj_id = id(obj)
-        if obj_id in self._captured_vars:
-            graph_value = self._captured_vars[obj_id]
+        if obj_id in self._freevars:
+            graph_value = self._freevars[obj_id]
         else:
             name = f"%arg{self._arg_counter}"
             self._arg_counter += 1
@@ -167,7 +171,7 @@ class Tracer(Context):
                 name=name,
                 type=obj.type,
             )
-            self._captured_vars[obj_id] = graph_value
+            self._freevars[obj_id] = graph_value
         return TraceObject(graph_value, self)
 
     def lift(self, obj: Any) -> Any:

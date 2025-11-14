@@ -125,21 +125,20 @@ def _uniform_cond_trace(
     input_objects = [arg for arg in args if isinstance(arg, TraceObject)]
     input_values = [obj._graph_value for obj in input_objects]
 
-    # Step 5: Handle captured variables
-    # Merge captured vars from both branches (union, preserving order)
-    # These are TraceObjects from outer context that were lifted into sub-tracers
-    all_captured_obj_ids = list(
+    # Step 5: Handle free variables
+    # Merge free vars from both branches (union, preserving order)
+    # Free vars are objects from outer context lifted as inputs in sub-tracers
+    all_freevar_obj_ids = list(
         dict.fromkeys(
-            list(then_tracer._captured_vars.keys())
-            + list(else_tracer._captured_vars.keys())
+            list(then_tracer._freevars.keys()) + list(else_tracer._freevars.keys())
         )
     )
 
-    # Map captured object IDs back to original TraceObjects and their values
-    # The captured_vars dict maps id(original_obj) -> graph_value_in_sub_tracer
+    # Map free variable object IDs back to original TraceObjects and their values
+    # The _freevars dict maps id(original_obj) -> graph_value_in_sub_tracer
     # We need to find the original objects from the current context
-    captured_values = []
-    for obj_id in all_captured_obj_ids:
+    freevar_values = []
+    for obj_id in all_freevar_obj_ids:
         # Find the original object - it should be in args
         original_obj = None
         for arg in args:
@@ -149,16 +148,16 @@ def _uniform_cond_trace(
 
         if original_obj is None:
             raise RuntimeError(
-                f"Could not find original object for captured var id {obj_id}"
+                f"Could not find original object for free var id {obj_id}"
             )
 
-        captured_values.append(original_obj._graph_value)
+        freevar_values.append(original_obj._graph_value)
 
     # Step 6: Build cond operation with regions
-    # Input order: [pred, regular_args, captured_vars]
+    # Input order: [pred, regular_args, freevars]
     output_types = [v.type for v in then_graph.outputs]
 
-    all_input_values = [pred._graph_value, *input_values, *captured_values]
+    all_input_values = [pred._graph_value, *input_values, *freevar_values]
 
     result_values = ctx.graph.add_op(
         opcode="simp.uniform_cond",
@@ -168,7 +167,7 @@ def _uniform_cond_trace(
             "verify_uniform": verify_uniform,
             "num_args": len(
                 input_values
-            ),  # Number of regular args (excludes pred and captures)
+            ),  # Number of regular args (excludes pred and freevars)
         },
         regions=[then_graph, else_graph],
     )

@@ -54,37 +54,6 @@ def _separate_vars_and_imms(
     return imms, var_pos, vars_list
 
 
-def _separate_traced_and_imms(
-    flat_values: list[Any], tracer: Tracer
-) -> tuple[list[Any], list[int], list[Any]]:
-    """Separate a flattened list into traced values and immediates.
-
-    Args:
-        flat_values: Flattened list of values (mix of TraceObjects and constants)
-        tracer: The tracer context to check TraceObjects against
-
-    Returns:
-        Tuple of (imms, var_pos, vars) where:
-            - imms: List of immediate values (non-TraceObjects) in order
-            - var_pos: List of positions where TraceObjects appear in flat_values
-            - vars: List of TraceObject values in order
-    """
-    from mplang.edsl.tracer import TraceObject
-
-    imms = []
-    var_pos = []
-    vars_list = []
-
-    for i, val in enumerate(flat_values):
-        if isinstance(val, TraceObject) and val._context is tracer:
-            var_pos.append(i)
-            vars_list.append(val)
-        else:
-            imms.append(val)
-
-    return imms, var_pos, vars_list
-
-
 @dataclass
 class TracedFunction:
     """Result of tracing a Python function into Graph IR.
@@ -216,9 +185,7 @@ def make_graph(
 
     # Step 5: Flatten outputs and separate TraceObjects from constants
     output_flat, output_treedef = tree_flatten(result)
-    out_imms, out_var_pos, out_vars = _separate_traced_and_imms(
-        output_flat, func_tracer
-    )
+    out_imms, out_var_pos, out_vars = _separate_vars_and_imms(output_flat)
 
     # Step 6: Finalize the graph with variable outputs only
     if out_vars:

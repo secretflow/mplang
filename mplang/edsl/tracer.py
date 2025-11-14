@@ -42,7 +42,7 @@ class TraceObject(Object):
 
     def __init__(self, graph_value: GraphValue, tracer: Tracer):
         self._graph_value = graph_value
-        self._context = tracer  # TraceObject holds its Tracer (Context)
+        self._context = tracer
 
     @property
     def type(self) -> BaseType:
@@ -78,10 +78,10 @@ class Tracer(Context):
 
     def __init__(self):
         self.graph = Graph()
-        self._captured_vars: dict[int, GraphValue] = {}  # Python obj_id -> IR Value
+        self._captured_vars: dict[int, GraphValue] = {}
         self._params: list[GraphValue] = []
-        self.captures: dict[str, Any] = {}  # IR free var name -> Python object
-        self._arg_counter = 0  # Counter for generating %argN names
+        self.captures: dict[str, Any] = {}
+        self._arg_counter = 0
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -103,43 +103,30 @@ class Tracer(Context):
         Raises:
             RuntimeError: If primitive has neither trace nor abstract_eval defined
         """
-        # Mode 1: def_trace - Primitive has full control
-        # The primitive builds the graph by calling other primitives.
-        # Tracer simply returns the result without adding extra operations.
         if primitive._trace is not None:
             return primitive._trace(*args, **kwargs)
 
-        # Mode 2: def_abstract_eval - Tracer controls graph construction
         if primitive._abstract_eval is not None:
-            # All Objects should already be TraceObjects (lifted by Primitive.bind)
-            trace_args = list(args)  # args already lifted
-
-            # Extract Object inputs and their types
+            trace_args = list(args)
             input_objects = [arg for arg in trace_args if isinstance(arg, TraceObject)]
             input_types = [obj.type for obj in input_objects]
 
-            # Detect signature style (positional vs flat)
             sig = inspect.signature(primitive._abstract_eval)
             params = list(sig.parameters.values())
-
-            # Check if it's flat style: (in_types: list[BaseType], attrs: dict)
             is_flat_style = (
                 len(params) >= 2
                 and params[0].name == "in_types"
                 and params[1].name == "attrs"
             )
 
-            # Call abstract_eval to get output types
             if is_flat_style:
                 output_types = primitive._abstract_eval(input_types, kwargs)
             else:
                 output_types = primitive._abstract_eval(*input_types, **kwargs)
 
-            # Normalize output_types to list
             if not isinstance(output_types, list):
                 output_types = [output_types]
 
-            # Add operation to graph
             input_values = [obj._graph_value for obj in input_objects]
             result_values = self.graph.add_op(
                 opcode=primitive.name,
@@ -148,21 +135,44 @@ class Tracer(Context):
                 attrs=kwargs,
             )
 
-            # Ensure result_values is a list
             if not isinstance(result_values, list):
                 result_values = [result_values]
 
-            # Return TraceObject(s)
             if len(result_values) == 1:
                 return TraceObject(result_values[0], self)
             else:
                 return [TraceObject(v, self) for v in result_values]
 
-        # No trace or abstract_eval defined
         raise RuntimeError(
             f"Primitive '{primitive.name}' has neither trace nor abstract_eval defined. "
             f"Define one using @{primitive.name}_p.def_trace or @{primitive.name}_p.def_abstract_eval"
         )
+
+    def _capture_as_input(self, obj: Object) -> TraceObject:
+        """Capture an object as graph input.
+
+        Helper to avoid code duplication in lift(). Creates a new graph input
+        for the object and maintains the obj_id -> Value and name -> obj mappings.
+
+        Args:
+            obj: Object to capture (InterpObject or TraceObject from different context)
+
+        Returns:
+            TraceObject wrapping the newly created input Value
+        """
+        obj_id = id(obj)
+        if obj_id in self._captured_vars:
+            graph_value = self._captured_vars[obj_id]
+        else:
+            name = f"%arg{self._arg_counter}"
+            self._arg_counter += 1
+            graph_value = self.graph.add_input(
+                name=name,
+                type=obj.type,
+            )
+            self._captured_vars[obj_id] = graph_value
+            self.captures[name] = obj
+        return TraceObject(graph_value, self)
 
     def lift(self, obj: Any) -> Any:
         """Lift an object to TraceObject.
@@ -191,57 +201,17 @@ class Tracer(Context):
             shouldn't be passed in via normal Primitive.bind flow)
         """
         if isinstance(obj, TraceObject):
-            # Check if TraceObject belongs to this context
             if obj._context is self:
-                # Same context: idempotent
                 return obj
             else:
-                # Different context: capture as input (cross-context reference)
-                # This handles nested tracers (e.g., run_jax, cond, while_loop)
-                obj_id = id(obj)
-                if obj_id in self._captured_vars:
-                    # Already captured
-                    graph_value = self._captured_vars[obj_id]
-                else:
-                    # Create new input node for captured TraceObject
-                    name = f"%arg{self._arg_counter}"
-                    self._arg_counter += 1
-                    graph_value = self.graph.add_input(
-                        name=name,
-                        type=obj.type,
-                    )
-                    self._captured_vars[obj_id] = graph_value
-                    # Maintain IR name -> TraceObject mapping for cross-context refs
-                    self.captures[name] = obj
-                return TraceObject(graph_value, self)
+                return self._capture_as_input(obj)
         elif isinstance(obj, Object):
-            # InterpObject → TraceObject (promote)
-            from mplang.edsl.interpreter import InterpObject
-
-            if isinstance(obj, InterpObject):
-                # Promote: introduce eager value as captured variable in Graph
-                obj_id = id(obj)
-                if obj_id in self._captured_vars:
-                    # Already promoted
-                    graph_value = self._captured_vars[obj_id]
-                else:
-                    # Create new input node with clean SSA name
-                    name = f"%arg{self._arg_counter}"
-                    self._arg_counter += 1
-                    graph_value = self.graph.add_input(
-                        name=name,
-                        type=obj.type,
-                    )
-                    self._captured_vars[obj_id] = graph_value
-                    # Maintain IR name -> Python object mapping
-                    self.captures[name] = obj
-                return TraceObject(graph_value, self)
+            # Check class name to avoid circular import
+            if type(obj).__name__ == "InterpObject":
+                return self._capture_as_input(obj)
             else:
                 raise TypeError(f"Unknown Object type: {type(obj)}")
         else:
-            # Non-Object types: pass through as-is (should be rare in normal flow)
-            # Primitives.bind filters Objects before calling lift, so constants,
-            # callables, etc. are passed directly to primitives
             return obj
 
     def finalize(self, result: Any) -> Graph:

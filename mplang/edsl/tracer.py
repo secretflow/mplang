@@ -64,11 +64,10 @@ class Tracer(Context):
 
     Responsibilities:
     1. Convert Python functions to Graph IR
-    2. Manage captured variables (external references)
-    3. Manage function parameters
-    4. Handle Object Hierarchy (TraceObject/InterpObject)
-    5. Promote InterpObject → TraceObject
-    6. Implement Context.bind_primitive() by recording to Graph
+    2. Manage captured variables (function params and external references)
+    3. Handle Object Hierarchy (TraceObject/InterpObject)
+    4. Promote InterpObject → TraceObject
+    5. Implement Context.bind_primitive() by recording to Graph
 
     Example:
         >>> tracer = Tracer()
@@ -79,8 +78,6 @@ class Tracer(Context):
     def __init__(self):
         self.graph = Graph()
         self._captured_vars: dict[int, GraphValue] = {}
-        self._params: list[GraphValue] = []
-        self.captures: dict[str, Any] = {}
         self._arg_counter = 0
 
     def bind_primitive(
@@ -171,7 +168,6 @@ class Tracer(Context):
                 type=obj.type,
             )
             self._captured_vars[obj_id] = graph_value
-            self.captures[name] = obj
         return TraceObject(graph_value, self)
 
     def lift(self, obj: Any) -> Any:

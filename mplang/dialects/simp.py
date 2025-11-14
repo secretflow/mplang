@@ -17,6 +17,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from jax.tree_util import tree_flatten
+
 from mplang.edsl.context import get_current_context
 from mplang.edsl.object import Object
 from mplang.edsl.primitive import Primitive
@@ -109,8 +111,6 @@ def _uniform_cond_trace(
     # Collect input variables from traced functions
     # in_var_pos tells us which positions in the flattened input are variables
     # We need to map these back to the current context's TraceObjects
-    from jax.tree_util import tree_flatten
-
     input_flat, _ = tree_flatten((args, kwargs))
 
     # Get variables (Objects) from inputs in their original order

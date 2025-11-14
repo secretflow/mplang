@@ -32,6 +32,7 @@ from jax.tree_util import tree_map, tree_unflatten
 from mplang.core import (
     ClusterSpec,
     Device,
+    Mask,
     MPContext,
     MPObject,
     TableLike,
@@ -39,7 +40,6 @@ from mplang.core import (
     cur_ctx,
     peval,
 )
-from mplang.core.mask import Mask
 from mplang.ops import basic, crypto, jax_cc, spu, tee
 from mplang.ops.base import FeOperation
 from mplang.ops.jax_cc import JaxRunner

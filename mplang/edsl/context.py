@@ -5,13 +5,25 @@ This module defines the Context hierarchy:
 - Tracer: Tracing context (records operations to Graph IR)
 - Interpreter: Execution context (executes operations immediately)
 
-The context stack is managed globally via simple stack operations.
+Contexts can be used directly with Python's 'with' statement:
+
+    from mplang.edsl import Tracer
+
+    tracer = Tracer()
+    with tracer:
+        # Operations run under tracer context
+        result = primitive.bind(x, y)
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 if TYPE_CHECKING:
     from mplang.edsl.interpreter import Interpreter
@@ -34,6 +46,11 @@ class Context(ABC):
     1. Clear responsibility: Context knows how to execute primitives
     2. Context management: enter/exit context for operation tracing/execution
     3. Extensibility: Easy to add new context types (Profiler, Debugger, etc.)
+
+    Usage:
+        >>> tracer = Tracer()
+        >>> with tracer:  # Context manager protocol
+        ...     result = primitive.bind(x, y)
     """
 
     @abstractmethod
@@ -65,6 +82,16 @@ class Context(ABC):
         Returns:
             Object in the context's native type (TraceObject or InterpObject)
         """
+
+    def __enter__(self) -> Self:
+        """Enter context manager (push context onto stack)."""
+        push_context(self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager (pop context from stack)."""
+        pop_context()
+        # Return None to propagate exceptions
 
 
 # ============================================================================

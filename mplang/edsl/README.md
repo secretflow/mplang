@@ -49,12 +49,14 @@ ciphertext: MPType = SIMD_HE[f32, (4096,)]
 
 ### 3. Explicit Tracing
 
-**No magic decorators**:
+**Clean context management**:
 ```python
 from mplang.edsl import Tracer
 
-tracer = Tracer(cluster_spec)
-graph, outputs = tracer.trace(my_function, x, y)
+tracer = Tracer()
+with tracer:  # Context manager protocol
+    result = my_function(x, y)
+graph = tracer.finalize(result)
 ```
 
 ### 4. Extensibility

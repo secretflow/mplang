@@ -102,6 +102,11 @@ class Interpreter(Context):
         # Object registry: id(InterpObject) -> InterpObject
         # Used to resolve graph.inputs back to runtime objects
         self._objects: dict[int, InterpObject] = {}
+        # TraceObject -> InterpObject cache: id(TraceObject) -> InterpObject
+        # Used to avoid re-evaluating when the same TraceObject is lifted multiple times
+        # Key is id(TraceObject), not id(Graph), because different TraceObjects
+        # from the same graph represent different Values
+        self._trace_obj_cache: dict[int, InterpObject] = {}
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -134,8 +139,11 @@ class Interpreter(Context):
         finally:
             pop_context()
 
+        # Finalize graph by setting outputs
+        graph = tracer.finalize(result_traced)
+
         # Execute graph (uses self._objects to resolve inputs)
-        result_runtime = interpret(tracer.graph, self)
+        result_runtime = interpret(graph, self)
 
         # Wrap result back to InterpObject
         # TODO: Get result type from graph outputs
@@ -206,17 +214,31 @@ class Interpreter(Context):
             return obj
 
         elif isinstance(obj, TraceObject):
-            # TraceObject → InterpObject: evaluate the traced computation
-            # Get the graph from the TraceObject's tracer context
+            # Check cache: have we already lifted this exact TraceObject?
+            trace_obj_id = id(obj)
+            if trace_obj_id in self._trace_obj_cache:
+                return self._trace_obj_cache[trace_obj_id]
+
+            # First time seeing this TraceObject
+            # TODO (MIMO optimization): When lifting multiple TraceObjects from
+            # the same graph, we currently execute the graph multiple times.
+            # Future: execute once and cache all intermediate results.
+
+            # Get the graph and value from TraceObject
             tracer = obj._context
             graph = tracer.graph
+            # value = obj._graph_value  # TODO: use this for MIMO optimization
 
-            # Execute the graph to get runtime result
+            # Execute the graph to get runtime result for this specific Value
+            # TODO: For now, interpret() returns single value
+            # MIMO optimization: make interpret() return dict[value_name -> runtime_obj]
+            # so we can cache all intermediate results from one execution
             result_runtime = interpret(graph, self)
 
-            # Wrap as InterpObject and register
+            # Wrap as InterpObject, register, and cache
             result_obj = InterpObject(result_runtime, obj.type, self)
             self._objects[id(result_obj)] = result_obj
+            self._trace_obj_cache[trace_obj_id] = result_obj
 
             return result_obj
 
@@ -228,14 +250,25 @@ class Interpreter(Context):
 def interpret(graph: Graph, interpreter: Interpreter) -> Any:
     """Execute a Graph IR with runtime data from Interpreter.
 
+    The graph must be finalized (graph.outputs must be set) before interpretation.
+    This function executes all operations in the graph and returns the values
+    corresponding to graph.outputs.
+
     Args:
-        graph: Graph IR to execute (defines the computation structure)
+        graph: Finalized Graph IR to execute
+               - graph.inputs: runtime data references (e.g., "interp://<obj_id>")
+               - graph.outputs: Values to compute and return
+               - graph.operations: computation steps
         interpreter: Interpreter context that owns the runtime objects
-                    - graph.inputs have names like "interp://<obj_id>"
-                    - interpreter._objects[obj_id] provides the runtime data
+                    - interpreter._objects[obj_id] provides runtime data for inputs
 
     Returns:
-        Execution result (backend-specific runtime objects)
+        Runtime execution results corresponding to graph.outputs:
+        - Single value if graph.outputs has 1 element
+        - Tuple of values if graph.outputs has multiple elements
+
+    Raises:
+        AssertionError: If graph.outputs is empty (graph not finalized)
 
     Note:
         This function should be implemented by concrete interpreters:
@@ -244,10 +277,18 @@ def interpret(graph: Graph, interpreter: Interpreter) -> Any:
         - BackendInterpreter: Single-backend execution (JAX, FHE, etc.)
 
     Example:
-        >>> graph = trace(lambda x, y: x + y, x_val, y_val)
-        >>> result = interpret(graph, interpreter)
-        >>> # Internally: parse graph.inputs[0].name -> "interp://123"
-        >>> # Lookup: interpreter._objects[123] -> InterpObject
-        >>> # Extract: InterpObject.runtime_obj -> actual data
+        >>> tracer = Tracer()
+        >>> push_context(tracer)
+        >>> result = some_primitive.bind(x, y)
+        >>> pop_context()
+        >>> graph = tracer.finalize(result)  # Sets graph.outputs
+        >>> runtime_result = interpret(graph, interpreter)
+        >>> # Internally:
+        >>> # 1. Parse graph.inputs[i].name -> "interp://123"
+        >>> # 2. Lookup: interpreter._objects[123] -> InterpObject
+        >>> # 3. Extract: InterpObject.runtime_obj -> actual data
+        >>> # 4. Execute operations
+        >>> # 5. Return values for graph.outputs
     """
+    assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
     raise NotImplementedError("interpret() not yet implemented")

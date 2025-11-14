@@ -17,8 +17,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import numpy as np
-
 from mplang.edsl.context import get_current_context
 from mplang.edsl.object import Object
 from mplang.edsl.primitive import Primitive
@@ -29,10 +27,10 @@ from mplang.edsl.typing import BaseType
 # Control flow (scaffold)
 # ---------------------------------------------------------------------------
 
-uniform_cond_p = Primitive("simp.uniform_cond")
+uniform_cond = Primitive("simp.uniform_cond")
 
 
-@uniform_cond_p.def_trace
+@uniform_cond.def_trace
 def _uniform_cond_trace(
     pred: Object,
     then_fn: Callable[..., Any],
@@ -43,9 +41,13 @@ def _uniform_cond_trace(
     """Implementation for uniform_cond (def_trace mode for complex control flow).
 
     Uses def_trace (not def_abstract_eval) because uniform_cond is a complex
-    control flow primitive that needs full control over execution:
-    - Eager mode: Direct branch execution (Interpreter context)
-    - Trace mode: Fork tracer, build cond operation with regions (Tracer context)
+    control flow primitive that needs full control over execution.
+
+    Context behavior:
+    - def_trace is always called in Tracer context
+    - When called from Interpreter, the Interpreter.bind_primitive creates
+      a Tracer context first, then calls primitive.bind (which invokes def_trace)
+    - So this function always sees ctx as Tracer and builds Graph IR
 
     Args:
         pred: Boolean scalar value (Python bool, NumPy bool, or TraceObject).
@@ -75,143 +77,110 @@ def _uniform_cond_trace(
     """
     ctx = get_current_context()
 
-    # Check if we're in Tracer context
-    if isinstance(ctx, Tracer):
-        # Trace mode: Build cond operation with regions
+    # def_trace is always called in Tracer context
+    # (Interpreter.bind_primitive creates Tracer before calling primitive.bind)
+    assert isinstance(ctx, Tracer), f"Expected Tracer context, got {type(ctx)}"
 
-        # Validate pred is TraceObject
-        if not isinstance(pred, TraceObject):
-            raise TypeError(
-                f"In trace mode, predicate must be TraceObject, got {type(pred)}"
-            )
+    # Validate pred is TraceObject
+    if not isinstance(pred, TraceObject):
+        raise TypeError(f"predicate must be TraceObject, got {type(pred)}")
 
-        # Both branches must be callable in trace mode
-        if not callable(then_fn) or not callable(else_fn):
-            raise TypeError("In trace mode, both branches must be callable functions")
+    # Both branches must be callable in trace mode
+    if not callable(then_fn) or not callable(else_fn):
+        raise TypeError("In trace mode, both branches must be callable functions")
 
-        # Step 1: Fork tracers for both branches
-        then_tracer = Tracer()
-        else_tracer = Tracer()
+    # Step 1: Fork tracers for both branches
+    then_tracer = Tracer()
+    else_tracer = Tracer()
 
-        # Step 2: Trace both branches
-        # Lift args to sub-tracers (handles cross-context TraceObjects)
-        trace_args = list(args)
+    # Step 2: Trace both branches
+    # Note: We don't need to manually lift args here.
+    # When primitives are called inside then_fn/else_fn, Primitive.bind()
+    # will automatically lift args to the current context (then_tracer/else_tracer)
+    with then_tracer:
+        then_result = then_fn(*args)
+    then_graph = then_tracer.finalize(then_result)
 
-        # Lift args for then_tracer
-        then_args = [
-            then_tracer.lift(arg) if isinstance(arg, TraceObject) else arg
-            for arg in trace_args
-        ]
-        then_graph = then_tracer.trace(then_fn, *then_args)
+    with else_tracer:
+        else_result = else_fn(*args)
+    else_graph = else_tracer.finalize(else_result)
 
-        # Lift args for else_tracer
-        else_args = [
-            else_tracer.lift(arg) if isinstance(arg, TraceObject) else arg
-            for arg in trace_args
-        ]
-        else_graph = else_tracer.trace(else_fn, *else_args)
-
-        # Step 3: Validate branch outputs match
-        if len(then_graph.outputs) != len(else_graph.outputs):
-            raise TypeError(
-                f"Branch output count mismatch: then={len(then_graph.outputs)} "
-                f"vs else={len(else_graph.outputs)}"
-            )
-
-        for i, (then_out, else_out) in enumerate(
-            zip(then_graph.outputs, else_graph.outputs, strict=True)
-        ):
-            if then_out.type != else_out.type:
-                raise TypeError(
-                    f"Branch output type mismatch at index {i}: "
-                    f"{then_out.type} vs {else_out.type}"
-                )
-
-        # Step 4: Collect input arguments (TraceObjects from current context)
-        input_objects = [arg for arg in trace_args if isinstance(arg, TraceObject)]
-        input_values = [obj._graph_value for obj in input_objects]
-
-        # Step 5: Handle captured variables
-        # Merge captured vars from both branches (union, preserving order)
-        # These are TraceObjects from outer context that were lifted into sub-tracers
-        all_captured_obj_ids = list(
-            dict.fromkeys(
-                list(then_tracer._captured_vars.keys())
-                + list(else_tracer._captured_vars.keys())
-            )
+    # Step 3: Validate branch outputs match
+    if len(then_graph.outputs) != len(else_graph.outputs):
+        raise TypeError(
+            f"Branch output count mismatch: then={len(then_graph.outputs)} "
+            f"vs else={len(else_graph.outputs)}"
         )
 
-        # Map captured object IDs back to original TraceObjects and their values
-        # The captured_vars dict maps id(original_obj) -> graph_value_in_sub_tracer
-        # We need to find the original objects from the current context
-        captured_values = []
-        for obj_id in all_captured_obj_ids:
-            # Find the original object - it should be in trace_args
-            original_obj = None
-            for arg in trace_args:
-                if isinstance(arg, TraceObject) and id(arg) == obj_id:
-                    original_obj = arg
-                    break
+    for i, (then_out, else_out) in enumerate(
+        zip(then_graph.outputs, else_graph.outputs, strict=True)
+    ):
+        if then_out.type != else_out.type:
+            raise TypeError(
+                f"Branch output type mismatch at index {i}: "
+                f"{then_out.type} vs {else_out.type}"
+            )
 
-            if original_obj is None:
-                raise RuntimeError(
-                    f"Could not find original object for captured var id {obj_id}"
-                )
+    # Step 4: Collect input arguments (TraceObjects from current context)
+    input_objects = [arg for arg in args if isinstance(arg, TraceObject)]
+    input_values = [obj._graph_value for obj in input_objects]
 
-            captured_values.append(original_obj._graph_value)
-
-        # Step 6: Build cond operation with regions
-        # Input order: [pred, regular_args, captured_vars]
-        output_types = [v.type for v in then_graph.outputs]
-
-        all_input_values = [pred._graph_value, *input_values, *captured_values]
-
-        result_values = ctx.graph.add_op(
-            opcode="simp.uniform_cond",
-            inputs=all_input_values,
-            output_types=output_types,
-            attrs={
-                "verify_uniform": verify_uniform,
-                "num_args": len(
-                    input_values
-                ),  # Number of regular args (excludes pred and captures)
-            },
-            regions=[then_graph, else_graph],
+    # Step 5: Handle captured variables
+    # Merge captured vars from both branches (union, preserving order)
+    # These are TraceObjects from outer context that were lifted into sub-tracers
+    all_captured_obj_ids = list(
+        dict.fromkeys(
+            list(then_tracer._captured_vars.keys())
+            + list(else_tracer._captured_vars.keys())
         )
+    )
 
-        # Step 7: Return TraceObject(s)
-        if not isinstance(result_values, list):
-            result_values = [result_values]
+    # Map captured object IDs back to original TraceObjects and their values
+    # The captured_vars dict maps id(original_obj) -> graph_value_in_sub_tracer
+    # We need to find the original objects from the current context
+    captured_values = []
+    for obj_id in all_captured_obj_ids:
+        # Find the original object - it should be in args
+        original_obj = None
+        for arg in args:
+            if isinstance(arg, TraceObject) and id(arg) == obj_id:
+                original_obj = arg
+                break
 
-        if len(result_values) == 1:
-            return TraceObject(result_values[0], ctx)
-        else:
-            return [TraceObject(v, ctx) for v in result_values]
+        if original_obj is None:
+            raise RuntimeError(
+                f"Could not find original object for captured var id {obj_id}"
+            )
 
+        captured_values.append(original_obj._graph_value)
+
+    # Step 6: Build cond operation with regions
+    # Input order: [pred, regular_args, captured_vars]
+    output_types = [v.type for v in then_graph.outputs]
+
+    all_input_values = [pred._graph_value, *input_values, *captured_values]
+
+    result_values = ctx.graph.add_op(
+        opcode="simp.uniform_cond",
+        inputs=all_input_values,
+        output_types=output_types,
+        attrs={
+            "verify_uniform": verify_uniform,
+            "num_args": len(
+                input_values
+            ),  # Number of regular args (excludes pred and captures)
+        },
+        regions=[then_graph, else_graph],
+    )
+
+    # Step 7: Return TraceObject(s)
+    if not isinstance(result_values, list):
+        result_values = [result_values]
+
+    if len(result_values) == 1:
+        return TraceObject(result_values[0], ctx)
     else:
-        # Interpreter mode (eager execution)
-        # Convert pred to boolean
-        if isinstance(pred, (bool, np.bool_)):
-            pred_val = bool(pred)
-        else:
-            raise TypeError(
-                f"uniform_cond predicate must be boolean scalar, got {type(pred)}"
-            )
-
-        # Select the branch
-        selected = then_fn if pred_val else else_fn
-
-        # If selected is callable, execute it with args and return the result
-        if callable(selected):
-            return selected(*args)
-
-        # Otherwise return the pre-computed value
-        return selected
-
-
-# Public API: Expose .bind method as a callable function
-# Users can call: uniform_cond(pred, then_fn, else_fn, *args, verify_uniform=True)
-uniform_cond = uniform_cond_p.bind
+        return [TraceObject(v, ctx) for v in result_values]
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +290,6 @@ __all__ = [
     "pshfl_s_p",
     # Control flow
     "uniform_cond",
-    "uniform_cond_p",
     "while_loop",
     "while_loop_p",
 ]

@@ -127,20 +127,13 @@ class Interpreter(Context):
         Returns:
             Execution result (InterpObject or list of InterpObject)
         """
-        from mplang.edsl.context import pop_context, push_context
         from mplang.edsl.tracer import Tracer
 
         # Create tracer and build graph
-        tracer = Tracer()
-        push_context(tracer)
-        try:
-            # all args/kwargs are already lifted InterpObject
+        with Tracer() as tracer:
+            # Finalize graph by setting outputs
             result_traced = primitive.bind(*args, **kwargs)
-        finally:
-            pop_context()
-
-        # Finalize graph by setting outputs
-        graph = tracer.finalize(result_traced)
+            graph = tracer.finalize(result_traced)
 
         # Execute graph (uses self._objects to resolve inputs)
         result_runtime = interpret(graph, self)

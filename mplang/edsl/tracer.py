@@ -320,6 +320,42 @@ class TracedFunction:
     out_var_pos: list[int]
     out_tree: PyTreeDef
 
+    def is_input_signature_match(self, other: TracedFunction) -> bool:
+        """Check if this TracedFunction has the same input signature as another.
+
+        Args:
+            other: Another TracedFunction to compare against
+
+        Returns:
+            True if input counts and types match, False otherwise
+        """
+        if len(self.graph.inputs) != len(other.graph.inputs):
+            return False
+        return all(
+            self_in.type == other_in.type
+            for self_in, other_in in zip(
+                self.graph.inputs, other.graph.inputs, strict=True
+            )
+        )
+
+    def is_output_signature_match(self, other: TracedFunction) -> bool:
+        """Check if this TracedFunction has the same output signature as another.
+
+        Args:
+            other: Another TracedFunction to compare against
+
+        Returns:
+            True if output counts and types match, False otherwise
+        """
+        if len(self.graph.outputs) != len(other.graph.outputs):
+            return False
+        return all(
+            self_out.type == other_out.type
+            for self_out, other_out in zip(
+                self.graph.outputs, other.graph.outputs, strict=True
+            )
+        )
+
 
 def trace(
     fn: Callable[..., Any],

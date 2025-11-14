@@ -92,21 +92,13 @@ def _uniform_cond_trace(
     then_traced = trace(then_fn, *args, **kwargs)
     else_traced = trace(else_fn, *args, **kwargs)
 
-    # Validate branch outputs match
-    if len(then_traced.graph.outputs) != len(else_traced.graph.outputs):
+    # Validate branch output signatures match
+    if not then_traced.is_output_signature_match(else_traced):
         raise TypeError(
-            f"Branch output count mismatch: then={len(then_traced.graph.outputs)} "
-            f"vs else={len(else_traced.graph.outputs)}"
+            f"Branch output signature mismatch between then_fn and else_fn. "
+            f"then={[v.type for v in then_traced.graph.outputs]}, "
+            f"else={[v.type for v in else_traced.graph.outputs]}"
         )
-
-    for i, (then_out, else_out) in enumerate(
-        zip(then_traced.graph.outputs, else_traced.graph.outputs, strict=True)
-    ):
-        if then_out.type != else_out.type:
-            raise TypeError(
-                f"Branch output type mismatch at index {i}: "
-                f"{then_out.type} vs {else_out.type}"
-            )
 
     # Collect input variables from traced functions
     # in_var_pos tells us which positions in the flattened input are variables

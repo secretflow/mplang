@@ -20,8 +20,16 @@ from typing import Any
 from mplang.edsl.context import get_current_context
 from mplang.edsl.object import Object
 from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import TraceObject, Tracer
+from mplang.edsl.tracer import TraceObject, Tracer, trace
 from mplang.edsl.typing import BaseType
+
+# ---------------------------------------------------------------------------
+# Global configuration
+# ---------------------------------------------------------------------------
+
+# Whether to verify predicate uniformity at runtime in uniform_cond
+# Set to False to disable runtime checks (useful for testing or when uniformity is guaranteed)
+VERIFY_UNIFORM_DEFAULT = True
 
 # ---------------------------------------------------------------------------
 # Control flow (scaffold)
@@ -36,84 +44,61 @@ def _uniform_cond_trace(
     then_fn: Callable[..., Any],
     else_fn: Callable[..., Any],
     *args: Any,
-    verify_uniform: bool = True,
+    **kwargs: Any,
 ) -> Any:
-    """Implementation for uniform_cond (def_trace mode for complex control flow).
+    """Implementation for uniform_cond in trace mode.
 
     Uses def_trace (not def_abstract_eval) because uniform_cond is a complex
-    control flow primitive that needs full control over execution.
-
-    Context behavior:
-    - def_trace is always called in Tracer context
-    - When called from Interpreter, the Interpreter.bind_primitive creates
-      a Tracer context first, then calls primitive.bind (which invokes def_trace)
-    - So this function always sees ctx as Tracer and builds Graph IR
+    control flow primitive that requires forking tracers for both branches.
 
     Args:
-        pred: Boolean scalar value (Python bool, NumPy bool, or TraceObject).
-             Must be uniform across all parties in multi-party context.
-        then_fn: Either a callable (args -> T) to execute when pred is True,
-                or a pre-computed value of type T to return.
-        else_fn: Either a callable (args -> T) to execute when pred is False,
-                or a pre-computed value of type T to return.
-        *args: Arguments to pass to the selected branch function if it's callable.
-        verify_uniform: Whether to verify predicate uniformity at runtime.
+        pred: Boolean scalar TraceObject (must be uniform across all parties)
+        then_fn: Callable accepting (*args, **kwargs) to execute when pred is True
+        else_fn: Callable accepting (*args, **kwargs) to execute when pred is False
+        *args: Positional arguments to pass to branch functions
+        **kwargs: Keyword arguments to pass to branch functions
 
     Returns:
-        Result from executing the selected branch (if callable) or the pre-computed value.
-        Type is inferred from then_fn/else_fn return type or value type.
+        Result from tracing both branches (TraceObject or tuple of TraceObjects)
 
     Raises:
-        TypeError: If pred is not a boolean scalar or branches have incompatible types.
+        TypeError: If pred is not TraceObject, branches are not callable,
+                   or branch outputs have mismatched types/counts
 
-    Design Note:
-        This uses def_trace (not def_abstract_eval) because:
-        - Complex operation requiring tracer fork (in trace mode)
-        - Type inference depends on tracing branch functions
-        - Needs full control over graph construction
+    Note:
+        The verify_uniform flag is controlled by the global VERIFY_UNIFORM_DEFAULT config.
+        To change it, set mplang.dialects.simp.VERIFY_UNIFORM_DEFAULT = False
 
-        Simple primitives (add, mul) should use def_abstract_eval.
-        Complex primitives (control flow, custom integrations) use def_trace.
+    Example:
+        >>> def then_fn(x, y):
+        ...     return x + y
+        >>> def else_fn(x, y):
+        ...     return x - y
+        >>> result = uniform_cond(pred, then_fn, else_fn, x, y)
     """
     cur_ctx = get_current_context()
-
-    # def_trace is always called in Tracer context
-    # (Interpreter.bind_primitive creates Tracer before calling primitive.bind)
     assert isinstance(cur_ctx, Tracer), f"Expected Tracer context, got {type(cur_ctx)}"
 
-    # Validate pred is TraceObject
+    # Validate inputs
     if not isinstance(pred, TraceObject):
         raise TypeError(f"predicate must be TraceObject, got {type(pred)}")
-
-    # Both branches must be callable in trace mode
     if not callable(then_fn) or not callable(else_fn):
         raise TypeError("In trace mode, both branches must be callable functions")
 
-    # Step 1: Fork tracers for both branches
-    then_tracer = Tracer()
-    else_tracer = Tracer()
+    # Trace both branches using the new trace() function
+    # trace() handles lifting arguments automatically
+    then_traced = trace(then_fn, *args, **kwargs)
+    else_traced = trace(else_fn, *args, **kwargs)
 
-    # Step 2: Trace both branches
-    # Note: We don't need to manually lift args here.
-    # When primitives are called inside then_fn/else_fn, Primitive.bind()
-    # will automatically lift args to the current context (then_tracer/else_tracer)
-    with then_tracer:
-        then_result = then_fn(*args)
-    then_graph = then_tracer.finalize(then_result)
-
-    with else_tracer:
-        else_result = else_fn(*args)
-    else_graph = else_tracer.finalize(else_result)
-
-    # Step 3: Validate branch outputs match
-    if len(then_graph.outputs) != len(else_graph.outputs):
+    # Validate branch outputs match
+    if len(then_traced.graph.outputs) != len(else_traced.graph.outputs):
         raise TypeError(
-            f"Branch output count mismatch: then={len(then_graph.outputs)} "
-            f"vs else={len(else_graph.outputs)}"
+            f"Branch output count mismatch: then={len(then_traced.graph.outputs)} "
+            f"vs else={len(else_traced.graph.outputs)}"
         )
 
     for i, (then_out, else_out) in enumerate(
-        zip(then_graph.outputs, else_graph.outputs, strict=True)
+        zip(then_traced.graph.outputs, else_traced.graph.outputs, strict=True)
     ):
         if then_out.type != else_out.type:
             raise TypeError(
@@ -121,58 +106,35 @@ def _uniform_cond_trace(
                 f"{then_out.type} vs {else_out.type}"
             )
 
-    # Step 4: Collect input arguments (TraceObjects from current context)
-    input_objects = [arg for arg in args if isinstance(arg, TraceObject)]
-    input_values = [obj._graph_value for obj in input_objects]
+    # Collect input variables from traced functions
+    # in_var_pos tells us which positions in the flattened input are variables
+    # We need to map these back to the current context's TraceObjects
+    from jax.tree_util import tree_flatten
 
-    # Step 5: Handle free variables
-    # Merge free vars from both branches (union, preserving order)
-    # Free vars are objects from outer context lifted as inputs in sub-tracers
-    all_freevar_obj_ids = list(
-        dict.fromkeys(
-            list(then_tracer._freevars.keys()) + list(else_tracer._freevars.keys())
-        )
-    )
+    input_flat, _ = tree_flatten((args, kwargs))
 
-    # Map free variable object IDs back to original TraceObjects and their values
-    # The _freevars dict maps id(original_obj) -> graph_value_in_sub_tracer
-    # We need to find the original objects from the current context
-    freevar_values = []
-    for obj_id in all_freevar_obj_ids:
-        # Find the original object - it should be in args
-        original_obj = None
-        for arg in args:
-            if isinstance(arg, TraceObject) and id(arg) == obj_id:
-                original_obj = arg
-                break
+    # Get variables (Objects) from inputs in their original order
+    input_vars = [val for val in input_flat if isinstance(val, Object)]
+    input_values = [
+        obj._graph_value for obj in input_vars if isinstance(obj, TraceObject)
+    ]
 
-        if original_obj is None:
-            raise RuntimeError(
-                f"Could not find original object for free var id {obj_id}"
-            )
-
-        freevar_values.append(original_obj._graph_value)
-
-    # Step 6: Build cond operation with regions
-    # Input order: [pred, regular_args, freevars]
-    output_types = [v.type for v in then_graph.outputs]
-
-    all_input_values = [pred._graph_value, *input_values, *freevar_values]
+    # Build cond operation with regions
+    output_types = [v.type for v in then_traced.graph.outputs]
+    all_input_values = [pred._graph_value, *input_values]
 
     result_values = cur_ctx.graph.add_op(
         opcode="simp.uniform_cond",
         inputs=all_input_values,
         output_types=output_types,
         attrs={
-            "verify_uniform": verify_uniform,
-            "num_args": len(
-                input_values
-            ),  # Number of regular args (excludes pred and freevars)
+            "verify_uniform": VERIFY_UNIFORM_DEFAULT,
+            "num_args": len(input_values),  # Number of variable args (excludes pred)
         },
-        regions=[then_graph, else_graph],
+        regions=[then_traced.graph, else_traced.graph],
     )
 
-    # Step 7: Return TraceObject(s)
+    # Return TraceObject(s)
     if not isinstance(result_values, list):
         result_values = [result_values]
 

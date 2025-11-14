@@ -44,7 +44,8 @@ class TestUniformCond:
         def test_fn(pred, x):
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        graph = trace(test_fn, pred_val, x_val)
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
 
         # Verify graph has cond operation
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -65,7 +66,8 @@ class TestUniformCond:
         def test_fn(pred, x):
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        graph = trace(test_fn, pred_val, x_val)
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
 
         # Verify graph structure (independent of pred value at trace time)
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -86,7 +88,8 @@ class TestUniformCond:
         def test_fn(pred, x, y):
             return uniform_cond(pred, then_fn, else_fn, x, y)
 
-        graph = trace(test_fn, pred_val, x_val, y_val)
+        traced = trace(test_fn, pred_val, x_val, y_val)
+        graph = traced.graph
 
         # Verify cond operation exists
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -141,7 +144,8 @@ class TestUniformCond:
         def test_fn(pred, x, y):
             return uniform_cond(pred, then_fn, else_fn, x, y)
 
-        graph = trace(test_fn, pred_val, x_val, y_val)
+        traced = trace(test_fn, pred_val, x_val, y_val)
+        graph = traced.graph
 
         # Verify graph structure
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -150,18 +154,36 @@ class TestUniformCond:
         assert len(cond_ops[0].inputs) >= 3
 
     def test_verify_uniform_attribute(self):
-        """Test that verify_uniform flag is properly set in graph."""
+        """Test that verify_uniform flag uses global config."""
+        from mplang.dialects import simp
+
         pred_val = InterpObject(np.array(True), Tensor[f32, ()])
         x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
 
+        # Test with default (True)
         def test_fn(pred, x):
-            return uniform_cond(pred, lambda x: x, lambda x: x, x, verify_uniform=False)
+            return uniform_cond(pred, lambda x: x, lambda x: x, x)
 
-        graph = trace(test_fn, pred_val, x_val)
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
 
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
         assert len(cond_ops) == 1
-        assert cond_ops[0].attrs["verify_uniform"] is False
+        assert cond_ops[0].attrs["verify_uniform"] is True
+
+        # Test with global config set to False
+        original_value = simp.VERIFY_UNIFORM_DEFAULT
+        try:
+            simp.VERIFY_UNIFORM_DEFAULT = False
+            traced2 = trace(test_fn, pred_val, x_val)
+            graph2 = traced2.graph
+            cond_ops2 = [
+                op for op in graph2.operations if op.opcode == "simp.uniform_cond"
+            ]
+            assert len(cond_ops2) == 1
+            assert cond_ops2[0].attrs["verify_uniform"] is False
+        finally:
+            simp.VERIFY_UNIFORM_DEFAULT = original_value
 
 
 class TestUniformCondTracing:
@@ -186,7 +208,8 @@ class TestUniformCondTracing:
             return uniform_cond(pred, then_fn, else_fn, x)
 
         # Trace the function
-        graph = trace(test_fn, pred_val, x_val)
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
 
         # Verify graph structure
         assert graph is not None
@@ -227,7 +250,8 @@ class TestUniformCondTracing:
 
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        graph = trace(test_fn, pred_val, x_val)
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
 
         # Find the cond operation
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -264,5 +288,6 @@ class TestUniformCondTracing:
             return uniform_cond(pred, then_fn, else_fn, x)
 
         # This should work fine (same types)
-        graph = trace(test_fn, pred_val, x_val)
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
         assert graph is not None

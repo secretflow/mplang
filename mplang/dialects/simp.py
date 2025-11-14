@@ -75,11 +75,11 @@ def _uniform_cond_trace(
         Simple primitives (add, mul) should use def_abstract_eval.
         Complex primitives (control flow, custom integrations) use def_trace.
     """
-    ctx = get_current_context()
+    cur_ctx = get_current_context()
 
     # def_trace is always called in Tracer context
     # (Interpreter.bind_primitive creates Tracer before calling primitive.bind)
-    assert isinstance(ctx, Tracer), f"Expected Tracer context, got {type(ctx)}"
+    assert isinstance(cur_ctx, Tracer), f"Expected Tracer context, got {type(cur_ctx)}"
 
     # Validate pred is TraceObject
     if not isinstance(pred, TraceObject):
@@ -159,7 +159,7 @@ def _uniform_cond_trace(
 
     all_input_values = [pred._graph_value, *input_values, *freevar_values]
 
-    result_values = ctx.graph.add_op(
+    result_values = cur_ctx.graph.add_op(
         opcode="simp.uniform_cond",
         inputs=all_input_values,
         output_types=output_types,
@@ -177,9 +177,9 @@ def _uniform_cond_trace(
         result_values = [result_values]
 
     if len(result_values) == 1:
-        return TraceObject(result_values[0], ctx)
+        return TraceObject(result_values[0], cur_ctx)
     else:
-        return [TraceObject(v, ctx) for v in result_values]
+        return [TraceObject(v, cur_ctx) for v in result_values]
 
 
 # ---------------------------------------------------------------------------

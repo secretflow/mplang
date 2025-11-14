@@ -261,12 +261,12 @@ class TestPrimitiveComplexScenarios:
         x = InterpObject(np.array([1.0, 2.0]), Tensor[f32, (2,)])
         y = InterpObject(np.array([3.0, 4.0]), Tensor[f32, (2,)])
 
-        graph = trace(my_add_p, x, y)
+        traced = trace(my_add_p, x, y)
 
         # Verify graph structure
-        assert len(graph.operations) == 1
-        assert graph.operations[0].opcode == "my_add"
-        assert len(graph.inputs) == 2
-        assert len(graph.outputs) == 1
+        assert len(traced.graph.operations) == 1
+        assert traced.graph.operations[0].opcode == "my_add"
+        assert len(traced.graph.inputs) == 2
+        assert len(traced.graph.outputs) == 1
 
     # test_add_operator_uses_primitive removed - operator overloading moved to future dispatch module

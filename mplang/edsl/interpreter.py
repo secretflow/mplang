@@ -171,7 +171,7 @@ class Interpreter(Context):
            - Register the InterpObject in self._objects for later resolution
            - The InterpObject must belong to this Interpreter
            - When the object flows into Tracer.lift() during bind_primitive,
-             it will be captured as input with name "interp://<obj_id>"
+             it will be captured as input with a clean SSA name like "%arg0"
 
         2. **TraceObject → InterpObject** (evaluate traced computation):
            - Extract the graph from the TraceObject's context (Tracer)
@@ -256,7 +256,7 @@ def interpret(graph: Graph, interpreter: Interpreter) -> Any:
 
     Args:
         graph: Finalized Graph IR to execute
-               - graph.inputs: runtime data references (e.g., "interp://<obj_id>")
+               - graph.inputs: runtime data references with clean SSA names (e.g., "%arg0")
                - graph.outputs: Values to compute and return
                - graph.operations: computation steps
         interpreter: Interpreter context that owns the runtime objects
@@ -284,7 +284,7 @@ def interpret(graph: Graph, interpreter: Interpreter) -> Any:
         >>> graph = tracer.finalize(result)  # Sets graph.outputs
         >>> runtime_result = interpret(graph, interpreter)
         >>> # Internally:
-        >>> # 1. Parse graph.inputs[i].name -> "interp://123"
+        >>> # 1. Get graph.inputs[i].name -> "%arg0"
         >>> # 2. Lookup: interpreter._objects[123] -> InterpObject
         >>> # 3. Extract: InterpObject.runtime_obj -> actual data
         >>> # 4. Execute operations

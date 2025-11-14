@@ -68,39 +68,6 @@ def _get_context_id(ctx: MPContext) -> int:
     return id(ctx)
 
 
-def _is_session_valid(sess_p: MPObject, sess_t: MPObject) -> bool:
-    """
-    Validate that cached session objects are still valid.
-
-    Args:
-        sess_p: Session key at sender side
-        sess_t: Session key at TEE side
-
-    Returns:
-        True if both session objects are valid
-    """
-    from mplang.core.tracer import TraceVar
-
-    # Basic type check
-    if not isinstance(sess_p, MPObject) or not isinstance(sess_t, MPObject):
-        return False
-
-    # TraceVar-specific validation
-    if isinstance(sess_p, TraceVar) or isinstance(sess_t, TraceVar):
-        try:
-            # Check if TraceVar's context is still accessible
-            if isinstance(sess_p, TraceVar):
-                _ = sess_p.ctx  # Access to check for ReferenceError
-                _ = sess_p.expr
-            if isinstance(sess_t, TraceVar):
-                _ = sess_t.ctx
-                _ = sess_t.expr
-        except (ReferenceError, AttributeError):
-            return False
-
-    return True
-
-
 # magic attribute name to mark a MPObject as a device object
 DEVICE_ATTR_NAME = "__device__"
 

@@ -203,7 +203,7 @@ def main():
     print("millionaire_tee_spu IR:", compiled_full.compiler_ir())
     a, b, a_proc, b_proc, c_spu, final, result = mp.evaluate(sim, millionaire_tee_spu)
     print(
-        "✓ Full TEE-SPU successful: a@P0, b@P1, a_proc@TEE, a_proc@TEE, c@SPU, final@TEE, result@P0 ->",
+        "✓ Full TEE-SPU successful: a@P0, b@P1, a_proc@TEE, b_proc@TEE, c@SPU, final@TEE, result@P0 ->",
         mp.fetch(sim, a),
         mp.fetch(sim, b),
         mp.fetch(sim, a_proc),

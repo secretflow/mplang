@@ -181,24 +181,6 @@ class TraceContext(MPContext):
         Returns:
             TraceVar representing the captured variable in this context
         """
-        # DEBUG: Log capture operations to find pollution source
-        if isinstance(obj, TraceVar):
-            import sys
-
-            print("DEBUG CAPTURE: TraceVar pollution detected!", file=sys.stderr)
-            print(
-                f"  Source: {type(obj.ctx).__name__} (id: {id(obj.ctx)})",
-                file=sys.stderr,
-            )
-            print(f"  Target: {type(self).__name__} (id: {id(self)})", file=sys.stderr)
-            print(f"  TraceVar expr: {obj.expr}", file=sys.stderr)
-            print("  Call stack:", file=sys.stderr)
-            import traceback
-
-            for line in traceback.format_stack()[-4:-1]:  # More context
-                print(f"  {line.strip()}", file=sys.stderr)
-            print("---", file=sys.stderr)
-
         # If the object is already a TraceVar in this context, return it directly
         if isinstance(obj, TraceVar) and obj.ctx is self:
             return obj

@@ -170,7 +170,7 @@ class Primitive:
         self._trace = fn
         return fn
 
-    def bind(self, *args, **kwargs: Any):
+    def bind(self, *args: Any, **kwargs: Any) -> Any:
         """Bind arguments and execute/trace the primitive.
 
         This is the main user-facing API. It automatically chooses between:
@@ -226,6 +226,10 @@ class Primitive:
 
         # Execute in context
         return ctx.bind_primitive(self, lifted_args, lifted_kwargs)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Syntactic sugar for bind(): primitive(*args, **kwargs) == primitive.bind(*args, **kwargs)."""
+        return self.bind(*args, **kwargs)
 
 
 # ============================================================================

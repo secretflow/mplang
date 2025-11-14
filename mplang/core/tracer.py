@@ -181,9 +181,6 @@ class TraceContext(MPContext):
         Returns:
             TraceVar representing the captured variable in this context
         """
-        # If the object is already a TraceVar in this context, return it directly
-        if isinstance(obj, TraceVar) and obj.ctx is self:
-            return obj
 
         # If we've seen this object before, return the existing variable
         if obj in self._captures:

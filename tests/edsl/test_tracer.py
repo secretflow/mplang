@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from mplang.dialects.func import TracedFunction, make_graph
 from mplang.edsl.interpreter import InterpObject, Interpreter
+from mplang.edsl.tracer import TracedFunction, trace
 from mplang.edsl.typing import TensorType, f32
 
 
@@ -35,7 +35,7 @@ class TestMakeGraph:
             # Just return tuple for now (no actual ops)
             return x, y
 
-        traced = make_graph(add, x_obj, y_obj)
+        traced = trace(add, x_obj, y_obj)
 
         assert isinstance(traced, TracedFunction)
         assert traced.name == "add"
@@ -57,7 +57,7 @@ class TestMakeGraph:
             # Just return for now
             return x
 
-        traced = make_graph(scale, x_obj, factor=2.0)
+        traced = trace(scale, x_obj, factor=2.0)
 
         assert traced.name == "scale"
         # 1 variable (x), 1 constant (factor=2.0)
@@ -77,7 +77,7 @@ class TestMakeGraph:
             x, y = data
             return (y, x)
 
-        traced = make_graph(swap, (x_obj, y_obj))
+        traced = trace(swap, (x_obj, y_obj))
 
         assert traced.name == "swap"
         # Input: ((x, y),) flattened = [x, y], both variables
@@ -94,7 +94,7 @@ class TestMakeGraph:
         def make_dict(x, y):
             return {"first": x, "second": y}
 
-        traced = make_graph(make_dict, x_obj, y_obj)
+        traced = trace(make_dict, x_obj, y_obj)
 
         assert traced.name == "make_dict"
         # 2 variables (x, y), no constants
@@ -115,7 +115,7 @@ class TestMakeGraph:
             return {"result": (x, y), "metadata": threshold}
 
         config = {"threshold": 0.5}
-        traced = make_graph(complex_fn, (x_obj, y_obj), config)
+        traced = trace(complex_fn, (x_obj, y_obj), config)
 
         assert traced.name == "complex_fn"
         # Input: ((x, y), {"threshold": 0.5}) flattened = [x, y, 0.5]
@@ -140,7 +140,7 @@ class TestMakeGraph:
         def identity(x, y):
             return {"x": x, "y": y}
 
-        traced = make_graph(identity, x_obj, y_obj)
+        traced = trace(identity, x_obj, y_obj)
 
         # Check that we can reconstruct the structures
         assert traced.in_tree is not None
@@ -160,7 +160,7 @@ class TestMakeGraph:
         def passthrough(x):
             return x
 
-        traced = make_graph(passthrough, x_obj)
+        traced = trace(passthrough, x_obj)
 
         assert traced.name == "passthrough"
         # 1 variable in, 1 variable out
@@ -176,7 +176,7 @@ class TestMakeGraph:
             # Note: This will create a graph with no inputs
             return 42
 
-        traced = make_graph(constant)
+        traced = trace(constant)
 
         assert traced.name == "constant"
         # No variables in

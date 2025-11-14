@@ -107,6 +107,16 @@ class Value:
         """True if this value is never used (dead code)."""
         return self.num_uses == 0 and self.defining_op is not None
 
+    @property
+    def is_bound(self) -> bool:
+        """True if this value is bound (defined by an operation)."""
+        return self.defining_op is not None
+
+    @property
+    def is_free(self) -> bool:
+        """True if this value is free (graph input, not defined by operation)."""
+        return self.defining_op is None
+
 
 @dataclass
 class Operation:

@@ -14,10 +14,9 @@ import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from jax import tree_flatten
 
-from mplang.edsl.context import Context, pop_context, push_context
+from mplang.edsl.context import Context
 from mplang.edsl.graph import Graph
 from mplang.edsl.graph import Value as GraphValue
 from mplang.edsl.object import Object
@@ -25,7 +24,6 @@ from mplang.edsl.typing import BaseType
 
 if TYPE_CHECKING:
     from mplang.edsl.primitive import Primitive
-    from mplang.edsl.typing import Tensor, f32
 
 
 class TraceObject(Object):
@@ -80,8 +78,10 @@ class Tracer(Context):
 
     def __init__(self):
         self.graph = Graph()
-        self._captured_vars: dict[int, GraphValue] = {}
+        self._captured_vars: dict[int, GraphValue] = {}  # Python obj_id -> IR Value
         self._params: list[GraphValue] = []
+        self.captures: dict[str, Any] = {}  # IR free var name -> Python object
+        self._arg_counter = 0  # Counter for generating %argN names
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -204,11 +204,15 @@ class Tracer(Context):
                     graph_value = self._captured_vars[obj_id]
                 else:
                     # Create new input node for captured TraceObject
+                    name = f"%arg{self._arg_counter}"
+                    self._arg_counter += 1
                     graph_value = self.graph.add_input(
-                        name=f"captured_{len(self._captured_vars)}",
+                        name=name,
                         type=obj.type,
                     )
                     self._captured_vars[obj_id] = graph_value
+                    # Maintain IR name -> TraceObject mapping for cross-context refs
+                    self.captures[name] = obj
                 return TraceObject(graph_value, self)
         elif isinstance(obj, Object):
             # InterpObject → TraceObject (promote)
@@ -216,19 +220,21 @@ class Tracer(Context):
 
             if isinstance(obj, InterpObject):
                 # Promote: introduce eager value as captured variable in Graph
-                # Use object id as value name to enable runtime lookup
-                # Format: interp://<obj_id>
                 obj_id = id(obj)
                 if obj_id in self._captured_vars:
                     # Already promoted
                     graph_value = self._captured_vars[obj_id]
                 else:
-                    # Create new input node with URI-style name
+                    # Create new input node with clean SSA name
+                    name = f"%arg{self._arg_counter}"
+                    self._arg_counter += 1
                     graph_value = self.graph.add_input(
-                        name=f"interp://{obj_id}",
+                        name=name,
                         type=obj.type,
                     )
                     self._captured_vars[obj_id] = graph_value
+                    # Maintain IR name -> Python object mapping
+                    self.captures[name] = obj
                 return TraceObject(graph_value, self)
             else:
                 raise TypeError(f"Unknown Object type: {type(obj)}")
@@ -271,86 +277,6 @@ class Tracer(Context):
 
         return self.graph
 
-    def trace(self, fn: Callable | Primitive, *args, **kwargs) -> Graph:
-        """Trace a Python function or Primitive into Graph IR.
-
-        Args:
-            fn: Function or Primitive to trace
-            *args: Function arguments (can be InterpObject, TraceObject, or constants)
-            **kwargs: Function keyword arguments
-
-        Returns:
-            Constructed Graph IR
-
-        Note:
-            When tracing a Callable, captured variables cannot be properly handled
-            in execute_add(). Use Primitives for operations that need InterpObject
-            promotion.
-        """
-
-        if isinstance(fn, Primitive):
-            # Enter trace context
-            push_context(self)
-            try:
-                result = fn.bind(*args, **kwargs)
-            finally:
-                pop_context()
-
-            # Finalize graph with outputs
-            return self.finalize(result)
-
-        # Handle Callable
-        # 1. Convert arguments to TraceObject
-        from mplang.edsl.interpreter import InterpObject
-
-        trace_args = []
-        for i, arg in enumerate(args):
-            if isinstance(arg, InterpObject):
-                # Promote to TraceObject (as graph input)
-                graph_value = self.graph.add_input(
-                    name=f"arg{i}",
-                    type=arg.type,
-                )
-                trace_arg = TraceObject(graph_value, self)
-                self._params.append(graph_value)
-            elif isinstance(arg, TraceObject):
-                trace_arg = arg
-                self._params.append(arg._graph_value)
-            else:
-                # Constant
-                trace_arg = self.make_constant(arg)
-
-            trace_args.append(trace_arg)
-
-        # 2. Execute function in tracing context
-        push_context(self)
-        try:
-            result = fn(*trace_args)
-        finally:
-            pop_context()
-
-        # 3. Finalize graph with outputs
-        return self.finalize(result)
-
-    def make_constant(self, value: Any) -> TraceObject:
-        """Convert Python constant to TraceObject."""
-        if isinstance(value, (int, float)):
-            # Scalar constant
-            graph_value = self.graph.add_constant(
-                value,
-                type=Tensor[f32, ()],
-            )
-            return TraceObject(graph_value, self)
-        elif isinstance(value, np.ndarray):
-            # Array constant
-            graph_value = self.graph.add_constant(
-                value,
-                type=Tensor[f32, value.shape],
-            )
-            return TraceObject(graph_value, self)
-        else:
-            raise NotImplementedError(f"Unsupported constant type: {type(value)}")
-
 
 def trace(fn: Callable | Primitive, *args, **kwargs) -> Graph:
     """Convenience function: Trace a Python function or Primitive into Graph IR.
@@ -370,9 +296,6 @@ def trace(fn: Callable | Primitive, *args, **kwargs) -> Graph:
         >>> graph = trace(add_p, x_interp, y_interp)
     """
     tracer = Tracer()
-    push_context(tracer)
-    try:
+    with tracer:
         result = fn(*args, **kwargs)
-    finally:
-        pop_context()
     return tracer.finalize(result)

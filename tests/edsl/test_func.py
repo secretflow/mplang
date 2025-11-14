@@ -1,0 +1,188 @@
+"""Tests for func dialect: function definition and calls."""
+
+import numpy as np
+import pytest
+
+from mplang.dialects.func import TracedFunction, make_graph
+from mplang.edsl.interpreter import InterpObject, Interpreter
+from mplang.edsl.typing import TensorType, f32
+
+
+class TestMakeGraph:
+    """Test func.func primitive for tracing arbitrary Python functions."""
+
+    @pytest.fixture
+    def interpreter(self):
+        """Create an interpreter context."""
+        return Interpreter()
+
+    @pytest.fixture
+    def sample_inputs(self, interpreter):
+        """Create sample tensor inputs."""
+        x_val = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        y_val = np.array([4.0, 5.0, 6.0], dtype=np.float32)
+
+        x_obj = InterpObject(x_val, TensorType(f32, (3,)), interpreter)
+        y_obj = InterpObject(y_val, TensorType(f32, (3,)), interpreter)
+
+        return x_obj, y_obj
+
+    def test_simple_function_args_only(self, sample_inputs):
+        """Test tracing a simple function with positional args."""
+        x_obj, y_obj = sample_inputs
+
+        def add(x, y):
+            # Just return tuple for now (no actual ops)
+            return x, y
+
+        traced = make_graph(add, x_obj, y_obj)
+
+        assert isinstance(traced, TracedFunction)
+        assert traced.name == "add"
+        # 2 variables (x, y), no constants
+        assert len(traced.in_var_pos) == 2
+        assert len(traced.in_imms) == 0
+        assert traced.in_var_pos == [0, 1]
+        # 2 variable outputs (x, y), no constants
+        assert len(traced.out_var_pos) == 2
+        assert len(traced.out_imms) == 0
+        assert len(traced.graph.inputs) == 2
+        assert len(traced.graph.outputs) == 2
+
+    def test_function_with_kwargs(self, sample_inputs):
+        """Test tracing function with keyword arguments."""
+        x_obj, _ = sample_inputs
+
+        def scale(x, *, factor):
+            # Just return for now
+            return x
+
+        traced = make_graph(scale, x_obj, factor=2.0)
+
+        assert traced.name == "scale"
+        # 1 variable (x), 1 constant (factor=2.0)
+        assert len(traced.in_var_pos) == 1
+        assert len(traced.in_imms) == 1
+        assert traced.in_var_pos == [0]  # x at position 0
+        assert traced.in_imms == [2.0]  # factor is constant
+        # 1 variable output (x)
+        assert len(traced.out_var_pos) == 1
+        assert len(traced.out_imms) == 0
+
+    def test_tuple_input_output(self, sample_inputs):
+        """Test function with tuple inputs and outputs."""
+        x_obj, y_obj = sample_inputs
+
+        def swap(data):
+            x, y = data
+            return (y, x)
+
+        traced = make_graph(swap, (x_obj, y_obj))
+
+        assert traced.name == "swap"
+        # Input: ((x, y),) flattened = [x, y], both variables
+        assert len(traced.in_var_pos) == 2
+        assert len(traced.in_imms) == 0
+        # Output: (y, x) flattened = [y, x], both variables
+        assert len(traced.out_var_pos) == 2
+        assert len(traced.out_imms) == 0
+
+    def test_dict_output(self, sample_inputs):
+        """Test function with dict output."""
+        x_obj, y_obj = sample_inputs
+
+        def make_dict(x, y):
+            return {"first": x, "second": y}
+
+        traced = make_graph(make_dict, x_obj, y_obj)
+
+        assert traced.name == "make_dict"
+        # 2 variables (x, y), no constants
+        assert len(traced.in_var_pos) == 2
+        assert len(traced.in_imms) == 0
+        # Dict with 2 variable values
+        assert len(traced.out_var_pos) == 2
+        assert len(traced.out_imms) == 0
+
+    def test_nested_pytree(self, sample_inputs):
+        """Test function with nested PyTree structure."""
+        x_obj, y_obj = sample_inputs
+
+        def complex_fn(data, config):
+            x, y = data
+            threshold = config["threshold"]
+            # Return nested structure
+            return {"result": (x, y), "metadata": threshold}
+
+        config = {"threshold": 0.5}
+        traced = make_graph(complex_fn, (x_obj, y_obj), config)
+
+        assert traced.name == "complex_fn"
+        # Input: ((x, y), {"threshold": 0.5}) flattened = [x, y, 0.5]
+        # x, y are variables at pos 0, 1; 0.5 is constant at pos 2
+        assert len(traced.in_var_pos) == 2
+        assert traced.in_var_pos == [0, 1]
+        assert len(traced.in_imms) == 1
+        assert traced.in_imms == [0.5]
+        # Output: {"result": (x, y), "metadata": 0.5}
+        # JAX flattens dicts in sorted key order: "metadata" < "result"
+        # So flattened = [0.5, x, y] (metadata first, then result tuple)
+        # 0.5 is constant at pos 0; x, y are variables at pos 1, 2
+        assert len(traced.out_var_pos) == 2
+        assert traced.out_var_pos == [1, 2]
+        assert len(traced.out_imms) == 1
+        assert traced.out_imms == [0.5]
+
+    def test_input_output_tree_preservation(self, sample_inputs):
+        """Test that input/output tree structures are preserved."""
+        x_obj, y_obj = sample_inputs
+
+        def identity(x, y):
+            return {"x": x, "y": y}
+
+        traced = make_graph(identity, x_obj, y_obj)
+
+        # Check that we can reconstruct the structures
+        assert traced.in_tree is not None
+        assert traced.out_tree is not None
+
+        # Verify metadata is stored
+        assert traced.graph is not None
+        assert traced.name == "identity"
+        # 2 variables in, 2 variables out
+        assert len(traced.in_var_pos) == 2
+        assert len(traced.out_var_pos) == 2
+
+    def test_single_output(self, sample_inputs):
+        """Test function with single output (not tuple)."""
+        x_obj, _ = sample_inputs
+
+        def passthrough(x):
+            return x
+
+        traced = make_graph(passthrough, x_obj)
+
+        assert traced.name == "passthrough"
+        # 1 variable in, 1 variable out
+        assert len(traced.in_var_pos) == 1
+        assert len(traced.out_var_pos) == 1
+        assert len(traced.in_imms) == 0
+        assert len(traced.out_imms) == 0
+
+    def test_no_args_function(self):
+        """Test function with no arguments."""
+
+        def constant():
+            # Note: This will create a graph with no inputs
+            return 42
+
+        traced = make_graph(constant)
+
+        assert traced.name == "constant"
+        # No variables in
+        assert len(traced.in_var_pos) == 0
+        assert len(traced.in_imms) == 0
+        # Output is a constant (42)
+        assert len(traced.out_var_pos) == 0
+        assert len(traced.out_imms) == 1
+        assert traced.out_imms == [42]

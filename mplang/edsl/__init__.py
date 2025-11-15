@@ -121,6 +121,7 @@ from mplang.edsl.object import Object
 
 # Primitive (ready to use)
 from mplang.edsl.primitive import Primitive, primitive
+from mplang.edsl.printer import GraphPrinter, format_graph
 from mplang.edsl.tracer import TraceObject, Tracer, trace
 from mplang.edsl.typing import (
     HE,
@@ -151,22 +152,17 @@ __all__ = [
     "MP",
     "SIMD_HE",
     "SS",
-    # Type System
     "BaseType",
-    # Context
     "Context",
     "Custom",
     "CustomType",
-    # Graph IR
     "Graph",
+    "GraphPrinter",
     "InterpObject",
-    # Interpreter
     "Interpreter",
     "MPType",
-    # Object Hierarchy
     "Object",
     "Operation",
-    # Primitive
     "Primitive",
     "SIMDHEType",
     "SSType",
@@ -178,18 +174,16 @@ __all__ = [
     "Tensor",
     "TensorType",
     "TraceObject",
-    # Tracer
     "Tracer",
     "Value",
-    # Scalar types
     "f32",
     "f64",
+    "format_graph",
     "get_current_context",
     "get_default_interpreter",
     "i32",
     "i64",
     "interpret",
-    # JIT
     "jit",
     "pop_context",
     "primitive",

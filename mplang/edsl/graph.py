@@ -37,8 +37,8 @@ Example:
     y = graph.add_input("y", Tensor[f32, (10,)])
 
     # Add operations
-    z = graph.add_op("add", [x, y])
-    result = graph.add_op("mul", [z, graph.add_constant(2.0)])
+    z, = graph.add_op("add", [x, y])
+    result, = graph.add_op("mul", [z, graph.add_constant(2.0)])
 
     # Mark outputs
     graph.add_output(result)
@@ -261,7 +261,7 @@ class Graph:
         output_types: list[BaseType] | None = None,
         attrs: dict[str, Any] | None = None,
         regions: list[Graph] | None = None,
-    ) -> Value | list[Value]:
+    ) -> list[Value]:
         """Add an operation to the graph.
 
         Args:
@@ -272,7 +272,7 @@ class Graph:
             regions: Nested graphs (for control flow)
 
         Returns:
-            Single output value or list of output values
+            List of output values (one entry per output)
         """
         # Type inference (placeholder - should be backend-specific)
         if output_types is None:
@@ -295,8 +295,7 @@ class Graph:
         )
         self.operations.append(op)
 
-        # Return single value or list
-        return outputs[0] if len(outputs) == 1 else outputs
+        return outputs
 
     def add_output(self, value: Value) -> None:
         """Mark a value as a graph output.
@@ -377,10 +376,10 @@ if __name__ == "__main__":
     x = graph.add_input("x", Tensor[f32, (10,)])
     y = graph.add_input("y", Tensor[f32, (10,)])
 
-    sum_result = graph.add_op("add", [x, y])
+    (sum_result,) = graph.add_op("add", [x, y])
     const_2 = graph.add_constant(2.0, f32)
 
-    result = graph.add_op("mul", [sum_result, const_2])
+    (result,) = graph.add_op("mul", [sum_result, const_2])
     graph.add_output(result)
 
     print("Simple IR:")

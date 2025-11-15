@@ -132,14 +132,8 @@ class Tracer(Context):
                 output_types=output_types,
                 attrs=kwargs,
             )
-
-            if not isinstance(result_values, list):
-                result_values = [result_values]
-
-            if len(result_values) == 1:
-                return TraceObject(result_values[0], self)
-            else:
-                return [TraceObject(v, self) for v in result_values]
+            outs = [TraceObject(v, self) for v in result_values]
+            return outs[0] if len(outs) == 1 else outs
 
         raise RuntimeError(
             f"Primitive '{primitive.name}' has neither trace nor abstract_eval defined. "

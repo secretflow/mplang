@@ -100,18 +100,17 @@ def test_func_call_handles_complex_pytree_output():
     lambda_qual = f"{__name__}:_complex_body.<locals>.<lambda>"
     expected_ir = dedent(
         """\
-        %arg0 = input : Tensor[f32, ()]
-        %arg1 = input : Tensor[f32, ()]
-        %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function]
-          region 0 {
-            %arg0 = input : Tensor[f32, ()]
-            %arg1 = input : Tensor[f32, ()]
-            %0 = tensor.run_jax(%arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
-            %1 = tensor.run_jax(%0, %arg1) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
-            %2 = tensor.run_jax(%1, %arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
-            return %2, %arg1, %1
+        (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
+          %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
+            (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
+              %0 = tensor.run_jax(%arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+              %1 = tensor.run_jax(%0, %arg1) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+              %2 = tensor.run_jax(%1, %arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+              return %2, %arg1, %1
+            }
           }
-        [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
-        return %1, %2, %3"""
+          [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
+          return %1, %2, %3
+        }"""
     ).replace("__LAMBDA__", lambda_qual)
     assert format_graph(graph) == expected_ir

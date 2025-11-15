@@ -33,16 +33,17 @@ def _build_simple_graph() -> Graph:
 def test_graph_printer_basic():
     graph = _build_simple_graph()
     output = GraphPrinter().format(graph)
-    assert "x = input" in output
+    assert "(x: Tensor[f32, (1)])" in output
     assert "constant" in output
     assert "add" in output
     assert "return" in output
     expected = dedent(
         """\
-        x = input : Tensor[f32, (1)]
-        %0 = constant() {value=1.0} : f32
-        %1 = add(x, %0) : Tensor[f32, (1)]
-        return %1"""
+        (x: Tensor[f32, (1)]) {
+          %0 = constant() {value=1.0} : f32
+          %1 = add(x, %0) : Tensor[f32, (1)]
+          return %1
+        }"""
     )
     assert output == expected
 
@@ -81,20 +82,19 @@ def test_graph_printer_with_regions():
 
     expected = dedent(
         """\
-        pred = input : i32
-        x = input : Tensor[f32, ()]
-        %0 = cond(pred, x) : Tensor[f32, ()]
-          region 0 {
-            x = input : Tensor[f32, ()]
-            %0 = negate(x) : Tensor[f32, ()]
-            return %0
+        (pred: i32, x: Tensor[f32, ()]) {
+          %0 = cond(pred, x) : Tensor[f32, ()] {
+            (x: Tensor[f32, ()]) {
+              %0 = negate(x) : Tensor[f32, ()]
+              return %0
+            }
+            (x: Tensor[f32, ()]) {
+              %0 = constant() {value=0.0} : f32
+              %1 = add(x, %0) : Tensor[f32, ()]
+              return %1
+            }
           }
-          region 1 {
-            x = input : Tensor[f32, ()]
-            %0 = constant() {value=0.0} : f32
-            %1 = add(x, %0) : Tensor[f32, ()]
-            return %1
-          }
-        return %0"""
+          return %0
+        }"""
     )
     assert output == expected

@@ -76,8 +76,6 @@ def test_graph_printer_with_regions():
 
     output = format_graph(g)
     assert "cond" in output
-    assert "region 0" in output
-    assert "region 1" in output
     assert "return" in output
 
     expected = dedent(

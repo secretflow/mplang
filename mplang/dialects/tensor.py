@@ -38,7 +38,6 @@ class _RunJaxCompilation:
     """Book-keeping for compiled tensor.run_jax functions."""
 
     fn: Callable[..., Any]
-    backend: str
     stablehlo: str
     out_tree: PyTreeDef
     output_types: list[elt.BaseType]
@@ -130,16 +129,19 @@ def _compile_run_jax(
     fn: Callable[..., Any],
     normalized_fn: Callable[..., Any],
     placeholders: list[ShapeDtypeStruct],
-    backend: str,
 ) -> tuple[_RunJaxCompilation, str]:
-    jit_backend = None if backend in (None, "", "plaintext") else backend
-    jitted = jax.jit(normalized_fn, backend=jit_backend)
-    lowered = jitted.lower(*placeholders)
+    jitted = jax.jit(normalized_fn)
+    lowered = jitted.lower(placeholders)
     stablehlo_text = str(lowered.compiler_ir("stablehlo"))
-    output_types = [_out_info_to_edsl(info) for info in lowered.out_info]
+
+    # Handle both single output (OutInfo object) and multiple outputs (tuple)
+    if isinstance(lowered.out_info, tuple):
+        output_types = [_out_info_to_edsl(info) for info in lowered.out_info]
+    else:
+        output_types = [_out_info_to_edsl(lowered.out_info)]
+
     compilation = _RunJaxCompilation(
         fn=fn,
-        backend=backend,
         stablehlo=stablehlo_text,
         out_tree=lowered.out_tree,
         output_types=output_types,
@@ -153,6 +155,20 @@ def _prepare_run_jax_arguments(
     call_args: tuple[Any, ...],
     user_kwargs: dict[str, Any],
 ) -> tuple[Callable[..., Any], list[ShapeDtypeStruct], list[el.TraceObject]]:
+    """Prepare arguments for JAX compilation.
+
+    Args:
+        fn: Original JAX function
+        call_args: Positional arguments (mix of TraceObjects and constants)
+        user_kwargs: Keyword arguments (mix of TraceObjects and constants)
+
+    Returns:
+        tuple containing:
+        - normalized_fn: Function accepting list of variables (for JAX lower API)
+        - placeholders: JAX ShapeDtypeStruct list for lowering
+        - trace_objects: The TraceObject variables extracted from args/kwargs
+    """
+
     def _is_trace_object(value: Any) -> bool:
         return isinstance(value, el.TraceObject)
 
@@ -160,6 +176,7 @@ def _prepare_run_jax_arguments(
         fn, call_args, user_kwargs, _is_trace_object
     )
 
+    # Validate all variables are TensorType TraceObjects and convert to placeholders
     trace_objects: list[el.TraceObject] = []
     placeholders: list[ShapeDtypeStruct] = []
     for var in variables:
@@ -176,30 +193,37 @@ def _prepare_run_jax_arguments(
         trace_objects.append(var)
         placeholders.append(_tensor_type_to_placeholder(arg_type))
 
-    def normalized_wrapped(*dynamic_args: Any) -> Any:
-        return normalized_fn(list(dynamic_args))
-
-    return normalized_wrapped, placeholders, trace_objects
+    return normalized_fn, placeholders, trace_objects
 
 
+@run_jax_p.def_trace
 def _run_jax_trace(
     fn: Callable[..., Any],
-    *call_args: Any,
-    backend: str = "plaintext",
-    _user_kwargs: dict[str, Any] | None = None,
-) -> el.TraceObject | list[el.TraceObject]:
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Trace tensor.run_jax primitive.
+
+    Args:
+        fn: JAX-compatible callable
+        *args: Positional arguments (mix of TraceObjects and constants)
+        **kwargs: Keyword arguments (mix of TraceObjects and constants)
+
+    Returns:
+        PyTree of TraceObjects matching the output structure of fn
+    """
     if not callable(fn):
         raise TypeError(f"run_jax expects callable, got {type(fn)}")
     tracer = _current_tracer()
 
     normalized_fn, placeholders, dynamic_trace_objects = _prepare_run_jax_arguments(
-        fn, tuple(call_args), dict(_user_kwargs or {})
+        fn, args, kwargs
     )
 
     if not dynamic_trace_objects:
         raise TypeError("tensor.run_jax requires at least one Tensor argument")
 
-    compilation, text_ref = _compile_run_jax(fn, normalized_fn, placeholders, backend)
+    compilation, text_ref = _compile_run_jax(fn, normalized_fn, placeholders)
 
     input_values = [arg._graph_value for arg in dynamic_trace_objects]
     result_values = tracer.graph.add_op(
@@ -211,28 +235,35 @@ def _run_jax_trace(
             "text_ref": text_ref,
         },
     )
-    outputs = [el.TraceObject(val, tracer) for val in result_values]
-    return outputs[0] if len(outputs) == 1 else outputs
+
+    # JAX outputs are always all variables (no immediates in the output tree)
+    out_var_pos = list(range(len(result_values)))
+    out_imms: list[Any] = []
+
+    return tracer.reconstruct_outputs(
+        out_var_pos, out_imms, compilation.out_tree, result_values
+    )
 
 
 def run_jax(
     fn: Callable[..., Any],
     *args: Any,
-    backend: str = "plaintext",
     **kwargs: Any,
-) -> el.TraceObject | list[el.TraceObject]:
+) -> Any:
     """Trace a tensor JAX function as a graph op.
 
     Args:
         fn: Callable that accepts JAX-compatible tensors.
         *args: Positional arguments to the callable. TraceObjects are treated
             as dynamic tensors, while non-Object values become static parameters.
-        backend: Execution backend identifier.
         **kwargs: Keyword arguments for the callable. TraceObjects are treated
             as dynamic tensors, while non-Object values become static parameters.
+
+    Returns:
+        PyTree of TraceObjects with the same structure as fn's output.
     """
 
-    return run_jax_p.bind(fn, *args, backend=backend, _user_kwargs=kwargs)
+    return run_jax_p.bind(fn, *args, **kwargs)
 
 
 __all__ = ["RunJaxCompilationInfo", "get_run_jax_compilation", "run_jax", "run_jax_p"]

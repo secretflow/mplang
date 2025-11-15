@@ -301,9 +301,11 @@ class TestGraph:
         x = g.add_input("x", f32)
         y = g.add_input("y", f32)
 
-        z = g.add_op("add", [x, y])
-
-        assert isinstance(z, Value)  # Single output returns Value, not list
+        z_list = g.add_op("add", [x, y])
+        assert isinstance(z_list, list)
+        assert len(z_list) == 1
+        z = z_list[0]
+        assert isinstance(z, Value)
         assert len(g.operations) == 1
 
         op = g.operations[0]
@@ -337,7 +339,7 @@ class TestGraph:
 
         x = g.add_input("x", Tensor[f32, (10, 20)])
 
-        _y = g.add_op("reshape", [x], attrs={"new_shape": (20, 10)})
+        [_y] = g.add_op("reshape", [x], attrs={"new_shape": (20, 10)})
 
         op = g.operations[0]
         assert op.attrs["new_shape"] == (20, 10)
@@ -350,7 +352,7 @@ class TestGraph:
 
         pred = g.add_input("pred", i32)
 
-        _ = g.add_op(
+        g.add_op(
             "cond",
             [pred],
             output_types=[f32],
@@ -369,7 +371,7 @@ class TestGraph:
         x = g.add_input("x", Tensor[f32, (10,)])
 
         # Don't specify output_types -> infer from first input
-        y = g.add_op("negate", [x])
+        [y] = g.add_op("negate", [x])
 
         assert y.type == x.type
 
@@ -386,7 +388,7 @@ class TestGraph:
 
         x = g.add_input("x", f32)
         y = g.add_constant(1.0, f32)
-        z = g.add_op("add", [x, y])
+        [z] = g.add_op("add", [x, y])
 
         g.add_output(z)
 
@@ -409,7 +411,7 @@ class TestGraph:
 
         x = g.add_input("x", f32)
         y = g.add_input("y", f32)
-        z = g.add_op("add", [x, y])
+        [z] = g.add_op("add", [x, y])
         g.add_output(z)
 
         ir = g.to_string()
@@ -485,9 +487,9 @@ class TestGraphIntegration:
         x = g.add_input("x", Tensor[f32, (10,)])
         y = g.add_input("y", Tensor[f32, (10,)])
 
-        sum_result = g.add_op("add", [x, y])
+        [sum_result] = g.add_op("add", [x, y])
         const_2 = g.add_constant(2.0, f32)
-        result = g.add_op("mul", [sum_result, const_2])
+        [result] = g.add_op("mul", [sum_result, const_2])
 
         g.add_output(result)
 
@@ -510,8 +512,8 @@ class TestGraphIntegration:
         W = g.add_input("W", Tensor[f32, (784, 128)])
         b = g.add_input("b", Tensor[f32, (128,)])
 
-        mm_result = g.add_op("matmul", [x, W], output_types=[Tensor[f32, (1, 128)]])
-        y = g.add_op("add", [mm_result, b], output_types=[Tensor[f32, (1, 128)]])
+        [mm_result] = g.add_op("matmul", [x, W], output_types=[Tensor[f32, (1, 128)]])
+        [y] = g.add_op("add", [mm_result, b], output_types=[Tensor[f32, (1, 128)]])
 
         g.add_output(y)
 
@@ -531,18 +533,18 @@ class TestGraphIntegration:
         then_graph = Graph()
         then_x = then_graph.add_input("x", f32)
         then_const = then_graph.add_constant(1.0, f32)
-        then_result = then_graph.add_op("add", [then_x, then_const])
+        [then_result] = then_graph.add_op("add", [then_x, then_const])
         then_graph.add_output(then_result)
 
         # Else branch: return x - 1
         else_graph = Graph()
         else_x = else_graph.add_input("x", f32)
         else_const = else_graph.add_constant(1.0, f32)
-        else_result = else_graph.add_op("sub", [else_x, else_const])
+        [else_result] = else_graph.add_op("sub", [else_x, else_const])
         else_graph.add_output(else_result)
 
         # Main graph cond operation
-        result = g.add_op(
+        [result] = g.add_op(
             "cond",
             [pred, x],
             output_types=[f32],
@@ -569,7 +571,7 @@ class TestGraphIntegration:
         key = g.add_input("key", Custom["crypto.key"])
 
         # Encrypt
-        ciphertext = g.add_op(
+        [ciphertext] = g.add_op(
             "encrypt",
             [plaintext, key],
             output_types=[SIMD_HE[f32, (100,)]],
@@ -577,14 +579,14 @@ class TestGraphIntegration:
 
         # Homomorphic add
         const_encrypted = g.add_constant(1.0, SIMD_HE[f32, (100,)])
-        result_encrypted = g.add_op(
+        [result_encrypted] = g.add_op(
             "he_add",
             [ciphertext, const_encrypted],
             output_types=[SIMD_HE[f32, (100,)]],
         )
 
         # Decrypt
-        result = g.add_op(
+        [result] = g.add_op(
             "decrypt",
             [result_encrypted, key],
             output_types=[Tensor[f32, (100,)]],
@@ -606,14 +608,14 @@ class TestGraphIntegration:
 
         # Shared computation: x + 1
         const_1 = g.add_constant(1.0, f32)
-        x_plus_1 = g.add_op("add", [x, const_1])
+        [x_plus_1] = g.add_op("add", [x, const_1])
 
         # Two paths use x_plus_1
-        y = g.add_op("mul", [x_plus_1, const_1])
-        z = g.add_op("sub", [x_plus_1, const_1])
+        [y] = g.add_op("mul", [x_plus_1, const_1])
+        [z] = g.add_op("sub", [x_plus_1, const_1])
 
         # Combine results
-        result = g.add_op("add", [y, z])
+        [result] = g.add_op("add", [y, z])
         g.add_output(result)
 
         # x_plus_1 should have 2 uses
@@ -638,8 +640,8 @@ def test_example_from_docstring():
     y = graph.add_input("y", Tensor[f32, (10,)])
 
     # Add operations
-    z = graph.add_op("add", [x, y])
-    result = graph.add_op("mul", [z, graph.add_constant(2.0, f32)])
+    [z] = graph.add_op("add", [x, y])
+    [result] = graph.add_op("mul", [z, graph.add_constant(2.0, f32)])
 
     # Mark outputs
     graph.add_output(result)

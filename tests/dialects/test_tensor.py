@@ -14,7 +14,7 @@
 
 import numpy as np
 
-from mplang.dialects.tensor import run_jax
+from mplang.dialects.tensor import get_run_jax_compilation, run_jax
 from mplang.edsl.interpreter import InterpObject
 from mplang.edsl.tracer import trace
 from mplang.edsl.typing import Tensor, f32
@@ -28,7 +28,7 @@ def test_tensor_run_jax_op_emitted():
     value = InterpObject(np.array(1.0), Tensor[f32, ()])
 
     def wrapper(x):
-        return run_jax(_add_fn, x, out_types=Tensor[f32, ()])
+        return run_jax(_add_fn, x)
 
     traced = trace(wrapper, value)
     graph = traced.graph
@@ -36,6 +36,10 @@ def test_tensor_run_jax_op_emitted():
     assert len(graph.operations) == 1
     op = graph.operations[0]
     assert op.opcode == "tensor.run_jax"
-    assert "add_fn" in op.attrs["fn"]
-    assert op.attrs["backend"] == "plaintext"
+    assert op.attrs["ir_type"] == "stablehlo"
+    assert "text_ref" in op.attrs
     assert len(op.outputs) == 1
+
+    compilation = get_run_jax_compilation(op.attrs["text_ref"])
+    assert compilation.stablehlo.strip().startswith("module")
+    assert len(compilation.output_types) == 1

@@ -21,7 +21,7 @@ Call them directly like functions: uniform_cond(...), while_loop(...)
 import numpy as np
 import pytest
 
-from mplang.dialects.simp import uniform_cond
+from mplang.dialects.simp import uniform_cond, while_loop
 from mplang.edsl.interpreter import InterpObject
 from mplang.edsl.tracer import trace
 from mplang.edsl.typing import Tensor, f32
@@ -324,3 +324,76 @@ class TestUniformCondTracing:
         traced = trace(test_fn, pred_val, x_val)
         graph = traced.graph
         assert graph is not None
+
+
+class TestWhileLoop:
+    """Tests for the SIMP while_loop primitive."""
+
+    def test_traces_basic_loop(self):
+        """while_loop should emit a loop op with cond/body regions."""
+        flag = InterpObject(np.array(True), Tensor[f32, ()])
+        value = InterpObject(np.array(0.0), Tensor[f32, ()])
+
+        def cond_fn(state):
+            loop_flag, _ = state
+            return loop_flag
+
+        def body_fn(state):
+            loop_flag, loop_value = state
+            return (loop_flag, loop_value)
+
+        def test_fn(loop_flag, loop_value):
+            return while_loop(cond_fn, body_fn, (loop_flag, loop_value))
+
+        traced = trace(test_fn, flag, value)
+        graph = traced.graph
+
+        loop_ops = [op for op in graph.operations if op.opcode == "simp.while_loop"]
+        assert len(loop_ops) == 1
+        loop_op = loop_ops[0]
+
+        assert len(loop_op.inputs) == 2  # state only (no captures)
+        assert len(loop_op.outputs) == 2
+        assert len(loop_op.regions) == 2
+        cond_region, body_region = loop_op.regions
+        assert len(cond_region.inputs) == 2
+        assert len(cond_region.outputs) == 1
+        assert len(body_region.inputs) == 2
+        assert len(body_region.outputs) == 2
+
+    def test_cond_must_return_scalar(self):
+        """cond_fn returning multiple outputs should raise."""
+        flag = InterpObject(np.array(True), Tensor[f32, ()])
+
+        def cond_fn(state):
+            return (state, state)
+
+        def body_fn(state):
+            return state
+
+        def test_fn(loop_flag):
+            return while_loop(cond_fn, body_fn, loop_flag)
+
+        with pytest.raises(TypeError, match="cond_fn must return exactly one output"):
+            trace(test_fn, flag)
+
+    def test_body_must_match_state_arity(self):
+        """body_fn returning mismatched state size should error."""
+        flag = InterpObject(np.array(True), Tensor[f32, ()])
+        extra = InterpObject(np.array(1.0), Tensor[f32, ()])
+
+        def cond_fn(state):
+            loop_flag, _ = state
+            return loop_flag
+
+        def body_fn(state):
+            loop_flag, _ = state
+            return (loop_flag,)  # Missing second component
+
+        def test_fn(loop_flag, loop_value):
+            return while_loop(cond_fn, body_fn, (loop_flag, loop_value))
+
+        with pytest.raises(
+            TypeError, match="body_fn must return same number of values"
+        ):
+            trace(test_fn, flag, extra)

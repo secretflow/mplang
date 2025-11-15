@@ -268,7 +268,6 @@ class Tracer(Context):
         return out_tree.unflatten(flat_out)
 
 
-
 def _separate_vars_and_imms(
     flat_values: list[Any],
 ) -> tuple[list[Any], list[int], list[Any]]:

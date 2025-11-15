@@ -362,35 +362,3 @@ class Graph:
 
     def __str__(self) -> str:
         return self.to_string()
-
-
-# Example usage
-if __name__ == "__main__":
-    from mplang.edsl.typing import Tensor, f32
-
-    print("=== Graph IR Example ===\n")
-
-    graph = Graph()
-
-    # Build a simple computation: z = (x + y) * 2
-    x = graph.add_input("x", Tensor[f32, (10,)])
-    y = graph.add_input("y", Tensor[f32, (10,)])
-
-    (sum_result,) = graph.add_op("add", [x, y])
-    const_2 = graph.add_constant(2.0, f32)
-
-    (result,) = graph.add_op("mul", [sum_result, const_2])
-    graph.add_output(result)
-
-    print("Simple IR:")
-    print(graph.to_string())
-    print()
-
-    print("Verbose IR (with types):")
-    print(graph.to_string(verbose=True))
-    print()
-
-    print(f"Graph summary: {graph}")
-    print(f"Number of inputs: {len(graph.inputs)}")
-    print(f"Number of operations: {len(graph.operations)}")
-    print(f"Number of outputs: {len(graph.outputs)}")

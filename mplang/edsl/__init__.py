@@ -39,31 +39,26 @@ from .printer import GraphPrinter, format_graph
 from .tracer import TracedFunction, TraceObject, Tracer, trace
 
 __all__ = [
-    # modules
-    "typing",
-    # context
     "Context",
-    "get_current_context",
-    "get_default_interpreter",
-    "pop_context",
-    "push_context",
-    # graph
     "Graph",
-    "Operation",
-    "Value",
-    # interpreter
+    "GraphPrinter",
     "InterpObject",
     "Interpreter",
-    "interpret",
-    # primitives / helpers
+    "Object",
+    "Operation",
     "Primitive",
-    "primitive",
-    "GraphPrinter",
-    "format_graph",
     "TraceObject",
     "TracedFunction",
     "Tracer",
-    "trace",
+    "Value",
+    "format_graph",
+    "get_current_context",
+    "get_default_interpreter",
+    "interpret",
     "jit",
-    "Object",
+    "pop_context",
+    "primitive",
+    "push_context",
+    "trace",
+    "typing",
 ]

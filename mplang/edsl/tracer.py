@@ -76,7 +76,7 @@ class Tracer(Context):
         >>> print(graph)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.graph = Graph()
         self._freevars: dict[int, tuple[Object, GraphValue]] = {}
         self._arg_counter = 0
@@ -241,7 +241,7 @@ class Tracer(Context):
                 )
             self.graph.add_output(out._graph_value)
 
-        return self.graph
+        return self.graph  # type: ignore[return-value]
 
     def reconstruct_outputs(
         self,

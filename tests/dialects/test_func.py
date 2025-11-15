@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 from textwrap import dedent
 
 import numpy as np
@@ -25,13 +26,13 @@ from mplang.edsl.typing import Tensor, f32
 
 
 def _scale_add(x, y):
-    return run_jax(lambda a, b: a * 2 + b, x, y, out_types=Tensor[f32, ()])
+    return run_jax(lambda a, b: a * 2 + b, x, y)
 
 
 def _complex_body(a, b):
-    doubled = run_jax(lambda v: v * 2, a, out_types=Tensor[f32, ()])
-    summed = run_jax(lambda lhs, rhs: lhs + rhs, doubled, b, out_types=Tensor[f32, ()])
-    residual = run_jax(lambda lhs, rhs: lhs - rhs, summed, a, out_types=Tensor[f32, ()])
+    doubled = run_jax(lambda v: v * 2, a)
+    summed = run_jax(lambda lhs, rhs: lhs + rhs, doubled, b)
+    residual = run_jax(lambda lhs, rhs: lhs - rhs, summed, a)
     return {"nested": (residual, {"orig": b}), "sum": summed}
 
 
@@ -97,20 +98,23 @@ def test_func_call_handles_complex_pytree_output():
         "sum": "leaf2",
     }
 
-    lambda_qual = f"{__name__}:_complex_body.<locals>.<lambda>"
+    formatted = format_graph(graph)
+    normalized = re.sub(
+        r"text_ref='[^']+'", "text_ref='<ID>'", formatted, flags=re.MULTILINE
+    )
     expected_ir = dedent(
         """\
         (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
           %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
             (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-              %0 = tensor.run_jax(%arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
-              %1 = tensor.run_jax(%0, %arg1) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
-              %2 = tensor.run_jax(%1, %arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+              %0 = tensor.run_jax(%arg0) {ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
+              %1 = tensor.run_jax(%0, %arg1) {ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
+              %2 = tensor.run_jax(%1, %arg0) {ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
               return %2, %arg1, %1
             }
           }
           [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
           return %1, %2, %3
         }"""
-    ).replace("__LAMBDA__", lambda_qual)
-    assert format_graph(graph) == expected_ir
+    )
+    assert normalized == expected_ir

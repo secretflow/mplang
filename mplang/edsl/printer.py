@@ -38,7 +38,7 @@ class GraphPrinter:
     def format(self, graph: Graph) -> str:
         """Return a formatted string representation of `graph`."""
         lines: list[str] = []
-        self._format_graph(graph, lines, indent_level=0)
+        self._format_graph(graph, lines, indent_level=0, heading=None)
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -48,31 +48,49 @@ class GraphPrinter:
         indent = " " * (indent_level * self.indent_size)
         lines.append(f"{indent}{text}")
 
-    def _format_graph(self, graph: Graph, lines: list[str], indent_level: int) -> None:
-        for value in graph.inputs:
-            self._write(lines, indent_level, self._format_input(value))
+    def _format_graph(
+        self, graph: Graph, lines: list[str], indent_level: int, heading: str | None
+    ) -> None:
+        header_prefix = f"{heading}" if heading else ""
+        params_str = self._format_params(graph.inputs)
+        self._write(lines, indent_level, f"{header_prefix}{params_str} {{")
 
         for op in graph.operations:
-            self._write(lines, indent_level, self._format_operation(op))
-            for region_idx, region in enumerate(op.regions):
-                self._write(lines, indent_level + 1, f"region {region_idx} {{")
-                self._format_graph(region, lines, indent_level + 2)
-                self._write(lines, indent_level + 1, "}")
+            self._format_operation(op, lines, indent_level + 1)
 
         if graph.outputs:
             out_names = ", ".join(val.name for val in graph.outputs)
-            self._write(lines, indent_level, f"return {out_names}")
+            self._write(lines, indent_level + 1, f"return {out_names}")
 
-    def _format_input(self, value: Value) -> str:
-        type_str = f" : {value.type}" if self.show_types else ""
-        return f"{value.name} = input{type_str}"
+        self._write(lines, indent_level, "}")
 
-    def _format_operation(self, op: Operation) -> str:
+    def _format_params(self, inputs: list[Value]) -> str:
+        if not inputs:
+            return "()"
+        parts: list[str] = []
+        for value in inputs:
+            if self.show_types:
+                parts.append(f"{value.name}: {value.type}")
+            else:
+                parts.append(f"{value.name}")
+        joined = ", ".join(parts)
+        return f"({joined})"
+
+    def _format_operation(
+        self, op: Operation, lines: list[str], indent_level: int
+    ) -> None:
         lhs = self._format_outputs(op.outputs)
         inputs_str = ", ".join(val.name for val in op.inputs)
         attrs_str = self._format_attrs(op.attrs)
         type_str = self._format_output_types(op.outputs)
-        return f"{lhs} = {op.opcode}({inputs_str}){attrs_str}{type_str}"
+        op_line = f"{lhs} = {op.opcode}({inputs_str}){attrs_str}{type_str}"
+        if op.regions:
+            self._write(lines, indent_level, f"{op_line} {{")
+            for region in op.regions:
+                self._format_graph(region, lines, indent_level + 1, heading=None)
+            self._write(lines, indent_level, "}")
+        else:
+            self._write(lines, indent_level, op_line)
 
     def _format_outputs(self, outputs: list[Value]) -> str:
         if not outputs:

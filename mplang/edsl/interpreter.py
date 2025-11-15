@@ -96,9 +96,9 @@ class Interpreter(Context):
         >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # TODO: Backend executor registry
-        self._executors = {}
+        self._executors: dict[str, Any] = {}  # type: ignore[var-annotated]
         # Object registry: id(InterpObject) -> InterpObject
         # Used to resolve graph.inputs back to runtime objects
         self._objects: dict[int, InterpObject] = {}
@@ -130,10 +130,10 @@ class Interpreter(Context):
         from mplang.edsl.tracer import Tracer
 
         # Create tracer and build graph
-        with Tracer() as tracer:
+        with Tracer() as ctx:
             # Finalize graph by setting outputs
             result_traced = primitive.bind(*args, **kwargs)
-            graph = tracer.finalize(result_traced)
+            graph = ctx.finalize(result_traced)
 
         # Execute graph (uses self._objects to resolve inputs)
         result_runtime = interpret(graph, self)

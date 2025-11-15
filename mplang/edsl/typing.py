@@ -118,7 +118,9 @@ This makes `Encrypted` a name that is both intuitive to engineers and conceptual
 consistent within the practical scope of this library.
 """
 
-from typing import TypeVar
+from __future__ import annotations
+
+from typing import Any, TypeVar
 
 # ==============================================================================
 # --- Base Type & Type Aliases
@@ -256,7 +258,7 @@ class TensorType(BaseType):
                         f"Invalid dimension {dim}: must be positive or -1 for dynamic"
                     )
 
-    def __class_getitem__(cls, params: tuple) -> "TensorType":  # type: ignore[misc]
+    def __class_getitem__(cls, params: tuple) -> TensorType:  # type: ignore[misc]
         """Enables the syntax `Tensor[element_type, shape]`.
 
         Args:
@@ -338,7 +340,7 @@ class TableType(BaseType):
     def __init__(self, schema: dict[str, BaseType]):
         self.schema = schema
 
-    def __class_getitem__(cls, schema: dict[str, BaseType]):
+    def __class_getitem__(cls, schema: dict[str, BaseType]) -> TableType:
         """Enables the syntax `Table[{'col_a': i32, ...}]`."""
         return cls(schema)
 
@@ -411,7 +413,7 @@ class CustomType(BaseType):
         """User-friendly string representation."""
         return f"Custom[{self._kind}]"
 
-    def __class_getitem__(cls, kind: str):
+    def __class_getitem__(cls, kind: str) -> CustomType:
         """Enable Custom["TypeName"] syntax sugar.
 
         Examples::
@@ -442,7 +444,7 @@ class ScalarHEType(BaseType, ScalarTrait, EncryptedTrait):
         self._pt_type = scalar_type
         self._scheme = scheme
 
-    def __class_getitem__(cls, params):
+    def __class_getitem__(cls, params: Any) -> ScalarHEType:
         if isinstance(params, tuple):
             return cls(params[0], params[1])
         return cls(params)
@@ -478,7 +480,7 @@ class SIMDHEType(BaseType, EncryptedTrait):
         assert isinstance(self._pt_type, ScalarType)
         return self._pt_type
 
-    def __class_getitem__(cls, params: tuple[ScalarType, tuple[int,]]):
+    def __class_getitem__(cls, params: tuple[ScalarType, tuple[int,]]) -> SIMDHEType:
         scalar_type, packing_shape = params
         return cls(scalar_type, packing_shape)
 
@@ -496,7 +498,7 @@ class SSType(BaseType, EncryptedTrait):
         self._pt_type = secret_type
         self._enc_schema = enc_schema
 
-    def __class_getitem__(cls, secret_type: BaseType):
+    def __class_getitem__(cls, secret_type: BaseType) -> SSType:
         """Enables the syntax `SS[Tensor[...]]`."""
         return cls(secret_type)
 
@@ -526,7 +528,7 @@ class MPType(BaseType):
     def parties(self) -> tuple[int, ...]:
         return self._parties
 
-    def __class_getitem__(cls, params: tuple[BaseType, tuple[int, ...]]):
+    def __class_getitem__(cls, params: tuple[BaseType, tuple[int, ...]]) -> MPType:
         """Enables the syntax `MP[Tensor[...], (0, 1)]`."""
         value_type, parties = params
         return cls(value_type, parties)
@@ -536,79 +538,3 @@ class MPType(BaseType):
 
 
 MP = MPType
-
-
-# ==============================================================================
-# --- Example Usage and Verification of Design
-# ==============================================================================
-
-if __name__ == "__main__":
-    print("--- MPLang Typing System Demonstration & Verification ---")
-
-    print("\n[Tensor Shape Variations]")
-    unranked = Tensor[i32, None]
-    print(f"  - Unranked/fully dynamic: {unranked}")
-
-    scalar = Tensor[i32, ()]
-    print(f"  - Scalar (0-dim tensor): {scalar}")
-
-    partial_dynamic = Tensor[i32, (-1, 10)]
-    print(f"  - Partial dynamic (batch, features): {partial_dynamic}")
-
-    fully_ranked = Tensor[i32, (3, 10)]
-    print(f"  - Fully ranked/static: {fully_ranked}")
-
-    print("\n[World 1: Plaintext]")
-    plain_tensor = Tensor[f32, (10, 20)]
-    print(f"  - Plaintext Tensor: {plain_tensor}")
-
-    print("\n[World 2: Element-wise HE]")
-    elementwise_he_tensor = Tensor[HE[f64], (100,)]
-    print(f"  - Element-wise HE Tensor: {elementwise_he_tensor}")
-
-    print("\n[World 3: Packed (SIMD) HE]")
-    simd_he_vector = SIMD_HE[f32, (4096,)]
-    print(f"  - SIMD HE Vector: {simd_he_vector}")
-
-    print("\n[Verifying Design Constraint]")
-    try:
-        invalid_tensor = Tensor[simd_he_vector, (4,)]
-    except TypeError as e:
-        print("  - SUCCESS: Caught invalid type construction as expected.")
-        print(f"    Error: {e}")
-
-    print("\n[Secret Sharing]")
-    ss_tensor_share = SS[Tensor[i32, (5, 5)]]
-    print(f"  - A single share of a secret tensor: {ss_tensor_share}")
-
-    print("\n[Composition with Distribution]")
-    mp_ss_tensor = MP[ss_tensor_share, (0, 1)]
-    print(f"  - Logical secret-shared tensor: {mp_ss_tensor}")
-
-    mp_simd_he_vector = MP[simd_he_vector, (2,)]
-    print(f"  - SIMD HE vector held by Party 2: {mp_simd_he_vector}")
-
-    print("\n[Dynamic Shape in Distributed Settings]")
-    dynamic_ss = SS[Tensor[f32, (-1, 128)]]
-    mp_dynamic = MP[dynamic_ss, (0, 1, 2)]
-    print(f"  - Dynamic batch size, distributed: {mp_dynamic}")
-
-    print("\n[Using 'EncryptedTrait']")
-
-    def check_encryption(t):  # runtime helper; skip strict typing for demo
-        if isinstance(t, EncryptedTrait):
-            # For SS types, show enc_schema; for HE/SIMD_HE, just show it's encrypted
-            if hasattr(t, "enc_schema"):
-                print(
-                    f"  - '{t}' is Encrypted. Plaintext type: {t.pt_type}, schema: {t.enc_schema}"
-                )
-            else:
-                print(f"  - '{t}' is Encrypted. Plaintext type: {t.pt_type}")
-        else:
-            print(f"  - '{t}' is NOT Encrypted.")
-
-    check_encryption(simd_he_vector)
-    check_encryption(ss_tensor_share)
-    check_encryption(plain_tensor)
-    # Check HE[f64] itself
-    check_encryption(HE[f64])

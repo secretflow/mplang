@@ -20,6 +20,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from typing_extensions import Self
+
 if TYPE_CHECKING:
     from mplang.edsl.interpreter import Interpreter
     from mplang.edsl.object import Object
@@ -78,12 +80,12 @@ class Context(ABC):
             Object in the context's native type (TraceObject or InterpObject)
         """
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Enter context manager (push context onto stack)."""
         push_context(self)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # type: ignore[no-untyped-def]
         """Exit context manager (pop context from stack)."""
         pop_context()
 
@@ -104,12 +106,12 @@ def get_current_context() -> Context | None:
     return _context_stack[-1] if _context_stack else None
 
 
-def push_context(context: Context):
+def push_context(context: Context) -> None:
     """Push a context onto the stack (enter context)."""
     _context_stack.append(context)
 
 
-def pop_context():
+def pop_context() -> None:
     """Pop a context from the stack (exit context)."""
     if _context_stack:
         _context_stack.pop()

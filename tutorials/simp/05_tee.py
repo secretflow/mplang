@@ -115,6 +115,36 @@ def millionaire_manual():
     return x, y, z_at_tee, r_at_p0
 
 
+@mp.function
+def millionaire_tee_spu():
+    """
+    Demonstrates TEE <-> SPU data transmission using device API.
+    Follows the same pattern as millionaire_device but adds SPU step.
+    """
+    a = mp.device("P0")(random.randint)(0, 100)
+    b = mp.device("P1")(random.randint)(0, 100)
+
+    # Step 1: Process at TEE (like millionaire_device does comparison)
+    a_processed = mp.device("TEE0")(lambda v: v * 2)(a)
+    b_processed = mp.device("TEE0")(lambda v: v + 10)(b)
+
+    # Step 2: Transfer processed results from TEE to SPU
+    a_at_spu = mp.put("SP0", a_processed)
+    b_at_spu = mp.put("SP0", b_processed)
+
+    # Step 3: Secure computation at SPU
+    c_at_spu = mp.device("SP0")(lambda a, b: a < b)(a_at_spu, b_at_spu)
+
+    # Step 4: Transfer result from SPU back to TEE
+    c_at_tee = mp.put("TEE0", c_at_spu)
+
+    # Step 5: Final processing at TEE and return to P0 (like millionaire_device)
+    final_result = mp.device("TEE0")(lambda v: v + 1000)(c_at_tee)
+    result_at_p0 = mp.put("P0", final_result)
+
+    return a, b, a_processed, b_processed, c_at_spu, final_result, result_at_p0
+
+
 def main():
     print("-" * 10, "TEE millionaire: device vs manual (end-to-end IR)", "-" * 10)
     # Create simulator with TEE bindings
@@ -164,6 +194,23 @@ def main():
         mp.fetch(sim, ym),
         mp.fetch(sim, zm),
         mp.fetch(sim, rm),
+    )
+
+    # Test TEE-SPU data transmission step by step
+    print("\n" + "-" * 10, "TEE-SPU data transmission demo", "-" * 10)
+
+    compiled_full = mp.compile(sim, millionaire_tee_spu)
+    print("millionaire_tee_spu IR:", compiled_full.compiler_ir())
+    a, b, a_proc, b_proc, c_spu, final, result = mp.evaluate(sim, millionaire_tee_spu)
+    print(
+        "✓ Full TEE-SPU successful: a@P0, b@P1, a_proc@TEE, b_proc@TEE, c@SPU, final@TEE, result@P0 ->",
+        mp.fetch(sim, a),
+        mp.fetch(sim, b),
+        mp.fetch(sim, a_proc),
+        mp.fetch(sim, b_proc),
+        mp.fetch(sim, c_spu),
+        mp.fetch(sim, final),
+        mp.fetch(sim, result),
     )
 
 

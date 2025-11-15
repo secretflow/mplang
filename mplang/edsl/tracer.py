@@ -243,6 +243,31 @@ class Tracer(Context):
 
         return self.graph
 
+    def reconstruct_outputs(
+        self,
+        out_var_pos: list[int],
+        out_imms: list[Any],
+        out_tree: PyTreeDef,
+        result_values: list[GraphValue],
+    ) -> Any:
+        """Rebuild PyTree outputs from recorded metadata."""
+
+        var_iter = iter([TraceObject(val, self) for val in result_values])
+        var_pos_iter = iter(out_var_pos)
+        next_var_pos = next(var_pos_iter, None)
+        imm_idx = 0
+        total_len = len(out_imms) + len(out_var_pos)
+        flat_out: list[Any] = []
+        for idx in range(total_len):
+            if next_var_pos is not None and idx == next_var_pos:
+                flat_out.append(next(var_iter))
+                next_var_pos = next(var_pos_iter, None)
+            else:
+                flat_out.append(out_imms[imm_idx])
+                imm_idx += 1
+        return out_tree.unflatten(flat_out)
+
+
 
 def _separate_vars_and_imms(
     flat_values: list[Any],

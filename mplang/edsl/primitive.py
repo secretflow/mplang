@@ -219,7 +219,7 @@ class Primitive:
         if ctx is None:
             ctx = get_default_interpreter()
 
-        def lift_if_object(x):
+        def lift_if_object(x: Any) -> Any:  # Add type annotation
             return ctx.lift(x) if isinstance(x, Object) else x
 
         lifted_args, lifted_kwargs = tree_map(lift_if_object, (args, kwargs))
@@ -227,7 +227,7 @@ class Primitive:
         # Execute in context
         return ctx.bind_primitive(self, lifted_args, lifted_kwargs)
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
         """Syntactic sugar for bind(): primitive(*args, **kwargs) == primitive.bind(*args, **kwargs)."""
         return self.bind(*args, **kwargs)
 

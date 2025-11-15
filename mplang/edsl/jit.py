@@ -23,7 +23,7 @@ def jit(fn: Callable) -> Callable:
 
     cached_graph: Graph | None = None
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
         nonlocal cached_graph
 
         # TODO: Argument validation

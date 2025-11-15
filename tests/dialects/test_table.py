@@ -14,7 +14,7 @@
 
 import numpy as np
 
-from mplang.dialects.table import run_sql, table_to_tensor, tensor_to_table
+from mplang.dialects.table import run_sql, table2tensor, tensor2table
 from mplang.edsl.interpreter import InterpObject
 from mplang.edsl.tracer import trace
 from mplang.edsl.typing import Table, Tensor, f32
@@ -46,17 +46,15 @@ def test_table_run_sql_op_emitted():
 
 def test_table_to_tensor_and_back():
     table = _sample_table()
-    tensor_type = Tensor[f32, ()]
-    table_type = table.type
 
     def wrapper(tbl):
-        tensor = table_to_tensor(tbl, column="value", out_type=tensor_type)
-        return tensor_to_table(tensor, column="value", out_type=table_type)
+        tensor = table2tensor(tbl, number_rows=1)
+        return tensor2table(tensor, column_names=["value"])
 
     traced = trace(wrapper, table)
     graph = traced.graph
     assert len(graph.operations) == 2
     assert [op.opcode for op in graph.operations] == [
-        "table.to_tensor",
-        "table.from_tensor",
+        "table.table2tensor",
+        "table.tensor2table",
     ]

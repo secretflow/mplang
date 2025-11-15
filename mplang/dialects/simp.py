@@ -34,13 +34,112 @@ from mplang.edsl.typing import BaseType
 VERIFY_UNIFORM_DEFAULT = True
 
 # ---------------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------------
+
+
+def _ensure_trace_object(ctx: Tracer, obj: TraceObject) -> TraceObject:
+    """Ensure a TraceObject belongs to the current tracer context."""
+    if obj._tracer is ctx:
+        return obj
+    lifted = ctx.lift(obj)
+    assert isinstance(lifted, TraceObject), (
+        "TraceContext.lift must return TraceObject for Objects"
+    )
+    return lifted
+
+
+def _recapture_object(ctx: Tracer, obj: Object) -> TraceObject:
+    """Capture any Object into the current tracer as a TraceObject."""
+    if isinstance(obj, TraceObject):
+        return _ensure_trace_object(ctx, obj)
+    lifted = ctx.lift(obj)
+    assert isinstance(lifted, TraceObject), (
+        "TraceContext.lift must return TraceObject when recapturing"
+    )
+    return lifted
+
+
+def _merge_captures(*capture_lists: list[Object]) -> list[Object]:
+    """Merge capture lists while preserving first-seen order."""
+    merged: list[Object] = []
+    seen_ids: set[int] = set()
+    for capture_list in capture_lists:
+        for obj in capture_list:
+            obj_id = id(obj)
+            if obj_id in seen_ids:
+                continue
+            seen_ids.add(obj_id)
+            merged.append(obj)
+    return merged
+
+
+def _align_region_inputs(
+    traced_fn: TracedFunction, leading_count: int, capture_order: list[Object]
+) -> None:
+    """Align region graph inputs as [leading_values..., captures...] sequence."""
+
+    if len(traced_fn.graph.inputs) < leading_count:
+        raise TypeError(
+            "Region inputs shorter than required leading values; expected "
+            f"{leading_count}, got {len(traced_fn.graph.inputs)}"
+        )
+
+    leading_inputs = traced_fn.graph.inputs[:leading_count]
+    capture_inputs = traced_fn.graph.inputs[leading_count:]
+    if traced_fn.captured:
+        capture_map = dict(zip(traced_fn.captured, capture_inputs, strict=True))
+    else:
+        capture_map = {}
+
+    new_capture_inputs = []
+    for capture_obj in capture_order:
+        value = capture_map.get(capture_obj)
+        if value is None:
+            value = traced_fn.graph.add_input(
+                name=f"%capture{len(traced_fn.graph.inputs)}",
+                type=capture_obj.type,
+            )
+        new_capture_inputs.append(value)
+
+    traced_fn.graph.inputs = leading_inputs + new_capture_inputs
+    traced_fn.captured = list(capture_order)
+
+
+def _reconstruct_outputs(
+    traced_fn: TracedFunction, ctx: Tracer, values: list[Any]
+) -> Any:
+    """Rebuild the traced function's output PyTree from graph values."""
+
+    var_objs = [TraceObject(val, ctx) for val in values]
+    total_len = len(traced_fn.out_imms) + len(traced_fn.out_var_pos)
+    flat_out: list[Any] = []
+    var_pos_iter = iter(traced_fn.out_var_pos)
+    next_var_pos = next(var_pos_iter, None)
+    var_idx = 0
+    imm_idx = 0
+
+    for idx in range(total_len):
+        if next_var_pos is not None and idx == next_var_pos:
+            flat_out.append(var_objs[var_idx])
+            var_idx += 1
+            next_var_pos = next(var_pos_iter, None)
+        else:
+            flat_out.append(traced_fn.out_imms[imm_idx])
+            imm_idx += 1
+
+    return traced_fn.out_tree.unflatten(flat_out)
+
+
+# ---------------------------------------------------------------------------
 # Control flow (scaffold)
 # ---------------------------------------------------------------------------
 
-uniform_cond = Primitive("simp.uniform_cond")
+
+uniform_cond_p = Primitive("simp.uniform_cond")
 
 
-@uniform_cond.def_trace
+@uniform_cond_p.def_trace
 def _uniform_cond_trace(
     pred: Object,
     then_fn: Callable[..., Any],
@@ -92,16 +191,7 @@ def _uniform_cond_trace(
     if not callable(then_fn) or not callable(else_fn):
         raise TypeError("In trace mode, both branches must be callable functions")
 
-    def _ensure_trace_obj(obj: TraceObject) -> TraceObject:
-        if obj._tracer is cur_ctx:
-            return obj
-        lifted = cur_ctx.lift(obj)
-        assert isinstance(lifted, TraceObject), (
-            "TraceContext.lift must return TraceObject for Objects"
-        )
-        return lifted
-
-    pred = _ensure_trace_obj(pred)
+    pred = _ensure_trace_object(cur_ctx, pred)
 
     # Trace both branches (trace() handles lifting/capture inside each branch)
     then_traced = trace(then_fn, *args, **kwargs)
@@ -121,7 +211,9 @@ def _uniform_cond_trace(
     # ------------------------------------------------------------------
     flat_inputs, _ = tree_flatten((args, kwargs))
     arg_trace_objs: list[TraceObject] = [
-        _ensure_trace_obj(val) for val in flat_inputs if isinstance(val, TraceObject)
+        _ensure_trace_object(cur_ctx, val)
+        for val in flat_inputs
+        if isinstance(val, TraceObject)
     ]
     arg_values = [obj._graph_value for obj in arg_trace_objs]
     num_arg_vars = len(arg_trace_objs)
@@ -129,65 +221,13 @@ def _uniform_cond_trace(
     # ------------------------------------------------------------------
     # Align captures from both branches and recapture into current context
     # ------------------------------------------------------------------
-    def merge_captures(*capture_lists: list[Object]) -> list[Object]:
-        merged: list[Object] = []
-        seen_ids: set[int] = set()
-        for capture_list in capture_lists:
-            for obj in capture_list:
-                obj_id = id(obj)
-                if obj_id in seen_ids:
-                    continue
-                seen_ids.add(obj_id)
-                merged.append(obj)
-        return merged
+    all_captures = _merge_captures(then_traced.captured, else_traced.captured)
 
-    all_captures = merge_captures(then_traced.captured, else_traced.captured)
-
-    def align_branch_inputs(
-        traced_fn: TracedFunction, capture_order: list[Object]
-    ) -> None:
-        """Ensure branch graph inputs follow [params..., captures...] with common order."""
-
-        if len(traced_fn.graph.inputs) < num_arg_vars:
-            raise TypeError(
-                "uniform_cond branch inputs shorter than argument list; expected "
-                f"{num_arg_vars} params, got {len(traced_fn.graph.inputs)}"
-            )
-
-        param_inputs = traced_fn.graph.inputs[:num_arg_vars]
-        capture_inputs = traced_fn.graph.inputs[num_arg_vars:]
-        if traced_fn.captured:
-            capture_map = dict(zip(traced_fn.captured, capture_inputs, strict=True))
-        else:
-            capture_map = {}
-
-        new_capture_inputs = []
-        for capture_obj in capture_order:
-            value = capture_map.get(capture_obj)
-            if value is None:
-                value = traced_fn.graph.add_input(
-                    name=f"%capture{len(traced_fn.graph.inputs)}",
-                    type=capture_obj.type,
-                )
-            new_capture_inputs.append(value)
-
-        traced_fn.graph.inputs = param_inputs + new_capture_inputs
-        traced_fn.captured = list(capture_order)
-
-    align_branch_inputs(then_traced, all_captures)
-    align_branch_inputs(else_traced, all_captures)
+    _align_region_inputs(then_traced, num_arg_vars, all_captures)
+    _align_region_inputs(else_traced, num_arg_vars, all_captures)
 
     # Recapture each capture object into the current cond tracer context
-    capture_trace_objs: list[TraceObject] = []
-    for obj in all_captures:
-        if isinstance(obj, TraceObject) and obj._tracer is cur_ctx:
-            capture_trace_objs.append(obj)
-        else:
-            lifted = cur_ctx.lift(obj)
-            assert isinstance(lifted, TraceObject), (
-                "TraceContext.lift must return TraceObject when recapturing"
-            )
-            capture_trace_objs.append(lifted)
+    capture_trace_objs = [_recapture_object(cur_ctx, obj) for obj in all_captures]
     capture_values = [obj._graph_value for obj in capture_trace_objs]
 
     # ------------------------------------------------------------------
@@ -204,14 +244,36 @@ def _uniform_cond_trace(
         regions=[then_traced.graph, else_traced.graph],
     )
 
-    # Return TraceObject(s)
+    # Return PyTree reconstructed from then/else signatures
     if not isinstance(result_values, list):
         result_values = [result_values]
+    return _reconstruct_outputs(then_traced, cur_ctx, result_values)
 
-    if len(result_values) == 1:
-        return TraceObject(result_values[0], cur_ctx)
-    else:
-        return [TraceObject(v, cur_ctx) for v in result_values]
+
+def uniform_cond(
+    pred: Object,
+    then_fn: Callable[..., Any],
+    else_fn: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Uniform conditional that executes only the selected branch at runtime.
+
+    Args:
+        pred: Boolean scalar TraceObject that is uniform across parties.
+        then_fn: Callable evaluated when `pred` is True.
+        else_fn: Callable evaluated when `pred` is False.
+        *args: Additional positional arguments forwarded to both branches.
+        **kwargs: Additional keyword arguments forwarded to both branches.
+
+    Returns:
+        The PyTree produced by the selected branch.
+
+    Raises:
+        TypeError: If predicate/branches are invalid or branch outputs mismatch.
+    """
+
+    return uniform_cond_p.bind(pred, then_fn, else_fn, *args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -227,44 +289,106 @@ def _while_loop_trace(
     body_fn: Callable[[Object], Any],
     init: Object,
 ) -> Any:
-    """Implementation for while_loop (def_trace mode for complex control flow).
+    """Trace-mode implementation for SIMP while_loop."""
 
-    Uses def_trace (not def_abstract_eval) because while_loop is a complex
-    control flow primitive that needs full control over execution:
-    - Eager mode: Direct Python while loop
-    - Trace mode: Fork tracer for cond/body, build WhileExpr (requires region ops)
+    cur_ctx = get_current_context()
+    assert isinstance(cur_ctx, Tracer), f"Expected Tracer context, got {type(cur_ctx)}"
 
-    Current implementation: Eager mode only (Interpreter context).
-    Future: Trace mode when EDSL Graph supports region-based operations.
+    if not callable(cond_fn) or not callable(body_fn):
+        raise TypeError("while_loop requires callable cond_fn and body_fn")
+
+    state_flat, state_treedef = tree_flatten(init)
+    if not state_flat:
+        raise TypeError("while_loop init must contain at least one Object")
+
+    state_trace_objs: list[TraceObject] = []
+    for leaf in state_flat:
+        if not isinstance(leaf, TraceObject):
+            raise TypeError(
+                f"while_loop init leaves must be TraceObject, got {type(leaf)}"
+            )
+        state_trace_objs.append(_ensure_trace_object(cur_ctx, leaf))
+
+    state_values = [obj._graph_value for obj in state_trace_objs]
+    state_types = [obj.type for obj in state_trace_objs]
+    state_count = len(state_trace_objs)
+
+    # Trace cond/body with the current state structure
+    cond_traced = trace(cond_fn, init)
+    body_traced = trace(body_fn, init)
+
+    cond_outputs = cond_traced.graph.outputs
+    if len(cond_outputs) != 1:
+        raise TypeError(
+            "while_loop cond_fn must return exactly one output, "
+            f"got {len(cond_outputs)}"
+        )
+    cond_shape = getattr(cond_outputs[0].type, "shape", None)
+    if cond_shape is not None and cond_shape != ():
+        raise TypeError(
+            f"while_loop cond_fn output must be scalar, got shape {cond_shape}"
+        )
+
+    body_outputs = body_traced.graph.outputs
+    if len(body_outputs) != state_count:
+        raise TypeError(
+            "while_loop body_fn must return same number of values as init state: "
+            f"{state_count} expected, got {len(body_outputs)}"
+        )
+    for idx, (out_val, state_obj) in enumerate(
+        zip(body_outputs, state_trace_objs, strict=True)
+    ):
+        if out_val.type != state_obj.type:
+            raise TypeError(
+                "while_loop body_fn output type mismatch at index "
+                f"{idx}: {out_val.type} vs {state_obj.type}"
+            )
+
+    all_captures = _merge_captures(cond_traced.captured, body_traced.captured)
+
+    _align_region_inputs(cond_traced, state_count, all_captures)
+    _align_region_inputs(body_traced, state_count, all_captures)
+
+    capture_trace_objs = [_recapture_object(cur_ctx, obj) for obj in all_captures]
+    capture_values = [obj._graph_value for obj in capture_trace_objs]
+
+    loop_inputs = [*state_values, *capture_values]
+    result_values = cur_ctx.graph.add_op(
+        opcode="simp.while_loop",
+        inputs=loop_inputs,
+        output_types=state_types,
+        regions=[cond_traced.graph, body_traced.graph],
+    )
+
+    if not isinstance(result_values, list):
+        result_values = [result_values]
+
+    result_trace_objs = [TraceObject(val, cur_ctx) for val in result_values]
+    return state_treedef.unflatten(result_trace_objs)
+
+
+def while_loop(
+    cond_fn: Callable[[Object], Any],
+    body_fn: Callable[[Object], Any],
+    init: Object,
+) -> Any:
+    """Execute a SIMP while loop that synchronizes across parties.
 
     Args:
-        cond_fn: Function that takes loop state (type T) and returns boolean scalar.
-                Must return True to continue looping, False to terminate.
-        body_fn: Function that takes loop state (type T) and returns updated state (type T).
-                Must preserve the type of the loop state across iterations.
-        init: Initial loop state value of type T.
+        cond_fn: Receives the current loop state and returns a boolean scalar.
+        body_fn: Receives the current loop state and returns the next state
+            with the same PyTree structure and per-leaf types as `init`.
+        init: Initial loop state (PyTree of Objects) shared by all parties.
 
     Returns:
-        Final loop state (type T) after cond_fn returns False.
+        Final state after `cond_fn` evaluates to False.
 
-    Design Note:
-        This uses def_trace (not def_abstract_eval) because:
-        - Complex operation requiring tracer fork (in future trace mode)
-        - Type inference depends on tracing cond_fn/body_fn
-        - Needs full control over graph construction
-
-        Simple primitives (add, mul) should use def_abstract_eval.
-        Complex primitives (control flow, custom integrations) use def_trace.
+    Raises:
+        TypeError: If `cond_fn`/`body_fn` outputs violate the required shape or
+            type constraints.
     """
-    state = init
-    while cond_fn(state):
-        state = body_fn(state)
-    return state
 
-
-# Public API: Expose .bind method as a callable function
-# Users can call: while_loop(cond_fn, body_fn, init)
-while_loop = while_loop_p.bind
+    return while_loop_p.bind(cond_fn, body_fn, init)
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +445,7 @@ __all__ = [
     "pshfl_s_p",
     # Control flow
     "uniform_cond",
+    "uniform_cond_p",
     "while_loop",
     "while_loop_p",
 ]

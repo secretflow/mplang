@@ -175,14 +175,44 @@ class ScalarType(BaseType, ScalarTrait):
     def __init__(self, name: str):
         self._name = name
 
+    @property
+    def name(self) -> str:
+        """Return the type name."""
+        return self._name
+
     def __str__(self) -> str:
         return self._name
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ScalarType):
+            return False
+        return self._name == other._name
 
-f32 = ScalarType("f32")
-f64 = ScalarType("f64")
+    def __hash__(self) -> int:
+        return hash(self._name)
+
+
+# Numeric scalar types - comprehensive set aligned with common dtypes
+# Integer types (signed)
+i8 = ScalarType("i8")
+i16 = ScalarType("i16")
 i32 = ScalarType("i32")
 i64 = ScalarType("i64")
+
+# Integer types (unsigned)
+u8 = ScalarType("u8")
+u16 = ScalarType("u16")
+u32 = ScalarType("u32")
+u64 = ScalarType("u64")
+
+# Floating point types
+f16 = ScalarType("f16")
+f32 = ScalarType("f32")
+f64 = ScalarType("f64")
+
+# Complex types
+c64 = ScalarType("c64")
+c128 = ScalarType("c128")
 
 
 class TensorType(BaseType):
@@ -255,7 +285,7 @@ class TensorType(BaseType):
         shape_str = ", ".join(str(d) for d in self.shape)
         return f"Tensor[{self.element_type}, ({shape_str})]"
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, TensorType):
             return False
         return self.element_type == other.element_type and self.shape == other.shape
@@ -363,7 +393,7 @@ class CustomType(BaseType):
         """Return the string identifier for this custom type."""
         return self._kind
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Two CustomTypes are equal if their kinds match."""
         if not isinstance(other, CustomType):
             return False

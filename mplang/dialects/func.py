@@ -10,7 +10,7 @@ import mplang.edsl.typing as elt
 
 func_def_p = el.Primitive("func.func")
 call_p = el.Primitive("func.call")
-FUNCTION_TYPE = elt.CustomType("function")
+FuncType = elt.CustomType("function")
 
 
 def _current_tracer() -> el.Tracer:
@@ -28,16 +28,16 @@ def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> el.TraceOb
         "sym_name": traced.name,
         "in_var_pos": traced.in_var_pos,
         "in_imms": traced.in_imms,
+        "in_tree": traced.in_tree,
         "out_var_pos": traced.out_var_pos,
         "out_imms": traced.out_imms,
-        "in_tree": traced.in_tree,
         "out_tree": traced.out_tree,
         "output_types": [val.type for val in traced.graph.outputs],
     }
     [value] = tracer.graph.add_op(
         opcode="func.func",
         inputs=[],
-        output_types=[FUNCTION_TYPE],
+        output_types=[FuncType],
         attrs=attrs,
         regions=[traced.graph],
     )
@@ -47,7 +47,7 @@ def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> el.TraceOb
 @call_p.def_trace
 def _call_trace(fn_value: el.TraceObject, *args: Any) -> Any:
     tracer = _current_tracer()
-    if not isinstance(fn_value, el.TraceObject) or fn_value.type != FUNCTION_TYPE:
+    if not isinstance(fn_value, el.TraceObject) or fn_value.type != FuncType:
         raise TypeError("func.call expects the callee TraceObject as first argument")
     if not all(isinstance(arg, el.TraceObject) for arg in args):
         raise TypeError("func.call arguments must be TraceObjects")

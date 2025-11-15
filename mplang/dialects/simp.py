@@ -106,31 +106,6 @@ def _align_region_inputs(
     traced_fn.captured = list(capture_order)
 
 
-def _reconstruct_outputs(
-    traced_fn: TracedFunction, ctx: Tracer, values: list[Any]
-) -> Any:
-    """Rebuild the traced function's output PyTree from graph values."""
-
-    var_objs = [TraceObject(val, ctx) for val in values]
-    total_len = len(traced_fn.out_imms) + len(traced_fn.out_var_pos)
-    flat_out: list[Any] = []
-    var_pos_iter = iter(traced_fn.out_var_pos)
-    next_var_pos = next(var_pos_iter, None)
-    var_idx = 0
-    imm_idx = 0
-
-    for idx in range(total_len):
-        if next_var_pos is not None and idx == next_var_pos:
-            flat_out.append(var_objs[var_idx])
-            var_idx += 1
-            next_var_pos = next(var_pos_iter, None)
-        else:
-            flat_out.append(traced_fn.out_imms[imm_idx])
-            imm_idx += 1
-
-    return traced_fn.out_tree.unflatten(flat_out)
-
-
 # ---------------------------------------------------------------------------
 # Control flow (scaffold)
 # ---------------------------------------------------------------------------
@@ -244,7 +219,12 @@ def _uniform_cond_trace(
         regions=[then_traced.graph, else_traced.graph],
     )
 
-    return _reconstruct_outputs(then_traced, cur_ctx, result_values)
+    return cur_ctx.reconstruct_outputs(
+        then_traced.out_var_pos,
+        then_traced.out_imms,
+        then_traced.out_tree,
+        result_values,
+    )
 
 
 def uniform_cond(

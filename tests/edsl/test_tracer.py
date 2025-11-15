@@ -186,3 +186,59 @@ class TestMakeGraph:
         assert len(traced.out_var_pos) == 0
         assert len(traced.out_imms) == 1
         assert traced.out_imms == [42]
+
+    def test_capture_only_output(self, sample_inputs):
+        """Returning a captured InterpObject should register it as capture input."""
+        x_obj, y_obj = sample_inputs
+        captured = y_obj
+
+        def return_capture(_):
+            return captured
+
+        traced = trace(return_capture, x_obj)
+
+        assert traced.captured == [captured]
+        assert len(traced.graph.inputs) == 2  # arg + capture
+        assert traced.graph.inputs[0].type == x_obj.type
+        assert traced.graph.inputs[1].type == captured.type
+        assert traced.out_var_pos == [0]
+        assert traced.out_imms == []
+
+    def test_mixed_param_and_capture_outputs(self, sample_inputs):
+        """Outputs mixing parameters and captures should preserve ordering."""
+        x_obj, y_obj = sample_inputs
+        captured = y_obj
+
+        def mixed_outputs(x):
+            return x, captured
+
+        traced = trace(mixed_outputs, x_obj)
+
+        assert traced.captured == [captured]
+        assert len(traced.graph.inputs) == 2
+        assert [inp.type for inp in traced.graph.inputs] == [
+            x_obj.type,
+            captured.type,
+        ]
+        assert traced.out_var_pos == [0, 1]
+        assert traced.out_imms == []
+
+    def test_duplicate_captures_deduped(self, sample_inputs, interpreter):
+        """Capturing the same object multiple times should only add one capture."""
+        x_obj, _ = sample_inputs
+        captured = InterpObject(
+            np.array([9.0, 9.0, 9.0], dtype=np.float32),
+            TensorType(f32, (3,)),
+            interpreter,
+        )
+
+        def capture_twice(x):
+            del x
+            return captured, captured
+
+        traced = trace(capture_twice, x_obj)
+
+        assert traced.captured == [captured]
+        assert len(traced.graph.inputs) == 2  # arg + single capture
+        assert traced.out_var_pos == [0, 1]
+        assert traced.out_imms == []

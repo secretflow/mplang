@@ -22,7 +22,7 @@ from jax.tree_util import tree_flatten
 from mplang.edsl.context import get_current_context
 from mplang.edsl.object import Object
 from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import TraceObject, Tracer, trace
+from mplang.edsl.tracer import TracedFunction, TraceObject, Tracer, trace
 from mplang.edsl.typing import BaseType
 
 # ---------------------------------------------------------------------------
@@ -81,48 +81,126 @@ def _uniform_cond_trace(
     cur_ctx = get_current_context()
     assert isinstance(cur_ctx, Tracer), f"Expected Tracer context, got {type(cur_ctx)}"
 
-    # Validate inputs
+    # ------------------------------------------------------------------
+    # Validate predicate / branch signatures
+    # ------------------------------------------------------------------
     if not isinstance(pred, TraceObject):
         raise TypeError(f"predicate must be TraceObject, got {type(pred)}")
+    pred_shape = getattr(pred.type, "shape", None)
+    if pred_shape is not None and pred_shape != ():
+        raise TypeError(f"uniform_cond predicate must be scalar, got type {pred.type}")
     if not callable(then_fn) or not callable(else_fn):
         raise TypeError("In trace mode, both branches must be callable functions")
 
-    # Trace both branches using the new trace() function
-    # trace() handles lifting arguments automatically
+    def _ensure_trace_obj(obj: TraceObject) -> TraceObject:
+        if obj._tracer is cur_ctx:
+            return obj
+        lifted = cur_ctx.lift(obj)
+        assert isinstance(lifted, TraceObject), (
+            "TraceContext.lift must return TraceObject for Objects"
+        )
+        return lifted
+
+    pred = _ensure_trace_obj(pred)
+
+    # Trace both branches (trace() handles lifting/capture inside each branch)
     then_traced = trace(then_fn, *args, **kwargs)
     else_traced = trace(else_fn, *args, **kwargs)
 
-    # Validate branch output signatures match
+    # Validate branch output signatures match exactly
     if not then_traced.is_output_signature_match(else_traced):
+        then_types = [v.type for v in then_traced.graph.outputs]
+        else_types = [v.type for v in else_traced.graph.outputs]
         raise TypeError(
-            f"Branch output signature mismatch between then_fn and else_fn. "
-            f"then={[v.type for v in then_traced.graph.outputs]}, "
-            f"else={[v.type for v in else_traced.graph.outputs]}"
+            "uniform_cond branch output signature mismatch: "
+            f"then={then_types}, else={else_types}"
         )
 
-    # Collect input variables from traced functions
-    # in_var_pos tells us which positions in the flattened input are variables
-    # We need to map these back to the current context's TraceObjects
-    input_flat, _ = tree_flatten((args, kwargs))
-
-    # Get variables (Objects) from inputs in their original order
-    input_vars = [val for val in input_flat if isinstance(val, Object)]
-    input_values = [
-        obj._graph_value for obj in input_vars if isinstance(obj, TraceObject)
+    # ------------------------------------------------------------------
+    # Collect argument TraceObjects (positional + keyword) for cond inputs
+    # ------------------------------------------------------------------
+    flat_inputs, _ = tree_flatten((args, kwargs))
+    arg_trace_objs: list[TraceObject] = [
+        _ensure_trace_obj(val) for val in flat_inputs if isinstance(val, TraceObject)
     ]
+    arg_values = [obj._graph_value for obj in arg_trace_objs]
+    num_arg_vars = len(arg_trace_objs)
 
-    # Build cond operation with regions
+    # ------------------------------------------------------------------
+    # Align captures from both branches and recapture into current context
+    # ------------------------------------------------------------------
+    def merge_captures(*capture_lists: list[Object]) -> list[Object]:
+        merged: list[Object] = []
+        seen_ids: set[int] = set()
+        for capture_list in capture_lists:
+            for obj in capture_list:
+                obj_id = id(obj)
+                if obj_id in seen_ids:
+                    continue
+                seen_ids.add(obj_id)
+                merged.append(obj)
+        return merged
+
+    all_captures = merge_captures(then_traced.captured, else_traced.captured)
+
+    def align_branch_inputs(
+        traced_fn: TracedFunction, capture_order: list[Object]
+    ) -> None:
+        """Ensure branch graph inputs follow [params..., captures...] with common order."""
+
+        if len(traced_fn.graph.inputs) < num_arg_vars:
+            raise TypeError(
+                "uniform_cond branch inputs shorter than argument list; expected "
+                f"{num_arg_vars} params, got {len(traced_fn.graph.inputs)}"
+            )
+
+        param_inputs = traced_fn.graph.inputs[:num_arg_vars]
+        capture_inputs = traced_fn.graph.inputs[num_arg_vars:]
+        if traced_fn.captured:
+            capture_map = dict(zip(traced_fn.captured, capture_inputs, strict=True))
+        else:
+            capture_map = {}
+
+        new_capture_inputs = []
+        for capture_obj in capture_order:
+            value = capture_map.get(capture_obj)
+            if value is None:
+                value = traced_fn.graph.add_input(
+                    name=f"%capture{len(traced_fn.graph.inputs)}",
+                    type=capture_obj.type,
+                )
+            new_capture_inputs.append(value)
+
+        traced_fn.graph.inputs = param_inputs + new_capture_inputs
+        traced_fn.captured = list(capture_order)
+
+    align_branch_inputs(then_traced, all_captures)
+    align_branch_inputs(else_traced, all_captures)
+
+    # Recapture each capture object into the current cond tracer context
+    capture_trace_objs: list[TraceObject] = []
+    for obj in all_captures:
+        if isinstance(obj, TraceObject) and obj._tracer is cur_ctx:
+            capture_trace_objs.append(obj)
+        else:
+            lifted = cur_ctx.lift(obj)
+            assert isinstance(lifted, TraceObject), (
+                "TraceContext.lift must return TraceObject when recapturing"
+            )
+            capture_trace_objs.append(lifted)
+    capture_values = [obj._graph_value for obj in capture_trace_objs]
+
+    # ------------------------------------------------------------------
+    # Build cond operation with aligned inputs / captures
+    # ------------------------------------------------------------------
     output_types = [v.type for v in then_traced.graph.outputs]
-    all_input_values = [pred._graph_value, *input_values]
+    cond_inputs = [pred._graph_value, *arg_values, *capture_values]
 
     result_values = cur_ctx.graph.add_op(
         opcode="simp.uniform_cond",
-        inputs=all_input_values,
+        inputs=cond_inputs,
         output_types=output_types,
-        attrs={
-            "verify_uniform": VERIFY_UNIFORM_DEFAULT,
-            "num_args": len(input_values),  # Number of variable args (excludes pred)
-        },
+        attrs={"verify_uniform": VERIFY_UNIFORM_DEFAULT},
         regions=[then_traced.graph, else_traced.graph],
     )
 

@@ -125,8 +125,8 @@ class TestUniformCond:
 
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        # Should raise TypeError due to output count mismatch
-        with pytest.raises(TypeError, match="output count mismatch"):
+        # Should raise TypeError due to output mismatch
+        with pytest.raises(TypeError, match="output signature mismatch"):
             trace(test_fn, pred_val, x_val)
 
     def test_with_multiple_args(self):
@@ -150,8 +150,41 @@ class TestUniformCond:
         # Verify graph structure
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
         assert len(cond_ops) == 1
-        # Should have pred + 2 args as inputs (+ any captures)
-        assert len(cond_ops[0].inputs) >= 3
+        cond_op = cond_ops[0]
+        assert len(cond_op.inputs) == 3  # pred + 2 args, no captures
+        then_region, else_region = cond_op.regions
+        assert len(then_region.inputs) == 2
+        assert len(else_region.inputs) == 2
+
+    def test_branch_captures_are_aligned(self):
+        """Captured variables from both branches become explicit cond inputs."""
+        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
+        x_val = InterpObject(np.array(1.0), Tensor[f32, ()])
+        outer_a = InterpObject(np.array(2.0), Tensor[f32, ()])
+        outer_b = InterpObject(np.array(3.0), Tensor[f32, ()])
+
+        def then_fn(x):
+            return outer_a
+
+        def else_fn(x):
+            return outer_b
+
+        def test_fn(pred, x):
+            return uniform_cond(pred, then_fn, else_fn, x)
+
+        traced = trace(test_fn, pred_val, x_val)
+        graph = traced.graph
+
+        cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
+        assert len(cond_ops) == 1
+        cond_op = cond_ops[0]
+
+        # pred + arg + 2 captures
+        assert len(cond_op.inputs) == 4
+
+        then_region, else_region = cond_op.regions
+        assert len(then_region.inputs) == 3  # arg + both captures
+        assert len(else_region.inputs) == 3  # arg + both captures (one unused)
 
     def test_verify_uniform_attribute(self):
         """Test that verify_uniform flag uses global config."""

@@ -78,7 +78,7 @@ class Tracer(Context):
 
     def __init__(self):
         self.graph = Graph()
-        self._freevars: dict[int, GraphValue] = {}
+        self._freevars: dict[int, tuple[Object, GraphValue]] = {}
         self._arg_counter = 0
 
     def bind_primitive(
@@ -163,8 +163,9 @@ class Tracer(Context):
             TraceObject wrapping the newly created input Value
         """
         obj_id = id(obj)
-        if obj_id in self._freevars:
-            graph_value = self._freevars[obj_id]
+        entry = self._freevars.get(obj_id)
+        if entry is not None:
+            _, graph_value = entry
         else:
             name = f"%arg{self._arg_counter}"
             self._arg_counter += 1
@@ -172,7 +173,7 @@ class Tracer(Context):
                 name=name,
                 type=obj.type,
             )
-            self._freevars[obj_id] = graph_value
+            self._freevars[obj_id] = (obj, graph_value)
         return TraceObject(graph_value, self)
 
     def lift(self, obj: Any) -> Any:
@@ -319,6 +320,7 @@ class TracedFunction:
     out_imms: list[Any]
     out_var_pos: list[int]
     out_tree: PyTreeDef
+    captured: list[Object]
 
     def is_input_signature_match(self, other: TracedFunction) -> bool:
         """Check if this TracedFunction has the same input signature as another.
@@ -425,7 +427,8 @@ def trace(
     in_flat, in_treedef = tree_flatten((args, kwargs))
 
     # Step 2: Separate input constants from variables, and record positions
-    in_imms, in_var_pos, _ = _separate_vars_and_imms(in_flat)
+    in_imms, in_var_pos, in_vars = _separate_vars_and_imms(in_flat)
+    param_obj_ids = {id(obj) for obj in in_vars}
 
     # Step 3: Create a new tracer for the function body
     func_tracer = Tracer()
@@ -441,6 +444,9 @@ def trace(
     with func_tracer:
         args_traced, kwargs_traced = tree_map(lift_if_object, (args, kwargs))
         result = fn(*args_traced, **kwargs_traced)
+        # Branches may return captured InterpObjects without touching primitives,
+        # so force every Object in the result to live in func_tracer as well.
+        result = tree_map(lift_if_object, result)
 
     # Step 5: Flatten outputs and separate TraceObjects from constants
     output_flat, output_treedef = tree_flatten(result)
@@ -454,6 +460,11 @@ def trace(
         graph = func_tracer.graph
         graph.outputs = []
 
+    captured_objects: list[Object] = []
+    for obj_id, (obj, _) in func_tracer._freevars.items():
+        if obj_id not in param_obj_ids:
+            captured_objects.append(obj)
+
     # Step 7: Return TracedFunction
     return TracedFunction(
         name=fn_name,
@@ -464,4 +475,5 @@ def trace(
         out_imms=out_imms,
         out_var_pos=out_var_pos,
         out_tree=output_treedef,
+        captured=captured_objects,
     )

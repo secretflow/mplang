@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import count
-from typing import Any
+from typing import Any, cast
 
 import jax
 import numpy as np
@@ -63,11 +63,11 @@ def _current_tracer() -> el.Tracer:
     return ctx
 
 
-def _scalar_to_numpy_dtype(scalar: elt.ScalarType) -> np.dtype:
+def _scalar_to_numpy_dtype(scalar: elt.ScalarType) -> np.dtype[np.generic]:
     dtype = _SCALAR_TO_NP_DTYPE.get(str(scalar))
     if dtype is None:
         raise TypeError(f"Unsupported scalar type '{scalar}' for tensor.run_jax")
-    return dtype
+    return cast(np.dtype[np.generic], dtype)
 
 
 def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:
@@ -95,6 +95,11 @@ def _tensor_type_to_placeholder(tensor_type: elt.TensorType) -> ShapeDtypeStruct
         if dim <= 0 and dim != 0:
             raise ValueError(f"Invalid tensor dimension {dim}")
         normalized_shape.append(dim)
+    # element_type is ScalarTrait, need to convert to ScalarType for _scalar_to_numpy_dtype
+    if not isinstance(tensor_type.element_type, elt.ScalarType):
+        raise TypeError(
+            f"Expected ScalarType element, got {type(tensor_type.element_type)}"
+        )
     dtype = _scalar_to_numpy_dtype(tensor_type.element_type)
     return ShapeDtypeStruct(tuple(normalized_shape), dtype)
 
@@ -135,6 +140,7 @@ def _compile_run_jax(
     stablehlo_text = str(lowered.compiler_ir("stablehlo"))
 
     # Handle both single output (OutInfo object) and multiple outputs (tuple)
+    output_types: list[elt.BaseType]
     if isinstance(lowered.out_info, tuple):
         output_types = [_out_info_to_edsl(info) for info in lowered.out_info]
     else:

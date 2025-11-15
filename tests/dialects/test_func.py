@@ -12,17 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from textwrap import dedent
+
 import numpy as np
 
 from mplang.dialects.func import call, func
 from mplang.dialects.tensor import run_jax
 from mplang.edsl.interpreter import InterpObject
+from mplang.edsl.printer import format_graph
 from mplang.edsl.tracer import trace
 from mplang.edsl.typing import Tensor, f32
 
 
 def _scale_add(x, y):
     return run_jax(lambda a, b: a * 2 + b, x, y, out_types=Tensor[f32, ()])
+
+
+def _complex_body(a, b):
+    doubled = run_jax(lambda v: v * 2, a, out_types=Tensor[f32, ()])
+    summed = run_jax(lambda lhs, rhs: lhs + rhs, doubled, b, out_types=Tensor[f32, ()])
+    residual = run_jax(lambda lhs, rhs: lhs - rhs, summed, a, out_types=Tensor[f32, ()])
+    return {"nested": (residual, {"orig": b}), "sum": summed}
 
 
 def test_func_call_emits_region():
@@ -52,3 +62,56 @@ def test_func_define_returns_traceobject():
     graph = traced.graph
     func_ops = [op for op in graph.operations if op.opcode == "func.func"]
     assert func_ops, "expected a func.func definition"
+
+
+def test_func_call_handles_complex_pytree_output():
+    x = InterpObject(np.array(2.0), Tensor[f32, ()])
+    y = InterpObject(np.array(5.0), Tensor[f32, ()])
+
+    def wrapper(a, b):
+        nested_fn = func(_complex_body, a, b)
+        return call(nested_fn, a, b)
+
+    traced = trace(wrapper, x, y)
+    graph = traced.graph
+    func_ops = [op for op in graph.operations if op.opcode == "func.func"]
+    call_ops = [op for op in graph.operations if op.opcode == "func.call"]
+    assert len(func_ops) == 1
+    assert len(call_ops) == 1
+
+    complex_region = func_ops[0].regions[0]
+    tensor_ops = [
+        op for op in complex_region.operations if op.opcode == "tensor.run_jax"
+    ]
+    assert len(tensor_ops) == 3
+
+    call_op = call_ops[0]
+    assert len(call_op.outputs) == 3
+
+    out_tree = traced.out_tree
+    assert out_tree is not None
+    assert out_tree.num_leaves == 3
+    placeholders = [f"leaf{i}" for i in range(out_tree.num_leaves)]
+    assert out_tree.unflatten(placeholders) == {
+        "nested": ("leaf0", {"orig": "leaf1"}),
+        "sum": "leaf2",
+    }
+
+    lambda_qual = f"{__name__}:_complex_body.<locals>.<lambda>"
+    expected_ir = dedent(
+        """\
+        %arg0 = input : Tensor[f32, ()]
+        %arg1 = input : Tensor[f32, ()]
+        %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function]
+          region 0 {
+            %arg0 = input : Tensor[f32, ()]
+            %arg1 = input : Tensor[f32, ()]
+            %0 = tensor.run_jax(%arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+            %1 = tensor.run_jax(%0, %arg1) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+            %2 = tensor.run_jax(%1, %arg0) {backend='plaintext', fn='__LAMBDA__', static_kwargs={}} : Tensor[f32, ()]
+            return %2, %arg1, %1
+          }
+        [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
+        return %1, %2, %3"""
+    ).replace("__LAMBDA__", lambda_qual)
+    assert format_graph(graph) == expected_ir

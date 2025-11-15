@@ -170,7 +170,7 @@ class Primitive:
         self._trace = fn
         return fn
 
-    def bind(self, *args: Any, **kwargs: Any) -> Any:
+    def bind(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
         """Bind arguments and execute/trace the primitive.
 
         This is the main user-facing API. It automatically chooses between:

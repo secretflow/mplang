@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from mplang.edsl.context import get_current_context
-from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import TraceObject, Tracer
-from mplang.edsl.typing import BaseType, TableType, TensorType
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 
-run_sql_p = Primitive("table.run_sql")
-table2tensor_p = Primitive("table.table2tensor")
-tensor2table_p = Primitive("table.tensor2table")
+run_sql_p = el.Primitive("table.run_sql")
+table2tensor_p = el.Primitive("table.table2tensor")
+tensor2table_p = el.Primitive("table.tensor2table")
 
 
-def _current_tracer() -> Tracer:
-    ctx = get_current_context()
-    if not isinstance(ctx, Tracer):
+def _current_tracer() -> el.Tracer:
+    ctx = el.get_current_context()
+    if not isinstance(ctx, el.Tracer):
         raise TypeError(f"Expected Tracer context, got {type(ctx)}")
     return ctx
 
@@ -23,12 +21,12 @@ def _current_tracer() -> Tracer:
 def _run_sql_trace(
     query: str,
     *,
-    out_type: TableType,
+    out_type: elt.TableType,
     dialect: str = "duckdb",
-    **tables: TraceObject,
-) -> TraceObject:
+    **tables: el.TraceObject,
+) -> el.TraceObject:
     tracer = _current_tracer()
-    if not isinstance(out_type, TableType):
+    if not isinstance(out_type, elt.TableType):
         raise TypeError("run_sql out_type must be TableType")
     if not tables:
         raise ValueError("run_sql requires at least one table input")
@@ -37,7 +35,7 @@ def _run_sql_trace(
     inputs = []
     names = []
     for name, table in ordered:
-        if not isinstance(table, TraceObject):
+        if not isinstance(table, el.TraceObject):
             raise TypeError(f"Table '{name}' must be TraceObject")
         inputs.append(table._graph_value)
         names.append(name)
@@ -48,11 +46,11 @@ def _run_sql_trace(
         output_types=[out_type],
         attrs={"query": query, "dialect": dialect, "table_names": names},
     )
-    return TraceObject(value, tracer)
+    return el.TraceObject(value, tracer)
 
 
 @table2tensor_p.def_abstract_eval
-def _table2tensor_ae(table_t: TableType, *, number_rows: int) -> TensorType:
+def _table2tensor_ae(table_t: elt.TableType, *, number_rows: int) -> elt.TensorType:
     """Infer tensor type for table.table2tensor."""
 
     if not isinstance(number_rows, int):
@@ -64,7 +62,7 @@ def _table2tensor_ae(table_t: TableType, *, number_rows: int) -> TensorType:
     column_types = list(table_t.schema.values())
     first = column_types[0]
 
-    def _scalar_dtype(col: BaseType) -> BaseType:
+    def _scalar_dtype(col: elt.BaseType) -> elt.BaseType:
         if hasattr(col, "element_type"):
             tensor_col = col  # type: ignore[assignment]
             if tensor_col.shape not in ((), None):
@@ -78,13 +76,15 @@ def _table2tensor_ae(table_t: TableType, *, number_rows: int) -> TensorType:
     for col in column_types[1:]:
         if _scalar_dtype(col) != first_scalar:
             raise TypeError("All table columns must share the same scalar dtype")
-    if not isinstance(first_scalar, BaseType):
+    if not isinstance(first_scalar, elt.BaseType):
         raise TypeError("All table columns must share the same dtype for table2tensor")
-    return TensorType(first_scalar, (number_rows, len(column_types)))
+    return elt.TensorType(first_scalar, (number_rows, len(column_types)))
 
 
 @tensor2table_p.def_abstract_eval
-def _tensor2table_ae(tensor_t: TensorType, *, column_names: list[str]) -> TableType:
+def _tensor2table_ae(
+    tensor_t: elt.TensorType, *, column_names: list[str]
+) -> elt.TableType:
     """Infer table type for table.tensor2table."""
 
     if len(tensor_t.shape) != 2:
@@ -95,7 +95,7 @@ def _tensor2table_ae(tensor_t: TensorType, *, column_names: list[str]) -> TableT
     if len(column_names) != n_cols:
         raise ValueError("column_names length must match tensor second dimension")
     seen: set[str] = set()
-    schema: dict[str, BaseType] = {}
+    schema: dict[str, elt.BaseType] = {}
     for idx, name in enumerate(column_names):
         if not isinstance(name, str):
             raise TypeError(
@@ -106,18 +106,18 @@ def _tensor2table_ae(tensor_t: TensorType, *, column_names: list[str]) -> TableT
         if name in seen:
             raise ValueError(f"duplicate column name: {name!r}")
         seen.add(name)
-        schema[name] = TensorType(tensor_t.element_type, ())
+        schema[name] = elt.TensorType(tensor_t.element_type, ())
     # Each column shares the tensor dtype; treat scalar leaves per row.
-    return TableType(schema)
+    return elt.TableType(schema)
 
 
 def run_sql(
     query: str,
     *,
-    out_type: TableType,
+    out_type: elt.TableType,
     dialect: str = "duckdb",
-    **tables: TraceObject,
-) -> TraceObject:
+    **tables: el.TraceObject,
+) -> el.TraceObject:
     """Trace a SQL query over plaintext/private tables.
 
     Inserts a `table.run_sql` op with the provided query string and table inputs.
@@ -132,13 +132,13 @@ def run_sql(
     )
 
 
-def table2tensor(table: TraceObject, *, number_rows: int) -> TraceObject:
+def table2tensor(table: el.TraceObject, *, number_rows: int) -> el.TraceObject:
     """Convert a homogeneous table into a dense tensor."""
 
     return table2tensor_p.bind(table, number_rows=number_rows)
 
 
-def tensor2table(tensor: TraceObject, *, column_names: list[str]) -> TraceObject:
+def tensor2table(tensor: el.TraceObject, *, column_names: list[str]) -> el.TraceObject:
     """Convert a rank-2 tensor (N, F) into a table with named columns."""
 
     return tensor2table_p.bind(tensor, column_names=column_names)

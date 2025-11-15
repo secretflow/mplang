@@ -12,18 +12,11 @@ import numpy as np
 from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef
 
-from mplang.edsl.context import get_current_context
-from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import TraceObject, Tracer
-from mplang.edsl.typing import BaseType, ScalarType
-from mplang.edsl.typing import TensorType as EDSLTensorType
-from mplang.edsl.typing import f32 as edsl_f32
-from mplang.edsl.typing import f64 as edsl_f64
-from mplang.edsl.typing import i32 as edsl_i32
-from mplang.edsl.typing import i64 as edsl_i64
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
 
-run_jax_p = Primitive("tensor.run_jax")
+run_jax_p = el.Primitive("tensor.run_jax")
 
 _SCALAR_TO_NP_DTYPE = {
     "f32": np.dtype("float32"),
@@ -33,10 +26,10 @@ _SCALAR_TO_NP_DTYPE = {
 }
 
 _NP_DTYPE_NAME_TO_SCALAR = {
-    "float32": edsl_f32,
-    "float64": edsl_f64,
-    "int32": edsl_i32,
-    "int64": edsl_i64,
+    "float32": elt.f32,
+    "float64": elt.f64,
+    "int32": elt.i32,
+    "int64": elt.i64,
 }
 
 
@@ -48,7 +41,7 @@ class _RunJaxCompilation:
     backend: str
     stablehlo: str
     out_tree: PyTreeDef
-    output_types: list[BaseType]
+    output_types: list[elt.BaseType]
 
 
 @dataclass(frozen=True)
@@ -57,28 +50,28 @@ class RunJaxCompilationInfo:
 
     stablehlo: str
     out_tree: PyTreeDef
-    output_types: list[BaseType]
+    output_types: list[elt.BaseType]
 
 
 _RUN_JAX_REGISTRY: dict[str, _RunJaxCompilation] = {}
 _RUN_JAX_ID_GENERATOR = count()
 
 
-def _current_tracer() -> Tracer:
-    ctx = get_current_context()
-    if not isinstance(ctx, Tracer):
+def _current_tracer() -> el.Tracer:
+    ctx = el.get_current_context()
+    if not isinstance(ctx, el.Tracer):
         raise TypeError(f"Expected Tracer context, got {type(ctx)}")
     return ctx
 
 
-def _scalar_to_numpy_dtype(scalar: ScalarType) -> np.dtype:
+def _scalar_to_numpy_dtype(scalar: elt.ScalarType) -> np.dtype:
     dtype = _SCALAR_TO_NP_DTYPE.get(str(scalar))
     if dtype is None:
         raise TypeError(f"Unsupported scalar type '{scalar}' for tensor.run_jax")
     return dtype
 
 
-def _numpy_dtype_to_scalar(dtype: Any) -> ScalarType:
+def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:
     np_dtype = np.dtype(dtype)
     scalar = _NP_DTYPE_NAME_TO_SCALAR.get(np_dtype.name)
     if scalar is None:
@@ -86,7 +79,7 @@ def _numpy_dtype_to_scalar(dtype: Any) -> ScalarType:
     return scalar
 
 
-def _tensor_type_to_placeholder(tensor_type: EDSLTensorType) -> ShapeDtypeStruct:
+def _tensor_type_to_placeholder(tensor_type: elt.TensorType) -> ShapeDtypeStruct:
     if tensor_type.shape is None:
         raise TypeError("tensor.run_jax requires fully-ranked tensor shapes")
     normalized_shape: list[int] = []
@@ -107,10 +100,10 @@ def _tensor_type_to_placeholder(tensor_type: EDSLTensorType) -> ShapeDtypeStruct
     return ShapeDtypeStruct(tuple(normalized_shape), dtype)
 
 
-def _out_info_to_edsl(out_info: Any) -> EDSLTensorType:
+def _out_info_to_edsl(out_info: Any) -> elt.TensorType:
     scalar = _numpy_dtype_to_scalar(out_info.dtype)
     shape = tuple(out_info.shape)
-    return EDSLTensorType(scalar, shape)
+    return elt.TensorType(scalar, shape)
 
 
 def _register_compilation(compilation: _RunJaxCompilation) -> str:
@@ -159,23 +152,23 @@ def _prepare_run_jax_arguments(
     fn: Callable[..., Any],
     call_args: tuple[Any, ...],
     user_kwargs: dict[str, Any],
-) -> tuple[Callable[..., Any], list[ShapeDtypeStruct], list[TraceObject]]:
+) -> tuple[Callable[..., Any], list[ShapeDtypeStruct], list[el.TraceObject]]:
     def _is_trace_object(value: Any) -> bool:
-        return isinstance(value, TraceObject)
+        return isinstance(value, el.TraceObject)
 
     normalized_fn, variables = normalize_fn(
         fn, call_args, user_kwargs, _is_trace_object
     )
 
-    trace_objects: list[TraceObject] = []
+    trace_objects: list[el.TraceObject] = []
     placeholders: list[ShapeDtypeStruct] = []
     for var in variables:
-        if not isinstance(var, TraceObject):
+        if not isinstance(var, el.TraceObject):
             raise TypeError(
                 f"tensor.run_jax expected TraceObject variables, got {type(var)}"
             )
         arg_type = var.type
-        if not isinstance(arg_type, EDSLTensorType):
+        if not isinstance(arg_type, elt.TensorType):
             raise TypeError(
                 "tensor.run_jax only supports Tensor arguments; "
                 f"got {arg_type} for argument {var}"
@@ -194,7 +187,7 @@ def _run_jax_trace(
     *call_args: Any,
     backend: str = "plaintext",
     _user_kwargs: dict[str, Any] | None = None,
-) -> TraceObject | list[TraceObject]:
+) -> el.TraceObject | list[el.TraceObject]:
     if not callable(fn):
         raise TypeError(f"run_jax expects callable, got {type(fn)}")
     tracer = _current_tracer()
@@ -218,7 +211,7 @@ def _run_jax_trace(
             "text_ref": text_ref,
         },
     )
-    outputs = [TraceObject(val, tracer) for val in result_values]
+    outputs = [el.TraceObject(val, tracer) for val in result_values]
     return outputs[0] if len(outputs) == 1 else outputs
 
 
@@ -227,7 +220,7 @@ def run_jax(
     *args: Any,
     backend: str = "plaintext",
     **kwargs: Any,
-) -> TraceObject | list[TraceObject]:
+) -> el.TraceObject | list[el.TraceObject]:
     """Trace a tensor JAX function as a graph op.
 
     Args:

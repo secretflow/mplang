@@ -19,11 +19,8 @@ from typing import Any
 
 from jax.tree_util import tree_flatten
 
-from mplang.edsl.context import get_current_context
-from mplang.edsl.object import Object
-from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import TracedFunction, TraceObject, Tracer, trace
-from mplang.edsl.typing import BaseType
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 
 # ---------------------------------------------------------------------------
 # Global configuration
@@ -38,31 +35,31 @@ VERIFY_UNIFORM_DEFAULT = True
 # ---------------------------------------------------------------------------
 
 
-def _ensure_trace_object(ctx: Tracer, obj: TraceObject) -> TraceObject:
+def _ensure_trace_object(ctx: el.Tracer, obj: el.TraceObject) -> el.TraceObject:
     """Ensure a TraceObject belongs to the current tracer context."""
     if obj._tracer is ctx:
         return obj
     lifted = ctx.lift(obj)
-    assert isinstance(lifted, TraceObject), (
+    assert isinstance(lifted, el.TraceObject), (
         "TraceContext.lift must return TraceObject for Objects"
     )
     return lifted
 
 
-def _recapture_object(ctx: Tracer, obj: Object) -> TraceObject:
+def _recapture_object(ctx: el.Tracer, obj: el.Object) -> el.TraceObject:
     """Capture any Object into the current tracer as a TraceObject."""
-    if isinstance(obj, TraceObject):
+    if isinstance(obj, el.TraceObject):
         return _ensure_trace_object(ctx, obj)
     lifted = ctx.lift(obj)
-    assert isinstance(lifted, TraceObject), (
+    assert isinstance(lifted, el.TraceObject), (
         "TraceContext.lift must return TraceObject when recapturing"
     )
     return lifted
 
 
-def _merge_captures(*capture_lists: list[Object]) -> list[Object]:
+def _merge_captures(*capture_lists: list[el.Object]) -> list[el.Object]:
     """Merge capture lists while preserving first-seen order."""
-    merged: list[Object] = []
+    merged: list[el.Object] = []
     seen_ids: set[int] = set()
     for capture_list in capture_lists:
         for obj in capture_list:
@@ -75,7 +72,7 @@ def _merge_captures(*capture_lists: list[Object]) -> list[Object]:
 
 
 def _align_region_inputs(
-    traced_fn: TracedFunction, leading_count: int, capture_order: list[Object]
+    traced_fn: el.TracedFunction, leading_count: int, capture_order: list[el.Object]
 ) -> None:
     """Align region graph inputs as [leading_values..., captures...] sequence."""
 
@@ -111,12 +108,12 @@ def _align_region_inputs(
 # ---------------------------------------------------------------------------
 
 
-uniform_cond_p = Primitive("simp.uniform_cond")
+uniform_cond_p = el.Primitive("simp.uniform_cond")
 
 
 @uniform_cond_p.def_trace
 def _uniform_cond_trace(
-    pred: Object,
+    pred: el.Object,
     then_fn: Callable[..., Any],
     else_fn: Callable[..., Any],
     *args: Any,
@@ -152,13 +149,15 @@ def _uniform_cond_trace(
         ...     return x - y
         >>> result = uniform_cond(pred, then_fn, else_fn, x, y)
     """
-    cur_ctx = get_current_context()
-    assert isinstance(cur_ctx, Tracer), f"Expected Tracer context, got {type(cur_ctx)}"
+    cur_ctx = el.get_current_context()
+    assert isinstance(cur_ctx, el.Tracer), (
+        f"Expected Tracer context, got {type(cur_ctx)}"
+    )
 
     # ------------------------------------------------------------------
     # Validate predicate / branch signatures
     # ------------------------------------------------------------------
-    if not isinstance(pred, TraceObject):
+    if not isinstance(pred, el.TraceObject):
         raise TypeError(f"predicate must be TraceObject, got {type(pred)}")
     pred_shape = getattr(pred.type, "shape", None)
     if pred_shape is not None and pred_shape != ():
@@ -169,8 +168,8 @@ def _uniform_cond_trace(
     pred = _ensure_trace_object(cur_ctx, pred)
 
     # Trace both branches (trace() handles lifting/capture inside each branch)
-    then_traced = trace(then_fn, *args, **kwargs)
-    else_traced = trace(else_fn, *args, **kwargs)
+    then_traced = el.trace(then_fn, *args, **kwargs)
+    else_traced = el.trace(else_fn, *args, **kwargs)
 
     # Validate branch output signatures match exactly
     if not then_traced.is_output_signature_match(else_traced):
@@ -185,10 +184,10 @@ def _uniform_cond_trace(
     # Collect argument TraceObjects (positional + keyword) for cond inputs
     # ------------------------------------------------------------------
     flat_inputs, _ = tree_flatten((args, kwargs))
-    arg_trace_objs: list[TraceObject] = [
+    arg_trace_objs: list[el.TraceObject] = [
         _ensure_trace_object(cur_ctx, val)
         for val in flat_inputs
-        if isinstance(val, TraceObject)
+        if isinstance(val, el.TraceObject)
     ]
     arg_values = [obj._graph_value for obj in arg_trace_objs]
     num_arg_vars = len(arg_trace_objs)
@@ -228,7 +227,7 @@ def _uniform_cond_trace(
 
 
 def uniform_cond(
-    pred: Object,
+    pred: el.Object,
     then_fn: Callable[..., Any],
     else_fn: Callable[..., Any],
     *args: Any,
@@ -257,19 +256,21 @@ def uniform_cond(
 # While loop (scaffold)
 # ---------------------------------------------------------------------------
 
-while_loop_p = Primitive("simp.while_loop")
+while_loop_p = el.Primitive("simp.while_loop")
 
 
 @while_loop_p.def_trace
 def _while_loop_trace(
-    cond_fn: Callable[[Object], Any],
-    body_fn: Callable[[Object], Any],
-    init: Object,
+    cond_fn: Callable[[el.Object], Any],
+    body_fn: Callable[[el.Object], Any],
+    init: el.Object,
 ) -> Any:
     """Trace-mode implementation for SIMP while_loop."""
 
-    cur_ctx = get_current_context()
-    assert isinstance(cur_ctx, Tracer), f"Expected Tracer context, got {type(cur_ctx)}"
+    cur_ctx = el.get_current_context()
+    assert isinstance(cur_ctx, el.Tracer), (
+        f"Expected Tracer context, got {type(cur_ctx)}"
+    )
 
     if not callable(cond_fn) or not callable(body_fn):
         raise TypeError("while_loop requires callable cond_fn and body_fn")
@@ -278,9 +279,9 @@ def _while_loop_trace(
     if not state_flat:
         raise TypeError("while_loop init must contain at least one Object")
 
-    state_trace_objs: list[TraceObject] = []
+    state_trace_objs: list[el.TraceObject] = []
     for leaf in state_flat:
-        if not isinstance(leaf, TraceObject):
+        if not isinstance(leaf, el.TraceObject):
             raise TypeError(
                 f"while_loop init leaves must be TraceObject, got {type(leaf)}"
             )
@@ -291,8 +292,8 @@ def _while_loop_trace(
     state_count = len(state_trace_objs)
 
     # Trace cond/body with the current state structure
-    cond_traced = trace(cond_fn, init)
-    body_traced = trace(body_fn, init)
+    cond_traced = el.trace(cond_fn, init)
+    body_traced = el.trace(body_fn, init)
 
     cond_outputs = cond_traced.graph.outputs
     if len(cond_outputs) != 1:
@@ -337,14 +338,14 @@ def _while_loop_trace(
         regions=[cond_traced.graph, body_traced.graph],
     )
 
-    result_trace_objs = [TraceObject(val, cur_ctx) for val in result_values]
+    result_trace_objs = [el.TraceObject(val, cur_ctx) for val in result_values]
     return state_treedef.unflatten(result_trace_objs)
 
 
 def while_loop(
-    cond_fn: Callable[[Object], Any],
-    body_fn: Callable[[Object], Any],
-    init: Object,
+    cond_fn: Callable[[el.Object], Any],
+    body_fn: Callable[[el.Object], Any],
+    init: el.Object,
 ) -> Any:
     """Execute a SIMP while loop that synchronizes across parties.
 
@@ -369,25 +370,25 @@ def while_loop(
 # Communication primitives (scaffold)
 # ---------------------------------------------------------------------------
 
-pshfl_p = Primitive("simp.pshfl")
-pshfl_s_p = Primitive("simp.pshfl_s")
-pconv_p = Primitive("simp.pconv")
+pshfl_p = el.Primitive("simp.pshfl")
+pshfl_s_p = el.Primitive("simp.pshfl_s")
+pconv_p = el.Primitive("simp.pconv")
 
 
 @pshfl_p.def_abstract_eval
-def _pshfl_ae(src_t: BaseType, index_t: BaseType) -> BaseType:
+def _pshfl_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
     # TODO: validate index_t is scalar; output type matches src_t (shape/dtype)
     return src_t
 
 
 @pshfl_s_p.def_abstract_eval
-def _pshfl_s_ae(src_t: BaseType, pmask: Any, src_ranks: Any) -> BaseType:
+def _pshfl_s_ae(src_t: elt.BaseType, pmask: Any, src_ranks: Any) -> elt.BaseType:
     # pmask/src_ranks are attributes until edsl.typing models them; passthrough type
     return src_t
 
 
 @pconv_p.def_abstract_eval
-def _pconv_ae(*vars_t: BaseType) -> BaseType:
+def _pconv_ae(*vars_t: elt.BaseType) -> elt.BaseType:
     # TODO: ensure non-empty, identical dtype/shape, disjoint pmasks (when available)
     # For now, return the type of the first input
     if not vars_t:

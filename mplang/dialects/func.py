@@ -5,28 +5,25 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from mplang.edsl.context import get_current_context
-from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import TraceObject, Tracer
-from mplang.edsl.tracer import trace as trace_fn
-from mplang.edsl.typing import CustomType
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 
-func_def_p = Primitive("func.func")
-call_p = Primitive("func.call")
-FUNCTION_TYPE = CustomType("function")
+func_def_p = el.Primitive("func.func")
+call_p = el.Primitive("func.call")
+FUNCTION_TYPE = elt.CustomType("function")
 
 
-def _current_tracer() -> Tracer:
-    ctx = get_current_context()
-    if not isinstance(ctx, Tracer):
+def _current_tracer() -> el.Tracer:
+    ctx = el.get_current_context()
+    if not isinstance(ctx, el.Tracer):
         raise TypeError(f"Expected Tracer context, got {type(ctx)}")
     return ctx
 
 
 @func_def_p.def_trace
-def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> TraceObject:
+def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> el.TraceObject:
     tracer = _current_tracer()
-    traced = trace_fn(fn, *args, **kwargs)
+    traced = el.trace(fn, *args, **kwargs)
     attrs = {
         "sym_name": traced.name,
         "in_var_pos": traced.in_var_pos,
@@ -44,15 +41,17 @@ def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> TraceObjec
         attrs=attrs,
         regions=[traced.graph],
     )
-    return TraceObject(value, tracer)
+    return el.TraceObject(value, tracer)
 
 
 @call_p.def_trace
-def _call_trace(fn_value: TraceObject, *args: Any) -> TraceObject | list[TraceObject]:
+def _call_trace(
+    fn_value: el.TraceObject, *args: Any
+) -> el.TraceObject | list[el.TraceObject]:
     tracer = _current_tracer()
-    if not isinstance(fn_value, TraceObject) or fn_value.type != FUNCTION_TYPE:
+    if not isinstance(fn_value, el.TraceObject) or fn_value.type != FUNCTION_TYPE:
         raise TypeError("func.call expects the callee TraceObject as first argument")
-    if not all(isinstance(arg, TraceObject) for arg in args):
+    if not all(isinstance(arg, el.TraceObject) for arg in args):
         raise TypeError("func.call arguments must be TraceObjects")
 
     defining_op = fn_value._graph_value.defining_op
@@ -75,11 +74,13 @@ def _call_trace(fn_value: TraceObject, *args: Any) -> TraceObject | list[TraceOb
     )
 
 
-def func(fn: Callable[..., Any], *args: TraceObject, **kwargs: Any) -> TraceObject:
+def func(
+    fn: Callable[..., Any], *args: el.TraceObject, **kwargs: Any
+) -> el.TraceObject:
     return func_def_p.bind(fn, *args, **kwargs)
 
 
-def call(fn_value: TraceObject, *args: TraceObject):
+def call(fn_value: el.TraceObject, *args: el.TraceObject):
     return call_p.bind(fn_value, *args)
 
 

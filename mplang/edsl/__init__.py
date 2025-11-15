@@ -1,105 +1,23 @@
-# Copyright 2025 Ant Group Co., Ltd.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+"""Public entrypoint for the MPLang EDSL.
 
-"""
-MPLang EDSL (Embedded Domain-Specific Language) - Experimental Architecture.
+This module keeps the surface area intentionally small so downstream code can
+simply write::
 
-This package contains the next-generation EDSL architecture for MPLang,
-designed with the following goals:
+    import mplang.edsl as el
+    import mplang.edsl.typing as elt
 
-1. **Modern IR**: Operation List (vs Expr Tree) for better optimization
-2. **Unified Type System**: typing.MPType as the single source of truth
-3. **Explicit Tracing**: No magic @primitive decorators
-4. **Extensibility**: Easy to add new backends (FHE, TEE, etc.)
-
-## Architecture Overview
-
-```
-User Code
-    ↓
-Tracer (explicit)
-    ↓
-Graph (Operation List + SSA Values)
-    ↓
-Lowering (to backend IR: MLIR, XLA, etc.)
-    ↓
-Execution (Simulator, Driver, etc.)
-```
-
-## Status
-
-**⚠️ EXPERIMENTAL**: This is a work-in-progress architecture. The stable API
-is in `mplang.core`. Use this package only for:
-
-- Contributing to the new architecture
-- Testing new features
-- Migration experiments
-
-## Migration Path
-
-Old Code (mplang.core):
-```python
-from mplang import function, peval
-
-
-@function
-def compute(x):
-    return x + 1
-```
-
-New Code (mplang.edsl):
-```python
-from mplang.edsl import Tracer, trace
-
-tracer = Tracer(cluster_spec)
-graph, outputs = tracer.trace(compute, x)
-```
-
-## Design Documents
-
-See `mplang/edsl/design/` for detailed design documents:
-- `architecture.md`: Complete EDSL architecture
-- `type_system.md`: New type system design
-- `migration.md`: Migration strategy
-
-## Current Implementation Status
-
-- [x] Type System (typing.py)
-- [ ] Graph IR (graph.py)
-- [ ] Builder API (builder.py)
-- [ ] Explicit Tracer (tracer.py)
-- [ ] Control Flow (primitives/)
-- [ ] Integration Tests
-
-## Contributing
-
-This is the cutting edge of MPLang development. If you want to contribute:
-
-1. Read the design docs in `design/`
-2. Check the current implementation status above
-3. Open an issue/PR to discuss your changes
-
-## See Also
-
-- `mplang.core`: Stable EDSL implementation
-- `mplang.ops`: Frontend operations (shared)
-- `mplang.kernels`: Backend implementations (shared)
+The `el` namespace re-exports the commonly used building blocks (context,
+graph, tracer, primitives, etc.), while the full type system lives under
+``mplang.edsl.typing``.
 """
 
-# Type System (ready to use)
-# Context (ready to use)
-from mplang.edsl.context import (
+from __future__ import annotations
+
+# Re-export the typing module so callers can `import mplang.edsl.typing as elt`
+from . import typing as typing
+
+# Context management
+from .context import (
     Context,
     get_current_context,
     get_default_interpreter,
@@ -107,89 +25,45 @@ from mplang.edsl.context import (
     push_context,
 )
 
-# Graph IR (ready to use)
-from mplang.edsl.graph import Graph, Operation, Value
+# Graph IR
+from .graph import Graph, Operation, Value
 
-# Interpreter (ready to use)
-from mplang.edsl.interpreter import InterpObject, Interpreter, interpret
+# Interpreter + execution helpers
+from .interpreter import InterpObject, Interpreter, interpret
 
-# JIT (ready to use)
-from mplang.edsl.jit import jit
-
-# Object Hierarchy (ready to use)
-from mplang.edsl.object import Object
-
-# Primitive (ready to use)
-from mplang.edsl.primitive import Primitive, primitive
-from mplang.edsl.printer import GraphPrinter, format_graph
-from mplang.edsl.tracer import TraceObject, Tracer, trace
-from mplang.edsl.typing import (
-    HE,
-    MP,
-    SIMD_HE,
-    SS,
-    BaseType,
-    Custom,
-    CustomType,
-    MPType,
-    ScalarHEType,
-    ScalarTrait,
-    ScalarType,
-    SIMDHEType,
-    SSType,
-    Table,
-    TableType,
-    Tensor,
-    TensorType,
-    f32,
-    f64,
-    i32,
-    i64,
-)
+# High-level helpers
+from .jit import jit
+from .object import Object
+from .primitive import Primitive, primitive
+from .printer import GraphPrinter, format_graph
+from .tracer import TracedFunction, TraceObject, Tracer, trace
 
 __all__ = [
-    "HE",
-    "MP",
-    "SIMD_HE",
-    "SS",
-    "BaseType",
+    # modules
+    "typing",
+    # context
     "Context",
-    "Custom",
-    "CustomType",
-    "Graph",
-    "GraphPrinter",
-    "InterpObject",
-    "Interpreter",
-    "MPType",
-    "Object",
-    "Operation",
-    "Primitive",
-    "SIMDHEType",
-    "SSType",
-    "ScalarHEType",
-    "ScalarTrait",
-    "ScalarType",
-    "Table",
-    "TableType",
-    "Tensor",
-    "TensorType",
-    "TraceObject",
-    "Tracer",
-    "Value",
-    "f32",
-    "f64",
-    "format_graph",
     "get_current_context",
     "get_default_interpreter",
-    "i32",
-    "i64",
-    "interpret",
-    "jit",
     "pop_context",
-    "primitive",
     "push_context",
+    # graph
+    "Graph",
+    "Operation",
+    "Value",
+    # interpreter
+    "InterpObject",
+    "Interpreter",
+    "interpret",
+    # primitives / helpers
+    "Primitive",
+    "primitive",
+    "GraphPrinter",
+    "format_graph",
+    "TraceObject",
+    "TracedFunction",
+    "Tracer",
     "trace",
+    "jit",
+    "Object",
 ]
-
-# Version info
-__version__ = "0.1.0-experimental"

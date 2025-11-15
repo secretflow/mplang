@@ -45,9 +45,7 @@ def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> el.TraceOb
 
 
 @call_p.def_trace
-def _call_trace(
-    fn_value: el.TraceObject, *args: Any
-) -> el.TraceObject | list[el.TraceObject]:
+def _call_trace(fn_value: el.TraceObject, *args: Any) -> Any:
     tracer = _current_tracer()
     if not isinstance(fn_value, el.TraceObject) or fn_value.type != FUNCTION_TYPE:
         raise TypeError("func.call expects the callee TraceObject as first argument")
@@ -76,11 +74,11 @@ def _call_trace(
 
 def func(
     fn: Callable[..., Any], *args: el.TraceObject, **kwargs: Any
-) -> el.TraceObject:
-    return func_def_p.bind(fn, *args, **kwargs)
+) -> el.TraceObject:  # type: ignore[misc]
+    return func_def_p.bind(fn, *args, **kwargs)  # type: ignore[no-any-return]
 
 
-def call(fn_value: el.TraceObject, *args: el.TraceObject):
+def call(fn_value: el.TraceObject, *args: el.TraceObject) -> Any:
     return call_p.bind(fn_value, *args)
 
 

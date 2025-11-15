@@ -65,11 +65,11 @@ def _table2tensor_ae(table_t: elt.TableType, *, number_rows: int) -> elt.TensorT
     def _scalar_dtype(col: elt.BaseType) -> elt.BaseType:
         if hasattr(col, "element_type"):
             tensor_col = col  # type: ignore[assignment]
-            if tensor_col.shape not in ((), None):
+            if tensor_col.shape not in ((), None):  # type: ignore[attr-defined]
                 raise TypeError(
                     "table2tensor expects scalar columns (rank-0 TensorType)"
                 )
-            return tensor_col.element_type
+            return tensor_col.element_type  # type: ignore[attr-defined,no-any-return]
         return col
 
     first_scalar = _scalar_dtype(first)
@@ -87,7 +87,7 @@ def _tensor2table_ae(
 ) -> elt.TableType:
     """Infer table type for table.tensor2table."""
 
-    if len(tensor_t.shape) != 2:
+    if tensor_t.shape is None or len(tensor_t.shape) != 2:
         raise TypeError("tensor2table expects rank-2 tensor (N, F)")
     n_cols = tensor_t.shape[1]
     if not column_names:
@@ -124,7 +124,7 @@ def run_sql(
     The `out_type` describes the resulting table schema (columns + types).
     """
 
-    return run_sql_p.bind(
+    return run_sql_p.bind(  # type: ignore[no-any-return]
         query,
         out_type=out_type,
         dialect=dialect,
@@ -135,13 +135,13 @@ def run_sql(
 def table2tensor(table: el.TraceObject, *, number_rows: int) -> el.TraceObject:
     """Convert a homogeneous table into a dense tensor."""
 
-    return table2tensor_p.bind(table, number_rows=number_rows)
+    return table2tensor_p.bind(table, number_rows=number_rows)  # type: ignore[no-any-return]
 
 
 def tensor2table(tensor: el.TraceObject, *, column_names: list[str]) -> el.TraceObject:
     """Convert a rank-2 tensor (N, F) into a table with named columns."""
 
-    return tensor2table_p.bind(tensor, column_names=column_names)
+    return tensor2table_p.bind(tensor, column_names=column_names)  # type: ignore[no-any-return]
 
 
 __all__ = [

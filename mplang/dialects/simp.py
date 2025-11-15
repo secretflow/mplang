@@ -244,9 +244,6 @@ def _uniform_cond_trace(
         regions=[then_traced.graph, else_traced.graph],
     )
 
-    # Return PyTree reconstructed from then/else signatures
-    if not isinstance(result_values, list):
-        result_values = [result_values]
     return _reconstruct_outputs(then_traced, cur_ctx, result_values)
 
 
@@ -359,9 +356,6 @@ def _while_loop_trace(
         output_types=state_types,
         regions=[cond_traced.graph, body_traced.graph],
     )
-
-    if not isinstance(result_values, list):
-        result_values = [result_values]
 
     result_trace_objs = [TraceObject(val, cur_ctx) for val in result_values]
     return state_treedef.unflatten(result_trace_objs)

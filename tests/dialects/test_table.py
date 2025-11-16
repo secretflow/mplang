@@ -14,16 +14,15 @@
 
 import numpy as np
 
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 from mplang.dialects.table import run_sql, table2tensor, tensor2table
-from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.tracer import trace
-from mplang.edsl.typing import Table, Tensor, f32
 
 
-def _sample_table() -> InterpObject:
-    ttype = Table[{"value": Tensor[f32, ()]}]
+def _sample_table() -> el.InterpObject:
+    ttype = elt.Table[{"value": elt.Tensor[elt.f32, ()]}]
     data = np.array([(1.0,)], dtype=[("value", np.float64)])
-    return InterpObject(data, ttype)
+    return el.InterpObject(data, ttype)
 
 
 def test_table_run_sql_op_emitted():
@@ -36,7 +35,7 @@ def test_table_run_sql_op_emitted():
             input_table=tbl,
         )
 
-    traced = trace(wrapper, table)
+    traced = el.trace(wrapper, table)
     graph = traced.graph
     assert len(graph.operations) == 1
     op = graph.operations[0]
@@ -51,7 +50,7 @@ def test_table_to_tensor_and_back():
         tensor = table2tensor(tbl, number_rows=1)
         return tensor2table(tensor, column_names=["value"])
 
-    traced = trace(wrapper, table)
+    traced = el.trace(wrapper, table)
     graph = traced.graph
     assert len(graph.operations) == 2
     assert [op.opcode for op in graph.operations] == [

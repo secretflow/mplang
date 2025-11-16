@@ -14,10 +14,9 @@
 
 import numpy as np
 
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 from mplang.dialects.tensor import get_run_jax_compilation, run_jax
-from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.tracer import trace
-from mplang.edsl.typing import Tensor, f32
 
 
 def _add_fn(x):
@@ -25,12 +24,12 @@ def _add_fn(x):
 
 
 def test_tensor_run_jax_op_emitted():
-    value = InterpObject(np.array(1.0), Tensor[f32, ()])
+    value = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(x):
         return run_jax(_add_fn, x)
 
-    traced = trace(wrapper, value)
+    traced = el.trace(wrapper, value)
     graph = traced.graph
 
     assert len(graph.operations) == 1

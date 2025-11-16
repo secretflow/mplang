@@ -21,10 +21,9 @@ Call them directly like functions: uniform_cond(...), while_loop(...)
 import numpy as np
 import pytest
 
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 from mplang.dialects.simp import peval, uniform_cond, while_loop
-from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.tracer import trace
-from mplang.edsl.typing import MP, MPType, Tensor, f32
 
 
 class TestUniformCond:
@@ -32,8 +31,8 @@ class TestUniformCond:
 
     def test_with_callables_true_branch(self):
         """Test uniform_cond traces correctly - graph structure independent of pred value."""
-        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
-        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x):
             return x  # Simple identity
@@ -44,7 +43,7 @@ class TestUniformCond:
         def test_fn(pred, x):
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
 
         # Verify graph has cond operation
@@ -54,8 +53,8 @@ class TestUniformCond:
 
     def test_with_callables_false_branch(self):
         """Test uniform_cond traces correctly - both branches traced regardless of pred."""
-        pred_val = InterpObject(np.array(False), Tensor[f32, ()])
-        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(False), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x):
             return x
@@ -66,7 +65,7 @@ class TestUniformCond:
         def test_fn(pred, x):
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
 
         # Verify graph structure (independent of pred value at trace time)
@@ -75,9 +74,9 @@ class TestUniformCond:
 
     def test_with_multiple_outputs(self):
         """Test uniform_cond with branches returning multiple values."""
-        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
-        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
-        y_val = InterpObject(np.array(3.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+        y_val = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x, y):
             return (x, y)
@@ -88,7 +87,7 @@ class TestUniformCond:
         def test_fn(pred, x, y):
             return uniform_cond(pred, then_fn, else_fn, x, y)
 
-        traced = trace(test_fn, pred_val, x_val, y_val)
+        traced = el.trace(test_fn, pred_val, x_val, y_val)
         graph = traced.graph
 
         # Verify cond operation exists
@@ -99,11 +98,10 @@ class TestUniformCond:
 
     def test_branches_must_match_output_types(self):
         """Test that branches with mismatched outputs raise TypeError."""
-        from mplang.edsl.primitive import Primitive
 
         # Create primitives that return different number of outputs
-        ret1_p = Primitive("test.ret1")
-        ret2_p = Primitive("test.ret2")
+        ret1_p = el.Primitive("test.ret1")
+        ret2_p = el.Primitive("test.ret2")
 
         @ret1_p.def_abstract_eval
         def _ret1_ae(x_type):
@@ -113,8 +111,8 @@ class TestUniformCond:
         def _ret2_ae(x_type):
             return [x_type, x_type]
 
-        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
-        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -127,13 +125,13 @@ class TestUniformCond:
 
         # Should raise TypeError due to output mismatch
         with pytest.raises(TypeError, match="output signature mismatch"):
-            trace(test_fn, pred_val, x_val)
+            el.trace(test_fn, pred_val, x_val)
 
     def test_with_multiple_args(self):
         """Test uniform_cond with multiple arguments."""
-        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
-        x_val = InterpObject(np.array(10.0), Tensor[f32, ()])
-        y_val = InterpObject(np.array(3.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(10.0), elt.Tensor[elt.f32, ()])
+        y_val = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x, y):
             return x
@@ -144,7 +142,7 @@ class TestUniformCond:
         def test_fn(pred, x, y):
             return uniform_cond(pred, then_fn, else_fn, x, y)
 
-        traced = trace(test_fn, pred_val, x_val, y_val)
+        traced = el.trace(test_fn, pred_val, x_val, y_val)
         graph = traced.graph
 
         # Verify graph structure
@@ -158,10 +156,10 @@ class TestUniformCond:
 
     def test_branch_captures_are_aligned(self):
         """Captured variables from both branches become explicit cond inputs."""
-        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
-        x_val = InterpObject(np.array(1.0), Tensor[f32, ()])
-        outer_a = InterpObject(np.array(2.0), Tensor[f32, ()])
-        outer_b = InterpObject(np.array(3.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+        outer_a = el.InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
+        outer_b = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x):
             return outer_a
@@ -172,7 +170,7 @@ class TestUniformCond:
         def test_fn(pred, x):
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
 
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -190,14 +188,14 @@ class TestUniformCond:
         """Test that verify_uniform flag uses global config."""
         from mplang.dialects import simp
 
-        pred_val = InterpObject(np.array(True), Tensor[f32, ()])
-        x_val = InterpObject(np.array(5.0), Tensor[f32, ()])
+        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         # Test with default (True)
         def test_fn(pred, x):
             return uniform_cond(pred, lambda x: x, lambda x: x, x)
 
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
 
         cond_ops = [op for op in graph.operations if op.opcode == "simp.uniform_cond"]
@@ -208,7 +206,7 @@ class TestUniformCond:
         original_value = simp.VERIFY_UNIFORM_DEFAULT
         try:
             simp.VERIFY_UNIFORM_DEFAULT = False
-            traced2 = trace(test_fn, pred_val, x_val)
+            traced2 = el.trace(test_fn, pred_val, x_val)
             graph2 = traced2.graph
             cond_ops2 = [
                 op for op in graph2.operations if op.opcode == "simp.uniform_cond"
@@ -224,12 +222,10 @@ class TestUniformCondTracing:
 
     def test_trace_simple_cond(self):
         """Test tracing uniform_cond with simple branches."""
-        from mplang.edsl.interpreter import InterpObject
-        from mplang.edsl.typing import Tensor, f32
 
         # Create test inputs
-        pred_val = InterpObject(True, Tensor[f32, ()])
-        x_val = InterpObject(5.0, Tensor[f32, ()])
+        pred_val = el.InterpObject(True, elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(5.0, elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -241,7 +237,7 @@ class TestUniformCondTracing:
             return uniform_cond(pred, then_fn, else_fn, x)
 
         # Trace the function
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
 
         # Verify graph structure
@@ -258,19 +254,16 @@ class TestUniformCondTracing:
 
     def test_trace_cond_with_ops(self):
         """Test tracing uniform_cond with nested primitives inside branches."""
-        from mplang.edsl.interpreter import InterpObject
-        from mplang.edsl.primitive import Primitive
-        from mplang.edsl.typing import Tensor, f32
 
         # Create a simple test primitive
-        negate_p = Primitive("test.negate")
+        negate_p = el.Primitive("test.negate")
 
         @negate_p.def_abstract_eval
         def _negate_ae(x_type):
             return x_type
 
-        pred_val = InterpObject(True, Tensor[f32, ()])
-        x_val = InterpObject(5.0, Tensor[f32, ()])
+        pred_val = el.InterpObject(True, elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(5.0, elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -283,7 +276,7 @@ class TestUniformCondTracing:
 
             return uniform_cond(pred, then_fn, else_fn, x)
 
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
 
         # Find the cond operation
@@ -302,15 +295,13 @@ class TestUniformCondTracing:
 
     def test_trace_cond_type_mismatch(self):
         """Test that branches with mismatched output types raise TypeError."""
-        from mplang.edsl.interpreter import InterpObject
-        from mplang.edsl.typing import Tensor, f32
 
-        pred_val = InterpObject(True, Tensor[f32, ()])
-        x_val = InterpObject(5.0, Tensor[f32, ()])
+        pred_val = el.InterpObject(True, elt.Tensor[elt.f32, ()])
+        x_val = el.InterpObject(5.0, elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
-                # Return f32
+                # Return elt.f32
                 return x
 
             def else_fn(x):
@@ -321,7 +312,7 @@ class TestUniformCondTracing:
             return uniform_cond(pred, then_fn, else_fn, x)
 
         # This should work fine (same types)
-        traced = trace(test_fn, pred_val, x_val)
+        traced = el.trace(test_fn, pred_val, x_val)
         graph = traced.graph
         assert graph is not None
 
@@ -331,8 +322,8 @@ class TestWhileLoop:
 
     def test_traces_basic_loop(self):
         """while_loop should emit a loop op with cond/body regions."""
-        flag = InterpObject(np.array(True), Tensor[f32, ()])
-        value = InterpObject(np.array(0.0), Tensor[f32, ()])
+        flag = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        value = el.InterpObject(np.array(0.0), elt.Tensor[elt.f32, ()])
 
         def cond_fn(state):
             loop_flag, _ = state
@@ -345,7 +336,7 @@ class TestWhileLoop:
         def test_fn(loop_flag, loop_value):
             return while_loop(cond_fn, body_fn, (loop_flag, loop_value))
 
-        traced = trace(test_fn, flag, value)
+        traced = el.trace(test_fn, flag, value)
         graph = traced.graph
 
         loop_ops = [op for op in graph.operations if op.opcode == "simp.while_loop"]
@@ -363,7 +354,7 @@ class TestWhileLoop:
 
     def test_cond_must_return_scalar(self):
         """cond_fn returning multiple outputs should raise."""
-        flag = InterpObject(np.array(True), Tensor[f32, ()])
+        flag = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
 
         def cond_fn(state):
             return (state, state)
@@ -375,12 +366,12 @@ class TestWhileLoop:
             return while_loop(cond_fn, body_fn, loop_flag)
 
         with pytest.raises(TypeError, match="cond_fn must return exactly one output"):
-            trace(test_fn, flag)
+            el.trace(test_fn, flag)
 
     def test_body_must_match_state_arity(self):
         """body_fn returning mismatched state size should error."""
-        flag = InterpObject(np.array(True), Tensor[f32, ()])
-        extra = InterpObject(np.array(1.0), Tensor[f32, ()])
+        flag = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        extra = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
 
         def cond_fn(state):
             loop_flag, _ = state
@@ -396,16 +387,16 @@ class TestWhileLoop:
         with pytest.raises(
             TypeError, match="body_fn must return same number of values"
         ):
-            trace(test_fn, flag, extra)
+            el.trace(test_fn, flag, extra)
 
 
 class TestPeval:
     """Tests specific to the peval primitive."""
 
     def test_local_region_unwraps_mp_types(self):
-        mp_tensor = MP[Tensor[f32, ()], (0, 1)]
-        x = InterpObject(np.array(1.0, dtype=np.float32), mp_tensor)
-        bias = InterpObject(np.array(2.0, dtype=np.float32), mp_tensor)
+        mp_tensor = elt.MP[elt.Tensor[elt.f32, ()], (0, 1)]
+        x = el.InterpObject(np.array(1.0, dtype=np.float32), mp_tensor)
+        bias = el.InterpObject(np.array(2.0, dtype=np.float32), mp_tensor)
 
         def wrapper(val, captured):
             def local_fn(inner):
@@ -413,7 +404,7 @@ class TestPeval:
 
             return peval(None, local_fn, val)
 
-        traced = trace(wrapper, x, bias)
+        traced = el.trace(wrapper, x, bias)
         graph = traced.graph
         peval_ops = [op for op in graph.operations if op.opcode == "simp.peval"]
         assert len(peval_ops) == 1
@@ -423,13 +414,13 @@ class TestPeval:
         # First input comes from peval argument, second from captured bias.
         assert len(region.inputs) == 2
         for value in region.inputs:
-            assert not isinstance(value.type, MPType)
-            assert str(value.type) == str(Tensor[f32, ()])
+            assert not isinstance(value.type, elt.MPType)
+            assert str(value.type) == str(elt.Tensor[elt.f32, ()])
 
         # Outputs inside the region should also be unwrapped.
         for value in region.outputs:
-            assert not isinstance(value.type, MPType)
+            assert not isinstance(value.type, elt.MPType)
 
         # Outermost op re-wraps with MP typing.
         for value in peval_op.outputs:
-            assert isinstance(value.type, MPType)
+            assert isinstance(value.type, elt.MPType)

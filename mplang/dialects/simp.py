@@ -15,7 +15,7 @@ See individual primitive docstrings for detailed documentation.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Iterable
 
 from jax.tree_util import tree_flatten
 
@@ -101,6 +101,96 @@ def _align_region_inputs(
 
     traced_fn.graph.inputs = leading_inputs + new_capture_inputs
     traced_fn.captured = list(capture_order)
+
+
+def _normalize_party_spec(value: Any) -> tuple[int, ...] | None:
+    """Normalize user-provided party specifications into a sorted tuple."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, Iterable):
+        ranks: set[int] = set()
+        for item in value:
+            if not isinstance(item, int):
+                raise TypeError(
+                    "party iterable must contain integers, "
+                    f"got element {item!r} of type {type(item)}"
+                )
+            if item < 0:
+                raise ValueError("party ranks must be non-negative")
+            ranks.add(item)
+        return tuple(sorted(ranks))
+
+    raise TypeError(
+        "parties must be None or an iterable/tuple of integer ranks; "
+        f"got value {value!r} of type {type(value)}"
+    )
+
+
+def _parties_from_type(base_type: elt.BaseType) -> tuple[int, ...] | None:
+    """Extract party tuple from MP typed values."""
+    if isinstance(base_type, elt.MPType):
+        return tuple(base_type.parties)
+    return None
+
+
+def _deduce_parties(types: list[elt.BaseType]) -> tuple[int, ...] | None:
+    """Deduce common parties by intersecting all known party sets."""
+    masks: list[tuple[int, ...] | None] = [_parties_from_type(tp) for tp in types]
+    if not masks or any(m is None for m in masks):
+        return None
+    current = set(masks[0])  # at least one element
+    for parties in masks[1:]:
+        assert parties is not None  # guarded above
+        current &= set(parties)
+    return tuple(sorted(current))
+
+
+def _is_subset(part: tuple[int, ...], sup: tuple[int, ...]) -> bool:
+    return set(part).issubset(set(sup))
+
+
+def _wrap_with_mp(
+    base_type: elt.BaseType, parties: tuple[int, ...] | None
+) -> elt.BaseType:
+    """Wrap base_type with MP typing when a party mask is available."""
+    if parties is None or isinstance(base_type, elt.MPType):
+        return base_type
+    # MPType.__class_getitem__ expects (value_type, parties)
+    return elt.MP[(base_type, parties)]
+
+
+class _LocalMPTracer(el.Tracer):
+    """Tracer for single-party regions executed under MP context."""
+
+    def _lift(self, obj: el.Object) -> el.TraceObject:
+        """Override _lift to unwrap MP-typed Objects to their value types.
+
+        This enables single-party regions to work with the underlying value types
+        while enforcing that all inputs are MP-typed in the outer context.
+
+        Args:
+            obj: Object to lift (must be MP-typed)
+
+        Returns:
+            TraceObject with value_type (unwrapped from MPType)
+
+        Raises:
+            TypeError: If obj is not MP-typed
+        """
+        obj_type = obj.type
+        if not isinstance(obj_type, elt.MPType):
+            raise TypeError(
+                f"simp.peval local regions expect MP-typed values, got type {obj_type}"
+            )
+
+        # Call base _lift to create graph input
+        lifted = super()._lift(obj)
+
+        # Unwrap MPType → value_type
+        lifted._graph_value.type = obj_type.value_type
+        return lifted
 
 
 # ---------------------------------------------------------------------------
@@ -370,9 +460,122 @@ def while_loop(
 # Communication primitives (scaffold)
 # ---------------------------------------------------------------------------
 
+peval_p = el.Primitive("simp.peval")
 pshfl_p = el.Primitive("simp.pshfl")
 pshfl_s_p = el.Primitive("simp.pshfl_s")
 pconv_p = el.Primitive("simp.pconv")
+
+
+@peval_p.def_trace
+def _peval_trace(
+    parties: tuple[int, ...] | Iterable[int] | None,
+    local_fn: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Trace a local single-party region executed under a specific party mask.
+
+    Args:
+        parties: Optional specification of participating party ranks. Accepts
+            tuples/iterables of ints or ``None`` (auto-deduction).
+        local_fn: Callable representing the single-party function body.
+        *args: Positional arguments forming a PyTree of MPObjects /
+            TraceObjects / immediates passed to the region.
+        **kwargs: Keyword arguments forwarded to ``local_fn``.
+
+    Returns:
+        PyTree of TraceObjects matching the structure of ``local_fn`` outputs.
+
+    Raises:
+        TypeError: If ``local_fn`` is not callable or arguments contain invalid
+            types for a SIMP region.
+        ValueError: When the explicitly provided parties are not a subset of the
+            deduced parties from arguments.
+    """
+
+    cur_ctx = el.get_current_context()
+    if not isinstance(cur_ctx, el.Tracer):
+        raise TypeError(f"simp.peval must run inside Tracer, got {type(cur_ctx)}")
+    if not callable(local_fn):
+        raise TypeError(f"local_fn must be callable, got {type(local_fn)}")
+
+    requested_parties = _normalize_party_spec(parties)
+
+    # Collect argument TraceObjects for op inputs and type inference.
+    flat_inputs, _ = tree_flatten((args, kwargs))
+    arg_trace_objs = [
+        _ensure_trace_object(cur_ctx, val)
+        for val in flat_inputs
+        if isinstance(val, el.TraceObject)
+    ]
+    arg_values = [obj._graph_value for obj in arg_trace_objs]
+    arg_types = [obj.type for obj in arg_trace_objs]
+    num_arg_vars = len(arg_trace_objs)
+
+    deduced_parties = _deduce_parties(arg_types)
+    if requested_parties is not None and deduced_parties is not None:
+        if not _is_subset(requested_parties, deduced_parties):
+            raise ValueError(
+                "Specified parties must be a subset of deduced parties: "
+                f"requested={requested_parties}, deduced={deduced_parties}"
+            )
+
+    effective_parties = requested_parties or deduced_parties
+
+    local_traced = _LocalMPTracer().run(local_fn, *args, **kwargs)
+    _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
+
+    capture_trace_objs = [
+        _recapture_object(cur_ctx, obj) for obj in local_traced.captured
+    ]
+    capture_values = [obj._graph_value for obj in capture_trace_objs]
+
+    region_inputs = [*arg_values, *capture_values]
+    result_types = [
+        _wrap_with_mp(value.type, effective_parties)
+        for value in local_traced.graph.outputs
+    ]
+
+    attrs = {
+        "fn_name": local_traced.name,
+        "parties": list(effective_parties) if effective_parties is not None else None,
+        "requested_parties": (
+            list(requested_parties) if requested_parties is not None else None
+        ),
+    }
+
+    result_values = cur_ctx.graph.add_op(
+        opcode="simp.peval",
+        inputs=region_inputs,
+        output_types=result_types,
+        attrs=attrs,
+        regions=[local_traced.graph],
+    )
+
+    return cur_ctx.reconstruct_outputs(
+        local_traced.out_var_pos,
+        local_traced.out_imms,
+        local_traced.out_tree,
+        result_values,
+    )
+
+
+def peval(
+    parties: tuple[int, ...] | Iterable[int] | None,
+    local_fn: Callable[..., Any],
+    *call_args: Any,
+    **call_kwargs: Any,
+) -> Any:
+    """Convenience wrapper for the SIMP peval primitive.
+
+    Args:
+        parties: Optional tuple/iterable specifying participating parties.
+            ``None`` lets the primitive infer parties from its arguments.
+        local_fn: Callable representing the single-party computation.
+        *call_args: Positional arguments forwarded to ``local_fn``.
+        **call_kwargs: Keyword arguments forwarded to ``local_fn``.
+    """
+    return peval_p.bind(parties, local_fn, *call_args, **call_kwargs)
 
 
 @pshfl_p.def_abstract_eval
@@ -415,6 +618,8 @@ def _pconv_trace(*_args: Any, **_kwargs: Any) -> Any:
 
 __all__ = [
     # Communication
+    "peval",
+    "peval_p",
     "pconv_p",
     "pshfl_p",
     "pshfl_s_p",

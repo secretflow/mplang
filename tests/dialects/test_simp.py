@@ -21,10 +21,10 @@ Call them directly like functions: uniform_cond(...), while_loop(...)
 import numpy as np
 import pytest
 
-from mplang.dialects.simp import uniform_cond, while_loop
+from mplang.dialects.simp import peval, uniform_cond, while_loop
 from mplang.edsl.interpreter import InterpObject
 from mplang.edsl.tracer import trace
-from mplang.edsl.typing import Tensor, f32
+from mplang.edsl.typing import MP, MPType, Tensor, f32
 
 
 class TestUniformCond:
@@ -397,3 +397,39 @@ class TestWhileLoop:
             TypeError, match="body_fn must return same number of values"
         ):
             trace(test_fn, flag, extra)
+
+
+class TestPeval:
+    """Tests specific to the peval primitive."""
+
+    def test_local_region_unwraps_mp_types(self):
+        mp_tensor = MP[Tensor[f32, ()], (0, 1)]
+        x = InterpObject(np.array(1.0, dtype=np.float32), mp_tensor)
+        bias = InterpObject(np.array(2.0, dtype=np.float32), mp_tensor)
+
+        def wrapper(val, captured):
+            def local_fn(inner):
+                return inner, captured
+
+            return peval(None, local_fn, val)
+
+        traced = trace(wrapper, x, bias)
+        graph = traced.graph
+        peval_ops = [op for op in graph.operations if op.opcode == "simp.peval"]
+        assert len(peval_ops) == 1
+        peval_op = peval_ops[0]
+        region = peval_op.regions[0]
+
+        # First input comes from peval argument, second from captured bias.
+        assert len(region.inputs) == 2
+        for value in region.inputs:
+            assert not isinstance(value.type, MPType)
+            assert str(value.type) == str(Tensor[f32, ()])
+
+        # Outputs inside the region should also be unwrapped.
+        for value in region.outputs:
+            assert not isinstance(value.type, MPType)
+
+        # Outermost op re-wraps with MP typing.
+        for value in peval_op.outputs:
+            assert isinstance(value.type, MPType)

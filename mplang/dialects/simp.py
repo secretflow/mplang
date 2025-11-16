@@ -35,31 +35,13 @@ VERIFY_UNIFORM_DEFAULT = True
 # ---------------------------------------------------------------------------
 
 
-def _ensure_trace_object(ctx: el.Tracer, obj: el.TraceObject) -> el.TraceObject:
-    """Ensure a TraceObject belongs to the current tracer context."""
-    if obj._tracer is ctx:
-        return obj
-    lifted = ctx.lift(obj)
-    # Internal invariant: lift() must return TraceObject for Object inputs
-    assert isinstance(lifted, el.TraceObject), (
-        "TraceContext.lift must return TraceObject for Objects"
-    )
-    return lifted
-
-
-def _recapture_object(ctx: el.Tracer, obj: el.Object) -> el.TraceObject:
-    """Capture any Object into the current tracer as a TraceObject.
-
-    This is a simple wrapper around lift() with an assertion.
-    The lift() method already handles both TraceObject (same/different context)
-    and InterpObject cases correctly.
-    """
-    lifted = ctx.lift(obj)
-    # Internal invariant: lift() must return TraceObject for Object inputs
-    assert isinstance(lifted, el.TraceObject), (
-        "Tracer.lift must return TraceObject for Objects"
-    )
-    return lifted
+def _validate_scalar_predicate(value: el.graph.Value, context: str) -> None:
+    """Validate that a graph value represents a scalar predicate."""
+    shape = getattr(value.type, "shape", None)
+    if shape is not None and shape != ():
+        raise TypeError(
+            f"{context} must be scalar, got shape {shape} with type {value.type}"
+        )
 
 
 def _merge_captures(*capture_lists: list[el.Object]) -> list[el.Object]:
@@ -80,19 +62,15 @@ def _align_region_inputs(
     traced_fn: el.TracedFunction, leading_count: int, capture_order: list[el.Object]
 ) -> None:
     """Align region graph inputs as [leading_values..., captures...] sequence."""
-
-    if len(traced_fn.graph.inputs) < leading_count:
-        raise TypeError(
-            "Region inputs shorter than required leading values; expected "
-            f"{leading_count}, got {len(traced_fn.graph.inputs)}"
-        )
+    assert len(traced_fn.graph.inputs) >= leading_count
 
     leading_inputs = traced_fn.graph.inputs[:leading_count]
     capture_inputs = traced_fn.graph.inputs[leading_count:]
-    if traced_fn.captured:
-        capture_map = dict(zip(traced_fn.captured, capture_inputs, strict=True))
-    else:
-        capture_map = {}
+    capture_map = (
+        dict(zip(traced_fn.captured, capture_inputs, strict=True))
+        if traced_fn.captured
+        else {}
+    )
 
     new_capture_inputs = []
     for capture_obj in capture_order:
@@ -124,7 +102,6 @@ def _normalize_parties(value: tuple[int, ...] | None) -> tuple[int, ...] | None:
     if value is None:
         return None
 
-    # Validate all elements are non-negative integers
     for rank in value:
         if not isinstance(rank, int):
             raise TypeError(
@@ -133,7 +110,6 @@ def _normalize_parties(value: tuple[int, ...] | None) -> tuple[int, ...] | None:
         if rank < 0:
             raise ValueError(f"party rank must be non-negative, got {rank}")
 
-    # Return sorted deduplicated tuple (consistent with MPType.parties)
     return tuple(sorted(set(value)))
 
 
@@ -149,9 +125,9 @@ def _deduce_parties(types: list[elt.BaseType]) -> tuple[int, ...] | None:
     masks: list[tuple[int, ...] | None] = [_parties_from_type(tp) for tp in types]
     if not masks or any(m is None for m in masks):
         return None
-    current = set(masks[0])  # at least one element
+    current = set(masks[0])
     for parties in masks[1:]:
-        assert parties is not None  # Type narrowing: guarded by check above
+        assert parties is not None
         current &= set(parties)
     return tuple(sorted(current))
 
@@ -162,7 +138,6 @@ def _wrap_with_mp(
     """Wrap base_type with MP typing when a party mask is available."""
     if parties is None or isinstance(base_type, elt.MPType):
         return base_type
-    # MPType.__class_getitem__ expects (value_type, parties)
     return elt.MP[base_type, parties]
 
 
@@ -190,10 +165,7 @@ class _LocalMPTracer(el.Tracer):
                 f"simp.peval local regions expect MP-typed values, got type {obj_type}"
             )
 
-        # Call base _lift to create graph input
         lifted = super()._lift(obj)
-
-        # Unwrap MPType → value_type
         lifted._graph_value.type = obj_type.value_type
         return lifted
 
@@ -245,29 +217,16 @@ def _uniform_cond_trace(
         >>> result = uniform_cond(pred, then_fn, else_fn, x, y)
     """
     cur_ctx = el.get_current_context()
-    if not isinstance(cur_ctx, el.Tracer):
-        raise TypeError(
-            f"uniform_cond must be called within a Tracer context, got {type(cur_ctx).__name__}"
-        )
+    assert isinstance(cur_ctx, el.Tracer)
 
-    # ------------------------------------------------------------------
-    # Validate predicate / branch signatures
-    # ------------------------------------------------------------------
     if not isinstance(pred, el.TraceObject):
         raise TypeError(f"predicate must be TraceObject, got {type(pred)}")
-    pred_shape = getattr(pred.type, "shape", None)
-    if pred_shape is not None and pred_shape != ():
-        raise TypeError(f"uniform_cond predicate must be scalar, got type {pred.type}")
+    _validate_scalar_predicate(pred._graph_value, "uniform_cond predicate")
     if not callable(then_fn) or not callable(else_fn):
         raise TypeError("In trace mode, both branches must be callable functions")
 
-    pred = _ensure_trace_object(cur_ctx, pred)
-
-    # Trace both branches (trace() handles lifting/capture inside each branch)
     then_traced = el.trace(then_fn, *args, **kwargs)
     else_traced = el.trace(else_fn, *args, **kwargs)
-
-    # Validate branch output signatures match exactly
     if not then_traced.is_output_signature_match(else_traced):
         then_types = [v.type for v in then_traced.graph.outputs]
         else_types = [v.type for v in else_traced.graph.outputs]
@@ -276,33 +235,21 @@ def _uniform_cond_trace(
             f"then={then_types}, else={else_types}"
         )
 
-    # ------------------------------------------------------------------
-    # Collect argument TraceObjects (positional + keyword) for cond inputs
-    # ------------------------------------------------------------------
     flat_inputs, _ = tree_flatten((args, kwargs))
     arg_trace_objs: list[el.TraceObject] = [
-        _ensure_trace_object(cur_ctx, val)
-        for val in flat_inputs
-        if isinstance(val, el.TraceObject)
+        val for val in flat_inputs if isinstance(val, el.TraceObject)
     ]
     arg_values = [obj._graph_value for obj in arg_trace_objs]
     num_arg_vars = len(arg_trace_objs)
 
-    # ------------------------------------------------------------------
-    # Align captures from both branches and recapture into current context
-    # ------------------------------------------------------------------
     all_captures = _merge_captures(then_traced.captured, else_traced.captured)
 
     _align_region_inputs(then_traced, num_arg_vars, all_captures)
     _align_region_inputs(else_traced, num_arg_vars, all_captures)
 
-    # Recapture each capture object into the current cond tracer context
-    capture_trace_objs = [_recapture_object(cur_ctx, obj) for obj in all_captures]
+    capture_trace_objs = [cur_ctx.lift(obj) for obj in all_captures]
     capture_values = [obj._graph_value for obj in capture_trace_objs]
 
-    # ------------------------------------------------------------------
-    # Build cond operation with aligned inputs / captures
-    # ------------------------------------------------------------------
     output_types = [v.type for v in then_traced.graph.outputs]
     cond_inputs = [pred._graph_value, *arg_values, *capture_values]
 
@@ -357,20 +304,15 @@ while_loop_p = el.Primitive("simp.while_loop")
 
 @while_loop_p.def_trace
 def _while_loop_trace(
-    cond_fn: Callable[[el.Object], Any],
-    body_fn: Callable[[el.Object], Any],
-    init: el.Object,
+    cond_fn: Callable[[Any], Any],
+    body_fn: Callable[[Any], Any],
+    init: Any,
 ) -> Any:
     """Trace-mode implementation for SIMP while_loop."""
 
     cur_ctx = el.get_current_context()
-    if not isinstance(cur_ctx, el.Tracer):
-        raise TypeError(
-            f"while_loop must be called within a Tracer context, got {type(cur_ctx).__name__}"
-        )
-
-    if not callable(cond_fn) or not callable(body_fn):
-        raise TypeError("while_loop requires callable cond_fn and body_fn")
+    assert isinstance(cur_ctx, el.Tracer)
+    assert callable(cond_fn) and callable(body_fn)
 
     state_flat, state_treedef = tree_flatten(init)
     if not state_flat:
@@ -382,33 +324,37 @@ def _while_loop_trace(
             raise TypeError(
                 f"while_loop init leaves must be TraceObject, got {type(leaf)}"
             )
-        state_trace_objs.append(_ensure_trace_object(cur_ctx, leaf))
+        state_trace_objs.append(leaf)
 
     state_values = [obj._graph_value for obj in state_trace_objs]
     state_types = [obj.type for obj in state_trace_objs]
     state_count = len(state_trace_objs)
 
-    # Trace cond/body with the current state structure
     cond_traced = el.trace(cond_fn, init)
     body_traced = el.trace(body_fn, init)
 
-    cond_outputs = cond_traced.graph.outputs
-    if len(cond_outputs) != 1:
+    cond_output_count = len(cond_traced.out_var_pos) + len(cond_traced.out_imms)
+    if cond_output_count != 1:
         raise TypeError(
             "while_loop cond_fn must return exactly one output, "
-            f"got {len(cond_outputs)}"
+            f"got {cond_output_count}"
         )
-    cond_shape = getattr(cond_outputs[0].type, "shape", None)
-    if cond_shape is not None and cond_shape != ():
-        raise TypeError(
-            f"while_loop cond_fn output must be scalar, got shape {cond_shape}"
+    if cond_traced.out_var_pos:
+        _validate_scalar_predicate(
+            cond_traced.graph.outputs[0], "while_loop cond_fn output"
         )
 
+    body_output_count = len(body_traced.out_var_pos) + len(body_traced.out_imms)
+    if body_output_count != state_count:
+        raise TypeError(
+            "while_loop body_fn must return same number of values as init state: "
+            f"{state_count} expected, got {body_output_count}"
+        )
     body_outputs = body_traced.graph.outputs
     if len(body_outputs) != state_count:
         raise TypeError(
-            "while_loop body_fn must return same number of values as init state: "
-            f"{state_count} expected, got {len(body_outputs)}"
+            "while_loop body_fn must return all Variables (no immediates allowed in loop state), "
+            f"expected {state_count} Variables, got {len(body_outputs)}"
         )
     for idx, (out_val, state_obj) in enumerate(
         zip(body_outputs, state_trace_objs, strict=True)
@@ -424,7 +370,7 @@ def _while_loop_trace(
     _align_region_inputs(cond_traced, state_count, all_captures)
     _align_region_inputs(body_traced, state_count, all_captures)
 
-    capture_trace_objs = [_recapture_object(cur_ctx, obj) for obj in all_captures]
+    capture_trace_objs = [cur_ctx.lift(obj) for obj in all_captures]
     capture_values = [obj._graph_value for obj in capture_trace_objs]
 
     loop_inputs = [*state_values, *capture_values]
@@ -440,9 +386,9 @@ def _while_loop_trace(
 
 
 def while_loop(
-    cond_fn: Callable[[el.Object], Any],
-    body_fn: Callable[[el.Object], Any],
-    init: el.Object,
+    cond_fn: Callable[[Any], Any],
+    body_fn: Callable[[Any], Any],
+    init: Any,
 ) -> Any:
     """Execute a SIMP while loop that synchronizes across parties.
 
@@ -501,29 +447,20 @@ def _peval_trace(
     """
 
     cur_ctx = el.get_current_context()
-    if not isinstance(cur_ctx, el.Tracer):
-        raise TypeError(f"simp.peval must run inside Tracer, got {type(cur_ctx)}")
-    if not callable(local_fn):
-        raise TypeError(f"local_fn must be callable, got {type(local_fn)}")
+    assert isinstance(cur_ctx, el.Tracer)
+    assert callable(local_fn)
 
     requested_parties = _normalize_parties(parties)
 
-    # Trace local region with _LocalMPTracer to discover all inputs (args + captures)
     local_tracer = _LocalMPTracer()
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
 
-    # Extract all freevars (args + captures) from the tracer
-    # _freevars contains: {obj_id: (original_obj, graph_value)}
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     all_input_types = [obj.type for obj in all_input_objs]
-
-    # Deduce parties from ALL inputs that flow into the region
     deduced_parties = _deduce_parties(all_input_types)
 
-    # Determine effective parties: requested takes precedence, then deduced
     if requested_parties is not None:
         effective_parties = requested_parties
-        # Validate: requested parties should be covered by input parties
         if deduced_parties is not None:
             if not set(requested_parties).issubset(set(deduced_parties)):
                 raise ValueError(
@@ -532,22 +469,14 @@ def _peval_trace(
                 )
     else:
         effective_parties = deduced_parties
-        # If neither requested nor deduced, we cannot determine execution context
-        # This is acceptable if all args are non-MP (e.g., constants), but may be an error
-        # For now, allow None to propagate (runtime/interpreter should handle)
 
-    # Separate explicit args from captures for proper region input ordering
-    # The tracer already separated them: in_vars = args, captured = captures
     flat_inputs, _ = tree_flatten((args, kwargs))
     num_arg_vars = sum(1 for val in flat_inputs if isinstance(val, el.Object))
 
-    # Align region inputs as [args..., captures...]
     _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
 
-    # Recapture all freevars into outer context
-    # _freevars already contains all inputs in insertion order (args first, then captures)
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
-    recaptured_objs = [_recapture_object(cur_ctx, obj) for obj in all_input_objs]
+    recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
     result_types = [
         _wrap_with_mp(value.type, effective_parties)
@@ -598,27 +527,21 @@ def peval(
 
 @pshfl_p.def_abstract_eval
 def _pshfl_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
-    # TODO: validate index_t is scalar; output type matches src_t (shape/dtype)
     return src_t
 
 
 @pshfl_s_p.def_abstract_eval
 def _pshfl_s_ae(src_t: elt.BaseType, pmask: Any, src_ranks: Any) -> elt.BaseType:
-    # pmask/src_ranks are attributes until edsl.typing models them; passthrough type
     return src_t
 
 
 @pconv_p.def_abstract_eval
 def _pconv_ae(*vars_t: elt.BaseType) -> elt.BaseType:
-    # TODO: ensure non-empty, identical dtype/shape, disjoint pmasks (when available)
-    # For now, return the type of the first input
     if not vars_t:
         raise TypeError("pconv requires at least one input type")
     return vars_t[0]
 
 
-# No eager impls for communication yet; they depend on runtime/party environment
-# Use def_trace to make that explicit.
 @pshfl_p.def_trace
 def _pshfl_trace(*_args: Any, **_kwargs: Any) -> Any:
     raise NotImplementedError("simp.pshfl execution is not implemented yet")

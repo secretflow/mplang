@@ -15,7 +15,7 @@ See individual primitive docstrings for detailed documentation.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Iterable
+from typing import Any
 
 from jax.tree_util import tree_flatten
 
@@ -40,6 +40,7 @@ def _ensure_trace_object(ctx: el.Tracer, obj: el.TraceObject) -> el.TraceObject:
     if obj._tracer is ctx:
         return obj
     lifted = ctx.lift(obj)
+    # Internal invariant: lift() must return TraceObject for Object inputs
     assert isinstance(lifted, el.TraceObject), (
         "TraceContext.lift must return TraceObject for Objects"
     )
@@ -47,12 +48,16 @@ def _ensure_trace_object(ctx: el.Tracer, obj: el.TraceObject) -> el.TraceObject:
 
 
 def _recapture_object(ctx: el.Tracer, obj: el.Object) -> el.TraceObject:
-    """Capture any Object into the current tracer as a TraceObject."""
-    if isinstance(obj, el.TraceObject):
-        return _ensure_trace_object(ctx, obj)
+    """Capture any Object into the current tracer as a TraceObject.
+
+    This is a simple wrapper around lift() with an assertion.
+    The lift() method already handles both TraceObject (same/different context)
+    and InterpObject cases correctly.
+    """
     lifted = ctx.lift(obj)
+    # Internal invariant: lift() must return TraceObject for Object inputs
     assert isinstance(lifted, el.TraceObject), (
-        "TraceContext.lift must return TraceObject when recapturing"
+        "Tracer.lift must return TraceObject for Objects"
     )
     return lifted
 
@@ -103,29 +108,33 @@ def _align_region_inputs(
     traced_fn.captured = list(capture_order)
 
 
-def _normalize_party_spec(value: Any) -> tuple[int, ...] | None:
-    """Normalize user-provided party specifications into a sorted tuple."""
+def _normalize_parties(value: tuple[int, ...] | None) -> tuple[int, ...] | None:
+    """Validate and normalize party tuple (sorted, deduplicated).
 
+    Args:
+        value: Party tuple or None. Should be consistent with MPType.parties format.
+
+    Returns:
+        Normalized sorted tuple or None.
+
+    Raises:
+        TypeError: If value contains non-integer elements.
+        ValueError: If any rank is negative.
+    """
     if value is None:
         return None
 
-    if isinstance(value, Iterable):
-        ranks: set[int] = set()
-        for item in value:
-            if not isinstance(item, int):
-                raise TypeError(
-                    "party iterable must contain integers, "
-                    f"got element {item!r} of type {type(item)}"
-                )
-            if item < 0:
-                raise ValueError("party ranks must be non-negative")
-            ranks.add(item)
-        return tuple(sorted(ranks))
+    # Validate all elements are non-negative integers
+    for rank in value:
+        if not isinstance(rank, int):
+            raise TypeError(
+                f"parties tuple must contain integers, got {rank!r} of type {type(rank)}"
+            )
+        if rank < 0:
+            raise ValueError(f"party rank must be non-negative, got {rank}")
 
-    raise TypeError(
-        "parties must be None or an iterable/tuple of integer ranks; "
-        f"got value {value!r} of type {type(value)}"
-    )
+    # Return sorted deduplicated tuple (consistent with MPType.parties)
+    return tuple(sorted(set(value)))
 
 
 def _parties_from_type(base_type: elt.BaseType) -> tuple[int, ...] | None:
@@ -142,13 +151,9 @@ def _deduce_parties(types: list[elt.BaseType]) -> tuple[int, ...] | None:
         return None
     current = set(masks[0])  # at least one element
     for parties in masks[1:]:
-        assert parties is not None  # guarded above
+        assert parties is not None  # Type narrowing: guarded by check above
         current &= set(parties)
     return tuple(sorted(current))
-
-
-def _is_subset(part: tuple[int, ...], sup: tuple[int, ...]) -> bool:
-    return set(part).issubset(set(sup))
 
 
 def _wrap_with_mp(
@@ -158,7 +163,7 @@ def _wrap_with_mp(
     if parties is None or isinstance(base_type, elt.MPType):
         return base_type
     # MPType.__class_getitem__ expects (value_type, parties)
-    return elt.MP[(base_type, parties)]
+    return elt.MP[base_type, parties]
 
 
 class _LocalMPTracer(el.Tracer):
@@ -240,9 +245,10 @@ def _uniform_cond_trace(
         >>> result = uniform_cond(pred, then_fn, else_fn, x, y)
     """
     cur_ctx = el.get_current_context()
-    assert isinstance(cur_ctx, el.Tracer), (
-        f"Expected Tracer context, got {type(cur_ctx)}"
-    )
+    if not isinstance(cur_ctx, el.Tracer):
+        raise TypeError(
+            f"uniform_cond must be called within a Tracer context, got {type(cur_ctx).__name__}"
+        )
 
     # ------------------------------------------------------------------
     # Validate predicate / branch signatures
@@ -358,9 +364,10 @@ def _while_loop_trace(
     """Trace-mode implementation for SIMP while_loop."""
 
     cur_ctx = el.get_current_context()
-    assert isinstance(cur_ctx, el.Tracer), (
-        f"Expected Tracer context, got {type(cur_ctx)}"
-    )
+    if not isinstance(cur_ctx, el.Tracer):
+        raise TypeError(
+            f"while_loop must be called within a Tracer context, got {type(cur_ctx).__name__}"
+        )
 
     if not callable(cond_fn) or not callable(body_fn):
         raise TypeError("while_loop requires callable cond_fn and body_fn")
@@ -468,7 +475,7 @@ pconv_p = el.Primitive("simp.pconv")
 
 @peval_p.def_trace
 def _peval_trace(
-    parties: tuple[int, ...] | Iterable[int] | None,
+    parties: tuple[int, ...] | None,
     local_fn: Callable[..., Any],
     *args: Any,
     **kwargs: Any,
@@ -476,8 +483,8 @@ def _peval_trace(
     """Trace a local single-party region executed under a specific party mask.
 
     Args:
-        parties: Optional specification of participating party ranks. Accepts
-            tuples/iterables of ints or ``None`` (auto-deduction).
+        parties: Optional tuple of participating party ranks (consistent with
+            MPType.parties format). ``None`` for auto-deduction from arguments.
         local_fn: Callable representing the single-party function body.
         *args: Positional arguments forming a PyTree of MPObjects /
             TraceObjects / immediates passed to the region.
@@ -489,7 +496,7 @@ def _peval_trace(
     Raises:
         TypeError: If ``local_fn`` is not callable or arguments contain invalid
             types for a SIMP region.
-        ValueError: When the explicitly provided parties are not a subset of the
+        ValueError: When the explicitly provided parties are not covered by the
             deduced parties from arguments.
     """
 
@@ -499,38 +506,49 @@ def _peval_trace(
     if not callable(local_fn):
         raise TypeError(f"local_fn must be callable, got {type(local_fn)}")
 
-    requested_parties = _normalize_party_spec(parties)
+    requested_parties = _normalize_parties(parties)
 
-    # Collect argument TraceObjects for op inputs and type inference.
+    # Trace local region with _LocalMPTracer to discover all inputs (args + captures)
+    local_tracer = _LocalMPTracer()
+    local_traced = local_tracer.run(local_fn, *args, **kwargs)
+
+    # Extract all freevars (args + captures) from the tracer
+    # _freevars contains: {obj_id: (original_obj, graph_value)}
+    all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
+    all_input_types = [obj.type for obj in all_input_objs]
+
+    # Deduce parties from ALL inputs that flow into the region
+    deduced_parties = _deduce_parties(all_input_types)
+
+    # Determine effective parties: requested takes precedence, then deduced
+    if requested_parties is not None:
+        effective_parties = requested_parties
+        # Validate: requested parties should be covered by input parties
+        if deduced_parties is not None:
+            if not set(requested_parties).issubset(set(deduced_parties)):
+                raise ValueError(
+                    f"Requested parties {requested_parties} not covered by "
+                    f"input argument parties {deduced_parties}"
+                )
+    else:
+        effective_parties = deduced_parties
+        # If neither requested nor deduced, we cannot determine execution context
+        # This is acceptable if all args are non-MP (e.g., constants), but may be an error
+        # For now, allow None to propagate (runtime/interpreter should handle)
+
+    # Separate explicit args from captures for proper region input ordering
+    # The tracer already separated them: in_vars = args, captured = captures
     flat_inputs, _ = tree_flatten((args, kwargs))
-    arg_trace_objs = [
-        _ensure_trace_object(cur_ctx, val)
-        for val in flat_inputs
-        if isinstance(val, el.TraceObject)
-    ]
-    arg_values = [obj._graph_value for obj in arg_trace_objs]
-    arg_types = [obj.type for obj in arg_trace_objs]
-    num_arg_vars = len(arg_trace_objs)
+    num_arg_vars = sum(1 for val in flat_inputs if isinstance(val, el.Object))
 
-    deduced_parties = _deduce_parties(arg_types)
-    if requested_parties is not None and deduced_parties is not None:
-        if not _is_subset(requested_parties, deduced_parties):
-            raise ValueError(
-                "Specified parties must be a subset of deduced parties: "
-                f"requested={requested_parties}, deduced={deduced_parties}"
-            )
-
-    effective_parties = requested_parties or deduced_parties
-
-    local_traced = _LocalMPTracer().run(local_fn, *args, **kwargs)
+    # Align region inputs as [args..., captures...]
     _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
 
-    capture_trace_objs = [
-        _recapture_object(cur_ctx, obj) for obj in local_traced.captured
-    ]
-    capture_values = [obj._graph_value for obj in capture_trace_objs]
-
-    region_inputs = [*arg_values, *capture_values]
+    # Recapture all freevars into outer context
+    # _freevars already contains all inputs in insertion order (args first, then captures)
+    all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
+    recaptured_objs = [_recapture_object(cur_ctx, obj) for obj in all_input_objs]
+    region_inputs = [obj._graph_value for obj in recaptured_objs]
     result_types = [
         _wrap_with_mp(value.type, effective_parties)
         for value in local_traced.graph.outputs
@@ -561,7 +579,7 @@ def _peval_trace(
 
 
 def peval(
-    parties: tuple[int, ...] | Iterable[int] | None,
+    parties: tuple[int, ...] | None,
     local_fn: Callable[..., Any],
     *call_args: Any,
     **call_kwargs: Any,
@@ -569,7 +587,7 @@ def peval(
     """Convenience wrapper for the SIMP peval primitive.
 
     Args:
-        parties: Optional tuple/iterable specifying participating parties.
+        parties: Optional tuple of party ranks (consistent with MPType.parties).
             ``None`` lets the primitive infer parties from its arguments.
         local_fn: Callable representing the single-party computation.
         *call_args: Positional arguments forwarded to ``local_fn``.
@@ -617,10 +635,10 @@ def _pconv_trace(*_args: Any, **_kwargs: Any) -> Any:
 
 
 __all__ = [
+    "pconv_p",
     # Communication
     "peval",
     "peval_p",
-    "pconv_p",
     "pshfl_p",
     "pshfl_s_p",
     # Control flow

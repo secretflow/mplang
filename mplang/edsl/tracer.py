@@ -77,6 +77,10 @@ class Tracer(Context):
     """
 
     def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        """Reset graph state so a tracer instance can be reused."""
         self.graph = Graph()
         self._freevars: dict[int, tuple[Object, GraphValue]] = {}
         self._arg_counter = 0
@@ -140,75 +144,71 @@ class Tracer(Context):
             f"Define one using @{primitive.name}_p.def_trace or @{primitive.name}_p.def_abstract_eval"
         )
 
-    def _capture_as_input(self, obj: Object) -> TraceObject:
-        """Capture an object as graph input (free variable).
-
-        Helper to avoid code duplication in lift(). Creates a new graph input
-        for the object and maintains the obj_id → Value mapping for deduplication.
-
-        Free variables include:
-        - Function parameters (from outer context)
-        - Captured external variables (from outer context)
-
-        Args:
-            obj: Object to capture (InterpObject or TraceObject from different context)
-
-        Returns:
-            TraceObject wrapping the newly created input Value
-        """
-        obj_id = id(obj)
-        entry = self._freevars.get(obj_id)
-        if entry is not None:
-            _, graph_value = entry
-        else:
-            name = f"%arg{self._arg_counter}"
-            self._arg_counter += 1
-            graph_value = self.graph.add_input(
-                name=name,
-                type=obj.type,
-            )
-            self._freevars[obj_id] = (obj, graph_value)
-        return TraceObject(graph_value, self)
-
     def lift(self, obj: Any) -> Any:
         """Lift an object to TraceObject.
 
         Converts objects to TraceObject for use in tracing:
+        - Non-Object types: return as-is (int, float, np.ndarray, callables, etc.)
         - TraceObject (same context): return as-is (idempotent)
         - TraceObject (different context): capture as input (cross-context reference)
-        - InterpObject: promote to TraceObject (uses obj id as value name)
-        - Non-Object types: return as-is (handled by primitives or opaque)
+        - InterpObject: promote to TraceObject via _lift()
 
         Note on non-Object types:
-            This method is only called on Objects (via Primitive.bind's lift_if_object).
-            Non-Object types (int, float, np.ndarray, callables, etc.) are passed
-            directly to primitives without lifting.
+            This method may be invoked on arbitrary values (e.g., when run()
+            maps lift across full PyTrees). Non-Object types are returned unchanged.
 
         Note on cross-context references:
-            When inner tracer (e.g., in run_jax, cond) captures outer TraceObject,
-            we need to create a captured input in the inner graph. This handles
-            nested tracing scenarios correctly.
+            When inner tracer (e.g., in cond, while_loop) captures outer TraceObject,
+            we create a captured input in the inner graph.
+
+        Subclass extension:
+            Subclasses can override _lift() to customize type promotion
+            (e.g., _LocalMPTracer unwraps MPType → value_type).
 
         Args:
-            obj: Object to lift (should always be an Object subclass in practice)
+            obj: Value to lift (Object or non-Object constant)
 
         Returns:
-            TraceObject, or original value for non-Object types (though these
-            shouldn't be passed in via normal Primitive.bind flow)
+            TraceObject for Objects, or original value for non-Objects
         """
-        if isinstance(obj, TraceObject):
-            if obj._context is self:
-                return obj
-            else:
-                return self._capture_as_input(obj)
-        elif isinstance(obj, Object):
-            # Check class name to avoid circular import
-            if type(obj).__name__ == "InterpObject":
-                return self._capture_as_input(obj)
-            else:
-                raise TypeError(f"Unknown Object type: {type(obj)}")
-        else:
+        # Early return for non-Object types (constants, callables, etc.)
+        if not isinstance(obj, Object):
             return obj
+
+        # Same-context TraceObject → return as-is (idempotent)
+        if isinstance(obj, TraceObject) and obj._context is self:
+            return obj
+
+        # Cross-context or InterpObject → lift and cache
+        obj_id = id(obj)
+        if obj_id in self._freevars:
+            _, graph_value = self._freevars[obj_id]
+            return TraceObject(graph_value, self)
+
+        # Perform pure lift (subclass can customize type promotion)
+        lifted = self._lift(obj)
+        self._freevars[obj_id] = (obj, lifted._graph_value)
+        return lifted
+
+    def _lift(self, obj: Object) -> TraceObject:
+        """Pure lift method for cross-context Objects.
+
+        Creates a graph input for the object. Subclasses can override
+        to customize type promotion (e.g., unwrap MPType).
+
+        Args:
+            obj: Object to lift (TraceObject from different context or InterpObject)
+
+        Returns:
+            TraceObject wrapping a new graph input Value
+        """
+        name = f"%arg{self._arg_counter}"
+        self._arg_counter += 1
+        graph_value = self.graph.add_input(
+            name=name,
+            type=obj.type,
+        )
+        return TraceObject(graph_value, self)
 
     def finalize(self, result: Any) -> Graph:
         """Finalize the graph by setting outputs.
@@ -242,6 +242,54 @@ class Tracer(Context):
             self.graph.add_output(out._graph_value)
 
         return self.graph  # type: ignore[return-value]
+
+    def run(
+        self,
+        fn: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> TracedFunction:
+        """Trace `fn` using this tracer instance."""
+
+        self.reset()
+        if not callable(fn):
+            raise TypeError(f"fn must be callable, got {type(fn)}")
+
+        fn_name = getattr(fn, "__name__", "anonymous")
+        in_flat, in_treedef = tree_flatten((args, kwargs))
+        in_imms, in_var_pos, in_vars = _separate_vars_and_imms(in_flat)
+        param_obj_ids = {id(obj) for obj in in_vars}
+
+        with self:
+            args_traced, kwargs_traced = tree_map(self.lift, (args, kwargs))
+            result = fn(*args_traced, **kwargs_traced)
+            result = tree_map(self.lift, result)
+
+        output_flat, output_treedef = tree_flatten(result)
+        out_imms, out_var_pos, out_vars = _separate_vars_and_imms(output_flat)
+
+        if out_vars:
+            graph = self.finalize(out_vars)
+        else:
+            graph = self.graph
+            graph.outputs = []
+
+        captured_objects: list[Object] = []
+        for obj_id, (obj, _) in self._freevars.items():
+            if obj_id not in param_obj_ids:
+                captured_objects.append(obj)
+
+        return TracedFunction(
+            name=fn_name,
+            graph=graph,
+            in_imms=in_imms,
+            in_var_pos=in_var_pos,
+            in_tree=in_treedef,
+            out_imms=out_imms,
+            out_var_pos=out_var_pos,
+            out_tree=output_treedef,
+            captured=captured_objects,
+        )
 
     def reconstruct_outputs(
         self,
@@ -382,116 +430,6 @@ def trace(
     *args: Any,
     **kwargs: Any,
 ) -> TracedFunction:
-    """Trace a Python function with PyTree inputs/outputs into a Graph.
+    """Trace a Python function with the default Tracer."""
 
-    This utility function traces an arbitrary Python function into Graph IR,
-    distinguishing between constants (immediates) and traced values (variables).
-
-    Args:
-        fn: Python callable to trace. Can accept/return arbitrary PyTrees.
-        *args: Positional arguments (arbitrary PyTree structure).
-               Can mix Objects (traced as variables) and constants (immediates).
-        **kwargs: Keyword arguments (arbitrary PyTree structure).
-
-    Returns:
-        TracedFunction containing:
-            - name: Function name
-            - graph: Graph IR with only variable inputs/outputs
-            - in_imms: Input constants in order
-            - in_var_pos: Positions of graph.inputs in flattened input
-            - in_tree: PyTreeDef to reconstruct (args, kwargs)
-            - out_imms: Output constants in order
-            - out_var_pos: Positions of graph.outputs in flattened output
-            - out_tree: PyTreeDef to reconstruct result
-
-    Example:
-        >>> # Function with mixed inputs
-        >>> def scale_add(x, y, scale=2.0):
-        ...     return x + y, scale
-        >>> traced = make_graph(scale_add, x_obj, y_obj, scale=2.0)
-        >>> # traced.in_imms = [2.0]
-        >>> # traced.in_var_pos = [0, 1]  # x, y are variables
-        >>> # traced.out_imms = [2.0]
-        >>> # traced.out_var_pos = [0]  # x+y is variable, scale is constant
-        >>>
-        >>> # Reconstruct inputs from graph.inputs
-        >>> flat_in = [None] * (len(traced.in_imms) + len(traced.in_var_pos))
-        >>> imm_idx = 0
-        >>> for i in range(len(flat_in)):
-        ...     if i in traced.in_var_pos:
-        ...         var_idx = traced.in_var_pos.index(i)
-        ...         flat_in[i] = graph.inputs[var_idx]
-        ...     else:
-        ...         flat_in[i] = traced.in_imms[imm_idx]
-        ...         imm_idx += 1
-        >>> args, kwargs = traced.in_tree.unflatten(flat_in)
-
-    Design Note:
-        - Constants (non-Objects) are stored as immediates
-        - Only Objects are traced into graph.inputs
-        - Output constants are similarly separated from graph.outputs
-        - This enables efficient serialization and execution
-    """
-
-    # Validate fn is callable
-    if not callable(fn):
-        raise TypeError(f"fn must be callable, got {type(fn)}")
-
-    # Get function name
-    fn_name = getattr(fn, "__name__", "anonymous")
-
-    # Step 1: Flatten input PyTree (args, kwargs)
-    # We treat (args, kwargs) as a tuple to get a single tree structure
-    in_flat, in_treedef = tree_flatten((args, kwargs))
-
-    # Step 2: Separate input constants from variables, and record positions
-    in_imms, in_var_pos, in_vars = _separate_vars_and_imms(in_flat)
-    param_obj_ids = {id(obj) for obj in in_vars}
-
-    # Step 3: Create a new tracer for the function body
-    func_tracer = Tracer()
-
-    # Step 4: Lift inputs and trace the function body
-    # We MUST lift here, not rely on auto-lift during fn() execution, because:
-    # - fn() might directly return inputs without calling primitives (e.g., return x, y)
-    # - Auto-lift only happens when Objects flow into primitive.bind()
-    # - We need to ensure all input Objects become TraceObjects in func_tracer
-    def lift_if_object(x: Any) -> Any:
-        return func_tracer.lift(x) if isinstance(x, Object) else x
-
-    with func_tracer:
-        args_traced, kwargs_traced = tree_map(lift_if_object, (args, kwargs))
-        result = fn(*args_traced, **kwargs_traced)
-        # Branches may return captured InterpObjects without touching primitives,
-        # so force every Object in the result to live in func_tracer as well.
-        result = tree_map(lift_if_object, result)
-
-    # Step 5: Flatten outputs and separate TraceObjects from constants
-    output_flat, output_treedef = tree_flatten(result)
-    out_imms, out_var_pos, out_vars = _separate_vars_and_imms(output_flat)
-
-    # Step 6: Finalize the graph with variable outputs only
-    if out_vars:
-        graph = func_tracer.finalize(out_vars)
-    else:
-        # No traced outputs (all constants)
-        graph = func_tracer.graph
-        graph.outputs = []
-
-    captured_objects: list[Object] = []
-    for obj_id, (obj, _) in func_tracer._freevars.items():
-        if obj_id not in param_obj_ids:
-            captured_objects.append(obj)
-
-    # Step 7: Return TracedFunction
-    return TracedFunction(
-        name=fn_name,
-        graph=graph,
-        in_imms=in_imms,
-        in_var_pos=in_var_pos,
-        in_tree=in_treedef,
-        out_imms=out_imms,
-        out_var_pos=out_var_pos,
-        out_tree=output_treedef,
-        captured=captured_objects,
-    )
+    return Tracer().run(fn, *args, **kwargs)

@@ -17,12 +17,10 @@ from textwrap import dedent
 
 import numpy as np
 
+import mplang.edsl as el
+import mplang.edsl.typing as elt
 from mplang.dialects.func import call, func
 from mplang.dialects.tensor import run_jax
-from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.printer import format_graph
-from mplang.edsl.tracer import trace
-from mplang.edsl.typing import Tensor, f32
 
 
 def _scale_add(x, y):
@@ -37,14 +35,14 @@ def _complex_body(a, b):
 
 
 def test_func_call_emits_region():
-    x = InterpObject(np.array(1.0), Tensor[f32, ()])
-    y = InterpObject(np.array(3.0), Tensor[f32, ()])
+    x = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+    y = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(a, b):
         fn = func(_scale_add, a, b)
         return call(fn, a, b)
 
-    traced = trace(wrapper, x, y)
+    traced = el.trace(wrapper, x, y)
     graph = traced.graph
     func_ops = [op for op in graph.operations if op.opcode == "func.func"]
     call_ops = [op for op in graph.operations if op.opcode == "func.call"]
@@ -53,27 +51,27 @@ def test_func_call_emits_region():
 
 
 def test_func_define_returns_traceobject():
-    x = InterpObject(np.array(1.0), Tensor[f32, ()])
-    y = InterpObject(np.array(3.0), Tensor[f32, ()])
+    x = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+    y = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(a, b):
         return func(_scale_add, a, b)
 
-    traced = trace(wrapper, x, y)
+    traced = el.trace(wrapper, x, y)
     graph = traced.graph
     func_ops = [op for op in graph.operations if op.opcode == "func.func"]
     assert func_ops, "expected a func.func definition"
 
 
 def test_func_call_handles_complex_pytree_output():
-    x = InterpObject(np.array(2.0), Tensor[f32, ()])
-    y = InterpObject(np.array(5.0), Tensor[f32, ()])
+    x = el.InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
+    y = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(a, b):
         nested_fn = func(_complex_body, a, b)
         return call(nested_fn, a, b)
 
-    traced = trace(wrapper, x, y)
+    traced = el.trace(wrapper, x, y)
     graph = traced.graph
     func_ops = [op for op in graph.operations if op.opcode == "func.func"]
     call_ops = [op for op in graph.operations if op.opcode == "func.call"]
@@ -98,7 +96,7 @@ def test_func_call_handles_complex_pytree_output():
         "sum": "leaf2",
     }
 
-    formatted = format_graph(graph)
+    formatted = el.format_graph(graph)
     normalized = re.sub(
         r"text_ref='[^']+'", "text_ref='<ID>'", formatted, flags=re.MULTILINE
     )

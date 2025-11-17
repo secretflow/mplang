@@ -100,9 +100,7 @@ class _LocalMPTracer(el.Tracer):
         """
         obj_type = obj.type
         if not isinstance(obj_type, elt.MPType):
-            raise TypeError(
-                f"simp.peval local regions expect MP-typed values, got type {obj_type}"
-            )
+            raise TypeError(f"MP-typed values, got type {obj_type}")
 
         lifted = super()._lift(obj)
         lifted._graph_value.type = obj_type.value_type
@@ -538,23 +536,6 @@ def pcall_dynamic(
     return pcall_dynamic_p.bind(local_fn, *call_args, **call_kwargs)
 
 
-# Backward compatibility aliases
-def peval(
-    parties: tuple[int, ...] | None,
-    local_fn: Callable[..., Any],
-    *call_args: Any,
-    **call_kwargs: Any,
-) -> Any:
-    """Backward compatible peval function.
-
-    Routes to pcall_static if parties is explicit, pcall_dynamic if None.
-    """
-    if parties is None:
-        return pcall_dynamic(local_fn, *call_args, **call_kwargs)
-    else:
-        return pcall_static(parties, local_fn, *call_args, **call_kwargs)
-
-
 @shuffle_dynamic_p.def_abstract_eval
 def _shuffle_dynamic_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
     """Type inference for dynamic shuffle (runtime-determined data redistribution).
@@ -772,6 +753,23 @@ def converge(*vars: el.Object) -> el.Object:
         >>> # result.type.parties == (0, 1)
     """
     return converge_p.bind(*vars)
+
+
+# Backward compatibility aliases
+def peval(
+    parties: tuple[int, ...] | None,
+    local_fn: Callable[..., Any],
+    *call_args: Any,
+    **call_kwargs: Any,
+) -> Any:
+    """Backward compatible peval function.
+
+    Routes to pcall_static if parties is explicit, pcall_dynamic if None.
+    """
+    if parties is None:
+        return pcall_dynamic(local_fn, *call_args, **call_kwargs)
+    else:
+        return pcall_static(parties, local_fn, *call_args, **call_kwargs)
 
 
 __all__ = [

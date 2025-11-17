@@ -38,7 +38,8 @@ Example:
 
     # Add operations
     z, = graph.add_op("add", [x, y])
-    result, = graph.add_op("mul", [z, graph.add_constant(2.0)])
+    scale, = graph.add_op("tensor.constant", [], output_types=[f32], attrs={"data": 2.0})
+    result, = graph.add_op("mul", [z, scale])
 
     # Mark outputs
     graph.add_output(result)
@@ -48,7 +49,7 @@ Example:
     # Output:
     # %0 = input "x" : Tensor[f32, (10,)]
     # %1 = input "y" : Tensor[f32, (10,)]
-    # %2 = constant 2.0 : f32
+    # %2 = tensor.constant {data=2.0} : f32
     # %3 = add %0, %1 : Tensor[f32, (10,)]
     # %4 = mul %3, %2 : Tensor[f32, (10,)]
     # return %4
@@ -66,7 +67,7 @@ from mplang2.edsl.typing import BaseType
 class Value:
     """SSA value in the IR.
 
-    Each value is defined exactly once by an operation (or is an input/constant).
+    Each value is defined exactly once by an operation (or is an input).
     Values track their uses and defining operation for def-use chain analysis.
 
     Attributes:
@@ -182,8 +183,8 @@ class Graph:
     Example:
         graph = Graph()
         x = graph.add_input("x", Tensor[f32, (10,)])
-        y = graph.add_constant(1.0, f32)
-        z = graph.add_op("add", [x, y])
+        y, = graph.add_op("tensor.constant", [], output_types=[f32], attrs={"data": 1.0})
+        z, = graph.add_op("add", [x, y])
         graph.add_output(z)
     """
 
@@ -232,26 +233,6 @@ class Graph:
         """
         value = self.add_value(type, name=name)
         self.inputs.append(value)
-        return value
-
-    def add_constant(self, data: Any, type: BaseType) -> Value:
-        """Add a constant value.
-
-        Args:
-            data: Constant data
-            type: Type of the constant
-
-        Returns:
-            Constant value
-        """
-        value = self.add_value(type)
-        op = Operation(
-            opcode="constant",
-            inputs=[],
-            outputs=[value],
-            attrs={"value": data},
-        )
-        self.operations.append(op)
         return value
 
     def add_op(

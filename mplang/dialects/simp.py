@@ -1,9 +1,12 @@
 """SIMP dialect: SPMD multi-party primitives for EDSL.
 
 Provides control flow and communication primitives:
+- pcall_static: Party call with explicit static parties
+- pcall_dynamic: Party call where all parties attempt execution (output always dynamic)
+- shuffle_dynamic, shuffle: Data redistribution
+- converge: Merge disjoint partitions
 - uniform_cond: Uniform conditional (eager mode)
 - while_loop: While loop (eager mode)
-- pshfl, pshfl_s, pconv: Communication ops (scaffolded)
 
 Primitive definition guideline:
 - Simple ops (add, mul) → use def_abstract_eval
@@ -27,7 +30,8 @@ import mplang.edsl.typing as elt
 # ---------------------------------------------------------------------------
 
 # Whether to verify predicate uniformity at runtime in uniform_cond
-# Set to False to disable runtime checks (useful for testing or when uniformity is guaranteed)
+# Set to False to disable runtime checks (useful for testing or when
+# uniformity is guaranteed)
 VERIFY_UNIFORM_DEFAULT = True
 
 # ---------------------------------------------------------------------------
@@ -105,7 +109,8 @@ def _normalize_parties(value: tuple[int, ...] | None) -> tuple[int, ...] | None:
     for rank in value:
         if not isinstance(rank, int):
             raise TypeError(
-                f"parties tuple must contain integers, got {rank!r} of type {type(rank)}"
+                f"parties tuple must contain integers, got {rank!r} of "
+                f"type {type(rank)}"
             )
         if rank < 0:
             raise ValueError(f"party rank must be non-negative, got {rank}")
@@ -135,8 +140,8 @@ def _deduce_parties(types: list[elt.BaseType]) -> tuple[int, ...] | None:
 def _wrap_with_mp(
     base_type: elt.BaseType, parties: tuple[int, ...] | None
 ) -> elt.BaseType:
-    """Wrap base_type with MP typing when a party mask is available."""
-    if parties is None or isinstance(base_type, elt.MPType):
+    """Wrap base_type with MP typing (parties can be None for dynamic)."""
+    if isinstance(base_type, elt.MPType):
         return base_type
     return elt.MP[base_type, parties]
 
@@ -206,8 +211,9 @@ def _uniform_cond_trace(
                    or branch outputs have mismatched types/counts
 
     Note:
-        The verify_uniform flag is controlled by the global VERIFY_UNIFORM_DEFAULT config.
-        To change it, set mplang.dialects.simp.VERIFY_UNIFORM_DEFAULT = False
+        The verify_uniform flag is controlled by the global
+        VERIFY_UNIFORM_DEFAULT config. To change it, set
+        mplang.dialects.simp.VERIFY_UNIFORM_DEFAULT = False
 
     Example:
         >>> def then_fn(x, y):
@@ -349,7 +355,8 @@ def _while_loop_trace(
     body_outputs = body_traced.graph.outputs
     if len(body_outputs) != state_count:
         raise TypeError(
-            "while_loop body_fn must return all Variables (no immediates allowed in loop state), "
+            "while_loop body_fn must return all Variables "
+            "(no immediates allowed in loop state), "
             f"expected {state_count} Variables, got {len(body_outputs)}"
         )
     for idx, (out_val, state_obj) in enumerate(
@@ -405,48 +412,44 @@ def while_loop(
     return while_loop_p.bind(cond_fn, body_fn, init)
 
 
-# ---------------------------------------------------------------------------
-# Communication primitives (scaffold)
-# ---------------------------------------------------------------------------
-
-peval_p = el.Primitive("simp.peval")
-pshfl_p = el.Primitive("simp.pshfl")
-pshfl_s_p = el.Primitive("simp.pshfl_s")
-pconv_p = el.Primitive("simp.pconv")
+# Core primitives with clear semantic names
+pcall_static_p = el.Primitive("simp.pcall_static")
+pcall_dynamic_p = el.Primitive("simp.pcall_dynamic")
+shuffle_dynamic_p = el.Primitive("simp.shuffle_dynamic")
+shuffle_p = el.Primitive("simp.shuffle")
+converge_p = el.Primitive("simp.converge")
 
 
-@peval_p.def_trace
-def _peval_trace(
-    parties: tuple[int, ...] | None,
+@pcall_static_p.def_trace
+def _pcall_static_trace(
+    parties: tuple[int, ...],
     local_fn: Callable[..., Any],
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    """Trace a local single-party region executed under a specific party mask.
+    """Trace a local single-party region with explicit static parties.
 
     Args:
-        parties: Optional tuple of participating party ranks (consistent with
-            MPType.parties format). ``None`` for auto-deduction from arguments.
+        parties: Required tuple of participating party ranks.
         local_fn: Callable representing the single-party function body.
         *args: Positional arguments forming a PyTree of MPObjects /
             TraceObjects / immediates passed to the region.
         **kwargs: Keyword arguments forwarded to ``local_fn``.
 
     Returns:
-        PyTree of TraceObjects matching the structure of ``local_fn`` outputs.
+        PyTree of TraceObjects with static parties mask.
 
     Raises:
-        TypeError: If ``local_fn`` is not callable or arguments contain invalid
-            types for a SIMP region.
-        ValueError: When the explicitly provided parties are not covered by the
-            deduced parties from arguments.
+        TypeError: If ``local_fn`` is not callable or arguments contain invalid types.
+        ValueError: When explicitly provided parties are not covered by input parties.
     """
-
     cur_ctx = el.get_current_context()
     assert isinstance(cur_ctx, el.Tracer)
     assert callable(local_fn)
 
     requested_parties = _normalize_parties(parties)
+    if requested_parties is None:
+        raise ValueError("local_static requires explicit parties, got None")
 
     local_tracer = _LocalMPTracer()
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
@@ -455,42 +458,32 @@ def _peval_trace(
     all_input_types = [obj.type for obj in all_input_objs]
     deduced_parties = _deduce_parties(all_input_types)
 
-    if requested_parties is not None:
-        effective_parties = requested_parties
-        if deduced_parties is not None:
-            if not set(requested_parties).issubset(set(deduced_parties)):
-                raise ValueError(
-                    f"Requested parties {requested_parties} not covered by "
-                    f"input argument parties {deduced_parties}"
-                )
-    else:
-        effective_parties = deduced_parties
+    if deduced_parties is not None:
+        if not set(requested_parties).issubset(set(deduced_parties)):
+            raise ValueError(
+                f"Requested parties {requested_parties} not covered by "
+                f"input argument parties {deduced_parties}"
+            )
 
     num_arg_vars = len(local_traced.in_var_pos)
-
     _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
 
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
     result_types = [
-        _wrap_with_mp(value.type, effective_parties)
+        _wrap_with_mp(value.type, requested_parties)
         for value in local_traced.graph.outputs
     ]
 
-    attrs = {
-        "fn_name": local_traced.name,
-        "parties": list(effective_parties) if effective_parties is not None else None,
-        "requested_parties": (
-            list(requested_parties) if requested_parties is not None else None
-        ),
-    }
-
     result_values = cur_ctx.graph.add_op(
-        opcode="simp.peval",
+        opcode="simp.pcall_static",
         inputs=region_inputs,
         output_types=result_types,
-        attrs=attrs,
+        attrs={
+            "fn_name": local_traced.name,
+            "parties": list(requested_parties),
+        },
         regions=[local_traced.graph],
     )
 
@@ -502,27 +495,142 @@ def _peval_trace(
     )
 
 
+@pcall_dynamic_p.def_trace
+def _pcall_dynamic_trace(
+    local_fn: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Trace a party call with dynamic execution.
+
+    All parties attempt to execute. Runtime behavior: each party executes
+    if all inputs are present, otherwise outputs None. Output always has
+    dynamic parties (None).
+
+    Args:
+        local_fn: Callable representing the single-party function body.
+        *args: Positional arguments forming a PyTree of MPObjects /
+            TraceObjects / immediates passed to the region.
+        **kwargs: Keyword arguments forwarded to ``local_fn``.
+
+    Returns:
+        PyTree of TraceObjects with dynamic parties (None).
+
+    Raises:
+        TypeError: If ``local_fn`` is not callable or arguments contain invalid types.
+    """
+    cur_ctx = el.get_current_context()
+    assert isinstance(cur_ctx, el.Tracer)
+    assert callable(local_fn)
+
+    local_tracer = _LocalMPTracer()
+    local_traced = local_tracer.run(local_fn, *args, **kwargs)
+
+    num_arg_vars = len(local_traced.in_var_pos)
+    _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
+
+    all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
+    recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
+    region_inputs = [obj._graph_value for obj in recaptured_objs]
+
+    # Output always has dynamic parties (None)
+    result_types = [
+        _wrap_with_mp(value.type, None) for value in local_traced.graph.outputs
+    ]
+
+    result_values = cur_ctx.graph.add_op(
+        opcode="simp.pcall_dynamic",
+        inputs=region_inputs,
+        output_types=result_types,
+        attrs={
+            "fn_name": local_traced.name,
+        },
+        regions=[local_traced.graph],
+    )
+
+    return cur_ctx.reconstruct_outputs(
+        local_traced.out_var_pos,
+        local_traced.out_imms,
+        local_traced.out_tree,
+        result_values,
+    )
+
+
+def pcall_static(
+    parties: tuple[int, ...],
+    local_fn: Callable[..., Any],
+    *call_args: Any,
+    **call_kwargs: Any,
+) -> Any:
+    """Execute a function on explicitly specified parties (static).
+
+    This primitive requires explicit party specification and always produces
+    static party masks in the output. Use this when the execution parties
+    are known at compile time.
+
+    Args:
+        parties: Required tuple of party ranks (must be explicit, not None).
+        local_fn: Callable representing the single-party computation.
+        *call_args: Positional arguments forwarded to ``local_fn``.
+        **call_kwargs: Keyword arguments forwarded to ``local_fn``.
+
+    Returns:
+        Result with static parties mask matching the parties argument.
+
+    Example:
+        >>> # Compute on parties 0 and 1 (static)
+        >>> result = pcall_static(parties=(0, 1), local_fn=lambda x: x + 1, x)
+    """
+    return pcall_static_p.bind(parties, local_fn, *call_args, **call_kwargs)
+
+
+def pcall_dynamic(
+    local_fn: Callable[..., Any],
+    *call_args: Any,
+    **call_kwargs: Any,
+) -> Any:
+    """Execute a function on all parties with runtime-determined execution.
+
+    All parties attempt to execute the function. At runtime, each party executes
+    if all inputs are present, otherwise outputs None. Output always has dynamic
+    party mask (None).
+
+    Args:
+        local_fn: Callable representing the single-party computation.
+        *call_args: Positional arguments forwarded to ``local_fn``.
+        **call_kwargs: Keyword arguments forwarded to ``local_fn``.
+
+    Returns:
+        Result with dynamic parties (None). At runtime, parties with all inputs
+        execute, others output None.
+
+    Example:
+        >>> # All parties attempt execution based on input availability
+        >>> result = pcall_dynamic(local_fn=lambda x: x + 1, x)
+    """
+    return pcall_dynamic_p.bind(local_fn, *call_args, **call_kwargs)
+
+
+# Backward compatibility aliases
 def peval(
     parties: tuple[int, ...] | None,
     local_fn: Callable[..., Any],
     *call_args: Any,
     **call_kwargs: Any,
 ) -> Any:
-    """Convenience wrapper for the SIMP peval primitive.
+    """Backward compatible peval function.
 
-    Args:
-        parties: Optional tuple of party ranks (consistent with MPType.parties).
-            ``None`` lets the primitive infer parties from its arguments.
-        local_fn: Callable representing the single-party computation.
-        *call_args: Positional arguments forwarded to ``local_fn``.
-        **call_kwargs: Keyword arguments forwarded to ``local_fn``.
+    Routes to pcall_static if parties is explicit, pcall_dynamic if None.
     """
-    return peval_p.bind(parties, local_fn, *call_args, **call_kwargs)
+    if parties is None:
+        return pcall_dynamic(local_fn, *call_args, **call_kwargs)
+    else:
+        return pcall_static(parties, local_fn, *call_args, **call_kwargs)
 
 
-@pshfl_p.def_abstract_eval
-def _pshfl_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
-    """Type inference for dynamic shuffle.
+@shuffle_dynamic_p.def_abstract_eval
+def _shuffle_dynamic_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
+    """Type inference for dynamic shuffle (runtime-determined data redistribution).
 
     Args:
         src_t: Source value type (must be MPType)
@@ -535,26 +643,27 @@ def _pshfl_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
         TypeError: If src or index are not MP-typed, or index is not scalar
     """
     if not isinstance(src_t, elt.MPType):
-        raise TypeError(f"pshfl requires MP-typed src, got {src_t}")
+        raise TypeError(f"shuffle_dynamic requires MP-typed src, got {src_t}")
     if not isinstance(index_t, elt.MPType):
-        raise TypeError(f"pshfl requires MP-typed index, got {index_t}")
+        raise TypeError(f"shuffle_dynamic requires MP-typed index, got {index_t}")
 
     # Validate index is scalar
     index_shape = getattr(index_t.value_type, "shape", None)
     if index_shape is not None and index_shape != ():
         raise TypeError(
-            f"pshfl index must be scalar, got shape {index_shape} with type {index_t.value_type}"
+            f"shuffle_dynamic index must be scalar, got shape {index_shape} "
+            f"with type {index_t.value_type}"
         )
 
     # Output: dynamic mask (None parties)
     return elt.MP[src_t.value_type, None]
 
 
-@pshfl_s_p.def_abstract_eval
-def _pshfl_s_ae(
+@shuffle_p.def_abstract_eval
+def _shuffle_ae(
     src_t: elt.BaseType, parties: tuple[int, ...], src_ranks: list[int]
 ) -> elt.BaseType:
-    """Type inference for static shuffle.
+    """Type inference for static shuffle (compile-time known data routing).
 
     Args:
         src_t: Source value type (must be MPType)
@@ -570,15 +679,16 @@ def _pshfl_s_ae(
                     src_ranks reference parties not in src.parties
     """
     if not isinstance(src_t, elt.MPType):
-        raise TypeError(f"pshfl_s requires MP-typed src, got {src_t}")
+        raise TypeError(f"shuffle requires MP-typed src, got {src_t}")
 
     parties_normalized = _normalize_parties(parties)
     if parties_normalized is None:
-        raise TypeError("pshfl_s requires explicit parties tuple")
+        raise TypeError("shuffle requires explicit parties tuple")
 
     if len(src_ranks) != len(parties_normalized):
         raise ValueError(
-            f"pshfl_s: src_ranks length {len(src_ranks)} != parties count {len(parties_normalized)}"
+            f"shuffle: src_ranks length {len(src_ranks)} != "
+            f"parties count {len(parties_normalized)}"
         )
 
     # Validate src_ranks are in src.parties (if src.parties is known)
@@ -586,16 +696,16 @@ def _pshfl_s_ae(
         for rank in src_ranks:
             if rank not in src_t.parties:
                 raise ValueError(
-                    f"pshfl_s: src_rank {rank} not in src.parties {src_t.parties}"
+                    f"shuffle: src_rank {rank} not in src.parties {src_t.parties}"
                 )
 
     # Output: static mask
     return elt.MP[src_t.value_type, parties_normalized]
 
 
-@pconv_p.def_abstract_eval
-def _pconv_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
-    """Type inference for converge operation.
+@converge_p.def_abstract_eval
+def _converge_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
+    """Type inference for converge operation (merge disjoint partitions).
 
     Args:
         in_types: List of input types (all must be MPType with same value_type)
@@ -609,12 +719,12 @@ def _pconv_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
         ValueError: If static parties are not disjoint
     """
     if not in_types:
-        raise TypeError("pconv requires at least one input")
+        raise TypeError("converge requires at least one input")
 
     # Validate all are MPType
     for i, t in enumerate(in_types):
         if not isinstance(t, elt.MPType):
-            raise TypeError(f"pconv input {i} must be MP-typed, got {t}")
+            raise TypeError(f"converge input {i} must be MP-typed, got {t}")
 
     mp_types = [t for t in in_types if isinstance(t, elt.MPType)]
 
@@ -623,7 +733,7 @@ def _pconv_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
     for i, mt in enumerate(mp_types[1:], 1):
         if mt.value_type != first_vtype:
             raise TypeError(
-                f"pconv value type mismatch at input {i}: "
+                f"converge value type mismatch at input {i}: "
                 f"{mt.value_type} vs {first_vtype}"
             )
 
@@ -640,7 +750,7 @@ def _pconv_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
                 if p1 is not None and p2 is not None:
                     if set(p1) & set(p2):
                         raise ValueError(
-                            f"pconv requires disjoint parties, inputs {i} and {j} "
+                            f"converge requires disjoint parties, inputs {i} and {j} "
                             f"overlap: {set(p1) & set(p2)}"
                         )
 
@@ -654,35 +764,40 @@ def _pconv_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
     return elt.MP[first_vtype, output_parties]
 
 
-def pshfl(src: el.Object, index: el.Object) -> el.Object:
-    """Dynamic shuffle: redistribute src data based on runtime index values.
+def shuffle_dynamic(src: el.Object, index: el.Object) -> el.Object:
+    """Dynamic shuffle: redistribute data based on runtime index values.
 
     Each party uses its local index value to fetch data from the corresponding
     source party. The output has dynamic mask (parties=None) since the data
     distribution depends on runtime index values.
+
+    This is the most flexible shuffle primitive but requires runtime communication
+    pattern determination.
 
     Args:
         src: Source data (MP-typed)
         index: Index indicating which source party to fetch from (MP-typed scalar)
 
     Returns:
-        Shuffled data with dynamic mask
+        Shuffled data with dynamic mask (parties=None)
 
     Example:
         >>> # P0, P1, P2 each hold different index values at runtime
-        >>> result = pshfl(src, index)
+        >>> result = shuffle_dynamic(src, index)
         >>> # result.type.parties == None (dynamic)
     """
-    return pshfl_p.bind(src, index)
+    return shuffle_dynamic_p.bind(src, index)
 
 
-def pshfl_s(
+def shuffle(
     src: el.Object, parties: tuple[int, ...], src_ranks: list[int]
 ) -> el.Object:
-    """Static shuffle: redistribute src data to specified parties from src_ranks.
+    """Static shuffle: redistribute data with compile-time known routing pattern.
 
-    Unlike pshfl, the shuffle pattern is known at compile time. The i-th party
-    in `parties` receives data from `src_ranks[i]`.
+    Unlike shuffle_dynamic, the shuffle pattern is known at compile time.
+    The i-th party in `parties` receives data from `src_ranks[i]`.
+
+    This enables compile-time optimization and produces a static output mask.
 
     Args:
         src: Source data (MP-typed)
@@ -694,18 +809,20 @@ def pshfl_s(
 
     Example:
         >>> # Shuffle from P1 to P0
-        >>> result = pshfl_s(src, parties=(0,), src_ranks=[1])
+        >>> result = shuffle(src, parties=(0,), src_ranks=[1])
         >>> # result.type.parties == (0,)
     """
-    return pshfl_s_p.bind(src, parties=parties, src_ranks=src_ranks)
+    return shuffle_p.bind(src, parties=parties, src_ranks=src_ranks)
 
 
-def pconv(*vars: el.Object) -> el.Object:
-    """Converge multiple disjoint-masked variables into a single variable.
+def converge(*vars: el.Object) -> el.Object:
+    """Converge multiple disjoint-partitioned variables into one.
 
-    Combines data from multiple parties into one logical variable. In static case,
-    validates that input parties are disjoint and unions them. In dynamic case,
-    propagates the dynamic mask.
+    Merges data from multiple parties into one logical variable. In static case,
+    validates that input parties are disjoint and produces their union. In dynamic
+    case, propagates the dynamic mask.
+
+    This is the fundamental operation for combining results from different parties.
 
     Args:
         *vars: Variable number of MP-typed inputs with disjoint parties
@@ -718,23 +835,33 @@ def pconv(*vars: el.Object) -> el.Object:
 
     Example:
         >>> # P0 has x, P1 has y (disjoint)
-        >>> result = pconv(x, y)
+        >>> result = converge(x, y)
         >>> # result.type.parties == (0, 1)
     """
-    return pconv_p.bind(*vars)
+    return converge_p.bind(*vars)
+
+
+# Backward compatibility aliases
+pshfl = shuffle_dynamic
+pshfl_s = shuffle
+pconv = converge
 
 
 __all__ = [
-    # Communication primitives
+    "converge",
+    "converge_p",
+    "pcall_dynamic",
+    "pcall_dynamic_p",
+    "pcall_static",
+    "pcall_static_p",
     "pconv",
-    "pconv_p",
     "peval",
-    "peval_p",
     "pshfl",
-    "pshfl_p",
     "pshfl_s",
-    "pshfl_s_p",
-    # Control flow
+    "shuffle",
+    "shuffle_dynamic",
+    "shuffle_dynamic_p",
+    "shuffle_p",
     "uniform_cond",
     "uniform_cond_p",
     "while_loop",

@@ -30,7 +30,10 @@ class TestUniformCond:
     """Test suite for uniform_cond primitive in trace mode."""
 
     def test_with_callables_true_branch(self):
-        """Test uniform_cond traces correctly - graph structure independent of pred value."""
+        """Test uniform_cond traces correctly.
+
+        Graph structure independent of pred value.
+        """
         pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
         x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
@@ -52,7 +55,10 @@ class TestUniformCond:
         assert len(cond_ops[0].regions) == 2
 
     def test_with_callables_false_branch(self):
-        """Test uniform_cond traces correctly - both branches traced regardless of pred."""
+        """Test uniform_cond traces correctly.
+
+        Both branches traced regardless of pred.
+        """
         pred_val = el.InterpObject(np.array(False), elt.Tensor[elt.f32, ()])
         x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
@@ -406,10 +412,15 @@ class TestPeval:
 
         traced = el.trace(wrapper, x, bias)
         graph = traced.graph
-        peval_ops = [op for op in graph.operations if op.opcode == "simp.peval"]
-        assert len(peval_ops) == 1
-        peval_op = peval_ops[0]
-        region = peval_op.regions[0]
+        # peval with None parties uses pcall_dynamic now
+        local_ops = [
+            op
+            for op in graph.operations
+            if op.opcode in ("simp.peval", "simp.pcall_dynamic")
+        ]
+        assert len(local_ops) == 1
+        local_op = local_ops[0]
+        region = local_op.regions[0]
 
         # First input comes from peval argument, second from captured bias.
         assert len(region.inputs) == 2
@@ -422,5 +433,5 @@ class TestPeval:
             assert not isinstance(value.type, elt.MPType)
 
         # Outermost op re-wraps with MP typing.
-        for value in peval_op.outputs:
+        for value in local_op.outputs:
             assert isinstance(value.type, elt.MPType)

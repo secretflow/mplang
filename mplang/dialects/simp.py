@@ -90,60 +90,22 @@ def _align_region_inputs(
     traced_fn.captured = list(capture_order)
 
 
-def _normalize_parties(value: tuple[int, ...] | None) -> tuple[int, ...] | None:
-    """Validate and normalize party tuple (sorted, deduplicated).
-
-    Args:
-        value: Party tuple or None. Should be consistent with MPType.parties format.
-
-    Returns:
-        Normalized sorted tuple or None.
-
-    Raises:
-        TypeError: If value contains non-integer elements.
-        ValueError: If any rank is negative.
-    """
-    if value is None:
-        return None
-
-    for rank in value:
-        if not isinstance(rank, int):
-            raise TypeError(
-                f"parties tuple must contain integers, got {rank!r} of "
-                f"type {type(rank)}"
-            )
-        if rank < 0:
-            raise ValueError(f"party rank must be non-negative, got {rank}")
-
-    return tuple(sorted(set(value)))
-
-
-def _parties_from_type(base_type: elt.BaseType) -> tuple[int, ...] | None:
-    """Extract party tuple from MP typed values."""
-    if isinstance(base_type, elt.MPType):
-        return tuple(base_type.parties)
-    return None
-
-
-def _deduce_parties(types: list[elt.BaseType]) -> tuple[int, ...] | None:
+def _deduce_parties(types: list[elt.MPType]) -> tuple[int, ...] | None:
     """Deduce common parties by intersecting all known party sets."""
-    masks: list[tuple[int, ...] | None] = [_parties_from_type(tp) for tp in types]
-    if not masks or any(m is None for m in masks):
+    if not types:
         return None
-    current = set(masks[0])
-    for parties in masks[1:]:
+
+    # Extract parties, return None if any is dynamic
+    parties_list = [tp.parties for tp in types]
+    if any(p is None for p in parties_list):
+        return None
+
+    # Intersect all party sets
+    current = set(parties_list[0])
+    for parties in parties_list[1:]:
         assert parties is not None
         current &= set(parties)
     return tuple(sorted(current))
-
-
-def _wrap_with_mp(
-    base_type: elt.BaseType, parties: tuple[int, ...] | None
-) -> elt.BaseType:
-    """Wrap base_type with MP typing (parties can be None for dynamic)."""
-    if isinstance(base_type, elt.MPType):
-        return base_type
-    return elt.MP[base_type, parties]
 
 
 class _LocalMPTracer(el.Tracer):
@@ -447,15 +409,17 @@ def _pcall_static_trace(
     assert isinstance(cur_ctx, el.Tracer)
     assert callable(local_fn)
 
-    requested_parties = _normalize_parties(parties)
-    if requested_parties is None:
-        raise ValueError("local_static requires explicit parties, got None")
+    if parties is None:
+        raise ValueError("pcall_static requires explicit parties, got None")
+
+    requested_parties = tuple(sorted(set(parties)))
 
     local_tracer = _LocalMPTracer()
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
 
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
-    all_input_types = [obj.type for obj in all_input_objs]
+    # All types are guaranteed to be MPType by _LocalMPTracer._lift
+    all_input_types: list[elt.MPType] = [obj.type for obj in all_input_objs]  # type: ignore[misc]
     deduced_parties = _deduce_parties(all_input_types)
 
     if deduced_parties is not None:
@@ -472,8 +436,7 @@ def _pcall_static_trace(
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
     result_types = [
-        _wrap_with_mp(value.type, requested_parties)
-        for value in local_traced.graph.outputs
+        elt.MP[value.type, requested_parties] for value in local_traced.graph.outputs
     ]
 
     result_values = cur_ctx.graph.add_op(
@@ -534,9 +497,7 @@ def _pcall_dynamic_trace(
     region_inputs = [obj._graph_value for obj in recaptured_objs]
 
     # Output always has dynamic parties (None)
-    result_types = [
-        _wrap_with_mp(value.type, None) for value in local_traced.graph.outputs
-    ]
+    result_types = [elt.MP[value.type, None] for value in local_traced.graph.outputs]
 
     result_values = cur_ctx.graph.add_op(
         opcode="simp.pcall_dynamic",

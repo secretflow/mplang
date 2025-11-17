@@ -155,7 +155,6 @@ class TraceContext(MPContext):
         Returns:
             TraceVar representing the captured variable in this context
         """
-
         # If we've seen this object before, return the existing variable
         if obj in self._captures:
             return self._captures[obj]

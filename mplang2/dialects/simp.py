@@ -350,7 +350,7 @@ def while_loop(
 pcall_static_p = el.Primitive("simp.pcall_static")
 pcall_dynamic_p = el.Primitive("simp.pcall_dynamic")
 shuffle_dynamic_p = el.Primitive("simp.shuffle_dynamic")
-shuffle_p = el.Primitive("simp.shuffle")
+shuffle_static_p = el.Primitive("simp.shuffle")
 converge_p = el.Primitive("simp.converge")
 
 
@@ -572,7 +572,7 @@ def _shuffle_dynamic_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseT
     return elt.MPType(src_t.value_type, None)
 
 
-@shuffle_p.def_abstract_eval
+@shuffle_static_p.def_abstract_eval
 def _shuffle_ae(src_t: elt.BaseType, routing: dict[int, int]) -> elt.BaseType:
     """Type inference for static shuffle (compile-time known data routing).
 
@@ -731,7 +731,7 @@ def shuffle_static(src: el.Object, routing: dict[int, int]) -> el.Object:
         >>> result = shuffle_static(src, routing={0: 1, 2: 0})
         >>> # result.type.parties == (0, 2)
     """
-    return cast(el.Object, shuffle_p.bind(src, routing=routing))
+    return cast(el.Object, shuffle_static_p.bind(src, routing=routing))
 
 
 def converge(*vars: el.Object) -> el.Object:
@@ -787,8 +787,8 @@ __all__ = [
     "peval",
     "shuffle_dynamic",
     "shuffle_dynamic_p",
-    "shuffle_p",
     "shuffle_static",
+    "shuffle_static_p",
     "uniform_cond",
     "uniform_cond_p",
     "while_loop",

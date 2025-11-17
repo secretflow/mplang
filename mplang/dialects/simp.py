@@ -841,12 +841,6 @@ def converge(*vars: el.Object) -> el.Object:
     return converge_p.bind(*vars)
 
 
-# Backward compatibility aliases
-pshfl = shuffle_dynamic
-pshfl_s = shuffle
-pconv = converge
-
-
 __all__ = [
     "converge",
     "converge_p",
@@ -854,10 +848,7 @@ __all__ = [
     "pcall_dynamic_p",
     "pcall_static",
     "pcall_static_p",
-    "pconv",
     "peval",
-    "pshfl",
-    "pshfl_s",
     "shuffle",
     "shuffle_dynamic",
     "shuffle_dynamic_p",

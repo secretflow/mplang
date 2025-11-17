@@ -34,25 +34,21 @@ _NP_DTYPE_NAME_TO_SCALAR = {
 
 
 @dataclass
-class _RunJaxCompilation:
-    """Book-keeping for compiled tensor.run_jax functions."""
+class RunJaxCompilation:
+    """Compilation record for tensor.run_jax functions.
+
+    Stores both the compilation artifacts (StableHLO MLIR, types, tree structure)
+    and metadata needed for execution (arg_keep_map for JAX's unused param elimination).
+    """
 
     fn: Callable[..., Any]
     stablehlo: str
     out_tree: PyTreeDef
     output_types: list[elt.BaseType]
+    arg_keep_map: list[int] | None = None
 
 
-@dataclass(frozen=True)
-class RunJaxCompilationInfo:
-    """Public view of a compiled tensor.run_jax function."""
-
-    stablehlo: str
-    out_tree: PyTreeDef
-    output_types: list[elt.BaseType]
-
-
-_RUN_JAX_REGISTRY: dict[str, _RunJaxCompilation] = {}
+_RUN_JAX_REGISTRY: dict[str, RunJaxCompilation] = {}
 _RUN_JAX_ID_GENERATOR = count()
 
 
@@ -110,144 +106,132 @@ def _out_info_to_edsl(out_info: Any) -> elt.TensorType:
     return elt.TensorType(scalar, shape)
 
 
-def _register_compilation(compilation: _RunJaxCompilation) -> str:
+def _register_compilation(compilation: RunJaxCompilation) -> str:
     compilation_id = f"tensor.run_jax::{next(_RUN_JAX_ID_GENERATOR)}"
     _RUN_JAX_REGISTRY[compilation_id] = compilation
     return compilation_id
 
 
-def get_run_jax_compilation(compilation_id: str) -> RunJaxCompilationInfo:
+def get_run_jax_compilation(compilation_id: str) -> RunJaxCompilation:
+    """Get compilation record by ID.
+
+    Returns:
+        The compilation record containing StableHLO MLIR, types, and metadata.
+    """
     try:
-        record = _RUN_JAX_REGISTRY[compilation_id]
+        return _RUN_JAX_REGISTRY[compilation_id]
     except KeyError as exc:
         raise KeyError(
             f"Unknown tensor.run_jax compilation id '{compilation_id}'"
         ) from exc
-    return RunJaxCompilationInfo(
-        stablehlo=record.stablehlo,
-        out_tree=record.out_tree,
-        output_types=list(record.output_types),
-    )
 
 
 def _compile_run_jax(
     fn: Callable[..., Any],
     normalized_fn: Callable[..., Any],
     placeholders: list[ShapeDtypeStruct],
-) -> tuple[_RunJaxCompilation, str]:
+) -> tuple[RunJaxCompilation, str]:
+    """Compile JAX function to StableHLO MLIR.
+
+    Pipeline: jit → lower → StableHLO MLIR
+
+    Args:
+        fn: Original JAX function
+        normalized_fn: Function accepting list of variables (for JAX lower API)
+        placeholders: JAX ShapeDtypeStruct list for lowering
+
+    Returns:
+        Tuple of (compilation record, compilation_id)
+    """
     jitted = jax.jit(normalized_fn)
     lowered = jitted.lower(placeholders)
     stablehlo_text = str(lowered.compiler_ir("stablehlo"))
 
-    # Handle both single output (OutInfo object) and multiple outputs (tuple)
+    # Handle JAX's unused parameter elimination
+    arg_keep_map: list[int] | None = None
+    try:
+        compile_args = lowered._lowering.compile_args
+        kept_var_idx = compile_args["kept_var_idx"]
+        kept_indices = sorted(kept_var_idx)
+        if len(kept_indices) < len(placeholders):
+            arg_keep_map = kept_indices
+    except (AttributeError, KeyError, TypeError) as e:
+        raise RuntimeError(
+            f"Cannot access JAX's kept_var_idx for unused parameter handling. "
+            f"JAX may have optimized away unused parameters. Error: {e}"
+        ) from e
+
+    # Convert output info to EDSL types
     output_types: list[elt.BaseType]
     if isinstance(lowered.out_info, tuple):
         output_types = [_out_info_to_edsl(info) for info in lowered.out_info]
     else:
         output_types = [_out_info_to_edsl(lowered.out_info)]
 
-    compilation = _RunJaxCompilation(
+    compilation = RunJaxCompilation(
         fn=fn,
         stablehlo=stablehlo_text,
         out_tree=lowered.out_tree,
         output_types=output_types,
+        arg_keep_map=arg_keep_map,
     )
     compilation_id = _register_compilation(compilation)
     return compilation, compilation_id
 
 
-def _prepare_run_jax_arguments(
-    fn: Callable[..., Any],
-    call_args: tuple[Any, ...],
-    user_kwargs: dict[str, Any],
-) -> tuple[Callable[..., Any], list[ShapeDtypeStruct], list[el.TraceObject]]:
-    """Prepare arguments for JAX compilation.
-
-    Args:
-        fn: Original JAX function
-        call_args: Positional arguments (mix of TraceObjects and constants)
-        user_kwargs: Keyword arguments (mix of TraceObjects and constants)
-
-    Returns:
-        tuple containing:
-        - normalized_fn: Function accepting list of variables (for JAX lower API)
-        - placeholders: JAX ShapeDtypeStruct list for lowering
-        - trace_objects: The TraceObject variables extracted from args/kwargs
-    """
-
-    def _is_trace_object(value: Any) -> bool:
-        return isinstance(value, el.TraceObject)
-
-    normalized_fn, variables = normalize_fn(
-        fn, call_args, user_kwargs, _is_trace_object
-    )
-
-    # Validate all variables are TensorType TraceObjects and convert to placeholders
-    trace_objects: list[el.TraceObject] = []
-    placeholders: list[ShapeDtypeStruct] = []
-    for var in variables:
-        if not isinstance(var, el.TraceObject):
-            raise TypeError(
-                f"tensor.run_jax expected TraceObject variables, got {type(var)}"
-            )
-        arg_type = var.type
-        if not isinstance(arg_type, elt.TensorType):
-            raise TypeError(
-                "tensor.run_jax only supports Tensor arguments; "
-                f"got {arg_type} for argument {var}"
-            )
-        trace_objects.append(var)
-        placeholders.append(_tensor_type_to_placeholder(arg_type))
-
-    return normalized_fn, placeholders, trace_objects
-
-
 @run_jax_p.def_trace
-def _run_jax_trace(
-    fn: Callable[..., Any],
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
+def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """Trace tensor.run_jax primitive.
+
+    Compiles JAX function to StableHLO and emits graph operation.
 
     Args:
         fn: JAX-compatible callable
-        *args: Positional arguments (mix of TraceObjects and constants)
-        **kwargs: Keyword arguments (mix of TraceObjects and constants)
+        *args: Positional arguments (TraceObjects become dynamic, others static)
+        **kwargs: Keyword arguments (TraceObjects become dynamic, others static)
 
     Returns:
-        PyTree of TraceObjects matching the output structure of fn
+        PyTree of TraceObjects matching fn's output structure
     """
     if not callable(fn):
         raise TypeError(f"run_jax expects callable, got {type(fn)}")
+
     tracer = _current_tracer()
 
-    normalized_fn, placeholders, dynamic_trace_objects = _prepare_run_jax_arguments(
-        fn, args, kwargs
-    )
+    # Extract TraceObjects (dynamic args) from args/kwargs
+    def _is_trace_object(value: Any) -> bool:
+        return isinstance(value, el.TraceObject)
 
-    if not dynamic_trace_objects:
+    normalized_fn, variables = normalize_fn(fn, args, kwargs, _is_trace_object)
+
+    if not variables:
         raise TypeError("tensor.run_jax requires at least one Tensor argument")
 
+    # Convert TraceObjects to JAX placeholders for compilation
+    placeholders: list[ShapeDtypeStruct] = []
+    for var in variables:
+        if not isinstance(var, el.TraceObject):
+            raise TypeError(f"Expected TraceObject, got {type(var)}")
+        if not isinstance(var.type, elt.TensorType):
+            raise TypeError(f"run_jax only supports Tensors, got {var.type}")
+        placeholders.append(_tensor_type_to_placeholder(var.type))
+
+    # Compile to StableHLO
     compilation, text_ref = _compile_run_jax(fn, normalized_fn, placeholders)
 
-    input_values = [arg._graph_value for arg in dynamic_trace_objects]
+    # Emit graph operation
+    input_values = [var._graph_value for var in variables]
     result_values = tracer.graph.add_op(
         opcode="tensor.run_jax",
         inputs=input_values,
         output_types=compilation.output_types,
-        attrs={
-            "ir_type": "stablehlo",
-            "text_ref": text_ref,
-        },
+        attrs={"ir_type": "stablehlo", "text_ref": text_ref},
     )
 
-    # JAX outputs are always all variables (no immediates in the output tree)
+    # Reconstruct output PyTree (JAX outputs are all variables)
     out_var_pos = list(range(len(result_values)))
-    out_imms: list[Any] = []
-
     return tracer.reconstruct_outputs(
-        out_var_pos, out_imms, compilation.out_tree, result_values
+        out_var_pos, [], compilation.out_tree, result_values
     )
 
 
@@ -272,4 +256,4 @@ def run_jax(
     return run_jax_p.bind(fn, *args, **kwargs)
 
 
-__all__ = ["RunJaxCompilationInfo", "get_run_jax_compilation", "run_jax", "run_jax_p"]
+__all__ = ["RunJaxCompilation", "get_run_jax_compilation", "run_jax", "run_jax_p"]

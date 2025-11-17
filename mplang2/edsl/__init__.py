@@ -3,8 +3,8 @@
 This module keeps the surface area intentionally small so downstream code can
 simply write::
 
-    import mplang.edsl as el
-    import mplang.edsl.typing as elt
+    import mplang2.edsl as el
+    import mplang2.edsl.typing as elt
 
 The `el` namespace re-exports the commonly used building blocks (context,
 graph, tracer, primitives, etc.), while the full type system lives under
@@ -13,7 +13,7 @@ graph, tracer, primitives, etc.), while the full type system lives under
 
 from __future__ import annotations
 
-# Re-export the typing module so callers can `import mplang.edsl.typing as elt`
+# Re-export the typing module so callers can `import mplang2.edsl.typing as elt`
 from . import typing as typing
 
 # Context management

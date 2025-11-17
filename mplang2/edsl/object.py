@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from mplang.edsl.typing import BaseType
+from mplang2.edsl.typing import BaseType
 
 
 class Object(ABC):

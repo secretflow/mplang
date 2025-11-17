@@ -23,7 +23,7 @@ This test suite validates the design principles outlined in mplang/core/typing.p
 
 import pytest
 
-from mplang.core.typing import (
+from mplang2.edsl.typing import (
     HE,
     MP,
     SIMD_HE,
@@ -606,7 +606,7 @@ class TestMPType:
 
     def test_mp_construction_basic(self):
         """Test basic MP construction."""
-        from mplang.core.typing import MPType
+        from mplang2.edsl.typing import MPType
 
         mp = MPType(f32, (0, 1))
         assert mp.value_type == f32

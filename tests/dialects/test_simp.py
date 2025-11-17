@@ -21,9 +21,9 @@ Call them directly like functions: uniform_cond(...), while_loop(...)
 import numpy as np
 import pytest
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
-from mplang.dialects.simp import peval, uniform_cond, while_loop
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
+from mplang2.dialects.simp import peval, uniform_cond, while_loop
 
 
 class TestUniformCond:
@@ -192,7 +192,7 @@ class TestUniformCond:
 
     def test_verify_uniform_attribute(self):
         """Test that verify_uniform flag uses global config."""
-        from mplang.dialects import simp
+        from mplang2.dialects import simp
 
         pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
         x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])

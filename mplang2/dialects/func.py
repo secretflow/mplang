@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
 
 func_def_p = el.Primitive("func.func")
 call_p = el.Primitive("func.call")

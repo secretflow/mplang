@@ -21,8 +21,8 @@ covering SSA value management, operation creation, and IR generation.
 
 import pytest
 
-from mplang.edsl.graph import Graph, Operation, Value
-from mplang.edsl.typing import SIMD_HE, Custom, Tensor, f32, i32
+from mplang2.edsl.graph import Graph, Operation, Value
+from mplang2.edsl.typing import SIMD_HE, Custom, Tensor, f32, i32
 
 # ==============================================================================
 # --- Test Value (SSA Values)

@@ -17,11 +17,11 @@
 import numpy as np
 import pytest
 
-from mplang.edsl.context import pop_context, push_context
-from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.primitive import Primitive, primitive
-from mplang.edsl.tracer import TraceObject, Tracer
-from mplang.edsl.typing import Tensor, f32
+from mplang2.edsl.context import pop_context, push_context
+from mplang2.edsl.interpreter import InterpObject
+from mplang2.edsl.primitive import Primitive, primitive
+from mplang2.edsl.tracer import TraceObject, Tracer
+from mplang2.edsl.typing import Tensor, f32
 
 
 class TestPrimitiveBasics:
@@ -248,7 +248,7 @@ class TestPrimitiveComplexScenarios:
 
     def test_trace_primitive_directly(self):
         """Test tracing a Primitive directly (not a lambda)."""
-        from mplang.edsl.tracer import trace
+        from mplang2.edsl.tracer import trace
 
         # Define a primitive
         my_add_p = Primitive("my_add")

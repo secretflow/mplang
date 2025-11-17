@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.edsl.graph import Graph, Operation, Value
+from mplang2.edsl.graph import Graph, Operation, Value
 
 
 class GraphPrinter:

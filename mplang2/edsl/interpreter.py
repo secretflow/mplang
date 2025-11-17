@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from mplang.edsl.context import Context
-from mplang.edsl.graph import Graph
-from mplang.edsl.object import Object
-from mplang.edsl.typing import BaseType
+from mplang2.edsl.context import Context
+from mplang2.edsl.graph import Graph
+from mplang2.edsl.object import Object
+from mplang2.edsl.typing import BaseType
 
 if TYPE_CHECKING:
-    from mplang.edsl.primitive import Primitive
+    from mplang2.edsl.primitive import Primitive
 
 
 class InterpObject(Object):
@@ -127,7 +127,7 @@ class Interpreter(Context):
         Returns:
             Execution result (InterpObject or list of InterpObject)
         """
-        from mplang.edsl.tracer import Tracer
+        from mplang2.edsl.tracer import Tracer
 
         # Create tracer and build graph
         with Tracer() as ctx:
@@ -192,7 +192,7 @@ class Interpreter(Context):
             >>> interp = Interpreter()
             >>> z_interp = interp.lift(z_trace)  # evaluate graph → InterpObject
         """
-        from mplang.edsl.tracer import TraceObject
+        from mplang2.edsl.tracer import TraceObject
 
         if isinstance(obj, InterpObject):
             # InterpObject must belong to this interpreter

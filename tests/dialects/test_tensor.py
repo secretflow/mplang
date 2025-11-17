@@ -14,9 +14,9 @@
 
 import numpy as np
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
-from mplang.dialects.tensor import get_run_jax_compilation, run_jax
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
+from mplang2.dialects.tensor import get_run_jax_compilation, run_jax
 
 
 def _add_fn(x):

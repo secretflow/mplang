@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
 
 run_sql_p = el.Primitive("table.run_sql")
 table2tensor_p = el.Primitive("table.table2tensor")

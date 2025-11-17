@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
-from mplang.dialects.simp import converge, shuffle_dynamic, shuffle_static
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
+from mplang2.dialects.simp import converge, shuffle_dynamic, shuffle_static
 
 
 class TestPshfl:

@@ -22,8 +22,8 @@ from typing import Any, cast
 
 from jax.tree_util import tree_flatten
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
 
 # ---------------------------------------------------------------------------
 # Global configuration

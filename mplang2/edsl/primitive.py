@@ -27,11 +27,11 @@ from typing import TYPE_CHECKING, Any
 
 from jax.tree_util import tree_map
 
-from mplang.edsl.context import get_current_context, get_default_interpreter
-from mplang.edsl.object import Object
+from mplang2.edsl.context import get_current_context, get_default_interpreter
+from mplang2.edsl.object import Object
 
 if TYPE_CHECKING:
-    from mplang.edsl.typing import BaseType
+    from mplang2.edsl.typing import BaseType
 
 
 class Primitive:
@@ -52,7 +52,7 @@ class Primitive:
         >>>
         >>> @encrypt_p.def_abstract_eval
         >>> def encrypt_abstract(x_type):
-        >>>     from mplang.edsl.typing import SIMD_HE
+        >>>     from mplang2.edsl.typing import SIMD_HE
         >>>     return SIMD_HE[x_type.dtype, x_type.shape]
         >>>
         >>> # Execution happens via Graph IR → Backend

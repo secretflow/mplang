@@ -12,8 +12,8 @@ import numpy as np
 from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
 
 run_jax_p = el.Primitive("tensor.run_jax")

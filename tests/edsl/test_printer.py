@@ -16,9 +16,9 @@
 
 from textwrap import dedent
 
-from mplang.edsl.graph import Graph
-from mplang.edsl.printer import GraphPrinter, format_graph
-from mplang.edsl.typing import Tensor, f32, i32
+from mplang2.edsl.graph import Graph
+from mplang2.edsl.printer import GraphPrinter, format_graph
+from mplang2.edsl.typing import Tensor, f32, i32
 
 
 def _build_simple_graph() -> Graph:

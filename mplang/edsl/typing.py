@@ -514,9 +514,14 @@ SS = SSType
 
 
 class MPType(BaseType):
-    """Represents a logical value distributed among multiple parties."""
+    """Represents a logical value distributed among multiple parties.
 
-    def __init__(self, value_type: BaseType, parties: tuple[int, ...]):
+    Args:
+        value_type: The type of the value held by parties
+        parties: Tuple of party IDs (static mask) or None (dynamic mask)
+    """
+
+    def __init__(self, value_type: BaseType, parties: tuple[int, ...] | None):
         self._value_type = value_type
         self._parties = parties
 
@@ -525,11 +530,13 @@ class MPType(BaseType):
         return self._value_type
 
     @property
-    def parties(self) -> tuple[int, ...]:
+    def parties(self) -> tuple[int, ...] | None:
         return self._parties
 
-    def __class_getitem__(cls, params: tuple[BaseType, tuple[int, ...]]) -> MPType:
-        """Enables the syntax `MP[Tensor[...], (0, 1)]`."""
+    def __class_getitem__(
+        cls, params: tuple[BaseType, tuple[int, ...] | None]
+    ) -> MPType:
+        """Enables the syntax `MP[Tensor[...], (0, 1)]` or `MP[Tensor[...], None]`."""
         value_type, parties = params
         return cls(value_type, parties)
 

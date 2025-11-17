@@ -401,9 +401,6 @@ def _pcall_static_trace(
                 f"input argument parties {deduced_parties}"
             )
 
-    num_arg_vars = len(local_traced.in_var_pos)
-    local_traced.align_region_inputs(num_arg_vars, local_traced.captured)
-
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
@@ -460,9 +457,6 @@ def _pcall_dynamic_trace(
 
     local_tracer = _LocalMPTracer()
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
-
-    num_arg_vars = len(local_traced.in_var_pos)
-    local_traced.align_region_inputs(num_arg_vars, local_traced.captured)
 
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]

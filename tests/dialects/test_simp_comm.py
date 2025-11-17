@@ -5,7 +5,7 @@ import pytest
 
 import mplang.edsl as el
 import mplang.edsl.typing as elt
-from mplang.dialects.simp import converge, shuffle, shuffle_dynamic
+from mplang.dialects.simp import converge, shuffle_dynamic, shuffle_static
 
 
 class TestPshfl:
@@ -55,10 +55,10 @@ class TestPshflS:
     """Tests for static shuffle primitive."""
 
     def test_pshfl_s_creates_static_mask(self):
-        """Test that pshfl_s output has static mask."""
+        """Test that shuffle_static output has static mask."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        traced = el.trace(lambda s: shuffle(s, parties=(0,), src_ranks=[1]), src)
+        traced = el.trace(lambda s: shuffle_static(s, routing={0: 1}), src)
 
         assert len(traced.graph.outputs) == 1
         output_type = traced.graph.outputs[0].type
@@ -67,39 +67,41 @@ class TestPshflS:
         assert output_type.value_type == elt.Tensor[elt.f32, ()]
 
     def test_pshfl_s_requires_mp_typed_src(self):
-        """Test that pshfl_s raises TypeError for non-MP src."""
+        """Test that shuffle_static raises TypeError for non-MP src."""
         src = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
 
-        with pytest.raises(TypeError, match="shuffle requires MP-typed src"):
-            el.trace(lambda s: shuffle(s, parties=(0,), src_ranks=[1]), src)
+        with pytest.raises(TypeError, match="shuffle_static requires MP-typed src"):
+            el.trace(lambda s: shuffle_static(s, routing={0: 1}), src)
 
-    def test_pshfl_s_requires_explicit_parties(self):
-        """Test that pshfl_s raises TypeError when parties=None."""
+    def test_pshfl_s_requires_nonempty_routing(self):
+        """Test that shuffle_static raises ValueError for empty routing."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        with pytest.raises(TypeError, match="shuffle requires explicit parties"):
-            el.trace(lambda s: shuffle(s, parties=None, src_ranks=[1]), src)
+        with pytest.raises(
+            ValueError, match="shuffle_static requires non-empty routing dict"
+        ):
+            el.trace(lambda s: shuffle_static(s, routing={}), src)
 
-    def test_pshfl_s_validates_src_ranks_length(self):
-        """Test that pshfl_s raises ValueError when src_ranks length mismatches."""
+    def test_pshfl_s_requires_dict_routing(self):
+        """Test that shuffle_static raises TypeError for non-dict routing."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        with pytest.raises(ValueError, match=r"src_ranks length .* != parties count"):
-            el.trace(lambda s: shuffle(s, parties=(0, 1), src_ranks=[1]), src)
+        with pytest.raises(TypeError, match="shuffle_static requires routing dict"):
+            el.trace(lambda s: shuffle_static(s, routing=[1]), src)
 
     def test_pshfl_s_validates_src_ranks_in_src_parties(self):
-        """Test that pshfl_s raises ValueError when src_rank not in src.parties."""
+        """Test that shuffle_static raises ValueError when source not in src.parties."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        with pytest.raises(ValueError, match=r"src_rank 2 not in src\.parties"):
-            el.trace(lambda s: shuffle(s, parties=(0,), src_ranks=[2]), src)
+        with pytest.raises(ValueError, match=r"routing\[0\]=2 not in src\.parties"):
+            el.trace(lambda s: shuffle_static(s, routing={0: 2}), src)
 
     def test_pshfl_s_allows_src_ranks_when_src_parties_none(self):
-        """Test that pshfl_s allows any src_ranks when src.parties is None."""
+        """Test that shuffle_static allows any source when src.parties is None."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], None])
 
-        # Should not raise even though src_rank=2 is not in src.parties (None)
-        traced = el.trace(lambda s: shuffle(s, parties=(0,), src_ranks=[2]), src)
+        # Should not raise even though source=2 is not in src.parties (None)
+        traced = el.trace(lambda s: shuffle_static(s, routing={0: 2}), src)
         assert traced.graph.outputs[0].type.parties == (0,)
 
 

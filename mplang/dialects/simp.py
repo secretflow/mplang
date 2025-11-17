@@ -660,47 +660,43 @@ def _shuffle_dynamic_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseT
 
 
 @shuffle_p.def_abstract_eval
-def _shuffle_ae(
-    src_t: elt.BaseType, parties: tuple[int, ...], src_ranks: list[int]
-) -> elt.BaseType:
+def _shuffle_ae(src_t: elt.BaseType, routing: dict[int, int]) -> elt.BaseType:
     """Type inference for static shuffle (compile-time known data routing).
 
     Args:
         src_t: Source value type (must be MPType)
-        parties: Target party tuple (static, compile-time known)
-        src_ranks: Source rank for each target party
+        routing: Dict mapping target_party -> source_rank
 
     Returns:
-        Output type with static mask (parties=parties)
+        Output type with static mask (parties=tuple(sorted(routing.keys())))
 
     Raises:
-        TypeError: If src is not MP-typed or parties is None
-        ValueError: If src_ranks length doesn't match parties, or
-                    src_ranks reference parties not in src.parties
+        TypeError: If src is not MP-typed or routing is not a dict
+        ValueError: If routing references parties not in src.parties
     """
     if not isinstance(src_t, elt.MPType):
-        raise TypeError(f"shuffle requires MP-typed src, got {src_t}")
+        raise TypeError(f"shuffle_static requires MP-typed src, got {src_t}")
 
-    parties_normalized = _normalize_parties(parties)
-    if parties_normalized is None:
-        raise TypeError("shuffle requires explicit parties tuple")
+    if not isinstance(routing, dict):
+        raise TypeError(f"shuffle_static requires routing dict, got {type(routing)}")
 
-    if len(src_ranks) != len(parties_normalized):
-        raise ValueError(
-            f"shuffle: src_ranks length {len(src_ranks)} != "
-            f"parties count {len(parties_normalized)}"
-        )
+    if not routing:
+        raise ValueError("shuffle_static requires non-empty routing dict")
 
-    # Validate src_ranks are in src.parties (if src.parties is known)
+    # Target parties are the keys of routing dict
+    target_parties = tuple(sorted(routing.keys()))
+
+    # Validate source ranks are in src.parties (if src.parties is known)
     if src_t.parties is not None:
-        for rank in src_ranks:
-            if rank not in src_t.parties:
+        for target, source in routing.items():
+            if source not in src_t.parties:
                 raise ValueError(
-                    f"shuffle: src_rank {rank} not in src.parties {src_t.parties}"
+                    f"shuffle_static: routing[{target}]={source} not in "
+                    f"src.parties {src_t.parties}"
                 )
 
-    # Output: static mask
-    return elt.MP[src_t.value_type, parties_normalized]
+    # Output: static mask with target parties
+    return elt.MP[src_t.value_type, target_parties]
 
 
 @converge_p.def_abstract_eval
@@ -789,30 +785,40 @@ def shuffle_dynamic(src: el.Object, index: el.Object) -> el.Object:
     return shuffle_dynamic_p.bind(src, index)
 
 
-def shuffle(
-    src: el.Object, parties: tuple[int, ...], src_ranks: list[int]
-) -> el.Object:
+def shuffle_static(src: el.Object, routing: dict[int, int]) -> el.Object:
     """Static shuffle: redistribute data with compile-time known routing pattern.
 
-    Unlike shuffle_dynamic, the shuffle pattern is known at compile time.
-    The i-th party in `parties` receives data from `src_ranks[i]`.
+    Unlike shuffle_dynamic, the routing pattern is known at compile time.
+    Each entry in routing specifies: target_party -> source_rank.
 
     This enables compile-time optimization and produces a static output mask.
 
+    Design rationale:
+        Uses receiver-oriented routing {target: source} to naturally express:
+        - Permutation: {0: 1, 1: 0} (swap parties)
+        - Broadcast: {0: 1, 2: 1} (multiple targets from same source)
+        Maintains SIMP single-input-single-output semantics at MP value level.
+
     Args:
         src: Source data (MP-typed)
-        parties: Target party tuple (compile-time known)
-        src_ranks: Source rank for each target party (must match parties length)
+        routing: Dict mapping target_party -> source_rank
+                 e.g., {0: 1, 2: 0} means:
+                 - party 0 receives from rank 1
+                 - party 2 receives from rank 0
 
     Returns:
-        Shuffled data with static mask (parties=parties)
+        Shuffled data with static mask (parties=sorted keys of routing)
 
     Example:
-        >>> # Shuffle from P1 to P0
-        >>> result = shuffle(src, parties=(0,), src_ranks=[1])
+        >>> # Party 0 gets data from rank 1
+        >>> result = shuffle_static(src, routing={0: 1})
         >>> # result.type.parties == (0,)
+        >>>
+        >>> # Multiple parties
+        >>> result = shuffle_static(src, routing={0: 1, 2: 0})
+        >>> # result.type.parties == (0, 2)
     """
-    return shuffle_p.bind(src, parties=parties, src_ranks=src_ranks)
+    return shuffle_p.bind(src, routing=routing)
 
 
 def converge(*vars: el.Object) -> el.Object:
@@ -849,10 +855,10 @@ __all__ = [
     "pcall_static",
     "pcall_static_p",
     "peval",
-    "shuffle",
     "shuffle_dynamic",
     "shuffle_dynamic_p",
     "shuffle_p",
+    "shuffle_static",
     "uniform_cond",
     "uniform_cond_p",
     "while_loop",

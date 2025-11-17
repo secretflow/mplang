@@ -7,7 +7,7 @@ This module defines the Context hierarchy:
 
 Contexts can be used directly with Python's 'with' statement:
 
-    from mplang.edsl import Tracer
+    from mplang2.edsl import Tracer
 
     tracer = Tracer()
     with tracer:
@@ -23,9 +23,9 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from mplang.edsl.interpreter import Interpreter
-    from mplang.edsl.object import Object
-    from mplang.edsl.primitive import Primitive
+    from mplang2.edsl.interpreter import Interpreter
+    from mplang2.edsl.object import Object
+    from mplang2.edsl.primitive import Primitive
 
 
 class Context(ABC):
@@ -121,7 +121,7 @@ def get_default_interpreter() -> Interpreter:
     """Get the default interpreter for eager execution."""
     global _default_interpreter
     if _default_interpreter is None:
-        from mplang.edsl.interpreter import Interpreter
+        from mplang2.edsl.interpreter import Interpreter
 
         _default_interpreter = Interpreter()
     return _default_interpreter

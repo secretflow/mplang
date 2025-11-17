@@ -27,8 +27,8 @@ Key Design Principles:
 
 Example:
 --------
-    from mplang.edsl.graph import Graph, Operation, Value
-    from mplang.edsl.typing import Tensor, f32
+    from mplang2.edsl.graph import Graph, Operation, Value
+    from mplang2.edsl.typing import Tensor, f32
 
     graph = Graph()
 
@@ -59,7 +59,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from mplang.edsl.typing import BaseType
+from mplang2.edsl.typing import BaseType
 
 
 @dataclass
@@ -71,7 +71,7 @@ class Value:
 
     Attributes:
         name: Unique SSA name (e.g., "%0", "%1", ...)
-        type: Type of this value (from mplang.edsl.typing)
+        type: Type of this value (from mplang2.edsl.typing)
         defining_op: Operation that produces this value (None for inputs)
         uses: List of operations that consume this value
     """

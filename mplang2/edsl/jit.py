@@ -2,9 +2,9 @@
 
 from collections.abc import Callable
 
-from mplang.edsl.graph import Graph
-from mplang.edsl.interpreter import interpret
-from mplang.edsl.tracer import Tracer
+from mplang2.edsl.graph import Graph
+from mplang2.edsl.interpreter import interpret
+from mplang2.edsl.tracer import Tracer
 
 
 def jit(fn: Callable) -> Callable:

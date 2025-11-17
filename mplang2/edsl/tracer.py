@@ -17,14 +17,14 @@ from typing import TYPE_CHECKING, Any
 
 from jax.tree_util import PyTreeDef, tree_flatten, tree_map
 
-from mplang.edsl.context import Context
-from mplang.edsl.graph import Graph
-from mplang.edsl.graph import Value as GraphValue
-from mplang.edsl.object import Object
-from mplang.edsl.typing import BaseType
+from mplang2.edsl.context import Context
+from mplang2.edsl.graph import Graph
+from mplang2.edsl.graph import Value as GraphValue
+from mplang2.edsl.object import Object
+from mplang2.edsl.typing import BaseType
 
 if TYPE_CHECKING:
-    from mplang.edsl.primitive import Primitive
+    from mplang2.edsl.primitive import Primitive
 
 
 class TraceObject(Object):
@@ -34,7 +34,7 @@ class TraceObject(Object):
     All operations delegate to primitives which record into Graph.
 
     Example:
-        >>> from mplang.edsl import trace
+        >>> from mplang2.edsl import trace
         >>> def compute(x, y):
         ...     z = x + y  # TraceObject.__add__ → add_p.bind(x, y)
         ...     return z

@@ -40,7 +40,7 @@ return %2
 **Single source of truth**: `mplang.edsl.typing.MPType`
 
 ```python
-from mplang.edsl.typing import Tensor, SIMD_HE, MPType, f32
+from mplang2.edsl.typing import Tensor, SIMD_HE, MPType, f32
 
 # All types use BaseType
 plaintext: MPType = Tensor[f32, (4096,)]
@@ -51,7 +51,7 @@ ciphertext: MPType = SIMD_HE[f32, (4096,)]
 
 **Clean context management**:
 ```python
-from mplang.edsl import Tracer
+from mplang2.edsl import Tracer
 
 tracer = Tracer()
 with tracer:  # Context manager protocol
@@ -121,7 +121,7 @@ mplang/edsl/
 ### Using the New Type System
 
 ```python
-from mplang.edsl.typing import Tensor, SIMD_HE, CustomType, f32
+from mplang2.edsl.typing import Tensor, SIMD_HE, CustomType, f32
 
 # Define types
 PlaintextVec = Tensor[f32, (4096,)]
@@ -136,7 +136,7 @@ def encrypt(data: PlaintextVec, key: EncryptionKey) -> CiphertextVec:
 ### Future: Using the Graph IR (Not Yet Implemented)
 
 ```python
-from mplang.edsl import GraphBuilder
+from mplang2.edsl import GraphBuilder
 
 builder = GraphBuilder()
 

@@ -14,9 +14,9 @@
 
 import numpy as np
 
-import mplang.edsl as el
-import mplang.edsl.typing as elt
-from mplang.dialects.table import run_sql, table2tensor, tensor2table
+import mplang2.edsl as el
+import mplang2.edsl.typing as elt
+from mplang2.dialects.table import run_sql, table2tensor, tensor2table
 
 
 def _sample_table() -> el.InterpObject:

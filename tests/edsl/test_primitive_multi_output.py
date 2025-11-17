@@ -16,11 +16,11 @@
 
 import numpy as np
 
-from mplang.edsl.context import pop_context, push_context
-from mplang.edsl.interpreter import InterpObject
-from mplang.edsl.primitive import Primitive
-from mplang.edsl.tracer import Tracer
-from mplang.edsl.typing import Tensor, f32
+from mplang2.edsl.context import pop_context, push_context
+from mplang2.edsl.interpreter import InterpObject
+from mplang2.edsl.primitive import Primitive
+from mplang2.edsl.tracer import Tracer
+from mplang2.edsl.typing import Tensor, f32
 
 # Test helper primitives (for testing purposes only)
 add_p = Primitive("add")
@@ -63,7 +63,7 @@ class TestMultiOutputPrimitives:
             assert isinstance(results, list)
             assert len(results) == 3
             for r in results:
-                from mplang.edsl.tracer import TraceObject
+                from mplang2.edsl.tracer import TraceObject
 
                 assert isinstance(r, TraceObject)
                 assert r.type == Tensor[f32, (3,)]
@@ -98,7 +98,7 @@ class TestMultiOutputPrimitives:
             result = concat_p.bind(x, y, axis=0)
 
             # Single output (list of 1)
-            from mplang.edsl.tracer import TraceObject
+            from mplang2.edsl.tracer import TraceObject
 
             assert isinstance(result, TraceObject)
             assert result.type == Tensor[f32, (2,)]
@@ -136,7 +136,7 @@ class TestDefTrace:
         try:
             result = custom_p.bind(x, y, factor=2)
 
-            from mplang.edsl.tracer import TraceObject
+            from mplang2.edsl.tracer import TraceObject
 
             assert isinstance(result, TraceObject)
 
@@ -174,7 +174,7 @@ class TestDefTrace:
             assert "sum" in result
             assert "prod" in result
 
-            from mplang.edsl.tracer import TraceObject
+            from mplang2.edsl.tracer import TraceObject
 
             assert isinstance(result["sum"], TraceObject)
             assert isinstance(result["prod"], TraceObject)
@@ -209,7 +209,7 @@ class TestDefTrace:
         try:
             result = mixed_p.bind(dummy_fn, x, 42, k=3.14)
 
-            from mplang.edsl.tracer import TraceObject
+            from mplang2.edsl.tracer import TraceObject
 
             assert isinstance(result, TraceObject)
 
@@ -260,7 +260,7 @@ class TestBackwardCompatibility:
         try:
             result = simple_p.bind(x, y)
 
-            from mplang.edsl.tracer import TraceObject
+            from mplang2.edsl.tracer import TraceObject
 
             # Should return single TraceObject (not list)
             assert isinstance(result, TraceObject)

@@ -18,6 +18,7 @@ Note: uniform_cond and while_loop are bound methods from Primitive instances.
 Call them directly like functions: uniform_cond(...), while_loop(...)
 """
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -435,3 +436,126 @@ class TestPeval:
         # Outermost op re-wraps with MP typing.
         for value in local_op.outputs:
             assert isinstance(value.type, elt.MPType)
+
+
+class TestPcallWithTensorDialect:
+    """Test suite for pcall_static using tensor dialect operations.
+
+    Demonstrates SIMP dialect (pcall) can reference tensor dialect (jax_fn, run_jax).
+    """
+
+    def test_pcall_jax_fn_single_arg(self):
+        """Test pcall_static with jax_fn wrapper (single argument)."""
+        from mplang2.dialects.simp import pcall_static
+        from mplang2.dialects.tensor import jax_fn
+
+        def square(x):
+            return jnp.square(x)
+
+        x_val = el.InterpObject(
+            np.array([1.0, 2.0, 3.0]),
+            elt.MPType(elt.TensorType(elt.f32, (3,)), (0,)),
+        )
+
+        def compute(x):
+            return pcall_static((0,), jax_fn(square), x)
+
+        traced = el.trace(compute, x_val)
+
+        # Verify graph structure
+        assert len(traced.graph.operations) == 1
+        op = traced.graph.operations[0]
+        assert op.opcode == "simp.pcall_static"
+        assert op.attrs["fn_name"] == "square"
+        assert op.attrs["parties"] == [0]
+        assert len(op.regions) == 1
+
+        # Verify region contains run_jax from tensor dialect
+        region = op.regions[0]
+        assert len(region.operations) == 1
+        assert region.operations[0].opcode == "tensor.run_jax"
+
+    def test_pcall_jax_fn_multi_arg(self):
+        """Test pcall_static with jax_fn wrapper (multiple arguments)."""
+        from mplang2.dialects.simp import pcall_static
+        from mplang2.dialects.tensor import jax_fn
+
+        def add(x, y):
+            return jnp.add(x, y)
+
+        x_val = el.InterpObject(
+            np.array([1.0, 2.0]),
+            elt.MPType(elt.TensorType(elt.f32, (2,)), (0,)),
+        )
+        y_val = el.InterpObject(
+            np.array([3.0, 4.0]),
+            elt.MPType(elt.TensorType(elt.f32, (2,)), (0,)),
+        )
+
+        def compute(x, y):
+            return pcall_static((0,), jax_fn(add), x, y)
+
+        traced = el.trace(compute, x_val, y_val)
+
+        # Verify graph structure
+        assert len(traced.graph.operations) == 1
+        op = traced.graph.operations[0]
+        assert op.opcode == "simp.pcall_static"
+        assert op.attrs["fn_name"] == "add"
+        assert len(op.regions) == 1
+
+        # Verify region has 2 inputs
+        region = op.regions[0]
+        assert len(region.inputs) == 2
+
+    def test_jax_fn_preserves_function_name(self):
+        """Test that jax_fn wrapper preserves function name for better debugging."""
+        from mplang2.dialects.tensor import jax_fn
+
+        def my_custom_function(x):
+            return jnp.sqrt(x)
+
+        wrapped = jax_fn(my_custom_function)
+
+        assert wrapped.__name__ == "my_custom_function"
+        assert wrapped.__doc__ == my_custom_function.__doc__
+
+    def test_jax_fn_vs_lambda_comparison(self):
+        """Compare jax_fn wrapper with lambda approach.
+
+        Shows jax_fn provides better IR readability (fn_name) while
+        maintaining same region structure.
+        """
+        from mplang2.dialects.simp import pcall_static
+        from mplang2.dialects.tensor import jax_fn, run_jax
+
+        def square(x):
+            return jnp.square(x)
+
+        x_val = el.InterpObject(
+            np.array([1.0, 2.0]),
+            elt.MPType(elt.TensorType(elt.f32, (2,)), (0,)),
+        )
+
+        # Using jax_fn wrapper
+        def compute_jax_fn(x):
+            return pcall_static((0,), jax_fn(square), x)
+
+        traced_jax_fn = el.trace(compute_jax_fn, x_val)
+        op_jax_fn = traced_jax_fn.graph.operations[0]
+
+        # Using lambda + run_jax
+        def compute_lambda(x):
+            return pcall_static((0,), lambda t: run_jax(square, t), x)
+
+        traced_lambda = el.trace(compute_lambda, x_val)
+        op_lambda = traced_lambda.graph.operations[0]
+
+        # jax_fn has better fn_name for debugging
+        assert op_jax_fn.attrs["fn_name"] == "square"
+        assert op_lambda.attrs["fn_name"] == "<lambda>"
+
+        # Both have same region structure (tensor.run_jax)
+        assert len(op_jax_fn.regions) == len(op_lambda.regions)
+        assert op_jax_fn.regions[0].operations[0].opcode == "tensor.run_jax"
+        assert op_lambda.regions[0].operations[0].opcode == "tensor.run_jax"

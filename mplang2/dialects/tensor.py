@@ -256,4 +256,44 @@ def run_jax(
     return run_jax_p.bind(fn, *args, **kwargs)
 
 
-__all__ = ["RunJaxCompilation", "get_run_jax_compilation", "run_jax", "run_jax_p"]
+def jax_fn(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a JAX function for use with pcall.
+
+    This creates a callable that can be passed to pcall primitives,
+    providing a cleaner user interface:
+
+    Instead of:
+        pcall_static((0,), lambda x, y: run_jax(native_fn, x, y), x_p0, y_p0)
+
+    You can write:
+        pcall_static((0,), jax_fn(native_fn), x_p0, y_p0)
+
+    Args:
+        fn: JAX function to wrap
+
+    Returns:
+        Wrapped function that calls run_jax when invoked
+
+    Example:
+        >>> def square(x):
+        ...     return jnp.square(x)
+        >>> wrapped = jax_fn(square)
+        >>> result = pcall_static((0,), wrapped, x_p0)
+    """
+
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        return run_jax(fn, *args, **kwargs)
+
+    # Preserve function name for better IR readability
+    wrapped.__name__ = fn.__name__
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
+__all__ = [
+    "RunJaxCompilation",
+    "get_run_jax_compilation",
+    "jax_fn",
+    "run_jax",
+    "run_jax_p",
+]

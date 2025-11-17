@@ -8,6 +8,7 @@ import mplang2.edsl.typing as elt
 run_sql_p = el.Primitive("table.run_sql")
 table2tensor_p = el.Primitive("table.table2tensor")
 tensor2table_p = el.Primitive("table.tensor2table")
+constant_p = el.Primitive("table.constant")
 
 
 def _current_tracer() -> el.Tracer:
@@ -144,7 +145,91 @@ def tensor2table(tensor: el.TraceObject, *, column_names: list[str]) -> el.Trace
     return tensor2table_p.bind(tensor, column_names=column_names)  # type: ignore[no-any-return]
 
 
+@constant_p.def_abstract_eval
+def _constant_ae(data: dict[str, list]) -> elt.TableType:
+    """Infer table type for constant data.
+
+    Args:
+        data: Dictionary mapping column names to lists of values,
+              or any data convertible to pandas DataFrame
+
+    Returns:
+        TableType inferred from DataFrame schema
+
+    Raises:
+        TypeError: If data cannot be converted to DataFrame
+    """
+    import pandas as pd
+
+    # Unified pandas bridge for all data types
+    df = pd.DataFrame(data)
+
+    # Infer schema from pandas dtypes
+    schema: dict[str, elt.BaseType] = {}
+    for col_name in df.columns:
+        pd_dtype = df[col_name].dtype
+
+        # Map pandas dtypes to EDSL scalar types
+        if pd_dtype == "bool":
+            col_type = elt.TensorType(elt.i8, ())
+        elif pd_dtype in ("int64", "Int64"):
+            col_type = elt.TensorType(elt.i64, ())
+        elif pd_dtype in ("int32", "Int32"):
+            col_type = elt.TensorType(elt.i32, ())
+        elif pd_dtype in ("float64", "Float64"):
+            col_type = elt.TensorType(elt.f64, ())
+        elif pd_dtype in ("float32", "Float32"):
+            col_type = elt.TensorType(elt.f32, ())
+        elif pd_dtype == "object" or pd_dtype.name.startswith("string"):
+            # String columns - use i64 as placeholder
+            col_type = elt.TensorType(elt.i64, ())
+        else:
+            raise TypeError(
+                f"Unsupported pandas dtype for column '{col_name}': {pd_dtype}"
+            )
+
+        schema[str(col_name)] = col_type
+
+    return elt.TableType(schema)
+
+
+def constant(data: dict[str, list]) -> el.Object:
+    """Create a table constant value.
+
+    This creates a constant table that can be used in table computations.
+    The constant value is embedded directly into the computation graph.
+
+    Args:
+        data: Dictionary mapping column names to lists of values,
+              pandas DataFrame, or any data convertible to DataFrame.
+              All columns must have the same length.
+
+    Returns:
+        Object representing the constant table (TraceObject in trace mode,
+        InterpObject in interp mode)
+
+    Raises:
+        TypeError: If data cannot be converted to DataFrame
+        ValueError: If columns have different lengths
+
+    Example:
+        >>> # From dict
+        >>> table = constant({
+        ...     "id": [1, 2, 3],
+        ...     "name": ["alice", "bob", "charlie"],
+        ...     "score": [95.5, 87.2, 92.8],
+        ... })
+        >>> # From DataFrame
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})
+        >>> table = constant(df)
+    """
+    return constant_p.bind(data)  # type: ignore[no-any-return]
+
+
 __all__ = [
+    "constant",
+    "constant_p",
     "run_sql",
     "run_sql_p",
     "table2tensor",

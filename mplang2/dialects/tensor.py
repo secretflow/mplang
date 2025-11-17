@@ -17,6 +17,7 @@ import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
 
 run_jax_p = el.Primitive("tensor.run_jax")
+constant_p = el.Primitive("tensor.constant")
 
 _SCALAR_TO_NP_DTYPE = {
     "f32": np.dtype("float32"),
@@ -290,8 +291,56 @@ def jax_fn(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapped
 
 
+@constant_p.def_abstract_eval
+def _constant_ae(data: Any) -> elt.TensorType:
+    """Infer tensor type for constant data.
+
+    Args:
+        data: Scalar, numpy array, or array-like object
+
+    Returns:
+        TensorType inferred from data
+
+    Raises:
+        TypeError: If data cannot be converted to a tensor
+    """
+    # Unified numpy conversion for all data types
+    np_array = np.array(data)
+    dtype = _numpy_dtype_to_scalar(np_array.dtype)
+    shape = tuple(np_array.shape)
+    return elt.TensorType(dtype, shape)
+
+
+def constant(data: Any) -> el.Object:
+    """Create a tensor constant value.
+
+    This creates a constant tensor that can be used in tensor computations.
+    The constant value is embedded directly into the computation graph.
+
+    Args:
+        data: Constant data. Can be:
+            - A scalar value (int, float, bool, complex)
+            - A numpy array
+            - Any array-like object that can be converted to numpy
+
+    Returns:
+        Object representing the constant tensor
+
+    Raises:
+        TypeError: If data cannot be converted to a tensor
+
+    Example:
+        >>> x = constant(3.14)  # Scalar constant
+        >>> y = constant(np.array([1, 2, 3]))  # Array constant
+        >>> z = constant([[1, 2], [3, 4]])  # Nested list constant
+    """
+    return constant_p.bind(data)  # type: ignore[no-any-return]
+
+
 __all__ = [
     "RunJaxCompilation",
+    "constant",
+    "constant_p",
     "get_run_jax_compilation",
     "jax_fn",
     "run_jax",

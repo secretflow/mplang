@@ -116,32 +116,6 @@ class TraceContext(MPContext):
         self._var_namer = VarNamer(prefix="%")
         self._captures: dict[MPObject, TraceVar] = {}
 
-    def __del__(self) -> None:
-        """Clean up TEE session cache related to this TraceContext."""
-        try:
-            self._cleanup_related_sessions()
-        except Exception:
-            pass  # Silent failure to avoid exceptions during garbage collection
-
-    def _cleanup_related_sessions(self) -> None:
-        """Clean up TEE session cache entries related to this TraceContext."""
-        try:
-            root_ctx = self.root()
-            if hasattr(root_ctx, "_tee_sessions"):
-                cache = root_ctx._tee_sessions
-                my_context_id = id(self)
-
-                # Find and remove cache entries for this context
-                keys_to_remove = []
-                for key, (cached_context_id, _, _) in cache.items():
-                    if cached_context_id == my_context_id:
-                        keys_to_remove.append(key)
-
-                for key in keys_to_remove:
-                    del cache[key]
-        except Exception:
-            pass  # Silent failure - cleanup is best effort
-
     @property
     def mask(self) -> Mask:
         """The default mask for this context."""

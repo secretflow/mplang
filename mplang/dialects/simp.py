@@ -235,12 +235,8 @@ def _uniform_cond_trace(
             f"then={then_types}, else={else_types}"
         )
 
-    flat_inputs, _ = tree_flatten((args, kwargs))
-    arg_trace_objs: list[el.TraceObject] = [
-        val for val in flat_inputs if isinstance(val, el.TraceObject)
-    ]
-    arg_values = [obj._graph_value for obj in arg_trace_objs]
-    num_arg_vars = len(arg_trace_objs)
+    num_arg_vars = len(then_traced.in_var_pos)
+    arg_values = then_traced.graph.inputs[:num_arg_vars]
 
     all_captures = _merge_captures(then_traced.captured, else_traced.captured)
 
@@ -470,8 +466,7 @@ def _peval_trace(
     else:
         effective_parties = deduced_parties
 
-    flat_inputs, _ = tree_flatten((args, kwargs))
-    num_arg_vars = sum(1 for val in flat_inputs if isinstance(val, el.Object))
+    num_arg_vars = len(local_traced.in_var_pos)
 
     _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
 

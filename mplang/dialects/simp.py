@@ -522,42 +522,217 @@ def peval(
 
 @pshfl_p.def_abstract_eval
 def _pshfl_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseType:
-    return src_t
+    """Type inference for dynamic shuffle.
+
+    Args:
+        src_t: Source value type (must be MPType)
+        index_t: Index value type (must be MPType with scalar shape)
+
+    Returns:
+        Output type with dynamic mask (parties=None)
+
+    Raises:
+        TypeError: If src or index are not MP-typed, or index is not scalar
+    """
+    if not isinstance(src_t, elt.MPType):
+        raise TypeError(f"pshfl requires MP-typed src, got {src_t}")
+    if not isinstance(index_t, elt.MPType):
+        raise TypeError(f"pshfl requires MP-typed index, got {index_t}")
+
+    # Validate index is scalar
+    index_shape = getattr(index_t.value_type, "shape", None)
+    if index_shape is not None and index_shape != ():
+        raise TypeError(
+            f"pshfl index must be scalar, got shape {index_shape} with type {index_t.value_type}"
+        )
+
+    # Output: dynamic mask (None parties)
+    return elt.MP[src_t.value_type, None]
 
 
 @pshfl_s_p.def_abstract_eval
-def _pshfl_s_ae(src_t: elt.BaseType, pmask: Any, src_ranks: Any) -> elt.BaseType:
-    return src_t
+def _pshfl_s_ae(
+    src_t: elt.BaseType, parties: tuple[int, ...], src_ranks: list[int]
+) -> elt.BaseType:
+    """Type inference for static shuffle.
+
+    Args:
+        src_t: Source value type (must be MPType)
+        parties: Target party tuple (static, compile-time known)
+        src_ranks: Source rank for each target party
+
+    Returns:
+        Output type with static mask (parties=parties)
+
+    Raises:
+        TypeError: If src is not MP-typed or parties is None
+        ValueError: If src_ranks length doesn't match parties, or
+                    src_ranks reference parties not in src.parties
+    """
+    if not isinstance(src_t, elt.MPType):
+        raise TypeError(f"pshfl_s requires MP-typed src, got {src_t}")
+
+    parties_normalized = _normalize_parties(parties)
+    if parties_normalized is None:
+        raise TypeError("pshfl_s requires explicit parties tuple")
+
+    if len(src_ranks) != len(parties_normalized):
+        raise ValueError(
+            f"pshfl_s: src_ranks length {len(src_ranks)} != parties count {len(parties_normalized)}"
+        )
+
+    # Validate src_ranks are in src.parties (if src.parties is known)
+    if src_t.parties is not None:
+        for rank in src_ranks:
+            if rank not in src_t.parties:
+                raise ValueError(
+                    f"pshfl_s: src_rank {rank} not in src.parties {src_t.parties}"
+                )
+
+    # Output: static mask
+    return elt.MP[src_t.value_type, parties_normalized]
 
 
 @pconv_p.def_abstract_eval
-def _pconv_ae(*vars_t: elt.BaseType) -> elt.BaseType:
-    if not vars_t:
-        raise TypeError("pconv requires at least one input type")
-    return vars_t[0]
+def _pconv_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
+    """Type inference for converge operation.
+
+    Args:
+        in_types: List of input types (all must be MPType with same value_type)
+        attrs: Attributes dict (unused)
+
+    Returns:
+        Output type with union of input parties (or None if any input is dynamic)
+
+    Raises:
+        TypeError: If inputs are not all MP-typed or have inconsistent value_types
+        ValueError: If static parties are not disjoint
+    """
+    if not in_types:
+        raise TypeError("pconv requires at least one input")
+
+    # Validate all are MPType
+    for i, t in enumerate(in_types):
+        if not isinstance(t, elt.MPType):
+            raise TypeError(f"pconv input {i} must be MP-typed, got {t}")
+
+    mp_types = [t for t in in_types if isinstance(t, elt.MPType)]
+
+    # Check value_type consistency
+    first_vtype = mp_types[0].value_type
+    for i, mt in enumerate(mp_types[1:], 1):
+        if mt.value_type != first_vtype:
+            raise TypeError(
+                f"pconv value type mismatch at input {i}: "
+                f"{mt.value_type} vs {first_vtype}"
+            )
+
+    # Deduce output parties
+    parties_list = [mt.parties for mt in mp_types]
+
+    if any(p is None for p in parties_list):
+        # Dynamic case: propagate None
+        output_parties = None
+    else:
+        # Static case: check disjoint and union
+        for i, p1 in enumerate(parties_list):
+            for j, p2 in enumerate(parties_list[i + 1 :], i + 1):
+                if p1 is not None and p2 is not None:
+                    if set(p1) & set(p2):
+                        raise ValueError(
+                            f"pconv requires disjoint parties, inputs {i} and {j} "
+                            f"overlap: {set(p1) & set(p2)}"
+                        )
+
+        # Union all parties
+        all_parties = set()
+        for p in parties_list:
+            if p is not None:
+                all_parties.update(p)
+        output_parties = tuple(sorted(all_parties)) if all_parties else None
+
+    return elt.MP[first_vtype, output_parties]
 
 
-@pshfl_p.def_trace
-def _pshfl_trace(*_args: Any, **_kwargs: Any) -> Any:
-    raise NotImplementedError("simp.pshfl execution is not implemented yet")
+def pshfl(src: el.Object, index: el.Object) -> el.Object:
+    """Dynamic shuffle: redistribute src data based on runtime index values.
+
+    Each party uses its local index value to fetch data from the corresponding
+    source party. The output has dynamic mask (parties=None) since the data
+    distribution depends on runtime index values.
+
+    Args:
+        src: Source data (MP-typed)
+        index: Index indicating which source party to fetch from (MP-typed scalar)
+
+    Returns:
+        Shuffled data with dynamic mask
+
+    Example:
+        >>> # P0, P1, P2 each hold different index values at runtime
+        >>> result = pshfl(src, index)
+        >>> # result.type.parties == None (dynamic)
+    """
+    return pshfl_p.bind(src, index)
 
 
-@pshfl_s_p.def_trace
-def _pshfl_s_trace(*_args: Any, **_kwargs: Any) -> Any:
-    raise NotImplementedError("simp.pshfl_s execution is not implemented yet")
+def pshfl_s(
+    src: el.Object, parties: tuple[int, ...], src_ranks: list[int]
+) -> el.Object:
+    """Static shuffle: redistribute src data to specified parties from src_ranks.
+
+    Unlike pshfl, the shuffle pattern is known at compile time. The i-th party
+    in `parties` receives data from `src_ranks[i]`.
+
+    Args:
+        src: Source data (MP-typed)
+        parties: Target party tuple (compile-time known)
+        src_ranks: Source rank for each target party (must match parties length)
+
+    Returns:
+        Shuffled data with static mask (parties=parties)
+
+    Example:
+        >>> # Shuffle from P1 to P0
+        >>> result = pshfl_s(src, parties=(0,), src_ranks=[1])
+        >>> # result.type.parties == (0,)
+    """
+    return pshfl_s_p.bind(src, parties=parties, src_ranks=src_ranks)
 
 
-@pconv_p.def_trace
-def _pconv_trace(*_args: Any, **_kwargs: Any) -> Any:
-    raise NotImplementedError("simp.pconv execution is not implemented yet")
+def pconv(*vars: el.Object) -> el.Object:
+    """Converge multiple disjoint-masked variables into a single variable.
+
+    Combines data from multiple parties into one logical variable. In static case,
+    validates that input parties are disjoint and unions them. In dynamic case,
+    propagates the dynamic mask.
+
+    Args:
+        *vars: Variable number of MP-typed inputs with disjoint parties
+
+    Returns:
+        Converged variable with union of input parties (or None if any input is dynamic)
+
+    Raises:
+        ValueError: If static parties are not disjoint
+
+    Example:
+        >>> # P0 has x, P1 has y (disjoint)
+        >>> result = pconv(x, y)
+        >>> # result.type.parties == (0, 1)
+    """
+    return pconv_p.bind(*vars)
 
 
 __all__ = [
+    # Communication primitives
+    "pconv",
     "pconv_p",
-    # Communication
     "peval",
     "peval_p",
+    "pshfl",
     "pshfl_p",
+    "pshfl_s",
     "pshfl_s_p",
     # Control flow
     "uniform_cond",

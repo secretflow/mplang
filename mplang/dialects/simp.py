@@ -18,7 +18,7 @@ See individual primitive docstrings for detailed documentation.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from jax.tree_util import tree_flatten
 
@@ -72,8 +72,10 @@ def _deduce_parties(types: list[elt.MPType]) -> tuple[int, ...] | None:
     if any(p is None for p in parties_list):
         return None
 
-    # Intersect all party sets
-    current = set(parties_list[0])
+    # Intersect all party sets (we know all parties are not None here)
+    first_parties = parties_list[0]
+    assert first_parties is not None
+    current = set(first_parties)
     for parties in parties_list[1:]:
         assert parties is not None
         current &= set(parties)
@@ -402,8 +404,9 @@ def _pcall_static_trace(
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
-    result_types = [
-        elt.MP[value.type, requested_parties] for value in local_traced.graph.outputs
+    result_types: list[elt.BaseType] = [
+        elt.MPType(value.type, requested_parties)
+        for value in local_traced.graph.outputs
     ]
 
     result_values = cur_ctx.graph.add_op(
@@ -461,7 +464,9 @@ def _pcall_dynamic_trace(
     region_inputs = [obj._graph_value for obj in recaptured_objs]
 
     # Output always has dynamic parties (None)
-    result_types = [elt.MP[value.type, None] for value in local_traced.graph.outputs]
+    result_types: list[elt.BaseType] = [
+        elt.MPType(value.type, None) for value in local_traced.graph.outputs
+    ]
 
     result_values = cur_ctx.graph.add_op(
         opcode="simp.pcall_dynamic",
@@ -564,7 +569,7 @@ def _shuffle_dynamic_ae(src_t: elt.BaseType, index_t: elt.BaseType) -> elt.BaseT
         )
 
     # Output: dynamic mask (None parties)
-    return elt.MP[src_t.value_type, None]
+    return elt.MPType(src_t.value_type, None)
 
 
 @shuffle_p.def_abstract_eval
@@ -604,7 +609,7 @@ def _shuffle_ae(src_t: elt.BaseType, routing: dict[int, int]) -> elt.BaseType:
                 )
 
     # Output: static mask with target parties
-    return elt.MP[src_t.value_type, target_parties]
+    return elt.MPType(src_t.value_type, target_parties)
 
 
 @converge_p.def_abstract_eval
@@ -659,13 +664,13 @@ def _converge_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
                         )
 
         # Union all parties
-        all_parties = set()
+        all_parties: set[int] = set()
         for p in parties_list:
             if p is not None:
                 all_parties.update(p)
         output_parties = tuple(sorted(all_parties)) if all_parties else None
 
-    return elt.MP[first_vtype, output_parties]
+    return elt.MPType(first_vtype, output_parties)
 
 
 def shuffle_dynamic(src: el.Object, index: el.Object) -> el.Object:
@@ -690,7 +695,7 @@ def shuffle_dynamic(src: el.Object, index: el.Object) -> el.Object:
         >>> result = shuffle_dynamic(src, index)
         >>> # result.type.parties == None (dynamic)
     """
-    return shuffle_dynamic_p.bind(src, index)
+    return cast(el.Object, shuffle_dynamic_p.bind(src, index))
 
 
 def shuffle_static(src: el.Object, routing: dict[int, int]) -> el.Object:
@@ -726,7 +731,7 @@ def shuffle_static(src: el.Object, routing: dict[int, int]) -> el.Object:
         >>> result = shuffle_static(src, routing={0: 1, 2: 0})
         >>> # result.type.parties == (0, 2)
     """
-    return shuffle_p.bind(src, routing=routing)
+    return cast(el.Object, shuffle_p.bind(src, routing=routing))
 
 
 def converge(*vars: el.Object) -> el.Object:
@@ -752,7 +757,7 @@ def converge(*vars: el.Object) -> el.Object:
         >>> result = converge(x, y)
         >>> # result.type.parties == (0, 1)
     """
-    return converge_p.bind(*vars)
+    return cast(el.Object, converge_p.bind(*vars))
 
 
 # Backward compatibility aliases

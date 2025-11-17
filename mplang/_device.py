@@ -33,6 +33,7 @@ from mplang.core import (
     ClusterSpec,
     Device,
     Mask,
+    MPContext,
     MPObject,
     TableLike,
     TensorLike,
@@ -51,6 +52,20 @@ g_auto_trans: bool = True
 _HKDF_INFO_LITERAL: str = "mplang/device/tee/v1"
 # Default KEM suite for TEE session establishment; make configurable via ClusterSpec in future.
 _TEE_KEM_SUITE: str = "x25519"
+
+
+# Context-aware session management
+def _get_context_id(ctx: MPContext) -> int:
+    """
+    Get unique identifier for a context.
+
+    Args:
+        ctx: The context object (TraceContext or InterpContext)
+
+    Returns:
+        Unique integer ID for this context instance
+    """
+    return id(ctx)
 
 
 # magic attribute name to mark a MPObject as a device object
@@ -469,6 +484,17 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
         b_at_ppu = run_at(ppu_rank, crypto.dec, ct_at_ppu, sess_p)
         pt_at_ppu = run_at(ppu_rank, basic.unpack, b_at_ppu, out_ty=obj_ty)
         return tree_map(partial(set_dev_attr, dev_id=to_dev_id), pt_at_ppu)  # type: ignore[no-any-return]
+    elif frm_to_pair == ("TEE", "SPU"):
+        assert len(frm_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
+        vars = _spu_seal(to_dev, obj)
+        assert len(vars) == 1, "Expected single share from TEE to SPU seal."
+        return tree_map(partial(set_dev_attr, dev_id=to_dev_id), vars[0])  # type: ignore[no-any-return]
+    elif frm_to_pair == ("SPU", "TEE"):
+        assert len(to_dev.members) == 1
+        to_rank = to_dev.members[0].rank
+        var = _spu_reveal(frm_dev, obj, Mask.from_ranks([to_rank]))
+        return tree_map(partial(set_dev_attr, dev_id=to_dev_id), var)  # type: ignore[no-any-return]
     else:
         supported = [
             ("SPU", "PPU"),
@@ -476,6 +502,8 @@ def _d2d(to_dev_id: str, obj: MPObject) -> MPObject:
             ("PPU", "PPU"),
             ("PPU", "TEE"),
             ("TEE", "PPU"),
+            ("TEE", "SPU"),
+            ("SPU", "TEE"),
         ]
         raise ValueError(
             f"Unsupported device transfer: {frm_to_pair}. Supported pairs: {supported}."
@@ -487,16 +515,35 @@ def _ensure_tee_session(
 ) -> tuple[MPObject, MPObject]:
     """Ensure a TEE session (sess_p at sender, sess_t at TEE) exists.
 
+    Context-aware version: caches include context ID to ensure isolation
+    between different TraceContext instances, preventing TraceVar pollution.
+
     Returns (sess_p, sess_t).
     """
-    ctx = cur_ctx().root()
-    if not hasattr(ctx, "_tee_sessions"):
-        ctx._tee_sessions = {}  # type: ignore[attr-defined]
-    cache: dict[tuple[str, str], tuple[MPObject, MPObject]] = ctx._tee_sessions  # type: ignore
+    # Get current context and its unique ID
+    current_ctx = cur_ctx()
+    current_context_id = _get_context_id(current_ctx)
+
+    # Get root context for cache storage
+    root_ctx = current_ctx.root()
+    if not hasattr(root_ctx, "_tee_sessions"):
+        root_ctx._tee_sessions = {}  # type: ignore[attr-defined]
+    cache: dict[tuple[str, str], tuple[int, MPObject, MPObject]] = (
+        root_ctx._tee_sessions  # type: ignore[attr-defined]
+    )
 
     key = (frm_dev_id, to_dev_id)
+
+    # Check cache with context awareness
     if key in cache:
-        return cache[key]
+        cached_context_id, sess_p, sess_t = cache[key]
+
+        # Only reuse cache from the same context
+        if cached_context_id == current_context_id:
+            return sess_p, sess_t
+        else:
+            # Different context, cannot reuse cache, clean up old entry
+            del cache[key]
 
     # 1) TEE generates (sk, pk) and quote(pk)
     # KEM suite currently constant; future: read from tee device config (e.g. cluster_spec.devices[dev_id].config)
@@ -520,7 +567,8 @@ def _ensure_tee_session(
     sess_p = run_at(frm_rank, crypto.hkdf, shared_p, _HKDF_INFO_LITERAL)
     sess_t = run_at(tee_rank, crypto.hkdf, shared_t, _HKDF_INFO_LITERAL)
 
-    cache[key] = (sess_p, sess_t)
+    # Cache with context ID for isolation
+    cache[key] = (current_context_id, sess_p, sess_t)
     return sess_p, sess_t
 
 

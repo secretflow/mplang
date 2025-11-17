@@ -29,7 +29,7 @@ class TestPshfl:
         src = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
         index = el.InterpObject(np.array(0), elt.MP[elt.Tensor[elt.i32, ()], (0,)])
 
-        with pytest.raises(TypeError, match="pshfl requires MP-typed src"):
+        with pytest.raises(TypeError, match="shuffle_dynamic requires MP-typed src"):
             el.trace(lambda s, i: pshfl(s, i), src, index)
 
     def test_pshfl_requires_mp_typed_index(self):
@@ -37,7 +37,7 @@ class TestPshfl:
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0,)])
         index = el.InterpObject(np.array(0), elt.Tensor[elt.i32, ()])
 
-        with pytest.raises(TypeError, match="pshfl requires MP-typed index"):
+        with pytest.raises(TypeError, match="shuffle_dynamic requires MP-typed index"):
             el.trace(lambda s, i: pshfl(s, i), src, index)
 
     def test_pshfl_requires_scalar_index(self):
@@ -47,7 +47,7 @@ class TestPshfl:
             np.array([0, 1]), elt.MP[elt.Tensor[elt.i32, (2,)], (0,)]
         )
 
-        with pytest.raises(TypeError, match="pshfl index must be scalar"):
+        with pytest.raises(TypeError, match="shuffle_dynamic index must be scalar"):
             el.trace(lambda s, i: pshfl(s, i), src, index)
 
 
@@ -70,28 +70,28 @@ class TestPshflS:
         """Test that pshfl_s raises TypeError for non-MP src."""
         src = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
 
-        with pytest.raises(TypeError, match="pshfl_s requires MP-typed src"):
+        with pytest.raises(TypeError, match="shuffle requires MP-typed src"):
             el.trace(lambda s: pshfl_s(s, parties=(0,), src_ranks=[1]), src)
 
     def test_pshfl_s_requires_explicit_parties(self):
         """Test that pshfl_s raises TypeError when parties=None."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        with pytest.raises(TypeError, match="pshfl_s requires explicit parties"):
+        with pytest.raises(TypeError, match="shuffle requires explicit parties"):
             el.trace(lambda s: pshfl_s(s, parties=None, src_ranks=[1]), src)
 
     def test_pshfl_s_validates_src_ranks_length(self):
         """Test that pshfl_s raises ValueError when src_ranks length mismatches."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        with pytest.raises(ValueError, match="src_ranks length .* != parties count"):
+        with pytest.raises(ValueError, match=r"src_ranks length .* != parties count"):
             el.trace(lambda s: pshfl_s(s, parties=(0, 1), src_ranks=[1]), src)
 
     def test_pshfl_s_validates_src_ranks_in_src_parties(self):
         """Test that pshfl_s raises ValueError when src_rank not in src.parties."""
         src = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
 
-        with pytest.raises(ValueError, match="src_rank 2 not in src.parties"):
+        with pytest.raises(ValueError, match=r"src_rank 2 not in src\.parties"):
             el.trace(lambda s: pshfl_s(s, parties=(0,), src_ranks=[2]), src)
 
     def test_pshfl_s_allows_src_ranks_when_src_parties_none(self):
@@ -135,7 +135,7 @@ class TestPconv:
         x = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0, 1)])
         y = el.InterpObject(np.array(2.0), elt.MP[elt.Tensor[elt.f32, ()], (1, 2)])
 
-        with pytest.raises(ValueError, match="pconv requires disjoint parties"):
+        with pytest.raises(ValueError, match="converge requires disjoint parties"):
             el.trace(lambda a, b: pconv(a, b), x, y)
 
     def test_pconv_requires_mp_typed_inputs(self):
@@ -143,7 +143,7 @@ class TestPconv:
         x = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
         y = el.InterpObject(np.array(2.0), elt.MP[elt.Tensor[elt.f32, ()], (1,)])
 
-        with pytest.raises(TypeError, match="pconv input 0 must be MP-typed"):
+        with pytest.raises(TypeError, match="converge input 0 must be MP-typed"):
             el.trace(lambda a, b: pconv(a, b), x, y)
 
     def test_pconv_requires_consistent_value_types(self):
@@ -151,12 +151,12 @@ class TestPconv:
         x = el.InterpObject(np.array(1.0), elt.MP[elt.Tensor[elt.f32, ()], (0,)])
         y = el.InterpObject(np.array(2), elt.MP[elt.Tensor[elt.i32, ()], (1,)])
 
-        with pytest.raises(TypeError, match="pconv value type mismatch"):
+        with pytest.raises(TypeError, match="converge value type mismatch"):
             el.trace(lambda a, b: pconv(a, b), x, y)
 
     def test_pconv_requires_at_least_one_input(self):
         """Test that pconv raises TypeError when called with no arguments."""
-        with pytest.raises(TypeError, match="pconv requires at least one input"):
+        with pytest.raises(TypeError, match="converge requires at least one input"):
             el.trace(lambda: pconv())
 
     def test_pconv_handles_three_disjoint_inputs(self):

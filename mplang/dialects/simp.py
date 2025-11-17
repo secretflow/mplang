@@ -62,34 +62,6 @@ def _merge_captures(*capture_lists: list[el.Object]) -> list[el.Object]:
     return merged
 
 
-def _align_region_inputs(
-    traced_fn: el.TracedFunction, leading_count: int, capture_order: list[el.Object]
-) -> None:
-    """Align region graph inputs as [leading_values..., captures...] sequence."""
-    assert len(traced_fn.graph.inputs) >= leading_count
-
-    leading_inputs = traced_fn.graph.inputs[:leading_count]
-    capture_inputs = traced_fn.graph.inputs[leading_count:]
-    capture_map = (
-        dict(zip(traced_fn.captured, capture_inputs, strict=True))
-        if traced_fn.captured
-        else {}
-    )
-
-    new_capture_inputs = []
-    for capture_obj in capture_order:
-        value = capture_map.get(capture_obj)
-        if value is None:
-            value = traced_fn.graph.add_input(
-                name=f"%capture{len(traced_fn.graph.inputs)}",
-                type=capture_obj.type,
-            )
-        new_capture_inputs.append(value)
-
-    traced_fn.graph.inputs = leading_inputs + new_capture_inputs
-    traced_fn.captured = list(capture_order)
-
-
 def _deduce_parties(types: list[elt.MPType]) -> tuple[int, ...] | None:
     """Deduce common parties by intersecting all known party sets."""
     if not types:
@@ -208,8 +180,8 @@ def _uniform_cond_trace(
 
     all_captures = _merge_captures(then_traced.captured, else_traced.captured)
 
-    _align_region_inputs(then_traced, num_arg_vars, all_captures)
-    _align_region_inputs(else_traced, num_arg_vars, all_captures)
+    then_traced.align_region_inputs(num_arg_vars, all_captures)
+    else_traced.align_region_inputs(num_arg_vars, all_captures)
 
     capture_trace_objs = [cur_ctx.lift(obj) for obj in all_captures]
     capture_values = [obj._graph_value for obj in capture_trace_objs]
@@ -332,8 +304,8 @@ def _while_loop_trace(
 
     all_captures = _merge_captures(cond_traced.captured, body_traced.captured)
 
-    _align_region_inputs(cond_traced, state_count, all_captures)
-    _align_region_inputs(body_traced, state_count, all_captures)
+    cond_traced.align_region_inputs(state_count, all_captures)
+    body_traced.align_region_inputs(state_count, all_captures)
 
     capture_trace_objs = [cur_ctx.lift(obj) for obj in all_captures]
     capture_values = [obj._graph_value for obj in capture_trace_objs]
@@ -430,7 +402,7 @@ def _pcall_static_trace(
             )
 
     num_arg_vars = len(local_traced.in_var_pos)
-    _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
+    local_traced.align_region_inputs(num_arg_vars, local_traced.captured)
 
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
@@ -490,7 +462,7 @@ def _pcall_dynamic_trace(
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
 
     num_arg_vars = len(local_traced.in_var_pos)
-    _align_region_inputs(local_traced, num_arg_vars, local_traced.captured)
+    local_traced.align_region_inputs(num_arg_vars, local_traced.captured)
 
     all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]

@@ -424,6 +424,51 @@ class TracedFunction:
             )
         )
 
+    def align_region_inputs(
+        self, leading_count: int, capture_order: list[Object]
+    ) -> None:
+        """Align region graph inputs as [leading_values..., captures...] sequence.
+
+        Reorders the graph inputs to have a standardized structure:
+        - First `leading_count` inputs: explicit function parameters
+        - Remaining inputs: captured variables in the specified order
+
+        This is essential for multi-region primitives (e.g., uniform_cond, while_loop)
+        where different regions need to share the same capture ordering.
+
+        Args:
+            leading_count: Number of explicit function parameters (non-captured)
+            capture_order: Desired order of captured variables
+
+        Example:
+            >>> # Align two branches to have same capture order
+            >>> all_captures = merge_captures(then_fn.captured, else_fn.captured)
+            >>> then_fn.align_region_inputs(num_args, all_captures)
+            >>> else_fn.align_region_inputs(num_args, all_captures)
+        """
+        assert len(self.graph.inputs) >= leading_count
+
+        leading_inputs = self.graph.inputs[:leading_count]
+        capture_inputs = self.graph.inputs[leading_count:]
+        capture_map = (
+            dict(zip(self.captured, capture_inputs, strict=True))
+            if self.captured
+            else {}
+        )
+
+        new_capture_inputs = []
+        for capture_obj in capture_order:
+            value = capture_map.get(capture_obj)
+            if value is None:
+                value = self.graph.add_input(
+                    name=f"%capture{len(self.graph.inputs)}",
+                    type=capture_obj.type,
+                )
+            new_capture_inputs.append(value)
+
+        self.graph.inputs = leading_inputs + new_capture_inputs
+        self.captured = list(capture_order)
+
 
 def trace(
     fn: Callable[..., Any],

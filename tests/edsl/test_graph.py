@@ -25,6 +25,29 @@ from mplang2.edsl.graph import Graph, Operation, Value
 from mplang2.edsl.typing import SIMD_HE, Custom, Tensor, f32, i32
 
 # ==============================================================================
+# --- Test Utilities
+# ==============================================================================
+
+
+def add_constant(graph: Graph, value, type):
+    """Helper to add constant to graph (for testing).
+
+    Simulates the old Graph.add_constant() method by creating a constant operation.
+    Used only in tests to avoid dependency on Graph.add_constant().
+    """
+    out_val = graph.add_value(type)
+    op = Operation(
+        opcode="constant",
+        inputs=[],
+        outputs=[out_val],
+        attrs={"value": value},
+    )
+    out_val.defining_op = op
+    graph.operations.append(op)
+    return out_val
+
+
+# ==============================================================================
 # --- Test Value (SSA Values)
 # ==============================================================================
 
@@ -279,8 +302,8 @@ class TestGraph:
         """Test adding constant values."""
         g = Graph()
 
-        c1 = g.add_constant(42, i32)
-        c2 = g.add_constant(3.14, f32)
+        c1 = add_constant(g, 42, i32)
+        c2 = add_constant(g, 3.14, f32)
 
         assert len(g.operations) == 2
 
@@ -387,7 +410,7 @@ class TestGraph:
         g = Graph()
 
         x = g.add_input("x", f32)
-        y = g.add_constant(1.0, f32)
+        y = add_constant(g, 1.0, f32)
         [z] = g.add_op("add", [x, y])
 
         g.add_output(z)
@@ -425,7 +448,7 @@ class TestGraph:
         """Test IR string generation with constants."""
         g = Graph()
 
-        c = g.add_constant(42.0, f32)
+        c = add_constant(g, 42.0, f32)
         g.add_output(c)
 
         ir = g.to_string()
@@ -488,7 +511,7 @@ class TestGraphIntegration:
         y = g.add_input("y", Tensor[f32, (10,)])
 
         [sum_result] = g.add_op("add", [x, y])
-        const_2 = g.add_constant(2.0, f32)
+        const_2 = add_constant(g, 2.0, f32)
         [result] = g.add_op("mul", [sum_result, const_2])
 
         g.add_output(result)
@@ -532,14 +555,14 @@ class TestGraphIntegration:
         # Then branch: return x + 1
         then_graph = Graph()
         then_x = then_graph.add_input("x", f32)
-        then_const = then_graph.add_constant(1.0, f32)
+        then_const = add_constant(then_graph, 1.0, f32)
         [then_result] = then_graph.add_op("add", [then_x, then_const])
         then_graph.add_output(then_result)
 
         # Else branch: return x - 1
         else_graph = Graph()
         else_x = else_graph.add_input("x", f32)
-        else_const = else_graph.add_constant(1.0, f32)
+        else_const = add_constant(else_graph, 1.0, f32)
         [else_result] = else_graph.add_op("sub", [else_x, else_const])
         else_graph.add_output(else_result)
 
@@ -578,7 +601,7 @@ class TestGraphIntegration:
         )
 
         # Homomorphic add
-        const_encrypted = g.add_constant(1.0, SIMD_HE[f32, (100,)])
+        const_encrypted = add_constant(g, 1.0, SIMD_HE[f32, (100,)])
         [result_encrypted] = g.add_op(
             "he_add",
             [ciphertext, const_encrypted],
@@ -607,7 +630,7 @@ class TestGraphIntegration:
         x = g.add_input("x", f32)
 
         # Shared computation: x + 1
-        const_1 = g.add_constant(1.0, f32)
+        const_1 = add_constant(g, 1.0, f32)
         [x_plus_1] = g.add_op("add", [x, const_1])
 
         # Two paths use x_plus_1
@@ -641,7 +664,7 @@ def test_example_from_docstring():
 
     # Add operations
     [z] = graph.add_op("add", [x, y])
-    [result] = graph.add_op("mul", [z, graph.add_constant(2.0, f32)])
+    [result] = graph.add_op("mul", [z, add_constant(graph, 2.0, f32)])
 
     # Mark outputs
     graph.add_output(result)

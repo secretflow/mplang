@@ -119,7 +119,7 @@ consistent within the practical scope of this library.
 
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import TypeVar
 
 # ==============================================================================
 # --- Base Type & Type Aliases
@@ -334,9 +334,7 @@ class TensorType(BaseType):
     """
 
     def __init__(self, element_type: BaseType, shape: tuple[int, ...]):
-        # Only ScalarType and ScalarHEType can be tensor elements
-        # SIMD_HE cannot be a tensor element (it's already a packed vector)
-        # ScalarHEType inherits from ScalarType, so we only need to check ScalarType
+        # Only ScalarType can be tensor elements
         if not isinstance(element_type, ScalarType):
             raise TypeError(
                 f"Tensor element type must be a ScalarType (including ScalarHEType), but got {type(element_type).__name__}. "
@@ -525,37 +523,24 @@ class ScalarHEType(ScalarType, EncryptedTrait):
     """Represents a single scalar value encrypted with an HE scheme.
 
     Inherits from ScalarType, so it can be used as a tensor element type.
-
-    Note:
-        Encoding details (e.g., integer encoding, fixed-point scale) should
-        be tracked as attributes on encrypt/decrypt operations, not in the
-        type itself. This keeps the type system clean and focused on the
-        logical plaintext type.
     """
 
-    def __init__(self, scalar_type: ScalarType, scheme: str = "ckks"):
-        if not isinstance(scalar_type, ScalarType):
-            raise TypeError(
-                f"HE encryption requires a ScalarType, got {type(scalar_type).__name__}."
-            )
-        self._pt_type = scalar_type
+    def __init__(self, scheme: str = "ckks"):
         self._scheme = scheme
 
-    def __class_getitem__(cls, params: Any) -> ScalarHEType:
-        if isinstance(params, tuple):
-            return cls(params[0], params[1])
-        return cls(params)
+    def __class_getitem__(cls, scheme: str) -> ScalarHEType:
+        return cls(scheme)
 
     def __str__(self) -> str:
-        return f"HE[{self.pt_type}]"
+        return f"HE[{self._scheme}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ScalarHEType):
             return False
-        return self._pt_type == other._pt_type and self._scheme == other._scheme
+        return self._scheme == other._scheme
 
     def __hash__(self) -> int:
-        return hash(("ScalarHEType", self._pt_type, self._scheme))
+        return hash(("ScalarHEType", self._scheme))
 
 
 HE = ScalarHEType

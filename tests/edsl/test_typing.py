@@ -421,46 +421,38 @@ class TestScalarHEType:
 
     def test_he_construction_basic(self):
         """Test basic HE construction."""
-        he = ScalarHEType(f32)
-        assert he.pt_type == f32
+        he = ScalarHEType()
         assert he._scheme == "ckks"
 
     def test_he_class_getitem_syntax(self):
-        """Test the HE[scalar] syntax."""
-        he = HE[f64]
+        """Test the HE[scheme] syntax."""
+        he = HE["ckks"]
         assert isinstance(he, ScalarHEType)
-        assert he.pt_type == f64
+        assert he._scheme == "ckks"
 
     def test_he_str_representation(self):
         """Test string representation of HE types."""
-        he = HE[f32]
-        assert str(he) == "HE[f32]"
+        he = HE["ckks"]
+        assert str(he) == "HE[ckks]"
 
     def test_he_is_scalar_type(self):
-        """Test that HE[scalar] inherits from ScalarType."""
-        he = HE[f32]
+        """Test that HE inherits from ScalarType."""
+        he = HE["ckks"]
         assert isinstance(he, ScalarType)
 
     def test_he_is_encrypted_trait(self):
         """Test that HE implements EncryptedTrait."""
-        he = HE[f64]
+        he = HE["ckks"]
         assert isinstance(he, EncryptedTrait)
-        assert he.pt_type == f64
-
-    def test_he_requires_scalar_type(self):
-        """Test that HE requires a ScalarType plaintext."""
-        with pytest.raises(TypeError, match="HE encryption requires a ScalarType"):
-            HE[Tensor[f32, (10,)]]
 
     def test_he_custom_scheme(self):
         """Test HE with custom scheme parameter."""
-        he = ScalarHEType(f32, scheme="bfv")
+        he = ScalarHEType(scheme="bfv")
         assert he._scheme == "bfv"
 
     def test_he_getitem_with_scheme(self):
-        """Test HE[scalar, scheme] syntax."""
-        he = HE[f32, "bfv"]
-        assert he.pt_type == f32
+        """Test HE[scheme] syntax."""
+        he = HE["bfv"]
         assert he._scheme == "bfv"
 
 
@@ -642,11 +634,10 @@ class TestTypeComposition:
 
     def test_composition_world_2_elementwise_he(self):
         """Test World 2: Element-wise HE Tensor."""
-        # HE[f32] is a ScalarType, so it can be a Tensor element
-        he_tensor = Tensor[HE[f64], (100,)]
+        # HE is a ScalarType, so it can be a Tensor element
+        he_tensor = Tensor[HE["ckks"], (100,)]
         assert isinstance(he_tensor, TensorType)
         assert isinstance(he_tensor.element_type, ScalarHEType)
-        assert he_tensor.element_type.pt_type == f64
 
     def test_composition_world_3_simd_he(self):
         """Test World 3: SIMD HE (opaque, non-tensor)."""
@@ -681,7 +672,7 @@ class TestTypeComposition:
 
     def test_composition_mp_he_tensor(self):
         """Test MP[Tensor[HE[...], ...]] composition."""
-        he_tensor = Tensor[HE[f64], (20,)]
+        he_tensor = Tensor[HE["ckks"], (20,)]
         mp_he_tensor = MP[he_tensor, (0, 1, 2)]
 
         assert isinstance(mp_he_tensor.value_type, TensorType)
@@ -693,7 +684,7 @@ class TestTypeComposition:
         schema = {
             "plain": f32,
             "tensor": Tensor[i32, (10,)],
-            "encrypted": HE[f64],
+            "encrypted": HE["ckks"],
         }
         table = Table[schema]
         assert isinstance(table.schema["plain"], ScalarType)
@@ -725,9 +716,8 @@ class TestProtocolContracts:
         """Test that EncryptedTrait is implemented correctly."""
 
         # HE implements EncryptedTrait
-        he = HE[f32]
+        he = HE["ckks"]
         assert isinstance(he, EncryptedTrait)
-        assert he.pt_type == f32
 
         # SIMD_HE implements EncryptedTrait
         simd = SIMD_HE[f64, (2048,)]
@@ -776,12 +766,6 @@ class TestEdgeCasesAndErrors:
         with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[table_type, (5,)]
 
-    def test_he_with_non_scalar_plaintext(self):
-        """Test that HE requires ScalarType plaintext."""
-        tensor = Tensor[f32, (10,)]
-        with pytest.raises(TypeError, match="HE encryption requires a ScalarType"):
-            HE[tensor]
-
     def test_simd_he_with_non_scalar_plaintext(self):
         """Test that SIMD_HE requires ScalarType plaintext."""
         tensor = Tensor[f32, (10,)]
@@ -818,8 +802,8 @@ class TestDemonstrationCases:
 
     def test_world_2_demonstration(self):
         """Test World 2: Element-wise HE tensor demonstration."""
-        elementwise_he_tensor = Tensor[HE[f64], (100,)]
-        assert "Tensor[HE[f64]" in str(elementwise_he_tensor)
+        elementwise_he_tensor = Tensor[HE["ckks"], (100,)]
+        assert "Tensor[HE[ckks]" in str(elementwise_he_tensor)
         assert "(100)" in str(elementwise_he_tensor)
 
     def test_world_3_demonstration(self):
@@ -874,14 +858,13 @@ class TestIntegration:
         assert mp_ss_tensor.parties == (0, 1, 2)
 
     def test_realistic_he_scenario(self):
-        """Test a realistic HE scenario: MP[Tensor[HE[f64], ...]]."""
+        """Test a realistic HE scenario: MP[Tensor[HE[...], ...]]."""
         # A tensor of element-wise encrypted values held by party 0
-        he_tensor = Tensor[HE[f64], (50,)]
+        he_tensor = Tensor[HE["ckks"], (50,)]
         mp_he_tensor = MP[he_tensor, (0,)]
 
         assert isinstance(mp_he_tensor.value_type, TensorType)
         assert isinstance(mp_he_tensor.value_type.element_type, ScalarHEType)
-        assert mp_he_tensor.value_type.element_type.pt_type == f64
         assert mp_he_tensor.parties == (0,)
 
     def test_realistic_simd_he_scenario(self):

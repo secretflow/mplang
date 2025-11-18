@@ -29,7 +29,8 @@ primitive directly for scalar workflows.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
@@ -76,7 +77,7 @@ def _keygen_ae(
 
 @encrypt_p.def_abstract_eval
 def _encrypt_ae(pt: elt.ScalarType, pkey: elt.CustomType) -> elt.ScalarHEType:
-    """Encrypt plaintext scalar using PHE public key."""
+    """Encrypt plaintext scalar using the PHE public key."""
     if not isinstance(pt, elt.ScalarType):
         raise TypeError(f"encrypt expects ScalarType plaintext, got {pt}")
     if pkey != PHEPublicKeyType:
@@ -91,48 +92,47 @@ def _decrypt_ae(ct: elt.ScalarHEType, sk: elt.CustomType) -> elt.ScalarType:
         raise TypeError(f"decrypt expects HE[...] input, got {ct}")
     if sk != PHEPrivateKeyType:
         raise TypeError(f"decrypt expects PHEPrivateKey, got {sk}")
-    return ct.pt_type
+    pt_type = ct.pt_type
+    if not isinstance(pt_type, elt.ScalarType):
+        raise TypeError(f"HE ciphertext carries non-Scalar plaintext type {pt_type}")
+    return pt_type
 
 
 # ==============================================================================
 # --- Element-level Homomorphic Operations
 # ==============================================================================
 
-add_p = el.Primitive("phe.add")
-mul_scalar_p = el.Primitive("phe.mul_scalar")
+add_cc_p = el.Primitive("phe.add_cc")
+add_cp_p = el.Primitive("phe.add_cp")
+mul_cp_p = el.Primitive("phe.mul_cp")
 
 
-@add_p.def_abstract_eval
-def _add_ae(operand1: elt.ScalarHEType, operand2: elt.ScalarHEType) -> elt.ScalarHEType:
-    """Element-level homomorphic addition.
-
-    Args:
-        operand1: First encrypted scalar (HE[T])
-        operand2: Second encrypted scalar (HE[T])
-
-    Returns:
-        Encrypted result (HE[T])
-
-    Raises:
-        TypeError: If operands are not HE-encrypted or have mismatched types
-    """
-    if not isinstance(operand1, elt.ScalarHEType):
-        raise TypeError(f"phe.add expects HE[...] operands, got {operand1}")
-    if not isinstance(operand2, elt.ScalarHEType):
-        raise TypeError(f"phe.add expects HE[...] operands, got {operand2}")
-
-    # Verify underlying scalar types match
+@add_cc_p.def_abstract_eval
+def _add_cc_ae(
+    operand1: elt.ScalarHEType, operand2: elt.ScalarHEType
+) -> elt.ScalarHEType:
+    """Ciphertext + ciphertext → ciphertext."""
     if operand1.pt_type != operand2.pt_type:
         raise TypeError(
             f"Type mismatch: HE[{operand1.pt_type}] vs HE[{operand2.pt_type}]"
         )
-
-    # Return same type as input
     return operand1
 
 
-@mul_scalar_p.def_abstract_eval
-def _mul_scalar_ae(
+@add_cp_p.def_abstract_eval
+def _add_cp_ae(
+    ciphertext: elt.ScalarHEType, plaintext: elt.ScalarType
+) -> elt.ScalarHEType:
+    """Ciphertext + plaintext → ciphertext."""
+    if ciphertext.pt_type != plaintext:
+        raise TypeError(
+            f"Type mismatch: HE[{ciphertext.pt_type}] vs plaintext {plaintext}"
+        )
+    return ciphertext
+
+
+@mul_cp_p.def_abstract_eval
+def _mul_cp_ae(
     ciphertext: elt.ScalarHEType, plaintext: elt.ScalarType
 ) -> elt.ScalarHEType:
     """Element-level homomorphic scalar multiplication.
@@ -147,18 +147,10 @@ def _mul_scalar_ae(
     Raises:
         TypeError: If types are incompatible
     """
-    if not isinstance(ciphertext, elt.ScalarHEType):
-        raise TypeError(f"phe.mul_scalar expects HE[...] ciphertext, got {ciphertext}")
-    if not isinstance(plaintext, elt.ScalarType):
-        raise TypeError(f"phe.mul_scalar expects ScalarType plaintext, got {plaintext}")
-
-    # Verify scalar types match
     if ciphertext.pt_type != plaintext:
         raise TypeError(
             f"Type mismatch: HE[{ciphertext.pt_type}] vs plaintext {plaintext}"
         )
-
-    # Return ciphertext type
     return ciphertext
 
 
@@ -209,7 +201,7 @@ def keygen(
     if fxp_bits is not None:
         attrs["fxp_bits"] = fxp_bits
 
-    return keygen_p.bind(**attrs)  # type: ignore[return-value]
+    return keygen_p.bind(**attrs)
 
 
 def _has_tensor_args(*objs: el.Object) -> bool:
@@ -217,18 +209,78 @@ def _has_tensor_args(*objs: el.Object) -> bool:
     return any(isinstance(obj.type, elt.TensorType) for obj in objs)
 
 
-def encrypt(plaintext: el.Object, public_key: el.Object) -> el.Object:
-    """Encrypt plaintext using the PHE public key.
+class OperandInfo(NamedTuple):
+    """Classification of operand for PHE operation dispatch."""
 
-    Tensor inputs trigger `tensor.elementwise`; scalar inputs bind `encrypt_p`
-    directly.
-    """
-    if _has_tensor_args(plaintext):
-        return tensor.elementwise(encrypt_p.bind, plaintext, public_key)
+    is_tensor: bool
+    is_encrypted: bool
+    scalar_type: elt.BaseType
+
+
+def _inspect_operand(obj: el.Object) -> OperandInfo:
+    """Classify operand layout/security for dispatch."""
+    obj_type = obj.type
+    if isinstance(obj_type, elt.TensorType):
+        elem = obj_type.element_type
+        if isinstance(elem, elt.ScalarHEType):
+            return OperandInfo(True, True, elem.pt_type)
+        if isinstance(elem, elt.ScalarType):
+            return OperandInfo(True, False, elem)
+        raise TypeError(
+            f"PHE operations support Tensor[ScalarType] or Tensor[HE[...]], got Tensor[{elem}]"
+        )
+    if isinstance(obj_type, elt.ScalarHEType):
+        return OperandInfo(False, True, obj_type.pt_type)
+    if isinstance(obj_type, elt.ScalarType):
+        return OperandInfo(False, False, obj_type)
+    raise TypeError(f"PHE operations expect Scalar or Tensor operands, got {obj_type}")
+
+
+BinaryFn = Callable[[el.Object, el.Object], Any]
+
+
+def _apply_binary(fn: BinaryFn, lhs: el.Object, rhs: el.Object) -> el.Object:
+    """Apply scalar primitive, lifting to tensor.elementwise when needed."""
+    if _has_tensor_args(lhs, rhs):
+        return tensor.elementwise(fn, lhs, rhs)
+    return fn(lhs, rhs)
+
+
+def _add_cp(ciphertext: el.Object, plaintext: el.Object) -> el.Object:
+    """Ciphertext ⊕ plaintext helper (order enforced)."""
+    return _apply_binary(add_cp_p.bind, ciphertext, plaintext)
+
+
+def _mul_cp(ciphertext: el.Object, plaintext: el.Object) -> el.Object:
+    """Ciphertext ⊗ plaintext helper (order enforced)."""
+    return _apply_binary(mul_cp_p.bind, ciphertext, plaintext)
+
+
+def _encrypt_scalar_element(plaintext: el.Object, public_key: el.Object) -> el.Object:
+    """Encrypt a single scalar element."""
     return encrypt_p.bind(plaintext, public_key)
 
 
-def decrypt(ciphertext: el.Object, private_key: el.Object) -> el.Object:
+def encrypt(plaintext: Any, public_key: Any) -> el.Object:
+    """Encrypt plaintext using the PHE public key.
+
+    Type transformations:
+        Scalar[T] → HE[T]
+        Tensor[T, S] → Tensor[HE[T], S]
+
+    Args:
+        plaintext: Scalar or tensor to encrypt
+        public_key: PHE public key
+
+    Returns:
+        Encrypted result with same structure as input
+    """
+    if _has_tensor_args(plaintext):
+        return tensor.elementwise(_encrypt_scalar_element, plaintext, public_key)
+    return encrypt_p.bind(plaintext, public_key)
+
+
+def decrypt(ciphertext: Any, private_key: Any) -> el.Object:
     """Decrypt ciphertext using the PHE private key."""
     if _has_tensor_args(ciphertext):
         return tensor.elementwise(decrypt_p.bind, ciphertext, private_key)
@@ -236,30 +288,93 @@ def decrypt(ciphertext: el.Object, private_key: el.Object) -> el.Object:
 
 
 def add(lhs: el.Object, rhs: el.Object) -> el.Object:
-    """Homomorphic addition (tensor-aware wrapper)."""
-    if _has_tensor_args(lhs, rhs):
-        return tensor.elementwise(add_p.bind, lhs, rhs)
-    return add_p.bind(lhs, rhs)
+    """Homomorphic addition.
+
+    Supports:
+        HE[T] + HE[T] → HE[T]  (ciphertext + ciphertext)
+        HE[T] + T → HE[T]      (ciphertext + plaintext)
+        T + HE[T] → HE[T]      (plaintext + ciphertext)
+
+    Args:
+        lhs: Left operand (encrypted or plaintext)
+        rhs: Right operand (encrypted or plaintext)
+
+    Returns:
+        Encrypted sum
+
+    Raises:
+        TypeError: If no operand is encrypted or types mismatch
+    """
+    lhs_info = _inspect_operand(lhs)
+    rhs_info = _inspect_operand(rhs)
+
+    if not (lhs_info.is_encrypted or rhs_info.is_encrypted):
+        raise TypeError("phe.add requires at least one ciphertext operand")
+
+    # CT + CT
+    if lhs_info.is_encrypted and rhs_info.is_encrypted:
+        return _apply_binary(add_cc_p.bind, lhs, rhs)
+
+    # CT + PT or PT + CT
+    if lhs_info.is_encrypted:
+        return _add_cp(lhs, rhs)
+    return _add_cp(rhs, lhs)
+
+
+def mul(lhs: el.Object, rhs: el.Object) -> el.Object:
+    """Homomorphic multiplication (ciphertext × plaintext only).
+
+    Supports:
+        HE[T] × T → HE[T]  (ciphertext × plaintext)
+        T × HE[T] → HE[T]  (plaintext × ciphertext)
+
+    Args:
+        lhs: Left operand
+        rhs: Right operand
+
+    Returns:
+        Encrypted product
+
+    Raises:
+        TypeError: If both operands are encrypted or both are plaintext
+
+    Note:
+        Ciphertext × ciphertext is not supported (would require FHE).
+    """
+    lhs_info = _inspect_operand(lhs)
+    rhs_info = _inspect_operand(rhs)
+
+    # CT * PT
+    if lhs_info.is_encrypted and not rhs_info.is_encrypted:
+        return _mul_cp(lhs, rhs)
+    # PT * CT
+    if rhs_info.is_encrypted and not lhs_info.is_encrypted:
+        return _mul_cp(rhs, lhs)
+    # CT * CT (not supported)
+    if lhs_info.is_encrypted and rhs_info.is_encrypted:
+        raise TypeError("phe.mul supports ciphertext * plaintext only, not CT * CT")
+    # PT * PT (invalid)
+    raise TypeError("phe.mul requires at least one ciphertext operand")
 
 
 def mul_scalar(ciphertext: el.Object, plaintext: el.Object) -> el.Object:
-    """Homomorphic scalar multiplication (tensor-aware wrapper)."""
-    if _has_tensor_args(ciphertext, plaintext):
-        return tensor.elementwise(mul_scalar_p.bind, ciphertext, plaintext)
-    return mul_scalar_p.bind(ciphertext, plaintext)
+    """Backward-compatible wrapper for ciphertext × plaintext multiplication."""
+    return mul(ciphertext, plaintext)
 
 
 __all__ = [
     "PHEPrivateKeyType",
     "PHEPublicKeyType",
     "add",
-    "add_p",
+    "add_cc_p",
+    "add_cp_p",
     "decrypt",
     "decrypt_p",
     "encrypt",
     "encrypt_p",
     "keygen",
     "keygen_p",
+    "mul",
+    "mul_cp_p",
     "mul_scalar",
-    "mul_scalar_p",
 ]

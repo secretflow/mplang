@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import count
@@ -540,7 +541,7 @@ def elementwise(fn: Callable[..., Any], *inputs: el.Object, **kwargs: Any) -> el
         >>> # PHE encryption: mixing tensor and scalar (key)
         >>> plaintext = ...  # Tensor[f32, (10,)]
         >>> public_key = ...  # PHEPublicKey (scalar)
-        >>> ciphertext = elementwise(phe.encrypt_element, plaintext, public_key)
+        >>> ciphertext = elementwise(phe.encrypt, plaintext, public_key)
         >>> # ciphertext: Tensor[HE[f32], (10,)]
         >>>
         >>> # Multiple tensors with same shape
@@ -619,32 +620,45 @@ def _reshape_ae(input: elt.TensorType, new_shape: tuple[int, ...]) -> elt.Tensor
     if neg_one_count > 1:
         raise ValueError("new_shape can contain at most one -1 dimension")
 
-    # If input has dynamic dims, output may have dynamic dims
-    if input.has_dynamic_dims():
-        # Keep the new_shape as-is (may contain -1)
-        return elt.TensorType(input.element_type, new_shape)
+    # Compute output shape
+    if input.is_fully_static:
+        # Input size is known - we can infer or validate
+        input_size = math.prod(input.shape)
 
-    # For fully static input, validate total size
-    if input.is_fully_static and neg_one_count == 0:
-        import numpy as np
+        if neg_one_count == 0:
+            # No -1: validate total size matches
+            new_size = math.prod(new_shape)
+            if input_size != new_size:
+                raise ValueError(
+                    f"Cannot reshape tensor of size {input_size} to shape {new_shape} (size {new_size})"
+                )
+            output_shape = new_shape
+        else:
+            # One -1: infer that dimension
+            known_size = math.prod(d for d in new_shape if d != -1)
+            if known_size == 0:
+                raise ValueError("Cannot reshape: new_shape has zero-size dimensions")
+            if input_size % known_size != 0:
+                raise ValueError(
+                    f"Cannot infer dimension: {input_size} is not divisible by {known_size}"
+                )
+            inferred_dim = input_size // known_size
+            output_shape = tuple(inferred_dim if d == -1 else d for d in new_shape)
+    else:
+        # Input has dynamic dims - output inherits uncertainty
+        # Keep -1 in output (we cannot infer at trace time)
+        output_shape = new_shape
 
-        old_size = int(np.prod(input.shape))
-        new_size = int(np.prod(new_shape))
-        if old_size != new_size:
-            raise ValueError(
-                f"Cannot reshape tensor of size {old_size} to shape {new_shape} (size {new_size})"
-            )
-
-    return elt.TensorType(input.element_type, new_shape)
+    return elt.TensorType(input.element_type, output_shape)
 
 
 @concat_p.def_abstract_eval
-def _concat_ae(in_types: list[elt.BaseType], attrs: dict[str, Any]) -> elt.TensorType:
+def _concat_ae(in_types: list[elt.BaseType], *, axis: int = 0) -> elt.TensorType:
     """Concatenate tensors along axis.
 
     Args:
         in_types: List of input tensor types
-        attrs: Must contain 'axis' (int)
+        axis: Axis along which to concatenate (default: 0)
 
     Returns:
         Concatenated tensor type
@@ -655,10 +669,6 @@ def _concat_ae(in_types: list[elt.BaseType], attrs: dict[str, Any]) -> elt.Tenso
     """
     if not in_types:
         raise ValueError("concat requires at least one input tensor")
-
-    axis = attrs.get("axis", 0)
-    if not isinstance(axis, int):
-        raise TypeError(f"axis must be int, got {type(axis)}")
 
     # Verify all inputs are TensorType
     for i, t in enumerate(in_types):
@@ -722,13 +732,13 @@ def _concat_ae(in_types: list[elt.BaseType], attrs: dict[str, Any]) -> elt.Tenso
 
 @gather_p.def_abstract_eval
 def _gather_ae(
-    tensor_type: elt.TensorType, indices_type: elt.TensorType, axis: int = 0
+    input: elt.TensorType, index: elt.TensorType, *, axis: int = 0
 ) -> elt.TensorType:
     """Gather elements along axis using indices.
 
     Args:
-        tensor_type: Input tensor type
-        indices_type: Integer indices tensor type
+        input: Input tensor type
+        index: Integer indices tensor type
         axis: Axis along which to gather
 
     Returns:
@@ -738,32 +748,28 @@ def _gather_ae(
         TypeError: If inputs are not TensorTypes or indices are not integer
         ValueError: If axis is invalid
     """
-    if not isinstance(tensor_type, elt.TensorType):
-        raise TypeError(f"gather expects TensorType, got {type(tensor_type)}")
-    if not isinstance(indices_type, elt.TensorType):
-        raise TypeError(f"indices must be TensorType, got {type(indices_type)}")
+    if not isinstance(input, elt.TensorType):
+        raise TypeError(f"gather expects TensorType, got {type(input)}")
+    if not isinstance(index, elt.TensorType):
+        raise TypeError(f"indices must be TensorType, got {type(index)}")
 
     # Verify indices are integer type
-    if not isinstance(indices_type.element_type, elt.ScalarType):
+    if not isinstance(index.element_type, elt.ScalarType):
         raise TypeError("indices must have ScalarType element")
-    if indices_type.element_type.name not in ("i32", "i64", "u32", "u64"):
-        raise TypeError(
-            f"indices must be integer type, got {indices_type.element_type.name}"
-        )
+    if index.element_type.name not in ("i32", "i64", "u32", "u64"):
+        raise TypeError(f"indices must be integer type, got {index.element_type.name}")
 
     # Both inputs must be ranked (shape is always a tuple now)
-    rank = len(tensor_type.shape)
+    rank = len(input.shape)
     normalized_axis = axis if axis >= 0 else rank + axis
     if normalized_axis < 0 or normalized_axis >= rank:
         raise ValueError(f"axis {axis} out of bounds for rank {rank}")
 
     # Result shape: replace axis dimension with indices shape
     result_shape = (
-        tensor_type.shape[:normalized_axis]
-        + indices_type.shape
-        + tensor_type.shape[normalized_axis + 1 :]
+        input.shape[:normalized_axis] + index.shape + input.shape[normalized_axis + 1 :]
     )
-    return elt.TensorType(tensor_type.element_type, result_shape)
+    return elt.TensorType(input.element_type, result_shape)
 
 
 @scatter_p.def_abstract_eval

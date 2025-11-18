@@ -140,14 +140,6 @@ class TestTensorType:
         t = Tensor[i64, (1000,)]
         assert t.shape == (1000,)
 
-    def test_tensor_none_shape_unranked(self):
-        """Test Tensor[i32, None] - fully dynamic/unranked tensor."""
-        t = Tensor[i32, None]
-        assert isinstance(t, TensorType)
-        assert t.element_type == i32
-        assert t.shape is None
-        assert str(t) == "Tensor[i32, None]"
-
     def test_tensor_scalar_representation(self):
         """Test Tensor[i32, ()] - scalar as 0-dim tensor."""
         t = Tensor[i32, ()]
@@ -216,7 +208,7 @@ class TestTensorType:
         """Test tensor type hashing for use in sets/dicts."""
         t1 = Tensor[f32, (10, 20)]
         t2 = Tensor[f32, (10, 20)]
-        t3 = Tensor[f32, None]
+        t3 = Tensor[f32, (10, 30)]
 
         # Equal tensors should have same hash
         assert hash(t1) == hash(t2)
@@ -229,35 +221,28 @@ class TestTensorType:
         """Test is_scalar property."""
         assert Tensor[f32, ()].is_scalar
         assert not Tensor[f32, (1,)].is_scalar
-        assert not Tensor[f32, None].is_scalar
-
-    def test_tensor_is_unranked_property(self):
-        """Test is_unranked property."""
-        assert Tensor[f32, None].is_unranked
-        assert not Tensor[f32, ()].is_unranked
-        assert not Tensor[f32, (10,)].is_unranked
+        assert not Tensor[f32, (10, 20)].is_scalar
 
     def test_tensor_is_fully_static_property(self):
         """Test is_fully_static property."""
         assert Tensor[f32, (3, 10)].is_fully_static
         assert Tensor[f32, ()].is_fully_static  # Scalar is fully static
         assert not Tensor[f32, (-1, 10)].is_fully_static
-        assert not Tensor[f32, None].is_fully_static
+        assert not Tensor[f32, (-1, -1)].is_fully_static
 
     def test_tensor_rank_property(self):
         """Test rank property."""
         assert Tensor[f32, ()].rank == 0  # Scalar
         assert Tensor[f32, (10,)].rank == 1
         assert Tensor[f32, (3, 10)].rank == 2
-        assert Tensor[f32, (-1, 10, 5)].rank == 3
-        assert Tensor[f32, None].rank is None  # Unranked
+        assert Tensor[f32, (-1, 10, 5)].rank == 3  # Dynamic dims still have known rank
 
     def test_tensor_has_dynamic_dims(self):
         """Test has_dynamic_dims method."""
-        assert Tensor[f32, None].has_dynamic_dims()
         assert Tensor[f32, (-1, 10)].has_dynamic_dims()
         assert Tensor[f32, (-1, -1)].has_dynamic_dims()
         assert not Tensor[f32, (3, 10)].has_dynamic_dims()
+        assert not Tensor[f32, ()].has_dynamic_dims()  # Scalar has no dynamic dims
         assert not Tensor[f32, ()].has_dynamic_dims()
 
 

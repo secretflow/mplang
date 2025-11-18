@@ -613,7 +613,7 @@ def _shuffle_ae(src_t: elt.BaseType, routing: dict[int, int]) -> elt.BaseType:
 
 
 @converge_p.def_abstract_eval
-def _converge_ae(in_types: list[elt.BaseType], attrs: dict) -> elt.BaseType:
+def _converge_ae(in_types: list[elt.BaseType], *, mask: int = -1) -> elt.BaseType:
     """Type inference for converge operation (merge disjoint partitions).
 
     Args:

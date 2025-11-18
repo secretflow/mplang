@@ -42,7 +42,7 @@ rather than by creating a large, monolithic set of specific types.
 
 1.  **Layout Types**: Describe the physical shape and structure of data.
     - `Scalar`: Atomic data types (f32, i64).
-    - `Tensor`: A multi-dimensional array of a `ScalarTrait` element type.
+    - `Tensor`: A multi-dimensional array of a `ScalarType` element type.
     - `Table`: A dictionary-like structure with named columns of any type.
 
 2.  **Encryption Types**: Wrap other types to confer privacy properties by making them opaque.
@@ -79,7 +79,7 @@ underlying HE libraries.
     - **Core Type**: `SIMD_HE[Scalar, PackingShape, ...]`
     - **API Standard**: Follows Microsoft SEAL-like (Ciphertext-level) conventions. This is
       an opaque, non-tensor type. It only supports specialized vector operations like `simd_add`
-      and `simd_rotate`. It is explicitly *not* `ScalarTrait` and cannot be an element of a `Tensor`.
+      and `simd_rotate`. It is explicitly *not* a `ScalarType` and cannot be an element of a `Tensor`.
 
 This separation is programmatically enforced. Attempting to create a `Tensor[SIMD_HE[...]]`
 will raise a `TypeError`.
@@ -91,7 +91,6 @@ The system uses `typing.Protocol` to define behavioral contracts (similar to Tra
 This allows for writing generic functions that operate on any type satisfying a contract,
 promoting extensibility and loose coupling via structural subtyping ("duck typing").
 
-- `ScalarTrait`: For types that can be an element of a `Tensor`.
 - `EncryptedTrait`: For types representing data in an obscured form.
 - `Distributed`: For types describing data distribution.
 
@@ -141,16 +140,6 @@ class BaseType:
 # ==============================================================================
 
 
-class ScalarTrait:
-    """A contract for types that can be treated as an element of a Tensor."""
-
-    # Marker protocol; no members required.
-    # (No body needed)
-
-
-# ---------------------------- Encrypted Trait -------------------------------
-
-
 class EncryptedTrait:
     """A contract for types that represent data in an encrypted or obscured form."""
 
@@ -171,50 +160,159 @@ class EncryptedTrait:
 # ==============================================================================
 
 
-class ScalarType(BaseType, ScalarTrait):
-    """Represents a single scalar value type (e.g., f32, i64)."""
+class ScalarType(BaseType):
+    """Base class for all scalar types (integers, floats, complex).
 
-    def __init__(self, name: str):
-        self._name = name
+    This serves as the common parent for IntegerType, FloatType, and ComplexType,
+    allowing code to accept any scalar type without needing union types.
+    """
 
-    @property
-    def name(self) -> str:
-        """Return the type name."""
-        return self._name
+
+class IntegerType(ScalarType):
+    """Represents a variable-length integer type.
+
+    This is a standard integer type with configurable bit width, used for
+    arbitrary-precision arithmetic. It can represent integers that exceed
+    the range of fixed-width types like i64.
+
+    Examples:
+        >>> i128 = IntegerType(bitwidth=128, signed=True)  # i128
+        >>> u256 = IntegerType(bitwidth=256, signed=False)  # u256
+
+    Note:
+        Encoding-specific metadata (e.g., fixed-point scale, semantic type)
+        should be maintained as attributes on operations/objects that use
+        IntegerType, not on the type itself.
+    """
+
+    def __init__(self, *, bitwidth: int = 32, signed: bool = True):
+        """Initialize an IntegerType.
+
+        Args:
+            bitwidth: Number of bits for the integer representation.
+                     Common values: 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096.
+            signed: Whether the integer is signed (True) or unsigned (False).
+        """
+        if bitwidth <= 0 or (bitwidth & (bitwidth - 1)) != 0:
+            raise ValueError(f"bitwidth must be a positive power of 2, got {bitwidth}")
+        self.bitwidth = bitwidth
+        self.signed = signed
 
     def __str__(self) -> str:
-        return self._name
+        sign_prefix = "i" if self.signed else "u"
+        return f"{sign_prefix}{self.bitwidth}"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ScalarType):
+        if not isinstance(other, IntegerType):
             return False
-        return self._name == other._name
+        return self.bitwidth == other.bitwidth and self.signed == other.signed
 
     def __hash__(self) -> int:
-        return hash(self._name)
+        return hash(("IntegerType", self.bitwidth, self.signed))
 
+
+class FloatType(ScalarType):
+    """Represents a floating-point type.
+
+    This supports standard IEEE 754 floating-point types with configurable
+    precision (bitwidth).
+
+    Examples:
+        >>> f16 = FloatType(bitwidth=16)  # half precision
+        >>> f32 = FloatType(bitwidth=32)  # single precision
+        >>> f64 = FloatType(bitwidth=64)  # double precision
+    """
+
+    def __init__(self, *, bitwidth: int = 32):
+        """Initialize a FloatType.
+
+        Args:
+            bitwidth: Number of bits for the float representation.
+                     Standard values: 16 (half), 32 (single), 64 (double).
+        """
+        if bitwidth not in (16, 32, 64, 128):
+            raise ValueError(f"bitwidth must be 16, 32, 64, or 128, got {bitwidth}")
+        self.bitwidth = bitwidth
+
+    def __str__(self) -> str:
+        return f"f{self.bitwidth}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FloatType):
+            return False
+        return self.bitwidth == other.bitwidth
+
+    def __hash__(self) -> int:
+        return hash(("FloatType", self.bitwidth))
+
+
+class ComplexType(ScalarType):
+    """Represents a complex number type.
+
+    Complex numbers are represented as pairs of floating-point values.
+    Both real and imaginary parts use the same floating-point type.
+
+    Examples:
+        >>> c64 = ComplexType(inner_type=f32)  # complex64 (2x float32)
+        >>> c128 = ComplexType(inner_type=f64)  # complex128 (2x float64)
+    """
+
+    def __init__(self, *, inner_type: FloatType):
+        """Initialize a ComplexType.
+
+        Args:
+            inner_type: The floating-point type for real and imaginary parts.
+                       Common values: f16, f32, f64, f128.
+        """
+        if not isinstance(inner_type, FloatType):
+            raise TypeError(
+                f"inner_type must be a FloatType, got {type(inner_type).__name__}"
+            )
+        self.inner_type = inner_type
+
+    def __str__(self) -> str:
+        return f"c{self.inner_type.bitwidth * 2}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ComplexType):
+            return False
+        return self.inner_type == other.inner_type
+
+    def __hash__(self) -> int:
+        return hash(("ComplexType", self.inner_type))
+
+
+# ==============================================================================
+# --- Predefined Scalar Type Instances
+# ==============================================================================
 
 # Numeric scalar types - comprehensive set aligned with common dtypes
-# Integer types (signed)
-i8 = ScalarType("i8")
-i16 = ScalarType("i16")
-i32 = ScalarType("i32")
-i64 = ScalarType("i64")
+# Integer types (signed)pes (signed)
+i8 = IntegerType(bitwidth=8, signed=True)
+i16 = IntegerType(bitwidth=16, signed=True)
+i32 = IntegerType(bitwidth=32, signed=True)
+i64 = IntegerType(bitwidth=64, signed=True)
 
-# Integer types (unsigned)
-u8 = ScalarType("u8")
-u16 = ScalarType("u16")
-u32 = ScalarType("u32")
-u64 = ScalarType("u64")
+# Fixed-width integer types (unsigned)
+u8 = IntegerType(bitwidth=8, signed=False)
+u16 = IntegerType(bitwidth=16, signed=False)
+u32 = IntegerType(bitwidth=32, signed=False)
+u64 = IntegerType(bitwidth=64, signed=False)
 
 # Floating point types
-f16 = ScalarType("f16")
-f32 = ScalarType("f32")
-f64 = ScalarType("f64")
+f16 = FloatType(bitwidth=16)
+f32 = FloatType(bitwidth=32)
+f64 = FloatType(bitwidth=64)
 
 # Complex types
-c64 = ScalarType("c64")
-c128 = ScalarType("c128")
+c64 = ComplexType(inner_type=f32)  # 2x float32 = 64 bits total
+c128 = ComplexType(inner_type=f64)  # 2x float64 = 128 bits total
+
+# Variable-length integer types (common sizes)
+i128 = IntegerType(bitwidth=128, signed=True)
+i256 = IntegerType(bitwidth=256, signed=True)
+u128 = IntegerType(bitwidth=128, signed=False)
+u256 = IntegerType(bitwidth=256, signed=False)
 
 
 class TensorType(BaseType):
@@ -236,10 +334,13 @@ class TensorType(BaseType):
     """
 
     def __init__(self, element_type: BaseType, shape: tuple[int, ...]):
-        if not isinstance(element_type, ScalarTrait):
+        # Only ScalarType and ScalarHEType can be tensor elements
+        # SIMD_HE cannot be a tensor element (it's already a packed vector)
+        # ScalarHEType inherits from ScalarType, so we only need to check ScalarType
+        if not isinstance(element_type, ScalarType):
             raise TypeError(
-                f"Tensor element type must be ScalarTrait, but got {type(element_type).__name__}. "
-                "Note: SIMD_HE is not ScalarTrait and cannot be an element of a Tensor."
+                f"Tensor element type must be a ScalarType (including ScalarHEType), but got {type(element_type).__name__}. "
+                "Note: SIMD_HE cannot be an element of a Tensor."
             )
         self.element_type = element_type
         self.shape = shape
@@ -420,13 +521,22 @@ Custom = CustomType
 # ==============================================================================
 
 
-class ScalarHEType(BaseType, ScalarTrait, EncryptedTrait):
-    """Represents a single scalar value encrypted with an HE scheme."""
+class ScalarHEType(ScalarType, EncryptedTrait):
+    """Represents a single scalar value encrypted with an HE scheme.
+
+    Inherits from ScalarType, so it can be used as a tensor element type.
+
+    Note:
+        Encoding details (e.g., integer encoding, fixed-point scale) should
+        be tracked as attributes on encrypt/decrypt operations, not in the
+        type itself. This keeps the type system clean and focused on the
+        logical plaintext type.
+    """
 
     def __init__(self, scalar_type: ScalarType, scheme: str = "ckks"):
         if not isinstance(scalar_type, ScalarType):
             raise TypeError(
-                f"HE encryption is defined only over ScalarType, got {type(scalar_type).__name__}."
+                f"HE encryption requires a ScalarType, got {type(scalar_type).__name__}."
             )
         self._pt_type = scalar_type
         self._scheme = scheme
@@ -445,7 +555,7 @@ class ScalarHEType(BaseType, ScalarTrait, EncryptedTrait):
         return self._pt_type == other._pt_type and self._scheme == other._scheme
 
     def __hash__(self) -> int:
-        return hash((self._pt_type, self._scheme))
+        return hash(("ScalarHEType", self._pt_type, self._scheme))
 
 
 HE = ScalarHEType
@@ -459,7 +569,7 @@ class SIMDHEType(BaseType, EncryptedTrait):
     ):
         if not isinstance(scalar_type, ScalarType):
             raise TypeError(
-                f"SIMD_HE is defined only over ScalarType, got {type(scalar_type).__name__}."
+                f"SIMD_HE requires a ScalarType, got {type(scalar_type).__name__}."
             )
         self._pt_type = scalar_type
         self.packing_shape = packing_shape
@@ -471,8 +581,7 @@ class SIMDHEType(BaseType, EncryptedTrait):
         return TensorType(self._pt_type, self.packing_shape)
 
     @property
-    def scalar_type(self) -> ScalarType:
-        assert isinstance(self._pt_type, ScalarType)
+    def scalar_type(self) -> BaseType:
         return self._pt_type
 
     def __class_getitem__(cls, params: tuple[ScalarType, tuple[int,]]) -> SIMDHEType:

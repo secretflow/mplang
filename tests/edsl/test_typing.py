@@ -18,7 +18,7 @@ Tests for the MPLang typing system.
 This test suite validates the design principles outlined in mplang/core/typing.py:
 1. Orthogonality and Composition: Tests that Layout, Encryption, and Distribution types compose correctly.
 2. The "Three Worlds" of HE: Tests the strict separation between plaintext, element-wise HE, and SIMD HE.
-3. Contracts via Protocols: Tests that ScalarTrait and EncryptedTrait behave as expected.
+3. Contracts via Protocols: Tests that ScalarType hierarchy and EncryptedTrait behave as expected.
 """
 
 import pytest
@@ -33,7 +33,6 @@ from mplang2.edsl.typing import (
     CustomType,
     EncryptedTrait,
     ScalarHEType,
-    ScalarTrait,
     ScalarType,
     SIMDHEType,
     SSType,
@@ -57,10 +56,10 @@ class TestScalarType:
 
     def test_scalar_types_exist(self):
         """Test that predefined scalar types are available."""
-        assert f32._name == "f32"
-        assert f64._name == "f64"
-        assert i32._name == "i32"
-        assert i64._name == "i64"
+        assert str(f32) == "f32"
+        assert str(f64) == "f64"
+        assert str(i32) == "i32"
+        assert str(i64) == "i64"
 
     def test_scalar_type_str_representation(self):
         """Test string representation of scalar types."""
@@ -72,16 +71,18 @@ class TestScalarType:
         assert isinstance(f32, BaseType)
         assert isinstance(i32, BaseType)
 
-    def test_scalar_type_is_scalar_trait(self):
-        """Test that ScalarType implements ScalarTrait."""
-        assert isinstance(f32, ScalarTrait)
-        assert isinstance(i64, ScalarTrait)
+    def test_scalar_type_inheritance(self):
+        """Test that scalar types inherit from ScalarType."""
+        assert isinstance(f32, ScalarType)
+        assert isinstance(i64, ScalarType)
 
     def test_custom_scalar_type(self):
-        """Test creating custom scalar types."""
-        custom = ScalarType("bool")
-        assert str(custom) == "bool"
-        assert isinstance(custom, ScalarTrait)
+        """Test that IntegerType can be used to create custom bit-width integers."""
+        from mplang2.edsl.typing import IntegerType
+
+        custom = IntegerType(bitwidth=1, signed=False)  # bool-like type
+        assert str(custom) == "u1"
+        assert isinstance(custom, ScalarType)
 
 
 # ==============================================================================
@@ -113,20 +114,20 @@ class TestTensorType:
         t2 = Tensor[f64, (3, 4, 5)]
         assert str(t2) == "Tensor[f64, (3, 4, 5)]"
 
-    def test_tensor_requires_scalar_trait_element(self):
-        """Test that Tensor requires ScalarTrait element types."""
-        # Valid: ScalarType implements ScalarTrait
+    def test_tensor_requires_scalar_element(self):
+        """Test that Tensor requires ScalarType element types."""
+        # Valid: ScalarType instances
         t = Tensor[f32, (10,)]
         assert t.element_type == f32
 
-        # Valid: HE[scalar] implements ScalarTrait
+        # Valid: HE[scalar] is also a ScalarType (ScalarHEType inherits ScalarType)
         t_he = Tensor[HE[f64], (20,)]
-        assert isinstance(t_he.element_type, ScalarTrait)
+        assert isinstance(t_he.element_type, ScalarType)
 
-    def test_tensor_rejects_non_scalar_trait_element(self):
-        """Test that Tensor rejects non-ScalarTrait element types (e.g., SIMD_HE)."""
+    def test_tensor_rejects_non_scalar_element(self):
+        """Test that Tensor rejects non-ScalarType element types (e.g., SIMD_HE)."""
         simd_he = SIMD_HE[f32, (4096,)]
-        with pytest.raises(TypeError, match="Tensor element type must be ScalarTrait"):
+        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[simd_he, (4,)]
 
     def test_tensor_empty_shape(self):
@@ -368,10 +369,10 @@ class TestCustomType:
         key_type = Custom["crypto.key"]
         assert isinstance(key_type, BaseType)
 
-    def test_custom_type_not_scalar_trait(self):
-        """Test that CustomType does NOT implement ScalarTrait."""
+    def test_custom_type_not_scalar(self):
+        """Test that CustomType is NOT a ScalarType."""
         key_type = Custom["crypto.key"]
-        assert not isinstance(key_type, ScalarTrait)
+        assert not isinstance(key_type, ScalarType)
 
     def test_custom_type_not_encrypted_trait(self):
         """Test that CustomType does NOT implement EncryptedTrait."""
@@ -435,10 +436,10 @@ class TestScalarHEType:
         he = HE[f32]
         assert str(he) == "HE[f32]"
 
-    def test_he_is_scalar_trait(self):
-        """Test that HE[scalar] implements ScalarTrait."""
+    def test_he_is_scalar_type(self):
+        """Test that HE[scalar] inherits from ScalarType."""
         he = HE[f32]
-        assert isinstance(he, ScalarTrait)
+        assert isinstance(he, ScalarType)
 
     def test_he_is_encrypted_trait(self):
         """Test that HE implements EncryptedTrait."""
@@ -448,9 +449,7 @@ class TestScalarHEType:
 
     def test_he_requires_scalar_type(self):
         """Test that HE requires a ScalarType plaintext."""
-        with pytest.raises(
-            TypeError, match="HE encryption is defined only over ScalarType"
-        ):
+        with pytest.raises(TypeError, match="HE encryption requires a ScalarType"):
             HE[Tensor[f32, (10,)]]
 
     def test_he_custom_scheme(self):
@@ -507,20 +506,20 @@ class TestSIMDHEType:
         pt_type = simd.pt_type
         assert isinstance(pt_type, TensorType)
 
-    def test_simd_he_not_scalar_trait(self):
-        """Test that SIMD_HE does NOT implement ScalarTrait (World 3 constraint)."""
+    def test_simd_he_not_scalar_type(self):
+        """Test that SIMD_HE is NOT a ScalarType (World 3 constraint)."""
         simd = SIMD_HE[f32, (4096,)]
-        assert not isinstance(simd, ScalarTrait)
+        assert not isinstance(simd, ScalarType)
 
     def test_simd_he_cannot_be_tensor_element(self):
         """Test that SIMD_HE cannot be an element of a Tensor (World 3 constraint)."""
         simd = SIMD_HE[f32, (4096,)]
-        with pytest.raises(TypeError, match="Tensor element type must be ScalarTrait"):
+        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[simd, (10,)]
 
     def test_simd_he_requires_scalar_type(self):
         """Test that SIMD_HE requires a ScalarType."""
-        with pytest.raises(TypeError, match="SIMD_HE is defined only over ScalarType"):
+        with pytest.raises(TypeError, match="SIMD_HE requires a ScalarType"):
             SIMD_HE[Tensor[f32, (10,)], (100,)]
 
     def test_simd_he_custom_scheme(self):
@@ -643,7 +642,7 @@ class TestTypeComposition:
 
     def test_composition_world_2_elementwise_he(self):
         """Test World 2: Element-wise HE Tensor."""
-        # HE[f32] is ScalarTrait, so it can be a Tensor element
+        # HE[f32] is a ScalarType, so it can be a Tensor element
         he_tensor = Tensor[HE[f64], (100,)]
         assert isinstance(he_tensor, TensorType)
         assert isinstance(he_tensor.element_type, ScalarHEType)
@@ -653,7 +652,7 @@ class TestTypeComposition:
         """Test World 3: SIMD HE (opaque, non-tensor)."""
         simd_he = SIMD_HE[f32, (4096,)]
         assert isinstance(simd_he, SIMDHEType)
-        assert not isinstance(simd_he, ScalarTrait)
+        assert not isinstance(simd_he, ScalarType)
 
     def test_composition_ss_tensor(self):
         """Test secret sharing of a tensor."""
@@ -710,17 +709,17 @@ class TestTypeComposition:
 class TestProtocolContracts:
     """Test that types satisfy the expected protocol contracts."""
 
-    def test_scalar_trait_protocol(self):
-        """Test that ScalarTrait is implemented correctly."""
-        # Scalar types implement ScalarTrait
-        assert isinstance(f32, ScalarTrait)
-        assert isinstance(i64, ScalarTrait)
+    def test_scalar_type_hierarchy(self):
+        """Test that ScalarType hierarchy is implemented correctly."""
+        # Scalar types are ScalarType instances
+        assert isinstance(f32, ScalarType)
+        assert isinstance(i64, ScalarType)
 
-        # HE[scalar] implements ScalarTrait
-        assert isinstance(HE[f32], ScalarTrait)
+        # HE[scalar] inherits from ScalarType
+        assert isinstance(HE[f32], ScalarType)
 
-        # SIMD_HE does NOT implement ScalarTrait
-        assert not isinstance(SIMD_HE[f32, (1024,)], ScalarTrait)
+        # SIMD_HE does NOT inherit from ScalarType
+        assert not isinstance(SIMD_HE[f32, (1024,)], ScalarType)
 
     def test_encrypted_trait_protocol(self):
         """Test that EncryptedTrait is implemented correctly."""
@@ -767,28 +766,26 @@ class TestEdgeCasesAndErrors:
 
     def test_tensor_with_invalid_element_type(self):
         """Test that Tensor rejects invalid element types."""
-        # MP is not ScalarTrait
+        # MP is not a ScalarType
         mp_type = MP[f32, (0,)]
-        with pytest.raises(TypeError, match="Tensor element type must be ScalarTrait"):
+        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[mp_type, (10,)]
 
-        # Table is not ScalarTrait
+        # Table is not a ScalarType
         table_type = Table[{"x": i32}]
-        with pytest.raises(TypeError, match="Tensor element type must be ScalarTrait"):
+        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[table_type, (5,)]
 
     def test_he_with_non_scalar_plaintext(self):
         """Test that HE requires ScalarType plaintext."""
         tensor = Tensor[f32, (10,)]
-        with pytest.raises(
-            TypeError, match="HE encryption is defined only over ScalarType"
-        ):
+        with pytest.raises(TypeError, match="HE encryption requires a ScalarType"):
             HE[tensor]
 
     def test_simd_he_with_non_scalar_plaintext(self):
         """Test that SIMD_HE requires ScalarType plaintext."""
         tensor = Tensor[f32, (10,)]
-        with pytest.raises(TypeError, match="SIMD_HE is defined only over ScalarType"):
+        with pytest.raises(TypeError, match="SIMD_HE requires a ScalarType"):
             SIMD_HE[tensor, (1024,)]
 
     def test_nested_encryption_allowed(self):
@@ -833,7 +830,7 @@ class TestDemonstrationCases:
     def test_design_constraint_demonstration(self):
         """Test that SIMD_HE cannot be a Tensor element (design constraint)."""
         simd_he_vector = SIMD_HE[f32, (4096,)]
-        with pytest.raises(TypeError, match="Tensor element type must be ScalarTrait"):
+        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[simd_he_vector, (4,)]
 
     def test_secret_sharing_demonstration(self):

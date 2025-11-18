@@ -115,14 +115,11 @@ class Tracer(Context):
 
             sig = inspect.signature(primitive._abstract_eval)
             params = list(sig.parameters.values())
-            is_flat_style = (
-                len(params) >= 2
-                and params[0].name == "in_types"
-                and params[1].name == "attrs"
-            )
+            # Detect flat style: first param is list-annotated "in_types"
+            is_flat_style = len(params) >= 1 and params[0].name == "in_types"
 
             if is_flat_style:
-                output_types = primitive._abstract_eval(input_types, kwargs)
+                output_types = primitive._abstract_eval(input_types, **kwargs)
             else:
                 output_types = primitive._abstract_eval(*input_types, **kwargs)
 

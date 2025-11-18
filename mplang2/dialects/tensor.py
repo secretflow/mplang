@@ -91,7 +91,7 @@ def _tensor_type_to_placeholder(tensor_type: elt.TensorType) -> ShapeDtypeStruct
         if dim <= 0 and dim != 0:
             raise ValueError(f"Invalid tensor dimension {dim}")
         normalized_shape.append(dim)
-    # element_type is ScalarTrait, need to convert to ScalarType for _scalar_to_numpy_dtype
+    # element_type must be ScalarType for conversion to numpy dtype
     if not isinstance(tensor_type.element_type, elt.ScalarType):
         raise TypeError(
             f"Expected ScalarType element, got {type(tensor_type.element_type)}"
@@ -470,10 +470,10 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
     output_types: list[elt.TensorType] = []
     for idx, output_value in enumerate(traced_fn.graph.outputs):
         output_element_type = output_value.type
-        if not isinstance(output_element_type, elt.ScalarTrait):
+        if not isinstance(output_element_type, elt.ScalarType):
             raise TypeError(
-                "elementwise function must return ScalarTrait leaves, "
-                f"got {type(output_element_type)} at output index {idx}. "
+                "elementwise function must return ScalarType leaves, "
+                f"got {type(output_element_type).__name__} at output index {idx}. "
                 "Elementwise only supports operations producing scalar outputs."
             )
         output_types.append(elt.TensorType(output_element_type, result_shape))
@@ -516,7 +516,7 @@ def elementwise(fn: Callable[..., Any], *inputs: el.Object, **kwargs: Any) -> el
         fn: Callable/traceable function operating on scalar elements.
             Can be a lambda, regular function, or Primitive.bind.
             Must not capture variables (closure-free).
-            Must return ScalarTrait values (no tensor nesting).
+            Must return ScalarType values - no tensor nesting.
         *inputs: Tensor or Scalar arguments to pass to fn.
             At least one Tensor input is required.
             All tensor inputs must have the same shape.
@@ -753,11 +753,16 @@ def _gather_ae(
     if not isinstance(index, elt.TensorType):
         raise TypeError(f"indices must be TensorType, got {type(index)}")
 
-    # Verify indices are integer type
-    if not isinstance(index.element_type, elt.ScalarType):
-        raise TypeError("indices must have ScalarType element")
-    if index.element_type.name not in ("i32", "i64", "u32", "u64"):
-        raise TypeError(f"indices must be integer type, got {index.element_type.name}")
+    # Verify indices are integer type (ScalarType includes IntegerType)
+    if not isinstance(index.element_type, elt.IntegerType):
+        raise TypeError(
+            f"indices must have IntegerType element, got {type(index.element_type).__name__}"
+        )
+    # Check for 32-bit or 64-bit integers
+    if index.element_type.bitwidth not in (32, 64):
+        raise TypeError(
+            f"indices must be 32-bit or 64-bit integers (i32/i64/u32/u64), got {index.element_type}"
+        )
 
     # Both inputs must be ranked (shape is always a tuple now)
     rank = len(input.shape)

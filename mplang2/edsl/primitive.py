@@ -82,15 +82,11 @@ class Primitive:
         Supports both single-output and multi-output primitives.
 
         Supported signatures:
-        1. Positional form (single output):
-           (*in_types: BaseType, **attrs) -> BaseType
+        1. Positional form (variable number of input types):
+           (*in_types: BaseType, **attrs) -> BaseType | Sequence[BaseType]
 
-        2. Positional form (multi output):
-           (*in_types: BaseType, **attrs) -> Sequence[BaseType]
-           (Can return list, tuple, or any sequence type)
-
-        3. Flat form (multi output, for variable number of inputs):
-           (in_types: list[BaseType], attrs: dict) -> Sequence[BaseType]
+        2. Flat form (input types as list):
+           (in_types: list[BaseType], **attrs) -> BaseType | Sequence[BaseType]
 
         Args:
             fn: Function that takes input types and returns output type(s)
@@ -98,7 +94,7 @@ class Primitive:
         Returns:
             The same function (for decorator pattern)
 
-        Example (single output):
+        Example (positional form):
             >>> add_p = Primitive("add")
             >>>
             >>> @add_p.def_abstract_eval
@@ -106,7 +102,7 @@ class Primitive:
             >>>     assert x_type == y_type, "Inputs must have same type"
             >>>     return x_type
 
-        Example (multi output):
+        Example (positional form, multi-output):
             >>> split_p = Primitive("split")
             >>>
             >>> @split_p.def_abstract_eval
@@ -117,9 +113,9 @@ class Primitive:
             >>> concat_p = Primitive("concat")
             >>>
             >>> @concat_p.def_abstract_eval
-            >>> def concat_abstract(in_types: list[BaseType], attrs: dict) -> list[BaseType]:
+            >>> def concat_abstract(in_types: list[BaseType], *, axis: int = 0) -> BaseType:
             >>> # Variable number of inputs
-            >>>     return [in_types[0]]  # Concatenated type
+            >>>     return in_types[0]  # Concatenated type
         """
         self._abstract_eval = fn
         return fn

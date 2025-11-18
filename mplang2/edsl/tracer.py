@@ -126,8 +126,11 @@ class Tracer(Context):
             else:
                 output_types = primitive._abstract_eval(*input_types, **kwargs)
 
-            if not isinstance(output_types, list):
+            # Normalize to list: single type or sequence → list
+            if isinstance(output_types, BaseType):
                 output_types = [output_types]
+            else:
+                output_types = list(output_types)
 
             input_values = [obj._graph_value for obj in input_objects]
             result_values = self.graph.add_op(
@@ -218,10 +221,7 @@ class Tracer(Context):
         is ready for interpretation or transformation.
 
         Args:
-            result: Traced result - can be:
-                - Single TraceObject
-                - List/tuple of TraceObjects
-                - PyTree containing TraceObjects (TODO)
+            result: Traced result, PyTree containing TraceObjects
 
         Returns:
             The finalized graph (self.graph with outputs set)
@@ -229,7 +229,7 @@ class Tracer(Context):
         Example:
             >>> tracer = Tracer()
             >>> push_context(tracer)
-            >>> result = some_primitive.bind(x, y)
+            >>> result = do_something(x, y)
             >>> pop_context()
             >>> graph = tracer.finalize(result)
         """

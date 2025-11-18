@@ -139,7 +139,7 @@ class Interpreter(Context):
         result_runtime = interpret(graph, self)
 
         # Wrap result back to InterpObject
-        # TODO: Get result type from graph outputs
+        # TODO: rebuild output structure from traced function
         if isinstance(result_traced, list):
             # Multiple outputs
             if not isinstance(result_runtime, (list, tuple)):

@@ -452,6 +452,14 @@ class ScalarHEType(BaseType, ScalarTrait, EncryptedTrait):
     def __str__(self) -> str:
         return f"HE[{self.pt_type}]"
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ScalarHEType):
+            return False
+        return self._pt_type == other._pt_type and self._scheme == other._scheme
+
+    def __hash__(self) -> int:
+        return hash((self._pt_type, self._scheme))
+
 
 HE = ScalarHEType
 

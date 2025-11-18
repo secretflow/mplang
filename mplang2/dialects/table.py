@@ -88,8 +88,10 @@ def _tensor2table_ae(
 ) -> elt.TableType:
     """Infer table type for table.tensor2table."""
 
-    if tensor_t.shape is None or len(tensor_t.shape) != 2:
-        raise TypeError("tensor2table expects rank-2 tensor (N, F)")
+    if len(tensor_t.shape) != 2:
+        raise TypeError(
+            f"tensor2table expects rank-2 tensor (N, F), got rank {len(tensor_t.shape)}"
+        )
     n_cols = tensor_t.shape[1]
     if not column_names:
         raise ValueError("column_names must be provided")

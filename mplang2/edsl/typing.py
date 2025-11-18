@@ -218,26 +218,24 @@ c128 = ScalarType("c128")
 
 
 class TensorType(BaseType):
-    """Represents a tensor of a given element type and shape.
+    """Represents a ranked tensor of a given element type and shape.
 
-    Shape can be:
-        - None: Fully dynamic/unranked tensor (runtime shape)
-        - (): Scalar (0-dimensional tensor)
-        - (-1, 10): Partially dynamic (first dim unknown, second dim is 10)
-        - (3, 10): Fully ranked tensor with static shape
+    Following MLIR's RankedTensorType design - all tensors must have a known rank.
+    This simplifies type inference and reduces complexity compared to supporting
+    fully unranked tensors.
 
-    A dimension can be:
+    Shape must be a tuple where each dimension can be:
         - Positive integer: Static dimension size
         - -1: Dynamic/unknown dimension size
 
     Examples:
-        Tensor[i32, None]       # Fully dynamic/unranked
         Tensor[i32, ()]         # Scalar (0-dim tensor)
-        Tensor[i32, (-1, 10)]   # Partially dynamic shape
-        Tensor[i32, (3, 10)]    # Fully static shape
+        Tensor[i32, (-1, 10)]   # Partially dynamic shape (rank=2)
+        Tensor[i32, (3, 10)]    # Fully static shape (rank=2)
+        Tensor[i32, (-1,)]      # 1D tensor with dynamic size
     """
 
-    def __init__(self, element_type: BaseType, shape: tuple[int, ...] | None):
+    def __init__(self, element_type: BaseType, shape: tuple[int, ...]):
         if not isinstance(element_type, ScalarTrait):
             raise TypeError(
                 f"Tensor element type must be ScalarTrait, but got {type(element_type).__name__}. "
@@ -246,17 +244,20 @@ class TensorType(BaseType):
         self.element_type = element_type
         self.shape = shape
 
-        # Validate shape dimensions if shape is provided
-        if shape is not None:
-            for dim in shape:
-                if not isinstance(dim, int):
-                    raise TypeError(
-                        f"Shape dimensions must be integers, got {type(dim).__name__}"
-                    )
-                if dim < -1 or dim == 0:
-                    raise ValueError(
-                        f"Invalid dimension {dim}: must be positive or -1 for dynamic"
-                    )
+        # Validate shape is a tuple
+        if not isinstance(shape, tuple):
+            raise TypeError(f"Shape must be a tuple, got {type(shape).__name__}")
+
+        # Validate each dimension
+        for dim in shape:
+            if not isinstance(dim, int):
+                raise TypeError(
+                    f"Shape dimensions must be integers, got {type(dim).__name__}"
+                )
+            if dim < -1 or dim == 0:
+                raise ValueError(
+                    f"Invalid dimension {dim}: must be positive or -1 for dynamic"
+                )
 
     def __class_getitem__(cls, params: tuple) -> TensorType:  # type: ignore[misc]
         """Enables the syntax `Tensor[element_type, shape]`.
@@ -270,7 +271,7 @@ class TensorType(BaseType):
         if not isinstance(params, tuple):
             raise TypeError(
                 "Tensor requires shape parameter. Use Tensor[element_type, shape] "
-                "where shape is None, (), or a tuple of integers."
+                "where shape is (), or a tuple of integers."
             )
 
         if len(params) != 2:
@@ -282,8 +283,6 @@ class TensorType(BaseType):
         return cls(element_type, shape)
 
     def __str__(self) -> str:
-        if self.shape is None:
-            return f"Tensor[{self.element_type}, None]"
         shape_str = ", ".join(str(d) for d in self.shape)
         return f"Tensor[{self.element_type}, ({shape_str})]"
 
@@ -298,36 +297,24 @@ class TensorType(BaseType):
     @property
     def is_scalar(self) -> bool:
         """Check if this is a scalar (0-dimensional) tensor."""
-        return self.shape is not None and self.shape == ()
-
-    @property
-    def is_unranked(self) -> bool:
-        """Check if this tensor has fully dynamic/unranked shape."""
-        return self.shape is None
+        return self.shape == ()
 
     @property
     def is_fully_static(self) -> bool:
         """Check if all dimensions are statically known."""
-        if self.shape is None:
-            return False
         return all(dim > 0 for dim in self.shape)
 
     @property
-    def rank(self) -> int | None:
+    def rank(self) -> int:
         """Get the rank (number of dimensions) of the tensor.
 
         Returns:
-            int: Number of dimensions if shape is known
-            None: If tensor is unranked (shape is None)
+            int: Number of dimensions (always available for ranked tensors)
         """
-        if self.shape is None:
-            return None
         return len(self.shape)
 
     def has_dynamic_dims(self) -> bool:
         """Check if tensor has any dynamic dimensions (-1)."""
-        if self.shape is None:
-            return True
         return any(dim == -1 for dim in self.shape)
 
 

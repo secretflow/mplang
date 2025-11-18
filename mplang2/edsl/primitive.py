@@ -22,7 +22,7 @@ See Primitive class documentation for detailed usage examples.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from jax.tree_util import tree_map
@@ -70,12 +70,12 @@ class Primitive:
             name: Unique identifier for this primitive (e.g., "add", "encrypt")
         """
         self.name = name
-        self._abstract_eval: Callable[..., BaseType | list[BaseType]] | None = None
+        self._abstract_eval: Callable[..., BaseType | Sequence[BaseType]] | None = None
         self._trace: Callable[..., Any] | None = None
 
     def def_abstract_eval(
-        self, fn: Callable[..., BaseType | list[BaseType]]
-    ) -> Callable[..., BaseType | list[BaseType]]:
+        self, fn: Callable[..., BaseType | Sequence[BaseType]]
+    ) -> Callable[..., BaseType | Sequence[BaseType]]:
         """Define type inference rule for this primitive.
 
         This function is called during tracing to infer output types from input types.
@@ -86,10 +86,11 @@ class Primitive:
            (*in_types: BaseType, **attrs) -> BaseType
 
         2. Positional form (multi output):
-           (*in_types: BaseType, **attrs) -> list[BaseType]
+           (*in_types: BaseType, **attrs) -> Sequence[BaseType]
+           (Can return list, tuple, or any sequence type)
 
         3. Flat form (multi output, for variable number of inputs):
-           (in_types: list[BaseType], attrs: dict) -> list[BaseType]
+           (in_types: list[BaseType], attrs: dict) -> Sequence[BaseType]
 
         Args:
             fn: Function that takes input types and returns output type(s)

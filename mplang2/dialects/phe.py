@@ -11,9 +11,9 @@ Architecture:
         ↓ encode(encoder)
     Encoded Integer (i64)
         ↓ encrypt(pk)
-    Ciphertext (HE[i64])
+    Ciphertext (PHECiphertext)
         ↓ homomorphic operations
-    Ciphertext (HE[i64])
+    Ciphertext (PHECiphertext)
         ↓ decrypt(sk)
     Encoded Integer (i64)
         ↓ decode(encoder)
@@ -38,14 +38,14 @@ x_enc = phe.encode(x, encoder)  # f64 → i64
 y_enc = phe.encode(y, encoder)  # f64 → i64
 
 # 4. Encrypt
-ct_x = phe.encrypt(x_enc, pk)  # i64 → HE[i64]
-ct_y = phe.encrypt(y_enc, pk)  # i64 → HE[i64]
+ct_x = phe.encrypt(x_enc, pk)  # i64 → PHECiphertext
+ct_y = phe.encrypt(y_enc, pk)  # i64 → PHECiphertext
 
 # 5. Homomorphic operations
-ct_sum = phe.add(ct_x, ct_y)  # HE[i64] + HE[i64]
+ct_sum = phe.add(ct_x, ct_y)  # PHECiphertext + PHECiphertext
 
 # 6. Decrypt and decode
-sum_enc = phe.decrypt(ct_sum, sk)  # HE[i64] → i64
+sum_enc = phe.decrypt(ct_sum, sk)  # PHECiphertext → i64
 result = phe.decode(sum_enc, encoder)  # i64 → f64
 ```
 
@@ -70,7 +70,7 @@ from mplang2.dialects import tensor
 # ==============================================================================
 
 
-class PHEKeyType(elt.BaseType):
+class KeyType(elt.BaseType):
     """Type for PHE keys carrying scheme information."""
 
     def __init__(self, scheme: str, is_public: bool):
@@ -82,7 +82,7 @@ class PHEKeyType(elt.BaseType):
         return f"PHE{kind}Key[{self.scheme}]"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, PHEKeyType):
+        if not isinstance(other, KeyType):
             return False
         return self.scheme == other.scheme and self.is_public == other.is_public
 
@@ -90,8 +90,56 @@ class PHEKeyType(elt.BaseType):
         return hash((self.scheme, self.is_public))
 
 
+class PlaintextType(elt.ScalarType):
+    """Represents an encoded integer ready for PHE encryption.
+
+    This type wraps the underlying integer representation (typically i64 or i128)
+    to distinguish it from regular integers. This ensures type safety by preventing
+    accidental encryption of raw integers or arithmetic between encoded and raw values.
+    """
+
+    def __init__(self, bitwidth: int = 64):
+        self.bitwidth = bitwidth
+
+    def __str__(self) -> str:
+        return f"PHEPlaintext[i{self.bitwidth}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PlaintextType):
+            return False
+        return self.bitwidth == other.bitwidth
+
+    def __hash__(self) -> int:
+        return hash(("PlaintextType", self.bitwidth))
+
+
+class CiphertextType(elt.ScalarType, elt.EncryptedTrait):
+    """Represents a single scalar value encrypted with a PHE scheme.
+
+    Inherits from ScalarType, so it can be used as a tensor element type.
+    """
+
+    def __init__(self, scheme: str):
+        self._scheme = scheme
+
+    @property
+    def scheme(self) -> str:
+        return self._scheme
+
+    def __str__(self) -> str:
+        return f"PHECiphertext[{self._scheme}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CiphertextType):
+            return False
+        return self._scheme == other._scheme
+
+    def __hash__(self) -> int:
+        return hash(("CiphertextType", self._scheme))
+
+
 # Opaque types for PHE (singleton instances)
-PHEEncoderType: elt.CustomType = elt.CustomType("PHEEncoder")
+EncoderType: elt.CustomType = elt.CustomType("PHEEncoder")
 
 # ==============================================================================
 # --- Key Management Operations
@@ -105,7 +153,7 @@ def _keygen_ae(
     *,
     scheme: str = "paillier",
     key_size: int = 2048,
-) -> tuple[PHEKeyType, PHEKeyType]:
+) -> tuple[KeyType, KeyType]:
     """Generate PHE key pair (cryptographic parameters only).
 
     Args:
@@ -115,7 +163,7 @@ def _keygen_ae(
     Returns:
         Tuple of (PHEPublicKey, PHEPrivateKey) with scheme info
     """
-    return (PHEKeyType(scheme, True), PHEKeyType(scheme, False))
+    return (KeyType(scheme, True), KeyType(scheme, False))
 
 
 # ==============================================================================
@@ -142,15 +190,15 @@ def _create_encoder_ae(
         max_value: Optional maximum value for range checking
 
     Returns:
-        PHEEncoderType configured for the specified dtype
+        EncoderType configured for the specified dtype
     """
     if not isinstance(dtype, elt.ScalarType):
         raise TypeError(f"dtype must be ScalarType, got {type(dtype).__name__}")
-    return PHEEncoderType
+    return EncoderType
 
 
 @encode_p.def_abstract_eval
-def _encode_ae(value: elt.ScalarType, encoder: elt.CustomType) -> elt.IntegerType:
+def _encode_ae(value: elt.ScalarType, encoder: elt.CustomType) -> PlaintextType:
     """Encode scalar value to fixed-point integer representation.
 
     Args:
@@ -158,21 +206,21 @@ def _encode_ae(value: elt.ScalarType, encoder: elt.CustomType) -> elt.IntegerTyp
         encoder: PHE encoder with encoding parameters
 
     Returns:
-        Encoded integer (typically i64)
+        Encoded integer (PlaintextType)
 
     Raises:
-        TypeError: If encoder is not PHEEncoderType
+        TypeError: If encoder is not EncoderType
     """
-    if encoder != PHEEncoderType:
+    if encoder != EncoderType:
         raise TypeError(f"Expected PHEEncoder, got {encoder}")
     if not isinstance(value, elt.ScalarType):
         raise TypeError(f"Can only encode ScalarType, got {value}")
     # Return sufficient integer type for encoded values
-    return elt.IntegerType(bitwidth=64, signed=True)
+    return PlaintextType(bitwidth=64)
 
 
 @decode_p.def_abstract_eval
-def _decode_ae(encoded: elt.IntegerType, encoder: elt.CustomType) -> elt.ScalarType:
+def _decode_ae(encoded: PlaintextType, encoder: elt.CustomType) -> elt.ScalarType:
     """Decode fixed-point integer back to original scalar type.
 
     Args:
@@ -183,12 +231,12 @@ def _decode_ae(encoded: elt.IntegerType, encoder: elt.CustomType) -> elt.ScalarT
         Decoded value in original type (inferred from encoder's dtype)
 
     Raises:
-        TypeError: If encoder is not PHEEncoderType or encoded is not integer
+        TypeError: If encoder is not EncoderType or encoded is not PlaintextType
     """
-    if encoder != PHEEncoderType:
+    if encoder != EncoderType:
         raise TypeError(f"Expected PHEEncoder, got {encoder}")
-    if not isinstance(encoded, elt.IntegerType):
-        raise TypeError(f"Can only decode IntegerType, got {encoded}")
+    if not isinstance(encoded, PlaintextType):
+        raise TypeError(f"Can only decode PlaintextType, got {encoded}")
     # In real implementation, would extract dtype from encoder attrs
     # For now, return a default (this will be improved with attr introspection)
     return elt.f64
@@ -203,7 +251,7 @@ decrypt_p = el.Primitive("phe.decrypt")
 
 
 @encrypt_p.def_abstract_eval
-def _encrypt_ae(encoded: elt.IntegerType, pk: PHEKeyType) -> elt.ScalarHEType:
+def _encrypt_ae(encoded: PlaintextType, pk: KeyType) -> CiphertextType:
     """Encrypt encoded integer using PHE public key.
 
     Args:
@@ -211,20 +259,20 @@ def _encrypt_ae(encoded: elt.IntegerType, pk: PHEKeyType) -> elt.ScalarHEType:
         pk: PHE public key
 
     Returns:
-        HE - encrypted integer
+        CiphertextType - encrypted integer
 
     Raises:
-        TypeError: If input is not IntegerType or pk is not PHEPublicKey
+        TypeError: If input is not PlaintextType or pk is not PHEPublicKey
     """
-    if not isinstance(pk, PHEKeyType) or not pk.is_public:
+    if not isinstance(pk, KeyType) or not pk.is_public:
         raise TypeError(f"Expected PHEPublicKey, got {pk}")
-    if not isinstance(encoded, elt.IntegerType):
-        raise TypeError(f"Can only encrypt IntegerType, got {encoded}")
-    return elt.ScalarHEType(pk.scheme)
+    if not isinstance(encoded, PlaintextType):
+        raise TypeError(f"Can only encrypt PlaintextType, got {encoded}")
+    return CiphertextType(pk.scheme)
 
 
 @decrypt_p.def_abstract_eval
-def _decrypt_ae(ct: elt.ScalarHEType, sk: PHEKeyType) -> elt.IntegerType:
+def _decrypt_ae(ct: CiphertextType, sk: KeyType) -> PlaintextType:
     """Decrypt ciphertext to encoded integer using PHE private key.
 
     Args:
@@ -235,15 +283,14 @@ def _decrypt_ae(ct: elt.ScalarHEType, sk: PHEKeyType) -> elt.IntegerType:
         Decrypted encoded integer
 
     Raises:
-        TypeError: If ct is not HE or sk is not PHEPrivateKey
+        TypeError: If ct is not CiphertextType or sk is not PHEPrivateKey
     """
-    if not isinstance(sk, PHEKeyType) or sk.is_public:
+    if not isinstance(sk, KeyType) or sk.is_public:
         raise TypeError(f"Expected PHEPrivateKey, got {sk}")
-    if not isinstance(ct, elt.ScalarHEType):
-        raise TypeError(f"Expected HE[...], got {ct}")
+    if not isinstance(ct, CiphertextType):
+        raise TypeError(f"Expected CiphertextType, got {ct}")
     # We assume it decrypts to i64 (standard encoded integer)
-    # In a real system, we might want to know the bitwidth, but i64 is a safe default for now.
-    return elt.i64
+    return PlaintextType(bitwidth=64)
 
 
 # ==============================================================================
@@ -256,37 +303,31 @@ mul_cp_p = el.Primitive("phe.mul_cp")
 
 
 @add_cc_p.def_abstract_eval
-def _add_cc_ae(
-    operand1: elt.ScalarHEType, operand2: elt.ScalarHEType
-) -> elt.ScalarHEType:
+def _add_cc_ae(operand1: CiphertextType, operand2: CiphertextType) -> CiphertextType:
     """Ciphertext + ciphertext → ciphertext."""
-    if not isinstance(operand1, elt.ScalarHEType) or not isinstance(
-        operand2, elt.ScalarHEType
+    if not isinstance(operand1, CiphertextType) or not isinstance(
+        operand2, CiphertextType
     ):
-        raise TypeError(f"Expected ScalarHEType operands, got {operand1}, {operand2}")
+        raise TypeError(f"Expected CiphertextType operands, got {operand1}, {operand2}")
     if operand1 != operand2:
         raise TypeError(f"Scheme mismatch: {operand1} vs {operand2}")
     return operand1
 
 
 @add_cp_p.def_abstract_eval
-def _add_cp_ae(
-    ciphertext: elt.ScalarHEType, plaintext: elt.ScalarType
-) -> elt.ScalarHEType:
+def _add_cp_ae(ciphertext: CiphertextType, plaintext: PlaintextType) -> CiphertextType:
     """Ciphertext + plaintext → ciphertext."""
-    if not isinstance(ciphertext, elt.ScalarHEType):
-        raise TypeError(f"Expected ScalarHEType ciphertext, got {ciphertext}")
-    if not isinstance(plaintext, elt.IntegerType):
+    if not isinstance(ciphertext, CiphertextType):
+        raise TypeError(f"Expected CiphertextType ciphertext, got {ciphertext}")
+    if not isinstance(plaintext, PlaintextType):
         raise TypeError(
-            f"Plaintext operand must be IntegerType (encoded), got {plaintext}"
+            f"Plaintext operand must be PlaintextType (encoded), got {plaintext}"
         )
     return ciphertext
 
 
 @mul_cp_p.def_abstract_eval
-def _mul_cp_ae(
-    ciphertext: elt.ScalarHEType, plaintext: elt.ScalarType
-) -> elt.ScalarHEType:
+def _mul_cp_ae(ciphertext: CiphertextType, plaintext: PlaintextType) -> CiphertextType:
     """Element-level homomorphic scalar multiplication.
 
     Args:
@@ -296,11 +337,11 @@ def _mul_cp_ae(
     Returns:
         Encrypted product
     """
-    if not isinstance(ciphertext, elt.ScalarHEType):
-        raise TypeError(f"Expected ScalarHEType ciphertext, got {ciphertext}")
-    if not isinstance(plaintext, elt.IntegerType):
+    if not isinstance(ciphertext, CiphertextType):
+        raise TypeError(f"Expected CiphertextType ciphertext, got {ciphertext}")
+    if not isinstance(plaintext, PlaintextType):
         raise TypeError(
-            f"Plaintext operand must be IntegerType (encoded), got {plaintext}"
+            f"Plaintext operand must be PlaintextType (encoded), got {plaintext}"
         )
     return ciphertext
 
@@ -398,14 +439,14 @@ def _inspect_operand(obj: el.Object) -> OperandInfo:
     obj_type = obj.type
     if isinstance(obj_type, elt.TensorType):
         elem = obj_type.element_type
-        if isinstance(elem, elt.ScalarHEType):
+        if isinstance(elem, CiphertextType):
             return OperandInfo(True, True, None)
         if isinstance(elem, elt.ScalarType):
             return OperandInfo(True, False, elem)
         raise TypeError(
-            f"PHE operations support Tensor[ScalarType] or Tensor[HE[...]], got Tensor[{elem}]"
+            f"PHE operations support Tensor[ScalarType] or Tensor[CiphertextType], got Tensor[{elem}]"
         )
-    if isinstance(obj_type, elt.ScalarHEType):
+    if isinstance(obj_type, CiphertextType):
         return OperandInfo(False, True, None)
     if isinstance(obj_type, elt.ScalarType):
         return OperandInfo(False, False, obj_type)
@@ -485,7 +526,7 @@ def encrypt(encoded: el.Object, public_key: el.Object) -> el.Object:
 
     Example:
         >>> x_enc = phe.encode(x, encoder)
-        >>> ct = phe.encrypt(x_enc, pk)  # i64 → HE[i64]
+        >>> ct = phe.encrypt(x_enc, pk)  # i64 → PHECiphertext
     """
     if _has_tensor_args(encoded):
         return tensor.elementwise(encrypt_p.bind, encoded, public_key)
@@ -506,7 +547,7 @@ def decrypt(ciphertext: el.Object, private_key: el.Object) -> el.Object:
 
     Example:
         >>> ct_sum = phe.add(ct1, ct2)
-        >>> sum_enc = phe.decrypt(ct_sum, sk)  # HE[i64] → i64
+        >>> sum_enc = phe.decrypt(ct_sum, sk)  # PHECiphertext → i64
         >>> result = phe.decode(sum_enc, encoder)  # i64 → f64
     """
     if _has_tensor_args(ciphertext):
@@ -562,9 +603,9 @@ def add(lhs: el.Object, rhs: el.Object) -> el.Object:
     """Homomorphic addition.
 
     Supports:
-        HE[T] + HE[T] → HE[T]  (ciphertext + ciphertext)
-        HE[T] + T → HE[T]      (ciphertext + plaintext)
-        T + HE[T] → HE[T]      (plaintext + ciphertext)
+        Ciphertext + Ciphertext → Ciphertext  (ciphertext + ciphertext)
+        Ciphertext + T → Ciphertext      (ciphertext + plaintext)
+        T + Ciphertext → Ciphertext      (plaintext + ciphertext)
 
     Args:
         lhs: Left operand (encrypted or plaintext)
@@ -596,8 +637,8 @@ def mul_plain(lhs: el.Object, rhs: el.Object) -> el.Object:
     """Homomorphic multiplication: ciphertext × plaintext (encoded integer).
 
     Supports:
-        HE[i64] × i64 → HE[i64]  (ciphertext × encoded plaintext)
-        i64 × HE[i64] → HE[i64]  (encoded plaintext × ciphertext)
+        Ciphertext × i64 → Ciphertext  (ciphertext × encoded plaintext)
+        i64 × Ciphertext → Ciphertext  (encoded plaintext × ciphertext)
 
     Args:
         lhs: Left operand (one must be encrypted, other must be encoded integer)
@@ -639,9 +680,11 @@ def mul_plain(lhs: el.Object, rhs: el.Object) -> el.Object:
 
 
 __all__ = [
+    "CiphertextType",
     # Types
-    "PHEEncoderType",
-    "PHEKeyType",
+    "EncoderType",
+    "KeyType",
+    "PlaintextType",
     # User API
     "add",
     # Primitives

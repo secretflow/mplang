@@ -19,8 +19,8 @@ class TestPHEKeyManagement:
 
             assert isinstance(pk, el.TraceObject)
             assert isinstance(sk, el.TraceObject)
-            assert isinstance(pk.type, phe.PHEKeyType)
-            assert isinstance(sk.type, phe.PHEKeyType)
+            assert isinstance(pk.type, phe.KeyType)
+            assert isinstance(sk.type, phe.KeyType)
             assert pk.type.is_public
             assert not sk.type.is_public
             assert pk.type.scheme == "paillier"
@@ -73,21 +73,27 @@ class TestPHEEncoder:
 
             encoded = phe.encode(x, encoder)
 
-            # Verify type transformation: Tensor[f64, (3,)] -> Tensor[i64, (3,)]
+            # Verify type transformation: Tensor[f64, (3,)] -> Tensor[PHEPlaintext, (3,)]
             assert isinstance(encoded, el.TraceObject)
             assert isinstance(encoded.type, elt.TensorType)
-            assert isinstance(encoded.type.element_type, elt.IntegerType)
+            assert isinstance(encoded.type.element_type, phe.PlaintextType)
 
     def test_decode_scalar(self):
         """Test decoding to scalar values."""
         with el.Tracer():
             encoder = phe.create_encoder(dtype=elt.f64, fxp_bits=16)
-            # Simulate encoded integers
-            encoded = tensor.constant(np.array([98304, 163840, 229376], dtype=np.int64))
+            # Simulate encoded integers (using PlaintextType)
+            # Note: tensor.constant currently creates IntegerType for int arrays
+            # We need to cast or mock this for the test since we can't easily create
+            # a constant tensor of PlaintextType directly without encode
+
+            # Workaround: Use encode to get a valid PlaintextType tensor
+            x = tensor.constant(np.array([1.5, 2.5, 3.5]))
+            encoded = phe.encode(x, encoder)
 
             decoded = phe.decode(encoded, encoder)
 
-            # Verify type transformation: Tensor[i64, (3,)] -> Tensor[f64, (3,)]
+            # Verify type transformation: Tensor[PHEPlaintext, (3,)] -> Tensor[f64, (3,)]
             assert isinstance(decoded, el.TraceObject)
             assert isinstance(decoded.type, elt.TensorType)
             assert decoded.type.element_type == elt.f64
@@ -123,7 +129,7 @@ class TestPHEAutoFunctions:
             # Verify type transformation: Tensor[f64, (3,)] -> Tensor[HE[i64], (3,)]
             assert isinstance(ct, el.TraceObject)
             assert isinstance(ct.type, elt.TensorType)
-            assert isinstance(ct.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct.type.element_type, phe.CiphertextType)
             assert ct.type.shape == (3,)
 
     def test_decrypt_auto_basic(self):
@@ -187,7 +193,7 @@ class TestPHEEncryptDecrypt:
             # Verify type transformation: Tensor[i32, (3,)] -> Tensor[HE[i32], (3,)]
             assert isinstance(ct, el.TraceObject)
             assert isinstance(ct.type, elt.TensorType)
-            assert isinstance(ct.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct.type.element_type, phe.CiphertextType)
             assert ct.type.shape == (3,)
 
     def test_encrypt_2d_tensor(self):
@@ -201,7 +207,7 @@ class TestPHEEncryptDecrypt:
             ct = phe.encrypt(encoded, pk)
 
             assert ct.type.shape == (2, 2)
-            assert isinstance(ct.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct.type.element_type, phe.CiphertextType)
 
     def test_decrypt_tensor(self):
         """Test decrypting tensor."""
@@ -254,7 +260,7 @@ class TestPHEHomomorphicOperations:
 
             # Verify type: Tensor[HE[f64], (3,)]
             assert isinstance(ct_sum.type, elt.TensorType)
-            assert isinstance(ct_sum.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct_sum.type.element_type, phe.CiphertextType)
             assert ct_sum.type.shape == (3,)
 
             # Verify operation is tensor.elementwise
@@ -282,7 +288,7 @@ class TestPHEHomomorphicOperations:
 
             # Verify type: Tensor[HE[f64], (3,)]
             assert isinstance(ct_scaled.type, elt.TensorType)
-            assert isinstance(ct_scaled.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct_scaled.type.element_type, phe.CiphertextType)
             assert ct_scaled.type.shape == (3,)
 
     def test_homomorphic_computation_chain(self):
@@ -358,7 +364,7 @@ class TestPHEWithTensorOps:
             ct_t = tensor.transpose(ct, (1, 0))  # Tensor[HE[f64], (3, 2)]
 
             # Verify type
-            assert isinstance(ct_t.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct_t.type.element_type, phe.CiphertextType)
             assert ct_t.type.shape == (3, 2)
 
     def test_reshape_encrypted_tensor(self):
@@ -372,7 +378,7 @@ class TestPHEWithTensorOps:
             ct_reshaped = tensor.reshape(ct, (2, 3))  # Tensor[HE[f64], (2, 3)]
 
             assert ct_reshaped.type.shape == (2, 3)
-            assert isinstance(ct_reshaped.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct_reshaped.type.element_type, phe.CiphertextType)
 
     def test_concat_encrypted_tensors(self):
         """Test concatenating encrypted tensors."""
@@ -387,7 +393,7 @@ class TestPHEWithTensorOps:
             ct_concat = tensor.concat([ct_x, ct_y], axis=0)
 
             assert ct_concat.type.shape == (6,)
-            assert isinstance(ct_concat.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct_concat.type.element_type, phe.CiphertextType)
 
     def test_gather_encrypted_tensor(self):
         """Test gathering from encrypted tensor."""
@@ -401,7 +407,7 @@ class TestPHEWithTensorOps:
             ct_gathered = tensor.gather(ct, indices, axis=0)
 
             assert ct_gathered.type.shape == (3,)
-            assert isinstance(ct_gathered.type.element_type, elt.ScalarHEType)
+            assert isinstance(ct_gathered.type.element_type, phe.CiphertextType)
 
     def test_complex_workflow(self):
         """Test complex PHE workflow combining multiple operations."""
@@ -454,22 +460,23 @@ class TestPHETypeInference:
 
     def test_add_element_type_inference(self):
         """Test that add_cc primitive correctly infers HE + HE -> HE."""
-        he_type = elt.ScalarHEType()
+        he_type = phe.CiphertextType(scheme="ckks")
         result_type = phe.add_cc_p._abstract_eval(he_type, he_type)
 
-        assert isinstance(result_type, elt.ScalarHEType)
+        assert isinstance(result_type, phe.CiphertextType)
 
     def test_mul_plain_element_type_inference(self):
         """Test that mul_plain primitive correctly infers HE * Encoded -> HE."""
-        he_type = elt.ScalarHEType()
-        result_type = phe.mul_cp_p._abstract_eval(he_type, elt.i64)
+        he_type = phe.CiphertextType(scheme="ckks")
+        pt_type = phe.PlaintextType()
+        result_type = phe.mul_cp_p._abstract_eval(he_type, pt_type)
 
-        assert isinstance(result_type, elt.ScalarHEType)
+        assert isinstance(result_type, phe.CiphertextType)
 
     def test_add_type_mismatch_error(self):
         """Test that add primitives reject mismatched schemes."""
-        he_ckks = elt.ScalarHEType(scheme="ckks")
-        he_paillier = elt.ScalarHEType(scheme="paillier")
+        he_ckks = phe.CiphertextType(scheme="ckks")
+        he_paillier = phe.CiphertextType(scheme="paillier")
 
         with pytest.raises(TypeError, match="Scheme mismatch"):
             phe.add_cc_p._abstract_eval(he_ckks, he_paillier)
@@ -485,9 +492,9 @@ class TestPHETypeInference:
 
     def test_mul_plain_type_mismatch_error(self):
         """Test that mul_plain rejects mismatched types."""
-        he_type = elt.ScalarHEType()
+        he_type = phe.CiphertextType(scheme="ckks")
 
-        with pytest.raises(TypeError, match="Plaintext operand must be IntegerType"):
+        with pytest.raises(TypeError, match="Plaintext operand must be PlaintextType"):
             phe.mul_cp_p._abstract_eval(he_type, elt.f64)
 
 

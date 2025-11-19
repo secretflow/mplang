@@ -11,9 +11,9 @@ Architecture:
         ↓ encode(encoder)
     Encoded Integer (i64)
         ↓ encrypt(pk)
-    Ciphertext (PHECiphertext)
+    Ciphertext (CiphertextType)
         ↓ homomorphic operations
-    Ciphertext (PHECiphertext)
+    Ciphertext (CiphertextType)
         ↓ decrypt(sk)
     Encoded Integer (i64)
         ↓ decode(encoder)
@@ -38,14 +38,14 @@ x_enc = phe.encode(x, encoder)  # f64 → i64
 y_enc = phe.encode(y, encoder)  # f64 → i64
 
 # 4. Encrypt
-ct_x = phe.encrypt(x_enc, pk)  # i64 → PHECiphertext
-ct_y = phe.encrypt(y_enc, pk)  # i64 → PHECiphertext
+ct_x = phe.encrypt(x_enc, pk)  # i64 → CiphertextType
+ct_y = phe.encrypt(y_enc, pk)  # i64 → CiphertextType
 
 # 5. Homomorphic operations
-ct_sum = phe.add(ct_x, ct_y)  # PHECiphertext + PHECiphertext
+ct_sum = phe.add(ct_x, ct_y)  # CiphertextType + CiphertextType
 
 # 6. Decrypt and decode
-sum_enc = phe.decrypt(ct_sum, sk)  # PHECiphertext → i64
+sum_enc = phe.decrypt(ct_sum, sk)  # CiphertextType → i64
 result = phe.decode(sum_enc, encoder)  # i64 → f64
 ```
 
@@ -78,8 +78,8 @@ class KeyType(elt.BaseType):
         self.is_public = is_public
 
     def __str__(self) -> str:
-        kind = "Public" if self.is_public else "Private"
-        return f"PHE{kind}Key[{self.scheme}]"
+        kind = "P" if self.is_public else "S"
+        return f"{kind}Key[{self.scheme}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, KeyType):
@@ -102,7 +102,7 @@ class PlaintextType(elt.ScalarType):
         self.bitwidth = bitwidth
 
     def __str__(self) -> str:
-        return f"PHEPlaintext[i{self.bitwidth}]"
+        return f"PT[i{self.bitwidth}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PlaintextType):
@@ -127,7 +127,7 @@ class CiphertextType(elt.ScalarType, elt.EncryptedTrait):
         return self._scheme
 
     def __str__(self) -> str:
-        return f"PHECiphertext[{self._scheme}]"
+        return f"CT[{self._scheme}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CiphertextType):
@@ -139,7 +139,7 @@ class CiphertextType(elt.ScalarType, elt.EncryptedTrait):
 
 
 # Opaque types for PHE (singleton instances)
-EncoderType: elt.CustomType = elt.CustomType("PHEEncoder")
+EncoderType: elt.CustomType = elt.CustomType("Encoder")
 
 # ==============================================================================
 # --- Key Management Operations
@@ -161,7 +161,7 @@ def _keygen_ae(
         key_size: Key size in bits (default: 2048)
 
     Returns:
-        Tuple of (PHEPublicKey, PHEPrivateKey) with scheme info
+        Tuple of (PublicKey, PrivateKey) with scheme info
     """
     return (KeyType(scheme, True), KeyType(scheme, False))
 
@@ -262,10 +262,10 @@ def _encrypt_ae(encoded: PlaintextType, pk: KeyType) -> CiphertextType:
         CiphertextType - encrypted integer
 
     Raises:
-        TypeError: If input is not PlaintextType or pk is not PHEPublicKey
+        TypeError: If input is not PlaintextType or pk is not PublicKey
     """
     if not isinstance(pk, KeyType) or not pk.is_public:
-        raise TypeError(f"Expected PHEPublicKey, got {pk}")
+        raise TypeError(f"Expected PublicKey, got {pk}")
     if not isinstance(encoded, PlaintextType):
         raise TypeError(f"Can only encrypt PlaintextType, got {encoded}")
     return CiphertextType(pk.scheme)
@@ -283,10 +283,10 @@ def _decrypt_ae(ct: CiphertextType, sk: KeyType) -> PlaintextType:
         Decrypted encoded integer
 
     Raises:
-        TypeError: If ct is not CiphertextType or sk is not PHEPrivateKey
+        TypeError: If ct is not CiphertextType or sk is not PrivateKey
     """
     if not isinstance(sk, KeyType) or sk.is_public:
-        raise TypeError(f"Expected PHEPrivateKey, got {sk}")
+        raise TypeError(f"Expected PrivateKey, got {sk}")
     if not isinstance(ct, CiphertextType):
         raise TypeError(f"Expected CiphertextType, got {ct}")
     # We assume it decrypts to i64 (standard encoded integer)

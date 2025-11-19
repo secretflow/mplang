@@ -45,10 +45,10 @@ rather than by creating a large, monolithic set of specific types.
     - `Tensor`: A multi-dimensional array of a `ScalarType` element type.
     - `Table`: A dictionary-like structure with named columns of any type.
 
-2.  **Encryption Types**: Wrap other types to confer privacy properties by making them opaque.
-    - `HE`: Element-wise Homomorphic Encryption of a single scalar.
+    2.  **Encryption Types**: Wrap other types to confer privacy properties by making them opaque.
     - `SIMD_HE`: Packed (SIMD) Homomorphic Encryption of a vector of scalars into a single ciphertext.
     - `SS`: A single share of a secret-shared value.
+    - Note: Element-wise HE types (like `phe.CiphertextType`) are defined in their respective dialects (e.g., `phe`).
 
 3.  **Distribution Types**: Wrap other types to describe their physical location among parties.
     - `MP`: Represents a value logically held by multiple parties.
@@ -70,7 +70,7 @@ underlying HE libraries.
     - **API Standard**: Follows NumPy/JAX conventions. All layout and arithmetic operations are valid.
 
 -   **World 2: The Element-wise HE World**
-    - **Core Type**: `Tensor[HE[Scalar], ...]`
+    - **Core Type**: `Tensor[EncryptedScalar, ...]` (e.g., `Tensor[phe.CiphertextType, ...]`)
     - **API Standard**: Follows TenSEAL-like (Tensor-level) conventions. Layout operations
       (`transpose`, `reshape`) are valid as they merely shuffle independent ciphertext objects.
       Arithmetic operations are overloaded for element-wise HE computation.
@@ -82,9 +82,7 @@ underlying HE libraries.
       and `simd_rotate`. It is explicitly *not* a `ScalarType` and cannot be an element of a `Tensor`.
 
 This separation is programmatically enforced. Attempting to create a `Tensor[SIMD_HE[...]]`
-will raise a `TypeError`.
-
-===========================
+will raise a `TypeError`.===========================
 Principle 3: Contracts via Protocols
 ===========================
 The system uses `typing.Protocol` to define behavioral contracts (similar to Traits in Rust).
@@ -337,7 +335,7 @@ class TensorType(BaseType):
         # Only ScalarType can be tensor elements
         if not isinstance(element_type, ScalarType):
             raise TypeError(
-                f"Tensor element type must be a ScalarType (including ScalarHEType), but got {type(element_type).__name__}. "
+                f"Tensor element type must be a ScalarType (including encrypted scalars), but got {type(element_type).__name__}. "
                 "Note: SIMD_HE cannot be an element of a Tensor."
             )
         self.element_type = element_type
@@ -517,33 +515,6 @@ Custom = CustomType
 # ==============================================================================
 # --- Pillar 2: Encryption Types
 # ==============================================================================
-
-
-class ScalarHEType(ScalarType, EncryptedTrait):
-    """Represents a single scalar value encrypted with an HE scheme.
-
-    Inherits from ScalarType, so it can be used as a tensor element type.
-    """
-
-    def __init__(self, scheme: str = "ckks"):
-        self._scheme = scheme
-
-    def __class_getitem__(cls, scheme: str) -> ScalarHEType:
-        return cls(scheme)
-
-    def __str__(self) -> str:
-        return f"HE[{self._scheme}]"
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ScalarHEType):
-            return False
-        return self._scheme == other._scheme
-
-    def __hash__(self) -> int:
-        return hash(("ScalarHEType", self._scheme))
-
-
-HE = ScalarHEType
 
 
 class SIMDHEType(BaseType, EncryptedTrait):

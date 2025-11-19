@@ -24,7 +24,6 @@ This test suite validates the design principles outlined in mplang/core/typing.p
 import pytest
 
 from mplang2.edsl.typing import (
-    HE,
     MP,
     SIMD_HE,
     SS,
@@ -32,7 +31,6 @@ from mplang2.edsl.typing import (
     Custom,
     CustomType,
     EncryptedTrait,
-    ScalarHEType,
     ScalarType,
     SIMDHEType,
     SSType,
@@ -49,6 +47,24 @@ from mplang2.edsl.typing import (
 # ==============================================================================
 # --- Test Scalar Types (Pillar 1: Layout Types)
 # ==============================================================================
+
+
+class MockHEType(ScalarType, EncryptedTrait):
+    """Mock HE type for testing composition without depending on PHE dialect."""
+
+    def __init__(self, scheme: str = "ckks"):
+        self._scheme = scheme
+
+    def __class_getitem__(cls, scheme: str) -> "MockHEType":
+        return cls(scheme)
+
+    def __str__(self) -> str:
+        return f"HE[{self._scheme}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MockHEType):
+            return False
+        return self._scheme == other._scheme
 
 
 class TestScalarType:
@@ -119,10 +135,6 @@ class TestTensorType:
         # Valid: ScalarType instances
         t = Tensor[f32, (10,)]
         assert t.element_type == f32
-
-        # Valid: HE[scalar] is also a ScalarType (ScalarHEType inherits ScalarType)
-        t_he = Tensor[HE[f64], (20,)]
-        assert isinstance(t_he.element_type, ScalarType)
 
     def test_tensor_rejects_non_scalar_element(self):
         """Test that Tensor rejects non-ScalarType element types (e.g., SIMD_HE)."""
@@ -412,51 +424,6 @@ class TestCustomType:
 
 
 # ==============================================================================
-# --- Test HE Types (Pillar 2: Encryption Types)
-# ==============================================================================
-
-
-class TestScalarHEType:
-    """Test ScalarHEType (HE) construction and behavior."""
-
-    def test_he_construction_basic(self):
-        """Test basic HE construction."""
-        he = ScalarHEType()
-        assert he._scheme == "ckks"
-
-    def test_he_class_getitem_syntax(self):
-        """Test the HE[scheme] syntax."""
-        he = HE["ckks"]
-        assert isinstance(he, ScalarHEType)
-        assert he._scheme == "ckks"
-
-    def test_he_str_representation(self):
-        """Test string representation of HE types."""
-        he = HE["ckks"]
-        assert str(he) == "HE[ckks]"
-
-    def test_he_is_scalar_type(self):
-        """Test that HE inherits from ScalarType."""
-        he = HE["ckks"]
-        assert isinstance(he, ScalarType)
-
-    def test_he_is_encrypted_trait(self):
-        """Test that HE implements EncryptedTrait."""
-        he = HE["ckks"]
-        assert isinstance(he, EncryptedTrait)
-
-    def test_he_custom_scheme(self):
-        """Test HE with custom scheme parameter."""
-        he = ScalarHEType(scheme="bfv")
-        assert he._scheme == "bfv"
-
-    def test_he_getitem_with_scheme(self):
-        """Test HE[scheme] syntax."""
-        he = HE["bfv"]
-        assert he._scheme == "bfv"
-
-
-# ==============================================================================
 # --- Test Encryption Types (Pillar 2: SIMD HE)
 # ==============================================================================
 
@@ -611,9 +578,9 @@ class TestMPType:
 
     def test_mp_of_encrypted_type(self):
         """Test multi-party distribution of encrypted types."""
-        he = HE[f32]
+        he = MockHEType("ckks")
         mp = MP[he, (2, 3)]
-        assert isinstance(mp.value_type, ScalarHEType)
+        assert isinstance(mp.value_type, MockHEType)
         assert mp.parties == (2, 3)
 
 
@@ -635,9 +602,9 @@ class TestTypeComposition:
     def test_composition_world_2_elementwise_he(self):
         """Test World 2: Element-wise HE Tensor."""
         # HE is a ScalarType, so it can be a Tensor element
-        he_tensor = Tensor[HE["ckks"], (100,)]
+        he_tensor = Tensor[MockHEType("ckks"), (100,)]
         assert isinstance(he_tensor, TensorType)
-        assert isinstance(he_tensor.element_type, ScalarHEType)
+        assert isinstance(he_tensor.element_type, MockHEType)
 
     def test_composition_world_3_simd_he(self):
         """Test World 3: SIMD HE (opaque, non-tensor)."""
@@ -672,11 +639,11 @@ class TestTypeComposition:
 
     def test_composition_mp_he_tensor(self):
         """Test MP[Tensor[HE[...], ...]] composition."""
-        he_tensor = Tensor[HE["ckks"], (20,)]
+        he_tensor = Tensor[MockHEType("ckks"), (20,)]
         mp_he_tensor = MP[he_tensor, (0, 1, 2)]
 
         assert isinstance(mp_he_tensor.value_type, TensorType)
-        assert isinstance(mp_he_tensor.value_type.element_type, ScalarHEType)
+        assert isinstance(mp_he_tensor.value_type.element_type, MockHEType)
         assert mp_he_tensor.parties == (0, 1, 2)
 
     def test_composition_table_with_mixed_types(self):
@@ -684,12 +651,12 @@ class TestTypeComposition:
         schema = {
             "plain": f32,
             "tensor": Tensor[i32, (10,)],
-            "encrypted": HE["ckks"],
+            "encrypted": MockHEType("ckks"),
         }
         table = Table[schema]
         assert isinstance(table.schema["plain"], ScalarType)
         assert isinstance(table.schema["tensor"], TensorType)
-        assert isinstance(table.schema["encrypted"], ScalarHEType)
+        assert isinstance(table.schema["encrypted"], MockHEType)
 
 
 # ==============================================================================
@@ -707,7 +674,7 @@ class TestProtocolContracts:
         assert isinstance(i64, ScalarType)
 
         # HE[scalar] inherits from ScalarType
-        assert isinstance(HE[f32], ScalarType)
+        assert isinstance(MockHEType("ckks"), ScalarType)
 
         # SIMD_HE does NOT inherit from ScalarType
         assert not isinstance(SIMD_HE[f32, (1024,)], ScalarType)
@@ -716,7 +683,7 @@ class TestProtocolContracts:
         """Test that EncryptedTrait is implemented correctly."""
 
         # HE implements EncryptedTrait
-        he = HE["ckks"]
+        he = MockHEType("ckks")
         assert isinstance(he, EncryptedTrait)
 
         # SIMD_HE implements EncryptedTrait
@@ -735,7 +702,7 @@ class TestProtocolContracts:
         assert isinstance(f32, BaseType)
         assert isinstance(Tensor[f32, (10,)], BaseType)
         assert isinstance(Table[{"x": i32}], BaseType)
-        assert isinstance(HE[f32], BaseType)
+        assert isinstance(MockHEType("ckks"), BaseType)
         assert isinstance(SIMD_HE[f32, (1024,)], BaseType)
         assert isinstance(SS[f32], BaseType)
         assert isinstance(MP[f32, (0,)], BaseType)
@@ -775,9 +742,9 @@ class TestEdgeCasesAndErrors:
     def test_nested_encryption_allowed(self):
         """Test that nested encryption is allowed (though may be unusual)."""
         # SS[HE[f32]] - a share of an encrypted value
-        nested = SS[HE[f32]]
+        nested = SS[MockHEType("ckks")]
         assert isinstance(nested, SSType)
-        assert isinstance(nested.pt_type, ScalarHEType)
+        assert isinstance(nested.pt_type, MockHEType)
 
     def test_double_distribution_allowed(self):
         """Test that double distribution is allowed (though may be unusual)."""
@@ -802,7 +769,7 @@ class TestDemonstrationCases:
 
     def test_world_2_demonstration(self):
         """Test World 2: Element-wise HE tensor demonstration."""
-        elementwise_he_tensor = Tensor[HE["ckks"], (100,)]
+        elementwise_he_tensor = Tensor[MockHEType("ckks"), (100,)]
         assert "Tensor[HE[ckks]" in str(elementwise_he_tensor)
         assert "(100)" in str(elementwise_he_tensor)
 
@@ -860,11 +827,11 @@ class TestIntegration:
     def test_realistic_he_scenario(self):
         """Test a realistic HE scenario: MP[Tensor[HE[...], ...]]."""
         # A tensor of element-wise encrypted values held by party 0
-        he_tensor = Tensor[HE["ckks"], (50,)]
+        he_tensor = Tensor[MockHEType("ckks"), (50,)]
         mp_he_tensor = MP[he_tensor, (0,)]
 
         assert isinstance(mp_he_tensor.value_type, TensorType)
-        assert isinstance(mp_he_tensor.value_type.element_type, ScalarHEType)
+        assert isinstance(mp_he_tensor.value_type.element_type, MockHEType)
         assert mp_he_tensor.parties == (0,)
 
     def test_realistic_simd_he_scenario(self):

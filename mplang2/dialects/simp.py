@@ -176,7 +176,19 @@ def _uniform_cond_trace(
         )
 
     num_arg_vars = len(then_traced.in_var_pos)
-    arg_values = then_traced.graph.inputs[:num_arg_vars]
+
+    # Collect outer values corresponding to region inputs
+    # We must use the values from the outer context (cur_ctx), not the inner region inputs.
+    flat_args, _ = tree_flatten((args, kwargs))
+    outer_arg_values = [
+        arg._graph_value for arg in flat_args if isinstance(arg, el.TraceObject)
+    ]
+
+    if len(outer_arg_values) != num_arg_vars:
+        raise RuntimeError(
+            f"uniform_cond: argument count mismatch. Expected {num_arg_vars} variables, "
+            f"got {len(outer_arg_values)} from args/kwargs."
+        )
 
     all_captures = _merge_captures(then_traced.captured, else_traced.captured)
 
@@ -187,7 +199,7 @@ def _uniform_cond_trace(
     capture_values = [obj._graph_value for obj in capture_trace_objs]
 
     output_types = [v.type for v in then_traced.graph.outputs]
-    cond_inputs = [pred._graph_value, *arg_values, *capture_values]
+    cond_inputs = [pred._graph_value, *outer_arg_values, *capture_values]
 
     result_values = cur_ctx.graph.add_op(
         opcode="simp.uniform_cond",

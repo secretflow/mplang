@@ -18,12 +18,12 @@ Contexts can be used directly with Python's 'with' statement:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from mplang2.edsl.interpreter import Interpreter
     from mplang2.edsl.object import Object
     from mplang2.edsl.primitive import Primitive
 
@@ -95,13 +95,14 @@ class Context(ABC):
 # ============================================================================
 
 _context_stack: list[Context] = []
-_default_interpreter: Interpreter | None = None
+_default_context: Context | None = None
+_default_context_factory: Callable[[], Context] | None = None
 
 
 def get_current_context() -> Context | None:
     """Get the current active context.
 
-    Returns None if no context is active (will use default interpreter).
+    Returns None if no context is active (will use default context).
     """
     return _context_stack[-1] if _context_stack else None
 
@@ -117,11 +118,20 @@ def pop_context() -> None:
         _context_stack.pop()
 
 
-def get_default_interpreter() -> Interpreter:
-    """Get the default interpreter for eager execution."""
-    global _default_interpreter
-    if _default_interpreter is None:
-        from mplang2.edsl.interpreter import Interpreter
+def register_default_context_factory(factory: Callable[[], Context]) -> None:
+    """Register a factory function to create the default context."""
+    global _default_context_factory
+    _default_context_factory = factory
 
-        _default_interpreter = Interpreter()
-    return _default_interpreter
+
+def get_default_context() -> Context:
+    """Get the default context for eager execution."""
+    global _default_context
+    if _default_context is None:
+        if _default_context_factory is None:
+            raise RuntimeError(
+                "No default context factory registered. "
+                "Ensure mplang2.edsl is imported or register a factory manually."
+            )
+        _default_context = _default_context_factory()
+    return _default_context

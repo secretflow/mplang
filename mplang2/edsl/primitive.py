@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from jax.tree_util import tree_map
 
-from mplang2.edsl.context import get_current_context, get_default_interpreter
+from mplang2.edsl.context import get_current_context, get_default_context
 from mplang2.edsl.object import Object
 
 if TYPE_CHECKING:
@@ -72,6 +72,27 @@ class Primitive:
         self.name = name
         self._abstract_eval: Callable[..., BaseType | Sequence[BaseType]] | None = None
         self._trace: Callable[..., Any] | None = None
+        self._impl: Callable[..., Any] | None = None
+
+    def def_impl(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Define execution logic for this primitive in the interpreter.
+
+        This function is called by the Interpreter during eager execution or
+        when evaluating a graph.
+
+        Args:
+            fn: Function that implements the operation.
+                Signature: (interpreter, op, *args) -> result
+
+        Returns:
+            The same function (for decorator pattern)
+        """
+        self._impl = fn
+        # Register with the global interpreter registry
+        from mplang2.edsl.registry import register_impl
+
+        register_impl(self.name, fn)
+        return fn
 
     def def_abstract_eval(
         self, fn: Callable[..., BaseType | Sequence[BaseType]]
@@ -214,7 +235,7 @@ class Primitive:
         # Get current context
         ctx = get_current_context()
         if ctx is None:
-            ctx = get_default_interpreter()
+            ctx = get_default_context()
 
         def lift_if_object(x: Any) -> Any:  # Add type annotation
             return ctx.lift(x) if isinstance(x, Object) else x

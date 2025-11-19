@@ -25,6 +25,8 @@ _SCALAR_TO_NP_DTYPE = {
     "f64": np.dtype("float64"),
     "i32": np.dtype("int32"),
     "i64": np.dtype("int64"),
+    "i1": np.dtype("bool"),
+    "u1": np.dtype("bool"),
 }
 
 _NP_DTYPE_NAME_TO_SCALAR = {
@@ -32,6 +34,7 @@ _NP_DTYPE_NAME_TO_SCALAR = {
     "float64": elt.f64,
     "int32": elt.i32,
     "int64": elt.i64,
+    "bool": elt.IntegerType(bitwidth=1, signed=True),
 }
 
 
@@ -225,7 +228,7 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         opcode="tensor.run_jax",
         inputs=input_values,
         output_types=compilation.output_types,
-        attrs={"ir_type": "stablehlo", "text_ref": text_ref},
+        attrs={"ir_type": "stablehlo", "text_ref": text_ref, "fn": normalized_fn},
     )
 
     # Reconstruct output PyTree (JAX outputs are all variables)

@@ -603,5 +603,10 @@ class MPType(BaseType):
     def __str__(self) -> str:
         return f"MP[{self.value_type}, parties={self.parties}]"
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MPType):
+            return False
+        return self.value_type == other.value_type and self.parties == other.parties
 
-MP = MPType
+    def __hash__(self) -> int:
+        return hash(("MPType", self.value_type, self.parties))

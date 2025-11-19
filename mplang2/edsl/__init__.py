@@ -20,9 +20,10 @@ from . import typing as typing
 from .context import (
     Context,
     get_current_context,
-    get_default_interpreter,
+    get_default_context,
     pop_context,
     push_context,
+    register_default_context_factory,
 )
 
 # Graph IR
@@ -37,6 +38,9 @@ from .object import Object
 from .primitive import Primitive, primitive
 from .printer import GraphPrinter, format_graph
 from .tracer import TracedFunction, TraceObject, Tracer, trace
+
+# Register default context factory
+register_default_context_factory(Interpreter)
 
 __all__ = [
     "Context",
@@ -53,12 +57,13 @@ __all__ = [
     "Value",
     "format_graph",
     "get_current_context",
-    "get_default_interpreter",
+    "get_default_context",
     "interpret",
     "jit",
     "pop_context",
     "primitive",
     "push_context",
+    "register_default_context_factory",
     "trace",
     "typing",
 ]

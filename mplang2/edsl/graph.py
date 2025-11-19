@@ -88,6 +88,12 @@ class Value:
     def __str__(self) -> str:
         return self.name
 
+    def __hash__(self) -> int:
+        return id(self)
+
+    def __eq__(self, other: object) -> bool:
+        return self is other
+
     def add_use(self, op: Operation) -> None:
         """Register an operation that uses this value."""
         if op not in self.uses:

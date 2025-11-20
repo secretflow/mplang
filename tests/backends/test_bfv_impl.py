@@ -1,15 +1,14 @@
 import numpy as np
+import pytest
 
 import mplang2.backends.bfv_impl as _bfv_impl  # noqa: F401
 import mplang2.backends.tensor_impl as _tensor_impl  # noqa: F401
 from mplang2.dialects import bfv, tensor
-from mplang2.edsl.jit import jit
 
 
 def test_bfv_e2e():
     """Test BFV basic workflow: Keygen -> Encrypt -> Add/Mul -> Decrypt."""
 
-    @jit
     def workload():
         # 1. Setup
         # Use smaller degree for faster test
@@ -53,3 +52,24 @@ def test_bfv_e2e():
 
     np.testing.assert_array_equal(res_sum.runtime_obj[:4], expected_sum)
     np.testing.assert_array_equal(res_prod.runtime_obj[:4], expected_prod)
+
+
+def test_bfv_rotate_error():
+    """Test that BFV rotation raises NotImplementedError."""
+
+    def workload():
+        poly_modulus_degree = 4096
+        pk, sk = bfv.keygen(poly_modulus_degree=poly_modulus_degree)
+        galois_keys = bfv.make_galois_keys(sk)
+        encoder = bfv.create_encoder(poly_modulus_degree=poly_modulus_degree)
+
+        v = tensor.constant(np.array([1, 2, 3, 4], dtype=np.int64))
+        pt = bfv.encode(v, encoder)
+        ct = bfv.encrypt(pt, pk)
+
+        return bfv.rotate(ct, 1, galois_keys)
+
+    with pytest.raises(
+        NotImplementedError, match="TenSEAL BFV does not support rotation"
+    ):
+        workload()

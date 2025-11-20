@@ -113,20 +113,6 @@ def relinearize_impl(
 
 @bfv.rotate_p.def_impl
 def rotate_impl(
-    interpreter: Interpreter, op: Operation, ciphertext: Any, steps: int, gk: Any
+    interpreter: Interpreter, op: Operation, ciphertext: Any, gk: Any
 ) -> Any:
-    # steps is an attribute or arg? In bfv.py it's an arg.
-    # Check bfv.py definition.
-    # rotate(ciphertext, steps, galois_keys)
-    # steps is passed as arg.
-
-    # TenSEAL rotation
-    # Note: TenSEAL rotate might be in-place or return new.
-    # Usually returns new or modifies.
-    # ts.BFVVector.rotate(steps) -> returns None (in-place) or new?
-    # Let's assume standard behavior.
-
-    # Create a copy to avoid side effects if it's in-place
-    res = ciphertext.copy()
-    res.rotate(steps)
-    return res
+    raise NotImplementedError("TenSEAL BFV does not support rotation")

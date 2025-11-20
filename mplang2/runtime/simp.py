@@ -101,6 +101,11 @@ class SimpHostInterpreter(Interpreter):
         super().__init__()
         self.world_size = world_size
         self.ctx = get_or_create_context(world_size)
+        # Create persistent workers (Actors)
+        self.workers = [
+            SimpWorkerInterpreter(rank, world_size, self.ctx.comms[rank])
+            for rank in range(world_size)
+        ]
 
     def evaluate_graph(self, graph: Operation, inputs: dict[Any, Any]) -> Any:
         """Execute graph by distributing it to all parties."""
@@ -139,7 +144,7 @@ class SimpHostInterpreter(Interpreter):
             return [SimValue(list(vals)) for vals in transposed]
 
     def _run_party(self, rank: int, graph: Operation, inputs: dict[Any, Any]) -> Any:
-        worker = SimpWorkerInterpreter(rank, self.world_size, self.ctx.comms[rank])
+        worker = self.workers[rank]
         return worker.evaluate_graph(graph, inputs)
 
 

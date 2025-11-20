@@ -1,9 +1,12 @@
 """JIT Decorator: Compile and cache Graph IR."""
 
 from collections.abc import Callable
+from typing import Any
 
-from mplang2.edsl.graph import Graph
-from mplang2.edsl.interpreter import interpret
+from jax.tree_util import tree_map
+
+from mplang2.edsl.context import get_default_context
+from mplang2.edsl.interpreter import Interpreter
 from mplang2.edsl.tracer import Tracer
 
 
@@ -21,21 +24,14 @@ def jit(fn: Callable) -> Callable:
         >>> result = compute(x_interp, y_interp)  # Subsequent: execute cached graph
     """
 
-    cached_graph: Graph | None = None
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        with Tracer():
+            result = fn(*args, **kwargs)
 
-    def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
-        nonlocal cached_graph
-
-        # TODO: Argument validation
-
-        if cached_graph is None:
-            # First call: trace
-            tracer = Tracer()
-            cached_graph = tracer.trace(fn, *args, **kwargs)
-            print(f"[JIT] Traced function '{fn.__name__}' to graph:")
-            print(cached_graph)
-
-        result = interpret(cached_graph, args)
-        return result
+        cur_ctx = get_default_context()
+        assert isinstance(cur_ctx, Interpreter), (
+            "JIT execution requires Interpreter context"
+        )
+        return tree_map(cur_ctx.lift, result)
 
     return wrapper

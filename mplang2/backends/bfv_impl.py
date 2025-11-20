@@ -16,15 +16,14 @@ from mplang2.edsl.interpreter import Interpreter
 @bfv.keygen_p.def_impl
 def keygen_impl(interpreter: Interpreter, op: Operation, *args: Any) -> tuple[Any, Any]:
     poly_modulus_degree = op.attrs.get("poly_modulus_degree", 4096)
-    # Use a default plain_modulus_bit_size if not provided, or derive it
-    # TenSEAL defaults usually work, but let's be explicit if needed.
-    # For now, we use a common default for BFV.
-    plain_modulus_bit_size = 20
+    # Use a default plain_modulus if not provided.
+    # 1032193 is a prime congruent to 1 mod 2*4096, suitable for batching.
+    plain_modulus = 1032193
 
     context = ts.context(
         ts.SCHEME_TYPE.BFV,
         poly_modulus_degree=poly_modulus_degree,
-        plain_modulus_bit_size=plain_modulus_bit_size,
+        plain_modulus=plain_modulus,
     )
     context.generate_galois_keys()
     context.generate_relin_keys()

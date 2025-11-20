@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from tests.utils.tensor_patch import patch_object_operators
+
 # Auto-loaded pytest configuration to expose shared fixtures.
 # Register server fixtures as a pytest plugin for proper assert-rewrite.
 pytest_plugins = ("tests.utils.server_fixtures",)
+
+# Apply tensor operator overloading patch for tests
+patch_object_operators()

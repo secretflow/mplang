@@ -24,13 +24,13 @@ This test suite validates the design principles outlined in mplang/core/typing.p
 import pytest
 
 from mplang2.edsl.typing import (
-    MP,
     SIMD_HE,
     SS,
     BaseType,
     Custom,
     CustomType,
     EncryptedTrait,
+    MPType,
     ScalarType,
     SIMDHEType,
     SSType,
@@ -557,13 +557,13 @@ class TestMPType:
 
     def test_mp_class_getitem_syntax(self):
         """Test the MP[type, parties] syntax."""
-        mp = MP[f32, (0, 1, 2)]
+        mp = MPType[f32, (0, 1, 2)]
         assert mp.value_type == f32
         assert mp.parties == (0, 1, 2)
 
     def test_mp_str_representation(self):
         """Test string representation of MP types."""
-        mp = MP[i32, (0,)]
+        mp = MPType[i32, (0,)]
         s = str(mp)
         assert "MP[" in s
         assert "i32" in s
@@ -572,14 +572,14 @@ class TestMPType:
     def test_mp_of_tensor(self):
         """Test multi-party distribution of a tensor."""
         tensor = Tensor[f64, (100,)]
-        mp = MP[tensor, (0, 1)]
+        mp = MPType[tensor, (0, 1)]
         assert isinstance(mp.value_type, TensorType)
         assert mp.parties == (0, 1)
 
     def test_mp_of_encrypted_type(self):
         """Test multi-party distribution of encrypted types."""
         he = MockHEType("ckks")
-        mp = MP[he, (2, 3)]
+        mp = MPType[he, (2, 3)]
         assert isinstance(mp.value_type, MockHEType)
         assert mp.parties == (2, 3)
 
@@ -623,7 +623,7 @@ class TestTypeComposition:
         """Test MP[SS[Tensor[...]]] composition."""
         tensor = Tensor[f32, (10,)]
         ss_tensor = SS[tensor]
-        mp_ss_tensor = MP[ss_tensor, (0, 1)]
+        mp_ss_tensor = MPType[ss_tensor, (0, 1)]
 
         assert isinstance(mp_ss_tensor.value_type, SSType)
         assert isinstance(mp_ss_tensor.value_type.pt_type, TensorType)
@@ -632,7 +632,7 @@ class TestTypeComposition:
     def test_composition_mp_simd_he(self):
         """Test MP[SIMD_HE[...]] composition."""
         simd_he = SIMD_HE[f32, (8192,)]
-        mp_simd = MP[simd_he, (2,)]
+        mp_simd = MPType[simd_he, (2,)]
 
         assert isinstance(mp_simd.value_type, SIMDHEType)
         assert mp_simd.parties == (2,)
@@ -640,7 +640,7 @@ class TestTypeComposition:
     def test_composition_mp_he_tensor(self):
         """Test MP[Tensor[HE[...], ...]] composition."""
         he_tensor = Tensor[MockHEType("ckks"), (20,)]
-        mp_he_tensor = MP[he_tensor, (0, 1, 2)]
+        mp_he_tensor = MPType[he_tensor, (0, 1, 2)]
 
         assert isinstance(mp_he_tensor.value_type, TensorType)
         assert isinstance(mp_he_tensor.value_type.element_type, MockHEType)
@@ -705,7 +705,7 @@ class TestProtocolContracts:
         assert isinstance(MockHEType("ckks"), BaseType)
         assert isinstance(SIMD_HE[f32, (1024,)], BaseType)
         assert isinstance(SS[f32], BaseType)
-        assert isinstance(MP[f32, (0,)], BaseType)
+        assert isinstance(MPType[f32, (0,)], BaseType)
 
     def test_repr_uses_str(self):
         """Test that __repr__ delegates to __str__."""
@@ -724,7 +724,7 @@ class TestEdgeCasesAndErrors:
     def test_tensor_with_invalid_element_type(self):
         """Test that Tensor rejects invalid element types."""
         # MP is not a ScalarType
-        mp_type = MP[f32, (0,)]
+        mp_type = MPType[f32, (0,)]
         with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[mp_type, (10,)]
 
@@ -749,8 +749,8 @@ class TestEdgeCasesAndErrors:
     def test_double_distribution_allowed(self):
         """Test that double distribution is allowed (though may be unusual)."""
         # MP[MP[f32, (0,)], (1,)]
-        inner_mp = MP[f32, (0,)]
-        outer_mp = MP[inner_mp, (1,)]
+        inner_mp = MPType[f32, (0,)]
+        outer_mp = MPType[inner_mp, (1,)]
         assert isinstance(outer_mp.value_type, type(inner_mp))
 
 
@@ -792,11 +792,11 @@ class TestDemonstrationCases:
     def test_composition_with_distribution_demonstration(self):
         """Test composition with distribution demonstration."""
         ss_tensor_share = SS[Tensor[i32, (5, 5)]]
-        mp_ss_tensor = MP[ss_tensor_share, (0, 1)]
+        mp_ss_tensor = MPType[ss_tensor_share, (0, 1)]
         assert "MP[SS[Tensor" in str(mp_ss_tensor)
 
         simd_he_vector = SIMD_HE[f32, (4096,)]
-        mp_simd_he_vector = MP[simd_he_vector, (2,)]
+        mp_simd_he_vector = MPType[simd_he_vector, (2,)]
         assert "MP[SIMD_HE" in str(mp_simd_he_vector)
         assert "parties=(2,)" in str(mp_simd_he_vector)
 
@@ -814,10 +814,10 @@ class TestIntegration:
         # A tensor of floats, secret-shared among parties 0, 1, 2
         tensor = Tensor[f32, (100, 100)]
         ss_tensor = SS[tensor]
-        mp_ss_tensor = MP[ss_tensor, (0, 1, 2)]
+        mp_ss_tensor = MPType[ss_tensor, (0, 1, 2)]
 
         # Verify the structure
-        assert isinstance(mp_ss_tensor, type(MP[f32, (0,)]))
+        assert isinstance(mp_ss_tensor, type(MPType[f32, (0,)]))
         assert isinstance(mp_ss_tensor.value_type, SSType)
         assert isinstance(mp_ss_tensor.value_type.pt_type, TensorType)
         assert mp_ss_tensor.value_type.pt_type.element_type == f32
@@ -828,7 +828,7 @@ class TestIntegration:
         """Test a realistic HE scenario: MP[Tensor[HE[...], ...]]."""
         # A tensor of element-wise encrypted values held by party 0
         he_tensor = Tensor[MockHEType("ckks"), (50,)]
-        mp_he_tensor = MP[he_tensor, (0,)]
+        mp_he_tensor = MPType[he_tensor, (0,)]
 
         assert isinstance(mp_he_tensor.value_type, TensorType)
         assert isinstance(mp_he_tensor.value_type.element_type, MockHEType)
@@ -838,7 +838,7 @@ class TestIntegration:
         """Test a realistic SIMD HE scenario: MP[SIMD_HE[...]]."""
         # A SIMD ciphertext held by multiple parties
         simd = SIMD_HE[f32, (8192,)]
-        mp_simd = MP[simd, (1, 2)]
+        mp_simd = MPType[simd, (1, 2)]
 
         assert isinstance(mp_simd.value_type, SIMDHEType)
         assert mp_simd.value_type.scalar_type == f32
@@ -853,7 +853,7 @@ class TestIntegration:
             "label": i32,
         }
         table = Table[schema]
-        mp_table = MP[table, (0, 1)]
+        mp_table = MPType[table, (0, 1)]
 
         assert isinstance(mp_table.value_type, TableType)
         assert mp_table.parties == (0, 1)

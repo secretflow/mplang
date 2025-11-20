@@ -82,7 +82,7 @@ class TestMultiOutputPrimitives:
         concat_p = Primitive("concat")
 
         @concat_p.def_abstract_eval
-        def concat_abstract(in_types: list, attrs: dict):
+        def concat_abstract(in_types: list, **attrs):
             # Flat signature: (in_types, attrs) -> list[BaseType]
             _ = attrs.get("axis", 0)  # unused in this simplified example
             # Simplified: just return first input type

@@ -79,7 +79,14 @@ def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:
     return scalar
 
 
-def _tensor_type_to_placeholder(tensor_type: elt.TensorType) -> ShapeDtypeStruct:
+def _tensor_type_to_placeholder(
+    tensor_type: elt.TensorType | elt.ScalarType,
+) -> ShapeDtypeStruct:
+    if isinstance(tensor_type, elt.ScalarType):
+        # Treat scalar as rank-0 tensor
+        dtype = _scalar_to_numpy_dtype(tensor_type)
+        return ShapeDtypeStruct((), dtype)
+
     normalized_shape: list[int] = []
     for idx, dim in enumerate(tensor_type.shape):
         if dim is None:
@@ -215,8 +222,8 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     for var in variables:
         if not isinstance(var, el.TraceObject):
             raise TypeError(f"Expected TraceObject, got {type(var)}")
-        if not isinstance(var.type, elt.TensorType):
-            raise TypeError(f"run_jax only supports Tensors, got {var.type}")
+        if not isinstance(var.type, (elt.TensorType, elt.ScalarType)):
+            raise TypeError(f"run_jax only supports Tensors/Scalars, got {var.type}")
         placeholders.append(_tensor_type_to_placeholder(var.type))
 
     # Compile to StableHLO
@@ -473,15 +480,22 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
     output_types: list[elt.TensorType] = []
     for idx, output_value in enumerate(traced_fn.graph.outputs):
         output_element_type = output_value.type
+        # Allow rank-0 tensors as scalars (produced by run_jax)
+        if (
+            isinstance(output_element_type, elt.TensorType)
+            and output_element_type.shape == ()
+        ):
+            output_element_type = output_element_type.element_type
+
         if not isinstance(output_element_type, elt.ScalarType):
             raise TypeError(
                 "elementwise function must return ScalarType leaves, "
                 f"got {type(output_element_type).__name__} at output index {idx}. "
                 "Elementwise only supports operations producing scalar outputs."
             )
-        output_types.append(elt.TensorType(output_element_type, result_shape))
-
-    # Collect graph values from TraceObject args/kwargs for IR in a deterministic order
+        output_types.append(
+            elt.TensorType(output_element_type, result_shape)
+        )  # Collect graph values from TraceObject args/kwargs for IR in a deterministic order
     flat_inputs, _ = tree_flatten((args, kwargs))
     input_values = [
         value._graph_value for value in flat_inputs if isinstance(value, el.TraceObject)

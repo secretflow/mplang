@@ -98,16 +98,13 @@ class Interpreter(Context):
     """
 
     def __init__(self) -> None:
-        # TODO: Backend executor registry
-        self._executors: dict[str, Any] = {}  # type: ignore[var-annotated]
-        # Object registry: id(InterpObject) -> InterpObject
-        # Used to resolve graph.inputs back to runtime objects
-        self._objects: dict[int, InterpObject] = {}
-        # TraceObject -> InterpObject cache: id(TraceObject) -> InterpObject
-        # Used to avoid re-evaluating when the same TraceObject is lifted multiple times
-        # Key is id(TraceObject), not id(Graph), because different TraceObjects
-        # from the same graph represent different Values
-        self._trace_obj_cache: dict[int, InterpObject] = {}
+        # GraphValue -> InterpObject cache
+        # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
+        # This serves two purposes:
+        # 1. Caching: Avoid re-evaluating the same graph node multiple times.
+        # 2. MIMO Optimization: When one output of a multi-output op is computed,
+        #    all sibling outputs are cached here to avoid re-execution.
+        self._execution_cache: dict[Any, InterpObject] = {}
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -150,7 +147,7 @@ class Interpreter(Context):
                 inputs_map[graph_value] = obj
 
         # Execute graph
-        result_runtime = interpret(graph, inputs_map, self)
+        result_runtime = self.evaluate_graph(graph, inputs_map)
 
         # Wrap result back to InterpObject
         # TODO: rebuild output structure from traced function
@@ -210,59 +207,158 @@ class Interpreter(Context):
 
         if isinstance(obj, InterpObject):
             # InterpObject must belong to this interpreter
-            # (In future: verify obj._context is self or None)
-
-            # Register for later resolution when graph inputs are processed
-            obj_id = id(obj)
-            if obj_id not in self._objects:
-                self._objects[obj_id] = obj
-
-            # Return as-is (will be captured by nested Tracer.lift if tracing)
+            if obj._context is not None and obj._context is not self:
+                raise ValueError(
+                    f"InterpObject belongs to a different Interpreter. "
+                    f"Object context: {obj._context}, Current interpreter: {self}"
+                )
             return obj
 
         elif isinstance(obj, TraceObject):
-            # Check cache: have we already lifted this exact TraceObject?
-            trace_obj_id = id(obj)
-            if trace_obj_id in self._trace_obj_cache:
-                return self._trace_obj_cache[trace_obj_id]
+            # Check execution cache
+            # If this value was computed as part of a previous execution (e.g. sibling output)
+            # we can return it immediately without re-execution.
+            graph_value = obj._graph_value
+            if graph_value in self._execution_cache:
+                return self._execution_cache[graph_value]
 
-            # First time seeing this TraceObject
-            # TODO (MIMO optimization): When lifting multiple TraceObjects from
-            # the same graph, we currently execute the graph multiple times.
-            # Future: execute once and cache all intermediate results.
+            # First time seeing this Value.
+            # We need to execute the graph to compute it.
+            # MIMO Optimization:
+            # Instead of just asking for this single value, we ask for ALL outputs
+            # of the operation that produced this value. This ensures that if we
+            # later ask for a sibling output, it will be in the cache.
 
-            # Get the graph and value from TraceObject
             tracer = obj._context
             graph = tracer.graph
-            # value = obj._graph_value  # TODO: use this for MIMO optimization
+            defining_op = graph_value.defining_op
 
-            # Execute the graph to get runtime result for this specific Value
-            # TODO: For now, interpret() returns single value
-            # MIMO optimization: make interpret() return dict[value_name -> runtime_obj]
-            # so we can cache all intermediate results from one execution
-            # For TraceObject -> InterpObject, we need to find the inputs for the graph
-            # This is tricky because the TraceObject belongs to a Tracer that might have
-            # captured variables.
-            # For now, assume TraceObject comes from a graph with NO inputs (constants only)
-            # or we need a way to resolve its inputs.
-            # TODO: Implement proper input resolution for TraceObject lifting
-            result_runtime = interpret(graph, {}, self)
+            if defining_op is None:
+                # Value is likely a constant or input (no defining op in graph)
+                # Just execute graph for this single value
+                target_outputs = [graph_value]
+            else:
+                # Fetch all outputs of the defining op
+                target_outputs = defining_op.outputs
 
-            # Wrap as InterpObject, register, and cache
-            result_obj = InterpObject(result_runtime, obj.type, self)
-            self._objects[id(result_obj)] = result_obj
-            self._trace_obj_cache[trace_obj_id] = result_obj
+            # Temporarily set graph outputs to the target outputs
+            # We must save/restore original outputs to avoid side effects
+            original_outputs = graph.outputs
+            graph.outputs = target_outputs
 
-            return result_obj
+            try:
+                # Resolve inputs from Tracer's freevars
+                # This maps the graph's input Values to runtime objects
+                inputs_map = {}
+                for _, (captured_obj, val) in tracer._freevars.items():
+                    # Recursively lift captured objects to ensure they are ready
+                    lifted = self.lift(captured_obj)
+                    if isinstance(lifted, InterpObject):
+                        inputs_map[val] = lifted.runtime_obj
+                    else:
+                        inputs_map[val] = lifted
+
+                # Execute graph
+                results_runtime = self.evaluate_graph(graph, inputs_map)
+
+                # If single output, wrap in list for uniform handling
+                if len(target_outputs) == 1:
+                    results_runtime = [results_runtime]
+
+                # Cache all results
+                for val, res in zip(target_outputs, results_runtime, strict=True):
+                    # Wrap as InterpObject and cache
+                    # Note: We use obj.type for the requested value, but for siblings
+                    # we should ideally use their types. However, we don't have TraceObjects
+                    # for siblings here, only GraphValues.
+                    # InterpObject needs a type. GraphValue has a type.
+                    self._execution_cache[val] = InterpObject(res, val.type, self)
+
+            finally:
+                # Restore original outputs
+                graph.outputs = original_outputs
+
+            # Now the result for our requested object should be in the cache
+            if graph_value not in self._execution_cache:
+                raise RuntimeError(
+                    f"Failed to compute value for {obj} even after graph execution"
+                )
+
+            return self._execution_cache[graph_value]
 
         else:
             # Constants: pass through unchanged
             return obj
 
+    def evaluate_graph(self, graph: Graph, inputs: dict[Any, Any]) -> Any:
+        """Execute a Graph IR with runtime data.
+
+        Can be overridden by subclasses to implement remote execution or compilation.
+
+        Args:
+            graph: Finalized Graph IR to execute
+            inputs: Mapping from Graph Value (input) to Runtime Object
+
+        Returns:
+            Runtime execution results corresponding to graph.outputs
+        """
+        assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
+
+        # Local environment: Value -> Runtime Object
+        env = inputs.copy()
+
+        for op in graph.operations:
+            # Resolve inputs
+            try:
+                args = [env[val] for val in op.inputs]
+            except KeyError as e:
+                missing_keys = [str(k) for k in op.inputs if k not in env]
+                # Limit available keys output to avoid flooding logs if env is huge
+                available_keys = [str(k) for k in list(env.keys())[:20]]
+                if len(env) > 20:
+                    available_keys.append("...")
+
+                raise RuntimeError(
+                    f"Failed to resolve inputs for op '{op.opcode}'.\n"
+                    f"Missing values: {missing_keys}\n"
+                    f"Available values (partial): {available_keys}"
+                ) from e
+
+            # Dispatch
+            handler = get_impl(op.opcode)
+            if handler:
+                # Pass interpreter to support recursive execution (HOFs)
+                # Pass op to access attributes and regions
+                # Pass args as runtime values
+                results = handler(self, op, *args)
+            else:
+                raise NotImplementedError(
+                    f"No implementation registered for opcode: {op.opcode}"
+                )
+
+            # Update environment with outputs
+            # Handler should return a single value or a tuple/list of values
+            if len(op.outputs) == 1:
+                env[op.outputs[0]] = results
+            else:
+                if len(results) != len(op.outputs):
+                    raise RuntimeError(
+                        f"Op {op.opcode} returned {len(results)} values, expected {len(op.outputs)}"
+                    )
+                for out_val, res in zip(op.outputs, results, strict=True):
+                    env[out_val] = res
+
+        # Return outputs
+        if len(graph.outputs) == 1:
+            return env[graph.outputs[0]]
+        else:
+            return [env[out] for out in graph.outputs]
+
 
 def interpret(graph: Graph, inputs: dict[Any, Any], interpreter: Interpreter) -> Any:
     """Execute a Graph IR with runtime data from Interpreter.
 
+    This is a functional helper that delegates to interpreter.evaluate_graph().
     The graph must be finalized (graph.outputs must be set) before interpretation.
     This function executes all operations in the graph and returns the values
     corresponding to graph.outputs.
@@ -281,55 +377,4 @@ def interpret(graph: Graph, inputs: dict[Any, Any], interpreter: Interpreter) ->
         AssertionError: If graph.outputs is empty (graph not finalized)
         NotImplementedError: If opcode has no registered implementation
     """
-    assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
-
-    # Local environment: Value -> Runtime Object
-    env = inputs.copy()
-
-    for op in graph.operations:
-        # Resolve inputs
-        try:
-            args = [env[val] for val in op.inputs]
-        except KeyError as e:
-            print(f"KeyError resolving inputs for op {op.opcode}")
-            print(f"Missing value: {e}")
-            print(f"Env keys: {[str(k) for k in env.keys()]}")
-            print(f"Op inputs: {[str(k) for k in op.inputs]}")
-            # Check identity
-            missing_val = op.inputs[0]  # Assuming first one failed
-            for k in env.keys():
-                if str(k) == str(missing_val):
-                    print(
-                        f"Found key with same string repr but different identity: {id(k)} vs {id(missing_val)}"
-                    )
-            raise
-
-        # Dispatch
-        handler = get_impl(op.opcode)
-        if handler:
-            # Pass interpreter to support recursive execution (HOFs)
-            # Pass op to access attributes and regions
-            # Pass args as runtime values
-            results = handler(interpreter, op, *args)
-        else:
-            raise NotImplementedError(
-                f"No implementation registered for opcode: {op.opcode}"
-            )
-
-        # Update environment with outputs
-        # Handler should return a single value or a tuple/list of values
-        if len(op.outputs) == 1:
-            env[op.outputs[0]] = results
-        else:
-            if len(results) != len(op.outputs):
-                raise RuntimeError(
-                    f"Op {op.opcode} returned {len(results)} values, expected {len(op.outputs)}"
-                )
-            for out_val, res in zip(op.outputs, results, strict=True):
-                env[out_val] = res
-
-    # Return outputs
-    if len(graph.outputs) == 1:
-        return env[graph.outputs[0]]
-    else:
-        return [env[out] for out in graph.outputs]
+    return interpreter.evaluate_graph(graph, inputs)

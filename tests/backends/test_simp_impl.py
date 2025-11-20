@@ -1,15 +1,19 @@
 import jax.numpy as jnp
 
-import mplang2.runtime.simp
+import mplang2.backends.simp_impl
 
 # Register runtimes
-import mplang2.runtime.tensor  # noqa: F401
+import mplang2.backends.tensor_impl  # noqa: F401
+from mplang2.backends.simp_impl import (
+    SimpHostInterpreter,
+    SimValue,
+    get_or_create_context,
+)
 from mplang2.dialects import simp
 from mplang2.dialects.simp import pcall_static, uniform_cond
 from mplang2.dialects.tensor import run_jax
 from mplang2.edsl.interpreter import InterpObject
 from mplang2.edsl.typing import MPType, Tensor, f32, i64
-from mplang2.runtime.simp import SimpHostInterpreter, SimValue, get_or_create_context
 
 
 def add(x, y):
@@ -99,7 +103,7 @@ def test_while_loop_eager():
 
     # Setup runtime
     # Reset global context to ensure world_size=2
-    import mplang2.runtime.simp as simp_runtime
+    import mplang2.backends.simp_impl as simp_runtime
 
     if simp_runtime._SIM_CONTEXT:
         simp_runtime._SIM_CONTEXT.shutdown()

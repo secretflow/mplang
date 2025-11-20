@@ -403,10 +403,20 @@ class _ElementwiseTracer(el.Tracer):
         obj_type = obj.type
 
         if isinstance(obj_type, elt.TensorType):
-            # Check shape consistency
+            # Handle shape tracking with broadcasting for 0-d tensors
+            new_shape = obj_type.shape
+
             if self._tensor_shape is None:
-                self._tensor_shape = obj_type.shape
-            elif self._tensor_shape != obj_type.shape:
+                self._tensor_shape = new_shape
+            elif self._tensor_shape == new_shape:
+                pass  # Shapes match
+            elif self._tensor_shape == ():
+                # Upgrade tracked shape from scalar to tensor
+                self._tensor_shape = new_shape
+            elif new_shape == ():
+                # Input is scalar, broadcasts to tracked shape
+                pass
+            else:
                 raise ValueError(
                     f"All tensor arguments must have the same shape. "
                     f"Expected {self._tensor_shape}, got {obj_type.shape}"
@@ -456,6 +466,11 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
 
     # Get result shape from the tracer (set by first tensor in _lift)
     if element_tracer._tensor_shape is None:
+        # If no tensor arguments were found, but we are here, it means we only had
+        # non-tensor arguments (scalars/custom types) which _lift passed through.
+        # But elementwise requires at least one TensorType argument (even if 0-d).
+        # Wait, if we passed a 0-d tensor, _tensor_shape would be ().
+        # So if it is None, it means NO TensorType args were passed.
         raise TypeError("elementwise requires at least one TensorType argument")
     result_shape = element_tracer._tensor_shape
 

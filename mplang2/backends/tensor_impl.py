@@ -14,7 +14,13 @@ from mplang2.edsl.interpreter import Interpreter, interpret
 
 @tensor.constant_p.def_impl
 def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
-    return op.attrs["data"]
+    return np.array(op.attrs["data"])
+
+
+@tensor.concat_p.def_impl
+def concat_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+    axis = op.attrs.get("axis", 0)
+    return np.concatenate(args, axis=axis)
 
 
 @tensor.elementwise_p.def_impl

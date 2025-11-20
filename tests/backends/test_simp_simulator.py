@@ -1,7 +1,5 @@
 import jax.numpy as jnp
 
-import mplang2.backends.simp_driver
-
 # Register runtimes
 import mplang2.backends.tensor_impl  # noqa: F401
 from mplang2.backends.simp_host import HostVar

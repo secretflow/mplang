@@ -13,16 +13,6 @@ from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter
 
 
-# --- Helper to extract raw objects ---
-def _raw(obj: Any) -> Any:
-    """Extract raw runtime object if it's wrapped."""
-    # In the new interpreter design, args passed to impl are already unwrapped runtime objects
-    return obj
-
-
-# --- Operations ---
-
-
 @bfv.keygen_p.def_impl
 def keygen_impl(interpreter: Interpreter, op: Operation, *args: Any) -> tuple[Any, Any]:
     poly_modulus_degree = op.attrs.get("poly_modulus_degree", 4096)

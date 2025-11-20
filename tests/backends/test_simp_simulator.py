@@ -1,14 +1,11 @@
 import jax.numpy as jnp
 
-import mplang2.backends.simp_impl
+import mplang2.backends.simp_driver
 
 # Register runtimes
 import mplang2.backends.tensor_impl  # noqa: F401
-from mplang2.backends.simp_impl import (
-    SimpHostInterpreter,
-    SimValue,
-    get_or_create_context,
-)
+from mplang2.backends.simp_host import HostVar
+from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
 from mplang2.dialects import simp
 from mplang2.dialects.simp import pcall_static, uniform_cond
 from mplang2.dialects.tensor import run_jax
@@ -30,14 +27,14 @@ def test_pcall_static():
         return add(x, y)
 
     # Create interpreter
-    interp = SimpHostInterpreter(world_size=3)
+    interp = SimpSimulator(world_size=3)
 
-    # Create inputs (SimValues)
+    # Create inputs (HostVars)
     # World size 3
     get_or_create_context(3)
 
-    x_val = SimValue([1, 2, 3])
-    y_val = SimValue([10, 20, 30])
+    x_val = HostVar([1, 2, 3])
+    y_val = HostVar([10, 20, 30])
 
     t_type = MPType(Tensor[f32, ()], parties=(0, 1, 2))
     x_obj = InterpObject(x_val, t_type, interp)
@@ -48,21 +45,21 @@ def test_pcall_static():
         res = pcall_static((0, 1, 2), my_func, x_obj, y_obj)
 
     assert isinstance(res, InterpObject)
-    assert isinstance(res.runtime_obj, SimValue)
+    assert isinstance(res.runtime_obj, HostVar)
     # Note: run_jax returns numpy arrays (or jax arrays), so we compare values
-    # SimValue holds list of values.
+    # HostVar holds list of values.
     # 1+10=11, 2+20=22, 3+30=33
     assert res.runtime_obj.values == [11, 22, 33]
 
 
 def test_uniform_cond():
-    interp = SimpHostInterpreter(world_size=2)
+    interp = SimpSimulator(world_size=2)
     get_or_create_context(2)
 
     # True condition
-    pred_true = InterpObject(SimValue([True, True]), MPType(i64, (0, 1)), interp)
+    pred_true = InterpObject(HostVar([True, True]), MPType(i64, (0, 1)), interp)
 
-    x_val = SimValue([1, 2])
+    x_val = HostVar([1, 2])
     x_obj = InterpObject(x_val, MPType(Tensor[f32, ()], parties=(0, 1)), interp)
 
     def then_fn(x):
@@ -77,7 +74,7 @@ def test_uniform_cond():
     assert res.runtime_obj.values == [2, 4]
 
     # Test False case
-    pred_val_false = SimValue([False, False])
+    pred_val_false = HostVar([False, False])
     pred_obj_false = InterpObject(pred_val_false, MPType(i64, (0, 1)), interp)
 
     with interp:
@@ -103,16 +100,16 @@ def test_while_loop_eager():
 
     # Setup runtime
     # Reset global context to ensure world_size=2
-    import mplang2.backends.simp_impl as simp_runtime
+    import mplang2.backends.simp_simulator as simp_runtime
 
     if simp_runtime._SIM_CONTEXT:
         simp_runtime._SIM_CONTEXT.shutdown()
         simp_runtime._SIM_CONTEXT = None
 
     get_or_create_context(world_size=2)
-    interp = SimpHostInterpreter(world_size=2)
+    interp = SimpSimulator(world_size=2)
 
-    start_val = SimValue([0, 0])
+    start_val = HostVar([0, 0])
     t_type = MPType(Tensor[i64, ()], parties=(0, 1))
     start_obj = InterpObject(start_val, t_type, interp)
 

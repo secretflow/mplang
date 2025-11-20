@@ -286,8 +286,8 @@ class ConvExpr(Expr):
         # Validate dtype / shape consistency.
         first = types[0]
         for c in types[1:]:
-            if (c.dtype, c.shape) != (first.dtype, first.shape):
-                raise TypeError(f"Inconsistent dtype/shape in pconv: {c} vs {first}")
+            if c.raw_type() != first.raw_type():
+                raise TypeError(f"Inconsistent type in pconv: {c} vs {first}")
 
         # Deduce the pmask by intersecting all pmasks.
         pmasks = [t.pmask for t in types]
@@ -316,7 +316,7 @@ class ConvExpr(Expr):
             else:
                 out_pmask = None
 
-        return [MPType.tensor(first.dtype, first.shape, out_pmask, **first.attrs)]
+        return [MPType(first.raw_type(), out_pmask, first.attrs)]
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_conv(self)

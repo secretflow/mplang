@@ -45,17 +45,17 @@ def _read(pfunc: PFunction) -> Value:
     except Exception as e:  # pragma: no cover - provider errors
         raise RuntimeError(f"basic.read failed: {e}") from e
 
+    if isinstance(data, Value):
+        return data
+
     if isinstance(out_t, TableType):
-        if isinstance(data, TableValue):
-            return data
         return TableValue(data)
-    if isinstance(out_t, TensorType):
-        if isinstance(data, TensorValue):
-            return data
+    elif isinstance(out_t, TensorType):
         return TensorValue(np.asarray(data))
-    raise TypeError(
-        f"basic.read only supports TableType/TensorType outputs, got {type(out_t).__name__}"
-    )
+    else:
+        raise TypeError(
+            f"basic.read only supports TableType/TensorType outputs, got {type(out_t).__name__}"
+        )
 
 
 @kernel_def("basic.write")

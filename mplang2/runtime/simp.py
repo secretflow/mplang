@@ -143,18 +143,6 @@ class SimpHostInterpreter(Interpreter):
         return worker.evaluate_graph(graph, inputs)
 
 
-def _extract_party_inputs(args: tuple[Any, ...], rank: int) -> list[Any]:
-    """Extract inputs for a specific party from SimValues."""
-    party_args = []
-    for arg in args:
-        if isinstance(arg, SimValue):
-            party_args.append(arg[rank])
-        else:
-            # Broadcast scalar/constant
-            party_args.append(arg)
-    return party_args
-
-
 @simp.pcall_static_p.def_impl
 def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     """Implementation of simp.pcall_static (Worker side)."""

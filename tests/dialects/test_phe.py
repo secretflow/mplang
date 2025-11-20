@@ -50,7 +50,7 @@ class TestPHEEncoder:
 
             assert isinstance(encoder, el.TraceObject)
             assert isinstance(encoder.type, elt.CustomType)
-            assert encoder.type.kind == "PHEEncoder"
+            assert encoder.type.kind == "Encoder"
 
     def test_create_encoder_with_params(self):
         """Test encoder creation with custom parameters."""

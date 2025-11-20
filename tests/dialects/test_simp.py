@@ -401,7 +401,7 @@ class TestPeval:
     """Tests specific to the peval primitive."""
 
     def test_local_region_unwraps_mp_types(self):
-        mp_tensor = elt.MP[elt.Tensor[elt.f32, ()], (0, 1)]
+        mp_tensor = elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
         x = el.InterpObject(np.array(1.0, dtype=np.float32), mp_tensor)
         bias = el.InterpObject(np.array(2.0, dtype=np.float32), mp_tensor)
 

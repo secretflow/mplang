@@ -100,14 +100,17 @@ def test_func_call_handles_complex_pytree_output():
     normalized = re.sub(
         r"text_ref='[^']+'", "text_ref='<ID>'", formatted, flags=re.MULTILINE
     )
+    normalized = re.sub(
+        r"fn=<function .*? at 0x[\da-f]+>", "fn='<FN>'", normalized, flags=re.MULTILINE
+    )
     expected_ir = dedent(
         """\
         (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
           %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
             (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-              %0 = tensor.run_jax(%arg0) {ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
-              %1 = tensor.run_jax(%0, %arg1) {ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
-              %2 = tensor.run_jax(%1, %arg0) {ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
+              %0 = tensor.run_jax(%arg0) {fn='<FN>', ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
+              %1 = tensor.run_jax(%0, %arg1) {fn='<FN>', ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
+              %2 = tensor.run_jax(%1, %arg0) {fn='<FN>', ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
               return %2, %arg1, %1
             }
           }

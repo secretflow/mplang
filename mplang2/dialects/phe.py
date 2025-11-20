@@ -212,7 +212,7 @@ def _encode_ae(value: elt.ScalarType, encoder: elt.CustomType) -> PlaintextType:
         TypeError: If encoder is not EncoderType
     """
     if encoder != EncoderType:
-        raise TypeError(f"Expected PHEEncoder, got {encoder}")
+        raise TypeError(f"Expected Encoder, got {encoder}")
     if not isinstance(value, elt.ScalarType):
         raise TypeError(f"Can only encode ScalarType, got {value}")
     # Return sufficient integer type for encoded values
@@ -234,7 +234,7 @@ def _decode_ae(encoded: PlaintextType, encoder: elt.CustomType) -> elt.ScalarTyp
         TypeError: If encoder is not EncoderType or encoded is not PlaintextType
     """
     if encoder != EncoderType:
-        raise TypeError(f"Expected PHEEncoder, got {encoder}")
+        raise TypeError(f"Expected Encoder, got {encoder}")
     if not isinstance(encoded, PlaintextType):
         raise TypeError(f"Can only decode PlaintextType, got {encoded}")
     # In real implementation, would extract dtype from encoder attrs

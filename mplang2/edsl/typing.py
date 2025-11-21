@@ -418,6 +418,52 @@ class TensorType(BaseType):
 Tensor = TensorType
 
 
+class VectorType(BaseType):
+    """Represents a packed SIMD vector of a given element type and size.
+
+    Unlike Tensor, which represents a logical multi-dimensional array,
+    Vector represents a physical packed layout (SIMD).
+    This is the underlying payload for SIMD_HE schemes (BFV, CKKS).
+
+    Args:
+        element_type: The type of elements in the vector (must be ScalarType).
+        size: The number of elements (slots) in the vector.
+    """
+
+    def __init__(self, element_type: ScalarType, size: int):
+        if not isinstance(element_type, ScalarType):
+            raise TypeError(
+                f"Vector element type must be a ScalarType, got {type(element_type).__name__}"
+            )
+        if not isinstance(size, int) or size <= 0:
+            raise ValueError(f"Vector size must be a positive integer, got {size}")
+
+        self.element_type = element_type
+        self.size = size
+
+    def __class_getitem__(cls, params: tuple) -> VectorType:
+        """Enables the syntax `Vector[element_type, size]`."""
+        if not isinstance(params, tuple) or len(params) != 2:
+            raise TypeError("Vector expects 2 parameters (element_type, size)")
+
+        element_type, size = params
+        return cls(element_type, size)
+
+    def __str__(self) -> str:
+        return f"Vector[{self.element_type}, {self.size}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, VectorType):
+            return False
+        return self.element_type == other.element_type and self.size == other.size
+
+    def __hash__(self) -> int:
+        return hash(("VectorType", self.element_type, self.size))
+
+
+Vector = VectorType
+
+
 class TableType(BaseType):
     """Represents a table with a named schema of types."""
 

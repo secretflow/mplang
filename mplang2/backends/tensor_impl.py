@@ -90,3 +90,25 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     # args are the runtime values for the dynamic inputs
     return fn(list(args))
+
+
+@tensor.slice_p.def_impl
+def slice_impl(interpreter: Interpreter, op: Operation, tensor_data: Any) -> Any:
+    starts = op.attrs["starts"]
+    ends = op.attrs["ends"]
+    strides = op.attrs.get("strides")
+
+    slices = []
+    for i in range(len(starts)):
+        start = starts[i]
+        end = ends[i]
+        stride = strides[i] if strides else 1
+        slices.append(slice(start, end, stride))
+
+    return tensor_data[tuple(slices)]
+
+
+@tensor.reshape_p.def_impl
+def reshape_impl(interpreter: Interpreter, op: Operation, tensor_data: Any) -> Any:
+    new_shape = op.attrs["new_shape"]
+    return tensor_data.reshape(new_shape)

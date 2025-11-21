@@ -242,3 +242,85 @@ def test_bfv_security_types():
     res = bfv.decode(bfv.decrypt(ct, sk), encoder)
     res_data = res.runtime_obj if hasattr(res, "runtime_obj") else res
     np.testing.assert_array_equal(res_data[:4], [1, 2, 3, 4])
+
+
+def test_bfv_shapes_2d():
+    """Test encoding and decoding a 2D matrix (flatten/reshape)."""
+    # 1. Setup
+    pk, sk = bfv.keygen(poly_modulus_degree=4096)
+    encoder = bfv.create_encoder(poly_modulus_degree=4096)
+
+    # 2. Data (2D Matrix)
+    data = np.arange(100, dtype=np.int64).reshape(10, 10)
+
+    # 3. Encode (Manual flattening required)
+    v_flat = tensor.constant(data.flatten())
+    pt = bfv.encode(v_flat, encoder)
+
+    # 4. Encrypt
+    ct = bfv.encrypt(pt, pk)
+
+    # 5. Decrypt
+    pt_res = bfv.decrypt(ct, sk)
+
+    # 6. Decode and Reshape
+    res_flat = bfv.decode(pt_res, encoder)
+    # Slice the valid data (first 100 elements)
+    res_sliced = tensor.slice_tensor(res_flat, starts=(0,), ends=(100,))
+    res_shaped = tensor.reshape(res_sliced, (10, 10))
+
+    # Verify
+    if hasattr(res_shaped, "runtime_obj"):
+        res_val = res_shaped.runtime_obj
+    else:
+        res_val = res_shaped
+
+    assert res_val.shape == (10, 10)
+    np.testing.assert_array_equal(res_val, data)
+
+
+def test_bfv_shapes_3d():
+    """Test encoding and decoding a 3D tensor."""
+    pk, sk = bfv.keygen(poly_modulus_degree=4096)
+    encoder = bfv.create_encoder(poly_modulus_degree=4096)
+
+    # Shape (2, 5, 5) = 50 elements
+    data = np.arange(50, dtype=np.int64).reshape(2, 5, 5)
+
+    v_flat = tensor.constant(data.flatten())
+    pt = bfv.encode(v_flat, encoder)
+    ct = bfv.encrypt(pt, pk)
+    pt_res = bfv.decrypt(ct, sk)
+
+    res_flat = bfv.decode(pt_res, encoder)
+    res_sliced = tensor.slice_tensor(res_flat, starts=(0,), ends=(50,))
+    res = tensor.reshape(res_sliced, (2, 5, 5))
+
+    if hasattr(res, "runtime_obj"):
+        res_val = res.runtime_obj
+    else:
+        res_val = res
+
+    assert res_val.shape == (2, 5, 5)
+    np.testing.assert_array_equal(res_val, data)
+
+
+def test_bfv_shape_mismatch_error():
+    """Test error when reshaping to invalid size."""
+    pk, sk = bfv.keygen(poly_modulus_degree=4096)
+    encoder = bfv.create_encoder(poly_modulus_degree=4096)
+
+    # 10 elements
+    data = np.arange(10, dtype=np.int64)
+    v = tensor.constant(data)
+
+    pt = bfv.encode(v, encoder)
+    ct = bfv.encrypt(pt, pk)
+    pt_res = bfv.decrypt(ct, sk)
+
+    res_flat = bfv.decode(pt_res, encoder)
+
+    # res_flat has size 4096 (poly_modulus_degree)
+    # Try to reshape to (5000,) -> should fail
+    with pytest.raises(ValueError):
+        tensor.reshape(res_flat, (5000,))

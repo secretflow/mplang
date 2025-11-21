@@ -193,7 +193,9 @@ make_galois_keys_p = el.Primitive("bfv.make_galois_keys")
 
 @keygen_p.def_abstract_eval
 def _keygen_ae(
-    *, poly_modulus_degree: int = 4096, plain_modulus_bit_size: int = 20
+    *,
+    poly_modulus_degree: int = 4096,
+    plain_modulus: int = 1032193,
 ) -> tuple[KeyType, KeyType]:
     """Generate Public and Private keys."""
     return (
@@ -375,21 +377,22 @@ def _rotate_ae(ct: CiphertextType, gk: KeyType, *, steps: int) -> CiphertextType
 
 
 def keygen(
-    poly_modulus_degree: int = 4096, plain_modulus_bit_size: int = 20
+    poly_modulus_degree: int = 4096,
+    plain_modulus: int = 1032193,
 ) -> tuple[el.Object, el.Object]:
     """Generate BFV Public and Secret keys.
 
     Args:
         poly_modulus_degree: Degree of polynomial modulus (N). Determines slot count.
                              Must be power of 2 (e.g., 4096, 8192).
-        plain_modulus_bit_size: Bit size of the plaintext modulus.
+        plain_modulus: Explicit plaintext modulus (integer). Default is 1032193.
 
     Returns:
         (PublicKey, SecretKey)
     """
     return keygen_p.bind(
         poly_modulus_degree=poly_modulus_degree,
-        plain_modulus_bit_size=plain_modulus_bit_size,
+        plain_modulus=plain_modulus,
     )
 
 

@@ -611,6 +611,14 @@ class SSType(BaseType, EncryptedTrait):
     def __str__(self) -> str:
         return f"SS[{self.pt_type}]"
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, SSType):
+            return False
+        return self.pt_type == other.pt_type and self.enc_schema == other.enc_schema
+
+    def __hash__(self) -> int:
+        return hash(("SSType", self.pt_type, self.enc_schema))
+
 
 SS = SSType
 

@@ -45,7 +45,12 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
         inputs_map = dict(zip(fn_graph.inputs, args, strict=True))
         return interpreter.evaluate_graph(fn_graph, inputs_map)
     else:
-        return None
+        # Return dummy values (None) for each output
+        # This ensures downstream operations (like shuffle) receive the correct number of inputs
+        if len(op.outputs) == 1:
+            return None
+        else:
+            return [None] * len(op.outputs)
 
 
 @simp.pcall_dynamic_p.def_impl

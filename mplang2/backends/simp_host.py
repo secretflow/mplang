@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang2.edsl.graph import Operation
+from mplang2.edsl.graph import Graph
 from mplang2.edsl.interpreter import Interpreter
 
 
@@ -28,7 +28,7 @@ class SimpHost(Interpreter):
         super().__init__()
         self.world_size = world_size
 
-    def evaluate_graph(self, graph: Operation, inputs: dict[Any, Any]) -> Any:
+    def evaluate_graph(self, graph: Graph, inputs: dict[Any, Any]) -> Any:
         """Execute graph by distributing it to all parties."""
         # inputs: Value -> HostVar (or constant)
 
@@ -48,21 +48,34 @@ class SimpHost(Interpreter):
 
         # Reassemble outputs
         # results is list of (out1, out2, ...) for each party
-        # We want (HostVar(out1s), HostVar(out2s), ...)
 
-        num_outputs = len(graph.outputs)
-        if num_outputs == 0:
+        # If graph returns single value, results is list of values.
+        # If graph returns tuple, results is list of tuples.
+
+        # We want to return HostVar(s).
+
+        # Assume graph returns single value for now or handle tuple.
+        # But we don't know the structure easily without inspecting graph outputs.
+
+        # For now, just return list of results (HostVar-like structure manually constructed if needed)
+        # But HostInterpreter usually returns HostVar.
+
+        # Let's just return the raw results list for now, or construct HostVar.
+        if not results:
             return None
 
-        if num_outputs == 1:
-            # results is list of single values
-            return HostVar(results)
+        first_res = results[0]
+        if isinstance(first_res, (list, tuple)):
+            # Multiple outputs
+            num_outs = len(first_res)
+            outs = []
+            for i in range(num_outs):
+                outs.append(HostVar([res[i] for res in results]))
+            return tuple(outs)
         else:
-            # results is list of tuples
-            transposed = list(zip(*results, strict=True))
-            return [HostVar(list(vals)) for vals in transposed]
+            return HostVar(results)
 
-    def _submit(self, rank: int, graph: Operation, inputs: dict[Any, Any]) -> Any:
+    def _submit(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
         raise NotImplementedError
 
     def _collect(self, futures: list[Any]) -> list[Any]:

@@ -8,7 +8,7 @@ from typing import Any
 
 from mplang2.backends.simp_host import SimpHost
 from mplang2.backends.simp_worker import WorkerInterpreter
-from mplang2.edsl.graph import Operation
+from mplang2.edsl.graph import Graph
 
 
 class ThreadCommunicator:
@@ -56,8 +56,8 @@ class Context:
             comm.set_peers(self.comms)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
 
-    def shutdown(self):
-        self.executor.shutdown()
+    def shutdown(self, wait: bool = True):
+        self.executor.shutdown(wait=wait)
 
 
 # Global simulation context (can be set by user or initialized lazily)
@@ -83,12 +83,19 @@ class SimpSimulator(SimpHost):
             for rank in range(world_size)
         ]
 
-    def _submit(self, rank: int, graph: Operation, inputs: dict[Any, Any]) -> Any:
+    def _submit(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
         return self.ctx.executor.submit(self._run_party, rank, graph, inputs)
 
     def _collect(self, futures: list[Any]) -> list[Any]:
         return [f.result() for f in futures]
 
-    def _run_party(self, rank: int, graph: Operation, inputs: dict[Any, Any]) -> Any:
+    def _run_party(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
         worker = self.workers[rank]
         return worker.evaluate_graph(graph, inputs)
+
+    def shutdown(self, wait: bool = True):
+        global _SIM_CONTEXT
+        if self.ctx:
+            self.ctx.shutdown(wait=wait)
+        if _SIM_CONTEXT is self.ctx:
+            _SIM_CONTEXT = None

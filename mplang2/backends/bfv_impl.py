@@ -74,7 +74,7 @@ def keygen_impl(
 ) -> tuple[BFVPublicContext, BFVSecretContext]:
     poly_modulus_degree = op.attrs.get("poly_modulus_degree", 4096)
     # Use a default plain_modulus if not provided.
-    plain_modulus = 1032193
+    plain_modulus = op.attrs.get("plain_modulus", 1032193)
 
     # Generate context with secret key
     ts_ctx = ts.context(

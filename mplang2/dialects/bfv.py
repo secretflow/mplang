@@ -13,12 +13,24 @@ Design principles:
 - **Type Safety**: Distinguishes between Plaintext (encoded polynomial) and
   Ciphertext (encrypted polynomial).
 
+Type System Rationale:
+    The BFV dialect models data as `Encrypted[Vector[T]]`, where:
+    - `Vector[T]`: Represents the logical layout of data in SIMD slots.
+    - `T`: Must be an IntegerType (e.g., i64, u32). BFV does not support floating point.
+      If you need to encrypt floats, you must quantize them to integers first, or use CKKS.
+    - `Encrypted[...]`: Represents the cryptographic wrapper.
+
+    Why `Vector[T]` and not `Vector[BigInt]`?
+    - **Optimization**: Knowing the exact integer width (e.g., i32 vs i64) allows the
+      compiler to choose optimal encryption parameters (Plaintext Modulus `t`).
+    - **Semantics**: Preserves signed/unsigned semantics and bitwidth constraints.
+
 Architecture:
     Tensor[Integer, (N,)]  (1D Vector)
         ↓ encode(encoder)
-    Plaintext (Packed Polynomial)
+    Plaintext (Packed Polynomial) -> Wraps Vector[Integer, N]
         ↓ encrypt(pk)
-    Ciphertext (Encrypted Polynomial)
+    Ciphertext (Encrypted Polynomial) -> Wraps Vector[Integer, N]
         ↓ add/mul (SIMD operations)
     Ciphertext
         ↓ decrypt(sk)
@@ -98,49 +110,57 @@ class KeyType(elt.BaseType):
         return hash(("BFVKeyType", self.kind, self.poly_modulus_degree))
 
 
-class PlaintextType(elt.ScalarType):
+class PlaintextType(elt.BaseType):
     """Represents a BFV plaintext (a polynomial encoding a vector of integers).
 
-    In the EDSL type system, this is treated as a scalar (atomic) unit,
-    even though it logically contains a vector of values (SIMD slots).
+    In the EDSL type system, this wraps a VectorType which describes the
+    logical data layout (SIMD slots).
     """
 
-    def __init__(self, slots: int):
-        self.slots = slots
+    def __init__(self, vector_type: elt.VectorType):
+        self.vector_type = vector_type
+
+    @property
+    def slots(self) -> int:
+        return self.vector_type.size
 
     def __str__(self) -> str:
-        return f"BFVPlaintext[slots={self.slots}]"
+        return f"BFVPlaintext[{self.vector_type}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PlaintextType):
             return False
-        return self.slots == other.slots
+        return self.vector_type == other.vector_type
 
     def __hash__(self) -> int:
-        return hash(("BFVPlaintextType", self.slots))
+        return hash(("BFVPlaintextType", self.vector_type))
 
 
-class CiphertextType(elt.ScalarType, elt.EncryptedTrait):
+class CiphertextType(elt.BaseType, elt.EncryptedTrait):
     """Represents a BFV ciphertext (encrypting a Plaintext)."""
 
-    def __init__(self, poly_modulus_degree: int):
+    def __init__(self, vector_type: elt.VectorType):
         self._scheme = "bfv"
-        self.poly_modulus_degree = poly_modulus_degree
+        self.vector_type = vector_type
 
     @property
     def scheme(self) -> str:
         return self._scheme
 
+    @property
+    def poly_modulus_degree(self) -> int:
+        return self.vector_type.size
+
     def __str__(self) -> str:
-        return f"BFVCiphertext[N={self.poly_modulus_degree}]"
+        return f"BFVCiphertext[{self.vector_type}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CiphertextType):
             return False
-        return self.poly_modulus_degree == other.poly_modulus_degree
+        return self.vector_type == other.vector_type
 
     def __hash__(self) -> int:
-        return hash(("BFVCiphertextType", self.poly_modulus_degree))
+        return hash(("BFVCiphertextType", self.vector_type))
 
 
 # Opaque types
@@ -235,7 +255,7 @@ def _encode_ae(tensor: elt.TensorType, encoder: EncoderType) -> PlaintextType:
 
     # In a real implementation, we'd check if tensor size <= poly_modulus_degree
     # For abstract eval, we assume N=4096 as default or infer from context if possible.
-    return PlaintextType(slots=encoder.poly_modulus_degree)
+    return PlaintextType(elt.Vector(tensor.element_type, encoder.poly_modulus_degree))
 
 
 @decode_p.def_abstract_eval
@@ -249,7 +269,7 @@ def _decode_ae(plain: PlaintextType, encoder: EncoderType) -> elt.TensorType:
     # Returns a 1D tensor of i64 (default assumption for BFV)
     # The shape is technically (slots,), but we might not know slots exactly here
     # if it wasn't tracked perfectly.
-    return elt.TensorType(elt.i64, (plain.slots,))
+    return elt.TensorType(plain.vector_type.element_type, (plain.slots,))
 
 
 # ==============================================================================
@@ -266,7 +286,7 @@ def _encrypt_ae(plain: PlaintextType, pk: KeyType) -> CiphertextType:
         raise TypeError(f"Expected BFVPlaintext, got {plain}")
     if not isinstance(pk, KeyType) or pk.kind != "Public":
         raise TypeError(f"Expected BFV PublicKey, got {pk}")
-    return CiphertextType(pk.poly_modulus_degree)
+    return CiphertextType(plain.vector_type)
 
 
 @decrypt_p.def_abstract_eval
@@ -275,7 +295,7 @@ def _decrypt_ae(ct: CiphertextType, sk: KeyType) -> PlaintextType:
         raise TypeError(f"Expected BFVCiphertext, got {ct}")
     if not isinstance(sk, KeyType) or sk.kind != "Private":
         raise TypeError(f"Expected BFV PrivateKey, got {sk}")
-    return PlaintextType(slots=ct.poly_modulus_degree)
+    return PlaintextType(ct.vector_type)
 
 
 # ==============================================================================
@@ -305,14 +325,14 @@ def _add_ae(lhs: Any, rhs: Any) -> CiphertextType:
     _check_arithmetic_operands(lhs, rhs)
     # Result inherits properties from the ciphertext operand
     ct = lhs if isinstance(lhs, CiphertextType) else rhs
-    return CiphertextType(ct.poly_modulus_degree)
+    return CiphertextType(ct.vector_type)
 
 
 @sub_p.def_abstract_eval
 def _sub_ae(lhs: Any, rhs: Any) -> CiphertextType:
     _check_arithmetic_operands(lhs, rhs)
     ct = lhs if isinstance(lhs, CiphertextType) else rhs
-    return CiphertextType(ct.poly_modulus_degree)
+    return CiphertextType(ct.vector_type)
 
 
 @mul_p.def_abstract_eval
@@ -321,7 +341,7 @@ def _mul_ae(lhs: Any, rhs: Any) -> CiphertextType:
     ct = lhs if isinstance(lhs, CiphertextType) else rhs
     # Note: Multiplication increases noise and potentially size (if CT*CT)
     # But the type remains CiphertextType.
-    return CiphertextType(ct.poly_modulus_degree)
+    return CiphertextType(ct.vector_type)
 
 
 @relinearize_p.def_abstract_eval
@@ -330,7 +350,7 @@ def _relinearize_ae(ct: CiphertextType, rk: KeyType) -> CiphertextType:
         raise TypeError(f"Expected BFVCiphertext, got {ct}")
     if not isinstance(rk, KeyType) or rk.kind != "Relin":
         raise TypeError(f"Expected BFV RelinKeys, got {rk}")
-    return CiphertextType(ct.poly_modulus_degree)
+    return CiphertextType(ct.vector_type)
 
 
 # ==============================================================================
@@ -346,7 +366,7 @@ def _rotate_ae(ct: CiphertextType, gk: KeyType, *, steps: int) -> CiphertextType
         raise TypeError(f"Expected BFVCiphertext, got {ct}")
     if not isinstance(gk, KeyType) or gk.kind != "Galois":
         raise TypeError(f"Expected BFV GaloisKeys, got {gk}")
-    return CiphertextType(ct.poly_modulus_degree)
+    return CiphertextType(ct.vector_type)
 
 
 # ==============================================================================

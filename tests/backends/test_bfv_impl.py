@@ -3,6 +3,7 @@ import pytest
 
 import mplang2.backends.bfv_impl as _bfv_impl  # noqa: F401
 import mplang2.backends.tensor_impl as _tensor_impl  # noqa: F401
+import mplang2.edsl as el
 from mplang2.dialects import bfv, tensor
 
 
@@ -51,8 +52,10 @@ def test_bfv_e2e():
     expected_prod = np.array([10, 40, 90, 160], dtype=np.int64)
 
     # Handle InterpObject wrapper if present
-    val_sum = res_sum.runtime_obj if hasattr(res_sum, "runtime_obj") else res_sum
-    val_prod = res_prod.runtime_obj if hasattr(res_prod, "runtime_obj") else res_prod
+    assert isinstance(res_sum, el.InterpObject)
+    assert isinstance(res_prod, el.InterpObject)
+    val_sum = res_sum.runtime_obj
+    val_prod = res_prod.runtime_obj
 
     np.testing.assert_array_equal(val_sum[:4], expected_sum)
     np.testing.assert_array_equal(val_prod[:4], expected_prod)

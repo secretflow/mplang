@@ -66,6 +66,22 @@ Easy to add new backends:
 - TEE (Trusted Execution Environment)
 - Custom accelerators
 
+### 5. Layered API Architecture
+
+The EDSL provides two distinct API layers:
+
+1.  **Low-Level API (Graph Manipulation)**:
+    - Direct manipulation of the `Graph` IR.
+    - Generic `add_op` method (pure graph API, no op semantics).
+    - Analogous to MLIR's generic operation construction.
+    - Used by compiler passes and backend implementations.
+
+2.  **High-Level API (Tracing)**:
+    - Uses `Tracer` + `Primitive` (with `abstract_eval`).
+    - Pythonic interface (functions, operators).
+    - Automatic type inference and graph construction.
+    - The primary interface for users.
+
 ## Directory Structure
 
 ```
@@ -104,17 +120,16 @@ mplang/edsl/
 - [x] **153 tests passing** (140 edsl + 13 core2)
 
 ### 🚧 In Progress
-
-- [ ] Graph IR implementation (`graph.py`)
-- [ ] Builder API (`builder.py`)
-- [ ] Explicit tracer (`tracer.py`)
-
-### 📋 Planned
-
-- [ ] Control flow primitives
 - [ ] Integration with existing ops/kernels
 - [ ] Migration utilities
 - [ ] Performance benchmarks
+
+### ❌ Dropped / Deprecated
+- [x] Builder API (`builder.py`) - Integrated into `Tracer`
+
+### 📋 Planned
+- [ ] Advanced optimizations
+- [ ] More backends (TEE, MPC)
 
 ## Quick Start
 
@@ -133,23 +148,23 @@ def encrypt(data: PlaintextVec, key: EncryptionKey) -> CiphertextVec:
     ...
 ```
 
-### Future: Using the Graph IR (Not Yet Implemented)
+### Using the Tracer (Graph Construction)
 
 ```python
-from mplang2.edsl import GraphBuilder
+from mplang2.edsl import Tracer
+from mplang2.dialects.simp import pcall_static
 
-builder = GraphBuilder()
+def my_program(x, y):
+    # This function is traced into a Graph
+    return pcall_static((0, 1), lambda a, b: a + b, x, y)
 
-# Build graph
-x = builder.input("x", Tensor[f32, (10,)])
-y = builder.input("y", Tensor[f32, (10,)])
-z = builder.add(x, y)
-result = builder.mul(z, builder.constant(2.0))
+tracer = Tracer()
+with tracer:
+    # Inputs are automatically lifted to TraceObjects
+    result = my_program(x, y)
 
-# Compile and run
-graph = builder.build()
-compiled = compile(graph, backend="simulation")
-output = run(compiled, {"x": [1,2,3], "y": [4,5,6]})
+# Finalize graph
+graph = tracer.finalize(result)
 ```
 
 ## Design Documents
@@ -159,9 +174,9 @@ Detailed design documents are in the `design/` subdirectory:
 ### 1. [architecture.md](design/architecture.md)
 
 Complete EDSL architecture overview covering:
-- Core components (Tracer, Graph, Builder)
+- Core components (Tracer, Graph)
 - Design principles (Closed-World, TracedFunction vs First-Class Functions)
-- Control flow handling
+- Control flow handling (Dialect-specific, e.g., `simp.uniform_cond`)
 - Comparison with JAX, PyTorch, TensorFlow
 
 ### 2. [type_system.md](design/type_system.md)

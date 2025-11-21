@@ -772,6 +772,25 @@ def converge(*vars: el.Object) -> el.Object:
     return cast(el.Object, converge_p.bind(*vars))
 
 
+def constant(parties: tuple[int, ...], data: Any) -> el.Object:
+    """Create a constant value distributed to specific parties.
+
+    This is a helper function that creates a constant value on the specified
+    parties. It is equivalent to calling `pcall_static` with a function that
+    returns the constant data.
+
+    Args:
+        parties: Tuple of party ranks where the constant should be placed.
+        data: The constant data (scalar, array, etc.).
+
+    Returns:
+        MP[Tensor, parties] object representing the distributed constant.
+    """
+    from mplang2.dialects import tensor
+
+    return pcall_static(parties, tensor.constant, data)
+
+
 # Backward compatibility aliases
 def peval(
     parties: tuple[int, ...] | None,
@@ -790,6 +809,7 @@ def peval(
 
 
 __all__ = [
+    "constant",
     "converge",
     "converge_p",
     "pcall_dynamic",

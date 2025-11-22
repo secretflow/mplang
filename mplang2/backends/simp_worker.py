@@ -87,8 +87,8 @@ def shuffle_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         if src == my_rank:
             # I am source, send to target
             # Key needs to be unique per op execution.
-            # We use id(op) as unique identifier for this op instance in the graph
-            key = f"shuffle_{id(op)}_{tgt}"
+            # We use op.name as unique identifier for this op instance in the graph
+            key = f"shuffle_{op.name}_{tgt}"
             comm.send(tgt, key, data)
 
     # Recv phase
@@ -96,7 +96,7 @@ def shuffle_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         src = routing[my_rank]
         if src == my_rank:
             return data  # Local copy
-        key = f"shuffle_{id(op)}_{my_rank}"
+        key = f"shuffle_{op.name}_{my_rank}"
         return comm.recv(src, key)
     else:
         return None  # Not a target

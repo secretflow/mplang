@@ -145,6 +145,7 @@ class Operation:
     outputs: list[Value]
     attrs: dict[str, Any] = field(default_factory=dict)
     regions: list[Graph] = field(default_factory=list)
+    name: str = field(default="")
 
     def __post_init__(self) -> None:
         """Register this operation as the definer and user of values."""
@@ -200,6 +201,7 @@ class Graph:
         self.inputs: list[Value] = []
         self.outputs: list[Value] = []
         self._value_counter = 0
+        self._op_counter = 0
 
     def _gen_value_name(self) -> str:
         """Generate a unique SSA value name."""
@@ -273,12 +275,15 @@ class Graph:
         outputs = [self.add_value(t) for t in output_types]
 
         # Create operation
+        op_name = f"op{self._op_counter}"
+        self._op_counter += 1
         op = Operation(
             opcode=opcode,
             inputs=inputs,
             outputs=outputs,
             attrs=attrs or {},
             regions=regions or [],
+            name=op_name,
         )
         self.operations.append(op)
 

@@ -26,14 +26,16 @@ class TestBFVTypes:
         assert pk.scheme == "bfv"
 
     def test_plaintext_type(self):
-        pt = bfv.PlaintextType(slots=4096)
-        assert str(pt) == "BFVPlaintext[slots=4096]"
-        assert isinstance(pt, elt.ScalarType)
+        vec_type = elt.Vector[elt.i64, 4096]
+        pt = bfv.PlaintextType(vec_type)
+        assert str(pt) == f"BFVPlaintext[{vec_type}]"
+        assert isinstance(pt, elt.BaseType)
 
     def test_ciphertext_type(self):
-        ct = bfv.CiphertextType(poly_modulus_degree=4096)
-        assert str(ct) == "BFVCiphertext[N=4096]"
-        assert isinstance(ct, elt.ScalarType)
+        vec_type = elt.Vector[elt.i64, 4096]
+        ct = bfv.CiphertextType(vec_type)
+        assert str(ct) == f"BFVCiphertext[{vec_type}]"
+        assert isinstance(ct, elt.BaseType)
         assert isinstance(ct, elt.EncryptedTrait)
 
     def test_encoder_type(self):

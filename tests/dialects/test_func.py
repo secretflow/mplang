@@ -105,17 +105,24 @@ def test_func_call_handles_complex_pytree_output():
     )
     expected_ir = dedent(
         """\
-        (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-          %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
             (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-              %0 = tensor.run_jax(%arg0) {fn='<FN>', ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
-              %1 = tensor.run_jax(%0, %arg1) {fn='<FN>', ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
-              %2 = tensor.run_jax(%1, %arg0) {fn='<FN>', ir_type='stablehlo', text_ref='<ID>'} : Tensor[f32, ()]
-              return %2, %arg1, %1
-            }
-          }
-          [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
-          return %1, %2, %3
-        }"""
+              %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
+                (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
+                  %0 = tensor.run_jax(%arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %1 = tensor.run_jax(%0, %arg1) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %2 = tensor.run_jax(%1, %arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  return %2, %arg1, %1
+                }
+              }
+              [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
+              return %1, %2, %3
+            }"""
+    )  # Normalize stablehlo_code to <ID> for comparison
+    normalized = re.sub(
+        r"stablehlo_code='[^']+'",
+        "stablehlo_code='<ID>'",
+        normalized,
+        flags=re.MULTILINE,
     )
+
     assert normalized == expected_ir

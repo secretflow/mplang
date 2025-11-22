@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -235,7 +236,12 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         opcode="tensor.run_jax",
         inputs=input_values,
         output_types=compilation.output_types,
-        attrs={"ir_type": "stablehlo", "text_ref": text_ref, "fn": normalized_fn},
+        attrs={
+            "ir_type": "stablehlo",
+            "text_ref": text_ref,
+            "stablehlo_code": compilation.stablehlo,
+            "arg_keep_map": compilation.arg_keep_map,
+        },
     )
 
     # Reconstruct output PyTree (JAX outputs are all variables)
@@ -322,11 +328,16 @@ def _constant_trace(data: Any) -> el.TraceObject:
     output_type = elt.TensorType(dtype, shape)
 
     # Emit graph operation with data as attribute
+    # Use base64 encoded bytes for efficiency and precision
+    data_b64 = base64.b64encode(np_array.tobytes()).decode("ascii")
+
     [value] = tracer.graph.add_op(
         opcode="tensor.constant",
         inputs=[],
         output_types=[output_type],
-        attrs={"data": np_array.tolist()},  # Store as list for serialization
+        attrs={
+            "value_b64": data_b64,
+        },
         regions=[],
     )
 

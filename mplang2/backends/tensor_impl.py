@@ -3,10 +3,16 @@
 Implements execution logic for Tensor primitives.
 """
 
+import base64
 from typing import Any
 
+import jax
+import jax.extend as jxt
+import jax.numpy as jnp
 import numpy as np
+from jax._src import compiler
 
+import mplang2.edsl.typing as elt
 from mplang2.dialects import tensor
 from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter, interpret
@@ -14,7 +20,24 @@ from mplang2.edsl.interpreter import Interpreter, interpret
 
 @tensor.constant_p.def_impl
 def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
-    return np.array(op.attrs["data"])
+    # Recover dtype and shape from IR type
+    output_type = op.outputs[0].type
+    if not isinstance(output_type, elt.TensorType):
+        raise TypeError(f"Expected TensorType, got {output_type}")
+
+    scalar_str = str(output_type.element_type)
+    dtype = tensor._SCALAR_TO_NP_DTYPE.get(scalar_str)
+    if dtype is None:
+        raise ValueError(f"Unsupported scalar type {output_type.element_type}")
+
+    shape = output_type.shape
+
+    # Decode data
+    data_b64 = op.attrs["value_b64"]
+    data_bytes = base64.b64decode(data_b64)
+
+    # Create array
+    return np.frombuffer(data_bytes, dtype=dtype).reshape(shape).copy()
 
 
 @tensor.concat_p.def_impl
@@ -79,17 +102,82 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
     return results
 
 
+def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[Any]:
+    """Ensure runtime values match the IR types expected by JAX/StableHLO.
+
+    This handles implicit casting from Python types (int, float) to strict Numpy types
+    required by the compiled executable.
+    """
+    casted_args = []
+    for i, arg in enumerate(args):
+        if i < len(op_inputs):
+            input_type = op_inputs[i].type
+            if isinstance(input_type, elt.TensorType):
+                scalar_str = str(input_type.element_type)
+                dtype = tensor._SCALAR_TO_NP_DTYPE.get(scalar_str)
+                if dtype is not None:
+                    # Only cast if strictly necessary to avoid overhead
+                    # np.asarray handles scalar->array and dtype conversion
+                    casted_args.append(np.asarray(arg, dtype=dtype))
+                else:
+                    casted_args.append(arg)
+            else:
+                casted_args.append(arg)
+        else:
+            casted_args.append(arg)
+    return casted_args
+
+
 @tensor.run_jax_p.def_impl
 def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     """Execute JAX function."""
-    fn = op.attrs.get("fn")
-    if fn is None:
+    # Execute via StableHLO
+    stablehlo_code = op.attrs.get("stablehlo_code")
+    if stablehlo_code is None:
         raise NotImplementedError(
-            "run_jax execution requires 'fn' attribute (simulation mode)"
+            "run_jax execution requires 'stablehlo_code' attribute"
         )
 
-    # args are the runtime values for the dynamic inputs
-    return fn(list(args))
+    # Compile StableHLO
+    # TODO: Cache compilation based on stablehlo_code hash
+    client = jxt.backend.get_backend()
+    compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
+    try:
+        compiled = client.compile(stablehlo_code, compile_options)
+    except Exception as e:
+        raise RuntimeError(f"StableHLO compile failed: {e}") from e
+
+    # Cast inputs to expected types (Boundary Type Guard)
+    # This allows users to pass Python ints/floats to functions expecting f32/i32
+    jax_input_args = _enforce_jax_types(args, op.inputs)
+
+    # Handle JAX's unused parameter elimination via arg_keep_map
+    arg_keep_map = op.attrs.get("arg_keep_map")
+    if arg_keep_map is not None:
+        # Filter out arguments that were eliminated by JAX during compilation
+        jax_input_args = [jax_input_args[i] for i in arg_keep_map]
+
+    # Convert args to JAX arrays
+    jax_args = [jax.device_put(jnp.asarray(arg)) for arg in jax_input_args]
+
+    try:
+        result = compiled.execute_sharded(jax_args)
+        arrays = result.disassemble_into_single_device_arrays()
+        flat: list[Any] = []
+        for lst in arrays:
+            if isinstance(lst, list) and len(lst) == 1:
+                flat.append(np.asarray(lst[0]))
+            else:
+                flat.extend(np.asarray(a) for a in lst)
+
+        # If single output, return it directly (but run_jax usually returns list of vars)
+        # The primitive expects a list of results matching outputs.
+        # If op has 1 output, flat should have 1 element.
+        if len(op.outputs) == 1 and len(flat) == 1:
+            return flat[0]
+        return flat
+    except Exception as e:
+        raise RuntimeError(f"StableHLO execute failed: {e}") from e
 
 
 @tensor.slice_p.def_impl

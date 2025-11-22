@@ -22,7 +22,7 @@ covering SSA value management, operation creation, and IR generation.
 import pytest
 
 from mplang2.edsl.graph import Graph, Operation, Value
-from mplang2.edsl.typing import SIMD_HE, Custom, Tensor, f32, i32
+from mplang2.edsl.typing import Custom, Tensor, Vector, f32, i32
 
 # ==============================================================================
 # --- Test Value (SSA Values)
@@ -578,17 +578,17 @@ class TestGraphIntegration:
         [ciphertext] = g.add_op(
             "encrypt",
             [plaintext, key],
-            output_types=[SIMD_HE[f32, (100,)]],
+            output_types=[Vector[f32, 100]],
         )
 
         # Homomorphic add
         const_encrypted = g.add_op(
-            "constant", [], output_types=[SIMD_HE[f32, (100,)]], attrs={"value": 1.0}
+            "constant", [], output_types=[Vector[f32, 100]], attrs={"value": 1.0}
         )[0]
         [result_encrypted] = g.add_op(
             "he_add",
             [ciphertext, const_encrypted],
-            output_types=[SIMD_HE[f32, (100,)]],
+            output_types=[Vector[f32, 100]],
         )
 
         # Decrypt
@@ -602,7 +602,7 @@ class TestGraphIntegration:
 
         # Verify encrypted types
         ir = g.to_string(verbose=True)
-        assert "SIMD_HE" in ir
+        assert "Vector" in ir
         assert "encrypt" in ir
         assert "decrypt" in ir
 

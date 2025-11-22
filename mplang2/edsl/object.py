@@ -33,4 +33,4 @@ class Object(ABC):
 
     # Note: Arithmetic operators (__add__, __mul__, etc.) are NOT defined here.
     # They should be provided by dialect-specific dispatch mechanisms since
-    # different types (Tensor, SIMD_HE, SS) require different implementations.
+    # different types (Tensor, Vector, SS) require different implementations.

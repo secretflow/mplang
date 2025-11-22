@@ -52,8 +52,8 @@ class Primitive:
         >>>
         >>> @encrypt_p.def_abstract_eval
         >>> def encrypt_abstract(x_type):
-        >>>     from mplang2.edsl.typing import SIMD_HE
-        >>>     return SIMD_HE[x_type.dtype, x_type.shape]
+        >>>     from mplang2.edsl.typing import Vector
+        >>>     return Vector[x_type.dtype, x_type.shape]
         >>>
         >>> # Execution happens via Graph IR → Backend
         >>> # Backend handles FHE library calls based on operation type

@@ -127,11 +127,18 @@ def test_simp_host_evaluate_graph():
     graph.outputs = [MagicMock(), MagicMock()]  # 2 outputs
 
     # Inputs
-    hv_input = HostVar([1, 2, 3])
+    # Use Mock objects to represent remote references, not raw values
+    # This better reflects that HostVar holds references in a distributed setting
+    ref0 = MagicMock(name="ref_party0")
+    ref1 = MagicMock(name="ref_party1")
+    ref2 = MagicMock(name="ref_party2")
+    hv_input = HostVar([ref0, ref1, ref2])
+
     const_input = 100
     inputs = {"in1": hv_input, "in2": const_input}
 
     # Mock collect return: list of (out1, out2) for each party
+    # These represent the results fetched from workers
     # Party 0: (11, 101)
     # Party 1: (12, 102)
     # Party 2: (13, 103)
@@ -145,6 +152,7 @@ def test_simp_host_evaluate_graph():
         r, g, i = host.submit_calls[rank]
         assert r == rank
         assert g == graph
+        # Verify that the correct reference was dispatched to the correct worker
         assert i["in1"] == hv_input[rank]
         assert i["in2"] == const_input
 

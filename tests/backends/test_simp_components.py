@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mplang2.backends.simp_driver import SimpDriver
 from mplang2.backends.simp_host import HostVar, SimpHost
 from mplang2.backends.simp_simulator import ThreadCommunicator
 from mplang2.edsl.graph import Operation
@@ -87,17 +86,6 @@ def test_host_var():
     assert hv[1] == 20
     assert hv[2] == 30
     assert repr(hv) == f"HostVar({values})"
-
-
-def test_simp_driver_not_implemented():
-    """Test that SimpDriver raises NotImplementedError."""
-    driver = SimpDriver(world_size=3)
-
-    with pytest.raises(NotImplementedError):
-        driver._submit(0, MagicMock(), {})
-
-    with pytest.raises(NotImplementedError):
-        driver._collect([])
 
 
 class MockSimpHost(SimpHost):

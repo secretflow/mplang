@@ -24,7 +24,6 @@ This test suite validates the design principles outlined in mplang/core/typing.p
 import pytest
 
 from mplang2.edsl.typing import (
-    SIMD_HE,
     SS,
     BaseType,
     Custom,
@@ -32,12 +31,13 @@ from mplang2.edsl.typing import (
     EncryptedTrait,
     MPType,
     ScalarType,
-    SIMDHEType,
     SSType,
     Table,
     TableType,
     Tensor,
     TensorType,
+    Vector,
+    VectorType,
     f32,
     f64,
     i32,
@@ -137,8 +137,8 @@ class TestTensorType:
         assert t.element_type == f32
 
     def test_tensor_rejects_non_scalar_element(self):
-        """Test that Tensor rejects non-ScalarType element types (e.g., SIMD_HE)."""
-        simd_he = SIMD_HE[f32, (4096,)]
+        """Test that Tensor rejects non-ScalarType element types (e.g., Vector)."""
+        simd_he = Vector[f32, 4096]
         with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[simd_he, (4,)]
 
@@ -428,63 +428,36 @@ class TestCustomType:
 # ==============================================================================
 
 
-class TestSIMDHEType:
-    """Test SIMDHEType (SIMD_HE) construction and the 'World 3' constraints."""
+class TestVectorType:
+    """Test VectorType (Vector) construction."""
 
-    def test_simd_he_construction_basic(self):
-        """Test basic SIMD_HE construction."""
-        simd = SIMDHEType(f32, (4096,))
-        assert simd.scalar_type == f32
-        assert simd.packing_shape == (4096,)
-        assert simd._scheme == "ckks"
+    def test_vector_construction_basic(self):
+        """Test basic Vector construction."""
+        vec = VectorType(f32, 4096)
+        assert vec.element_type == f32
+        assert vec.size == 4096
 
-    def test_simd_he_class_getitem_syntax(self):
-        """Test the SIMD_HE[scalar, shape] syntax."""
-        simd = SIMD_HE[f32, (8192,)]
-        assert isinstance(simd, SIMDHEType)
-        assert simd.scalar_type == f32
-        assert simd.packing_shape == (8192,)
+    def test_vector_class_getitem_syntax(self):
+        """Test the Vector[scalar, size] syntax."""
+        vec = Vector[f32, 8192]
+        assert isinstance(vec, VectorType)
+        assert vec.element_type == f32
+        assert vec.size == 8192
 
-    def test_simd_he_str_representation(self):
-        """Test string representation of SIMD_HE types."""
-        simd = SIMD_HE[f64, (2048,)]
-        assert str(simd) == "SIMD_HE[f64, (2048,)]"
+    def test_vector_str_representation(self):
+        """Test string representation of Vector types."""
+        vec = Vector[f64, 2048]
+        assert str(vec) == "Vector[f64, 2048]"
 
-    def test_simd_he_pt_type_is_tensor(self):
-        """Test that SIMD_HE.pt_type returns a TensorType."""
-        simd = SIMD_HE[f32, (1024,)]
-        pt = simd.pt_type
-        assert isinstance(pt, TensorType)
-        assert pt.element_type == f32
-        assert pt.shape == (1024,)
+    def test_vector_not_scalar_type(self):
+        """Test that Vector is NOT a ScalarType."""
+        vec = Vector[f32, 4096]
+        assert not isinstance(vec, ScalarType)
 
-    def test_simd_he_is_encrypted_trait(self):
-        """Test that SIMD_HE implements EncryptedTrait."""
-        simd = SIMD_HE[f32, (512,)]
-        assert isinstance(simd, EncryptedTrait)
-        pt_type = simd.pt_type
-        assert isinstance(pt_type, TensorType)
-
-    def test_simd_he_not_scalar_type(self):
-        """Test that SIMD_HE is NOT a ScalarType (World 3 constraint)."""
-        simd = SIMD_HE[f32, (4096,)]
-        assert not isinstance(simd, ScalarType)
-
-    def test_simd_he_cannot_be_tensor_element(self):
-        """Test that SIMD_HE cannot be an element of a Tensor (World 3 constraint)."""
-        simd = SIMD_HE[f32, (4096,)]
-        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
-            Tensor[simd, (10,)]
-
-    def test_simd_he_requires_scalar_type(self):
-        """Test that SIMD_HE requires a ScalarType."""
-        with pytest.raises(TypeError, match="SIMD_HE requires a ScalarType"):
-            SIMD_HE[Tensor[f32, (10,)], (100,)]
-
-    def test_simd_he_custom_scheme(self):
-        """Test SIMD_HE with custom scheme."""
-        simd = SIMDHEType(f64, (2048,), scheme="bfv")
-        assert simd._scheme == "bfv"
+    def test_vector_requires_scalar_type(self):
+        """Test that Vector requires a ScalarType."""
+        with pytest.raises(TypeError, match="Vector element type must be a ScalarType"):
+            Vector[Tensor[f32, (10,)], 100]
 
 
 # ==============================================================================
@@ -607,9 +580,9 @@ class TestTypeComposition:
         assert isinstance(he_tensor.element_type, MockHEType)
 
     def test_composition_world_3_simd_he(self):
-        """Test World 3: SIMD HE (opaque, non-tensor)."""
-        simd_he = SIMD_HE[f32, (4096,)]
-        assert isinstance(simd_he, SIMDHEType)
+        """Test World 3: Vector (opaque, non-tensor)."""
+        simd_he = Vector[f32, 4096]
+        assert isinstance(simd_he, VectorType)
         assert not isinstance(simd_he, ScalarType)
 
     def test_composition_ss_tensor(self):
@@ -630,11 +603,11 @@ class TestTypeComposition:
         assert mp_ss_tensor.parties == (0, 1)
 
     def test_composition_mp_simd_he(self):
-        """Test MP[SIMD_HE[...]] composition."""
-        simd_he = SIMD_HE[f32, (8192,)]
+        """Test MP[Vector[...]] composition."""
+        simd_he = Vector[f32, 8192]
         mp_simd = MPType[simd_he, (2,)]
 
-        assert isinstance(mp_simd.value_type, SIMDHEType)
+        assert isinstance(mp_simd.value_type, VectorType)
         assert mp_simd.parties == (2,)
 
     def test_composition_mp_he_tensor(self):
@@ -676,8 +649,8 @@ class TestProtocolContracts:
         # HE[scalar] inherits from ScalarType
         assert isinstance(MockHEType("ckks"), ScalarType)
 
-        # SIMD_HE does NOT inherit from ScalarType
-        assert not isinstance(SIMD_HE[f32, (1024,)], ScalarType)
+        # Vector does NOT inherit from ScalarType
+        assert not isinstance(Vector[f32, 1024], ScalarType)
 
     def test_encrypted_trait_protocol(self):
         """Test that EncryptedTrait is implemented correctly."""
@@ -685,11 +658,6 @@ class TestProtocolContracts:
         # HE implements EncryptedTrait
         he = MockHEType("ckks")
         assert isinstance(he, EncryptedTrait)
-
-        # SIMD_HE implements EncryptedTrait
-        simd = SIMD_HE[f64, (2048,)]
-        assert isinstance(simd, EncryptedTrait)
-        assert isinstance(simd.pt_type, TensorType)
 
         # SS implements EncryptedTrait
         ss = SS[i32]
@@ -703,7 +671,7 @@ class TestProtocolContracts:
         assert isinstance(Tensor[f32, (10,)], BaseType)
         assert isinstance(Table[{"x": i32}], BaseType)
         assert isinstance(MockHEType("ckks"), BaseType)
-        assert isinstance(SIMD_HE[f32, (1024,)], BaseType)
+        assert isinstance(Vector[f32, 1024], BaseType)
         assert isinstance(SS[f32], BaseType)
         assert isinstance(MPType[f32, (0,)], BaseType)
 
@@ -733,11 +701,11 @@ class TestEdgeCasesAndErrors:
         with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[table_type, (5,)]
 
-    def test_simd_he_with_non_scalar_plaintext(self):
-        """Test that SIMD_HE requires ScalarType plaintext."""
+    def test_vector_with_non_scalar_plaintext(self):
+        """Test that Vector requires ScalarType plaintext."""
         tensor = Tensor[f32, (10,)]
-        with pytest.raises(TypeError, match="SIMD_HE requires a ScalarType"):
-            SIMD_HE[tensor, (1024,)]
+        with pytest.raises(TypeError, match="Vector element type must be a ScalarType"):
+            Vector[tensor, 1024]
 
     def test_nested_encryption_allowed(self):
         """Test that nested encryption is allowed (though may be unusual)."""
@@ -775,12 +743,12 @@ class TestDemonstrationCases:
 
     def test_world_3_demonstration(self):
         """Test World 3: SIMD HE vector demonstration."""
-        simd_he_vector = SIMD_HE[f32, (4096,)]
-        assert str(simd_he_vector) == "SIMD_HE[f32, (4096,)]"
+        simd_he_vector = Vector[f32, 4096]
+        assert str(simd_he_vector) == "Vector[f32, 4096]"
 
     def test_design_constraint_demonstration(self):
-        """Test that SIMD_HE cannot be a Tensor element (design constraint)."""
-        simd_he_vector = SIMD_HE[f32, (4096,)]
+        """Test that Vector cannot be a Tensor element (design constraint)."""
+        simd_he_vector = Vector[f32, 4096]
         with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
             Tensor[simd_he_vector, (4,)]
 
@@ -795,9 +763,9 @@ class TestDemonstrationCases:
         mp_ss_tensor = MPType[ss_tensor_share, (0, 1)]
         assert "MP[SS[Tensor" in str(mp_ss_tensor)
 
-        simd_he_vector = SIMD_HE[f32, (4096,)]
+        simd_he_vector = Vector[f32, 4096]
         mp_simd_he_vector = MPType[simd_he_vector, (2,)]
-        assert "MP[SIMD_HE" in str(mp_simd_he_vector)
+        assert "MP[Vector" in str(mp_simd_he_vector)
         assert "parties=(2,)" in str(mp_simd_he_vector)
 
 
@@ -835,14 +803,14 @@ class TestIntegration:
         assert mp_he_tensor.parties == (0,)
 
     def test_realistic_simd_he_scenario(self):
-        """Test a realistic SIMD HE scenario: MP[SIMD_HE[...]]."""
+        """Test a realistic SIMD HE scenario: MP[Vector[...]]."""
         # A SIMD ciphertext held by multiple parties
-        simd = SIMD_HE[f32, (8192,)]
+        simd = Vector[f32, 8192]
         mp_simd = MPType[simd, (1, 2)]
 
-        assert isinstance(mp_simd.value_type, SIMDHEType)
-        assert mp_simd.value_type.scalar_type == f32
-        assert mp_simd.value_type.packing_shape == (8192,)
+        assert isinstance(mp_simd.value_type, VectorType)
+        assert mp_simd.value_type.element_type == f32
+        assert mp_simd.value_type.size == 8192
         assert mp_simd.parties == (1, 2)
 
     def test_table_in_distributed_setting(self):

@@ -40,11 +40,11 @@ return %2
 **Single source of truth**: `mplang.edsl.typing.MPType`
 
 ```python
-from mplang2.edsl.typing import Tensor, SIMD_HE, MPType, f32
+from mplang2.edsl.typing import Tensor, Vector, MPType, f32
 
 # All types use BaseType
 plaintext: MPType = Tensor[f32, (4096,)]
-ciphertext: MPType = SIMD_HE[f32, (4096,)]
+ciphertext: MPType = Vector[f32, 4096]
 ```
 
 ### 3. Explicit Tracing
@@ -136,11 +136,11 @@ mplang/edsl/
 ### Using the New Type System
 
 ```python
-from mplang2.edsl.typing import Tensor, SIMD_HE, CustomType, f32
+from mplang2.edsl.typing import Tensor, Vector, CustomType, f32
 
 # Define types
 PlaintextVec = Tensor[f32, (4096,)]
-CiphertextVec = SIMD_HE[f32, (4096,)]
+CiphertextVec = Vector[f32, 4096]
 EncryptionKey = CustomType("EncryptionKey")
 
 # Type annotations

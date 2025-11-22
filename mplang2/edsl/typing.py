@@ -46,7 +46,6 @@ rather than by creating a large, monolithic set of specific types.
     - `Table`: A dictionary-like structure with named columns of any type.
 
     2.  **Encryption Types**: Wrap other types to confer privacy properties by making them opaque.
-    - `SIMD_HE`: Packed (SIMD) Homomorphic Encryption of a vector of scalars into a single ciphertext.
     - `SS`: A single share of a secret-shared value.
     - Note: Element-wise HE types (like `phe.CiphertextType`) are defined in their respective dialects (e.g., `phe`).
 
@@ -69,20 +68,12 @@ underlying HE libraries.
     - **Core Type**: `Tensor[Scalar, ...]`
     - **API Standard**: Follows NumPy/JAX conventions. All layout and arithmetic operations are valid.
 
--   **World 2: The Element-wise HE World**
     - **Core Type**: `Tensor[EncryptedScalar, ...]` (e.g., `Tensor[phe.CiphertextType, ...]`)
     - **API Standard**: Follows TenSEAL-like (Tensor-level) conventions. Layout operations
       (`transpose`, `reshape`) are valid as they merely shuffle independent ciphertext objects.
       Arithmetic operations are overloaded for element-wise HE computation.
 
--   **World 3: The Packed (SIMD) HE World**
-    - **Core Type**: `SIMD_HE[Scalar, PackingShape, ...]`
-    - **API Standard**: Follows Microsoft SEAL-like (Ciphertext-level) conventions. This is
-      an opaque, non-tensor type. It only supports specialized vector operations like `simd_add`
-      and `simd_rotate`. It is explicitly *not* a `ScalarType` and cannot be an element of a `Tensor`.
-
-This separation is programmatically enforced. Attempting to create a `Tensor[SIMD_HE[...]]`
-will raise a `TypeError`.===========================
+===========================
 Principle 3: Contracts via Protocols
 ===========================
 The system uses `typing.Protocol` to define behavioral contracts (similar to Traits in Rust).
@@ -561,40 +552,6 @@ Custom = CustomType
 # ==============================================================================
 # --- Pillar 2: Encryption Types
 # ==============================================================================
-
-
-class SIMDHEType(BaseType, EncryptedTrait):
-    """Represents a SINGLE ciphertext packing a vector of scalars using HE SIMD mode."""
-
-    def __init__(
-        self, scalar_type: ScalarType, packing_shape: tuple[int,], scheme: str = "ckks"
-    ):
-        if not isinstance(scalar_type, ScalarType):
-            raise TypeError(
-                f"SIMD_HE requires a ScalarType, got {type(scalar_type).__name__}."
-            )
-        self._pt_type = scalar_type
-        self.packing_shape = packing_shape
-        self._scheme = scheme
-
-    @property
-    def pt_type(self) -> BaseType:
-        # Represent packed ciphertext's logical plaintext as a Tensor type.
-        return TensorType(self._pt_type, self.packing_shape)
-
-    @property
-    def scalar_type(self) -> BaseType:
-        return self._pt_type
-
-    def __class_getitem__(cls, params: tuple[ScalarType, tuple[int,]]) -> SIMDHEType:
-        scalar_type, packing_shape = params
-        return cls(scalar_type, packing_shape)
-
-    def __str__(self) -> str:
-        return f"SIMD_HE[{self.scalar_type}, {self.packing_shape}]"
-
-
-SIMD_HE = SIMDHEType
 
 
 class SSType(BaseType, EncryptedTrait):

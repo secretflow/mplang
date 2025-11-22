@@ -47,33 +47,20 @@ class SimpHost(Interpreter):
         results = self._collect(futures)
 
         # Reassemble outputs
-        # results is list of (out1, out2, ...) for each party
-
-        # If graph returns single value, results is list of values.
-        # If graph returns tuple, results is list of tuples.
-
-        # We want to return HostVar(s).
-
-        # Assume graph returns single value for now or handle tuple.
-        # But we don't know the structure easily without inspecting graph outputs.
-
-        # For now, just return list of results (HostVar-like structure manually constructed if needed)
-        # But HostInterpreter usually returns HostVar.
-
-        # Let's just return the raw results list for now, or construct HostVar.
-        if not results:
+        if not graph.outputs:
             return None
 
-        first_res = results[0]
-        if isinstance(first_res, (list, tuple)):
-            # Multiple outputs
-            num_outs = len(first_res)
-            outs = []
-            for i in range(num_outs):
-                outs.append(HostVar([res[i] for res in results]))
-            return tuple(outs)
-        else:
+        if len(graph.outputs) == 1:
             return HostVar(results)
+
+        # Multiple outputs
+        # results is list of tuples/lists (one per party)
+        # We want list of HostVars (one per output)
+        num_outs = len(graph.outputs)
+        outs = []
+        for i in range(num_outs):
+            outs.append(HostVar([res[i] for res in results]))
+        return outs
 
     def _submit(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
         raise NotImplementedError

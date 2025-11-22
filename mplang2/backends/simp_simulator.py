@@ -68,6 +68,10 @@ def get_or_create_context(world_size: int = 3) -> Context:
     global _SIM_CONTEXT
     if _SIM_CONTEXT is None:
         _SIM_CONTEXT = Context(world_size)
+    elif _SIM_CONTEXT.world_size != world_size:
+        # Recreate context if world_size mismatch
+        _SIM_CONTEXT.shutdown(wait=True)
+        _SIM_CONTEXT = Context(world_size)
     return _SIM_CONTEXT
 
 

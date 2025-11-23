@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 import mplang2.backends.crypto_impl
 import mplang2.backends.tensor_impl  # noqa: F401
-from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
+from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import simp, tensor
 from mplang2.libs import permutation
 
@@ -12,7 +12,6 @@ from mplang2.libs import permutation
 def test_secure_switch_straight():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     # Sender: x0=10, x1=20
     # Receiver: c=0 (Straight) -> y0=10, y1=20
@@ -34,7 +33,6 @@ def test_secure_switch_straight():
 def test_secure_switch_swap():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     # Sender: x0=10, x1=20
     # Receiver: c=1 (Swap) -> y0=20, y1=10
@@ -56,7 +54,6 @@ def test_secure_switch_swap():
 def test_apply_permutation_n2():
     # World size 2
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     # Sender: data=[10, 20]
     # Receiver: perm=[1, 0] (Swap) -> [20, 10]

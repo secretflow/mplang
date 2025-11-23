@@ -2,7 +2,7 @@
 
 import mplang2.backends.crypto_impl
 import mplang2.backends.tensor_impl  # noqa: F401
-from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
+from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import simp
 from mplang2.libs import ot
 
@@ -10,7 +10,6 @@ from mplang2.libs import ot
 def test_ot_transfer_basic():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     # Sender inputs: m0=10, m1=20
     # Receiver input: choice=1 (should get 20)
@@ -48,7 +47,6 @@ def test_ot_transfer_basic():
 def test_ot_transfer_choice_0():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     def protocol(m0, m1, choice):
         return ot.transfer(m0, m1, choice, sender=0, receiver=1)

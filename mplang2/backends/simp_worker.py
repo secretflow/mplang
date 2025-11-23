@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+# Register implementations
 from mplang2.dialects import simp
 from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter

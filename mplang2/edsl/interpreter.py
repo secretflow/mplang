@@ -149,22 +149,25 @@ class Interpreter(Context):
         # Execute graph
         result_runtime = self.evaluate_graph(graph, inputs_map)
 
+        # Normalize runtime result to list for structural matching
+        # evaluate_graph returns single value if len(outputs)==1, else list
+        if len(graph.outputs) == 1:
+            result_runtime_list = [result_runtime]
+        else:
+            result_runtime_list = result_runtime
+
         # Wrap result back to InterpObject
-        # TODO: rebuild output structure from traced function
+        # Rebuild output structure from traced function
         if isinstance(result_traced, (list, tuple)):
-            # Multiple outputs
-            if not isinstance(result_runtime, (list, tuple)):
-                raise RuntimeError(
-                    f"Graph returned {len(result_traced)} outputs but interpret() returned single value"
-                )
+            # Multiple outputs (or tuple of single output)
             results = [
                 InterpObject(rt, tr.type, self)
-                for rt, tr in zip(result_runtime, result_traced, strict=True)
+                for rt, tr in zip(result_runtime_list, result_traced, strict=True)
             ]
             return type(result_traced)(results)
         else:
-            # Single output
-            return InterpObject(result_runtime, result_traced.type, self)
+            # Single output (scalar)
+            return InterpObject(result_runtime_list[0], result_traced.type, self)
 
     def lift(self, obj: Any) -> InterpObject | Any:
         """Lift an object to the Interpreter's native representation.

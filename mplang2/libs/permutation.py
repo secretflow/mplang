@@ -17,7 +17,8 @@ from typing import Any
 
 import jax.numpy as jnp
 
-from mplang2.dialects import simp, tensor
+import mplang2.edsl.typing as elt
+from mplang2.dialects import crypto, simp, tensor
 from mplang2.libs import ot
 
 
@@ -52,89 +53,163 @@ def secure_switch(
     return y0, y1
 
 
-def _compute_waksman_switches(permutation: list[int]) -> list[list[int]]:
-    """Compute switch control bits for a Waksman network.
-
-    This is a complex algorithm. For simplicity in this prototype,
-    we will implement a naive bubble-sort based network or a simple
-    recursive structure if N is small.
-
-    For a full Waksman implementation, we would need a proper graph coloring algo.
-
-    Let's implement a simple recursive Benes-like network for N=2^k.
-    Or even simpler: Bubble Sort Network (O(N^2) switches).
-    Given the constraints and the goal to demonstrate OT usage, O(N^2) is fine for small N.
-
-    Actually, let's stick to the user request: "Waksman or Benes".
-    Implementing the control logic for Waksman is non-trivial in Python without a library.
-
-    Let's implement a simple "Odd-Even Transposition Sort" network which is O(N^2) but regular.
-    Or just hardcode for N=4 for the demo?
-
-    Let's try to implement a recursive Benes network generator.
-    """
-    len(permutation)
-    # Placeholder: For now, we assume the user provides the control bits
-    # or we implement a very simple case.
-    # Implementing full Waksman control generation is out of scope for this snippet
-    # unless we pull in a dependency or write ~100 lines of graph logic.
-
-    # Let's implement a simplified version that works for N=2, 4, 8 using recursion.
-    return []  # TODO
-
-
-def apply_permutation(
-    data: list[Any], permutation: list[int], sender: int, receiver: int
-) -> list[Any]:
-    """Apply a secure permutation.
+def _compute_benes_network_controls(permutation: list[int] | Any) -> list[list[int]]:
+    """Compute control bits for Benes network to realize the permutation.
 
     Args:
-        data: List of data items (on Sender).
-        permutation: List of indices (on Receiver). e.g. [2, 0, 1]
+        permutation: List of source indices. permutation[i] = src means
+                     dest i comes from src.
+
+    Returns:
+        List of lists of control bits (0 or 1).
+        Each inner list corresponds to a stage of switches.
+    """
+    # Ensure permutation is a list of ints
+    if hasattr(permutation, "tolist"):
+        permutation = permutation.tolist()
+    permutation = [int(x) for x in permutation]
+
+    n = len(permutation)
+    if n <= 1:
+        return []
+    if n == 2:
+        # Single switch.
+        # If perm=[0, 1], ctrl=0. If perm=[1, 0], ctrl=1.
+        return [[0]] if permutation[0] == 0 else [[1]]
+
+    # Benes network recursive construction.
+    # We need to decompose the permutation into two sub-permutations
+    # for the upper and lower sub-networks.
+
+
+def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -> Any:
+    """Apply a secure permutation using a Benes network.
+
+    Args:
+        data: Data items (on Sender). Must be a Tensor.
+        permutation: List of indices (on Receiver). e.g. [2, 0, 1, 3]
         sender: Rank of sender.
         receiver: Rank of receiver.
 
     Returns:
-        Shuffled data list (on Receiver).
+        Shuffled data (on Receiver).
     """
-    # Note: This function currently requires the control bits to be pre-calculated
-    # or derived. Since deriving Waksman bits is complex, we will implement
-    # a naive O(N) approach using O(N) OTs if we just want to move data?
-    # No, the user asked for "Secure Permutation Network".
+    target_type = data.type
+    if isinstance(target_type, elt.MPType):
+        target_type = target_type.value_type
+    n = target_type.shape[0]
 
-    # If we just want to implement the logic:
-    # For each output position i, we want data[permutation[i]].
-    # This is equivalent to O(N) OTs where each OT is 1-out-of-N.
-    # 1-out-of-N OT can be built from 1-out-of-2 OTs.
+    # Compute controls (on Receiver)
+    def compute_flat_controls(perm):
+        controls = _compute_benes_network_controls(perm)
+        flat = []
+        for stage in controls:
+            flat.extend(stage)
+        return jnp.array(flat, dtype=jnp.int64)
 
-    # However, the user specifically mentioned Waksman/Benes and 2x2 switches.
-    # Let's implement a hardcoded network for N=4 to demonstrate the concept.
+    flat_controls = simp.pcall_static((receiver,), compute_flat_controls, permutation)
 
-    n = len(data)
-    if n == 2:
-        # 1 switch
-        # Permutation is [0, 1] (c=0) or [1, 0] (c=1)
-        # We need to derive c from permutation.
-        # c = permutation[0] == 1
+    # Helper functions to simplify the recursion and optimize control inversion
+    def split_evens_odds(x):
+        typ = x.type
+        parties = typ.parties if isinstance(typ, elt.MPType) else None
+        if parties is not None:
+            evens = simp.pcall_static(
+                parties, lambda t: tensor.run_jax(lambda a: a[0::2], t), x
+            )
+            odds = simp.pcall_static(
+                parties, lambda t: tensor.run_jax(lambda a: a[1::2], t), x
+            )
+        else:
+            evens = tensor.run_jax(lambda a: a[0::2], x)
+            odds = tensor.run_jax(lambda a: a[1::2], x)
+        return evens, odds
 
-        def get_control_bit(perm):
-            # perm is a list/array on Receiver.
-            # We need to extract the bit.
-            return tensor.run_jax(lambda p: (p[0] == 1).astype(jnp.int32), perm)
+    def interleave(a, b):
+        def _impl(x, y):
+            return tensor.run_jax(
+                lambda u, v: jnp.ravel(jnp.column_stack((u, v))), x, y
+            )
 
-        c = simp.pcall_static((receiver,), get_control_bit, permutation)
-        return list(secure_switch(data[0], data[1], c, sender, receiver))
+        typ = a.type
+        parties = typ.parties if isinstance(typ, elt.MPType) else None
+        if parties is not None:
+            return simp.pcall_static(parties, _impl, a, b)
+        else:
+            return _impl(a, b)
 
-    elif n == 4:
-        # Benes network for N=4 has 3 stages of 2 switches.
-        # Total 6 switches.
-        # But calculating the bits is tricky dynamically in the graph.
+    def apply_switch(x0, x1, ctrls):
+        # Optimization: Compute inverse controls on device to avoid
+        # transferring a second array from Python.
+        def invert(c):
+            return 1 - c
 
-        # Alternative: Naive O(N) selection.
-        # For each output i, select data[p[i]].
-        # This is N * (1-out-of-N OT).
-        pass
+        inv_ctrls = simp.pcall_static(
+            (receiver,), lambda c: tensor.run_jax(invert, c), ctrls
+        )
 
-    raise NotImplementedError(
-        "Only N=2 is currently supported for full network generation."
-    )
+        typ = x0.type
+        parties = typ.parties if isinstance(typ, elt.MPType) else None
+        is_on_sender = parties == (sender,)
+
+        if is_on_sender:
+            # Use OT if data is on Sender
+            y0 = ot.transfer(x0, x1, ctrls, sender, receiver)
+            y1 = ot.transfer(x0, x1, inv_ctrls, sender, receiver)
+        else:
+            # Use local select if data is already on Receiver
+            def switch_fn(u, v, c):
+                return tensor.elementwise(crypto.select, c, v, u)
+
+            y0 = simp.pcall_static((receiver,), switch_fn, x0, x1, ctrls)
+            y1 = simp.pcall_static((receiver,), switch_fn, x0, x1, inv_ctrls)
+        return y0, y1
+
+    # Mutable offset to track position in flat_controls
+    offset = [0]
+
+    def get_next_controls(count):
+        start = offset[0]
+        offset[0] += count
+
+        def slice_fn(arr, s, c):
+            return arr[s : s + c]
+
+        return simp.pcall_static((receiver,), slice_fn, flat_controls, start, count)
+
+    def recursive_network_batch(inputs, depth):
+        # Calculate local size based on depth.
+        # Benes network structure is deterministic based on N.
+        n_local = n // (2**depth)
+
+        if n_local == 1:
+            return inputs  # Base case for Benes: n=2 is a single switch
+
+        # Collect controls for the current stage
+        # For n_local=2, we need 1 control. For n_local>2, we need n_local/2.
+        count = n_local // 2
+        current_ctrls = get_next_controls(count)
+
+        if n_local == 2:
+            # Base case: Single switch
+            x_evens, x_odds = split_evens_odds(inputs)
+            y0, y1 = apply_switch(x_evens, x_odds, current_ctrls)
+            return interleave(y0, y1)
+
+        # General case: Input Stage -> Recurse -> Output Stage
+
+        # Input Stage
+        x_evens, x_odds = split_evens_odds(inputs)
+        y0, y1 = apply_switch(x_evens, x_odds, current_ctrls)
+
+        # Recurse
+        upper_outputs = recursive_network_batch(y0, depth + 1)
+        lower_outputs = recursive_network_batch(y1, depth + 1)
+
+        # Output Stage
+        out_ctrls = get_next_controls(n_local // 2)
+
+        z0, z1 = apply_switch(upper_outputs, lower_outputs, out_ctrls)
+        return interleave(z0, z1)
+
+    return recursive_network_batch(data, 0)

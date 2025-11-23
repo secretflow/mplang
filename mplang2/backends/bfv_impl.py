@@ -290,12 +290,32 @@ def mul_impl(
 
     # Case 2: One is BFVValue (Ciphertext), other is Raw
     if isinstance(lhs, BFVValue) and lhs.is_cipher:
+        # Check for zero plaintext to avoid "transparent ciphertext" error
+        if isinstance(rhs, (int, float)) and rhs == 0:
+            result_ct = sealapi.Ciphertext()
+            lhs.ctx.encryptor.encrypt_zero(result_ct)
+            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+        if isinstance(rhs, np.ndarray) and np.all(rhs == 0):
+            result_ct = sealapi.Ciphertext()
+            lhs.ctx.encryptor.encrypt_zero(result_ct)
+            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+
         pt = _ensure_plaintext(lhs.ctx, rhs)
         result_ct = sealapi.Ciphertext()
         lhs.ctx.evaluator.multiply_plain(lhs.data, pt, result_ct)
         return BFVValue(result_ct, lhs.ctx, is_cipher=True)
 
     if isinstance(rhs, BFVValue) and rhs.is_cipher:
+        # Check for zero plaintext to avoid "transparent ciphertext" error
+        if isinstance(lhs, (int, float)) and lhs == 0:
+            result_ct = sealapi.Ciphertext()
+            rhs.ctx.encryptor.encrypt_zero(result_ct)
+            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+        if isinstance(lhs, np.ndarray) and np.all(lhs == 0):
+            result_ct = sealapi.Ciphertext()
+            rhs.ctx.encryptor.encrypt_zero(result_ct)
+            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+
         pt = _ensure_plaintext(rhs.ctx, lhs)
         result_ct = sealapi.Ciphertext()
         rhs.ctx.evaluator.multiply_plain(rhs.data, pt, result_ct)

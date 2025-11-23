@@ -83,7 +83,11 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
     # op.outputs[0].type should give us a hint, but here we are in runtime.
     # Let's just use a list or numpy array of objects for flexibility.
     # Since we might be mixing types (e.g. Encrypted objects), object array is safest.
-    results = np.empty(shape, dtype=object)
+    num_outputs = len(op.outputs)
+    if num_outputs > 1:
+        results = [np.empty(shape, dtype=object) for _ in range(num_outputs)]
+    else:
+        results = np.empty(shape, dtype=object)
 
     # 3. Iterate and execute
     # Use np.ndindex for multi-dimensional iteration
@@ -110,7 +114,11 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
         # Recursive execution
         scalar_out = interpret(subgraph, scalar_inputs, interpreter)
 
-        results[index] = scalar_out
+        if num_outputs > 1:
+            for i, val in enumerate(scalar_out):
+                results[i][index] = val
+        else:
+            results[index] = scalar_out
 
     return results
 

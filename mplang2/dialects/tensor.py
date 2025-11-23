@@ -513,11 +513,11 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
         ):
             output_element_type = output_element_type.element_type
 
-        if not isinstance(output_element_type, elt.ScalarType):
+        if not isinstance(output_element_type, elt.BaseType):
             raise TypeError(
-                "elementwise function must return ScalarType leaves, "
+                "elementwise function must return BaseType leaves, "
                 f"got {type(output_element_type).__name__} at output index {idx}. "
-                "Elementwise only supports operations producing scalar outputs."
+                "Elementwise only supports operations producing valid MPLang types."
             )
         output_types.append(
             elt.TensorType(output_element_type, result_shape)

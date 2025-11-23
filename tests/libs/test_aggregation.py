@@ -4,21 +4,11 @@ import numpy as np
 
 import mplang2.backends.bfv_impl
 import mplang2.backends.tensor_impl  # noqa: F401
-from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
 from mplang2.dialects import bfv, tensor
 from mplang2.libs import aggregation
 
 
 def test_rotate_and_sum():
-    # World size 1 (Local BFV simulation)
-    SimpSimulator(world_size=1)
-    get_or_create_context(1)
-
-    # Setup BFV
-    # We need to run this inside the interpreter context or just use the primitives
-    # if the backend is registered.
-    # Since we are using SimpSimulator, we can run BFV ops.
-
     # 1. Keygen
     pk, sk = bfv.keygen(poly_modulus_degree=4096)
     gk = bfv.make_galois_keys(sk)
@@ -34,20 +24,7 @@ def test_rotate_and_sum():
 
     # 3. Aggregate first 4 elements
     # Expected sum: 1+2+3+4 = 10
-
-    def protocol(ct, gk):
-        return aggregation.rotate_and_sum(ct, k=4, galois_keys=gk)
-
-    # We need to wrap these in InterpObjects if we run via interpreter,
-    # or just call them if we are in eager mode with direct execution?
-    # The BFV backend implementation usually returns opaque objects (wrappers).
-    # Let's see how `test_bfv.py` does it.
-    # It usually calls `bfv.add(ct1, ct2)` directly.
-
-    # However, `rotate_and_sum` uses `bfv.rotate` and `bfv.add`.
-    # If we call `protocol(ct, gk)`, it will execute immediately.
-
-    res_ct = protocol(ct, gk)
+    res_ct = aggregation.rotate_and_sum(ct, k=4, galois_keys=gk)
 
     # Decrypt and check
     res_pt = bfv.decrypt(res_ct, sk)
@@ -59,9 +36,6 @@ def test_rotate_and_sum():
 
 
 def test_masked_aggregate():
-    SimpSimulator(world_size=1)
-    get_or_create_context(1)
-
     pk, sk = bfv.keygen(poly_modulus_degree=4096)
     encoder = bfv.create_encoder(poly_modulus_degree=4096)
 
@@ -80,10 +54,7 @@ def test_masked_aggregate():
     pt_mask1 = bfv.encode(tensor.constant(mask1), encoder)
     pt_mask2 = bfv.encode(tensor.constant(mask2), encoder)
 
-    def protocol(cts, masks):
-        return aggregation.masked_aggregate(cts, masks)
-
-    res_ct = protocol([ct1, ct2], [pt_mask1, pt_mask2])
+    res_ct = aggregation.masked_aggregate([ct1, ct2], [pt_mask1, pt_mask2])
 
     res_pt = bfv.decrypt(res_ct, sk)
     res = bfv.decode(res_pt, encoder)

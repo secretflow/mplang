@@ -3,7 +3,7 @@ import jax.numpy as jnp
 # Register runtimes
 import mplang2.backends.tensor_impl  # noqa: F401
 from mplang2.backends.simp_host import HostVar
-from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
+from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import simp
 from mplang2.dialects.simp import pcall_static, uniform_cond
 from mplang2.dialects.tensor import run_jax
@@ -28,7 +28,6 @@ def test_pcall_static():
 
     # Create inputs (HostVars)
     # World size 3
-    get_or_create_context(3)
 
     # Call pcall_static
     with interp:
@@ -54,7 +53,6 @@ def test_pcall_static():
 
 def test_uniform_cond():
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     def then_fn(x):
         return pcall_static((0, 1), lambda a: add(a, a), x)
@@ -98,13 +96,6 @@ def test_while_loop_eager():
 
     # Setup runtime
     # Reset global context to ensure world_size=2
-    import mplang2.backends.simp_simulator as simp_runtime
-
-    if simp_runtime._SIM_CONTEXT:
-        simp_runtime._SIM_CONTEXT.shutdown()
-        simp_runtime._SIM_CONTEXT = None
-
-    get_or_create_context(world_size=2)
     interp = SimpSimulator(world_size=2)
 
     # Eager call

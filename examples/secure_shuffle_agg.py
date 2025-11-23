@@ -9,8 +9,8 @@ This example demonstrates two advanced MPC/HE capabilities:
 import jax.numpy as jnp
 import numpy as np
 
-import mplang2.backends.crypto_impl  # noqa: F401
-from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
+import mplang2.backends.tensor_impl  # noqa: F401
+from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import bfv, simp, tensor
 from mplang2.libs import aggregation, permutation
 
@@ -20,7 +20,6 @@ def main():
     # Party 0: Data Owner
     # Party 1: Compute Node
     interp = SimpSimulator(world_size=2)
-    get_or_create_context(2)
 
     print("=== Part 1: Secure Permutation Network ===")
     run_secure_permutation(interp)

@@ -23,6 +23,19 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
     # Recover dtype and shape from IR type
     output_type = op.outputs[0].type
     if not isinstance(output_type, elt.TensorType):
+        # Fallback for scalar constants if they are not wrapped in TensorType
+        # But tensor.constant usually produces TensorType.
+        # If it's a scalar type, handle it.
+        if isinstance(output_type, elt.ScalarType):
+            scalar_str = str(output_type)
+            dtype = tensor._SCALAR_TO_NP_DTYPE.get(scalar_str)
+            if dtype is None:
+                raise ValueError(f"Unsupported scalar type {output_type}")
+
+            data_b64 = op.attrs["value_b64"]
+            data_bytes = base64.b64decode(data_b64)
+            return np.frombuffer(data_bytes, dtype=dtype)[0]
+
         raise TypeError(f"Expected TensorType, got {output_type}")
 
     scalar_str = str(output_type.element_type)

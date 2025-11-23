@@ -8,7 +8,6 @@ from mplang2.dialects import simp
 from mplang2.dialects.simp import pcall_static, uniform_cond
 from mplang2.dialects.tensor import run_jax
 from mplang2.edsl.interpreter import InterpObject
-from mplang2.edsl.typing import MPType, Tensor, f32, i64
 
 
 def add(x, y):
@@ -31,15 +30,18 @@ def test_pcall_static():
     # World size 3
     get_or_create_context(3)
 
-    x_val = HostVar([1, 2, 3])
-    y_val = HostVar([10, 20, 30])
-
-    t_type = MPType(Tensor[f32, ()], parties=(0, 1, 2))
-    x_obj = InterpObject(x_val, t_type, interp)
-    y_obj = InterpObject(y_val, t_type, interp)
-
     # Call pcall_static
     with interp:
+        x0 = simp.constant((0,), 1)
+        x1 = simp.constant((1,), 2)
+        x2 = simp.constant((2,), 3)
+        x_obj = simp.converge(x0, x1, x2)
+
+        y0 = simp.constant((0,), 10)
+        y1 = simp.constant((1,), 20)
+        y2 = simp.constant((2,), 30)
+        y_obj = simp.converge(y0, y1, y2)
+
         res = pcall_static((0, 1, 2), my_func, x_obj, y_obj)
 
     assert isinstance(res, InterpObject)
@@ -54,12 +56,6 @@ def test_uniform_cond():
     interp = SimpSimulator(world_size=2)
     get_or_create_context(2)
 
-    # True condition
-    pred_true = InterpObject(HostVar([True, True]), MPType(i64, (0, 1)), interp)
-
-    x_val = HostVar([1, 2])
-    x_obj = InterpObject(x_val, MPType(Tensor[f32, ()], parties=(0, 1)), interp)
-
     def then_fn(x):
         return pcall_static((0, 1), lambda a: add(a, a), x)
 
@@ -67,15 +63,19 @@ def test_uniform_cond():
         return pcall_static((0, 1), lambda a: mul(a, a), x)
 
     with interp:
+        x0 = simp.constant((0,), 1)
+        x1 = simp.constant((1,), 2)
+        x_obj = simp.converge(x0, x1)
+
+        # True condition
+        pred_true = simp.constant((0, 1), True)
         res = uniform_cond(pred_true, then_fn, else_fn, x_obj)
 
     assert res.runtime_obj.values == [2, 4]
 
     # Test False case
-    pred_val_false = HostVar([False, False])
-    pred_obj_false = InterpObject(pred_val_false, MPType(i64, (0, 1)), interp)
-
     with interp:
+        pred_obj_false = simp.constant((0, 1), False)
         res_false = uniform_cond(pred_obj_false, then_fn, else_fn, x_obj)
     assert res_false.runtime_obj.values == [1, 4]
 
@@ -107,12 +107,9 @@ def test_while_loop_eager():
     get_or_create_context(world_size=2)
     interp = SimpSimulator(world_size=2)
 
-    start_val = HostVar([0, 0])
-    t_type = MPType(Tensor[i64, ()], parties=(0, 1))
-    start_obj = InterpObject(start_val, t_type, interp)
-
     # Eager call
     with interp:
+        start_obj = simp.constant((0, 1), 0)
         res = simp.while_loop(cond, body, start_obj)
 
     assert isinstance(res, InterpObject)

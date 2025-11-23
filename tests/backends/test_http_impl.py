@@ -32,9 +32,10 @@ def http_cluster():
     base_port = 19000
     endpoints = [f"http://127.0.0.1:{base_port + i}" for i in range(world_size)]
 
+    ctx = multiprocessing.get_context("spawn")
     processes = []
     for i in range(world_size):
-        p = multiprocessing.Process(
+        p = ctx.Process(
             target=run_worker, args=(i, world_size, endpoints, base_port + i)
         )
         p.start()
@@ -47,7 +48,11 @@ def http_cluster():
 
     for p in processes:
         p.terminate()
-        p.join()
+        p.join(timeout=2)
+        if p.is_alive():
+            logging.warning(f"Process {p.pid} did not terminate, killing it.")
+            p.kill()
+            p.join()
 
 
 def _add_fn(a, b):

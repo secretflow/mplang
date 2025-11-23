@@ -180,8 +180,19 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         raise RuntimeError(f"StableHLO execute failed: {e}") from e
 
 
+@tensor.gather_p.def_impl
+def gather_impl(
+    interpreter: Interpreter, op: Operation, operand: Any, indices: Any
+) -> Any:
+    axis = op.attrs.get("axis", 0)
+    # Ensure indices are integers (they might be JAX arrays or numpy arrays)
+    if hasattr(indices, "astype"):
+        indices = indices.astype(int)
+    return np.take(operand, indices, axis=axis)
+
+
 @tensor.slice_p.def_impl
-def slice_impl(interpreter: Interpreter, op: Operation, tensor_data: Any) -> Any:
+def slice_impl(interpreter: Interpreter, op: Operation, operand: Any) -> Any:
     starts = op.attrs["starts"]
     ends = op.attrs["ends"]
     strides = op.attrs.get("strides")
@@ -193,7 +204,12 @@ def slice_impl(interpreter: Interpreter, op: Operation, tensor_data: Any) -> Any
         stride = strides[i] if strides else 1
         slices.append(slice(start, end, stride))
 
-    return tensor_data[tuple(slices)]
+    # If operand is numpy array, we can slice directly
+    # If operand has more dimensions than slices provided, we assume full slice for remaining
+    if hasattr(operand, "ndim") and len(slices) < operand.ndim:
+        slices.append(Ellipsis)
+
+    return operand[tuple(slices)]
 
 
 @tensor.reshape_p.def_impl

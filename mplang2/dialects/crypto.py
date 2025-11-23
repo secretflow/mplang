@@ -89,7 +89,9 @@ def _random_scalar_ae(curve: str = "secp256k1") -> ScalarType:
 
 
 @scalar_from_int_p.def_abstract_eval
-def _scalar_from_int_ae(val: elt.BaseType, curve: str = "secp256k1") -> ScalarType:
+def _scalar_from_int_ae(
+    val: elt.TensorType | elt.IntegerType, curve: str = "secp256k1"
+) -> ScalarType:
     return ScalarType(curve)
 
 
@@ -123,60 +125,58 @@ def _select_ae(
 # ==============================================================================
 
 
-def ec_generator(curve: str = "secp256k1") -> el.graph.Value:
+def ec_generator(curve: str = "secp256k1") -> el.Object:
     """Get the generator point G for the curve."""
     return generator_p.bind(curve=curve)
 
 
-def ec_mul(point: el.graph.Value, scalar: el.graph.Value) -> el.graph.Value:
+def ec_mul(point: el.Object, scalar: el.Object) -> el.Object:
     """Scalar multiplication: point * scalar."""
     return mul_p.bind(point, scalar)
 
 
-def ec_add(p1: el.graph.Value, p2: el.graph.Value) -> el.graph.Value:
+def ec_add(p1: el.Object, p2: el.Object) -> el.Object:
     """Point addition: p1 + p2."""
     return add_p.bind(p1, p2)
 
 
-def ec_sub(p1: el.graph.Value, p2: el.graph.Value) -> el.graph.Value:
+def ec_sub(p1: el.Object, p2: el.Object) -> el.Object:
     """Point subtraction: p1 - p2."""
     return sub_p.bind(p1, p2)
 
 
-def ec_point_to_bytes(point: el.graph.Value) -> el.graph.Value:
+def ec_point_to_bytes(point: el.Object) -> el.Object:
     """Serialize point to bytes."""
     return point_to_bytes_p.bind(point)
 
 
-def ec_random_scalar(curve: str = "secp256k1") -> el.graph.Value:
+def ec_random_scalar(curve: str = "secp256k1") -> el.Object:
     """Generate a random scalar."""
     return random_scalar_p.bind(curve=curve)
 
 
-def ec_scalar_from_int(val: el.graph.Value, curve: str = "secp256k1") -> el.graph.Value:
+def ec_scalar_from_int(val: el.Object, curve: str = "secp256k1") -> el.Object:
     """Convert an integer tensor to a scalar."""
     return scalar_from_int_p.bind(val, curve=curve)
 
 
-def hash_bytes(data: el.graph.Value) -> el.graph.Value:
+def hash_bytes(data: el.Object) -> el.Object:
     """Hash bytes (SHA256). Returns 32-byte tensor."""
     return hash_p.bind(data)
 
 
-def sym_encrypt(key: el.graph.Value, plaintext: el.graph.Value) -> el.graph.Value:
+def sym_encrypt(key: el.Object, plaintext: el.Object) -> el.Object:
     """Symmetric encrypt (XOR stream or AES-GCM)."""
     return sym_encrypt_p.bind(key, plaintext)
 
 
 def sym_decrypt(
-    key: el.graph.Value, ciphertext: el.graph.Value, target_type: elt.BaseType
-) -> el.graph.Value:
+    key: el.Object, ciphertext: el.Object, target_type: elt.BaseType
+) -> el.Object:
     """Symmetric decrypt."""
     return sym_decrypt_p.bind(key, ciphertext, target_type=target_type)
 
 
-def select(
-    cond: el.graph.Value, true_val: el.graph.Value, false_val: el.graph.Value
-) -> el.graph.Value:
+def select(cond: el.Object, true_val: el.Object, false_val: el.Object) -> el.Object:
     """Select between two values based on condition."""
     return select_p.bind(cond, true_val, false_val)

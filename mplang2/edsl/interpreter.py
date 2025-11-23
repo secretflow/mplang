@@ -151,16 +151,17 @@ class Interpreter(Context):
 
         # Wrap result back to InterpObject
         # TODO: rebuild output structure from traced function
-        if isinstance(result_traced, list):
+        if isinstance(result_traced, (list, tuple)):
             # Multiple outputs
             if not isinstance(result_runtime, (list, tuple)):
                 raise RuntimeError(
                     f"Graph returned {len(result_traced)} outputs but interpret() returned single value"
                 )
-            return [
+            results = [
                 InterpObject(rt, tr.type, self)
                 for rt, tr in zip(result_runtime, result_traced, strict=True)
             ]
+            return type(result_traced)(results)
         else:
             # Single output
             return InterpObject(result_runtime, result_traced.type, self)

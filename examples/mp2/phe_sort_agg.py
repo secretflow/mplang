@@ -1,38 +1,49 @@
+import logging
+
 import jax.numpy as jnp
 import numpy as np
 
+# Import implementations to register them
+import mplang2.backends.phe_impl
+import mplang2.backends.tensor_impl
 import mplang2.dialects.phe as phe
 import mplang2.dialects.simp as simp
 import mplang2.dialects.tensor as tensor
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
-from mplang2.edsl.printer import GraphPrinter
+from mplang2.backends.simp_simulator import SimpSimulator
+
+# Ensure backend implementations are loaded (prevents unused import warnings)
+_ = mplang2.backends.phe_impl, mplang2.backends.tensor_impl
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
-def create_example():
-    # 1. Define the computation in a trace context
+def run_benchmark():
+    logger.info("Starting PHE Sort & Aggregate Benchmark")
+
+    # Larger dataset for benchmarking
+    N = 1000
+    K = 10
+
     with el.Tracer() as tracer:
         # --- Step 1: Data Setup (Distributed) ---
 
         # Party A (Rank 0) creates scores
         def create_scores():
-            return tensor.constant(
-                np.array([10.0, 50.0, 20.0, 40.0, 30.0], dtype=np.float32)
-            )
+            np.random.seed(42)
+            return tensor.constant(np.random.rand(N).astype(np.float32) * 100)
 
         scores = simp.pcall_static((0,), create_scores)
-        # Or we can use the following:
-        # scores = simp.pcall_static(
-        #     (0,),
-        #     tensor.constant,
-        #     np.array([10.0, 50.0, 20.0, 40.0, 30.0], dtype=np.float32),
-        # )
 
         # Party B (Rank 1) creates amounts
         def create_amounts():
-            return tensor.constant(
-                np.array([100.0, 500.0, 200.0, 400.0, 300.0], dtype=np.float32)
-            )
+            np.random.seed(43)
+            return tensor.constant(np.random.rand(N).astype(np.float32) * 1000)
 
         amounts = simp.pcall_static((1,), create_amounts)
 
@@ -48,7 +59,6 @@ def create_example():
             return enc_amounts, pk, sk, encoder
 
         # Execute on Party B (Rank 1)
-        # Note: pcall returns a tuple if the function returns a tuple
         enc_amounts, _pk, sk, encoder = simp.pcall_static(
             (1,), setup_and_encrypt, amounts
         )
@@ -59,7 +69,7 @@ def create_example():
         enc_amounts_at_a = simp.shuffle_static(enc_amounts, {0: 1})
 
         # --- Step 4: Sorting (Party A) ---
-        def sort_and_aggregate(scores_local, enc_amounts_local):
+        def sort_and_aggregate(scores_local, enc_amounts_local, k_val):
             # 1. Compute sort indices
             def argsort_desc(x):
                 return jnp.argsort(x)[::-1]
@@ -70,12 +80,11 @@ def create_example():
             sorted_enc = tensor.gather(enc_amounts_local, indices)
 
             # 3. Aggregate top K
-            K = 3
-            top_k = tensor.slice_tensor(sorted_enc, (0,), (K,))
+            top_k = tensor.slice_tensor(sorted_enc, (0,), (k_val,))
 
             # Sum top K
             total = tensor.slice_tensor(top_k, (0,), (1,))
-            for i in range(1, K):
+            for i in range(1, k_val):
                 next_elem = tensor.slice_tensor(top_k, (i,), (i + 1,))
                 total = phe.add(total, next_elem)
 
@@ -83,7 +92,7 @@ def create_example():
 
         # Execute on Party A (Rank 0)
         total_enc_at_a = simp.pcall_static(
-            (0,), sort_and_aggregate, scores, enc_amounts_at_a
+            (0,), sort_and_aggregate, scores, enc_amounts_at_a, K
         )
 
         # --- Step 5: Transfer Result to B for Decryption ---
@@ -100,22 +109,48 @@ def create_example():
             (1,), decrypt_result, total_enc_at_b, encoder, sk
         )
 
-        # Finalize the trace to get the execution graph
+        # Finalize the trace
         graph = tracer.finalize(final_result)
 
-        return graph
+    # Execute
+    sim = SimpSimulator(world_size=3)
+    try:
+        logger.info("Executing graph...")
+        result = sim.evaluate_graph(graph, {})
+        logger.info(f"Result: {result}")
 
+        # Verification
+        # Compute expected value
+        np.random.seed(42)
+        scores_data = np.random.rand(N).astype(np.float32) * 100
+        np.random.seed(43)
+        amounts_data = np.random.rand(N).astype(np.float32) * 1000
 
-def main():
-    print("Building PHE Sort & Aggregate Example (SIMP Dialect)...")
-    graph = create_example()
+        sorted_indices = np.argsort(scores_data)[::-1]
+        top_k_amounts = amounts_data[sorted_indices[:K]]
+        expected = float(np.sum(top_k_amounts))
 
-    print("\nExecution Graph:")
-    print("-" * 50)
-    printer = GraphPrinter()
-    print(printer.format(graph))
-    print("-" * 50)
+        # Result is on Party 1
+        actual_val = result[1]
+        # It might be an array or scalar
+        if hasattr(actual_val, "item"):
+            actual = float(actual_val.item())
+        elif isinstance(actual_val, (list, np.ndarray)):
+            actual = float(actual_val[0])
+        else:
+            actual = float(actual_val)
+
+        logger.info(f"Expected: {expected}")
+        logger.info(f"Actual:   {actual}")
+
+        if abs(actual - expected) < 1e-2:
+            logger.info("SUCCESS: Result matches expectation!")
+        else:
+            logger.info("FAILURE: Result mismatch!")
+
+    finally:
+        sim.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    run_benchmark()

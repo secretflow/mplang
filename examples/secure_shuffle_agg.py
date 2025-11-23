@@ -9,11 +9,9 @@ This example demonstrates two advanced MPC/HE capabilities:
 import jax.numpy as jnp
 import numpy as np
 
-from mplang2.backends.simp_host import HostVar
+import mplang2.backends.crypto_impl  # noqa: F401
 from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
 from mplang2.dialects import bfv, simp, tensor
-from mplang2.edsl.interpreter import InterpObject
-from mplang2.edsl.typing import MPType, i64
 from mplang2.libs import aggregation, permutation
 
 
@@ -48,21 +46,6 @@ def run_secure_permutation(interp):
     print(f"Sender (P0) Data: {data_n2}")
     print(f"Receiver (P1) Permutation: {perm_n2}")
 
-    # Create HostVars
-    d0_val = HostVar([data_n2[0], None])
-    d1_val = HostVar([data_n2[1], None])
-
-    # Permutation is passed as a Tensor to P1
-    # We need to construct it on P1.
-    # We'll pass p0, p1 as scalars.
-    p0_val = HostVar([None, perm_n2[0]])
-    p1_val = HostVar([None, perm_n2[1]])
-
-    d0_obj = InterpObject(d0_val, MPType(i64, (0,)), interp)
-    d1_obj = InterpObject(d1_val, MPType(i64, (0,)), interp)
-    p0_obj = InterpObject(p0_val, MPType(i64, (1,)), interp)
-    p1_obj = InterpObject(p1_val, MPType(i64, (1,)), interp)
-
     def protocol(d0, d1, p0, p1):
         # Construct permutation tensor on P1
         def make_perm(a, b):
@@ -74,6 +57,11 @@ def run_secure_permutation(interp):
         return permutation.apply_permutation([d0, d1], perm, sender=0, receiver=1)
 
     with interp:
+        d0_obj = simp.constant((0,), data_n2[0])
+        d1_obj = simp.constant((0,), data_n2[1])
+        p0_obj = simp.constant((1,), perm_n2[0])
+        p1_obj = simp.constant((1,), perm_n2[1])
+
         res = protocol(d0_obj, d1_obj, p0_obj, p1_obj)
 
     # Result is on P1

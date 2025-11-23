@@ -2,12 +2,10 @@
 
 import jax.numpy as jnp
 
+import mplang2.backends.crypto_impl
 import mplang2.backends.tensor_impl  # noqa: F401
-from mplang2.backends.simp_host import HostVar
 from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
 from mplang2.dialects import simp, tensor
-from mplang2.edsl.interpreter import InterpObject
-from mplang2.edsl.typing import MPType, i64
 from mplang2.libs import permutation
 
 
@@ -22,15 +20,11 @@ def test_secure_switch_straight():
     def protocol(x0, x1, c):
         return permutation.secure_switch(x0, x1, c, sender=0, receiver=1)
 
-    x0_val = HostVar([10, None])
-    x1_val = HostVar([20, None])
-    c_val = HostVar([None, 0])
-
-    x0_obj = InterpObject(x0_val, MPType(i64, (0,)), interp)
-    x1_obj = InterpObject(x1_val, MPType(i64, (0,)), interp)
-    c_obj = InterpObject(c_val, MPType(i64, (1,)), interp)
-
     with interp:
+        x0_obj = simp.constant((0,), 10)
+        x1_obj = simp.constant((0,), 20)
+        c_obj = simp.constant((1,), 0)
+
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
     assert y0.runtime_obj.values[1] == 10
@@ -48,15 +42,11 @@ def test_secure_switch_swap():
     def protocol(x0, x1, c):
         return permutation.secure_switch(x0, x1, c, sender=0, receiver=1)
 
-    x0_val = HostVar([10, None])
-    x1_val = HostVar([20, None])
-    c_val = HostVar([None, 1])
-
-    x0_obj = InterpObject(x0_val, MPType(i64, (0,)), interp)
-    x1_obj = InterpObject(x1_val, MPType(i64, (0,)), interp)
-    c_obj = InterpObject(c_val, MPType(i64, (1,)), interp)
-
     with interp:
+        x0_obj = simp.constant((0,), 10)
+        x1_obj = simp.constant((0,), 20)
+        c_obj = simp.constant((1,), 1)
+
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
     assert y0.runtime_obj.values[1] == 20
@@ -88,18 +78,15 @@ def test_apply_permutation_n2():
 
         return permutation.apply_permutation(data, perm, sender=0, receiver=1)
 
-    d0_val = HostVar([10, None])
-    d1_val = HostVar([20, None])
-    p0_val = HostVar([None, 1])
-    p1_val = HostVar([None, 0])
-
-    d0_obj = InterpObject(d0_val, MPType(i64, (0,)), interp)
-    d1_obj = InterpObject(d1_val, MPType(i64, (0,)), interp)
-    p0_obj = InterpObject(p0_val, MPType(i64, (1,)), interp)
-    p1_obj = InterpObject(p1_val, MPType(i64, (1,)), interp)
-
     with interp:
+        d0_obj = simp.constant((0,), 10)
+        d1_obj = simp.constant((0,), 20)
+        p0_obj = simp.constant((1,), 1)
+        p1_obj = simp.constant((1,), 0)
+
         res = protocol(d0_obj, d1_obj, p0_obj, p1_obj)
+
+    # res is a list of Objects on Receiver
 
     assert res[0].runtime_obj.values[1] == 20
     assert res[1].runtime_obj.values[1] == 10

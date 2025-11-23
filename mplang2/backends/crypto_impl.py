@@ -10,16 +10,6 @@ import jax.numpy as jnp
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from mplang2.dialects import crypto
-from mplang2.edsl.registry import register_impl as _register_impl_fn
-
-
-def register_impl(opcode: str):
-    def wrapper(fn):
-        _register_impl_fn(opcode, fn)
-        return fn
-
-    return wrapper
-
 
 # --- ECC Impl (Coincurve) ---
 
@@ -27,7 +17,7 @@ def register_impl(opcode: str):
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 
-@register_impl(crypto.generator_p.name)
+@crypto.generator_p.def_impl
 def generator_impl(interpreter: Any, op: Any) -> Any:
     # Compressed G
     g_bytes = bytes.fromhex(
@@ -36,7 +26,7 @@ def generator_impl(interpreter: Any, op: Any) -> Any:
     return coincurve.PublicKey(g_bytes)
 
 
-@register_impl(crypto.mul_p.name)
+@crypto.mul_p.def_impl
 def mul_impl(interpreter: Any, op: Any, point: Any, scalar: Any) -> Any:
     s_val = scalar
     if hasattr(s_val, "item"):
@@ -54,7 +44,7 @@ def mul_impl(interpreter: Any, op: Any, point: Any, scalar: Any) -> Any:
     return point.multiply(s_bytes)
 
 
-@register_impl(crypto.add_p.name)
+@crypto.add_p.def_impl
 def add_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
     if p1 is None:
         return p2
@@ -63,7 +53,7 @@ def add_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
     return p1.combine([p2])
 
 
-@register_impl(crypto.sub_p.name)
+@crypto.sub_p.def_impl
 def sub_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
     # p1 - p2 = p1 + (p2 * -1)
     if p2 is None:
@@ -78,17 +68,17 @@ def sub_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
     return p1.combine([p2_neg])
 
 
-@register_impl(crypto.random_scalar_p.name)
+@crypto.random_scalar_p.def_impl
 def random_scalar_impl(interpreter: Any, op: Any) -> Any:
     return int.from_bytes(os.urandom(32), "big") % N
 
 
-@register_impl(crypto.scalar_from_int_p.name)
+@crypto.scalar_from_int_p.def_impl
 def scalar_from_int_impl(interpreter: Any, op: Any, val: Any) -> Any:
     return int(val)
 
 
-@register_impl(crypto.point_to_bytes_p.name)
+@crypto.point_to_bytes_p.def_impl
 def point_to_bytes_impl(interpreter: Any, op: Any, point: Any) -> Any:
     if point is None:
         # Infinity / Identity -> Zeros
@@ -106,7 +96,7 @@ def point_to_bytes_impl(interpreter: Any, op: Any, point: Any) -> Any:
 # --- Sym / Hash Impl ---
 
 
-@register_impl(crypto.hash_p.name)
+@crypto.hash_p.def_impl
 def hash_impl(interpreter: Any, op: Any, data: Any) -> Any:
     d = data
     if hasattr(d, "tobytes"):
@@ -119,7 +109,7 @@ def hash_impl(interpreter: Any, op: Any, data: Any) -> Any:
     return arr
 
 
-@register_impl(crypto.sym_encrypt_p.name)
+@crypto.sym_encrypt_p.def_impl
 def sym_encrypt_impl(interpreter: Any, op: Any, key: Any, plaintext: Any) -> Any:
     k = key
     if hasattr(k, "tobytes"):
@@ -143,7 +133,7 @@ def sym_encrypt_impl(interpreter: Any, op: Any, key: Any, plaintext: Any) -> Any
     return arr
 
 
-@register_impl(crypto.sym_decrypt_p.name)
+@crypto.sym_decrypt_p.def_impl
 def sym_decrypt_impl(
     interpreter: Any,
     op: Any,
@@ -171,7 +161,7 @@ def sym_decrypt_impl(
     return pt
 
 
-@register_impl(crypto.select_p.name)
+@crypto.select_p.def_impl
 def select_impl(
     interpreter: Any, op: Any, cond: Any, true_val: Any, false_val: Any
 ) -> Any:

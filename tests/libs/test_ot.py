@@ -1,10 +1,9 @@
 """Tests for OT library."""
 
+import mplang2.backends.crypto_impl
 import mplang2.backends.tensor_impl  # noqa: F401
-from mplang2.backends.simp_host import HostVar
 from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
-from mplang2.edsl.interpreter import InterpObject
-from mplang2.edsl.typing import MPType, i64
+from mplang2.dialects import simp
 from mplang2.libs import ot
 
 
@@ -26,21 +25,17 @@ def test_ot_transfer_basic():
 
     # Setup inputs
     # m0, m1 on Party 0
-    m0_val = HostVar([10, None])  # Party 0 has 10
-    m1_val = HostVar([20, None])
-
     # choice on Party 1
-    choice_val = HostVar([None, 1])  # Party 1 has 1
-
-    m0_obj = InterpObject(m0_val, MPType(i64, (0,)), interp)
-    m1_obj = InterpObject(m1_val, MPType(i64, (0,)), interp)
-    choice_obj = InterpObject(choice_val, MPType(i64, (1,)), interp)
 
     with interp:
         # In the library approach, `ot.transfer` internally uses `pcall` and `shuffle`.
         # So we can call it directly if we are in a tracing context, or if we are just running it.
         # However, `ot.transfer` expects `el.Object`s.
         # Since we are running in eager mode (Simulator), we can call it directly with InterpObjects.
+
+        m0_obj = simp.constant((0,), 10)
+        m1_obj = simp.constant((0,), 20)
+        choice_obj = simp.constant((1,), 1)
 
         res = protocol(m0_obj, m1_obj, choice_obj)
 
@@ -58,15 +53,11 @@ def test_ot_transfer_choice_0():
     def protocol(m0, m1, choice):
         return ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-    m0_val = HostVar([10, None])
-    m1_val = HostVar([20, None])
-    choice_val = HostVar([None, 0])  # Choice 0
-
-    m0_obj = InterpObject(m0_val, MPType(i64, (0,)), interp)
-    m1_obj = InterpObject(m1_val, MPType(i64, (0,)), interp)
-    choice_obj = InterpObject(choice_val, MPType(i64, (1,)), interp)
-
     with interp:
+        m0_obj = simp.constant((0,), 10)
+        m1_obj = simp.constant((0,), 20)
+        choice_obj = simp.constant((1,), 0)  # Choice 0
+
         res = protocol(m0_obj, m1_obj, choice_obj)
 
     assert res.runtime_obj.values[1] == 10

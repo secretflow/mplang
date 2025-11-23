@@ -79,7 +79,10 @@ def _sub_ae(p1: PointType, p2: PointType) -> PointType:
 
 
 @point_to_bytes_p.def_abstract_eval
-def _pt_to_bytes_ae(point: PointType) -> elt.TensorType:
+def _pt_to_bytes_ae(point: elt.BaseType) -> elt.TensorType:
+    if isinstance(point, elt.TensorType):
+        # Vectorized behavior: Tensor[Point, shape] -> Tensor[u8, shape + (64,)]
+        return elt.TensorType(elt.u8, point.shape + (64,))
     return elt.TensorType(elt.u8, (64,))
 
 

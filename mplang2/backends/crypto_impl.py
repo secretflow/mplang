@@ -55,17 +55,20 @@ def add_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
 
 @crypto.sub_p.def_impl
 def sub_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
-    # p1 - p2 = p1 + (p2 * -1)
+    # p1 - p2 = p1 + (-p2)
     if p2 is None:
         return p1
 
-    neg_1 = (N - 1).to_bytes(32, "big")
-    p2_neg = p2.multiply(neg_1)
+    # Negate p2
+    # coincurve doesn't have direct negate?
+    # We can multiply by -1 (N-1)
+    neg_scalar = (N - 1).to_bytes(32, "big")
+    neg_p2 = p2.multiply(neg_scalar)
 
     if p1 is None:
-        return p2_neg
+        return neg_p2
 
-    return p1.combine([p2_neg])
+    return p1.combine([neg_p2])
 
 
 @crypto.random_scalar_p.def_impl
@@ -139,6 +142,7 @@ def sym_decrypt_impl(
     op: Any,
     key: Any,
     ciphertext: Any,
+    target_type: Any = None,
 ) -> Any:
     k = key
     if hasattr(k, "tobytes"):

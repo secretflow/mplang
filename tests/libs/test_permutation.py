@@ -1,0 +1,105 @@
+"""Tests for Permutation Network library."""
+
+import jax.numpy as jnp
+
+import mplang2.backends.tensor_impl  # noqa: F401
+from mplang2.backends.simp_host import HostVar
+from mplang2.backends.simp_simulator import SimpSimulator, get_or_create_context
+from mplang2.dialects import simp, tensor
+from mplang2.edsl.interpreter import InterpObject
+from mplang2.edsl.typing import MPType, i64
+from mplang2.libs import permutation
+
+
+def test_secure_switch_straight():
+    # World size 2: Party 0 (Sender), Party 1 (Receiver)
+    interp = SimpSimulator(world_size=2)
+    get_or_create_context(2)
+
+    # Sender: x0=10, x1=20
+    # Receiver: c=0 (Straight) -> y0=10, y1=20
+
+    def protocol(x0, x1, c):
+        return permutation.secure_switch(x0, x1, c, sender=0, receiver=1)
+
+    x0_val = HostVar([10, None])
+    x1_val = HostVar([20, None])
+    c_val = HostVar([None, 0])
+
+    x0_obj = InterpObject(x0_val, MPType(i64, (0,)), interp)
+    x1_obj = InterpObject(x1_val, MPType(i64, (0,)), interp)
+    c_obj = InterpObject(c_val, MPType(i64, (1,)), interp)
+
+    with interp:
+        y0, y1 = protocol(x0_obj, x1_obj, c_obj)
+
+    assert y0.runtime_obj.values[1] == 10
+    assert y1.runtime_obj.values[1] == 20
+
+
+def test_secure_switch_swap():
+    # World size 2: Party 0 (Sender), Party 1 (Receiver)
+    interp = SimpSimulator(world_size=2)
+    get_or_create_context(2)
+
+    # Sender: x0=10, x1=20
+    # Receiver: c=1 (Swap) -> y0=20, y1=10
+
+    def protocol(x0, x1, c):
+        return permutation.secure_switch(x0, x1, c, sender=0, receiver=1)
+
+    x0_val = HostVar([10, None])
+    x1_val = HostVar([20, None])
+    c_val = HostVar([None, 1])
+
+    x0_obj = InterpObject(x0_val, MPType(i64, (0,)), interp)
+    x1_obj = InterpObject(x1_val, MPType(i64, (0,)), interp)
+    c_obj = InterpObject(c_val, MPType(i64, (1,)), interp)
+
+    with interp:
+        y0, y1 = protocol(x0_obj, x1_obj, c_obj)
+
+    assert y0.runtime_obj.values[1] == 20
+    assert y1.runtime_obj.values[1] == 10
+
+
+def test_apply_permutation_n2():
+    # World size 2
+    interp = SimpSimulator(world_size=2)
+    get_or_create_context(2)
+
+    # Sender: data=[10, 20]
+    # Receiver: perm=[1, 0] (Swap) -> [20, 10]
+
+    def protocol(d0, d1, p0, p1):
+        data = [d0, d1]
+        # Pack permutation into a tensor/list
+        # In this test, we pass individual elements to construct the list
+        # But apply_permutation expects a list of Objects.
+        # And permutation is expected to be an Object (Tensor) or list of Objects?
+        # The implementation expects `permutation` to be an Object (Tensor) in `get_control_bit`.
+
+        # Let's construct the permutation tensor on Receiver
+
+        def make_perm(a, b):
+            return tensor.run_jax(lambda x, y: jnp.array([x, y]), a, b)
+
+        perm = simp.pcall_static((1,), make_perm, p0, p1)
+
+        return permutation.apply_permutation(data, perm, sender=0, receiver=1)
+
+    d0_val = HostVar([10, None])
+    d1_val = HostVar([20, None])
+    p0_val = HostVar([None, 1])
+    p1_val = HostVar([None, 0])
+
+    d0_obj = InterpObject(d0_val, MPType(i64, (0,)), interp)
+    d1_obj = InterpObject(d1_val, MPType(i64, (0,)), interp)
+    p0_obj = InterpObject(p0_val, MPType(i64, (1,)), interp)
+    p1_obj = InterpObject(p1_val, MPType(i64, (1,)), interp)
+
+    with interp:
+        res = protocol(d0_obj, d1_obj, p0_obj, p1_obj)
+
+    assert res[0].runtime_obj.values[1] == 20
+    assert res[1].runtime_obj.values[1] == 10

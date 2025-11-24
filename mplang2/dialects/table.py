@@ -226,7 +226,7 @@ def constant(data: dict[str, list]) -> el.Object:
         >>> df = pd.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})
         >>> table = constant(df)
     """
-    return constant_p.bind(data)  # type: ignore[no-any-return]
+    return constant_p.bind(data=data)  # type: ignore[no-any-return]
 
 
 __all__ = [

@@ -9,10 +9,9 @@ Security: Computational security based on ECDH.
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 
+import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang2.dialects import crypto, simp, tensor
 
@@ -75,11 +74,15 @@ def _receiver_derive_key(U0, U1, PK0, k, b):
     # Recover Shared Secret K = U^k
     K_point = crypto.ec_mul(U, k)
     return K_point
-    # We assume target_type is handled by the primitive or not needed for scalar.
-    return crypto.sym_decrypt(sym_key, V, target_type)
 
 
-def transfer(m0: Any, m1: Any, choice: Any, sender: int, receiver: int) -> Any:
+def transfer(
+    m0: el.Object,
+    m1: el.Object,
+    choice: el.Object,
+    sender: int,
+    receiver: int,
+) -> el.Object:
     """Perform 1-out-of-2 Oblivious Transfer (Naor-Pinkas).
 
     Args:
@@ -92,6 +95,9 @@ def transfer(m0: Any, m1: Any, choice: Any, sender: int, receiver: int) -> Any:
     Returns:
         The selected message (on Receiver).
     """
+    assert isinstance(m0, el.Object) and isinstance(m0.type, elt.MPType)
+    assert isinstance(m1, el.Object) and isinstance(m1.type, elt.MPType)
+    assert isinstance(choice, el.Object) and isinstance(choice.type, elt.MPType)
 
     # --- Step 1: Sender Initialization ---
     def sender_init_fn():
@@ -113,13 +119,7 @@ def transfer(m0: Any, m1: Any, choice: Any, sender: int, receiver: int) -> Any:
 
     # --- Step 1: Receiver Key Generation ---
     def receiver_keygen_fn(C_point, b):
-        # Check if inputs are tensors
-        is_tensor = isinstance(b.type, elt.TensorType)
-
-        if is_tensor:
-            return tensor.elementwise(_receiver_keygen_scalar, C_point, b)
-        else:
-            return _receiver_keygen_scalar(C_point, b)
+        return tensor.elementwise(_receiver_keygen_scalar, C_point, b)
 
     # Returns (PK0, k) on receiver
     keys_recv = simp.pcall_static((receiver,), receiver_keygen_fn, C_recv, choice)
@@ -133,27 +133,20 @@ def transfer(m0: Any, m1: Any, choice: Any, sender: int, receiver: int) -> Any:
 
     # --- Step 3: Sender Encryption ---
     def sender_encrypt_fn(C_point, PK0_point, msg0, msg1):
-        # 1. Derive keys (Scalar arithmetic on Points)
-        # Use elementwise to handle TensorType(PointType) inputs
-        # elementwise returns a PyTree (tuple of Tensors)
-        keys_tuple = tensor.elementwise(_sender_derive_keys, C_point, PK0_point)
-        U0, K0, U1, K1 = keys_tuple
+        def encrypt_elementwise(c, pk0, m0, m1):
+            u0, k0, u1, k1 = _sender_derive_keys(c, pk0)
 
-        # 2. Convert keys to bytes and hash (Vectorized ops)
-        # K0, K1 are TensorType(PointType, shape)
-        # point_to_bytes handles TensorType input
-        K0_bytes = crypto.ec_point_to_bytes(K0)
-        K1_bytes = crypto.ec_point_to_bytes(K1)
+            kb0 = crypto.ec_point_to_bytes(k0)
+            kb1 = crypto.ec_point_to_bytes(k1)
 
-        sym_key0 = crypto.hash_bytes(K0_bytes)
-        sym_key1 = crypto.hash_bytes(K1_bytes)
+            sk0 = crypto.hash_bytes(kb0)
+            sk1 = crypto.hash_bytes(kb1)
 
-        # 3. Encrypt (Vectorized op)
-        # sym_encrypt handles TensorType inputs
-        ct0 = crypto.sym_encrypt(sym_key0, msg0)
-        ct1 = crypto.sym_encrypt(sym_key1, msg1)
+            c0 = crypto.sym_encrypt(sk0, m0)
+            c1 = crypto.sym_encrypt(sk1, m1)
+            return u0, c0, u1, c1
 
-        return U0, ct0, U1, ct1
+        return tensor.elementwise(encrypt_elementwise, C_point, PK0_point, msg0, msg1)
 
     ciphertexts = simp.pcall_static((sender,), sender_encrypt_fn, C, PK0_sender, m0, m1)
 
@@ -172,21 +165,14 @@ def transfer(m0: Any, m1: Any, choice: Any, sender: int, receiver: int) -> Any:
         PK0, k = keys
         U0, V0, U1, V1 = c_texts
 
-        # 1. Derive shared secret (Scalar arithmetic on Points)
-        # Use elementwise to handle TensorType inputs
-        K_point = tensor.elementwise(_receiver_derive_key, U0, U1, PK0, k, b)
+        def decrypt_elementwise(u0, v0, u1, v1, pk0, k_priv, sel):
+            k_pt = _receiver_derive_key(u0, u1, pk0, k_priv, sel)
+            kb = crypto.ec_point_to_bytes(k_pt)
+            sk = crypto.hash_bytes(kb)
+            v = crypto.select(sel, v1, v0)
+            return crypto.sym_decrypt(sk, v, target_type)
 
-        # 2. Derive key (Vectorized ops)
-        K_bytes = crypto.ec_point_to_bytes(K_point)
-        sym_key = crypto.hash_bytes(K_bytes)
-
-        # 3. Select ciphertext (Vectorized op)
-        # V0, V1 are ciphertexts (TensorType(u8, ...))
-        # b is selection bit (TensorType(i64, ...))
-        V = crypto.select(b, V1, V0)
-
-        # 4. Decrypt (Vectorized op)
-        return crypto.sym_decrypt(sym_key, V, target_type)
+        return tensor.elementwise(decrypt_elementwise, U0, V0, U1, V1, PK0, k, b)
 
     result = simp.pcall_static(
         (receiver,), receiver_decrypt_fn, ciphertexts_recv, keys_recv, choice

@@ -57,6 +57,7 @@ Example:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -247,7 +248,7 @@ class Graph:
         self,
         opcode: str,
         inputs: list[Value],
-        output_types: list[BaseType] | None = None,
+        output_types: Sequence[BaseType] | None = None,
         attrs: dict[str, Any] | None = None,
         regions: list[Graph] | None = None,
     ) -> list[Value]:

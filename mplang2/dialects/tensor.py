@@ -463,7 +463,7 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
 
     Raises:
         ValueError: If fn captures variables or tensor shapes don't match
-        TypeError: If no tensor arguments provided or outputs contain non-scalar types
+        TypeError: If outputs contain non-scalar types
     """
     tracer = _current_tracer()
 
@@ -477,13 +477,12 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
 
     # Get result shape from the tracer (set by first tensor in _lift)
     if element_tracer._tensor_shape is None:
-        # If no tensor arguments were found, but we are here, it means we only had
-        # non-tensor arguments (scalars/custom types) which _lift passed through.
-        # But elementwise requires at least one TensorType argument (even if 0-d).
-        # Wait, if we passed a 0-d tensor, _tensor_shape would be ().
-        # So if it is None, it means NO TensorType args were passed.
-        raise TypeError("elementwise requires at least one TensorType argument")
-    result_shape = element_tracer._tensor_shape
+        # If no tensor arguments were found, it means we only had
+        # non-tensor arguments (scalars/custom types).
+        # Degrade to scalar operation (shape ()).
+        result_shape = ()
+    else:
+        result_shape = element_tracer._tensor_shape
 
     # Check that fn doesn't capture variables (closure-free requirement)
     if traced_fn.captured:
@@ -555,13 +554,15 @@ def elementwise(fn: Callable[..., Any], *inputs: el.Object, **kwargs: Any) -> el
     dependencies must be passed as explicit arguments. This ensures the
     computation graph captures all data dependencies.
 
+    Type Promotion Rule:
+        If all arguments are scalars, the result will be lifted to a rank-0 tensor (shape=()).
+
     Args:
         fn: Callable/traceable function operating on scalar elements.
             Can be a lambda, regular function, or Primitive.bind.
             Must not capture variables (closure-free).
             Must return ScalarType values - no tensor nesting.
         *inputs: Tensor or Scalar arguments to pass to fn.
-            At least one Tensor input is required.
             All tensor inputs must have the same shape.
         **kwargs: Keyword arguments to pass to fn
 
@@ -572,7 +573,7 @@ def elementwise(fn: Callable[..., Any], *inputs: el.Object, **kwargs: Any) -> el
 
     Raises:
         ValueError: If fn captures variables or tensor shapes don't match
-        TypeError: If no tensor arguments provided, or fn returns non-scalar types
+        TypeError: If fn returns non-scalar types
 
     Example:
         >>> # Element-wise addition with lambda

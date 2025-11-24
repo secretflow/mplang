@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 
-run_sql_p = el.Primitive("table.run_sql")
-table2tensor_p = el.Primitive("table.table2tensor")
-tensor2table_p = el.Primitive("table.tensor2table")
-constant_p = el.Primitive("table.constant")
+run_sql_p: el.Primitive[Any] = el.Primitive("table.run_sql")
+table2tensor_p: el.Primitive[el.Object] = el.Primitive("table.table2tensor")
+tensor2table_p: el.Primitive[el.Object] = el.Primitive("table.tensor2table")
+constant_p: el.Primitive[el.Object] = el.Primitive("table.constant")
 
 
 def _current_tracer() -> el.Tracer:
@@ -135,16 +137,16 @@ def run_sql(
     )
 
 
-def table2tensor(table: el.TraceObject, *, number_rows: int) -> el.TraceObject:
+def table2tensor(table: el.TraceObject, *, number_rows: int) -> el.Object:
     """Convert a homogeneous table into a dense tensor."""
 
-    return table2tensor_p.bind(table, number_rows=number_rows)  # type: ignore[no-any-return]
+    return table2tensor_p.bind(table, number_rows=number_rows)
 
 
-def tensor2table(tensor: el.TraceObject, *, column_names: list[str]) -> el.TraceObject:
+def tensor2table(tensor: el.TraceObject, *, column_names: list[str]) -> el.Object:
     """Convert a rank-2 tensor (N, F) into a table with named columns."""
 
-    return tensor2table_p.bind(tensor, column_names=column_names)  # type: ignore[no-any-return]
+    return tensor2table_p.bind(tensor, column_names=column_names)
 
 
 @constant_p.def_abstract_eval
@@ -173,7 +175,7 @@ def _constant_ae(data: dict[str, list]) -> elt.TableType:
 
         # Map pandas dtypes to EDSL scalar types
         if pd_dtype == "bool":
-            col_type = elt.TensorType(elt.i8, ())
+            col_type: elt.TensorType = elt.TensorType(elt.i8, ())
         elif pd_dtype in ("int64", "Int64"):
             col_type = elt.TensorType(elt.i64, ())
         elif pd_dtype in ("int32", "Int32"):

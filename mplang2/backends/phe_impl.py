@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from lightphe import LightPHE
 from lightphe.models.Ciphertext import Ciphertext
@@ -25,7 +25,7 @@ class PHEContext:
         return self.cs.encrypt(value)
 
     def decrypt(self, ct: Ciphertext) -> int:
-        return self.cs.decrypt(ct)
+        return cast(int, self.cs.decrypt(ct))
 
 
 @dataclass

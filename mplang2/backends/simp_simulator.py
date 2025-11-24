@@ -56,7 +56,7 @@ class Context:
             comm.set_peers(self.comms)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
 
-    def shutdown(self, wait: bool = True):
+    def shutdown(self, wait: bool = True) -> None:
         self.executor.shutdown(wait=wait)
 
 
@@ -97,7 +97,7 @@ class SimpSimulator(SimpHost):
         worker = self.workers[rank]
         return worker.evaluate_graph(graph, inputs)
 
-    def shutdown(self, wait: bool = True):
+    def shutdown(self, wait: bool = True) -> None:
         global _SIM_CONTEXT
         if self.ctx:
             self.ctx.shutdown(wait=wait)

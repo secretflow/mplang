@@ -2,25 +2,22 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 # Register implementations
 from mplang2.dialects import simp
 from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter
 
-if TYPE_CHECKING:
-    from mplang2.backends.simp_simulator import ThreadCommunicator
-
 
 class WorkerInterpreter(Interpreter):
     """Interpreter running on a single party (worker)."""
 
-    def __init__(self, rank: int, world_size: int, communicator: ThreadCommunicator):
+    def __init__(self, rank: int, world_size: int, communicator: Any):
         super().__init__()
         self.rank = rank
         self.world_size = world_size
-        self.communicator = communicator
+        self.communicator: Any = communicator
 
 
 @simp.pcall_static_p.def_impl

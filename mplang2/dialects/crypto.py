@@ -38,19 +38,19 @@ class ScalarType(elt.BaseType):
 # ==============================================================================
 
 # ECC
-generator_p = el.Primitive("crypto.ec_generator")
-mul_p = el.Primitive("crypto.ec_mul")
-add_p = el.Primitive("crypto.ec_add")
-sub_p = el.Primitive("crypto.ec_sub")
-point_to_bytes_p = el.Primitive("crypto.ec_point_to_bytes")
-random_scalar_p = el.Primitive("crypto.ec_random_scalar")
-scalar_from_int_p = el.Primitive("crypto.ec_scalar_from_int")
+generator_p = el.Primitive[el.Object]("crypto.ec_generator")
+mul_p = el.Primitive[el.Object]("crypto.ec_mul")
+add_p = el.Primitive[el.Object]("crypto.ec_add")
+sub_p = el.Primitive[el.Object]("crypto.ec_sub")
+point_to_bytes_p = el.Primitive[el.Object]("crypto.ec_point_to_bytes")
+random_scalar_p = el.Primitive[el.Object]("crypto.ec_random_scalar")
+scalar_from_int_p = el.Primitive[el.Object]("crypto.ec_scalar_from_int")
 
 # Symmetric / Hash
-hash_p = el.Primitive("crypto.hash")
-sym_encrypt_p = el.Primitive("crypto.sym_encrypt")
-sym_decrypt_p = el.Primitive("crypto.sym_decrypt")
-select_p = el.Primitive("crypto.select")
+hash_p = el.Primitive[el.Object]("crypto.hash")
+sym_encrypt_p = el.Primitive[el.Object]("crypto.sym_encrypt")
+sym_decrypt_p = el.Primitive[el.Object]("crypto.sym_decrypt")
+select_p = el.Primitive[el.Object]("crypto.select")
 
 
 # ==============================================================================

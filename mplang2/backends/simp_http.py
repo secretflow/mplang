@@ -53,7 +53,7 @@ class HttpCommunicator:
             logger.debug(f"Rank {self.rank} received from {frm} key={key}")
             return self._mailbox.pop(key)
 
-    def on_receive(self, key: str, data: Any):
+    def on_receive(self, key: str, data: Any) -> None:
         logger.debug(f"Rank {self.rank} on_receive key={key}")
         with self._cond:
             if key in self._mailbox:
@@ -80,7 +80,7 @@ def create_worker_app(rank: int, world_size: int, endpoints: list[str]) -> FastA
     worker = WorkerInterpreter(rank, world_size, comm)
 
     @app.post("/exec")
-    def execute(req: ExecRequest):
+    def execute(req: ExecRequest) -> dict[str, str]:
         logger.debug(f"Worker {rank} received exec request")
         try:
             graph = pickle.loads(base64.b64decode(req.graph_pkl))
@@ -93,7 +93,7 @@ def create_worker_app(rank: int, world_size: int, endpoints: list[str]) -> FastA
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.put("/comm/{key}")
-    async def receive_comm(key: str, req: CommRequest):
+    async def receive_comm(key: str, req: CommRequest) -> dict[str, str]:
         logger.debug(f"Worker {rank} received comm key={key} from {req.from_rank}")
         try:
             data = pickle.loads(base64.b64decode(req.data))
@@ -140,5 +140,5 @@ class HttpHost(SimpHost):
             logger.error(f"Host failed to execute on rank {rank}: {e}")
             raise RuntimeError(f"Failed to execute on rank {rank}: {e}") from e
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.executor.shutdown()

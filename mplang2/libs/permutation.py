@@ -44,7 +44,7 @@ def secure_switch(
 
     # y1 = select(x0, x1, 1-c)
     # Compute 1-c locally on receiver
-    def invert_bit(c):
+    def invert_bit(c: Any) -> Any:
         return tensor.run_jax(lambda x: 1 - x, c)
 
     inv_control_bit = simp.pcall_static((receiver,), invert_bit, control_bit)
@@ -80,6 +80,7 @@ def _compute_benes_network_controls(permutation: list[int] | Any) -> list[list[i
     # Benes network recursive construction.
     # We need to decompose the permutation into two sub-permutations
     # for the upper and lower sub-networks.
+    raise NotImplementedError("Benes network control computation not implemented")
 
 
 def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -> Any:
@@ -100,7 +101,7 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
     n = target_type.shape[0]
 
     # Compute controls (on Receiver)
-    def compute_flat_controls(perm):
+    def compute_flat_controls(perm: Any) -> Any:
         controls = _compute_benes_network_controls(perm)
         flat = []
         for stage in controls:
@@ -110,7 +111,7 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
     flat_controls = simp.pcall_static((receiver,), compute_flat_controls, permutation)
 
     # Helper functions to simplify the recursion and optimize control inversion
-    def split_evens_odds(x):
+    def split_evens_odds(x: Any) -> tuple[Any, Any]:
         typ = x.type
         parties = typ.parties if isinstance(typ, elt.MPType) else None
         if parties is not None:
@@ -125,8 +126,8 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
             odds = tensor.run_jax(lambda a: a[1::2], x)
         return evens, odds
 
-    def interleave(a, b):
-        def _impl(x, y):
+    def interleave(a: Any, b: Any) -> Any:
+        def _impl(x: Any, y: Any) -> Any:
             return tensor.run_jax(
                 lambda u, v: jnp.ravel(jnp.column_stack((u, v))), x, y
             )
@@ -138,10 +139,10 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
         else:
             return _impl(a, b)
 
-    def apply_switch(x0, x1, ctrls):
+    def apply_switch(x0: Any, x1: Any, ctrls: Any) -> tuple[Any, Any]:
         # Optimization: Compute inverse controls on device to avoid
         # transferring a second array from Python.
-        def invert(c):
+        def invert(c: Any) -> Any:
             return 1 - c
 
         inv_ctrls = simp.pcall_static(
@@ -158,7 +159,7 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
             y1 = ot.transfer(x0, x1, inv_ctrls, sender, receiver)
         else:
             # Use local select if data is already on Receiver
-            def switch_fn(u, v, c):
+            def switch_fn(u: Any, v: Any, c: Any) -> Any:
                 return tensor.elementwise(crypto.select, c, v, u)
 
             y0 = simp.pcall_static((receiver,), switch_fn, x0, x1, ctrls)
@@ -168,16 +169,16 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
     # Mutable offset to track position in flat_controls
     offset = [0]
 
-    def get_next_controls(count):
+    def get_next_controls(count: int) -> Any:
         start = offset[0]
         offset[0] += count
 
-        def slice_fn(arr, s, c):
+        def slice_fn(arr: Any, s: Any, c: Any) -> Any:
             return arr[s : s + c]
 
         return simp.pcall_static((receiver,), slice_fn, flat_controls, start, count)
 
-    def recursive_network_batch(inputs, depth):
+    def recursive_network_batch(inputs: Any, depth: int) -> Any:
         # Calculate local size based on depth.
         # Benes network structure is deterministic based on N.
         n_local = n // (2**depth)

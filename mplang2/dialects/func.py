@@ -8,8 +8,8 @@ from typing import Any
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 
-func_def_p = el.Primitive("func.func")
-call_p = el.Primitive("func.call")
+func_def_p = el.Primitive[el.Object]("func.func")
+call_p = el.Primitive[Any]("func.call")
 FuncType = elt.CustomType("function")
 
 
@@ -72,10 +72,8 @@ def _call_trace(fn_value: el.TraceObject, *args: Any) -> Any:
     )
 
 
-def func(
-    fn: Callable[..., Any], *args: el.TraceObject, **kwargs: Any
-) -> el.TraceObject:  # type: ignore[misc]
-    return func_def_p.bind(fn, *args, **kwargs)  # type: ignore[no-any-return]
+def func(fn: Callable[..., Any], *args: el.TraceObject, **kwargs: Any) -> el.Object:
+    return func_def_p.bind(fn, *args, **kwargs)
 
 
 def call(fn_value: el.TraceObject, *args: el.TraceObject) -> Any:

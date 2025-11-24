@@ -23,7 +23,7 @@ See Primitive class documentation for detailed usage examples.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 from jax.tree_util import tree_map
 
@@ -33,8 +33,10 @@ from mplang2.edsl.object import Object
 if TYPE_CHECKING:
     from mplang2.edsl.typing import BaseType
 
+T_Ret = TypeVar("T_Ret")
 
-class Primitive:
+
+class Primitive(Generic[T_Ret]):
     """Atomic operation definition (similar to JAX Primitive).
 
     A Primitive represents an atomic operation that can be:
@@ -188,7 +190,7 @@ class Primitive:
         self._trace = fn
         return fn
 
-    def bind(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+    def bind(self, *args: Any, **kwargs: Any) -> T_Ret:
         """Bind arguments and execute/trace the primitive.
 
         This is the main user-facing API. It automatically chooses between:
@@ -243,9 +245,9 @@ class Primitive:
         lifted_args, lifted_kwargs = tree_map(lift_if_object, (args, kwargs))
 
         # Execute in context
-        return ctx.bind_primitive(self, lifted_args, lifted_kwargs)
+        return cast(T_Ret, ctx.bind_primitive(self, lifted_args, lifted_kwargs))
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[misc]
+    def __call__(self, *args: Any, **kwargs: Any) -> T_Ret:
         """Syntactic sugar for bind(): primitive(*args, **kwargs) == primitive.bind(*args, **kwargs)."""
         return self.bind(*args, **kwargs)
 
@@ -280,8 +282,8 @@ def primitive(name: str) -> Callable[[Callable], Primitive]:
         >>> z = my_op_p.bind(x, y)
     """
 
-    def decorator(fn: Callable) -> Primitive:
-        p = Primitive(name)
+    def decorator(fn: Callable) -> Primitive[Any]:
+        p: Primitive[Any] = Primitive(name)
         p.def_abstract_eval(fn)
         return p
 

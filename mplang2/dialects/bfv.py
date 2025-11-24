@@ -186,9 +186,9 @@ class EncoderType(elt.BaseType):
 # --- Key Management
 # ==============================================================================
 
-keygen_p = el.Primitive("bfv.keygen")
-make_relin_keys_p = el.Primitive("bfv.make_relin_keys")
-make_galois_keys_p = el.Primitive("bfv.make_galois_keys")
+keygen_p = el.Primitive[tuple[el.Object, el.Object]]("bfv.keygen")
+make_relin_keys_p = el.Primitive[el.Object]("bfv.make_relin_keys")
+make_galois_keys_p = el.Primitive[el.Object]("bfv.make_galois_keys")
 
 
 @keygen_p.def_abstract_eval
@@ -224,9 +224,9 @@ def _make_galois_keys_ae(sk: KeyType) -> KeyType:
 # --- Encoding / Decoding (SIMD Packing)
 # ==============================================================================
 
-create_encoder_p = el.Primitive("bfv.create_encoder")
-encode_p = el.Primitive("bfv.encode")
-decode_p = el.Primitive("bfv.decode")
+create_encoder_p = el.Primitive[el.Object]("bfv.create_encoder")
+encode_p = el.Primitive[el.Object]("bfv.encode")
+decode_p = el.Primitive[el.Object]("bfv.decode")
 
 
 @create_encoder_p.def_abstract_eval
@@ -278,8 +278,8 @@ def _decode_ae(plain: PlaintextType, encoder: EncoderType) -> elt.TensorType:
 # --- Encryption / Decryption
 # ==============================================================================
 
-encrypt_p = el.Primitive("bfv.encrypt")
-decrypt_p = el.Primitive("bfv.decrypt")
+encrypt_p = el.Primitive[el.Object]("bfv.encrypt")
+decrypt_p = el.Primitive[el.Object]("bfv.decrypt")
 
 
 @encrypt_p.def_abstract_eval
@@ -304,10 +304,10 @@ def _decrypt_ae(ct: CiphertextType, sk: KeyType) -> PlaintextType:
 # --- Arithmetic Operations
 # ==============================================================================
 
-add_p = el.Primitive("bfv.add")
-sub_p = el.Primitive("bfv.sub")
-mul_p = el.Primitive("bfv.mul")
-relinearize_p = el.Primitive("bfv.relinearize")
+add_p = el.Primitive[el.Object]("bfv.add")
+sub_p = el.Primitive[el.Object]("bfv.sub")
+mul_p = el.Primitive[el.Object]("bfv.mul")
+relinearize_p = el.Primitive[el.Object]("bfv.relinearize")
 
 
 def _check_arithmetic_operands(lhs: Any, rhs: Any) -> None:
@@ -359,7 +359,7 @@ def _relinearize_ae(ct: CiphertextType, rk: KeyType) -> CiphertextType:
 # --- Rotation
 # ==============================================================================
 
-rotate_p = el.Primitive("bfv.rotate")
+rotate_p = el.Primitive[el.Object]("bfv.rotate")
 
 
 @rotate_p.def_abstract_eval
@@ -485,3 +485,6 @@ __all__ = [
     "rotate",
     "sub",
 ]
+
+
+# ==============================================================================

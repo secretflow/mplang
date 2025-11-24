@@ -18,8 +18,8 @@ import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
 
-run_jax_p = el.Primitive("tensor.run_jax")
-constant_p = el.Primitive("tensor.constant")
+run_jax_p = el.Primitive[Any]("tensor.run_jax")
+constant_p = el.Primitive[el.Object]("tensor.constant")
 
 _SCALAR_TO_NP_DTYPE = {
     "f32": np.dtype("float32"),
@@ -325,7 +325,7 @@ def _constant_trace(data: Any) -> el.TraceObject:
     np_array = np.array(data)
     dtype = _numpy_dtype_to_scalar(np_array.dtype)
     shape = tuple(np_array.shape)
-    output_type = elt.TensorType(dtype, shape)
+    output_type: elt.TensorType = elt.TensorType(dtype, shape)
 
     # Emit graph operation with data as attribute
     # Use base64 encoded bytes for efficiency and precision
@@ -374,13 +374,13 @@ def constant(data: Any) -> el.Object:
 # --- Tensor Structural Operations (Element-type agnostic)
 # ==============================================================================
 
-transpose_p = el.Primitive("tensor.transpose")
-reshape_p = el.Primitive("tensor.reshape")
-concat_p = el.Primitive("tensor.concat")
-gather_p = el.Primitive("tensor.gather")
-scatter_p = el.Primitive("tensor.scatter")
-slice_p = el.Primitive("tensor.slice")
-elementwise_p = el.Primitive("tensor.elementwise")
+transpose_p = el.Primitive[el.Object]("tensor.transpose")
+reshape_p = el.Primitive[el.Object]("tensor.reshape")
+concat_p = el.Primitive[el.Object]("tensor.concat")
+gather_p = el.Primitive[el.Object]("tensor.gather")
+scatter_p = el.Primitive[el.Object]("tensor.scatter")
+slice_p = el.Primitive[el.Object]("tensor.slice")
+elementwise_p = el.Primitive[el.Object]("tensor.elementwise")
 
 
 class _ElementwiseTracer(el.Tracer):
@@ -480,7 +480,7 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
         # If no tensor arguments were found, it means we only had
         # non-tensor arguments (scalars/custom types).
         # Degrade to scalar operation (shape ()).
-        result_shape = ()
+        result_shape: tuple[int, ...] = ()
     else:
         result_shape = element_tracer._tensor_shape
 

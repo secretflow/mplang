@@ -114,7 +114,7 @@ class _LocalMPTracer(el.Tracer):
 # ---------------------------------------------------------------------------
 
 
-uniform_cond_p = el.Primitive("simp.uniform_cond")
+uniform_cond_p: el.Primitive[Any] = el.Primitive("simp.uniform_cond")
 
 
 @uniform_cond_p.def_trace
@@ -247,7 +247,7 @@ def uniform_cond(
 # While loop (scaffold)
 # ---------------------------------------------------------------------------
 
-while_loop_p = el.Primitive("simp.while_loop")
+while_loop_p: el.Primitive[Any] = el.Primitive("simp.while_loop")
 
 
 @while_loop_p.def_trace
@@ -359,11 +359,11 @@ def while_loop(
 
 
 # Core primitives with clear semantic names
-pcall_static_p = el.Primitive("simp.pcall_static")
-pcall_dynamic_p = el.Primitive("simp.pcall_dynamic")
-shuffle_dynamic_p = el.Primitive("simp.shuffle_dynamic")
-shuffle_static_p = el.Primitive("simp.shuffle")
-converge_p = el.Primitive("simp.converge")
+pcall_static_p = el.Primitive[Any]("simp.pcall_static")
+pcall_dynamic_p = el.Primitive[Any]("simp.pcall_dynamic")
+shuffle_dynamic_p = el.Primitive[el.Object]("simp.shuffle_dynamic")
+shuffle_static_p = el.Primitive[el.Object]("simp.shuffle")
+converge_p = el.Primitive[el.Object]("simp.converge")
 
 
 @pcall_static_p.def_trace
@@ -707,7 +707,7 @@ def shuffle_dynamic(src: el.Object, index: el.Object) -> el.Object:
         >>> result = shuffle_dynamic(src, index)
         >>> # result.type.parties == None (dynamic)
     """
-    return cast(el.Object, shuffle_dynamic_p.bind(src, index))
+    return shuffle_dynamic_p.bind(src, index)
 
 
 def shuffle_static(src: el.Object, routing: dict[int, int]) -> el.Object:
@@ -743,7 +743,7 @@ def shuffle_static(src: el.Object, routing: dict[int, int]) -> el.Object:
         >>> result = shuffle_static(src, routing={0: 1, 2: 0})
         >>> # result.type.parties == (0, 2)
     """
-    return cast(el.Object, shuffle_static_p.bind(src, routing=routing))
+    return shuffle_static_p.bind(src, routing=routing)
 
 
 def converge(*vars: el.Object) -> el.Object:
@@ -769,7 +769,7 @@ def converge(*vars: el.Object) -> el.Object:
         >>> result = converge(x, y)
         >>> # result.type.parties == (0, 1)
     """
-    return cast(el.Object, converge_p.bind(*vars))
+    return converge_p.bind(*vars)
 
 
 def constant(parties: tuple[int, ...], data: Any) -> el.Object:
@@ -793,11 +793,11 @@ def constant(parties: tuple[int, ...], data: Any) -> el.Object:
 
     # 1. Scalars (int, float, bool, numpy scalars)
     if isinstance(data, (int, float, bool, np.number, np.bool_)):
-        return pcall_static(parties, tensor.constant, data)
+        return cast(el.Object, pcall_static(parties, tensor.constant, data))
 
     # 2. Tensor-like (numpy array or JAX array)
     if isinstance(data, (np.ndarray, jnp.ndarray)):
-        return pcall_static(parties, tensor.constant, data)
+        return cast(el.Object, pcall_static(parties, tensor.constant, data))
 
     # 3. Table-like (dict, DataFrame)
     is_dataframe = False
@@ -810,11 +810,11 @@ def constant(parties: tuple[int, ...], data: Any) -> el.Object:
         pass
 
     if is_dataframe or isinstance(data, dict):
-        return pcall_static(parties, table.constant, data)
+        return cast(el.Object, pcall_static(parties, table.constant, data))
 
     # 4. Lists/Tuples (Ambiguous, default to tensor)
     if isinstance(data, (list, tuple)):
-        return pcall_static(parties, tensor.constant, data)
+        return cast(el.Object, pcall_static(parties, tensor.constant, data))
 
     raise TypeError(f"Unsupported data type for simp.constant: {type(data)}")
 

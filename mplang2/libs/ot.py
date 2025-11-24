@@ -9,6 +9,8 @@ Security: Computational security based on ECDH.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import numpy as np
 
 import mplang2.edsl as el
@@ -16,7 +18,9 @@ import mplang2.edsl.typing as elt
 from mplang2.dialects import crypto, simp, tensor
 
 
-def _receiver_keygen_scalar(C_point, b):
+def _receiver_keygen_scalar(
+    C_point: el.Object, b: el.Object
+) -> tuple[el.Object, el.Object]:
     # b is selection bit (0 or 1)
     # k is private key (random scalar)
     k = crypto.ec_random_scalar()
@@ -42,11 +46,13 @@ def _receiver_keygen_scalar(C_point, b):
     return PK0, k
 
 
-def _sender_derive_keys(C_point, PK0_point):
+def _sender_derive_keys(
+    C_point: el.Object, PK0_point: el.Object
+) -> tuple[el.Object, el.Object, el.Object, el.Object]:
     # PK1 = C - PK0
     PK1_point = crypto.ec_sub(C_point, PK0_point)
 
-    def derive_key(PK):
+    def derive_key(PK: el.Object) -> tuple[el.Object, el.Object]:
         # Ephemeral key r
         r = crypto.ec_random_scalar()
         G = crypto.ec_generator()
@@ -62,7 +68,9 @@ def _sender_derive_keys(C_point, PK0_point):
     return U0, K0, U1, K1
 
 
-def _receiver_derive_key(U0, U1, PK0, k, b):
+def _receiver_derive_key(
+    U0: el.Object, U1: el.Object, PK0: el.Object, k: el.Object, b: el.Object
+) -> el.Object:
     b_scalar = crypto.ec_scalar_from_int(b)
 
     # Select U (Point arithmetic)
@@ -100,7 +108,7 @@ def transfer(
     assert isinstance(choice, el.Object) and isinstance(choice.type, elt.MPType)
 
     # --- Step 1: Sender Initialization ---
-    def sender_init_fn():
+    def sender_init_fn() -> el.Object:
         # C is a random point: C = r * G
         r = crypto.ec_random_scalar()
         G = crypto.ec_generator()
@@ -121,14 +129,17 @@ def transfer(
 
     # --- Step 1: Receiver Key Generation ---
     def receiver_keygen_fn(C_point: el.Object, b: el.Object) -> el.Object:
-        return tensor.elementwise(_receiver_keygen_scalar, C_point, b)
+        res: el.Object = cast(
+            el.Object, tensor.elementwise(_receiver_keygen_scalar, C_point, b)
+        )
+        return res  # type: ignore[no-any-return]
 
     # Returns (PK0, k) on receiver
     keys_recv = simp.pcall_static((receiver,), receiver_keygen_fn, C_recv, choice)
 
     # Extract PK0 to send back
-    def get_pk0(pair: el.Object) -> el.Object:
-        return pair[0]
+    def get_pk0(pair: Any) -> el.Object:
+        return cast(el.Object, pair[0])
 
     PK0_to_send = simp.pcall_static((receiver,), get_pk0, keys_recv)
     PK0_sender = simp.shuffle_static(PK0_to_send, {sender: receiver})
@@ -136,8 +147,10 @@ def transfer(
     # --- Step 3: Sender Encryption ---
     def sender_encrypt_fn(
         C_point: el.Object, PK0_point: el.Object, msg0: el.Object, msg1: el.Object
-    ) -> el.Object:
-        def encrypt_elementwise(c, pk0, m0, m1):
+    ) -> Any:
+        def encrypt_elementwise(
+            c: Any, pk0: Any, m0: Any, m1: Any
+        ) -> tuple[Any, Any, Any, Any]:
             u0, k0, u1, k1 = _sender_derive_keys(c, pk0)
 
             kb0 = crypto.ec_point_to_bytes(k0)
@@ -163,25 +176,27 @@ def transfer(
     )
 
     # --- Step 4: Receiver Decryption ---
-    def receiver_decrypt_fn(
-        c_texts: el.Object, keys: el.Object, b: el.Object
-    ) -> el.Object:
+    def receiver_decrypt_fn(c_texts: Any, keys: Any, b: el.Object) -> el.Object:
         # b is selection bit
         # keys is (PK0, k)
         PK0, k = keys
         U0, V0, U1, V1 = c_texts
 
-        def decrypt_elementwise(u0, v0, u1, v1, pk0, k_priv, sel):
+        def decrypt_elementwise(
+            u0: Any, v0: Any, u1: Any, v1: Any, pk0: Any, k_priv: Any, sel: Any
+        ) -> Any:
             k_pt = _receiver_derive_key(u0, u1, pk0, k_priv, sel)
             kb = crypto.ec_point_to_bytes(k_pt)
             sk = crypto.hash_bytes(kb)
             v = crypto.select(sel, v1, v0)
             return crypto.sym_decrypt(sk, v, target_type)
 
-        return tensor.elementwise(decrypt_elementwise, U0, V0, U1, V1, PK0, k, b)
+        res = tensor.elementwise(decrypt_elementwise, U0, V0, U1, V1, PK0, k, b)
+        return cast(el.Object, res)
 
     result = simp.pcall_static(
         (receiver,), receiver_decrypt_fn, ciphertexts_recv, keys_recv, choice
     )
 
-    return result
+    res_obj: el.Object = cast(el.Object, result)
+    return res_obj

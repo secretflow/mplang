@@ -145,7 +145,7 @@ EncoderType: elt.CustomType = elt.CustomType("Encoder")
 # --- Key Management Operations
 # ==============================================================================
 
-keygen_p = el.Primitive("phe.keygen")
+keygen_p = el.Primitive[tuple[el.Object, el.Object]]("phe.keygen")
 
 
 @keygen_p.def_abstract_eval
@@ -170,9 +170,9 @@ def _keygen_ae(
 # --- Encoder Operations
 # ==============================================================================
 
-create_encoder_p = el.Primitive("phe.create_encoder")
-encode_p = el.Primitive("phe.encode")
-decode_p = el.Primitive("phe.decode")
+create_encoder_p = el.Primitive[el.Object]("phe.create_encoder")
+encode_p = el.Primitive[el.Object]("phe.encode")
+decode_p = el.Primitive[el.Object]("phe.decode")
 
 
 @create_encoder_p.def_abstract_eval
@@ -246,8 +246,8 @@ def _decode_ae(encoded: PlaintextType, encoder: elt.CustomType) -> elt.ScalarTyp
 # --- Encryption/Decryption Operations (Integer only)
 # ==============================================================================
 
-encrypt_p = el.Primitive("phe.encrypt")
-decrypt_p = el.Primitive("phe.decrypt")
+encrypt_p = el.Primitive[el.Object]("phe.encrypt")
+decrypt_p = el.Primitive[el.Object]("phe.decrypt")
 
 
 @encrypt_p.def_abstract_eval
@@ -297,9 +297,9 @@ def _decrypt_ae(ct: CiphertextType, sk: KeyType) -> PlaintextType:
 # --- Element-level Homomorphic Operations
 # ==============================================================================
 
-add_cc_p = el.Primitive("phe.add_cc")
-add_cp_p = el.Primitive("phe.add_cp")
-mul_cp_p = el.Primitive("phe.mul_cp")
+add_cc_p = el.Primitive[el.Object]("phe.add_cc")
+add_cp_p = el.Primitive[el.Object]("phe.add_cp")
+mul_cp_p = el.Primitive[el.Object]("phe.mul_cp")
 
 
 @add_cc_p.def_abstract_eval
@@ -453,7 +453,7 @@ def _inspect_operand(obj: el.Object) -> OperandInfo:
     raise TypeError(f"PHE operations expect Scalar or Tensor operands, got {obj_type}")
 
 
-BinaryFn = Callable[[el.Object, el.Object], Any]
+BinaryFn = Callable[[el.Object, el.Object], el.Object]
 
 
 def _apply_binary(fn: BinaryFn, lhs: el.Object, rhs: el.Object) -> el.Object:

@@ -42,7 +42,7 @@ z = spu.decrypt(z_enc, target_party=0)
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import jax.numpy as jnp
 import spu.libspu as libspu
@@ -73,9 +73,9 @@ class SPUDevice(NamedTuple):
 # These primitives operate locally on a single party.
 # They are used inside simp.pcall to construct the distributed protocols.
 
-makeshares_p = el.Primitive("spu.makeshares")
-reconstruct_p = el.Primitive("spu.reconstruct")
-exec_p = el.Primitive("spu.exec")
+makeshares_p = el.Primitive[tuple[el.Object, ...]]("spu.makeshares")
+reconstruct_p = el.Primitive[el.Object]("spu.reconstruct")
+exec_p = el.Primitive[Any]("spu.exec")
 
 
 @makeshares_p.def_abstract_eval
@@ -118,7 +118,7 @@ def _exec_ae(
             raise TypeError(f"spu.exec expects SSType inputs, got {arg}")
 
     # Outputs are SS[Tensor]
-    outputs = []
+    outputs: list[elt.SSType[Any]] = []
     for shape, dtype in zip(output_shapes, output_dtypes, strict=True):
         outputs.append(elt.SS(elt.Tensor(dtype, shape)))
 
@@ -236,7 +236,7 @@ def decrypt(val: el.Object, target_party: int) -> el.Object:
     # 2. Reconstruct on target
     result = simp.pcall_static((target_party,), reconstruct_p.bind, *gathered_shares)
 
-    return result
+    return cast(el.Object, result)
 
 
 def jit(fn: Callable) -> Callable:
@@ -281,7 +281,7 @@ def jit(fn: Callable) -> Callable:
                 raise TypeError(f"spu.jit inputs must be SS[Tensor], got {ss_type}")
 
             # Map to JAX
-            dtype_map = {
+            dtype_map: dict[Any, Any] = {
                 elt.f32: jnp.float32,
                 elt.f64: jnp.float64,
                 elt.i32: jnp.int32,
@@ -296,7 +296,7 @@ def jit(fn: Callable) -> Callable:
         jax_args, jax_kwargs = tree_unflatten(args_tree, jax_args_flat)
 
         # 3. Compile
-        def compiler_fn(*c_args, **c_kwargs):
+        def compiler_fn(*c_args: Any, **c_kwargs: Any) -> Any:
             return fn(*c_args, **c_kwargs)
 
         executable, output_info = spu_fe.compile(
@@ -316,7 +316,7 @@ def jit(fn: Callable) -> Callable:
         # Extract output metadata (needed for both exec and unflatten)
         flat_outputs_info, out_tree = tree_flatten(output_info)
 
-        def fused_exec(*local_ss_inputs):
+        def fused_exec(*local_ss_inputs: Any) -> Any:
             # 4.1. Execute SPU Kernel
             output_shapes = [out.shape for out in flat_outputs_info]
 
@@ -353,6 +353,6 @@ def jit(fn: Callable) -> Callable:
         leaves = result_ss if isinstance(result_ss, tuple) else [result_ss]
         final_result = tree_unflatten(out_tree, leaves)
 
-        return final_result
+        return cast(el.Object, final_result)
 
     return wrapper

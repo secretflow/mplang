@@ -4,7 +4,7 @@ Implements execution logic for Tensor primitives.
 """
 
 import base64
-from typing import Any
+from typing import Any, cast
 
 import jax
 import jax.extend as jxt
@@ -37,7 +37,7 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
     data_bytes = base64.b64decode(data_b64)
 
     # Create array
-    return np.frombuffer(data_bytes, dtype=dtype).reshape(shape).copy()
+    return np.frombuffer(data_bytes, dtype=cast(Any, dtype)).reshape(shape).copy()
 
 
 @tensor.concat_p.def_impl
@@ -70,6 +70,7 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
     # Let's just use a list or numpy array of objects for flexibility.
     # Since we might be mixing types (e.g. Encrypted objects), object array is safest.
     num_outputs = len(op.outputs)
+    results: Any
     if num_outputs > 1:
         results = [np.empty(shape, dtype=object) for _ in range(num_outputs)]
     else:
@@ -130,7 +131,7 @@ def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[Any]
                 if dtype is not None:
                     # Only cast if strictly necessary to avoid overhead
                     # np.asarray handles scalar->array and dtype conversion
-                    casted_args.append(np.asarray(arg, dtype=dtype))
+                    casted_args.append(np.asarray(arg, dtype=cast(Any, dtype)))
                 else:
                     casted_args.append(arg)
             else:
@@ -209,7 +210,7 @@ def slice_impl(interpreter: Interpreter, op: Operation, operand: Any) -> Any:
     ends = op.attrs["ends"]
     strides = op.attrs.get("strides")
 
-    slices = []
+    slices: list[Any] = []
     for i in range(len(starts)):
         start = starts[i]
         end = ends[i]

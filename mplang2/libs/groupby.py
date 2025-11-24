@@ -4,6 +4,8 @@ This module implements algorithms to compute the sum of values grouped by bins,
 where the data holder (Sender) and the bin holder (Receiver) keep their inputs private.
 """
 
+# mypy: disable-error-code="no-untyped-def"
+
 from __future__ import annotations
 
 from typing import Any

@@ -77,12 +77,12 @@ def _receiver_derive_key(U0, U1, PK0, k, b):
 
 
 def transfer(
-    m0: el.Object,
-    m1: el.Object,
-    choice: el.Object,
+    m0: el.MPObject,
+    m1: el.MPObject,
+    choice: el.MPObject,
     sender: int,
     receiver: int,
-) -> el.Object:
+) -> el.MPObject:
     """Perform 1-out-of-2 Oblivious Transfer (Naor-Pinkas).
 
     Args:
@@ -113,26 +113,30 @@ def transfer(
     C_recv = simp.shuffle_static(C, {receiver: sender})
 
     # Infer target type from m0
-    target_type = m0.type
-    if isinstance(target_type, elt.MPType):
-        target_type = target_type.value_type
+    m0_type = m0.type
+    if isinstance(m0_type, elt.MPType):
+        target_type = m0_type.value_type
+    else:
+        target_type = m0_type
 
     # --- Step 1: Receiver Key Generation ---
-    def receiver_keygen_fn(C_point, b):
+    def receiver_keygen_fn(C_point: el.Object, b: el.Object) -> el.Object:
         return tensor.elementwise(_receiver_keygen_scalar, C_point, b)
 
     # Returns (PK0, k) on receiver
     keys_recv = simp.pcall_static((receiver,), receiver_keygen_fn, C_recv, choice)
 
     # Extract PK0 to send back
-    def get_pk0(pair):
+    def get_pk0(pair: el.Object) -> el.Object:
         return pair[0]
 
     PK0_to_send = simp.pcall_static((receiver,), get_pk0, keys_recv)
     PK0_sender = simp.shuffle_static(PK0_to_send, {sender: receiver})
 
     # --- Step 3: Sender Encryption ---
-    def sender_encrypt_fn(C_point, PK0_point, msg0, msg1):
+    def sender_encrypt_fn(
+        C_point: el.Object, PK0_point: el.Object, msg0: el.Object, msg1: el.Object
+    ) -> el.Object:
         def encrypt_elementwise(c, pk0, m0, m1):
             u0, k0, u1, k1 = _sender_derive_keys(c, pk0)
 
@@ -159,7 +163,9 @@ def transfer(
     )
 
     # --- Step 4: Receiver Decryption ---
-    def receiver_decrypt_fn(c_texts, keys, b):
+    def receiver_decrypt_fn(
+        c_texts: el.Object, keys: el.Object, b: el.Object
+    ) -> el.Object:
         # b is selection bit
         # keys is (PK0, k)
         PK0, k = keys

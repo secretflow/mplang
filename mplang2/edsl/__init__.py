@@ -38,9 +38,25 @@ from .object import Object
 from .primitive import Primitive, primitive
 from .printer import GraphPrinter, format_graph
 from .tracer import TracedFunction, TraceObject, Tracer, trace
+from .typing import (
+    MPType,
+    ScalarType,
+    SSType,
+    TableType,
+    TensorType,
+    VectorType,
+)
 
 # Register default context factory
 register_default_context_factory(Interpreter)
+
+# Type Aliases for strong typing
+MPObject = Object[MPType]
+ScalarObject = Object[ScalarType]
+SSObject = Object[SSType]
+TableObject = Object[TableType]
+TensorObject = Object[TensorType]
+VectorObject = Object[VectorType]
 
 __all__ = [
     "Context",
@@ -48,13 +64,19 @@ __all__ = [
     "GraphPrinter",
     "InterpObject",
     "Interpreter",
+    "MPObject",
     "Object",
     "Operation",
     "Primitive",
+    "SSObject",
+    "ScalarObject",
+    "TableObject",
+    "TensorObject",
     "TraceObject",
     "TracedFunction",
     "Tracer",
     "Value",
+    "VectorObject",
     "format_graph",
     "get_current_context",
     "get_default_context",

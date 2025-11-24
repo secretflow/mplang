@@ -9,11 +9,14 @@ Base abstraction for distinguishing trace-time and interp-time execution.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Generic, TypeVar
 
 from mplang2.edsl.typing import BaseType
 
+T = TypeVar("T", bound=BaseType)
 
-class Object(ABC):
+
+class Object(ABC, Generic[T]):
     """Base class for MPLang runtime objects.
 
     This is a Driver-side abstraction used for:
@@ -28,7 +31,7 @@ class Object(ABC):
 
     @property
     @abstractmethod
-    def type(self) -> BaseType:
+    def type(self) -> T:
         """Type of the object (available in both trace and interp modes)."""
 
     # Note: Arithmetic operators (__add__, __mul__, etc.) are NOT defined here.

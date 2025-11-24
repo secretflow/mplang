@@ -108,7 +108,7 @@ consistent within the practical scope of this library.
 
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import Any, Generic, TypeVar
 
 # ==============================================================================
 # --- Base Type & Type Aliases
@@ -304,7 +304,7 @@ u128 = IntegerType(bitwidth=128, signed=False)
 u256 = IntegerType(bitwidth=256, signed=False)
 
 
-class TensorType(BaseType):
+class TensorType(BaseType, Generic[T]):
     """Represents a ranked tensor of a given element type and shape.
 
     Following MLIR's RankedTensorType design - all tensors must have a known rank.
@@ -347,15 +347,21 @@ class TensorType(BaseType):
                     f"Invalid dimension {dim}: must be positive or -1 for dynamic"
                 )
 
-    def __class_getitem__(cls, params: tuple) -> TensorType:  # type: ignore[misc]
+    def __class_getitem__(cls, params: tuple | Any) -> Any:
         """Enables the syntax `Tensor[element_type, shape]`.
 
         Args:
             params: Either a single element_type or (element_type, shape) tuple
 
         Returns:
-            TensorType instance
+            TensorType instance or GenericAlias
         """
+        # Check if we are doing type specialization (Generic[T]) or instance creation
+        # Heuristic: If params contains a Type (class), it's a type spec.
+        args = params if isinstance(params, tuple) else (params,)
+        if any(isinstance(a, type) for a in args):
+            return super().__class_getitem__(params)  # type: ignore[misc]
+
         if not isinstance(params, tuple):
             raise TypeError(
                 "Tensor requires shape parameter. Use Tensor[element_type, shape] "
@@ -554,15 +560,18 @@ Custom = CustomType
 # ==============================================================================
 
 
-class SSType(BaseType, EncryptedTrait):
+class SSType(BaseType, EncryptedTrait, Generic[T]):
     """Represents a single share of a secret value `T`."""
 
     def __init__(self, secret_type: BaseType, enc_schema: str = "ss"):
         self._pt_type = secret_type
         self._enc_schema = enc_schema
 
-    def __class_getitem__(cls, secret_type: BaseType) -> SSType:
+    def __class_getitem__(cls, secret_type: BaseType | Any) -> Any:
         """Enables the syntax `SS[Tensor[...]]`."""
+        # Check if we are doing type specialization (Generic[T]) or instance creation
+        if isinstance(secret_type, type):
+            return super().__class_getitem__(secret_type)  # type: ignore[misc]
         return cls(secret_type)
 
     def __str__(self) -> str:
@@ -584,7 +593,7 @@ SS = SSType
 # ==============================================================================
 
 
-class MPType(BaseType):
+class MPType(BaseType, Generic[T]):
     """Represents a logical value distributed among multiple parties.
 
     Args:
@@ -605,9 +614,15 @@ class MPType(BaseType):
         return self._parties
 
     def __class_getitem__(
-        cls, params: tuple[BaseType, tuple[int, ...] | None]
-    ) -> MPType:
+        cls, params: tuple[BaseType, tuple[int, ...] | None] | Any
+    ) -> Any:
         """Enables the syntax `MP[Tensor[...], (0, 1)]` or `MP[Tensor[...], None]`."""
+        # Check if we are doing type specialization (Generic[T]) or instance creation
+        # Heuristic: If params contains a Type (class), it's a type spec.
+        args = params if isinstance(params, tuple) else (params,)
+        if any(isinstance(a, type) for a in args):
+            return super().__class_getitem__(params)  # type: ignore[misc]
+
         value_type, parties = params
         return cls(value_type, parties)
 

@@ -251,6 +251,9 @@ def oblivious_groupby_sum_shuffle(
     def split_shares_fn(d):
         def _impl(arr):
             # Use a fixed key for determinism in tests, or generate one if possible
+            # FIXME: Hardcoded seed makes the mask deterministic and insecure.
+            # Receiver can reconstruct the mask and recover the data.
+            # Must use a secure random source or negotiated session key.
             key = jax.random.PRNGKey(42)
 
             if jnp.issubdtype(arr.dtype, jnp.integer):
@@ -262,10 +265,15 @@ def oblivious_groupby_sum_shuffle(
                 min_val = int(info.min)
                 # max_val must fit in int64 for JAX. We lose one value (MAX_INT)
                 max_val = int(info.max)
+                # FIXME: Insecure integer mask. `max_val` is exclusive in randint,
+                # so `MAX_INT` is never sampled, creating a statistical bias.
                 mask = jax.random.randint(
                     key, arr.shape, min_val, max_val, dtype=arr.dtype
                 )
             else:
+                # FIXME: Insecure float mask. `uniform` returns [0, 1), which only
+                # masks the fractional part and leaves the integer part/magnitude exposed.
+                # Should use fixed-point arithmetic or a proper float masking scheme.
                 mask = jax.random.uniform(key, arr.shape, dtype=arr.dtype)
 
             d0 = arr - mask

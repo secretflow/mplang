@@ -23,19 +23,6 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
     # Recover dtype and shape from IR type
     output_type = op.outputs[0].type
     if not isinstance(output_type, elt.TensorType):
-        # Fallback for scalar constants if they are not wrapped in TensorType
-        # But tensor.constant usually produces TensorType.
-        # If it's a scalar type, handle it.
-        if isinstance(output_type, elt.ScalarType):
-            scalar_str = str(output_type)
-            dtype = tensor._SCALAR_TO_NP_DTYPE.get(scalar_str)
-            if dtype is None:
-                raise ValueError(f"Unsupported scalar type {output_type}")
-
-            data_b64 = op.attrs["value_b64"]
-            data_bytes = base64.b64decode(data_b64)
-            return np.frombuffer(data_bytes, dtype=dtype)[0]
-
         raise TypeError(f"Expected TensorType, got {output_type}")
 
     scalar_str = str(output_type.element_type)
@@ -65,18 +52,17 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
     # args are the input tensors (or scalars)
     # op.regions[0] is the scalar computation graph
 
-    # 1. Determine shape and broadcast
-    # For simplicity, assume all tensor args have same shape (validated by tracer)
-    # and scalars are broadcasted.
-    shape = None
-    for arg in args:
-        if hasattr(arg, "shape") and arg.shape:
-            shape = arg.shape
-            break
-
-    if shape is None:
-        # All scalars? Should not happen for elementwise usually, but handle it
-        shape = ()
+    # 1. Determine shape from IR types and runtime args
+    shape = ()
+    for i, inp_val in enumerate(op.inputs):
+        if isinstance(inp_val.type, elt.TensorType):
+            if inp_val.type.shape != ():
+                # Found a non-scalar tensor input. Use its runtime shape.
+                # We assume the tracer ensured all non-scalar tensors have compatible shapes.
+                arg = args[i]
+                if hasattr(arg, "shape"):
+                    shape = arg.shape
+                break
 
     # 2. Construct output container
     # We need to know the output type/dtype.
@@ -103,8 +89,13 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
     for index in np.ndindex(shape):
         # Prepare inputs for this element
         scalar_inputs = {}
-        for inp_val, arg in zip(subgraph.inputs, args, strict=True):
-            if hasattr(arg, "shape") and arg.shape == shape:
+        for i, (inp_val, arg) in enumerate(zip(subgraph.inputs, args, strict=True)):
+            outer_val = op.inputs[i]
+            # Check if this argument should be iterated based on OUTER IR type
+            if (
+                isinstance(outer_val.type, elt.TensorType)
+                and outer_val.type.shape != ()
+            ):
                 # Tensor argument: pick element
                 scalar_inputs[inp_val] = arg[index]
             else:

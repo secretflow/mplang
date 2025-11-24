@@ -786,9 +786,37 @@ def constant(parties: tuple[int, ...], data: Any) -> el.Object:
     Returns:
         MP[Tensor, parties] object representing the distributed constant.
     """
-    from mplang2.dialects import tensor
+    import jax.numpy as jnp
+    import numpy as np
 
-    return pcall_static(parties, tensor.constant, data)
+    from mplang2.dialects import table, tensor
+
+    # 1. Scalars (int, float, bool, numpy scalars)
+    if isinstance(data, (int, float, bool, np.number, np.bool_)):
+        return pcall_static(parties, tensor.constant, data)
+
+    # 2. Tensor-like (numpy array or JAX array)
+    if isinstance(data, (np.ndarray, jnp.ndarray)):
+        return pcall_static(parties, tensor.constant, data)
+
+    # 3. Table-like (dict, DataFrame)
+    is_dataframe = False
+    try:
+        import pandas as pd
+
+        if isinstance(data, pd.DataFrame):
+            is_dataframe = True
+    except ImportError:
+        pass
+
+    if is_dataframe or isinstance(data, dict):
+        return pcall_static(parties, table.constant, data)
+
+    # 4. Lists/Tuples (Ambiguous, default to tensor)
+    if isinstance(data, (list, tuple)):
+        return pcall_static(parties, tensor.constant, data)
+
+    raise TypeError(f"Unsupported data type for simp.constant: {type(data)}")
 
 
 # Backward compatibility aliases

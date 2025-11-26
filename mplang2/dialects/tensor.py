@@ -499,7 +499,7 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
             "elementwise function outputs must be TraceObjects (no pure Python constants)"
         )
 
-    output_types: list[elt.TensorType] = []
+    output_types: list[elt.BaseType] = []
     for idx, output_value in enumerate(traced_fn.graph.outputs):
         output_element_type = output_value.type
         # Allow rank-0 tensors as scalars (produced by run_jax)
@@ -515,9 +515,7 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
                 f"got {type(output_element_type).__name__} at output index {idx}. "
                 "Elementwise only supports operations producing valid MPLang types."
             )
-        output_types.append(
-            elt.TensorType(output_element_type, result_shape)
-        )  # Collect graph values from TraceObject args/kwargs for IR in a deterministic order
+        output_types.append(elt.TensorType(output_element_type, result_shape))
     flat_inputs, _ = tree_flatten((args, kwargs))
     input_values = [
         value._graph_value for value in flat_inputs if isinstance(value, el.TraceObject)

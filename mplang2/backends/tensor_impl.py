@@ -82,15 +82,12 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
 
     if shape == ():
         # Scalar case
-        scalar_inputs = {}
-        for inp_val, arg in zip(subgraph.inputs, args, strict=True):
-            scalar_inputs[inp_val] = arg
-        return interpret(subgraph, scalar_inputs, interpreter)
+        return interpret(subgraph, list(args), interpreter)
 
     for index in np.ndindex(shape):
-        # Prepare inputs for this element
-        scalar_inputs = {}
-        for i, (inp_val, arg) in enumerate(zip(subgraph.inputs, args, strict=True)):
+        # Prepare inputs for this element (list ordered by subgraph.inputs)
+        scalar_inputs = []
+        for i, arg in enumerate(args):
             outer_val = op.inputs[i]
             # Check if this argument should be iterated based on OUTER IR type
             if (
@@ -98,10 +95,10 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
                 and outer_val.type.shape != ()
             ):
                 # Tensor argument: pick element
-                scalar_inputs[inp_val] = arg[index]
+                scalar_inputs.append(arg[index])
             else:
                 # Scalar/Broadcast argument: use as is
-                scalar_inputs[inp_val] = arg
+                scalar_inputs.append(arg)
 
         # Recursive execution
         scalar_out = interpret(subgraph, scalar_inputs, interpreter)

@@ -40,8 +40,7 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
     if interpreter.rank in parties:
         # Execute region
         fn_graph = op.regions[0]
-        inputs_map = dict(zip(fn_graph.inputs, args, strict=True))
-        return interpreter.evaluate_graph(fn_graph, inputs_map)
+        return interpreter.evaluate_graph(fn_graph, list(args))
     else:
         # Return dummy values (None) for each output
         # This ensures downstream operations (like shuffle) receive the correct number of inputs
@@ -57,8 +56,7 @@ def pcall_dynamic_impl(interpreter: Interpreter, op: Operation, *args: Any) -> A
     # Dynamic pcall runs on all parties (or based on input availability).
     # For now, run on all parties.
     fn_graph = op.regions[0]
-    inputs_map = dict(zip(fn_graph.inputs, args, strict=True))
-    return interpreter.evaluate_graph(fn_graph, inputs_map)
+    return interpreter.evaluate_graph(fn_graph, list(args))
 
 
 @simp.shuffle_static_p.def_impl
@@ -127,13 +125,9 @@ def uniform_cond_impl(
         pass
 
     if pred:
-        return interpreter.evaluate_graph(
-            op.regions[0], dict(zip(op.regions[0].inputs, args, strict=True))
-        )
+        return interpreter.evaluate_graph(op.regions[0], list(args))
     else:
-        return interpreter.evaluate_graph(
-            op.regions[1], dict(zip(op.regions[1].inputs, args, strict=True))
-        )
+        return interpreter.evaluate_graph(op.regions[1], list(args))
 
 
 @simp.while_loop_p.def_impl
@@ -148,17 +142,15 @@ def while_loop_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     while True:
         region_inputs_list = current_state + captures
-        cond_inputs = dict(zip(cond_graph.inputs, region_inputs_list, strict=True))
 
         # Execute condition locally
-        cond_res = interpreter.evaluate_graph(cond_graph, cond_inputs)
+        cond_res = interpreter.evaluate_graph(cond_graph, region_inputs_list)
 
         # cond_res is local boolean
         if not cond_res:
             break
 
-        body_inputs = dict(zip(body_graph.inputs, region_inputs_list, strict=True))
-        body_res = interpreter.evaluate_graph(body_graph, body_inputs)
+        body_res = interpreter.evaluate_graph(body_graph, region_inputs_list)
 
         if isinstance(body_res, list):
             current_state = body_res

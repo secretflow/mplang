@@ -114,13 +114,13 @@ class HttpHost(SimpHost):
         self.endpoints = endpoints
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
 
-    def _submit(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         return self.executor.submit(self._run_party, rank, graph, inputs)
 
     def _collect(self, futures: list[Any]) -> list[Any]:
         return [f.result() for f in futures]
 
-    def _run_party(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         url = f"{self.endpoints[rank]}/exec"
         logger.debug(f"Host submitting to rank {rank} url={url}")
         graph_pkl = base64.b64encode(pickle.dumps(graph)).decode("utf-8")

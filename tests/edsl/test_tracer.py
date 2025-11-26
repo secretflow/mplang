@@ -49,6 +49,57 @@ class TestMakeGraph:
         assert len(traced.graph.inputs) == 2
         assert len(traced.graph.outputs) == 2
 
+    def test_same_object_multiple_params(self, sample_inputs):
+        """Test that same object passed multiple times creates independent graph inputs.
+
+        This is critical for correct semantics: trace(fn, x, x) should create
+        two independent graph inputs, not share the same one.
+        """
+        x_obj, _ = sample_inputs
+
+        def use_twice(a, b):
+            # Even though a and b are the same Python object,
+            # they should map to different graph inputs
+            return a, b
+
+        traced = trace(use_twice, x_obj, x_obj)
+
+        assert traced.name == "use_twice"
+        # Should have 2 independent inputs, not 1
+        assert len(traced.graph.inputs) == 2
+        assert len(traced.in_var_pos) == 2
+        # The two inputs should be distinct graph Values
+        assert traced.graph.inputs[0] is not traced.graph.inputs[1]
+        assert traced.graph.inputs[0].name == "%arg0"
+        assert traced.graph.inputs[1].name == "%arg1"
+        # Should have 2 outputs (a, b)
+        assert len(traced.graph.outputs) == 2
+        # Outputs should reference different inputs
+        assert traced.graph.outputs[0] is traced.graph.inputs[0]
+        assert traced.graph.outputs[1] is traced.graph.inputs[1]
+
+    def test_same_object_as_param_and_capture(self, sample_inputs):
+        """Test object used both as param and captured creates independent inputs.
+
+        When the same object is both passed as a parameter AND captured from
+        closure, they should be treated independently.
+        """
+        x_obj, _ = sample_inputs
+        captured = x_obj  # Same object as param
+
+        def use_as_both(a):
+            # a is a param, captured is from closure (same Python object)
+            return a, captured
+
+        traced = trace(use_as_both, x_obj)
+
+        # Should have 2 inputs: 1 param + 1 capture
+        assert len(traced.graph.inputs) == 2
+        assert len(traced.in_var_pos) == 1  # Only 1 explicit param
+        assert len(traced.captured) == 1  # 1 captured variable
+        # Both inputs should be distinct
+        assert traced.graph.inputs[0] is not traced.graph.inputs[1]
+
     def test_function_with_kwargs(self, sample_inputs):
         """Test tracing function with keyword arguments."""
         x_obj, _ = sample_inputs

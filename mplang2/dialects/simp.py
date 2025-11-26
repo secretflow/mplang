@@ -49,17 +49,11 @@ def _validate_scalar_predicate(value: el.graph.Value, context: str) -> None:
 
 
 def _merge_captures(*capture_lists: list[el.Object]) -> list[el.Object]:
-    """Merge capture lists while preserving first-seen order."""
-    merged: list[el.Object] = []
-    seen_ids: set[int] = set()
-    for capture_list in capture_lists:
-        for obj in capture_list:
-            obj_id = id(obj)
-            if obj_id in seen_ids:
-                continue
-            seen_ids.add(obj_id)
-            merged.append(obj)
-    return merged
+    """Merge capture lists while preserving first-seen order and deduplicating by id."""
+    seen: dict[int, el.Object] = {}
+    for obj in (o for lst in capture_lists for o in lst):
+        seen.setdefault(id(obj), obj)
+    return list(seen.values())
 
 
 def _deduce_parties(types: list[elt.MPType]) -> tuple[int, ...] | None:
@@ -85,8 +79,8 @@ def _deduce_parties(types: list[elt.MPType]) -> tuple[int, ...] | None:
 class _LocalMPTracer(el.Tracer):
     """Tracer for single-party regions executed under MP context."""
 
-    def _lift(self, obj: el.Object) -> el.TraceObject:
-        """Override _lift to unwrap MP-typed Objects to their value types.
+    def _lift_type(self, obj: el.Object) -> elt.BaseType:
+        """Override to unwrap MP-typed Objects to their value types.
 
         This enables single-party regions to work with the underlying value types
         while enforcing that all inputs are MP-typed in the outer context.
@@ -95,18 +89,15 @@ class _LocalMPTracer(el.Tracer):
             obj: Object to lift (must be MP-typed)
 
         Returns:
-            TraceObject with value_type (unwrapped from MPType)
+            value_type (unwrapped from MPType)
 
         Raises:
             TypeError: If obj is not MP-typed
         """
         obj_type = obj.type
         if not isinstance(obj_type, elt.MPType):
-            raise TypeError(f"MP-typed values, got type {obj_type}")
-
-        lifted = super()._lift(obj)
-        lifted._graph_value.type = obj_type.value_type
-        return lifted
+            raise TypeError(f"Expected MP-typed values, got type {obj_type}")
+        return obj_type.value_type
 
 
 # ---------------------------------------------------------------------------
@@ -177,17 +168,18 @@ def _uniform_cond_trace(
 
     num_arg_vars = len(then_traced.in_var_pos)
 
-    # Collect outer values corresponding to region inputs
-    # We must use the values from the outer context (cur_ctx), not the inner region inputs.
-    flat_args, _ = tree_flatten((args, kwargs))
+    # Get outer graph values for parameters
+    # then_traced.params contains the original TraceObjects from args/kwargs
     outer_arg_values = [
-        arg._graph_value for arg in flat_args if isinstance(arg, el.TraceObject)
+        param._graph_value
+        for param in then_traced.params
+        if isinstance(param, el.TraceObject)
     ]
 
     if len(outer_arg_values) != num_arg_vars:
         raise RuntimeError(
             f"uniform_cond: argument count mismatch. Expected {num_arg_vars} variables, "
-            f"got {len(outer_arg_values)} from args/kwargs."
+            f"got {len(outer_arg_values)} from params."
         )
 
     all_captures = _merge_captures(then_traced.captured, else_traced.captured)
@@ -266,20 +258,22 @@ def _while_loop_trace(
     if not state_flat:
         raise TypeError("while_loop init must contain at least one Object")
 
-    state_trace_objs: list[el.TraceObject] = []
+    # Validate all leaves are TraceObjects
     for leaf in state_flat:
         if not isinstance(leaf, el.TraceObject):
             raise TypeError(
                 f"while_loop init leaves must be TraceObject, got {type(leaf)}"
             )
-        state_trace_objs.append(leaf)
-
-    state_values = [obj._graph_value for obj in state_trace_objs]
-    state_types = [obj.type for obj in state_trace_objs]
-    state_count = len(state_trace_objs)
 
     cond_traced = el.trace(cond_fn, init)
     body_traced = el.trace(body_fn, init)
+
+    # Use params from traced function (same as state_flat filtered to Objects)
+    # These are TraceObjects since we're in trace mode
+    state_trace_objs = cast(list[el.TraceObject], cond_traced.params)
+    state_values = [obj._graph_value for obj in state_trace_objs]
+    state_types = [obj.type for obj in state_trace_objs]
+    state_count = len(state_trace_objs)
 
     cond_output_count = len(cond_traced.out_var_pos) + len(cond_traced.out_imms)
     if cond_output_count != 1:
@@ -401,7 +395,10 @@ def _pcall_static_trace(
     local_tracer = _LocalMPTracer()
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
 
-    all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
+    # Get all input objects: params (function arguments) + captured (closures)
+    # TracedFunction guarantees: graph.inputs = [*params_inputs, *captured_inputs]
+    all_input_objs = local_traced.params + local_traced.captured
+
     # All types are guaranteed to be MPType by _LocalMPTracer._lift
     all_input_types: list[elt.MPType] = [obj.type for obj in all_input_objs]  # type: ignore[misc]
     deduced_parties = _deduce_parties(all_input_types)
@@ -413,7 +410,7 @@ def _pcall_static_trace(
                 f"input argument parties {deduced_parties}"
             )
 
-    all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
+    # Re-capture all input objects in outer context
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
     result_types: list[elt.BaseType] = [
@@ -471,7 +468,10 @@ def _pcall_dynamic_trace(
     local_tracer = _LocalMPTracer()
     local_traced = local_tracer.run(local_fn, *args, **kwargs)
 
-    all_input_objs = [obj for obj, _ in local_tracer._freevars.values()]
+    # Get all input objects: params (function arguments) + captured (closures)
+    # TracedFunction guarantees: graph.inputs = [*params_inputs, *captured_inputs]
+    all_input_objs = local_traced.params + local_traced.captured
+
     recaptured_objs = [cur_ctx.lift(obj) for obj in all_input_objs]
     region_inputs = [obj._graph_value for obj in recaptured_objs]
 

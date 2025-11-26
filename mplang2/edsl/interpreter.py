@@ -135,10 +135,10 @@ class Interpreter(Context):
 
         # Build inputs map for interpret
         # We need to map the Graph Inputs (Values) to the Runtime Objects (InterpObjects)
-        # The Tracer creates inputs for free variables (which are our args/kwargs)
-        # We can recover this mapping from the Tracer's _freevars
+        # The Tracer creates inputs for captured variables (which are our args/kwargs)
+        # We can recover this mapping from the Tracer's _captured_vars
         inputs_map = {}
-        for _, (obj, graph_value) in ctx._freevars.items():
+        for obj, graph_value in ctx._captured_vars.values():
             if isinstance(obj, InterpObject):
                 inputs_map[graph_value] = obj.runtime_obj
             else:

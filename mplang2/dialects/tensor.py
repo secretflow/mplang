@@ -399,14 +399,14 @@ class _ElementwiseTracer(el.Tracer):
         super().__init__()
         self._tensor_shape: tuple[int, ...] | None = None
 
-    def _lift(self, obj: el.Object) -> el.TraceObject:
-        """Override lift to unwrap Tensor→element type, keep scalar as-is.
+    def _lift_type(self, obj: el.Object) -> elt.BaseType:
+        """Override to unwrap Tensor→element type, keep scalar as-is.
 
         Args:
             obj: Object to lift (can be Tensor or Scalar typed)
 
         Returns:
-            TraceObject with element type (for Tensor) or original type (for Scalar)
+            element type (for Tensor) or original type (for Scalar)
 
         Raises:
             ValueError: If tensor shapes don't match
@@ -414,9 +414,8 @@ class _ElementwiseTracer(el.Tracer):
         obj_type = obj.type
 
         if isinstance(obj_type, elt.TensorType):
-            # Handle shape tracking with broadcasting for 0-d tensors
+            # Validate and track shape
             new_shape = obj_type.shape
-
             if self._tensor_shape is None:
                 self._tensor_shape = new_shape
             elif self._tensor_shape == new_shape:
@@ -433,13 +432,11 @@ class _ElementwiseTracer(el.Tracer):
                     f"Expected {self._tensor_shape}, got {obj_type.shape}"
                 )
 
-            # Lift with original type, then unwrap to element type
-            lifted = super()._lift(obj)
-            lifted._graph_value.type = obj_type.element_type
-            return lifted
+            # Unwrap to element type
+            return obj_type.element_type
         else:
             # Non-tensor (scalar, custom type) - keep as-is
-            return super()._lift(obj)
+            return obj_type
 
 
 @elementwise_p.def_trace

@@ -466,6 +466,28 @@ class TracedFunction:
             )
         )
 
+    def compiler_ir(self, verbose: bool = False) -> str:
+        """Get human-readable IR representation of the traced function.
+
+        This is useful for debugging, auditing, and understanding what
+        operations were captured during tracing.
+
+        Args:
+            verbose: If True, include type annotations in the output
+
+        Returns:
+            String representation of the Graph IR
+
+        Example:
+            >>> traced = compile(lambda x, y: x + y, x_obj, y_obj)
+            >>> print(traced.compiler_ir())
+            %arg0 = input
+            %arg1 = input
+            %0 = add(%arg0, %arg1)
+            return %0
+        """
+        return self.graph.to_string(verbose=verbose)
+
     def align_region_inputs(
         self, leading_count: int, capture_order: list[Object]
     ) -> None:

@@ -87,13 +87,13 @@ class SimpSimulator(SimpHost):
             for rank in range(world_size)
         ]
 
-    def _submit(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         return self.ctx.executor.submit(self._run_party, rank, graph, inputs)
 
     def _collect(self, futures: list[Any]) -> list[Any]:
         return [f.result() for f in futures]
 
-    def _run_party(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         worker = self.workers[rank]
         return worker.evaluate_graph(graph, inputs)
 

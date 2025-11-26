@@ -128,26 +128,23 @@ class Interpreter(Context):
         from mplang2.edsl.tracer import Tracer
 
         # Create tracer and build graph
+        # Note: primitive.bind() internally calls Tracer.lift() with is_param=False,
+        # so all args become captures (not params). This is correct because we're
+        # tracing a primitive execution, not a user function with explicit parameters.
         with Tracer() as ctx:
             # Finalize graph by setting outputs
             result_traced = primitive.bind(*args, **kwargs)
             graph = ctx.finalize(result_traced)
 
-        # Build inputs map for interpret
-        # We need to map the Graph Inputs (Values) to the Runtime Objects (InterpObjects)
-        # The Tracer creates inputs for captured variables (which are our args/kwargs)
-        # We can recover this mapping from the Tracer's _captured_vars
-        inputs_map = {}
-        for obj, graph_value in ctx._captured_vars.values():
-            if isinstance(obj, InterpObject):
-                inputs_map[graph_value] = obj.runtime_obj
-            else:
-                # For constants/immediates, we might not need to do anything if they are
-                # inlined into the graph, but if they are captured as inputs:
-                inputs_map[graph_value] = obj
+        # Build inputs list for interpret
+        # _captured_vars contains all inputs (no params in this context)
+        inputs_list = [
+            obj.runtime_obj if isinstance(obj, InterpObject) else obj
+            for obj, _ in ctx._captured_vars.values()
+        ]
 
         # Execute graph
-        result_runtime = self.evaluate_graph(graph, inputs_map)
+        result_runtime = self.evaluate_graph(graph, inputs_list)
 
         # Normalize runtime result to list for structural matching
         # evaluate_graph returns single value if len(outputs)==1, else list
@@ -251,19 +248,19 @@ class Interpreter(Context):
             graph.outputs = target_outputs
 
             try:
-                # Resolve inputs from Tracer's freevars
-                # This maps the graph's input Values to runtime objects
-                inputs_map = {}
-                for _, (captured_obj, val) in tracer._freevars.items():
+                # Resolve inputs from Tracer's captured vars
+                # _captured_vars preserves insertion order which matches graph.inputs order
+                inputs_list = []
+                for captured_obj, _ in tracer._captured_vars.values():
                     # Recursively lift captured objects to ensure they are ready
                     lifted = self.lift(captured_obj)
                     if isinstance(lifted, InterpObject):
-                        inputs_map[val] = lifted.runtime_obj
+                        inputs_list.append(lifted.runtime_obj)
                     else:
-                        inputs_map[val] = lifted
+                        inputs_list.append(lifted)
 
                 # Execute graph
-                results_runtime = self.evaluate_graph(graph, inputs_map)
+                results_runtime = self.evaluate_graph(graph, inputs_list)
 
                 # If single output, wrap in list for uniform handling
                 if len(target_outputs) == 1:
@@ -294,14 +291,14 @@ class Interpreter(Context):
             # Constants: pass through unchanged
             return obj
 
-    def evaluate_graph(self, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
         """Execute a Graph IR with runtime data.
 
         Can be overridden by subclasses to implement remote execution or compilation.
 
         Args:
             graph: Finalized Graph IR to execute
-            inputs: Mapping from Graph Value (input) to Runtime Object
+            inputs: Runtime objects corresponding to graph.inputs (positional)
 
         Returns:
             Runtime execution results corresponding to graph.outputs
@@ -309,7 +306,7 @@ class Interpreter(Context):
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
         # Local environment: Value -> Runtime Object
-        env = inputs.copy()
+        env = dict(zip(graph.inputs, inputs, strict=True))
 
         for op in graph.operations:
             # Resolve inputs
@@ -359,7 +356,7 @@ class Interpreter(Context):
             return [env[out] for out in graph.outputs]
 
 
-def interpret(graph: Graph, inputs: dict[Any, Any], interpreter: Interpreter) -> Any:
+def interpret(graph: Graph, inputs: list[Any], interpreter: Interpreter) -> Any:
     """Execute a Graph IR with runtime data from Interpreter.
 
     This is a functional helper that delegates to interpreter.evaluate_graph().
@@ -369,7 +366,7 @@ def interpret(graph: Graph, inputs: dict[Any, Any], interpreter: Interpreter) ->
 
     Args:
         graph: Finalized Graph IR to execute
-        inputs: Mapping from Graph Value (input) to Runtime Object
+        inputs: Runtime objects corresponding to graph.inputs (positional)
         interpreter: Interpreter context (for recursive execution)
 
     Returns:

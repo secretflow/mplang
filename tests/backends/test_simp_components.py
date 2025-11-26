@@ -109,12 +109,15 @@ def test_simp_host_evaluate_graph():
     world_size = 3
     host = MockSimpHost(world_size)
 
-    # Create a dummy graph
+    # Create a dummy graph with inputs
     graph = Operation(opcode="test_op", inputs=[], outputs=[], attrs={}, regions=[])
-    # Mock outputs for the graph
+    # Mock inputs and outputs for the graph
+    in1_val = MagicMock(name="in1")
+    in2_val = MagicMock(name="in2")
+    graph.inputs = [in1_val, in2_val]
     graph.outputs = [MagicMock(), MagicMock()]  # 2 outputs
 
-    # Inputs
+    # Inputs as list (matching graph.inputs order)
     # Use Mock objects to represent remote references, not raw values
     # This better reflects that HostVar holds references in a distributed setting
     ref0 = MagicMock(name="ref_party0")
@@ -123,7 +126,7 @@ def test_simp_host_evaluate_graph():
     hv_input = HostVar([ref0, ref1, ref2])
 
     const_input = 100
-    inputs = {"in1": hv_input, "in2": const_input}
+    inputs = [hv_input, const_input]
 
     # Mock collect return: list of (out1, out2) for each party
     # These represent the results fetched from workers
@@ -141,8 +144,9 @@ def test_simp_host_evaluate_graph():
         assert r == rank
         assert g == graph
         # Verify that the correct reference was dispatched to the correct worker
-        assert i["in1"] == hv_input[rank]
-        assert i["in2"] == const_input
+        # i is now a list [hv_input[rank], const_input]
+        assert i[0] == hv_input[rank]
+        assert i[1] == const_input
 
     # Check results
     # Should be [HostVar([11, 12, 13]), HostVar([101, 102, 103])]
@@ -160,9 +164,10 @@ def test_simp_host_evaluate_graph_single_output():
     host = MockSimpHost(world_size)
 
     graph = Operation(opcode="test_op", inputs=[], outputs=[], attrs={}, regions=[])
+    graph.inputs = []  # no inputs
     graph.outputs = [MagicMock()]  # 1 output
 
-    inputs = {}
+    inputs = []  # empty list
 
     # Mock collect return: list of single values
     host.collect_return = [42, 43]
@@ -179,9 +184,10 @@ def test_simp_host_evaluate_graph_no_output():
     host = MockSimpHost(world_size)
 
     graph = Operation(opcode="test_op", inputs=[], outputs=[], attrs={}, regions=[])
+    graph.inputs = []  # no inputs
     graph.outputs = []  # 0 outputs
 
-    inputs = {}
+    inputs = []  # empty list
     host.collect_return = [None, None]
 
     result = host.evaluate_graph(graph, inputs)

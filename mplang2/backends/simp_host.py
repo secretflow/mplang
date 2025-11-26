@@ -28,19 +28,19 @@ class SimpHost(Interpreter):
         super().__init__()
         self.world_size = world_size
 
-    def evaluate_graph(self, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
         """Execute graph by distributing it to all parties."""
-        # inputs: Value -> HostVar (or constant)
+        # inputs: list of runtime objects (HostVar or constant), matching graph.inputs order
 
         futures = []
         for rank in range(self.world_size):
             # Prepare inputs for this rank
-            party_inputs = {}
-            for val, runtime_obj in inputs.items():
+            party_inputs = []
+            for runtime_obj in inputs:
                 if isinstance(runtime_obj, HostVar):
-                    party_inputs[val] = runtime_obj[rank]
+                    party_inputs.append(runtime_obj[rank])
                 else:
-                    party_inputs[val] = runtime_obj
+                    party_inputs.append(runtime_obj)
 
             futures.append(self._submit(rank, graph, party_inputs))
 
@@ -62,7 +62,7 @@ class SimpHost(Interpreter):
             outs.append(HostVar([res[i] for res in results]))
         return outs
 
-    def _submit(self, rank: int, graph: Graph, inputs: dict[Any, Any]) -> Any:
+    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         raise NotImplementedError
 
     def _collect(self, futures: list[Any]) -> list[Any]:

@@ -138,6 +138,10 @@ def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[Any]
     return casted_args
 
 
+# Global cache for compiled StableHLO executables
+_STABLEHLO_CACHE: dict[int, Any] = {}
+
+
 @tensor.run_jax_p.def_impl
 def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     """Execute JAX function."""
@@ -149,13 +153,21 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         )
 
     # Compile StableHLO
-    # TODO: Cache compilation based on stablehlo_code hash
     client = jxt.backend.get_backend()
-    compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
-    try:
-        compiled = client.compile(stablehlo_code, compile_options)
-    except Exception as e:
-        raise RuntimeError(f"StableHLO compile failed: {e}") from e
+
+    # Use hash of code as cache key
+    # Note: We assume compile_options are constant (num_replicas=1, num_partitions=1)
+    code_hash = hash(stablehlo_code)
+
+    if code_hash in _STABLEHLO_CACHE:
+        compiled = _STABLEHLO_CACHE[code_hash]
+    else:
+        compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
+        try:
+            compiled = client.compile(stablehlo_code, compile_options)
+            _STABLEHLO_CACHE[code_hash] = compiled
+        except Exception as e:
+            raise RuntimeError(f"StableHLO compile failed: {e}") from e
 
     # Cast inputs to expected types (Boundary Type Guard)
     # This allows users to pass Python ints/floats to functions expecting f32/i32

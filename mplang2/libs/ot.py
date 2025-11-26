@@ -123,9 +123,15 @@ def transfer(
     # Infer target type from m0
     m0_type = m0.type
     if isinstance(m0_type, elt.MPType):
-        target_type = m0_type.value_type
+        val_type = m0_type.value_type
     else:
-        target_type = m0_type
+        val_type = m0_type
+
+    # Since we use tensor.elementwise, we need the element type for decryption
+    if isinstance(val_type, elt.TensorType):
+        target_type = val_type.element_type
+    else:
+        target_type = val_type
 
     # --- Step 1: Receiver Key Generation ---
     def receiver_keygen_fn(C_point: el.Object, b: el.Object) -> el.Object:

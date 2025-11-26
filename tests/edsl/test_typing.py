@@ -137,10 +137,13 @@ class TestTensorType:
         assert t.element_type == f32
 
     def test_tensor_rejects_non_scalar_element(self):
-        """Test that Tensor rejects non-ScalarType element types (e.g., Vector)."""
+        """Test that Tensor accepts any BaseType element types (including Vector)."""
         simd_he = Vector[f32, 4096]
-        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
-            Tensor[simd_he, (4,)]
+        # Now allowed: Tensor can contain any BaseType for flexibility
+        # (e.g., crypto.PointType, custom types)
+        t = Tensor[simd_he, (4,)]
+        assert t.element_type == simd_he
+        assert t.shape == (4,)
 
     def test_tensor_empty_shape(self):
         """Test tensor with empty shape (scalar-like)."""
@@ -690,16 +693,20 @@ class TestEdgeCasesAndErrors:
     """Test edge cases and error handling in the typing system."""
 
     def test_tensor_with_invalid_element_type(self):
-        """Test that Tensor rejects invalid element types."""
-        # MP is not a ScalarType
+        """Test that Tensor accepts any BaseType element types."""
+        # MP as element type - now allowed for flexibility
         mp_type = MPType[f32, (0,)]
-        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
-            Tensor[mp_type, (10,)]
+        t1 = Tensor[mp_type, (10,)]
+        assert t1.element_type == mp_type
 
-        # Table is not a ScalarType
+        # Table as element type - now allowed
         table_type = Table[{"x": i32}]
-        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
-            Tensor[table_type, (5,)]
+        t2 = Tensor[table_type, (5,)]
+        assert t2.element_type == table_type
+
+        # Only non-BaseType should raise TypeError
+        with pytest.raises(TypeError, match="Tensor element type must be a BaseType"):
+            Tensor["invalid", (10,)]  # type: ignore[type-var]
 
     def test_vector_with_non_scalar_plaintext(self):
         """Test that Vector requires ScalarType plaintext."""
@@ -747,10 +754,11 @@ class TestDemonstrationCases:
         assert str(simd_he_vector) == "Vector[f32, 4096]"
 
     def test_design_constraint_demonstration(self):
-        """Test that Vector cannot be a Tensor element (design constraint)."""
+        """Test that Vector can be a Tensor element (design allows this for flexibility)."""
         simd_he_vector = Vector[f32, 4096]
-        with pytest.raises(TypeError, match="Tensor element type must be a ScalarType"):
-            Tensor[simd_he_vector, (4,)]
+        # Now allowed: needed for crypto types like PointType in OT protocol
+        t = Tensor[simd_he_vector, (4,)]
+        assert t.element_type == simd_he_vector
 
     def test_secret_sharing_demonstration(self):
         """Test secret sharing demonstration."""

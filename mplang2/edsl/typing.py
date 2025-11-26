@@ -324,10 +324,9 @@ class TensorType(BaseType, Generic[T]):
 
     def __init__(self, element_type: BaseType, shape: tuple[int, ...]):
         # Only ScalarType can be tensor elements
-        # Relaxed: Allow any BaseType to support custom types like PointType
-        if not isinstance(element_type, BaseType):
+        if not isinstance(element_type, ScalarType):
             raise TypeError(
-                f"Tensor element type must be a BaseType, but got {type(element_type).__name__}."
+                f"Tensor element type must be a ScalarType, but got {type(element_type).__name__}."
             )
         self.element_type = element_type
         self.shape = shape

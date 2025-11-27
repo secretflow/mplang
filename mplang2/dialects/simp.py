@@ -17,7 +17,7 @@ See individual primitive docstrings for detailed documentation.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, cast
 
 from jax.tree_util import tree_flatten
@@ -56,13 +56,20 @@ def _merge_captures(*capture_lists: list[el.Object]) -> list[el.Object]:
     return list(seen.values())
 
 
-def _deduce_parties(types: list[elt.MPType]) -> tuple[int, ...] | None:
+def _deduce_parties(types: Sequence[elt.BaseType]) -> tuple[int, ...] | None:
     """Deduce common parties by intersecting all known party sets."""
     if not types:
         return None
 
-    # Extract parties, return None if any is dynamic
-    parties_list = [tp.parties for tp in types]
+    # Extract parties from MPType objects
+    parties_list = []
+    for tp in types:
+        if isinstance(tp, elt.MPType):
+            parties_list.append(tp.parties)
+
+    if not parties_list:
+        return None
+
     if any(p is None for p in parties_list):
         return None
 
@@ -82,22 +89,20 @@ class _LocalMPTracer(el.Tracer):
     def _lift_type(self, obj: el.Object) -> elt.BaseType:
         """Override to unwrap MP-typed Objects to their value types.
 
-        This enables single-party regions to work with the underlying value types
-        while enforcing that all inputs are MP-typed in the outer context.
+        This enables single-party regions to work with the underlying value types.
+        MP-typed objects are unwrapped to their value types.
+        Other types (e.g. TensorType) are passed through as-is (treated as public/replicated).
 
         Args:
-            obj: Object to lift (must be MP-typed)
+            obj: Object to lift
 
         Returns:
-            value_type (unwrapped from MPType)
-
-        Raises:
-            TypeError: If obj is not MP-typed
+            value_type (unwrapped from MPType) or original type
         """
         obj_type = obj.type
-        if not isinstance(obj_type, elt.MPType):
-            raise TypeError(f"Expected MP-typed values, got type {obj_type}")
-        return obj_type.value_type
+        if isinstance(obj_type, elt.MPType):
+            return obj_type.value_type
+        return obj_type
 
 
 # ---------------------------------------------------------------------------

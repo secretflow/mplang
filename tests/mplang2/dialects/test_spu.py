@@ -57,17 +57,16 @@ def test_encrypt_decrypt_flow():
 
 def test_jit_compilation():
     # 1. Setup
-    # device = spu.SPUDevice(parties=(0, 1, 2))
+    device = spu.SPUDevice(parties=(0, 1, 2))
 
     # 2. Define JAX function
-    @spu.jit
     def secure_add(x, y):
         return x + y
 
     # 3. Trace usage
     def trace_fn(x, y):
         # Assume x, y are already encrypted
-        z = secure_add(x, y)
+        z = spu.call(secure_add, device.parties, x, y)
         return z
 
     # Input types: MP[SS[Tensor], (0,1,2)]

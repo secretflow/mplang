@@ -19,7 +19,6 @@ def test_spu_e2e_simulation():
     spu_device = spu.SPUDevice(parties=(0, 1, 2))
 
     # 2. Define computation
-    @spu.jit
     def secure_add(x, y):
         return x + y
 
@@ -35,7 +34,7 @@ def test_spu_e2e_simulation():
         y_enc = spu.encrypt(y_mp, spu_device)
 
         # Execute (SPU -> SPU)
-        z_enc = secure_add(x_enc, y_enc)
+        z_enc = spu.call(secure_add, spu_device.parties, x_enc, y_enc)
 
         # Decrypt (SPU -> Public)
         z_mp = spu.decrypt(z_enc, target_party=0)

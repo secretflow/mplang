@@ -21,7 +21,6 @@ spu_device = spu.SPUDevice(parties=(0, 1, 2))
 
 
 # 1. Define computation
-@spu.jit
 def secure_add(x, y):
     return x + y
 
@@ -32,7 +31,7 @@ x_enc = spu.encrypt(x, spu_device)  # MP[SS[Tensor], (0,1,2)]
 y_enc = spu.encrypt(y, spu_device)
 
 # 3. Execute (SPU -> SPU)
-z_enc = secure_add(x_enc, y_enc)
+z_enc = spu.call(secure_add, spu_device.parties, x_enc, y_enc)
 
 # 4. Decrypt (SPU -> Public)
 z = spu.decrypt(z_enc, target_party=0)
@@ -44,7 +43,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, NamedTuple, cast
 
-import jax.numpy as jnp
 import spu.libspu as libspu
 import spu.utils.frontend as spu_fe
 from jax import ShapeDtypeStruct
@@ -52,7 +50,8 @@ from jax.tree_util import tree_flatten, tree_unflatten
 
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
-from mplang2.dialects import simp
+from mplang.utils.func_utils import normalize_fn
+from mplang2.dialects import simp, type_utils
 
 # ==============================================================================
 # --- Configuration
@@ -104,7 +103,7 @@ def _reconstruct_ae(*shares: elt.SSType) -> elt.TensorType:
 
 @exec_p.def_abstract_eval
 def _exec_ae(
-    *args: elt.SSType,
+    *args: elt.SSType | elt.TensorType,
     executable: bytes,
     input_vis: list[libspu.Visibility],
     output_vis: list[libspu.Visibility],
@@ -114,10 +113,10 @@ def _exec_ae(
     output_names: list[str],
 ) -> tuple[elt.SSType, ...] | elt.SSType:
     """Execute SPU kernel on shares."""
-    # Validate inputs are SS types
+    # Validate inputs are SS types or Tensor types
     for arg in args:
-        if not isinstance(arg, elt.SSType):
-            raise TypeError(f"spu.exec expects SSType inputs, got {arg}")
+        if not (isinstance(arg, elt.SSType) or isinstance(arg, elt.TensorType)):
+            raise TypeError(f"spu.exec expects SSType or TensorType inputs, got {arg}")
 
     # Outputs are SS[Tensor]
     outputs: list[elt.SSType[Any]] = []
@@ -234,122 +233,150 @@ def decrypt(val: el.Object, target_party: int) -> el.Object:
     return cast(el.Object, result)
 
 
-def jit(fn: Callable) -> Callable:
-    """JIT compile a JAX function for SPU execution.
+def call(
+    fn: Callable, parties: tuple[int, ...] | None, *args: Any, **kwargs: Any
+) -> el.Object:
+    """Execute a function on SPU parties.
 
-    The decorated function will:
-    1. Compile the JAX function to SPU PPHLO.
-    2. Execute the compiled kernel on the SPU parties using `simp.pcall`.
+    Args:
+        fn: The function to execute.
+        parties: The SPU parties. If None, inferred from inputs.
+        *args: Positional arguments.
+        **kwargs: Keyword arguments.
     """
 
-    def wrapper(*args: el.Object, **kwargs: Any) -> el.Object:
-        # 1. Inspect inputs to determine SPU parties
-        flat_args, args_tree = tree_flatten((args, kwargs))
-        spu_parties = None
+    # 1. Inspect inputs to determine SPU parties
+    # Use normalize_fn to separate EDSL objects (variables) from raw values (immediates)
+    def is_variable(arg: Any) -> bool:
+        return isinstance(arg, el.Object)
 
-        # Validate inputs and find common parties
-        for arg in flat_args:
-            if not isinstance(arg.type, elt.MPType):
-                raise TypeError(f"spu.jit inputs must be MP-typed, got {arg.type}")
-            if not isinstance(arg.type.value_type, elt.SSType):
-                raise TypeError(f"spu.jit inputs must be SS-typed, got {arg.type}")
+    normalized_fn, in_vars = normalize_fn(fn, args, kwargs, is_variable)
+
+    spu_parties = parties
+
+    # Validate inputs and find common parties
+    for arg in in_vars:
+        if isinstance(arg.type, elt.MPType):
+            if not (
+                isinstance(arg.type.value_type, elt.SSType)
+                or isinstance(arg.type.value_type, elt.TensorType)
+            ):
+                raise TypeError(
+                    f"spu.call inputs must be SS-typed or Tensor-typed, got {arg.type}"
+                )
 
             if spu_parties is None:
                 spu_parties = arg.type.parties
             elif spu_parties != arg.type.parties:
-                raise ValueError("All inputs must be on the same SPU parties")
-
-        if spu_parties is None:
-            raise ValueError("No inputs provided or dynamic parties not supported")
-
-        # 2. Prepare for compilation
-        # We need to cast SS inputs to Tensors (shares) for the pcall
-        # But for compilation, we need the logical plaintext types
-
-        jax_args_flat = []
-        input_vis = []
-
-        for arg in flat_args:
-            ss_type = arg.type.value_type
-            pt_type = ss_type.pt_type
-            if not isinstance(pt_type, elt.TensorType):
-                raise TypeError(f"spu.jit inputs must be SS[Tensor], got {ss_type}")
-
-            # Map to JAX
-            dtype_map: dict[Any, Any] = {
-                elt.f32: jnp.float32,
-                elt.f64: jnp.float64,
-                elt.i32: jnp.int32,
-                elt.i64: jnp.int64,
-            }
-            jax_dtype = dtype_map.get(pt_type.element_type, jnp.float32)
-            shape = tuple(d if d != -1 else 1 for d in pt_type.shape)
-
-            jax_args_flat.append(ShapeDtypeStruct(shape, jax_dtype))
-            input_vis.append(libspu.Visibility.VIS_SECRET)
-
-        jax_args, jax_kwargs = tree_unflatten(args_tree, jax_args_flat)
-
-        # 3. Compile
-        def compiler_fn(*c_args: Any, **c_kwargs: Any) -> Any:
-            return fn(*c_args, **c_kwargs)
-
-        executable, output_info = spu_fe.compile(
-            spu_fe.Kind.JAX,
-            compiler_fn,
-            jax_args,
-            jax_kwargs,
-            input_names=[f"in{i}" for i in range(len(flat_args))],
-            input_vis=input_vis,
-            outputNameGen=lambda outs: [f"out{i}" for i in range(len(outs))],
-        )
-
-        # 4. Define fused execution function (Exec)
-        # This function runs on each SPU party locally.
-        # It executes the kernel directly on SS inputs.
-
-        # Extract output metadata (needed for both exec and unflatten)
-        flat_outputs_info, out_tree = tree_flatten(output_info)
-
-        def fused_exec(*local_ss_inputs: Any) -> Any:
-            # 4.1. Execute SPU Kernel
-            output_shapes = [out.shape for out in flat_outputs_info]
-
-            jax_to_elt = {
-                jnp.dtype("float32"): elt.f32,
-                jnp.dtype("float64"): elt.f64,
-                jnp.dtype("int32"): elt.i32,
-                jnp.dtype("int64"): elt.i64,
-            }
-            output_dtypes = [
-                jax_to_elt.get(out.dtype, elt.f32) for out in flat_outputs_info
-            ]
-            output_vis_list = [libspu.Visibility.VIS_SECRET] * len(flat_outputs_info)
-
-            res_shares = exec_p.bind(
-                *local_ss_inputs,
-                executable=executable.code,
-                input_vis=input_vis,
-                output_vis=output_vis_list,
-                output_shapes=output_shapes,
-                output_dtypes=output_dtypes,
-                input_names=executable.input_names,
-                output_names=executable.output_names,
+                # If parties were explicitly provided, check consistency
+                if parties is not None and parties != arg.type.parties:
+                    raise ValueError(
+                        f"Input parties {arg.type.parties} mismatch with explicit parties {parties}"
+                    )
+                # If inferred from previous args, check consistency
+                elif parties is None and spu_parties != arg.type.parties:
+                    raise ValueError("All inputs must be on the same SPU parties")
+        elif isinstance(arg.type, elt.TensorType):
+            # Host object (Public)
+            pass
+        else:
+            raise TypeError(
+                f"spu.call inputs must be MPType or TensorType, got {arg.type}"
             )
 
-            return res_shares
+    if spu_parties is None:
+        raise ValueError(
+            "No inputs provided or dynamic parties not supported, and no explicit parties given"
+        )
 
-        # 5. Execute on SPU parties
-        # We pass the MP[SS] objects directly. pcall unwraps them to SS objects
-        # for the local function, and wraps the returned SS objects back into MP[SS].
-        result_ss = simp.pcall_static(spu_parties, fused_exec, *flat_args)
+    # 2. Prepare for compilation
+    # We need to cast SS inputs to Tensors (shares) for the pcall
+    # But for compilation, we need the logical plaintext types
 
-        # 6. Unflatten results to match original structure
-        # pcall returns a single object if the function returns a single value,
-        # or a tuple if it returns multiple. tree_unflatten expects a list of leaves.
-        leaves = result_ss if isinstance(result_ss, tuple) else [result_ss]
-        final_result = tree_unflatten(out_tree, leaves)
+    jax_args_flat = []
+    input_vis = []
 
-        return cast(el.Object, final_result)
+    for arg in in_vars:
+        if isinstance(arg.type, elt.MPType):
+            # 1.1 MP Type (SPU Resident)
+            val_type = arg.type.value_type
+            if isinstance(val_type, elt.SSType):
+                pt_type = val_type.pt_type
+                vis = libspu.Visibility.VIS_SECRET
+            elif isinstance(val_type, elt.TensorType):
+                pt_type = val_type
+                vis = libspu.Visibility.VIS_PUBLIC
+            else:
+                raise TypeError(f"Unsupported input type: {val_type}")
+        else:
+            # 1.2 Host Object (Local EDSL Object)
+            # Treat as Public input
+            pt_type = arg.type
+            vis = libspu.Visibility.VIS_PUBLIC
 
-    return wrapper
+        if not isinstance(pt_type, elt.TensorType):
+            raise TypeError(f"spu.jit inputs must be Tensor-based, got {pt_type}")
+
+        # Map to JAX
+        jax_dtype = type_utils.elt_to_jax_dtype(
+            cast(elt.ScalarType, pt_type.element_type)
+        )
+        shape = tuple(d if d != -1 else 1 for d in pt_type.shape)
+
+        jax_args_flat.append(ShapeDtypeStruct(shape, jax_dtype))
+        input_vis.append(vis)
+
+    # 3. Compile
+    # Note: normalized_fn takes a list of variables as input
+    executable, output_info = spu_fe.compile(
+        spu_fe.Kind.JAX,
+        normalized_fn,
+        [jax_args_flat],
+        {},
+        input_names=[f"in{i}" for i in range(len(in_vars))],
+        input_vis=input_vis,
+        outputNameGen=lambda outs: [f"out{i}" for i in range(len(outs))],
+    )
+
+    # 4. Define fused execution function (Exec)
+    # This function runs on each SPU party locally.
+    # It executes the kernel directly on SS inputs.
+
+    # Extract output metadata (needed for both exec and unflatten)
+    flat_outputs_info, out_tree = tree_flatten(output_info)
+
+    def fused_exec(*local_ss_inputs: Any) -> Any:
+        # 4.1. Execute SPU Kernel
+
+        output_shapes = [out.shape for out in flat_outputs_info]
+
+        output_dtypes = [
+            type_utils.jax_to_elt_dtype(out.dtype) for out in flat_outputs_info
+        ]
+        output_vis_list = [libspu.Visibility.VIS_SECRET] * len(flat_outputs_info)
+
+        res_shares = exec_p.bind(
+            *local_ss_inputs,
+            executable=executable.code,
+            input_vis=input_vis,
+            output_vis=output_vis_list,
+            output_shapes=output_shapes,
+            output_dtypes=output_dtypes,
+            input_names=executable.input_names,
+            output_names=executable.output_names,
+        )
+
+        return res_shares
+
+    # 5. Execute on SPU parties
+    # We pass the MP[SS] objects directly. pcall unwraps them to SS objects
+    # for the local function, and wraps the returned SS objects back into MP[SS].
+    result_ss = simp.pcall_static(spu_parties, fused_exec, *in_vars)
+
+    # 6. Unflatten results to match original structure
+    # pcall returns a single object if the function returns a single value,
+    # or a tuple if it returns multiple. tree_unflatten expects a list of leaves.
+    leaves = result_ss if isinstance(result_ss, tuple) else [result_ss]
+    final_result = tree_unflatten(out_tree, leaves)
+
+    return cast(el.Object, final_result)

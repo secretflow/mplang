@@ -17,26 +17,10 @@ from jax.tree_util import PyTreeDef, tree_flatten
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
+from mplang2.dialects import type_utils
 
 run_jax_p = el.Primitive[Any]("tensor.run_jax")
 constant_p = el.Primitive[el.Object]("tensor.constant")
-
-_SCALAR_TO_NP_DTYPE = {
-    "f32": np.dtype("float32"),
-    "f64": np.dtype("float64"),
-    "i32": np.dtype("int32"),
-    "i64": np.dtype("int64"),
-    "i1": np.dtype("bool"),
-    "u1": np.dtype("bool"),
-}
-
-_NP_DTYPE_NAME_TO_SCALAR = {
-    "float32": elt.f32,
-    "float64": elt.f64,
-    "int32": elt.i32,
-    "int64": elt.i64,
-    "bool": elt.IntegerType(bitwidth=1, signed=True),
-}
 
 
 @dataclass
@@ -66,18 +50,11 @@ def _current_tracer() -> el.Tracer:
 
 
 def _scalar_to_numpy_dtype(scalar: elt.ScalarType) -> np.dtype[np.generic]:
-    dtype = _SCALAR_TO_NP_DTYPE.get(str(scalar))
-    if dtype is None:
-        raise TypeError(f"Unsupported scalar type '{scalar}' for tensor.run_jax")
-    return cast(np.dtype[np.generic], dtype)
+    return np.dtype(type_utils.elt_to_jax_dtype(scalar))
 
 
 def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:
-    np_dtype = np.dtype(dtype)
-    scalar = _NP_DTYPE_NAME_TO_SCALAR.get(np_dtype.name)
-    if scalar is None:
-        raise TypeError(f"tensor.run_jax received unsupported dtype '{np_dtype.name}'")
-    return scalar
+    return type_utils.jax_to_elt_dtype(dtype)
 
 
 def _tensor_type_to_placeholder(

@@ -19,7 +19,7 @@ This module contains compilers that transform high-level functions into
 portable, serializable intermediate representations.
 """
 
-from mplang.ops import basic, crypto, jax_cc, phe, spu, sql_cc, tee
+from mplang.ops import basic, crypto, jax_cc, nnx_cc, phe, spu, sql_cc, tee
 from mplang.ops.base import FeOperation as FeOperation
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "basic",
     "crypto",
     "jax_cc",
+    "nnx_cc",
     "phe",
     "spu",
     "sql_cc",

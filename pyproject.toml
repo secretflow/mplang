@@ -27,6 +27,7 @@ dependencies = [
     "spu @ git+https://github.com/secretflow/spu.git@72bdfc0cf62da673278608929e7386ee2223cb7b", # Development version with JAX 0.8.0
     "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
     "jax[cpu]==0.8.0",         # Align with SPU JAX version
+    "flax>=0.10.0",            # NNX is part of Flax 0.10+
     "pyarrow>=14.0.0",
     # runtime only
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation

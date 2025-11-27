@@ -27,8 +27,10 @@ from mplang import analysis
 from mplang._device import device, get_dev_attr, is_device_obj, put, set_dev_attr
 from mplang.core import (
     ClusterSpec,
+    cur_ctx,
     Device,
     DType,
+    function,
     InterpContext,
     IrReader,
     IrWriter,
@@ -37,26 +39,24 @@ from mplang.core import (
     MPObject,
     MPType,
     Node,
-    Rank,
-    RuntimeInfo,
-    Shape,
-    TableType,
-    TensorType,
-    TraceContext,
-    TracedFunction,
-    cur_ctx,
-    function,
     pconv,
     peval,
     pshfl,
     pshfl_s,
+    Rank,
+    RuntimeInfo,
     set_ctx,
+    Shape,
+    TableType,
+    TensorType,
     trace,
+    TraceContext,
+    TracedFunction,
     uniform_cond,
     while_loop,
     with_ctx,
 )
-from mplang.host import CompileOptions, compile, evaluate, fetch
+from mplang.host import compile, CompileOptions, evaluate, fetch
 from mplang.runtime.driver import Driver
 from mplang.runtime.simulation import Simulator
 from mplang.simp.api import (
@@ -68,12 +68,14 @@ from mplang.simp.api import (
     run_at,
     run_jax,
     run_jax_at,
+    run_nnx,
+    run_nnx_at,
     run_sql,
     run_sql_at,
     set_mask,
 )
 from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
-from mplang.simp.party import P0, P1, P2, P2P, P, Party, load_module
+from mplang.simp.party import load_module, P, P0, P1, P2, P2P, Party
 from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
 from mplang.simp.smpc import reveal, reveal_to, seal, seal_from, srun_jax
 
@@ -139,6 +141,8 @@ __all__ = [
     "run_at",
     "run_jax",
     "run_jax_at",
+    "run_nnx",
+    "run_nnx_at",
     "run_sql",
     "run_sql_at",
     "scatter_m",

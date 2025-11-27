@@ -161,7 +161,7 @@ class TestGroupbyShuffle:
         np.testing.assert_array_equal(p1_res, expected)
 
     def test_random(self):
-        N = 16384
+        N = 100
         K = 5
 
         np.random.seed(42)

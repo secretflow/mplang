@@ -5,9 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 # Register implementations
+# Note: Implicit import of def_impl classes is currently required for the worker
+# to correctly interpret and execute operations.
+# TODO: Consider moving to an explicit registration pattern in the future.
 from mplang2.dialects import simp
 from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter
+
 
 
 class WorkerInterpreter(Interpreter):
@@ -50,6 +54,8 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
             return [None] * len(op.outputs)
 
 
+
+
 @simp.pcall_dynamic_p.def_impl
 def pcall_dynamic_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     """Implementation of simp.pcall_dynamic (Worker side)."""
@@ -81,6 +87,8 @@ def shuffle_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     # If I am source_rank, I send to target_rank
     for tgt, src in routing.items():
         if src == my_rank:
+            if tgt == my_rank:
+                continue
             # I am source, send to target
             # Key needs to be unique per op execution.
             # We use op.name as unique identifier for this op instance in the graph

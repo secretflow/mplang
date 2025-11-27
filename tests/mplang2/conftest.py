@@ -12,7 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
+
+import mplang2.edsl.context
 from tests.mplang2.utils.tensor_patch import patch_object_operators
+
+
+@pytest.fixture
+def simp_simulator_default(monkeypatch):
+    """Temporarily register SimpSimulator as the default interpreter."""
+    from mplang2.backends.simp_simulator import SimpSimulator
+
+    monkeypatch.setattr(
+        mplang2.edsl.context,
+        "_default_context_factory",
+        lambda: SimpSimulator(world_size=3),
+    )
+    monkeypatch.setattr(mplang2.edsl.context, "_default_context", None)
+
 
 # Apply tensor operator overloading patch for tests
 patch_object_operators()
+
+
+@pytest.fixture(autouse=True)
+def reset_default_context(monkeypatch):
+    """Reset the default context before and after each test."""
+    monkeypatch.setattr(mplang2.edsl.context, "_default_context", None)

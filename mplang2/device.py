@@ -132,10 +132,13 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
 
 def _device_run_spu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     """Run function on SPU device."""
+    spu_parties = tuple(m.rank for m in dev_info.members)
+
     # SPU execution uses spu.jit to compile and execute the function on the SPU.
     # Inputs are expected to be already on the SPU (handled by _d2d).
-    jitted_fn = spu.jit(fn)
-    result = jitted_fn(*args, **kwargs)
+    # We use spu.call directly to pass explicit parties, allowing Host objects
+    # to be automatically handled as Public inputs.
+    result = spu.call(fn, spu_parties, *args, **kwargs)
 
     return tree_map(partial(set_dev_attr, dev_id=dev_info.name), result)
 
@@ -308,18 +311,10 @@ def put(obj: Any, to_dev_id: str) -> Object:
         return set_dev_attr(var, to_dev_id)
 
     elif dev_info.kind.upper() == "SPU":
-        # Host -> SPU: Put to a PPU first, then encrypt.
-        # We pick the first member of the SPU as the gateway PPU.
-        first_member = dev_info.members[0]
-        rank = first_member.rank
-
-        var_on_ppu = simp.constant((rank,), obj)
-
-        spu_parties = tuple(m.rank for m in dev_info.members)
-        spu_dev_struct = spu.SPUDevice(parties=spu_parties)
-
-        var_on_spu = spu.encrypt(var_on_ppu, spu_dev_struct)
-        return set_dev_attr(var_on_spu, to_dev_id)
+        # Host -> SPU: Run identity function on SPU.
+        # Note: This results in a Public (replicated) value on the SPU.
+        # SPU operations will automatically promote it to Secret if needed.
+        return device(to_dev_id)(lambda x: x)(obj)
 
     else:
         raise ValueError(f"Cannot put to device kind {dev_info.kind}")

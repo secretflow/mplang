@@ -13,7 +13,7 @@ import numpy as np
 from jax._src import compiler
 
 import mplang2.edsl.typing as elt
-from mplang2.dialects import tensor
+from mplang2.dialects import tensor, type_utils
 from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter, interpret
 
@@ -25,8 +25,7 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
     if not isinstance(output_type, elt.TensorType):
         raise TypeError(f"Expected TensorType, got {output_type}")
 
-    scalar_str = str(output_type.element_type)
-    dtype = tensor._SCALAR_TO_NP_DTYPE.get(scalar_str)
+    dtype = type_utils.elt_to_jax_dtype(cast(elt.ScalarType, output_type.element_type))
     if dtype is None:
         raise ValueError(f"Unsupported scalar type {output_type.element_type}")
 
@@ -123,8 +122,9 @@ def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[Any]
         if i < len(op_inputs):
             input_type = op_inputs[i].type
             if isinstance(input_type, elt.TensorType):
-                scalar_str = str(input_type.element_type)
-                dtype = tensor._SCALAR_TO_NP_DTYPE.get(scalar_str)
+                dtype = type_utils.elt_to_jax_dtype(
+                    cast(elt.ScalarType, input_type.element_type)
+                )
                 if dtype is not None:
                     # Only cast if strictly necessary to avoid overhead
                     # np.asarray handles scalar->array and dtype conversion

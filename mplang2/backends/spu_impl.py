@@ -24,7 +24,7 @@ def _get_spu_ctx(rank: int, world_size: int) -> tuple[spu_api.Runtime, spu_api.I
         return _SPU_RUNTIMES[rank]
 
     # Create Link
-    desc = libspu.link.Desc()
+    desc = libspu.link.Desc()  # type: ignore
     desc.recv_timeout_ms = 30 * 1000
     for i in range(world_size):
         desc.add_party(f"P{i}", f"mem:{i}")
@@ -110,13 +110,13 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     # We expect the interpreter to provide world_size (e.g. WorkerInterpreter).
 
     rank = getattr(interpreter, "rank", 0)
-    if not hasattr(interpreter, "world_size"):
+    world_size = getattr(interpreter, "world_size", None)
+    if world_size is None:
         raise RuntimeError(
             "spu.exec requires an interpreter with 'world_size' attribute (e.g. WorkerInterpreter)."
         )
-    world_size = getattr(interpreter, "world_size")
 
-    runtime, _ = _get_spu_ctx(rank, world_size)
+    runtime, io = _get_spu_ctx(rank, world_size)
 
     executable_code = op.attrs["executable"]
     input_names = op.attrs["input_names"]
@@ -132,6 +132,16 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     # Set inputs
     for name, share in zip(input_names, args, strict=True):
+        if not isinstance(share, libspu.Share):
+            # Handle public input (numpy array)
+            # Generate shares with VIS_PUBLIC
+            # make_shares expects numpy array
+            if not isinstance(share, (np.ndarray, np.generic, int, float)):
+                share = np.array(share)
+
+            shares = io.make_shares(share, libspu.Visibility.VIS_PUBLIC)
+            share = shares[rank]
+
         runtime.set_var(name, share)
 
     # Run

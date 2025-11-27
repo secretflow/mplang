@@ -110,6 +110,8 @@ def _exec_ae(
     output_vis: list[libspu.Visibility],
     output_shapes: list[tuple[int, ...]],
     output_dtypes: list[elt.ScalarType],
+    input_names: list[str],
+    output_names: list[str],
 ) -> tuple[elt.SSType, ...] | elt.SSType:
     """Execute SPU kernel on shares."""
     # Validate inputs are SS types
@@ -171,19 +173,12 @@ def encrypt(data: el.Object, device: SPUDevice) -> el.Object:
         (source_rank,), lambda x: makeshares_p.bind(x, count=num_shares), data
     )
 
-    # shares_on_source is a PyTree (tuple) of MP objects.
-    # We need to unpack it.
-    # Since pcall returns the result structure, and makeshares returns a tuple,
-    # shares_on_source should be a tuple of MP objects.
-    # However, pcall returns a single Object if the function returns a single value,
-    # or a PyTree of Objects.
-    # Let's assume we can unpack it.
+    # shares_on_source is a tuple of MP objects (one per share).
 
     # 2. Distribute shares
     distributed_shares = []
     for i, target_rank in enumerate(device.parties):
         # Extract i-th share (still on source)
-        # Note: accessing element of tuple of MP objects
         share_i = shares_on_source[i]
 
         # Move to target party
@@ -338,6 +333,8 @@ def jit(fn: Callable) -> Callable:
                 output_vis=output_vis_list,
                 output_shapes=output_shapes,
                 output_dtypes=output_dtypes,
+                input_names=executable.input_names,
+                output_names=executable.output_names,
             )
 
             return res_shares

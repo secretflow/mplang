@@ -3,6 +3,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.usefixtures("simp_simulator_default")
+
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang2.dialects.simp import converge, shuffle_dynamic, shuffle_static

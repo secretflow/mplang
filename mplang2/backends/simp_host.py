@@ -22,7 +22,11 @@ class HostVar:
 
 
 class SimpHost(Interpreter):
-    """Base class for SIMP host interpreters."""
+    """Base class for SIMP host interpreters.
+
+    This interpreter runs on the coordinator (Host) and dispatches
+    SPMD operations to workers.
+    """
 
     def __init__(self, world_size: int):
         super().__init__()
@@ -51,19 +55,37 @@ class SimpHost(Interpreter):
             return None
 
         if len(graph.outputs) == 1:
+            # results is list of single values
             return HostVar(results)
-
-        # Multiple outputs
-        # results is list of tuples/lists (one per party)
-        # We want list of HostVars (one per output)
-        num_outs = len(graph.outputs)
-        outs = []
-        for i in range(num_outs):
-            outs.append(HostVar([res[i] for res in results]))
-        return outs
+        else:
+            # results is list of tuples/lists
+            # We need to transpose: list of [out1, out2] -> [HostVar(out1s), HostVar(out2s)]
+            num_outputs = len(graph.outputs)
+            transposed = []
+            for i in range(num_outputs):
+                transposed.append(HostVar([res[i] for res in results]))
+            return transposed
 
     def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
-        raise NotImplementedError
+        """Submit a graph execution to a specific rank.
+
+        Args:
+            rank: The target party rank.
+            graph: The graph to execute.
+            inputs: The inputs for the graph.
+
+        Returns:
+            A future or handle representing the asynchronous execution.
+        """
+        raise NotImplementedError("SimpHost subclasses must implement _submit")
 
     def _collect(self, futures: list[Any]) -> list[Any]:
-        raise NotImplementedError
+        """Collect results from futures.
+
+        Args:
+            futures: List of futures returned by _submit.
+
+        Returns:
+            List of results (one per rank).
+        """
+        raise NotImplementedError("SimpHost subclasses must implement _collect")

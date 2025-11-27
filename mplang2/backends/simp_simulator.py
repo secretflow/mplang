@@ -95,6 +95,10 @@ class SimpSimulator(SimpHost):
 
     def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         worker = self.workers[rank]
+        if not isinstance(graph, Graph):
+            raise TypeError(
+                f"SimpSimulator only supports executing Graph tasks, got {type(graph)!r}"
+            )
         return worker.evaluate_graph(graph, inputs)
 
     def shutdown(self, wait: bool = True) -> None:

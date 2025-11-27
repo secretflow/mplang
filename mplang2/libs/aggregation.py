@@ -40,10 +40,10 @@ def rotate_and_sum(ciphertext: Any, k: int, galois_keys: Any) -> Any:
 
     for i in range(num_steps):
         step = 1 << i
-        # Rotate left by step (which is rotate(c, -step))
+        # Rotate left by step
         # We need to ensure we have the key for this step.
         # In a real library, we'd check or generate keys.
-        rotated = bfv.rotate(current, -step, galois_keys)
+        rotated = bfv.rotate(current, step, galois_keys)
         current = bfv.add(current, rotated)
 
     return current

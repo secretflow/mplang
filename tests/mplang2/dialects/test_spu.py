@@ -20,7 +20,12 @@ def test_encrypt_decrypt_flow():
     # 2. Define trace function
     def trace_fn(x):
         # Encrypt
-        x_enc = spu.encrypt(x, device)
+        # Manual encrypt
+        x_shares = simp.pcall_static((0,), lambda x: spu.make_shares(x, count=3), x)
+        x_dist = []
+        for i, target in enumerate(device.parties):
+            x_dist.append(simp.shuffle_static(x_shares[i], {target: 0}))
+        x_enc = simp.converge(*x_dist)
 
         # Verify type
         assert isinstance(x_enc.type, elt.MPType)
@@ -28,7 +33,13 @@ def test_encrypt_decrypt_flow():
         assert x_enc.type.parties == (0, 1, 2)
 
         # Decrypt
-        x_dec = spu.decrypt(x_enc, target_party=0)
+        # Manual decrypt
+        x_shares_back = []
+        for source in device.parties:
+            share = simp.pcall_static((source,), lambda x: x, x_enc)
+            x_shares_back.append(simp.shuffle_static(share, {0: source}))
+
+        x_dec = simp.pcall_static((0,), lambda *s: spu.reconstruct(s), *x_shares_back)
 
         # Verify type
         assert isinstance(x_dec.type, elt.MPType)
@@ -66,7 +77,9 @@ def test_jit_compilation():
     # 3. Trace usage
     def trace_fn(x, y):
         # Assume x, y are already encrypted
-        z = spu.call(secure_add, device.parties, x, y)
+        z = simp.pcall_static(
+            device.parties, lambda x, y: spu.run_jax(secure_add, x, y), x, y
+        )
         return z
 
     # Input types: MP[SS[Tensor], (0,1,2)]

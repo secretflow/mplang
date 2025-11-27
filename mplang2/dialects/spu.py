@@ -6,8 +6,8 @@ the `simp` dialect for data movement (encryption/decryption) and execution.
 
 Concepts:
     - SPUDevice: Represents a set of parties forming the SPU.
-    - encrypt: Moves data from a public party to the SPU (secret sharing).
-    - decrypt: Moves data from the SPU to a public party (reconstruction).
+    - make_shares: Generates secret shares on the source party.
+    - reconstruct: Reconstructs secret from shares on the target party.
     - run_jax: Executes JAX computations on the SPU.
 
 Example:
@@ -27,14 +27,35 @@ def secure_add(x, y):
 
 # 2. Encrypt (Public -> SPU)
 # Assume x, y are on party 0
-x_enc = spu.encrypt(x, spu_device)  # MP[SS[Tensor], (0,1,2)]
-y_enc = spu.encrypt(y, spu_device)
+# Generate shares locally
+x_shares = spu.make_shares(x, count=3)
+y_shares = spu.make_shares(y, count=3)
+
+# Distribute shares to SPU parties
+x_dist = []
+y_dist = []
+for i, target in enumerate(spu_device.parties):
+    x_dist.append(simp.shuffle_static(x_shares[i], {target: 0}))
+    y_dist.append(simp.shuffle_static(y_shares[i], {target: 0}))
+
+# Converge to logical SPU variables
+x_enc = simp.converge(*x_dist)
+y_enc = simp.converge(*y_dist)
 
 # 3. Execute (SPU -> SPU)
-z_enc = spu.call(secure_add, spu_device.parties, x_enc, y_enc)
+z_enc = spu.run_jax(secure_add, spu_device.parties, x_enc, y_enc)
 
 # 4. Decrypt (SPU -> Public)
-z = spu.decrypt(z_enc, target_party=0)
+# Gather shares to party 0
+z_shares = []
+for source in spu_device.parties:
+    # Extract share from logical variable
+    share = simp.pcall_static((source,), lambda x: x, z_enc)
+    # Move to target
+    z_shares.append(simp.shuffle_static(share, {0: source}))
+
+# Reconstruct
+z = spu.reconstruct(tuple(z_shares))
 ```
 """
 
@@ -51,7 +72,7 @@ from jax.tree_util import tree_flatten, tree_unflatten
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
-from mplang2.dialects import simp, type_utils
+from mplang2.dialects import type_utils
 
 # ==============================================================================
 # --- Configuration
@@ -133,189 +154,79 @@ def _exec_ae(
 # ==============================================================================
 
 
-def encrypt(data: el.Object, device: SPUDevice) -> el.Object:
-    """Encrypt data by generating shares and distributing them to the SPU device.
+def make_shares(data: el.Object, count: int) -> tuple[el.Object, ...]:
+    """Generate shares locally (no transfer).
 
-    Protocol:
-    1. Source party generates N shares locally.
-    2. Shares are distributed to SPU parties (one share per party).
-    3. Result is a logical SS value distributed across SPU parties.
+    This function should be called inside a `simp.pcall` region.
 
     Args:
-        data: Public tensor (MPType) on a single source party.
-        device: Target SPU device configuration.
+        data: Local TensorType object.
+        count: Number of shares to generate.
 
     Returns:
-        MP[SS[Tensor], device.parties]
-
-    Note:
-        This implementation uses a generic "generate shares then distribute" flow
-        via `simp` primitives. Backends may optimize this (e.g., using PRG seeds
-        to generate shares locally on target parties) by intercepting the
-        sequence of `makeshares` -> `shuffle` -> `converge`.
+        Tuple of SSType objects (shares).
     """
-    if not isinstance(data.type, elt.MPType):
-        raise TypeError(f"encrypt expects MP-typed data, got {data.type}")
-
-    source_parties = data.type.parties
-    if source_parties is None:
-        raise ValueError("encrypt requires static source party")
-    if len(source_parties) != 1:
-        raise ValueError(f"encrypt requires single source party, got {source_parties}")
-
-    source_rank = source_parties[0]
-    num_shares = len(device.parties)
-
-    # 1. Generate shares on source party
-    # Returns tuple of MP objects on source party
-    shares_on_source = simp.pcall_static(
-        (source_rank,), lambda x: makeshares_p.bind(x, count=num_shares), data
-    )
-
-    # shares_on_source is a tuple of MP objects (one per share).
-
-    # 2. Distribute shares
-    distributed_shares = []
-    for i, target_rank in enumerate(device.parties):
-        # Extract i-th share (still on source)
-        share_i = shares_on_source[i]
-
-        # Move to target party
-        share_at_target = simp.shuffle_static(share_i, {target_rank: source_rank})
-        distributed_shares.append(share_at_target)
-
-    # 3. Converge to single logical variable
-    # We have [MP[SS[T], (p0)], MP[SS[T], (p1)], ...]
-    # Converge -> MP[SS[T], (p0, p1, ...)]
-    converged_shares = simp.converge(*distributed_shares)
-
-    return converged_shares
+    return makeshares_p.bind(data, count=count)
 
 
-def decrypt(val: el.Object, target_party: int) -> el.Object:
-    """Decrypt data by gathering shares and reconstructing.
+def reconstruct(shares: tuple[el.Object, ...]) -> el.Object:
+    """Reconstruct data from shares locally (no transfer).
 
-    Protocol:
-    1. SPU parties send their shares to target party.
-    2. Target party reconstructs the secret.
+    This function should be called inside a `simp.pcall` region.
 
     Args:
-        val: Encrypted value (MP[SS[Tensor]]) on SPU parties.
-        target_party: Rank of the party to receive the result.
+        shares: Tuple of SSType objects (shares).
 
     Returns:
-        MP[Tensor, (target_party)]
+        TensorType object (reconstructed).
     """
-    if not isinstance(val.type, elt.MPType):
-        raise TypeError(f"decrypt expects MP-typed value, got {val.type}")
-
-    spu_parties = val.type.parties
-    if spu_parties is None:
-        raise ValueError("decrypt requires static SPU parties")
-
-    # 1. Gather shares to target
-    gathered_shares = []
-    for source_rank in spu_parties:
-        # Extract share from specific party
-        # We use pcall to isolate the value on source_rank
-        # This is effectively identity but narrows the parties
-        share_on_source = simp.pcall_static((source_rank,), lambda x: x, val)
-
-        # Move to target
-        share_at_target = simp.shuffle_static(
-            share_on_source, {target_party: source_rank}
-        )
-        gathered_shares.append(share_at_target)
-
-    # 2. Reconstruct on target
-    result = simp.pcall_static((target_party,), reconstruct_p.bind, *gathered_shares)
-
-    return cast(el.Object, result)
+    return reconstruct_p.bind(*shares)
 
 
-def call(
-    fn: Callable, parties: tuple[int, ...] | None, *args: Any, **kwargs: Any
-) -> el.Object:
-    """Execute a function on SPU parties.
+def run_jax(fn: Callable, *args: Any, **kwargs: Any) -> el.Object:
+    """Execute a function on SPU locally.
+
+    This function should be called inside a `simp.pcall` region.
+    It compiles the function and executes it using the SPU runtime.
 
     Args:
         fn: The function to execute.
-        parties: The SPU parties. If None, inferred from inputs.
-        *args: Positional arguments.
+        *args: Positional arguments (SSType or TensorType).
         **kwargs: Keyword arguments.
     """
 
-    # 1. Inspect inputs to determine SPU parties
+    # 1. Inspect inputs
     # Use normalize_fn to separate EDSL objects (variables) from raw values (immediates)
     def is_variable(arg: Any) -> bool:
         return isinstance(arg, el.Object)
 
     normalized_fn, in_vars = normalize_fn(fn, args, kwargs, is_variable)
 
-    spu_parties = parties
-
-    # Validate inputs and find common parties
+    # Validate inputs
     for arg in in_vars:
-        if isinstance(arg.type, elt.MPType):
-            if not (
-                isinstance(arg.type.value_type, elt.SSType)
-                or isinstance(arg.type.value_type, elt.TensorType)
-            ):
-                raise TypeError(
-                    f"spu.call inputs must be SS-typed or Tensor-typed, got {arg.type}"
-                )
-
-            if spu_parties is None:
-                spu_parties = arg.type.parties
-            elif spu_parties != arg.type.parties:
-                # If parties were explicitly provided, check consistency
-                if parties is not None and parties != arg.type.parties:
-                    raise ValueError(
-                        f"Input parties {arg.type.parties} mismatch with explicit parties {parties}"
-                    )
-                # If inferred from previous args, check consistency
-                elif parties is None and spu_parties != arg.type.parties:
-                    raise ValueError("All inputs must be on the same SPU parties")
-        elif isinstance(arg.type, elt.TensorType):
-            # Host object (Public)
-            pass
-        else:
+        if not (
+            isinstance(arg.type, elt.SSType) or isinstance(arg.type, elt.TensorType)
+        ):
             raise TypeError(
-                f"spu.call inputs must be MPType or TensorType, got {arg.type}"
+                f"spu.run_jax inputs must be SSType or TensorType, got {arg.type}"
             )
 
-    if spu_parties is None:
-        raise ValueError(
-            "No inputs provided or dynamic parties not supported, and no explicit parties given"
-        )
-
     # 2. Prepare for compilation
-    # We need to cast SS inputs to Tensors (shares) for the pcall
-    # But for compilation, we need the logical plaintext types
-
     jax_args_flat = []
     input_vis = []
 
     for arg in in_vars:
-        if isinstance(arg.type, elt.MPType):
-            # 1.1 MP Type (SPU Resident)
-            val_type = arg.type.value_type
-            if isinstance(val_type, elt.SSType):
-                pt_type = val_type.pt_type
-                vis = libspu.Visibility.VIS_SECRET
-            elif isinstance(val_type, elt.TensorType):
-                pt_type = val_type
-                vis = libspu.Visibility.VIS_PUBLIC
-            else:
-                raise TypeError(f"Unsupported input type: {val_type}")
-        else:
-            # 1.2 Host Object (Local EDSL Object)
-            # Treat as Public input
+        if isinstance(arg.type, elt.SSType):
+            pt_type = arg.type.pt_type
+            vis = libspu.Visibility.VIS_SECRET
+        elif isinstance(arg.type, elt.TensorType):
             pt_type = arg.type
             vis = libspu.Visibility.VIS_PUBLIC
+        else:
+            raise TypeError(f"Unsupported input type: {arg.type}")
 
         if not isinstance(pt_type, elt.TensorType):
-            raise TypeError(f"spu.jit inputs must be Tensor-based, got {pt_type}")
+            raise TypeError(f"spu.run_jax inputs must be Tensor-based, got {pt_type}")
 
         # Map to JAX
         jax_dtype = type_utils.elt_to_jax_dtype(
@@ -338,45 +249,28 @@ def call(
         outputNameGen=lambda outs: [f"out{i}" for i in range(len(outs))],
     )
 
-    # 4. Define fused execution function (Exec)
-    # This function runs on each SPU party locally.
-    # It executes the kernel directly on SS inputs.
-
-    # Extract output metadata (needed for both exec and unflatten)
+    # 4. Execute SPU Kernel
     flat_outputs_info, out_tree = tree_flatten(output_info)
+    output_shapes = [out.shape for out in flat_outputs_info]
 
-    def fused_exec(*local_ss_inputs: Any) -> Any:
-        # 4.1. Execute SPU Kernel
+    output_dtypes = [
+        type_utils.jax_to_elt_dtype(out.dtype) for out in flat_outputs_info
+    ]
+    output_vis_list = [libspu.Visibility.VIS_SECRET] * len(flat_outputs_info)
 
-        output_shapes = [out.shape for out in flat_outputs_info]
+    res_shares = exec_p.bind(
+        *in_vars,
+        executable=executable.code,
+        input_vis=input_vis,
+        output_vis=output_vis_list,
+        output_shapes=output_shapes,
+        output_dtypes=output_dtypes,
+        input_names=executable.input_names,
+        output_names=executable.output_names,
+    )
 
-        output_dtypes = [
-            type_utils.jax_to_elt_dtype(out.dtype) for out in flat_outputs_info
-        ]
-        output_vis_list = [libspu.Visibility.VIS_SECRET] * len(flat_outputs_info)
-
-        res_shares = exec_p.bind(
-            *local_ss_inputs,
-            executable=executable.code,
-            input_vis=input_vis,
-            output_vis=output_vis_list,
-            output_shapes=output_shapes,
-            output_dtypes=output_dtypes,
-            input_names=executable.input_names,
-            output_names=executable.output_names,
-        )
-
-        return res_shares
-
-    # 5. Execute on SPU parties
-    # We pass the MP[SS] objects directly. pcall unwraps them to SS objects
-    # for the local function, and wraps the returned SS objects back into MP[SS].
-    result_ss = simp.pcall_static(spu_parties, fused_exec, *in_vars)
-
-    # 6. Unflatten results to match original structure
-    # pcall returns a single object if the function returns a single value,
-    # or a tuple if it returns multiple. tree_unflatten expects a list of leaves.
-    leaves = result_ss if isinstance(result_ss, tuple) else [result_ss]
+    # 5. Unflatten results
+    leaves = res_shares if isinstance(res_shares, tuple) else [res_shares]
     final_result = tree_unflatten(out_tree, leaves)
 
     return cast(el.Object, final_result)

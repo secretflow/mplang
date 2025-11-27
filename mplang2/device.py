@@ -134,11 +134,12 @@ def _device_run_spu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -
     """Run function on SPU device."""
     spu_parties = tuple(m.rank for m in dev_info.members)
 
-    # SPU execution uses spu.jit to compile and execute the function on the SPU.
+    # SPU execution uses spu.run_jax to compile and execute the function on the SPU.
     # Inputs are expected to be already on the SPU (handled by _d2d).
-    # We use spu.call directly to pass explicit parties, allowing Host objects
-    # to be automatically handled as Public inputs.
-    result = spu.call(fn, spu_parties, *args, **kwargs)
+    # We wrap spu.run_jax in simp.pcall_static to execute it on all SPU parties.
+    result = simp.pcall_static(
+        spu_parties, lambda *a, **k: spu.run_jax(fn, *a, **k), *args, **kwargs
+    )
 
     return tree_map(partial(set_dev_attr, dev_id=dev_info.name), result)
 
@@ -265,18 +266,57 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
 
     # PPU -> SPU (Seal)
     elif frm_to_pair == ("PPU", "SPU"):
+        assert len(frm_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
         spu_parties = tuple(m.rank for m in to_dev.members)
-        spu_dev_struct = spu.SPUDevice(parties=spu_parties)
 
-        var = spu.encrypt(obj, spu_dev_struct)
+        # 1. Generate shares on source
+        # We call spu.make_shares inside pcall on the source party
+        shares_on_source = simp.pcall_static(
+            (frm_rank,), lambda x: spu.make_shares(x, count=len(spu_parties)), obj
+        )
+
+        # 2. Distribute shares
+        distributed_shares = []
+        for i, target_rank in enumerate(spu_parties):
+            # Extract i-th share (still on source)
+            # shares_on_source is MP[tuple[SS, ...], (frm_rank)]
+            # We need to extract the i-th element.
+            # Since pcall returns MPType, we can't index it directly if it's a tuple of shares.
+            # Wait, pcall returns a PyTree of MPObjects if the function returns a PyTree.
+            # So shares_on_source IS a tuple of MPObjects.
+            share_i = shares_on_source[i]
+
+            share_at_target = simp.shuffle_static(share_i, {target_rank: frm_rank})
+            distributed_shares.append(share_at_target)
+
+        # 3. Converge
+        var = simp.converge(*distributed_shares)
         return set_dev_attr(var, to_dev_id)
 
     # SPU -> PPU (Reveal)
     elif frm_to_pair == ("SPU", "PPU"):
         assert len(to_dev.members) == 1
         to_rank = to_dev.members[0].rank
+        spu_parties = tuple(m.rank for m in frm_dev.members)
 
-        var = spu.decrypt(obj, target_party=to_rank)
+        # 1. Gather shares to target
+        gathered_shares = []
+        for source_rank in spu_parties:
+            # Extract share from logical variable
+            share_on_source = simp.pcall_static((source_rank,), lambda x: x, obj)
+
+            # Move to target
+            share_at_target = simp.shuffle_static(
+                share_on_source, {to_rank: source_rank}
+            )
+            gathered_shares.append(share_at_target)
+
+        # 2. Reconstruct on target
+        # We call spu.reconstruct inside pcall on the target party
+        var = simp.pcall_static(
+            (to_rank,), lambda *s: spu.reconstruct(s), *gathered_shares
+        )
         return set_dev_attr(var, to_dev_id)
 
     # SPU -> SPU

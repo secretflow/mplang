@@ -34,7 +34,7 @@ def _echo_v1(
     pfunc: PFunction, x: TensorValue
 ) -> tuple[TensorValue,]:  # pragma: no cover - executed in test
     arr = x.to_numpy()
-    result = np.array(arr + 1, dtype=arr.dtype, copy=False)
+    result = np.asarray(arr + 1, dtype=arr.dtype)
     return (TensorValue(result),)
 
 
@@ -43,7 +43,7 @@ def _echo_v2(
     pfunc: PFunction, x: TensorValue
 ) -> tuple[TensorValue,]:  # pragma: no cover - executed in test
     arr = x.to_numpy()
-    result = np.array(arr + 2, dtype=arr.dtype, copy=False)
+    result = np.asarray(arr + 2, dtype=arr.dtype)
     return (TensorValue(result),)
 
 

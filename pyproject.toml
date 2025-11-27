@@ -25,6 +25,9 @@ dependencies = [
     "typing_extensions",
     # both FE & BE
     "spu>=0.10.0.dev20251208",
+    "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
+    "jax[cpu]==0.8.0",         # Align with SPU JAX version
+    "flax>=0.12.0",            # NNX is part of Flax 0.12+
     "pyarrow>=14.0.0",
     # runtime only
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
@@ -51,6 +54,9 @@ examples = [
     "tensorflow",
     "xgboost>=2.0.0,<3.0.0", # CPU version, 3.x requires CUDA dependencies
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.metadata.hooks.custom]
 

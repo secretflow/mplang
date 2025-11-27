@@ -23,7 +23,7 @@ import base64
 import hashlib
 import os
 import time
-from typing import Any, ClassVar, cast
+from typing import Any, cast, ClassVar
 
 import jax
 import jax.extend as jxt
@@ -36,7 +36,7 @@ import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.runtime.interpreter import Interpreter, interpret
+from mplang.v2.runtime.interpreter import interpret, Interpreter
 from mplang.v2.runtime.value import Value, WrapValue
 
 # =============================================================================
@@ -353,7 +353,9 @@ def run_jax_impl(
             try:
                 with open(cache_path, "rb") as f:
                     serialized = f.read()
-                compiled = client.deserialize_executable(serialized, compile_options)
+                compiled = client.deserialize_executable(
+                    serialized, client.devices(), compile_options
+                )
                 loaded_from_disk = True
                 # print(f"[JAX] Loaded compiled executable from {cache_path}")
             except Exception as e:

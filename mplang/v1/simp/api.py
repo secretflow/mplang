@@ -28,7 +28,7 @@ from mplang.v1.core import (
     builtin_function,
     peval,
 )
-from mplang.v1.ops import basic, jax_cc, sql_cc
+from mplang.v1.ops import basic, jax_cc, nnx_cc, sql_cc
 from mplang.v1.ops.base import FeOperation
 
 
@@ -284,3 +284,70 @@ def run_sql_at(
     rank: Rank, query: str, out_type: Any, in_tables: dict[str, MPObject] | None = None
 ) -> Any:
     return run_at(rank, sql_cc.run_sql_raw, query, out_type, in_tables)
+
+
+def run_nnx(nnx_fn: Callable, *args: Any, **kwargs: Any) -> Any:
+    """Run an NNX function.
+
+    Args:
+        nnx_fn: The NNX function to be executed.
+        *args: Positional arguments to pass to the NNX function.
+        **kwargs: Keyword arguments to pass to the NNX function.
+
+    Returns:
+        The result of evaluating the NNX function through the mplang system.
+
+    Raises:
+        TypeError: If the function compilation or evaluation fails.
+        RuntimeError: If the underlying peval execution encounters errors.
+
+    Notes:
+        Argument binding semantics with respect to NNX static arguments:
+
+        - If an argument (or any leaf within a PyTree argument) is an
+          :class:`~mplang.core.mpobject.MPObject`, it is captured as a runtime
+          variable (dynamic value) in the traced program and is not treated as a
+          NNX static argument.
+        - If an argument contains no :class:`MPObject` leaves, it is treated as a
+          constant configuration with respect to NNX; effectively it behaves
+          like a static argument and may contribute to NNX compilation cache
+          keys (similar to ``static_argnums`` semantics). Changing such constant
+          arguments can lead to different compiled variants/cached entries.
+
+    Examples:
+        Defining and running a simple NNX function:
+
+        >>> from flax import nnx
+        >>> import jax.numpy as jnp
+        >>> def nnx_linear(inputs, weights, bias):
+        ...     return jnp.dot(inputs, weights) + bias
+        >>> result = run_nnx(nnx_linear, inputs, weights, bias)
+
+        Running an NNX model:
+
+        >>> class LinearModel(nnx.Module):
+        ...     def __init__(self, features: int, rngs: nnx.Rngs):
+        ...         self.linear = nnx.Linear(features, features, rngs=rngs)
+        ...
+        ...     def __call__(self, x):
+        ...         return self.linear(x)
+        >>> def forward_pass(model, x):
+        ...     return model(x)
+        >>> output = run_nnx(forward_pass, model, input_data)
+    """
+    return run(None, nnx_cc.run_nnx, nnx_fn, *args, **kwargs)
+
+
+def run_nnx_at(rank: Rank, nnx_fn: Callable, *args: Any, **kwargs: Any) -> Any:
+    """Run an NNX function at a specific rank.
+
+    Args:
+        rank: The rank where the NNX function should be executed.
+        nnx_fn: The NNX function to be executed.
+        *args: Positional arguments to pass to the NNX function.
+        **kwargs: Keyword arguments to pass to the NNX function.
+
+    Returns:
+        The result of evaluating the NNX function at the specified rank.
+    """
+    return run_at(rank, nnx_cc.run_nnx, nnx_fn, *args, **kwargs)

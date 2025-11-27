@@ -14,9 +14,6 @@
 
 """Tests for TEE backend implementation (mock TEE)."""
 
-import numpy as np
-import pytest
-
 import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tee_impl  # noqa: F401 - Register implementations
 import mplang.v2.dialects.crypto as crypto
@@ -24,6 +21,8 @@ import mplang.v2.dialects.tee as tee
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
+import numpy as np
+import pytest
 from mplang.v2.backends.tee_impl import MockQuoteValue
 
 

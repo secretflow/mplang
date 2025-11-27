@@ -20,12 +20,11 @@ This module tests:
 - Cross-dialect operations on devices
 """
 
-import numpy as np
-import pytest
-
 import mplang.v2.backends.bfv_impl  # noqa: F401
 import mplang.v2.backends.table_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401 - Register backend
+import numpy as np
+import pytest
 from mplang.v2.dialects import bfv, table, tensor
 from mplang.v2.libs.device import device, get_dev_attr, put
 
@@ -267,9 +266,11 @@ class TestDeviceWithTableDialect:
             t = table.constant(data)
 
             # Run SQL to compute x + y
-            out_schema = elt.TableType({
-                "sum": elt.TensorType(elt.i64, ()),
-            })
+            out_schema = elt.TableType(
+                {
+                    "sum": elt.TensorType(elt.i64, ()),
+                }
+            )
             result = table.run_sql(
                 "SELECT x + y AS sum FROM t", out_type=out_schema, t=t
             )

@@ -35,7 +35,7 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import jax.numpy as jnp
 import numpy as np

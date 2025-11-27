@@ -183,7 +183,7 @@ def reconstruct(shares: tuple[el.Object, ...]) -> el.Object:
     return reconstruct_p.bind(*shares)
 
 
-def run_jax(fn: Callable, *args: Any, **kwargs: Any) -> el.Object:
+def run_jax(fn: Callable, *args: Any, **kwargs: Any) -> Any:
     """Execute a function on SPU locally.
 
     This function should be called inside a `simp.pcall` region.
@@ -270,7 +270,10 @@ def run_jax(fn: Callable, *args: Any, **kwargs: Any) -> el.Object:
     )
 
     # 5. Unflatten results
-    leaves = res_shares if isinstance(res_shares, tuple) else [res_shares]
+    if isinstance(res_shares, (tuple, list)):
+        leaves = list(res_shares)
+    else:
+        leaves = [res_shares]
     final_result = tree_unflatten(out_tree, leaves)
 
-    return cast(el.Object, final_result)
+    return final_result

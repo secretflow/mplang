@@ -132,5 +132,62 @@ def test_jit_compilation():
     assert found_exec, "spu.exec not found in pcall regions"
 
 
+def test_run_jax_mixed_pytree():
+    # 1. Setup
+    device = spu.SPUDevice(parties=(0, 1, 2))
+
+    # 2. Define JAX function with mixed output
+    def mixed_fn(x, y):
+        return {
+            "sum": x + y,
+            "static": 42,
+            "nested": (x * y, 100),
+        }
+
+    # 3. Trace usage
+    def trace_fn(x, y):
+        z = simp.pcall_static(
+            device.parties, lambda x, y: spu.run_jax(mixed_fn, x, y), x, y
+        )
+        return z
+
+    x_tracer = el.Tracer()
+    with x_tracer:
+        ss_type = elt.SS(elt.Tensor(elt.f32, (10,)))
+        mp_ss_type = elt.MPType(ss_type, (0, 1, 2))
+
+        x_val = x_tracer.graph.add_input("x", mp_ss_type)
+        y_val = x_tracer.graph.add_input("y", mp_ss_type)
+        x_in = el.TraceObject(x_val, x_tracer)
+        y_in = el.TraceObject(y_val, x_tracer)
+
+        res = trace_fn(x_in, y_in)
+
+        # Verify result structure
+        assert isinstance(res, dict)
+        assert "sum" in res
+        assert "static" in res
+        assert "nested" in res
+
+        # Check types
+        # "sum" should be MPType[SSType]
+        assert isinstance(res["sum"].type, elt.MPType)
+        assert isinstance(res["sum"].type.value_type, elt.SSType)
+
+        # "static" should be MPType[SSType] because JAX/SPU treats it as output
+        # Note: spu_fe.compile returns OutInfo for static ints, so they become shares.
+        assert isinstance(res["static"].type, elt.MPType)
+        assert isinstance(res["static"].type.value_type, elt.SSType)
+
+        # "nested" should be tuple (MPType[SSType], MPType[SSType])
+        nested = res["nested"]
+        assert isinstance(nested, tuple)
+        assert len(nested) == 2
+        assert isinstance(nested[0].type, elt.MPType)
+        assert isinstance(nested[0].type.value_type, elt.SSType)
+        assert isinstance(nested[1].type, elt.MPType)
+        assert isinstance(nested[1].type.value_type, elt.SSType)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -29,7 +29,7 @@ from jax._src import compiler
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter, interpret
+from mplang.v2.edsl.interpreter import interpret, Interpreter
 
 
 @tensor.constant_p.def_impl
@@ -174,9 +174,17 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     if code_hash in _STABLEHLO_CACHE:
         compiled = _STABLEHLO_CACHE[code_hash]
     else:
-        compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
+        compile_options = compiler.get_compile_options(
+            num_replicas=1, num_partitions=1
+        )  # Get devices for compilation
+        devices = client.local_devices()
+        if not devices:
+            raise RuntimeError("No local devices available for compilation")
         try:
-            compiled = client.compile(stablehlo_code, compile_options)
+            # Compile MLIR text directly - newer JAX API supports string input
+            compiled = client.compile_and_load(
+                stablehlo_code, tuple(devices), compile_options
+            )
             _STABLEHLO_CACHE[code_hash] = compiled
         except Exception as e:
             raise RuntimeError(f"StableHLO compile failed: {e}") from e

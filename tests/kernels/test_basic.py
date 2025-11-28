@@ -139,8 +139,16 @@ class TestBuiltin:
             assert os.path.exists(nested_path)
 
             # Verify the file content
-            loaded = np.load(nested_path)
-            np.testing.assert_array_equal(loaded, test_data.to_numpy())
+            read_pfunc = PFunction(
+                fn_type="basic.read",
+                ins_info=(),
+                outs_info=(TensorType.from_obj(test_data),),
+                fn_name="Read",
+                path=nested_path,
+            )
+            loaded = self._exec(read_pfunc, [])[0]
+            assert isinstance(loaded, TensorValue)
+            np.testing.assert_array_equal(loaded.to_numpy(), test_data.to_numpy())
 
     def test_write_different_tensor_types(self):
         """Test writing different types of tensor-like objects."""

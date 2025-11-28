@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import pathlib
+import struct
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import ParseResult, urlparse
@@ -22,6 +24,13 @@ import numpy as np
 
 from mplang.core import TableLike, TableType, TensorType
 from mplang.kernels.base import KernelContext
+from mplang.kernels.value import (
+    TableValue,
+    TensorValue,
+    Value,
+    decode_value,
+    encode_value,
+)
 from mplang.utils import table_utils
 
 
@@ -134,6 +143,11 @@ def get_provider(scheme: str) -> DataProvider | None:
 
 
 # ---------------- Default Providers ----------------
+MAGIC_MPLANG = b"MPLG"
+MAGIC_PARQUET = b"PAR1"
+MAGIC_ORC = b"ORC"
+MAGIC_NUMPY = b"\x93NUMPY"
+VERSION = 0x01
 
 
 class FileProvider(DataProvider):
@@ -146,15 +160,52 @@ class FileProvider(DataProvider):
     def read(
         self, uri: ResolvedURI, out_spec: TensorType | TableType, *, ctx: KernelContext
     ) -> Any:
-        path = uri.local_path or uri.raw
-        if isinstance(out_spec, TableType):
-            # TODO: parse format from uri
-            with open(path, "rb") as f:
+        path = pathlib.Path(uri.local_path or uri.raw)
+        # try load by magic
+        with path.open("rb") as f:
+            # this is the maximum length needed to detect all supported formats
+            # (numpy requires 6 bytes: '\x93NUMPY').
+            MAGIC_BYTES_LEN_MAX = 6
+            magic = f.read(MAGIC_BYTES_LEN_MAX)
+            f.seek(0)
+            if magic.startswith(MAGIC_MPLANG):
+                MPLANG_HEADER_LEN = len(MAGIC_MPLANG) + 1
+                header = f.read(MPLANG_HEADER_LEN)
+                _, version = struct.unpack(">4sB", header)
+                if version != VERSION:
+                    raise ValueError(f"unsupported mplang version {version}")
+                payload = f.read()
+                return decode_value(payload)
+            elif magic.startswith(MAGIC_PARQUET):
+                if not isinstance(out_spec, TableType):
+                    raise ValueError(
+                        f"PARQUET files require TableType output spec, got {type(out_spec).__name__}"
+                    )
+                return table_utils.read_table(
+                    f, format="parquet", columns=list(out_spec.column_names())
+                )
+            elif magic.startswith(MAGIC_ORC):
+                if not isinstance(out_spec, TableType):
+                    raise ValueError(
+                        f"ORC files require TableType output spec, got {type(out_spec).__name__}"
+                    )
+                return table_utils.read_table(
+                    f, format="orc", columns=list(out_spec.column_names())
+                )
+            elif magic.startswith(MAGIC_NUMPY):
+                if not isinstance(out_spec, TensorType):
+                    raise ValueError(
+                        f"NumPy files require TensorType output spec, got {type(out_spec).__name__}"
+                    )
+                return np.load(f)
+
+            # Fallback: open the file for CSV or NumPy loading.
+            if isinstance(out_spec, TableType):
                 return table_utils.read_table(
                     f, format="csv", columns=list(out_spec.column_names())
                 )
-        # tensor path
-        return np.load(path)
+            else:
+                return np.load(f)
 
     def write(self, uri: ResolvedURI, value: Any, *, ctx: KernelContext) -> None:
         import os
@@ -163,13 +214,23 @@ class FileProvider(DataProvider):
         dir_name = os.path.dirname(path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
-        # Table-like to CSV bytes
-        if isinstance(value, TableLike):
+
+        if not isinstance(value, Value):
+            value = (
+                TableValue(value)
+                if isinstance(value, TableLike)
+                else TensorValue(value)
+            )
+
+        if isinstance(value, TableValue):
+            table_utils.write_table(value.to_arrow(), path, format="parquet")
+        elif isinstance(value, TensorValue):
+            np.save(path, value.to_numpy())
+        else:
+            payload = encode_value(value)
             with open(path, "wb") as f:
-                table_utils.write_table(value, f, format="csv")
-            return
-        # Tensor-like via numpy
-        np.save(path, np.asarray(value))
+                f.write(struct.pack(">4sB", MAGIC_MPLANG, VERSION))
+                f.write(payload)
 
 
 class MemProvider(DataProvider):

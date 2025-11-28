@@ -139,8 +139,14 @@ def _device_run_spu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -
     # SPU execution uses spu.run_jax to compile and execute the function on the SPU.
     # Inputs are expected to be already on the SPU (handled by _d2d).
     # We wrap spu.run_jax in simp.pcall_static to execute it on all SPU parties.
+    spu_config = spu.SPUConfig.from_dict(dev_info.config)
     result = simp.pcall_static(
-        spu_parties, lambda *a, **k: spu.run_jax(fn, *a, **k), *args, **kwargs
+        spu_parties,
+        spu.run_jax,
+        spu_config,
+        fn,
+        *args,
+        **kwargs,
     )
 
     return tree_map(partial(set_dev_attr, dev_id=dev_info.name), result)
@@ -271,11 +277,16 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
         assert len(frm_dev.members) == 1
         frm_rank = frm_dev.members[0].rank
         spu_parties = tuple(m.rank for m in to_dev.members)
+        spu_config = spu.SPUConfig.from_dict(to_dev.config)
 
         # 1. Generate shares on source
         # We call spu.make_shares inside pcall on the source party
         shares_on_source = simp.pcall_static(
-            (frm_rank,), lambda x: spu.make_shares(x, count=len(spu_parties)), obj
+            (frm_rank,),
+            spu.make_shares,
+            spu_config,
+            obj,
+            count=len(spu_parties),
         )
 
         # 2. Distribute shares
@@ -301,6 +312,7 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
         assert len(to_dev.members) == 1
         to_rank = to_dev.members[0].rank
         spu_parties = tuple(m.rank for m in frm_dev.members)
+        spu_config = spu.SPUConfig.from_dict(frm_dev.config)
 
         # 1. Gather shares to target
         gathered_shares = []
@@ -317,7 +329,7 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
         # 2. Reconstruct on target
         # We call spu.reconstruct inside pcall on the target party
         var = simp.pcall_static(
-            (to_rank,), lambda *s: spu.reconstruct(s), *gathered_shares
+            (to_rank,), lambda *s: spu.reconstruct(spu_config, s), *gathered_shares
         )
         return set_dev_attr(var, to_dev_id)
 

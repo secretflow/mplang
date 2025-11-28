@@ -4,10 +4,15 @@ import jax.numpy as jnp
 import pytest
 
 from mplang2.backends.simp_simulator import SimpSimulator
-from mplang2.cluster import ClusterSpec, set_global_cluster
-from mplang2.device import device, get_dev_attr, put
 from mplang2.edsl import Interpreter
 from mplang2.edsl.context import pop_context, push_context
+from mplang2.libs.device import (
+    ClusterSpec,
+    device,
+    get_dev_attr,
+    put,
+    set_global_cluster,
+)
 
 
 @pytest.fixture(autouse=True)

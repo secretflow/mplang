@@ -21,7 +21,7 @@ import numpy as np
 
 import mplang2.edsl.typing as elt
 from mplang2.dialects import simp, tensor
-from mplang2.libs import ot
+from mplang2.libs.mpc import ot
 
 
 def secure_switch(

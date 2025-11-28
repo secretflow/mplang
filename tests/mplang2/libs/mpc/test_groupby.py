@@ -8,7 +8,7 @@ import mplang2.backends.crypto_impl
 import mplang2.backends.tensor_impl  # noqa: F401
 from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import simp, tensor
-from mplang2.libs import groupby
+from mplang2.libs.mpc import groupby
 
 
 class TestGroupbyBFV:

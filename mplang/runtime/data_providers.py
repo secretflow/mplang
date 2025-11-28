@@ -163,35 +163,49 @@ class FileProvider(DataProvider):
         path = pathlib.Path(uri.local_path or uri.raw)
         # try load by magic
         with path.open("rb") as f:
-            magic = f.read(6)
+            # this is the maximum length needed to detect all supported formats
+            # (numpy requires 6 bytes: '\x93NUMPY').
+            MAGIC_BYTES_LEN_MAX = 6
+            magic = f.read(MAGIC_BYTES_LEN_MAX)
             f.seek(0)
             if magic.startswith(MAGIC_MPLANG):
-                header = f.read(5)
+                MPLANG_HEADER_LEN = len(MAGIC_MPLANG) + 1
+                header = f.read(MPLANG_HEADER_LEN)
                 _, version = struct.unpack(">4sB", header)
                 if version != VERSION:
                     raise ValueError(f"unsupported mplang version {version}")
                 payload = f.read()
                 return decode_value(payload)
             elif magic.startswith(MAGIC_PARQUET):
-                assert isinstance(out_spec, TableType)
+                if not isinstance(out_spec, TableType):
+                    raise ValueError(
+                        f"PARQUET files require TableType output spec, got {type(out_spec).__name__}"
+                    )
                 return table_utils.read_table(
                     f, format="parquet", columns=list(out_spec.column_names())
                 )
             elif magic.startswith(MAGIC_ORC):
-                assert isinstance(out_spec, TableType)
+                if not isinstance(out_spec, TableType):
+                    raise ValueError(
+                        f"ORC files require TableType output spec, got {type(out_spec).__name__}"
+                    )
                 return table_utils.read_table(
                     f, format="orc", columns=list(out_spec.column_names())
                 )
             elif magic.startswith(MAGIC_NUMPY):
-                assert isinstance(out_spec, TensorType)
+                if not isinstance(out_spec, TensorType):
+                    raise ValueError(
+                        f"NumPy files require TensorType output spec, got {type(out_spec).__name__}"
+                    )
                 return np.load(f)
 
-        if isinstance(out_spec, TableType):
-            return table_utils.read_table(
-                path, format="csv", columns=list(out_spec.column_names())
-            )
-        else:
-            return np.load(path)
+            # Fallback: open the file for CSV or NumPy loading.
+            if isinstance(out_spec, TableType):
+                return table_utils.read_table(
+                    f, format="csv", columns=list(out_spec.column_names())
+                )
+            else:
+                return np.load(f)
 
     def write(self, uri: ResolvedURI, value: Any, *, ctx: KernelContext) -> None:
         import os

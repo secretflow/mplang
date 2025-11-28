@@ -19,12 +19,15 @@ license = { file = "LICENSE" }
 authors = [
     { name = "SecretFlow Team", email = "secretflow-contact@service.alipay.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "protobuf>=5.0,<6.0",
     "typing_extensions",
     # both FE & BE
-    "spu==0.9.4.dev20250827", # TODO(jint): use a more flexible version constraint like "spu >= 0.9.4"
+    "spu @ git+https://github.com/secretflow/spu.git@72bdfc0cf62da673278608929e7386ee2223cb7b", # Development version with JAX 0.8.0
+    "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
+    "jax[cpu]==0.8.0",         # Align with SPU JAX version
+    "flax>=0.10.0",            # NNX is part of Flax 0.10+
     "pyarrow>=14.0.0",
     # runtime only
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
@@ -56,6 +59,9 @@ examples = [
     "xgboost>=2.0.0,<3.0.0", # CPU version, 3.x requires CUDA dependencies
 ]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.metadata.hooks.custom]
 
 [tool.hatch.build.targets.wheel]
@@ -85,7 +91,7 @@ installer = "uv"
 [tool.ruff]
 # Use recommended settings with black-compatible formatting
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 # Enable preview mode for latest formatting improvements
 preview = true
 
@@ -147,7 +153,7 @@ docstring-code-format = true           # Format code in docstrings
 docstring-code-line-length = "dynamic" # Use same line length for docstring code
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

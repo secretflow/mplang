@@ -48,9 +48,18 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     compiled = rt.get_state(key)
     if compiled is None:
         client = jxt.backend.get_backend()
-        compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
+        compile_options = compiler.get_compile_options(
+            num_replicas=1, num_partitions=1
+        )  # Get devices for compilation
+        devices = client.local_devices()
+        if not devices:
+            raise RuntimeError("No local devices available for compilation")
+
         try:
-            compiled = client.compile(mlir_text, compile_options)
+            # Compile MLIR text directly - newer JAX API supports string input
+            compiled = client.compile_and_load(
+                mlir_text, tuple(devices), compile_options
+            )
         except Exception as e:  # pragma: no cover
             raise RuntimeError(f"StableHLO compile failed: {e}") from e
         rt.set_state(key, compiled)
@@ -75,14 +84,27 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
     ]
 
     try:
-        result = compiled.execute_sharded(jax_args)
-        arrays = result.disassemble_into_single_device_arrays()
-        flat: list[Any] = []
-        for lst in arrays:
-            if isinstance(lst, list) and len(lst) == 1:
-                flat.append(TensorValue(np.asarray(lst[0])))
-            else:
-                flat.extend(TensorValue(np.asarray(a)) for a in lst)
+        # Execute with the new LoadedExecutable interface
+        result = compiled.execute(jax_args)
+
+        # Handle the result based on its structure
+        if isinstance(result, (list, tuple)):
+            flat: list[Any] = []
+            for item in result:
+                if hasattr(item, "__array__"):
+                    # Direct array-like object
+                    flat.append(TensorValue(np.asarray(item)))
+                elif isinstance(item, (list, tuple)):
+                    # Nested structure - flatten it
+                    for subitem in item:
+                        flat.append(TensorValue(np.asarray(subitem)))
+                else:
+                    # Single item
+                    flat.append(TensorValue(np.asarray(item)))
+        else:
+            # Single result
+            flat = [TensorValue(np.asarray(result))]
+
         return tuple(flat)
     except Exception as e:  # pragma: no cover
         raise RuntimeError(f"StableHLO execute failed: {e}") from e

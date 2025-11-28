@@ -337,6 +337,10 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
     elif frm_to_pair == ("SPU", "SPU"):
         raise NotImplementedError("SPU to SPU transfer not implemented yet.")
 
+    # TEE transfers
+    elif "TEE" in frm_to_pair:
+        raise NotImplementedError(f"TEE transfer not implemented yet: {frm_to_pair}")
+
     else:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
 

@@ -16,7 +16,8 @@ def test_spu_e2e_simulation():
     # 1. Setup
     world_size = 3
     sim = SimpSimulator(world_size=world_size)
-    spu_device = spu.SPUDevice(parties=(0, 1, 2))
+    spu_parties = (0, 1, 2)
+    spu_config = spu.SPUConfig()
 
     # 2. Define computation
     def secure_add(x, y):
@@ -32,26 +33,27 @@ def test_spu_e2e_simulation():
         # Encrypt (Public -> SPU)
         # Manual encrypt for x
         # 1. Make shares (Local on source)
-        x_shares = simp.pcall_static((0,), lambda x: spu.make_shares(x, count=3), x_mp)
+        x_shares = simp.pcall_static((0,), spu.make_shares, spu_config, x_mp, count=3)
         # 2. Distribute
         x_dist = []
-        for i, target in enumerate(spu_device.parties):
+        for i, target in enumerate(spu_parties):
             x_dist.append(simp.shuffle_static(x_shares[i], {target: 0}))
         # 3. Converge
         x_enc = simp.converge(*x_dist)
 
         # Manual encrypt for y
-        y_shares = simp.pcall_static((0,), lambda x: spu.make_shares(x, count=3), y_mp)
+        y_shares = simp.pcall_static((0,), spu.make_shares, spu_config, y_mp, count=3)
         y_dist = []
-        for i, target in enumerate(spu_device.parties):
+        for i, target in enumerate(spu_parties):
             y_dist.append(simp.shuffle_static(y_shares[i], {target: 0}))
         y_enc = simp.converge(*y_dist)
 
         # Execute (SPU -> SPU)
-        # We wrap spu.run_jax in pcall_static
         z_enc = simp.pcall_static(
-            spu_device.parties,
-            lambda x, y: spu.run_jax(secure_add, x, y),
+            spu_parties,
+            spu.run_jax,
+            spu_config,
+            secure_add,
             x_enc,
             y_enc,
         )
@@ -59,11 +61,13 @@ def test_spu_e2e_simulation():
         # Decrypt (SPU -> Public)
         # Manual decrypt
         z_shares = []
-        for source in spu_device.parties:
+        for source in spu_parties:
             share = simp.pcall_static((source,), lambda x: x, z_enc)
             z_shares.append(simp.shuffle_static(share, {0: source}))
 
-        z_mp = simp.pcall_static((0,), lambda *s: spu.reconstruct(s), *z_shares)
+        z_mp = simp.pcall_static(
+            (0,), lambda *s: spu.reconstruct(spu_config, s), *z_shares
+        )
 
         # Return result
         tracer.finalize(z_mp)

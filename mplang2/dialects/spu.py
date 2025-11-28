@@ -82,7 +82,13 @@ from mplang2.dialects import type_utils
 
 @dataclass(frozen=True)
 class SPUConfig:
-    """SPU configuration (subset of libspu.RuntimeConfig)."""
+    """SPU configuration (subset of libspu.RuntimeConfig).
+
+    Attributes:
+        protocol: SPU protocol (e.g., "SEMI2K", "ABY3").
+        field: SPU field type (e.g., "FM64", "FM128").
+        fxp_fraction_bits: Fixed-point fraction bits.
+    """
 
     protocol: str = "SEMI2K"
     field: str = "FM128"
@@ -91,7 +97,8 @@ class SPUConfig:
     def to_runtime_config(self) -> libspu.RuntimeConfig:
         """Convert to libspu.RuntimeConfig."""
         config = libspu.RuntimeConfig()
-        config.protocol = getattr(libspu.ProtocolKind, f"PROT_{self.protocol}")
+        # ProtocolKind uses "SEMI2K" not "PROT_SEMI2K"
+        config.protocol = getattr(libspu.ProtocolKind, self.protocol)
         config.field = getattr(libspu.FieldType, self.field)
         config.fxp_fraction_bits = self.fxp_fraction_bits
         return config

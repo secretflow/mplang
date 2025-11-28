@@ -8,22 +8,25 @@ import mplang2.edsl.typing as elt
 from mplang2.dialects import simp, spu
 
 
-def test_spu_device():
-    device = spu.SPUDevice(parties=(0, 1, 2))
-    assert device.parties == (0, 1, 2)
+def test_spu_config():
+    config = spu.SPUConfig()
+    assert config.protocol == "SEMI2K"
 
 
 def test_encrypt_decrypt_flow():
     # 1. Setup
-    device = spu.SPUDevice(parties=(0, 1, 2))
+    parties = (0, 1, 2)
+    config = spu.SPUConfig()
 
     # 2. Define trace function
     def trace_fn(x):
         # Encrypt
         # Manual encrypt
-        x_shares = simp.pcall_static((0,), lambda x: spu.make_shares(x, count=3), x)
+        x_shares = simp.pcall_static(
+            (0,), lambda x: spu.make_shares(config, x, count=3), x
+        )
         x_dist = []
-        for i, target in enumerate(device.parties):
+        for i, target in enumerate(parties):
             x_dist.append(simp.shuffle_static(x_shares[i], {target: 0}))
         x_enc = simp.converge(*x_dist)
 
@@ -35,11 +38,13 @@ def test_encrypt_decrypt_flow():
         # Decrypt
         # Manual decrypt
         x_shares_back = []
-        for source in device.parties:
+        for source in parties:
             share = simp.pcall_static((source,), lambda x: x, x_enc)
             x_shares_back.append(simp.shuffle_static(share, {0: source}))
 
-        x_dec = simp.pcall_static((0,), lambda *s: spu.reconstruct(s), *x_shares_back)
+        x_dec = simp.pcall_static(
+            (0,), lambda *s: spu.reconstruct(config, s), *x_shares_back
+        )
 
         # Verify type
         assert isinstance(x_dec.type, elt.MPType)
@@ -68,7 +73,8 @@ def test_encrypt_decrypt_flow():
 
 def test_jit_compilation():
     # 1. Setup
-    device = spu.SPUDevice(parties=(0, 1, 2))
+    parties = (0, 1, 2)
+    config = spu.SPUConfig()
 
     # 2. Define JAX function
     def secure_add(x, y):
@@ -78,7 +84,7 @@ def test_jit_compilation():
     def trace_fn(x, y):
         # Assume x, y are already encrypted
         z = simp.pcall_static(
-            device.parties, lambda x, y: spu.run_jax(secure_add, x, y), x, y
+            parties, lambda x, y: spu.run_jax(config, secure_add, x, y), x, y
         )
         return z
 
@@ -134,7 +140,8 @@ def test_jit_compilation():
 
 def test_run_jax_mixed_pytree():
     # 1. Setup
-    device = spu.SPUDevice(parties=(0, 1, 2))
+    parties = (0, 1, 2)
+    config = spu.SPUConfig()
 
     # 2. Define JAX function with mixed output
     def mixed_fn(x, y):
@@ -147,7 +154,7 @@ def test_run_jax_mixed_pytree():
     # 3. Trace usage
     def trace_fn(x, y):
         z = simp.pcall_static(
-            device.parties, lambda x, y: spu.run_jax(mixed_fn, x, y), x, y
+            parties, lambda x, y: spu.run_jax(config, mixed_fn, x, y), x, y
         )
         return z
 

@@ -62,7 +62,8 @@ z = spu.reconstruct(tuple(z_shares))
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, NamedTuple, cast
+from dataclasses import dataclass
+from typing import Any, cast
 
 import spu.libspu as libspu
 import spu.utils.frontend as spu_fe
@@ -79,11 +80,29 @@ from mplang2.dialects import type_utils
 # ==============================================================================
 
 
-class SPUDevice(NamedTuple):
-    """Configuration for an SPU device formed by a set of parties."""
+@dataclass(frozen=True)
+class SPUConfig:
+    """SPU configuration (subset of libspu.RuntimeConfig)."""
 
-    parties: tuple[int, ...]
-    config: libspu.RuntimeConfig | None = None
+    protocol: str = "SEMI2K"
+    field: str = "FM128"
+    fxp_fraction_bits: int = 18
+
+    def to_runtime_config(self) -> libspu.RuntimeConfig:
+        """Convert to libspu.RuntimeConfig."""
+        config = libspu.RuntimeConfig()
+        config.protocol = getattr(libspu.ProtocolKind, f"PROT_{self.protocol}")
+        config.field = getattr(libspu.FieldType, self.field)
+        config.fxp_fraction_bits = self.fxp_fraction_bits
+        return config
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> SPUConfig:
+        return cls(
+            protocol=d.get("protocol", "SEMI2K"),
+            field=d.get("field", "FM128"),
+            fxp_fraction_bits=d.get("fxp_fraction_bits", 18),
+        )
 
 
 # ==============================================================================
@@ -99,7 +118,9 @@ exec_p = el.Primitive[Any]("spu.exec")
 
 
 @makeshares_p.def_abstract_eval
-def _makeshares_ae(data: elt.TensorType, *, count: int) -> tuple[elt.SSType, ...]:
+def _makeshares_ae(
+    data: elt.TensorType, *, count: int, config: SPUConfig
+) -> tuple[elt.SSType, ...]:
     """Split a tensor into `count` secret shares."""
     if not isinstance(data, elt.TensorType):
         raise TypeError(f"makeshares expects TensorType, got {data}")
@@ -109,7 +130,7 @@ def _makeshares_ae(data: elt.TensorType, *, count: int) -> tuple[elt.SSType, ...
 
 
 @reconstruct_p.def_abstract_eval
-def _reconstruct_ae(*shares: elt.SSType) -> elt.TensorType:
+def _reconstruct_ae(*shares: elt.SSType, config: SPUConfig) -> elt.TensorType:
     """Reconstruct a tensor from shares."""
     if not shares:
         raise ValueError("reconstruct requires at least one share")
@@ -132,6 +153,7 @@ def _exec_ae(
     output_dtypes: list[elt.ScalarType],
     input_names: list[str],
     output_names: list[str],
+    config: SPUConfig,
 ) -> tuple[elt.SSType, ...] | elt.SSType:
     """Execute SPU kernel on shares."""
     # Validate inputs are SS types or Tensor types
@@ -154,42 +176,47 @@ def _exec_ae(
 # ==============================================================================
 
 
-def make_shares(data: el.Object, count: int) -> tuple[el.Object, ...]:
+def make_shares(
+    config: SPUConfig, data: el.Object, count: int
+) -> tuple[el.Object, ...]:
     """Generate shares locally (no transfer).
 
     This function should be called inside a `simp.pcall` region.
 
     Args:
+        config: SPU configuration.
         data: Local TensorType object.
         count: Number of shares to generate.
 
     Returns:
         Tuple of SSType objects (shares).
     """
-    return makeshares_p.bind(data, count=count)
+    return makeshares_p.bind(data, count=count, config=config)
 
 
-def reconstruct(shares: tuple[el.Object, ...]) -> el.Object:
+def reconstruct(config: SPUConfig, shares: tuple[el.Object, ...]) -> el.Object:
     """Reconstruct data from shares locally (no transfer).
 
     This function should be called inside a `simp.pcall` region.
 
     Args:
+        config: SPU configuration.
         shares: Tuple of SSType objects (shares).
 
     Returns:
         TensorType object (reconstructed).
     """
-    return reconstruct_p.bind(*shares)
+    return reconstruct_p.bind(*shares, config=config)
 
 
-def run_jax(fn: Callable, *args: Any, **kwargs: Any) -> Any:
+def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     """Execute a function on SPU locally.
 
     This function should be called inside a `simp.pcall` region.
     It compiles the function and executes it using the SPU runtime.
 
     Args:
+        config: SPU configuration.
         fn: The function to execute.
         *args: Positional arguments (SSType or TensorType).
         **kwargs: Keyword arguments.
@@ -267,6 +294,7 @@ def run_jax(fn: Callable, *args: Any, **kwargs: Any) -> Any:
         output_dtypes=output_dtypes,
         input_names=executable.input_names,
         output_names=executable.output_names,
+        config=config,
     )
 
     # 5. Unflatten results

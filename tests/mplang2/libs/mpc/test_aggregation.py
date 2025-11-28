@@ -5,7 +5,7 @@ import numpy as np
 import mplang2.backends.bfv_impl
 import mplang2.backends.tensor_impl  # noqa: F401
 from mplang2.dialects import bfv, tensor
-from mplang2.libs import aggregation
+from mplang2.libs.mpc import aggregation
 
 
 def test_rotate_and_sum():

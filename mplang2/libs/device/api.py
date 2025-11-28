@@ -15,9 +15,9 @@ from typing import Any
 from jax.tree_util import tree_flatten, tree_map
 
 from mplang2.backends import load_builtins
-from mplang2.cluster import Device, get_global_cluster
 from mplang2.dialects import simp, spu
 from mplang2.edsl.object import Object
+from mplang2.libs.device.cluster import Device, get_global_cluster
 
 # Load built-in backends (SPU, Tensor, etc.)
 load_builtins()

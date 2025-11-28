@@ -7,7 +7,7 @@ import mplang2.backends.crypto_impl
 import mplang2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
 from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import simp
-from mplang2.libs import ot
+from mplang2.libs.mpc import ot
 
 
 class TestOTScalar:

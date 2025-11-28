@@ -14,11 +14,13 @@ from typing import Any
 
 from jax.tree_util import tree_flatten, tree_map
 
-import mplang2.backends.spu_impl  # Register spu implementations
-import mplang2.backends.tensor_impl  # noqa: F401 # Register tensor implementations
+from mplang2.backends import load_builtins
 from mplang2.cluster import Device, get_global_cluster
 from mplang2.dialects import simp, spu
 from mplang2.edsl.object import Object
+
+# Load built-in backends (SPU, Tensor, etc.)
+load_builtins()
 
 # Magic attribute name to mark an Object as a device object
 DEVICE_ATTR_NAME = "__device__"

@@ -13,7 +13,6 @@ from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter
 
 
-
 class WorkerInterpreter(Interpreter):
     """Interpreter running on a single party (worker)."""
 
@@ -44,7 +43,19 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
     if interpreter.rank in parties:
         # Execute region
         fn_graph = op.regions[0]
-        return interpreter.evaluate_graph(fn_graph, list(args))
+        # Inject parties info into interpreter for downstream ops (e.g. spu.exec)
+        # We use a temporary attribute on the interpreter instance.
+        # This is safe because WorkerInterpreter is single-threaded per task.
+        # If nested pcalls are possible, we should use a stack, but for now simple set/unset.
+        prev_parties = getattr(interpreter, "current_parties", None)
+        interpreter.current_parties = parties  # type: ignore
+        try:
+            return interpreter.evaluate_graph(fn_graph, list(args))
+        finally:
+            if prev_parties is None:
+                del interpreter.current_parties  # type: ignore
+            else:
+                interpreter.current_parties = prev_parties  # type: ignore
     else:
         # Return dummy values (None) for each output
         # This ensures downstream operations (like shuffle) receive the correct number of inputs
@@ -52,8 +63,6 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
             return None
         else:
             return [None] * len(op.outputs)
-
-
 
 
 @simp.pcall_dynamic_p.def_impl

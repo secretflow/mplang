@@ -13,35 +13,44 @@ from mplang2.dialects import spu
 from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter
 
-# Global cache for SPU runtimes per rank
-# Key: rank, Value: (Runtime, Io)
-_SPU_RUNTIMES: dict[int, tuple[spu_api.Runtime, spu_api.Io]] = {}
+# Global cache for SPU runtimes per (local_rank, world_size) pair
+# Key: (local_rank, spu_world_size, protocol, field), Value: (Runtime, Io)
+_SPU_RUNTIMES: dict[tuple[int, int, str, str], tuple[spu_api.Runtime, spu_api.Io]] = {}
 
 
-def _get_spu_ctx(rank: int, world_size: int) -> tuple[spu_api.Runtime, spu_api.Io]:
-    """Get or create SPU runtime and IO for the given rank."""
-    if rank in _SPU_RUNTIMES:
-        return _SPU_RUNTIMES[rank]
+def _get_spu_ctx(
+    local_rank: int, spu_world_size: int, config: spu.SPUConfig
+) -> tuple[spu_api.Runtime, spu_api.Io]:
+    """Get or create SPU runtime and IO for the given local rank within SPU.
 
-    # Create Link
+    Args:
+        local_rank: The local rank within the SPU device (0-indexed).
+        spu_world_size: The number of parties in the SPU device.
+        config: SPU configuration including protocol settings.
+
+    Returns:
+        A tuple of (Runtime, Io) for this party.
+    """
+    # Include protocol and field in cache key to avoid mismatches between tests
+    cache_key = (local_rank, spu_world_size, config.protocol, config.field)
+    if cache_key in _SPU_RUNTIMES:
+        return _SPU_RUNTIMES[cache_key]
+
+    # Create Link using local rank and SPU world size
     desc = libspu.link.Desc()  # type: ignore
     desc.recv_timeout_ms = 30 * 1000
-    for i in range(world_size):
+    for i in range(spu_world_size):
         desc.add_party(f"P{i}", f"mem:{i}")
-    link = libspu.link.create_mem(desc, rank)
+    link = libspu.link.create_mem(desc, local_rank)
 
-    # Create Config
-    config = libspu.RuntimeConfig(
-        protocol=libspu.ProtocolKind.SEMI2K,
-        field=libspu.FieldType.FM64,
-        fxp_fraction_bits=18,
-    )
+    # Use config from SPUConfig
+    runtime_config = config.to_runtime_config()
 
     # Create Runtime and Io
-    runtime = spu_api.Runtime(link, config)
-    io = spu_api.Io(world_size, config)
+    runtime = spu_api.Runtime(link, runtime_config)
+    io = spu_api.Io(spu_world_size, runtime_config)
 
-    _SPU_RUNTIMES[rank] = (runtime, io)
+    _SPU_RUNTIMES[cache_key] = (runtime, io)
     return runtime, io
 
 
@@ -49,17 +58,11 @@ def _get_spu_ctx(rank: int, world_size: int) -> tuple[spu_api.Runtime, spu_api.I
 def makeshares_impl(interpreter: Interpreter, op: Operation, data: Any) -> Any:
     """Generate secret shares for data using spu.Io."""
     count = op.attrs["count"]
-    # We assume we are running on the source party, so we generate shares for everyone.
-    # We need a config to create Io. We use a default config for now.
-    # Note: In a real deployment, config should be consistent across parties.
+    config: spu.SPUConfig = op.attrs["config"]
 
     # We create a standalone Io for share generation (no link needed for make_shares)
-    config = libspu.RuntimeConfig(
-        protocol=libspu.ProtocolKind.SEMI2K,
-        field=libspu.FieldType.FM64,
-        fxp_fraction_bits=18,
-    )
-    io = spu_api.Io(count, config)
+    runtime_config = config.to_runtime_config()
+    io = spu_api.Io(count, runtime_config)
 
     # data is expected to be numpy array or scalar
     data = np.array(data)
@@ -75,15 +78,11 @@ def makeshares_impl(interpreter: Interpreter, op: Operation, data: Any) -> Any:
 @spu.reconstruct_p.def_impl
 def reconstruct_impl(interpreter: Interpreter, op: Operation, *shares: Any) -> Any:
     """Reconstruct data from secret shares using spu.Io."""
-    # We assume we are running on the target party and have received all shares.
     count = len(shares)
+    config: spu.SPUConfig = op.attrs["config"]
 
-    config = libspu.RuntimeConfig(
-        protocol=libspu.ProtocolKind.SEMI2K,
-        field=libspu.FieldType.FM64,
-        fxp_fraction_bits=18,
-    )
-    io = spu_api.Io(count, config)
+    runtime_config = config.to_runtime_config()
+    io = spu_api.Io(count, runtime_config)
 
     # Reconstruct
     result = io.reconstruct(list(shares))
@@ -94,29 +93,39 @@ def reconstruct_impl(interpreter: Interpreter, op: Operation, *shares: Any) -> A
 
 @spu.exec_p.def_impl
 def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
-    """Execute SPU kernel using spu.Runtime."""
-    # We are running on an SPU party.
-    # args are shares (libspu.Share) belonging to this party.
+    """Execute SPU kernel using spu.Runtime.
 
-    # We need the rank of this party within the SPU device.
-    # However, interpreter.rank is the global rank.
-    # SPU device parties are defined in the op context?
-    # Actually, spu.jit ensures all inputs are on SPU parties.
-    # But we need to know the world_size of the SPU to initialize Runtime.
-    # We can infer it from the number of parties involved in the pcall?
-    # But exec_impl runs inside a pcall, so it doesn't know about other parties easily.
+    The SPU config must contain parties info to correctly map global rank
+    to local SPU rank and determine SPU world size.
+    """
+    # Get SPU config from attrs (passed through from run_jax)
+    config: spu.SPUConfig = op.attrs["config"]
 
-    # Assumption: The SPU world size is fixed for the simulation.
-    # We expect the interpreter to provide world_size (e.g. WorkerInterpreter).
-
-    rank = getattr(interpreter, "rank", 0)
-    world_size = getattr(interpreter, "world_size", None)
-    if world_size is None:
+    # Get parties from interpreter context (injected by pcall_static_impl)
+    parties = getattr(interpreter, "current_parties", None)
+    if parties is None:
         raise RuntimeError(
-            "spu.exec requires an interpreter with 'world_size' attribute (e.g. WorkerInterpreter)."
+            "spu.exec requires 'current_parties' in interpreter context. "
+            "Ensure it is called within a pcall_static block."
         )
 
-    runtime, io = _get_spu_ctx(rank, world_size)
+    # Get global rank from interpreter
+    global_rank = getattr(interpreter, "rank", None)
+    if global_rank is None:
+        raise RuntimeError(
+            "spu.exec requires an interpreter with 'rank' attribute (e.g. WorkerInterpreter)."
+        )
+
+    if global_rank not in parties:
+        raise RuntimeError(
+            f"Global rank {global_rank} is not in current parties {parties}"
+        )
+
+    # Convert global rank to local SPU rank
+    local_rank = parties.index(global_rank)
+    spu_world_size = len(parties)
+
+    runtime, io = _get_spu_ctx(local_rank, spu_world_size, config)
 
     executable_code = op.attrs["executable"]
     input_names = op.attrs["input_names"]
@@ -140,7 +149,7 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
                 share = np.array(share)
 
             shares = io.make_shares(share, libspu.Visibility.VIS_PUBLIC)
-            share = shares[rank]
+            share = shares[local_rank]
 
         runtime.set_var(name, share)
 

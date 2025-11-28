@@ -31,16 +31,16 @@ from jax.tree_util import tree_map, tree_unflatten
 
 from mplang.core import (
     ClusterSpec,
+    cur_ctx,
     Device,
     Mask,
     MPContext,
     MPObject,
+    peval,
     TableLike,
     TensorLike,
-    cur_ctx,
-    peval,
 )
-from mplang.ops import basic, crypto, jax_cc, spu, tee
+from mplang.ops import basic, crypto, jax_cc, nnx_cc, spu, tee
 from mplang.ops.base import FeOperation
 from mplang.ops.jax_cc import JaxRunner
 from mplang.simp import mpi
@@ -292,7 +292,7 @@ def device(
     Args:
         dev_or_fn: Either a device id string ("P0", "SPU", etc.) for explicit placement,
                    a callable function for auto inference, or None (same as not providing arg).
-        fe_type: The frontend type of the device, could be "jax".
+        fe_type: The frontend type of the device, could be "jax" or "nnx".
                  Not needed if the decorated function is already a FeOperation.
 
     Returns:
@@ -336,6 +336,8 @@ def device(
         else:
             if fe_type == "jax":
                 return _device_run(dev_id, jax_cc.run_jax, fn, *args, **kwargs)
+            elif fe_type == "nnx":
+                return _device_run(dev_id, nnx_cc.run_nnx, fn, *args, **kwargs)
             else:
                 raise ValueError(f"Unsupported frontend type: {fe_type}")
 

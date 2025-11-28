@@ -345,8 +345,12 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
         raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
 
 
-def put(obj: Any, to_dev_id: str) -> Object:
+def put(to_dev_id: str, obj: Any) -> Object:
     """Put data onto a device.
+
+    Args:
+        to_dev_id: Target device ID (e.g., "P0", "SP0").
+        obj: The object to put onto the device.
 
     If obj is already a device object, it moves it to the target device.
     If obj is a host object (e.g. numpy array), it uploads it to the target device.

@@ -263,34 +263,34 @@ class TestDeviceOperations3PC:
         """Test putting data to PPU devices."""
         x = jnp.array([1, 2, 3])
 
-        x_p0 = put(x, "P0")
+        x_p0 = put("P0", x)
         assert get_dev_attr(x_p0) == "P0"
 
-        x_p1 = put(x, "P1")
+        x_p1 = put("P1", x)
         assert get_dev_attr(x_p1) == "P1"
 
     def test_put_to_spu(self):
         """Test putting data to SPU device."""
         x = jnp.array([1.0, 2.0, 3.0])
-        x_sp0 = put(x, "SP0")
+        x_sp0 = put("SP0", x)
         assert get_dev_attr(x_sp0) == "SP0"
 
     def test_transfer_ppu_to_ppu(self):
         """Test data transfer between PPU devices."""
-        x = put(jnp.array([1, 2, 3]), "P0")
-        x_p1 = put(x, "P1")
+        x = put("P0", jnp.array([1, 2, 3]))
+        x_p1 = put("P1", x)
         assert get_dev_attr(x_p1) == "P1"
 
     def test_transfer_ppu_to_spu(self):
         """Test data transfer from PPU to SPU (seal)."""
-        x = put(jnp.array([1.0, 2.0, 3.0]), "P0")
-        x_sp0 = put(x, "SP0")
+        x = put("P0", jnp.array([1.0, 2.0, 3.0]))
+        x_sp0 = put("SP0", x)
         assert get_dev_attr(x_sp0) == "SP0"
 
     def test_transfer_spu_to_ppu(self):
         """Test data transfer from SPU to PPU (reveal)."""
-        x = put(jnp.array([1.0, 2.0, 3.0]), "SP0")
-        x_p0 = put(x, "P0")
+        x = put("SP0", jnp.array([1.0, 2.0, 3.0]))
+        x_p0 = put("P0", x)
         assert get_dev_attr(x_p0) == "P0"
 
     def test_device_decorator_explicit(self):
@@ -300,8 +300,8 @@ class TestDeviceOperations3PC:
         def secure_add(a, b):
             return a + b
 
-        x = put(jnp.array([1.0, 2.0]), "SP0")
-        y = put(jnp.array([3.0, 4.0]), "SP0")
+        x = put("SP0", jnp.array([1.0, 2.0]))
+        y = put("SP0", jnp.array([3.0, 4.0]))
 
         z = secure_add(x, y)
         assert get_dev_attr(z) == "SP0"
@@ -314,14 +314,14 @@ class TestDeviceOperations3PC:
             return a + b
 
         # Both on P0 -> execute on P0
-        x = put(jnp.array([1, 2]), "P0")
-        y = put(jnp.array([3, 4]), "P0")
+        x = put("P0", jnp.array([1, 2]))
+        y = put("P0", jnp.array([3, 4]))
         z = add(x, y)
         assert get_dev_attr(z) == "P0"
 
         # Both on SP0 -> execute on SP0
-        x2 = put(jnp.array([1.0, 2.0]), "SP0")
-        y2 = put(jnp.array([3.0, 4.0]), "SP0")
+        x2 = put("SP0", jnp.array([1.0, 2.0]))
+        y2 = put("SP0", jnp.array([3.0, 4.0]))
         z2 = add(x2, y2)
         assert get_dev_attr(z2) == "SP0"
 
@@ -332,8 +332,8 @@ class TestDeviceOperations3PC:
         def add(a, b):
             return a + b
 
-        x = put(jnp.array([1.0, 2.0]), "P0")
-        y = put(jnp.array([3.0, 4.0]), "SP0")
+        x = put("P0", jnp.array([1.0, 2.0]))
+        y = put("SP0", jnp.array([3.0, 4.0]))
 
         # Should auto-transfer x to SP0 and execute there
         z = add(x, y)
@@ -357,12 +357,12 @@ class TestDeviceOperations2PC:
 
     def test_2pc_basic_operations(self):
         """Test basic operations in 2-party setting."""
-        x = put(jnp.array([1.0, 2.0]), "P_alice")
-        y = put(jnp.array([3.0, 4.0]), "P_bob")
+        x = put("P_alice", jnp.array([1.0, 2.0]))
+        y = put("P_bob", jnp.array([3.0, 4.0]))
 
         # Transfer to SPU
-        x_sp = put(x, "SP0")
-        y_sp = put(y, "SP0")
+        x_sp = put("SP0", x)
+        y_sp = put("SP0", y)
 
         assert get_dev_attr(x_sp) == "SP0"
         assert get_dev_attr(y_sp) == "SP0"
@@ -374,8 +374,8 @@ class TestDeviceOperations2PC:
         def secure_multiply(a, b):
             return a * b
 
-        x = put(jnp.array([2.0, 3.0]), "SP0")
-        y = put(jnp.array([4.0, 5.0]), "SP0")
+        x = put("SP0", jnp.array([2.0, 3.0]))
+        y = put("SP0", jnp.array([4.0, 5.0]))
 
         z = secure_multiply(x, y)
         assert get_dev_attr(z) == "SP0"
@@ -398,8 +398,8 @@ class TestDeviceOperationsPPUOnly:
 
     def test_ppu_only_transfer(self):
         """Test data transfer in PPU-only cluster."""
-        x = put(jnp.array([1, 2, 3]), "P0")
-        x_p1 = put(x, "P1")
+        x = put("P0", jnp.array([1, 2, 3]))
+        x_p1 = put("P1", x)
 
         assert get_dev_attr(x_p1) == "P1"
 
@@ -410,7 +410,7 @@ class TestDeviceOperationsPPUOnly:
         def double(x):
             return x * 2
 
-        x = put(jnp.array([1, 2, 3]), "P0")
+        x = put("P0", jnp.array([1, 2, 3]))
         y = double(x)
 
         assert get_dev_attr(y) == "P0"
@@ -422,8 +422,8 @@ class TestDeviceOperationsPPUOnly:
         def add(a, b):
             return a + b
 
-        x = put(jnp.array([1]), "P0")
-        y = put(jnp.array([2]), "P1")
+        x = put("P0", jnp.array([1]))
+        y = put("P1", jnp.array([2]))
 
         # Should raise because both are PPU and ambiguous
         with pytest.raises(ValueError, match="multiple PPU devices"):
@@ -455,15 +455,15 @@ class TestDeviceErrors:
         x = jnp.array([1, 2, 3])
 
         with pytest.raises(ValueError, match="not found"):
-            put(x, "INVALID_DEVICE")
+            put("INVALID_DEVICE", x)
 
     def test_tee_not_implemented(self):
         """Test that TEE operations are not yet implemented."""
-        x = put(jnp.array([1, 2, 3]), "P0")
+        x = put("P0", jnp.array([1, 2, 3]))
 
         # TEE0 exists but transfer is not implemented
         with pytest.raises(NotImplementedError):
-            put(x, "TEE0")
+            put("TEE0", x)
 
 
 class TestMultipleSPUs:
@@ -492,13 +492,13 @@ class TestMultipleSPUs:
         def add_sp1(a, b):
             return a + b
 
-        x0 = put(jnp.array([1.0, 2.0]), "SP0")
-        y0 = put(jnp.array([3.0, 4.0]), "SP0")
+        x0 = put("SP0", jnp.array([1.0, 2.0]))
+        y0 = put("SP0", jnp.array([3.0, 4.0]))
         z0 = add_sp0(x0, y0)
         assert get_dev_attr(z0) == "SP0"
 
-        x1 = put(jnp.array([1.0, 2.0]), "SP1")
-        y1 = put(jnp.array([3.0, 4.0]), "SP1")
+        x1 = put("SP1", jnp.array([1.0, 2.0]))
+        y1 = put("SP1", jnp.array([3.0, 4.0]))
         z1 = add_sp1(x1, y1)
         assert get_dev_attr(z1) == "SP1"
 
@@ -509,8 +509,8 @@ class TestMultipleSPUs:
         def add(a, b):
             return a + b
 
-        x = put(jnp.array([1.0, 2.0]), "SP0")
-        y = put(jnp.array([3.0, 4.0]), "SP1")
+        x = put("SP0", jnp.array([1.0, 2.0]))
+        y = put("SP1", jnp.array([3.0, 4.0]))
 
         # Should raise because both are different SPUs
         with pytest.raises(ValueError, match="multiple SPU devices"):

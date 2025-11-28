@@ -55,7 +55,7 @@ def setup_cluster():
 
 def test_put_ppu():
     x = jnp.array([1, 2, 3])
-    x_p0 = put(x, "P0")
+    x_p0 = put("P0", x)
 
     assert get_dev_attr(x_p0) == "P0"
     # In a real execution, x_p0 would hold the value on P0.
@@ -67,7 +67,7 @@ def test_put_ppu():
 def test_put_spu():
     print("Running test_put_spu")
     x = jnp.array([1, 2, 3])
-    x_sp0 = put(x, "SP0")
+    x_sp0 = put("SP0", x)
 
     assert get_dev_attr(x_sp0) == "SP0"
 
@@ -79,8 +79,8 @@ def test_device_explicit():
     def add(a, b):
         return a + b
 
-    x = put(jnp.array(1), "P0")
-    y = put(jnp.array(2), "P0")
+    x = put("P0", jnp.array(1))
+    y = put("P0", jnp.array(2))
 
     z = add(x, y)
     assert get_dev_attr(z) == "P0"
@@ -93,8 +93,8 @@ def test_device_auto_ppu():
     def add(a, b):
         return a + b
 
-    x = put(jnp.array(1), "P0")
-    y = put(jnp.array(2), "P0")
+    x = put("P0", jnp.array(1))
+    y = put("P0", jnp.array(2))
 
     z = add(x, y)
     assert get_dev_attr(z) == "P0"
@@ -107,8 +107,8 @@ def test_device_auto_spu():
     def add(a, b):
         return a + b
 
-    x = put(jnp.array(1), "SP0")
-    y = put(jnp.array(2), "SP0")
+    x = put("SP0", jnp.array(1))
+    y = put("SP0", jnp.array(2))
 
     z = add(x, y)
     assert get_dev_attr(z) == "SP0"
@@ -121,8 +121,8 @@ def test_device_auto_transfer_ppu_to_spu():
     def add(a, b):
         return a + b
 
-    x = put(jnp.array(1), "P0")
-    y = put(jnp.array(2), "SP0")
+    x = put("P0", jnp.array(1))
+    y = put("SP0", jnp.array(2))
 
     # Should infer SPU because one arg is on SPU
     z = add(x, y)
@@ -131,12 +131,12 @@ def test_device_auto_transfer_ppu_to_spu():
 
 def test_explicit_transfer():
     print("Running test_explicit_transfer")
-    x = put(jnp.array(1), "P0")
-    x_p1 = put(x, "P1")
+    x = put("P0", jnp.array(1))
+    x_p1 = put("P1", x)
     assert get_dev_attr(x_p1) == "P1"
 
-    x_sp0 = put(x, "SP0")
+    x_sp0 = put("SP0", x)
     assert get_dev_attr(x_sp0) == "SP0"
 
-    x_back = put(x_sp0, "P0")
+    x_back = put("P0", x_sp0)
     assert get_dev_attr(x_back) == "P0"

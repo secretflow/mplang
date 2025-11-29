@@ -5,7 +5,7 @@ from typing import Any
 
 from jax.tree_util import tree_map
 
-from mplang2.edsl.context import get_default_context
+from mplang2.edsl.context import get_current_context, get_default_context
 from mplang2.edsl.interpreter import Interpreter
 from mplang2.edsl.tracer import Tracer
 
@@ -28,7 +28,8 @@ def jit(fn: Callable) -> Callable:
         with Tracer():
             result = fn(*args, **kwargs)
 
-        cur_ctx = get_default_context()
+        # Use current context if available (e.g., SimpSimulator), otherwise use default
+        cur_ctx = get_current_context() or get_default_context()
         assert isinstance(cur_ctx, Interpreter), (
             "JIT execution requires Interpreter context"
         )

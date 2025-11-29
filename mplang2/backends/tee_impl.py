@@ -28,7 +28,6 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import jax.numpy as jnp
 import numpy as np
 
 from mplang2.backends.crypto_impl import RuntimePublicKey
@@ -54,23 +53,26 @@ class MockQuote:
     - Measurement (MRENCLAVE/MRTD)
     - User-provided report_data (bound public key hash)
 
-    For mock purposes, we just store the bound public key directly.
+    For mock purposes, we store the bound public key directly.
+    The quote is the only mock-specific structure needed because it represents
+    hardware-generated attestation data that doesn't exist outside a real TEE.
     """
 
     platform: str
-    bound_pk: np.ndarray  # The public key bound in this quote
-    measurement: np.ndarray  # Mock measurement (32 bytes)
+    bound_pk: bytes  # The public key bytes bound in this quote (32 bytes for x25519)
+    suite: str  # The KEM suite (e.g., "x25519")
 
     def to_bytes(self) -> bytes:
         """Serialize quote for transmission."""
-        # Simple format: [platform_len:1][platform][pk:32][measurement:32]
+        # Format: [platform_len:1][platform][suite_len:1][suite][pk]
         platform_bytes = self.platform.encode("utf-8")
-        header = bytes([len(platform_bytes)])
+        suite_bytes = self.suite.encode("utf-8")
         return (
-            header
+            bytes([len(platform_bytes)])
             + platform_bytes
-            + self.bound_pk.tobytes()
-            + self.measurement.tobytes()
+            + bytes([len(suite_bytes)])
+            + suite_bytes
+            + self.bound_pk
         )
 
     @classmethod
@@ -78,38 +80,12 @@ class MockQuote:
         """Deserialize quote."""
         platform_len = data[0]
         platform = data[1 : 1 + platform_len].decode("utf-8")
-        pk_start = 1 + platform_len
-        pk = np.frombuffer(data[pk_start : pk_start + 32], dtype=np.uint8).copy()
-        measurement = np.frombuffer(
-            data[pk_start + 32 : pk_start + 64], dtype=np.uint8
-        ).copy()
-        return cls(platform=platform, bound_pk=pk, measurement=measurement)
-
-
-@dataclass
-class MockAttestedKey:
-    """Mock attested key structure.
-
-    Represents a public key that has been "verified" (in mock mode)
-    to belong to a TEE. In production, this would only be produced
-    after successful quote verification.
-    """
-
-    platform: str
-    curve: str
-    public_key: np.ndarray  # The verified public key bytes
-
-
-@dataclass
-class MockMeasurement:
-    """Mock measurement structure.
-
-    Represents the code measurement (MRENCLAVE, MRTD, etc.) extracted
-    from a quote.
-    """
-
-    platform: str
-    hash_bytes: np.ndarray  # 32-byte measurement hash
+        suite_start = 1 + platform_len
+        suite_len = data[suite_start]
+        suite = data[suite_start + 1 : suite_start + 1 + suite_len].decode("utf-8")
+        pk_start = suite_start + 1 + suite_len
+        bound_pk = data[pk_start : pk_start + 32]
+        return cls(platform=platform, bound_pk=bound_pk, suite=suite)
 
 
 # ==============================================================================
@@ -127,16 +103,6 @@ def _emit_mock_warning(operation: str) -> None:
     )
 
 
-def _get_mock_measurement() -> np.ndarray:
-    """Generate a mock measurement (would be MRENCLAVE/MRTD in production)."""
-    # In production, this would be the actual enclave measurement
-    # For mock, we use a fixed pattern to make testing deterministic
-    return np.array(
-        [0xDE, 0xAD, 0xBE, 0xEF] * 8,
-        dtype=np.uint8,
-    )
-
-
 @tee.quote_gen_p.def_impl
 def _quote_gen_impl(
     interpreter: Interpreter,
@@ -144,6 +110,13 @@ def _quote_gen_impl(
     pk: RuntimePublicKey,
 ) -> MockQuote:
     """Generate a mock TEE quote binding the provided public key.
+
+    In a real TEE, this would:
+    1. Hash the public key into report_data
+    2. Generate a hardware-signed attestation report
+    3. Package everything into a quote structure
+
+    For mock, we just wrap the public key in a MockQuote.
 
     Args:
         interpreter: The interpreter context
@@ -162,18 +135,11 @@ def _quote_gen_impl(
         )
 
     platform = op.attrs.get("platform", "mock")
-    pk_arr = np.frombuffer(pk.key_bytes, dtype=np.uint8)[:32].copy()
-
-    # Pad to 32 bytes if needed
-    if len(pk_arr) < 32:
-        pk_arr = np.pad(pk_arr, (0, 32 - len(pk_arr)), mode="constant")
-
-    measurement = _get_mock_measurement()
 
     return MockQuote(
         platform=platform,
-        bound_pk=pk_arr,
-        measurement=measurement,
+        bound_pk=pk.key_bytes,
+        suite=pk.suite,
     )
 
 
@@ -182,8 +148,15 @@ def _attest_impl(
     interpreter: Interpreter,
     op: Operation,
     quote: Any,
-) -> MockAttestedKey:
+) -> RuntimePublicKey:
     """Verify a mock quote and extract the attested public key.
+
+    In a real implementation, this would:
+    1. Verify the quote signature against TEE vendor root certificates
+    2. Check the measurement matches expected code hash
+    3. Extract and return the verified public key
+
+    For mock, we just extract the public key directly (no real verification).
 
     Args:
         interpreter: The interpreter context
@@ -191,89 +164,27 @@ def _attest_impl(
         quote: The quote to verify (MockQuote or bytes)
 
     Returns:
-        MockAttestedKey containing the verified public key
+        RuntimePublicKey - the verified public key, ready for use with kem_derive
     """
     _emit_mock_warning("tee.attest")
 
-    # Get expected curve from attributes
-    expected_curve = op.attrs.get("expected_curve", "x25519")
-
     # Handle different quote formats
     if isinstance(quote, MockQuote):
         mock_quote = quote
-    elif isinstance(quote, (bytes, bytearray)):
+    elif isinstance(quote, (bytes, bytearray, np.ndarray)):
+        if isinstance(quote, np.ndarray):
+            quote = bytes(quote)
         mock_quote = MockQuote.from_bytes(bytes(quote))
     else:
         raise TypeError(f"Expected MockQuote or bytes, got {type(quote)}")
 
-    # In production, we would:
-    # 1. Verify quote signature against TEE vendor root
-    # 2. Check measurement against expected value
-    # 3. Verify report_data contains H(pk)
-    #
-    # For mock, we just extract the public key directly
-
-    return MockAttestedKey(
-        platform=mock_quote.platform,
-        curve=expected_curve,
-        public_key=mock_quote.bound_pk,
+    # Return a real RuntimePublicKey that can be used directly with kem_derive
+    return RuntimePublicKey(
+        suite=mock_quote.suite,
+        key_bytes=mock_quote.bound_pk,
     )
-
-
-@tee.get_measurement_p.def_impl
-def _get_measurement_impl(
-    interpreter: Interpreter,
-    op: Operation,
-    quote: Any,
-) -> MockMeasurement:
-    """Extract the measurement from a quote.
-
-    Args:
-        interpreter: The interpreter context
-        op: The operation being executed
-        quote: The quote to extract measurement from
-
-    Returns:
-        MockMeasurement containing the code measurement
-    """
-    _emit_mock_warning("tee.get_measurement")
-
-    # Handle different quote formats
-    if isinstance(quote, MockQuote):
-        mock_quote = quote
-    elif isinstance(quote, (bytes, bytearray)):
-        mock_quote = MockQuote.from_bytes(bytes(quote))
-    else:
-        raise TypeError(f"Expected MockQuote or bytes, got {type(quote)}")
-
-    return MockMeasurement(
-        platform=mock_quote.platform,
-        hash_bytes=mock_quote.measurement,
-    )
-
-
-# ==============================================================================
-# --- Conversion Helpers
-# ==============================================================================
-
-
-def attested_key_to_bytes(attested_key: MockAttestedKey) -> jnp.ndarray:
-    """Convert an attested key to bytes for use with crypto operations.
-
-    This allows AttestedKey to be used with crypto.kem_derive.
-    """
-    return jnp.array(attested_key.public_key, dtype=jnp.uint8)
-
-
-def measurement_to_bytes(measurement: MockMeasurement) -> jnp.ndarray:
-    """Convert a measurement to bytes for comparison or hashing."""
-    return jnp.array(measurement.hash_bytes, dtype=jnp.uint8)
 
 
 __all__ = [
-    "MockAttestedKey",
-    "MockMeasurement",
     "MockQuote",
-    "attested_key_to_bytes",
-    "measurement_to_bytes",
 ]

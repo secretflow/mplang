@@ -366,12 +366,12 @@ class TestHelperFunctions:
 class TestUnimplementedFeatures:
     """Test that unimplemented features raise appropriate errors."""
 
-    def test_tee_transfer_not_implemented(self, ctx_3pc):
-        """TEE device transfer should raise NotImplementedError."""
-        x = put("P0", jnp.array([1, 2, 3]))
+    def test_tee_to_tee_transfer_not_implemented(self, ctx_multi_tee):
+        """TEE to TEE device transfer should raise NotImplementedError."""
+        x = put("TEE0", jnp.array([1, 2, 3]))
 
         with pytest.raises(NotImplementedError):
-            put("TEE0", x)
+            put("TEE1", x)
 
 
 if __name__ == "__main__":

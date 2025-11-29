@@ -62,6 +62,7 @@ from mplang2.libs.device import (
     get_dev_attr,
     get_global_cluster,
     is_device_obj,
+    jax_fn,
     put,
     set_dev_attr,
     set_global_cluster,
@@ -155,11 +156,17 @@ def fetch(sim: Simulator, result, party: int | str | None = None):
         sim: The Simulator instance.
         result: The result object to fetch.
         party: Optional party index or name to fetch from (for HostVar).
+               If None, returns values from all parties as a list.
 
     Returns:
-        The concrete Python value.
+        The concrete Python value, or list of values from all parties if party is None.
     """
     from mplang2.backends.simp_host import HostVar
+    from mplang2.edsl.interpreter import InterpObject
+
+    # Unwrap InterpObject to get the runtime value
+    if isinstance(result, InterpObject):
+        result = result.runtime_obj
 
     if isinstance(result, HostVar):
         if party is not None:
@@ -171,14 +178,38 @@ def fetch(sim: Simulator, result, party: int | str | None = None):
                 else:
                     raise ValueError(f"Unknown party: {party}")
             return result[party]
-        # Default: return first party's value
-        return result[0]
+        # Return all parties' values as a list
+        return result.values
     # Already a concrete value
     return result
 
 
 # Alias for compatibility
 function = jit  # @mp.function -> @mp2.function (JIT compilation)
+
+
+def compile(sim: Simulator, fn, *args, **kwargs) -> TracedFunction:
+    """Compile a function to get its IR without executing it.
+
+    Compatible with mplang v1 API: mp.compile(sim, fn)
+
+    Args:
+        sim: The Simulator instance (provides cluster context).
+        fn: The function to compile.
+        *args: Arguments to pass during tracing.
+        **kwargs: Keyword arguments to pass during tracing.
+
+    Returns:
+        TracedFunction: The traced function with inspectable IR.
+
+    Example:
+        traced = compile(sim, my_fn)
+        print(traced.compiler_ir())
+    """
+    # Set up cluster context, then trace
+    set_global_cluster(sim.cluster)
+    return trace(fn, *args, **kwargs)
+
 
 # =============================================================================
 # Public API
@@ -210,6 +241,7 @@ __all__ = [
     "VectorType",
     # Version
     "__version__",
+    "compile",
     "device",
     # Dialects
     "dialects",
@@ -223,6 +255,7 @@ __all__ = [
     "get_global_cluster",
     "interpret",
     "is_device_obj",
+    "jax_fn",
     "jit",
     "pop_context",
     "primitive",

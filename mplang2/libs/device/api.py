@@ -8,6 +8,7 @@ and execution dispatch automatically.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 from functools import partial, wraps
 from typing import Any
@@ -27,6 +28,25 @@ DEVICE_ATTR_NAME = "__device__"
 
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
+
+# Supported frontend types
+SUPPORTED_FRONTENDS = {"jax"}
+
+
+class DeviceError(Exception):
+    """Base exception for device-related errors."""
+
+
+class DeviceNotFoundError(DeviceError):
+    """Raised when a device ID is not found in the cluster."""
+
+
+class DeviceInferenceError(DeviceError):
+    """Raised when device cannot be inferred from arguments."""
+
+
+class FrontendError(DeviceError):
+    """Raised for frontend-related errors."""
 
 
 def is_device_obj(obj: Any) -> bool:
@@ -66,9 +86,9 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
             device_objs.append(obj)
 
     if not device_objs:
-        raise ValueError(
+        raise DeviceInferenceError(
             "Cannot infer device: no device-bound Object arguments found. "
-            "Please specify device explicitly using @device('device_id')."
+            "Please specify device explicitly using device('device_id')."
         )
 
     devices = {get_dev_attr(obj) for obj in device_objs}
@@ -77,7 +97,7 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
         return devices.pop()  # All arguments on same device
 
     if not g_auto_trans:
-        raise ValueError(
+        raise DeviceInferenceError(
             f"Cannot infer device: arguments from multiple devices {devices} "
             f"but auto-transfer is disabled (g_auto_trans=False). "
             f"Please enable auto-transfer or put all data on same device first."
@@ -94,7 +114,7 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
     # Decision logic
     # Case 1: Only PPUs -> ambiguous (unless we want to pick one arbitrarily, but safer to error)
     if not spu_devs and not tee_devs:
-        raise ValueError(
+        raise DeviceInferenceError(
             f"Cannot infer device: arguments from multiple PPU devices {ppu_devs}. "
             f"Please specify device explicitly or use put() to consolidate data."
         )
@@ -109,27 +129,27 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
 
     # Case 4: Multiple SPUs -> ambiguous
     if len(spu_devs) > 1:
-        raise ValueError(
+        raise DeviceInferenceError(
             f"Ambiguous device inference: arguments from multiple SPU devices {spu_devs}. "
             f"Please specify which SPU to use explicitly."
         )
 
     # Case 5: Multiple TEEs -> ambiguous
     if len(tee_devs) > 1:
-        raise ValueError(
+        raise DeviceInferenceError(
             f"Ambiguous device inference: arguments from multiple TEE devices {tee_devs}. "
             f"Please specify which TEE to use explicitly."
         )
 
     # Case 6: Both SPU and TEE -> conflicting
     if spu_devs and tee_devs:
-        raise ValueError(
+        raise DeviceInferenceError(
             f"Ambiguous device inference: arguments from both SPU {spu_devs} and TEE {tee_devs}. "
             f"Please specify which secure device to use explicitly."
         )
 
     # Should never reach here
-    raise ValueError(f"Unexpected device configuration: {devices}")
+    raise DeviceInferenceError(f"Unexpected device configuration: {devices}")
 
 
 def _device_run_spu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -> Any:
@@ -152,29 +172,39 @@ def _device_run_spu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -
     return tree_map(partial(set_dev_attr, dev_id=dev_info.name), result)
 
 
-def _device_run_ppu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+def _device_run_ppu(
+    dev_info: Device,
+    fn: Callable,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
     """Run function on PPU device."""
     assert len(dev_info.members) == 1
     rank = dev_info.members[0].rank
 
-    # Note on Single Controller (God View) Programming Model:
-    # MPLang2 adopts a strict separation between Control Plane (Host) and Data Plane (Device).
-    # - @device functions represent pure computation tasks running on a specific device.
-    # - Data movement (put, transfer) and orchestration happen exclusively on the Host.
-    #
-    # Therefore, we do NOT need to wrap 'fn' to restore device attributes (metadata)
-    # because 'fn' should not contain any control logic (like nested @device calls or put())
-    # that relies on this metadata. 'fn' sees only pure data (TraceObjects).
-
     result = simp.pcall_static((rank,), fn, *args, **kwargs)
-    return tree_map(partial(set_dev_attr, dev_id=dev_info.name), result)
+
+    def maybe_set_dev_attr(obj: Any) -> Any:
+        if isinstance(obj, Object):
+            return set_dev_attr(obj, dev_info.name)
+        return obj
+
+    return tree_map(maybe_set_dev_attr, result)
 
 
-def _device_run(dev_id: str, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+def _device_run(
+    dev_id: str,
+    fn: Callable,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
     """Execute function on the specified device."""
     cluster = get_global_cluster()
     if dev_id not in cluster.devices:
-        raise ValueError(f"Device {dev_id} not found in cluster spec.")
+        available = list(cluster.devices.keys())
+        raise DeviceNotFoundError(
+            f"Device '{dev_id}' not found in cluster. Available devices: {available}"
+        )
     dev_info = cluster.devices[dev_id]
 
     if g_auto_trans:
@@ -194,59 +224,120 @@ def _device_run(dev_id: str, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     elif dev_info.kind.upper() == "PPU":
         return _device_run_ppu(dev_info, fn, *args, **kwargs)
     else:
-        raise ValueError(f"Unknown device type: {dev_info.kind}")
+        raise DeviceError(f"Unknown device type: {dev_info.kind}")
 
 
-def device(
-    dev_or_fn: str | Callable | None = None,
-) -> Callable:
-    """Decorator to mark a function to be executed on a specific device."""
+class DeviceContext:
+    """Context for device-specific operations.
 
-    def _execute_on_device(dev_id: str, fn: Callable, *args: Any, **kwargs: Any) -> Any:
-        return _device_run(dev_id, fn, *args, **kwargs)
+    Supports explicit device specification or auto-inference from arguments.
 
-    # Case 1: device("P0") - Explicit device specification
-    if isinstance(dev_or_fn, str):
-        dev_id = dev_or_fn
+    Examples:
+        # Explicit device
+        @device("P0")
+        def add(a, b): ...
 
-        def deco(fn: Callable) -> Callable:
-            @wraps(fn)
-            def wrapped(*args: Any, **kwargs: Any) -> Any:
-                return _execute_on_device(dev_id, fn, *args, **kwargs)
+        # Auto-infer device from arguments
+        @device()
+        def add(a, b): ...
 
-            return wrapped
+        # Explicit device + JAX frontend (for PPU)
+        @device("P0", "jax")
+        def add(a, b): return a + b
 
-        return deco
+        # Or use separate decorators
+        @device("P0")
+        @jax_fn
+        def add(a, b): return a + b
+    """
 
-    # Case 2: device(fn) or @device - Auto device inference
-    elif callable(dev_or_fn):
-        fn = dev_or_fn
+    def __init__(self, dev_id: str | None = None, frontend: str | None = None):
+        """Create a DeviceContext.
+
+        Args:
+            dev_id: Device ID (e.g., "P0", "SP0") or None for auto-inference.
+            frontend: Frontend type (e.g., "jax") or None for generic tracing.
+        """
+        self.dev_id = dev_id
+        self.frontend = frontend
+
+    def _resolve_device(self, *args: Any, **kwargs: Any) -> str:
+        """Resolve device ID, inferring from args if needed."""
+        if self.dev_id is not None:
+            return self.dev_id
+        return _infer_device_from_args(*args, **kwargs)
+
+    def __call__(self, fn: Callable) -> Callable:
+        """Wrap function for execution on this device."""
+        # Validate frontend
+        if self.frontend is not None and self.frontend not in SUPPORTED_FRONTENDS:
+            raise FrontendError(
+                f"Unknown frontend: '{self.frontend}'. "
+                f"Supported frontends: {SUPPORTED_FRONTENDS}"
+            )
+
+        # Check for SPU + jax warning
+        if self.frontend == "jax" and self.dev_id is not None:
+            cluster = get_global_cluster()
+            if self.dev_id in cluster.devices:
+                dev_info = cluster.devices[self.dev_id]
+                if dev_info.kind.upper() == "SPU":
+                    warnings.warn(
+                        f"frontend='jax' is redundant for SPU device '{self.dev_id}'. "
+                        f"SPU always uses JAX backend via spu.run_jax. "
+                        f"Use device('{self.dev_id}') instead.",
+                        UserWarning,
+                        stacklevel=3,
+                    )
+
+        # Apply frontend-specific transformation
+        if self.frontend == "jax":
+            from mplang2.dialects.tensor import jax_fn
+
+            fn = jax_fn(fn)
 
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            try:
-                dev_id = _infer_device_from_args(*args, **kwargs)
-            except ValueError as e:
-                raise ValueError(
-                    f"Cannot infer device for function '{fn.__name__}': {e!s}"
-                ) from e
-            return _execute_on_device(dev_id, fn, *args, **kwargs)
+            dev_id = self._resolve_device(*args, **kwargs)
+            return _device_run(dev_id, fn, *args, **kwargs)
 
         return wrapped
 
-    # Case 3: device() or @device() - Return auto-inference decorator
-    elif dev_or_fn is None:
 
-        def deco(fn: Callable) -> Callable:
-            return device(fn)
+def device(dev_id: str | None = None, frontend: str | None = None) -> DeviceContext:
+    """Create a device context for device-specific execution.
 
-        return deco
+    Args:
+        dev_id: Device ID (e.g., "P0", "SP0") or None for auto-inference.
+        frontend: Frontend type. Use "jax" for JAX functions on PPU.
+                  None means generic traceable function.
 
-    else:
-        raise TypeError(
-            f"device() expects a device id (string), a function (callable), or nothing. "
-            f"Got: {type(dev_or_fn).__name__}."
-        )
+    Returns:
+        DeviceContext that wraps functions for device execution.
+
+    Usage patterns:
+        # Explicit device + generic function
+        @device("P0")
+        def fn(a, b): ...
+
+        # Auto-infer device from arguments
+        @device()
+        def fn(a, b): ...
+
+        # Explicit device + JAX frontend (for PPU)
+        @device("P0", "jax")
+        def add(a, b): return a + b
+
+        # Separate decorators (equivalent to above)
+        @device("P0")
+        @jax_fn
+        def add(a, b): return a + b
+
+        # Auto-infer + JAX
+        @device(None, "jax")
+        def add(a, b): return a + b
+    """
+    return DeviceContext(dev_id, frontend)
 
 
 def _d2d(to_dev_id: str, obj: Object) -> Object:
@@ -342,7 +433,7 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
         raise NotImplementedError(f"TEE transfer not implemented yet: {frm_to_pair}")
 
     else:
-        raise ValueError(f"Unsupported device transfer: {frm_to_pair}")
+        raise DeviceError(f"Unsupported device transfer: {frm_to_pair}")
 
 
 def put(to_dev_id: str, obj: Any) -> Object:
@@ -357,7 +448,10 @@ def put(to_dev_id: str, obj: Any) -> Object:
     """
     cluster = get_global_cluster()
     if to_dev_id not in cluster.devices:
-        raise ValueError(f"Device {to_dev_id} not found in cluster spec.")
+        available = list(cluster.devices.keys())
+        raise DeviceNotFoundError(
+            f"Device '{to_dev_id}' not found in cluster. Available devices: {available}"
+        )
 
     if isinstance(obj, Object) and is_device_obj(obj):
         return _d2d(to_dev_id, obj)
@@ -379,4 +473,4 @@ def put(to_dev_id: str, obj: Any) -> Object:
         return device(to_dev_id)(lambda x: x)(obj)
 
     else:
-        raise ValueError(f"Cannot put to device kind {dev_info.kind}")
+        raise DeviceError(f"Cannot put to device kind '{dev_info.kind}'")

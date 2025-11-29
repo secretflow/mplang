@@ -3,7 +3,14 @@
 This module provides the high-level device-centric programming interface.
 """
 
+from mplang2.dialects.tensor import jax_fn
+
 from .api import (
+    DeviceContext,
+    DeviceError,
+    DeviceInferenceError,
+    DeviceNotFoundError,
+    FrontendError,
     device,
     get_dev_attr,
     is_device_obj,
@@ -21,11 +28,17 @@ from .cluster import (
 __all__ = [
     "ClusterSpec",
     "Device",
+    "DeviceContext",
+    "DeviceError",
+    "DeviceInferenceError",
+    "DeviceNotFoundError",
+    "FrontendError",
     "Node",
     "device",
     "get_dev_attr",
     "get_global_cluster",
     "is_device_obj",
+    "jax_fn",
     "put",
     "set_dev_attr",
     "set_global_cluster",

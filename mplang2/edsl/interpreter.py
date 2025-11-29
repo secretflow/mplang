@@ -123,8 +123,9 @@ class Interpreter(Context):
             kwargs: Keyword arguments (already lifted by Primitive.bind)
 
         Returns:
-            Execution result (InterpObject or list of InterpObject)
+            Execution result (InterpObject or list of InterpObject or mixed with immediates)
         """
+        from mplang.utils.func_utils import var_demorph, var_morph
         from mplang2.edsl.tracer import Tracer
 
         # Create tracer and build graph
@@ -134,7 +135,18 @@ class Interpreter(Context):
         with Tracer() as ctx:
             # Finalize graph by setting outputs
             result_traced = primitive.bind(*args, **kwargs)
-            graph = ctx.finalize(result_traced)
+
+            # Separate outputs into variables (Objects) and immediates (constants)
+            out_vars, out_imms, morph_struct = var_morph(
+                result_traced, lambda x: isinstance(x, Object)
+            )
+
+            if out_vars:
+                graph = ctx.finalize(out_vars)
+            else:
+                # All outputs are immediates, no graph outputs
+                graph = ctx.graph
+                graph.outputs = []
 
         # Build inputs list for interpret
         # _captured_vars contains all inputs (no params in this context)
@@ -143,28 +155,26 @@ class Interpreter(Context):
             for obj, _ in ctx._captured_vars.values()
         ]
 
-        # Execute graph
-        result_runtime = self.evaluate_graph(graph, inputs_list)
+        # Execute graph (may have 0 outputs if all were immediates)
+        if graph.outputs:
+            result_runtime = self.evaluate_graph(graph, inputs_list)
 
-        # Normalize runtime result to list for structural matching
-        # evaluate_graph returns single value if len(outputs)==1, else list
-        if len(graph.outputs) == 1:
-            result_runtime_list = [result_runtime]
+            # Normalize runtime result to list for structural matching
+            if len(graph.outputs) == 1:
+                result_runtime_list = [result_runtime]
+            else:
+                result_runtime_list = list(result_runtime)
         else:
-            result_runtime_list = result_runtime
+            result_runtime_list = []
 
-        # Wrap result back to InterpObject
-        # Rebuild output structure from traced function
-        if isinstance(result_traced, (list, tuple)):
-            # Multiple outputs (or tuple of single output)
-            results = [
-                InterpObject(rt, tr.type, self)
-                for rt, tr in zip(result_runtime_list, result_traced, strict=True)
-            ]
-            return type(result_traced)(results)
-        else:
-            # Single output (scalar)
-            return InterpObject(result_runtime_list[0], result_traced.type, self)
+        # Wrap runtime results as InterpObjects
+        interp_results = [
+            InterpObject(rt_val, tr_obj.type, self)
+            for rt_val, tr_obj in zip(result_runtime_list, out_vars, strict=True)
+        ]
+
+        # Reconstruct the output tree: merge InterpObjects and immediates
+        return var_demorph(interp_results, out_imms, morph_struct)
 
     def lift(self, obj: Any) -> InterpObject | Any:
         """Lift an object to the Interpreter's native representation.
@@ -291,6 +301,7 @@ class Interpreter(Context):
             # Constants: pass through unchanged
             return obj
 
+    # TODO: change output sigature to list[Any]
     def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
         """Execute a Graph IR with runtime data.
 

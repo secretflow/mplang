@@ -33,6 +33,60 @@ class ScalarType(elt.BaseType):
         return f"Scalar[{self.curve}]"
 
 
+class PrivateKeyType(elt.BaseType):
+    """Type for a KEM private key."""
+
+    def __init__(self, suite: str = "x25519"):
+        self.suite = suite
+
+    def __str__(self) -> str:
+        return f"PrivateKey[{self.suite}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PrivateKeyType):
+            return False
+        return self.suite == other.suite
+
+    def __hash__(self) -> int:
+        return hash(("PrivateKeyType", self.suite))
+
+
+class PublicKeyType(elt.BaseType):
+    """Type for a KEM public key."""
+
+    def __init__(self, suite: str = "x25519"):
+        self.suite = suite
+
+    def __str__(self) -> str:
+        return f"PublicKey[{self.suite}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PublicKeyType):
+            return False
+        return self.suite == other.suite
+
+    def __hash__(self) -> int:
+        return hash(("PublicKeyType", self.suite))
+
+
+class SymmetricKeyType(elt.BaseType):
+    """Type for a symmetric encryption key (e.g., from KEM derive)."""
+
+    def __init__(self, suite: str = "x25519"):
+        self.suite = suite
+
+    def __str__(self) -> str:
+        return f"SymmetricKey[{self.suite}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, SymmetricKeyType):
+            return False
+        return self.suite == other.suite
+
+    def __hash__(self) -> int:
+        return hash(("SymmetricKeyType", self.suite))
+
+
 # ==============================================================================
 # --- Primitives
 # ==============================================================================
@@ -51,6 +105,10 @@ hash_p = el.Primitive[el.Object]("crypto.hash")
 sym_encrypt_p = el.Primitive[el.Object]("crypto.sym_encrypt")
 sym_decrypt_p = el.Primitive[el.Object]("crypto.sym_decrypt")
 select_p = el.Primitive[el.Object]("crypto.select")
+
+# KEM (Key Encapsulation Mechanism)
+kem_keygen_p = el.Primitive[tuple[el.Object, el.Object]]("crypto.kem_keygen")
+kem_derive_p = el.Primitive[el.Object]("crypto.kem_derive")
 
 
 # ==============================================================================
@@ -123,6 +181,19 @@ def _select_ae(
     return true_val
 
 
+@kem_keygen_p.def_abstract_eval
+def _kem_keygen_ae(suite: str = "x25519") -> tuple[PrivateKeyType, PublicKeyType]:
+    return (PrivateKeyType(suite), PublicKeyType(suite))
+
+
+@kem_derive_p.def_abstract_eval
+def _kem_derive_ae(
+    private_key: PrivateKeyType, public_key: PublicKeyType
+) -> SymmetricKeyType:
+    suite = getattr(private_key, "suite", "x25519")
+    return SymmetricKeyType(suite)
+
+
 # ==============================================================================
 # --- Helper Functions (Ops)
 # ==============================================================================
@@ -183,3 +254,28 @@ def sym_decrypt(
 def select(cond: el.Object, true_val: el.Object, false_val: el.Object) -> el.Object:
     """Select between two values based on condition."""
     return select_p.bind(cond, true_val, false_val)
+
+
+def kem_keygen(suite: str = "x25519") -> tuple[el.Object, el.Object]:
+    """Generate a KEM key pair (private_key, public_key).
+
+    Args:
+        suite: The KEM suite to use (e.g., "x25519", "kyber768")
+
+    Returns:
+        A tuple of (private_key, public_key)
+    """
+    return kem_keygen_p.bind(suite=suite)
+
+
+def kem_derive(private_key: el.Object, public_key: el.Object) -> el.Object:
+    """Derive a symmetric key from a private key and a public key (ECDH).
+
+    Args:
+        private_key: The local private key
+        public_key: The remote party's public key
+
+    Returns:
+        A symmetric key suitable for use with sym_encrypt/sym_decrypt
+    """
+    return kem_derive_p.bind(private_key, public_key)

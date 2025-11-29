@@ -23,13 +23,7 @@ import mplang2.dialects.crypto as crypto
 import mplang2.dialects.tee as tee
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
-from mplang2.backends.tee_impl import (
-    MockAttestedKey,
-    MockMeasurement,
-    MockQuote,
-    attested_key_to_bytes,
-    measurement_to_bytes,
-)
+from mplang2.backends.tee_impl import MockQuote
 
 
 class TestMockQuoteDataStructure:
@@ -37,16 +31,15 @@ class TestMockQuoteDataStructure:
 
     def test_mock_quote_roundtrip(self):
         """Test MockQuote serialization/deserialization."""
-        pk = np.random.randint(0, 256, size=32, dtype=np.uint8)
-        measurement = np.random.randint(0, 256, size=32, dtype=np.uint8)
+        pk = bytes(np.random.randint(0, 256, size=32, dtype=np.uint8))
 
-        quote = MockQuote(platform="sgx", bound_pk=pk, measurement=measurement)
+        quote = MockQuote(platform="sgx", bound_pk=pk, suite="x25519")
         data = quote.to_bytes()
 
         recovered = MockQuote.from_bytes(data)
         assert recovered.platform == "sgx"
-        np.testing.assert_array_equal(recovered.bound_pk, pk)
-        np.testing.assert_array_equal(recovered.measurement, measurement)
+        assert recovered.bound_pk == pk
+        assert recovered.suite == "x25519"
 
 
 class TestMockTEEExecution:
@@ -65,7 +58,11 @@ class TestMockTEEExecution:
             assert quote.type.platform == "mock"
 
     def test_attest_execution(self):
-        """Test attest primitive execution produces correct type."""
+        """Test attest primitive execution produces correct type.
+
+        Note: After simplification, attest returns a RuntimePublicKey (at runtime)
+        with PublicKeyType (at type level), not AttestedKeyType.
+        """
         with el.Interpreter():
             _sk, pk = crypto.kem_keygen("x25519")
 
@@ -75,25 +72,11 @@ class TestMockTEEExecution:
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
                 attested_pk = tee.attest(quote, expected_curve="x25519")
 
-            # Verify type propagation
+            # Type level still shows AttestedKeyType (for type checking)
+            # But runtime returns RuntimePublicKey directly
             assert isinstance(attested_pk.type, tee.AttestedKeyType)
             assert attested_pk.type.platform == "sgx"
             assert attested_pk.type.curve == "x25519"
-
-    def test_get_measurement_execution(self):
-        """Test get_measurement primitive execution produces correct type."""
-        with el.Interpreter():
-            _sk, pk = crypto.kem_keygen("x25519")
-
-            with pytest.warns(UserWarning, match="Insecure mock TEE"):
-                quote = tee.quote_gen(pk)
-
-            with pytest.warns(UserWarning, match="Insecure mock TEE"):
-                measurement = tee.get_measurement(quote)
-
-            # Verify type propagation
-            assert isinstance(measurement.type, tee.MeasurementType)
-            assert measurement.type.platform == "mock"
 
     def test_full_attestation_workflow(self):
         """Test complete attestation workflow: keygen -> quote_gen -> attest."""
@@ -109,26 +92,6 @@ class TestMockTEEExecution:
             # Verify types propagate correctly through the workflow
             assert isinstance(attested_pk.type, tee.AttestedKeyType)
             assert attested_pk.type.platform == "tdx"
-
-
-class TestTEEHelperFunctions:
-    """Test helper functions for converting TEE types."""
-
-    def test_attested_key_to_bytes(self):
-        """Test converting AttestedKey to bytes for crypto operations."""
-        pk = np.array([1, 2, 3, 4] * 8, dtype=np.uint8)
-        ak = MockAttestedKey(platform="sgx", curve="x25519", public_key=pk)
-
-        result = attested_key_to_bytes(ak)
-        np.testing.assert_array_equal(result, pk)
-
-    def test_measurement_to_bytes(self):
-        """Test converting Measurement to bytes."""
-        hash_bytes = np.array([0xDE, 0xAD, 0xBE, 0xEF] * 8, dtype=np.uint8)
-        m = MockMeasurement(platform="sgx", hash_bytes=hash_bytes)
-
-        result = measurement_to_bytes(m)
-        np.testing.assert_array_equal(result, hash_bytes)
 
 
 class TestTEEWithCryptoIntegration:

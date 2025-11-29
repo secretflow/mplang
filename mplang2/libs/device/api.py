@@ -16,7 +16,7 @@ from typing import Any
 from jax.tree_util import tree_flatten, tree_map
 
 from mplang2.backends import load_builtins
-from mplang2.dialects import simp, spu
+from mplang2.dialects import crypto, simp, spu, tee
 from mplang2.edsl.object import Object
 from mplang2.libs.device.cluster import Device, get_global_cluster
 
@@ -25,6 +25,14 @@ load_builtins()
 
 # Magic attribute name to mark an Object as a device object
 DEVICE_ATTR_NAME = "__device__"
+
+# Default KEM suite for TEE session establishment
+_TEE_KEM_SUITE: str = "x25519"
+
+# Global cache for TEE sessions (keyed by (frm_dev_id, to_dev_id))
+# Each entry is (context_id, sess_frm, sess_tee) where context_id ensures
+# sessions are not reused across different trace/interp contexts.
+_tee_session_cache: dict[tuple[str, str], tuple[int, Object, Object]] = {}
 
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
@@ -71,6 +79,13 @@ def get_dev_attr(obj: Object) -> str:
     if not hasattr(obj, DEVICE_ATTR_NAME):
         raise ValueError("Object does not have a device attribute")
     return str(getattr(obj, DEVICE_ATTR_NAME))
+
+
+def _maybe_set_dev_attr(dev_id: str, obj: Any) -> Any:
+    """Set device attribute if obj is an Object, otherwise return as-is."""
+    if isinstance(obj, Object):
+        return set_dev_attr(obj, dev_id)
+    return obj
 
 
 def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
@@ -183,13 +198,25 @@ def _device_run_ppu(
     rank = dev_info.members[0].rank
 
     result = simp.pcall_static((rank,), fn, *args, **kwargs)
+    return tree_map(partial(_maybe_set_dev_attr, dev_info.name), result)
 
-    def maybe_set_dev_attr(obj: Any) -> Any:
-        if isinstance(obj, Object):
-            return set_dev_attr(obj, dev_info.name)
-        return obj
 
-    return tree_map(maybe_set_dev_attr, result)
+def _device_run_tee(
+    dev_info: Device,
+    fn: Callable,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Run function on TEE device.
+
+    TEE devices execute functions in a trusted execution environment.
+    The execution is similar to PPU but runs in an isolated enclave.
+    """
+    assert len(dev_info.members) == 1
+    rank = dev_info.members[0].rank
+
+    result = simp.pcall_static((rank,), fn, *args, **kwargs)
+    return tree_map(partial(_maybe_set_dev_attr, dev_info.name), result)
 
 
 def _device_run(
@@ -220,7 +247,7 @@ def _device_run(
     if dev_info.kind.upper() == "SPU":
         return _device_run_spu(dev_info, fn, *args, **kwargs)
     elif dev_info.kind.upper() == "TEE":
-        raise NotImplementedError("TEE device support not yet implemented.")
+        return _device_run_tee(dev_info, fn, *args, **kwargs)
     elif dev_info.kind.upper() == "PPU":
         return _device_run_ppu(dev_info, fn, *args, **kwargs)
     else:
@@ -340,6 +367,76 @@ def device(dev_id: str | None = None, frontend: str | None = None) -> DeviceCont
     return DeviceContext(dev_id, frontend)
 
 
+def _ensure_tee_session(
+    frm_dev_id: str,
+    to_dev_id: str,
+    frm_rank: int,
+    tee_rank: int,
+) -> tuple[Object, Object]:
+    """Ensure a TEE session (sess_frm at sender, sess_tee at TEE) exists.
+
+    Performs remote attestation and establishes an encrypted channel between
+    a PPU and a TEE device. The session keys are cached to avoid repeated
+    handshakes within the same execution context.
+
+    The protocol:
+    1. TEE generates keypair (sk, pk) and creates attestation quote binding pk
+    2. Quote is sent to the sender (PPU) for verification
+    3. Sender verifies quote and extracts TEE's attested public key
+    4. Sender generates its own ephemeral keypair and sends pk to TEE
+    5. Both sides derive shared secret using ECDH (X25519)
+    6. The shared secret is used directly as the session key for AES-GCM
+
+    Args:
+        frm_dev_id: Source device ID (PPU)
+        to_dev_id: Target device ID (TEE)
+        frm_rank: Rank of the source party
+        tee_rank: Rank of the TEE party
+
+    Returns:
+        Tuple of (sess_frm, sess_tee) where each is a symmetric key Object
+    """
+    import mplang2.edsl as el
+
+    # Get current context ID for cache isolation
+    current_ctx = el.get_current_context()
+    current_context_id = id(current_ctx)
+
+    # Check cache
+    key = (frm_dev_id, to_dev_id)
+    if key in _tee_session_cache:
+        cached_context_id, sess_frm, sess_tee = _tee_session_cache[key]
+        if cached_context_id == current_context_id:
+            return sess_frm, sess_tee
+        else:
+            # Different context, cannot reuse
+            del _tee_session_cache[key]
+
+    # 1. TEE generates keypair and attestation quote
+    tee_sk, tee_pk = simp.pcall_static((tee_rank,), crypto.kem_keygen, _TEE_KEM_SUITE)
+    quote = simp.pcall_static((tee_rank,), tee.quote_gen, tee_pk)
+
+    # 2. Send quote to sender for attestation verification
+    quote_at_sender = simp.shuffle_static(quote, {frm_rank: tee_rank})
+
+    # 3. Sender verifies quote and extracts TEE's public key
+    tee_pk_at_sender = simp.pcall_static((frm_rank,), tee.attest, quote_at_sender)
+
+    # 4. Sender generates ephemeral keypair and sends pk to TEE
+    v_sk, v_pk = simp.pcall_static((frm_rank,), crypto.kem_keygen, _TEE_KEM_SUITE)
+    v_pk_at_tee = simp.shuffle_static(v_pk, {tee_rank: frm_rank})
+
+    # 5. Both sides derive shared secret (symmetric key) via ECDH
+    # The shared secret from X25519 ECDH is suitable for direct use as AES key
+    sess_frm = simp.pcall_static((frm_rank,), crypto.kem_derive, v_sk, tee_pk_at_sender)
+    sess_tee = simp.pcall_static((tee_rank,), crypto.kem_derive, tee_sk, v_pk_at_tee)
+
+    # Cache the session
+    _tee_session_cache[key] = (current_context_id, sess_frm, sess_tee)
+
+    return sess_frm, sess_tee
+
+
 def _d2d(to_dev_id: str, obj: Object) -> Object:
     """Transfer object to target device."""
     if not isinstance(obj, Object):
@@ -428,9 +525,109 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
     elif frm_to_pair == ("SPU", "SPU"):
         raise NotImplementedError("SPU to SPU transfer not implemented yet.")
 
-    # TEE transfers
-    elif "TEE" in frm_to_pair:
-        raise NotImplementedError(f"TEE transfer not implemented yet: {frm_to_pair}")
+    # PPU -> TEE (Encrypted transfer)
+    elif frm_to_pair == ("PPU", "TEE"):
+        assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
+        tee_rank = to_dev.members[0].rank
+
+        # Establish encrypted session (includes remote attestation)
+        sess_frm, sess_tee = _ensure_tee_session(
+            frm_dev_id, to_dev_id, frm_rank, tee_rank
+        )
+
+        # Encrypt on sender and send to TEE
+        ct = simp.pcall_static((frm_rank,), crypto.sym_encrypt, sess_frm, obj)
+        ct_at_tee = simp.shuffle_static(ct, {tee_rank: frm_rank})
+
+        # Decrypt on TEE
+        var = simp.pcall_static(
+            (tee_rank,),
+            crypto.sym_decrypt,
+            sess_tee,
+            ct_at_tee,
+            obj.type.value_type if hasattr(obj.type, "value_type") else obj.type,
+        )
+        return set_dev_attr(var, to_dev_id)
+
+    # TEE -> PPU (Encrypted transfer)
+    elif frm_to_pair == ("TEE", "PPU"):
+        assert len(frm_dev.members) == 1 and len(to_dev.members) == 1
+        tee_rank = frm_dev.members[0].rank
+        ppu_rank = to_dev.members[0].rank
+
+        # Establish encrypted session (reuse existing or create new)
+        # Note: We pass (ppu, tee) order to match the session key derivation
+        sess_ppu, sess_tee = _ensure_tee_session(
+            to_dev_id, frm_dev_id, ppu_rank, tee_rank
+        )
+
+        # Encrypt on TEE and send to PPU
+        ct = simp.pcall_static((tee_rank,), crypto.sym_encrypt, sess_tee, obj)
+        ct_at_ppu = simp.shuffle_static(ct, {ppu_rank: tee_rank})
+
+        # Decrypt on PPU
+        var = simp.pcall_static(
+            (ppu_rank,),
+            crypto.sym_decrypt,
+            sess_ppu,
+            ct_at_ppu,
+            obj.type.value_type if hasattr(obj.type, "value_type") else obj.type,
+        )
+        return set_dev_attr(var, to_dev_id)
+
+    # TEE -> SPU (TEE acts like a PPU for SPU sealing)
+    elif frm_to_pair == ("TEE", "SPU"):
+        assert len(frm_dev.members) == 1
+        frm_rank = frm_dev.members[0].rank
+        spu_parties = tuple(m.rank for m in to_dev.members)
+        spu_config = spu.SPUConfig.from_dict(to_dev.config)
+
+        # Generate shares on TEE (same logic as PPU -> SPU)
+        shares_on_source = simp.pcall_static(
+            (frm_rank,),
+            spu.make_shares,
+            spu_config,
+            obj,
+            count=len(spu_parties),
+        )
+
+        # Distribute shares to SPU parties
+        distributed_shares = []
+        for i, target_rank in enumerate(spu_parties):
+            share_i = shares_on_source[i]
+            share_at_target = simp.shuffle_static(share_i, {target_rank: frm_rank})
+            distributed_shares.append(share_at_target)
+
+        # Converge shares
+        var = simp.converge(*distributed_shares)
+        return set_dev_attr(var, to_dev_id)
+
+    # SPU -> TEE (Reveal to TEE)
+    elif frm_to_pair == ("SPU", "TEE"):
+        assert len(to_dev.members) == 1
+        to_rank = to_dev.members[0].rank
+        spu_parties = tuple(m.rank for m in frm_dev.members)
+        spu_config = spu.SPUConfig.from_dict(frm_dev.config)
+
+        # Gather shares to TEE (same logic as SPU -> PPU)
+        gathered_shares = []
+        for source_rank in spu_parties:
+            share_on_source = simp.pcall_static((source_rank,), lambda x: x, obj)
+            share_at_target = simp.shuffle_static(
+                share_on_source, {to_rank: source_rank}
+            )
+            gathered_shares.append(share_at_target)
+
+        # Reconstruct on TEE
+        var = simp.pcall_static(
+            (to_rank,), lambda *s: spu.reconstruct(spu_config, s), *gathered_shares
+        )
+        return set_dev_attr(var, to_dev_id)
+
+    # TEE -> TEE
+    elif frm_to_pair == ("TEE", "TEE"):
+        raise NotImplementedError("TEE to TEE transfer not implemented yet.")
 
     else:
         raise DeviceError(f"Unsupported device transfer: {frm_to_pair}")
@@ -471,6 +668,14 @@ def put(to_dev_id: str, obj: Any) -> Object:
         # Note: This results in a Public (replicated) value on the SPU.
         # SPU operations will automatically promote it to Secret if needed.
         return device(to_dev_id)(lambda x: x)(obj)
+
+    elif dev_info.kind.upper() == "TEE":
+        # Host -> TEE: Similar to PPU, create constant on TEE device
+        assert len(dev_info.members) == 1
+        rank = dev_info.members[0].rank
+
+        var = simp.constant((rank,), obj)
+        return set_dev_attr(var, to_dev_id)
 
     else:
         raise DeviceError(f"Cannot put to device kind '{dev_info.kind}'")

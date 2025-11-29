@@ -175,3 +175,37 @@ def ctx_ppu_only(cluster_ppu_only):
     push_context(sim)
     yield cluster_ppu_only
     pop_context()
+
+
+@pytest.fixture
+def cluster_multi_tee():
+    """Cluster with multiple TEE devices for testing TEE-to-TEE transfers.
+
+    Layout:
+    - 3 nodes: node_0, node_1, node_2
+    - TEE0, TEE1: Two separate TEE devices
+    - P0 (PPU): Single-party for data input
+    """
+    config = {
+        "nodes": [
+            {"name": "node_0", "endpoint": "http://127.0.0.1:7000"},
+            {"name": "node_1", "endpoint": "http://127.0.0.1:7001"},
+            {"name": "node_2", "endpoint": "http://127.0.0.1:7002"},
+        ],
+        "devices": {
+            "TEE0": {"kind": "TEE", "members": ["node_0"], "config": {}},
+            "TEE1": {"kind": "TEE", "members": ["node_1"], "config": {}},
+            "P0": {"kind": "PPU", "members": ["node_2"], "config": {}},
+        },
+    }
+    return ClusterSpec.from_dict(config)
+
+
+@pytest.fixture
+def ctx_multi_tee(cluster_multi_tee):
+    """Set up cluster with multiple TEEs and simulator context."""
+    set_global_cluster(cluster_multi_tee)
+    sim = SimpSimulator(world_size=3)
+    push_context(sim)
+    yield cluster_multi_tee
+    pop_context()

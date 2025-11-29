@@ -3,6 +3,7 @@
 import hashlib
 import os
 import pickle
+from dataclasses import dataclass
 from typing import Any
 
 import coincurve
@@ -115,7 +116,10 @@ def hash_impl(interpreter: Any, op: Any, data: Any) -> Any:
 @crypto.sym_encrypt_p.def_impl
 def sym_encrypt_impl(interpreter: Any, op: Any, key: Any, plaintext: Any) -> Any:
     k = key
-    if hasattr(k, "tobytes"):
+    # Support RuntimeSymmetricKey from kem_derive
+    if isinstance(k, RuntimeSymmetricKey):
+        k = k.key_bytes
+    elif hasattr(k, "tobytes"):
         k = k.tobytes()
 
     # Ensure key is 32 bytes (AES-256)
@@ -145,7 +149,10 @@ def sym_decrypt_impl(
     target_type: Any = None,
 ) -> Any:
     k = key
-    if hasattr(k, "tobytes"):
+    # Support RuntimeSymmetricKey from kem_derive
+    if isinstance(k, RuntimeSymmetricKey):
+        k = k.key_bytes
+    elif hasattr(k, "tobytes"):
         k = k.tobytes()
 
     ct_full = ciphertext
@@ -174,3 +181,105 @@ def select_impl(
         c = c.item()
 
     return true_val if c else false_val
+
+
+# ==============================================================================
+# --- KEM (Key Encapsulation Mechanism) Implementations
+# ==============================================================================
+
+
+@dataclass
+class RuntimePrivateKey:
+    """Runtime representation of a KEM private key.
+
+    This wraps the raw key bytes from a real cryptographic implementation
+    (e.g., X25519). The actual cryptographic operations use the `cryptography`
+    library which provides secure, audited implementations.
+    """
+
+    suite: str
+    key_bytes: bytes
+
+
+@dataclass
+class RuntimePublicKey:
+    """Runtime representation of a KEM public key.
+
+    This wraps the raw key bytes from a real cryptographic implementation.
+    """
+
+    suite: str
+    key_bytes: bytes
+
+
+@dataclass
+class RuntimeSymmetricKey:
+    """Runtime representation of a symmetric encryption key.
+
+    This wraps the raw key bytes derived from ECDH key exchange.
+    The key is used with AES-256-GCM for authenticated encryption.
+    """
+
+    suite: str
+    key_bytes: bytes
+
+
+@crypto.kem_keygen_p.def_impl
+def kem_keygen_impl(interpreter: Any, op: Any, suite: str = "x25519") -> Any:
+    """Generate a KEM key pair."""
+    if suite == "x25519":
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+        private_key = X25519PrivateKey.generate()
+        public_key = private_key.public_key()
+
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding,
+            NoEncryption,
+            PrivateFormat,
+            PublicFormat,
+        )
+
+        sk_bytes = private_key.private_bytes(
+            Encoding.Raw, PrivateFormat.Raw, NoEncryption()
+        )
+        pk_bytes = public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+        return (
+            RuntimePrivateKey(suite=suite, key_bytes=sk_bytes),
+            RuntimePublicKey(suite=suite, key_bytes=pk_bytes),
+        )
+    else:
+        # Fallback to random bytes for unknown suites
+        sk_bytes = os.urandom(32)
+        pk_bytes = os.urandom(32)
+        return (
+            RuntimePrivateKey(suite=suite, key_bytes=sk_bytes),
+            RuntimePublicKey(suite=suite, key_bytes=pk_bytes),
+        )
+
+
+@crypto.kem_derive_p.def_impl
+def kem_derive_impl(
+    interpreter: Any, op: Any, private_key: Any, public_key: Any
+) -> Any:
+    """Derive a symmetric key using ECDH."""
+    suite = getattr(private_key, "suite", "x25519")
+
+    if suite == "x25519":
+        from cryptography.hazmat.primitives.asymmetric.x25519 import (
+            X25519PrivateKey,
+            X25519PublicKey,
+        )
+
+        sk = X25519PrivateKey.from_private_bytes(private_key.key_bytes)
+        pk = X25519PublicKey.from_public_bytes(public_key.key_bytes)
+        shared_secret = sk.exchange(pk)
+
+        return RuntimeSymmetricKey(suite=suite, key_bytes=shared_secret)
+    else:
+        # Fallback for unknown suites: XOR the key bytes (not cryptographically secure)
+        sk_bytes = private_key.key_bytes
+        pk_bytes = public_key.key_bytes
+        secret = bytes(a ^ b for a, b in zip(sk_bytes, pk_bytes, strict=True))
+        return RuntimeSymmetricKey(suite=suite, key_bytes=secret)

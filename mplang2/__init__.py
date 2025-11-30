@@ -19,6 +19,7 @@ from mplang2 import dialects
 # =============================================================================
 # Backend / Runtime
 # =============================================================================
+from mplang2.backends.simp_http_driver import SimpHttpDriver
 from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.edsl import (
     Graph,
@@ -126,13 +127,73 @@ class Simulator:
         pop_context()
 
 
-def evaluate(sim: Simulator, fn, *args, **kwargs):
-    """Evaluate a function using the simulator.
+class Driver:
+    """Driver for distributed execution compatible with mplang v1 API.
+
+    Connects to a running cluster of workers via HTTP and executes
+    multi-party computations in a distributed manner.
+
+    Usage:
+        driver = Driver(cluster_spec)
+        result = evaluate(driver, my_function)
+        value = fetch(driver, result)
+
+    Note:
+        Before using Driver, you must start the worker servers.
+        See mplang2.backends.simp_http for worker implementation.
+    """
+
+    def __init__(self, cluster_spec: ClusterSpec):
+        """Create a Driver from a ClusterSpec.
+
+        Args:
+            cluster_spec: The cluster specification with node endpoints.
+        """
+        self._cluster = cluster_spec
+        # Ensure endpoints have http:// prefix
+        endpoints = []
+        for node in cluster_spec.nodes.values():
+            ep = node.endpoint
+            if not ep.startswith("http://") and not ep.startswith("https://"):
+                ep = f"http://{ep}"
+            endpoints.append(ep)
+        self._driver = SimpHttpDriver(
+            world_size=len(cluster_spec.nodes),
+            endpoints=endpoints,
+        )
+        set_global_cluster(cluster_spec)
+
+    @property
+    def cluster(self) -> ClusterSpec:
+        """Get the cluster specification."""
+        return self._cluster
+
+    @property
+    def backend(self) -> SimpHttpDriver:
+        """Get the underlying SimpHttpDriver backend."""
+        return self._driver
+
+    def __enter__(self) -> "Driver":
+        """Enter context: push driver as the default interpreter."""
+        push_context(self._driver)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context: pop the driver."""
+        pop_context()
+
+    def shutdown(self) -> None:
+        """Shutdown the driver and release resources."""
+        self._driver.shutdown()
+
+
+def evaluate(sim: "Simulator | Driver", fn, *args, **kwargs):
+    """Evaluate a function using the simulator or driver.
 
     Compatible with mplang v1 API: mp.evaluate(sim, fn)
 
     Args:
-        sim: The Simulator instance.
+        sim: The Simulator or Driver instance.
         fn: The function to evaluate.
         *args: Positional arguments to pass to the function.
         **kwargs: Keyword arguments to pass to the function.
@@ -144,8 +205,8 @@ def evaluate(sim: Simulator, fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-def fetch(sim: Simulator, result, party: int | str | None = None):
-    """Fetch the result from the simulator.
+def fetch(sim: "Simulator | Driver", result, party: int | str | None = None):
+    """Fetch the result from the simulator or driver.
 
     Compatible with mplang v1 API: mp.fetch(sim, result)
 
@@ -188,13 +249,13 @@ def fetch(sim: Simulator, result, party: int | str | None = None):
 function = jit  # @mp.function -> @mp2.function (JIT compilation)
 
 
-def compile(sim: Simulator, fn, *args, **kwargs) -> TracedFunction:
+def compile(sim: "Simulator | Driver", fn, *args, **kwargs) -> TracedFunction:
     """Compile a function to get its IR without executing it.
 
     Compatible with mplang v1 API: mp.compile(sim, fn)
 
     Args:
-        sim: The Simulator instance (provides cluster context).
+        sim: The Simulator or Driver instance (provides cluster context).
         fn: The function to compile.
         *args: Arguments to pass during tracing.
         **kwargs: Keyword arguments to pass during tracing.
@@ -218,6 +279,7 @@ __all__ = [
     # Device API
     "ClusterSpec",
     "Device",
+    "Driver",
     # Core EDSL
     "Graph",
     "GraphPrinter",
@@ -230,8 +292,9 @@ __all__ = [
     "Primitive",
     "SSType",
     "ScalarType",
-    "SimpSimulator",
     # Runtime
+    "SimpHttpDriver",
+    "SimpSimulator",
     "Simulator",
     "TableType",
     "TensorType",

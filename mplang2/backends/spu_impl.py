@@ -14,12 +14,48 @@ from mplang2.edsl.graph import Operation
 from mplang2.edsl.interpreter import Interpreter
 
 # Global cache for SPU runtimes per (local_rank, world_size) pair
-# Key: (local_rank, spu_world_size, protocol, field), Value: (Runtime, Io)
-_SPU_RUNTIMES: dict[tuple[int, int, str, str], tuple[spu_api.Runtime, spu_api.Io]] = {}
+# Key: (local_rank, spu_world_size, protocol, field, link_mode), Value: (Runtime, Io)
+_SPU_RUNTIMES: dict[
+    tuple[int, int, str, str, str], tuple[spu_api.Runtime, spu_api.Io]
+] = {}
+
+
+def _create_mem_link(local_rank: int, spu_world_size: int) -> "libspu.link.Context":
+    """Create in-memory link for simulation."""
+    desc = libspu.link.Desc()  # type: ignore
+    desc.recv_timeout_ms = 30 * 1000
+    for i in range(spu_world_size):
+        desc.add_party(f"P{i}", f"mem:{i}")
+    return libspu.link.create_mem(desc, local_rank)
+
+
+def _create_brpc_link(
+    local_rank: int, spu_endpoints: list[str]
+) -> "libspu.link.Context":
+    """Create BRPC link for distributed execution.
+
+    Args:
+        local_rank: The local rank within the SPU device (0-indexed).
+        spu_endpoints: List of BRPC endpoints for all SPU parties.
+
+    Returns:
+        A libspu.link.Context for BRPC communication.
+    """
+    desc = libspu.link.Desc()  # type: ignore
+    desc.recv_timeout_ms = 100 * 1000  # 100 seconds
+    desc.http_max_payload_size = 32 * 1024 * 1024  # 32MB
+
+    for i, endpoint in enumerate(spu_endpoints):
+        desc.add_party(f"P{i}", endpoint)
+
+    return libspu.link.create_brpc(desc, local_rank)
 
 
 def _get_spu_ctx(
-    local_rank: int, spu_world_size: int, config: spu.SPUConfig
+    local_rank: int,
+    spu_world_size: int,
+    config: spu.SPUConfig,
+    spu_endpoints: list[str] | None = None,
 ) -> tuple[spu_api.Runtime, spu_api.Io]:
     """Get or create SPU runtime and IO for the given local rank within SPU.
 
@@ -27,21 +63,24 @@ def _get_spu_ctx(
         local_rank: The local rank within the SPU device (0-indexed).
         spu_world_size: The number of parties in the SPU device.
         config: SPU configuration including protocol settings.
+        spu_endpoints: Optional list of BRPC endpoints. If None, use mem link.
 
     Returns:
         A tuple of (Runtime, Io) for this party.
     """
-    # Include protocol and field in cache key to avoid mismatches between tests
-    cache_key = (local_rank, spu_world_size, config.protocol, config.field)
+    # Determine link mode
+    link_mode = "brpc" if spu_endpoints else "mem"
+
+    # Include protocol, field, and link_mode in cache key
+    cache_key = (local_rank, spu_world_size, config.protocol, config.field, link_mode)
     if cache_key in _SPU_RUNTIMES:
         return _SPU_RUNTIMES[cache_key]
 
-    # Create Link using local rank and SPU world size
-    desc = libspu.link.Desc()  # type: ignore
-    desc.recv_timeout_ms = 30 * 1000
-    for i in range(spu_world_size):
-        desc.add_party(f"P{i}", f"mem:{i}")
-    link = libspu.link.create_mem(desc, local_rank)
+    # Create Link
+    if spu_endpoints:
+        link = _create_brpc_link(local_rank, spu_endpoints)
+    else:
+        link = _create_mem_link(local_rank, spu_world_size)
 
     # Use config from SPUConfig
     runtime_config = config.to_runtime_config()
@@ -125,7 +164,25 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     local_rank = parties.index(global_rank)
     spu_world_size = len(parties)
 
-    runtime, io = _get_spu_ctx(local_rank, spu_world_size, config)
+    # Get SPU endpoints from interpreter (set by WorkerInterpreter for BRPC mode)
+    # spu_endpoints is a dict mapping global_rank -> brpc_endpoint
+    spu_endpoints_map: dict[int, str] | None = getattr(
+        interpreter, "spu_endpoints", None
+    )
+
+    # Build ordered list of endpoints for SPU parties
+    spu_endpoints: list[str] | None = None
+    if spu_endpoints_map is not None:
+        spu_endpoints = []
+        for party_rank in parties:
+            if party_rank not in spu_endpoints_map:
+                raise RuntimeError(
+                    f"SPU endpoint not found for party {party_rank}. "
+                    f"Available: {list(spu_endpoints_map.keys())}"
+                )
+            spu_endpoints.append(spu_endpoints_map[party_rank])
+
+    runtime, io = _get_spu_ctx(local_rank, spu_world_size, config, spu_endpoints)
 
     executable_code = op.attrs["executable"]
     input_names = op.attrs["input_names"]

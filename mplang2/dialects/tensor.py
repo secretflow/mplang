@@ -17,7 +17,7 @@ from jax.tree_util import PyTreeDef, tree_flatten
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
-from mplang2.dialects import type_utils
+from mplang2.dialects import dtypes
 
 run_jax_p = el.Primitive[Any]("tensor.run_jax")
 constant_p = el.Primitive[el.Object]("tensor.constant")
@@ -50,11 +50,11 @@ def _current_tracer() -> el.Tracer:
 
 
 def _scalar_to_numpy_dtype(scalar: elt.ScalarType) -> np.dtype[np.generic]:
-    return np.dtype(type_utils.elt_to_jax_dtype(scalar))
+    return np.dtype(dtypes.to_jax(scalar))
 
 
 def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:
-    return type_utils.jax_to_elt_dtype(dtype)
+    return dtypes.from_dtype(dtype)
 
 
 def _tensor_type_to_placeholder(

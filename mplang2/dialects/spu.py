@@ -73,7 +73,7 @@ from jax.tree_util import tree_flatten, tree_unflatten
 import mplang2.edsl as el
 import mplang2.edsl.typing as elt
 from mplang.utils.func_utils import normalize_fn
-from mplang2.dialects import type_utils
+from mplang2.dialects import dtypes
 
 # ==============================================================================
 # --- Configuration
@@ -263,9 +263,7 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
             raise TypeError(f"spu.run_jax inputs must be Tensor-based, got {pt_type}")
 
         # Map to JAX
-        jax_dtype = type_utils.elt_to_jax_dtype(
-            cast(elt.ScalarType, pt_type.element_type)
-        )
+        jax_dtype = dtypes.to_jax(cast(elt.ScalarType, pt_type.element_type))
         shape = tuple(d if d != -1 else 1 for d in pt_type.shape)
 
         jax_args_flat.append(ShapeDtypeStruct(shape, jax_dtype))
@@ -287,9 +285,7 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     flat_outputs_info, out_tree = tree_flatten(output_info)
     output_shapes = [out.shape for out in flat_outputs_info]
 
-    output_dtypes = [
-        type_utils.jax_to_elt_dtype(out.dtype) for out in flat_outputs_info
-    ]
+    output_dtypes = [dtypes.from_dtype(out.dtype) for out in flat_outputs_info]
     output_vis_list = [libspu.Visibility.VIS_SECRET] * len(flat_outputs_info)
 
     res_shares = exec_p.bind(

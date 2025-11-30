@@ -1,4 +1,8 @@
-"""SIMP simulator module."""
+"""SIMP simulator module.
+
+Provides SimpSimulator for local multi-threaded simulation.
+This is useful for development and testing without network deployment.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import concurrent.futures
 import threading
 from typing import Any
 
+from mplang2.backends import simp_impl as _simp_impl  # noqa: F401
 from mplang2.backends.simp_host import SimpHost
 from mplang2.backends.simp_worker import WorkerInterpreter
 from mplang2.edsl.graph import Graph

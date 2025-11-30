@@ -9,7 +9,8 @@ import pytest
 import uvicorn
 
 import mplang2.edsl as el
-from mplang2.backends.simp_http import HttpHost, create_worker_app
+from mplang2.backends.simp_http_driver import SimpHttpDriver
+from mplang2.backends.simp_http_worker import create_worker_app
 from mplang2.dialects import simp, tensor
 
 logging.basicConfig(level=logging.DEBUG)
@@ -44,7 +45,7 @@ def http_cluster():
     # Wait for servers to start
     time.sleep(2)
 
-    yield HttpHost(world_size, endpoints)
+    yield SimpHttpDriver(world_size, endpoints)
 
     for p in processes:
         p.terminate()

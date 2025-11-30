@@ -465,7 +465,15 @@ Vector = VectorType
 
 
 class TableType(BaseType):
-    """Represents a table with a named schema of types."""
+    """Represents a table with a named schema of types.
+
+    Examples:
+        >>> TableType({"id": i64, "name": STRING})
+        Table[{'id': i64, 'name': Custom[string]}]
+
+        >>> Table[{"col_a": i32, "col_b": f64}]
+        Table[{'col_a': i32, 'col_b': f64}]
+    """
 
     def __init__(self, schema: dict[str, BaseType]):
         self.schema = schema
@@ -477,6 +485,14 @@ class TableType(BaseType):
     def __str__(self) -> str:
         schema_str = ", ".join(f"'{k}': {v}" for k, v in self.schema.items())
         return f"Table[{{{schema_str}}}]"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TableType):
+            return NotImplemented
+        return self.schema == other.schema
+
+    def __hash__(self) -> int:
+        return hash(("TableType", tuple(self.schema.items())))
 
 
 Table = TableType

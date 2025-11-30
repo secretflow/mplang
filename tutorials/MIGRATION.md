@@ -79,7 +79,7 @@ result = table.run_sql(query, out_type=schema, tbl=tbl)
 | 01_function_decorator.py | ✅ 01_function_decorator.py | Done |
 | 02_simulation_and_driver.py | ✅ 02_simulation_and_driver.py | Done |
 | 03_run_jax.py | ✅ 03_run_jax.py | Done |
-| 04_run_sql.py | ⚠️ Not ported | API differs |
+| 04_run_sql.py | ✅ 05_run_sql.py | Done (PPU only, TEE needs work) |
 | 05_pipeline.py | ⚠️ Not ported | Needs file I/O |
 | 06_ir_dump_and_analysis.py | ✅ 04_ir_dump_and_analysis.py | Partial (no analysis module) |
 
@@ -172,8 +172,10 @@ INTERVAL = CustomType("interval")
 
 ### Remaining TODO
 
-1. Add `TableType.from_dict()` helper method
+1. ~~Add `TableType.from_dict()` helper method~~ ❌ Not needed (use `TableType()` directly)
 2. Port `mplang/analysis/diagram.py` → `mplang2/analysis/`
 3. Implement `table.read()` / `table.write()` for file I/O
-4. Port remaining tutorials (04_run_sql, 05_pipeline)
-5. (Optional) Add `from_pandas_dtype()` / `from_arrow_dtype()` to dtypes.py
+4. ~~Port 04_run_sql tutorial~~ ✅ Done (as 05_run_sql.py)
+5. Port remaining tutorial (05_pipeline)
+6. Fix TEE table operations in simulator
+7. (Optional) Add `from_pandas_dtype()` / `from_arrow_dtype()` to dtypes.py

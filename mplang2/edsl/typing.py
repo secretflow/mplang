@@ -276,7 +276,7 @@ class ComplexType(ScalarType):
 # ==============================================================================
 
 # Numeric scalar types - comprehensive set aligned with common dtypes
-# Integer types (signed)pes (signed)
+# Integer types (signed)
 i8 = IntegerType(bitwidth=8, signed=True)
 i16 = IntegerType(bitwidth=16, signed=True)
 i32 = IntegerType(bitwidth=32, signed=True)
@@ -296,6 +296,10 @@ f64 = FloatType(bitwidth=64)
 # Complex types
 c64 = ComplexType(inner_type=f32)  # 2x float32 = 64 bits total
 c128 = ComplexType(inner_type=f64)  # 2x float64 = 128 bits total
+
+# Boolean type (1-bit integer, commonly used)
+bool_ = IntegerType(bitwidth=1, signed=True)
+i1 = bool_  # Alias for MLIR convention
 
 # Variable-length integer types (common sizes)
 i128 = IntegerType(bitwidth=128, signed=True)
@@ -553,6 +557,22 @@ class CustomType(BaseType):
 
 # Shorthand alias
 Custom = CustomType
+
+# ==============================================================================
+# --- Table-only Types (for SQL/DataFrame operations)
+# ==============================================================================
+# These types are used in TableType schemas but don't have direct tensor
+# equivalents. They use CustomType for flexibility.
+
+STRING = CustomType("string")
+DATE = CustomType("date")
+TIME = CustomType("time")
+TIMESTAMP = CustomType("timestamp")
+DECIMAL = CustomType("decimal")
+BINARY = CustomType("binary")
+JSON = CustomType("json")
+UUID = CustomType("uuid")
+INTERVAL = CustomType("interval")
 
 # ==============================================================================
 # --- Pillar 2: Encryption Types

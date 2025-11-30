@@ -29,6 +29,7 @@ def load_builtins() -> None:
     builtin_backends = [
         "mplang2.backends.spu_impl",
         "mplang2.backends.tensor_impl",
+        "mplang2.backends.table_impl",
         "mplang2.backends.crypto_impl",
         "mplang2.backends.tee_impl",
     ]

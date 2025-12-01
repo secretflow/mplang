@@ -33,7 +33,7 @@ Migrated from mplang v1 to mplang2.
 
 import time
 
-import mplang2 as mp
+import mplang.v2 as mp
 
 # Define a simple 2-party cluster
 cluster_spec = mp.ClusterSpec.from_dict({

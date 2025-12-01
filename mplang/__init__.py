@@ -12,7 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Multi-Party Programming Language for Secure Computation."""
+"""Multi-Party Programming Language for Secure Computation.
+
+This module provides access to both v1 and v2 APIs:
+
+    # Use v1 (current default, will be deprecated)
+    import mplang as mp
+    # or explicitly:
+    import mplang.v1 as mp
+
+    # Use v2 (recommended for new code)
+    import mplang.v2 as mp
+
+v1 API will be deprecated in a future release. Please migrate to v2.
+"""
 
 # Version is managed by hatch-vcs and available after package installation
 try:
@@ -23,135 +36,11 @@ except PackageNotFoundError:
     # Fallback for development/editable installs when package is not installed
     __version__ = "0.0.0-dev"
 
-from mplang import analysis
-from mplang._device import device, get_dev_attr, is_device_obj, put, set_dev_attr
-from mplang.core import (
-    ClusterSpec,
-    Device,
-    DType,
-    InterpContext,
-    IrReader,
-    IrWriter,
-    Mask,
-    MPContext,
-    MPObject,
-    MPType,
-    Node,
-    Rank,
-    RuntimeInfo,
-    Shape,
-    TableType,
-    TensorType,
-    TraceContext,
-    TracedFunction,
-    cur_ctx,
-    function,
-    pconv,
-    peval,
-    pshfl,
-    pshfl_s,
-    set_ctx,
-    trace,
-    uniform_cond,
-    while_loop,
-    with_ctx,
-)
-from mplang.host import CompileOptions, compile, evaluate, fetch
-from mplang.runtime.driver import Driver
-from mplang.runtime.simulation import Simulator
-from mplang.simp.api import (
-    constant,
-    debug_print,
-    prand,
-    prank,
-    run,
-    run_at,
-    run_jax,
-    run_jax_at,
-    run_sql,
-    run_sql_at,
-    set_mask,
-)
-from mplang.simp.mpi import allgather_m, bcast_m, gather_m, p2p, scatter_m
-from mplang.simp.party import P0, P1, P2, P2P, P, Party, load_module
-from mplang.simp.random import key_split, pperm, prandint, ukey, urandint
-from mplang.simp.smpc import reveal, reveal_to, seal, seal_from, srun_jax
+# =============================================================================
+# Default: Re-export v1 API for backward compatibility
+# =============================================================================
+# This will be changed to v2 in a future release
 
-# Public API
-__all__ = [
-    "P0",
-    "P1",
-    "P2",
-    "P2P",
-    "ClusterSpec",
-    "CompileOptions",
-    "DType",
-    "Device",
-    "Driver",
-    "InterpContext",
-    "IrReader",
-    "IrWriter",
-    "MPContext",
-    "MPObject",
-    "MPType",
-    "Mask",
-    "Node",
-    "P",
-    "Party",
-    "Rank",
-    "RuntimeInfo",
-    "Shape",
-    "Simulator",
-    "TableType",
-    "TensorType",
-    "TraceContext",
-    "TracedFunction",
-    "__version__",
-    "allgather_m",
-    "analysis",
-    "bcast_m",
-    "compile",
-    "constant",
-    "cur_ctx",
-    "debug_print",
-    "device",
-    "evaluate",
-    "fetch",
-    "function",
-    "gather_m",
-    "get_dev_attr",
-    "is_device_obj",
-    "key_split",
-    "load_module",
-    "p2p",
-    "pconv",
-    "peval",
-    "pperm",
-    "prand",
-    "prandint",
-    "prank",
-    "pshfl",
-    "pshfl_s",
-    "put",
-    "reveal",
-    "reveal_to",
-    "run",
-    "run_at",
-    "run_jax",
-    "run_jax_at",
-    "run_sql",
-    "run_sql_at",
-    "scatter_m",
-    "seal",
-    "seal_from",
-    "set_ctx",
-    "set_dev_attr",
-    "set_mask",
-    "srun_jax",
-    "trace",
-    "ukey",
-    "uniform_cond",
-    "urandint",
-    "while_loop",
-    "with_ctx",
-]
+# Make v1 and v2 subpackages directly accessible
+from mplang import v1, v2  # noqa: F401
+from mplang.v1 import *  # noqa: F403

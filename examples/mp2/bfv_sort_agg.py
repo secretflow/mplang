@@ -5,16 +5,16 @@ import jax.numpy as jnp
 import numpy as np
 
 # Import implementations to register them
-import mplang2.backends.bfv_impl
-import mplang2.backends.tensor_impl
-import mplang2.dialects.bfv as bfv
-import mplang2.dialects.simp as simp
-import mplang2.dialects.tensor as tensor
-import mplang2.edsl as el
-from mplang2.backends.simp_simulator import SimpSimulator
+import mplang.v2.backends.bfv_impl
+import mplang.v2.backends.tensor_impl
+import mplang.v2.dialects.bfv as bfv
+import mplang.v2.dialects.simp as simp
+import mplang.v2.dialects.tensor as tensor
+import mplang.v2.edsl as el
+from mplang.v2.backends.simp_simulator import SimpSimulator
 
 # Ensure backend implementations are loaded (prevents unused import warnings)
-_ = mplang2.backends.bfv_impl, mplang2.backends.tensor_impl
+_ = mplang.v2.backends.bfv_impl, mplang.v2.backends.tensor_impl
 
 # Configure logging
 logging.basicConfig(

@@ -22,13 +22,13 @@ import pytest
 from sklearn.metrics import accuracy_score, roc_auc_score
 from xgboost import XGBClassifier
 
-import mplang as mp
+import mplang.v1 as mp
 from examples.xgboost.sgb import (
     SecureBoost,
     batch_feature_wise_bucket_sum_fhe_vector,
     pretty_print_ensemble,
 )
-from mplang.ops import fhe
+from mplang.v1.ops import fhe
 
 
 def extract_ap_values(x):

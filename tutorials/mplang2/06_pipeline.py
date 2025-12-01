@@ -42,10 +42,10 @@ import os
 import jax
 import jax.numpy as jnp
 import pandas as pd
-
-import mplang2 as mp
 from mplang2.dialects import table
 from mplang2.edsl.typing import TableType, f64, i64
+
+import mplang.v2 as mp
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [

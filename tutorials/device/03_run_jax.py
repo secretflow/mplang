@@ -30,7 +30,7 @@ import random
 
 import jax.numpy as jnp
 
-import mplang as mp
+import mplang.v1 as mp
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [

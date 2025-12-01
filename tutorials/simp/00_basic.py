@@ -15,7 +15,7 @@
 import random
 from functools import partial
 
-import mplang as mp
+import mplang.v1 as mp
 
 
 # This is a simple example of how to use the MPLang library to create a

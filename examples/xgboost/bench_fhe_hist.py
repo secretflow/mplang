@@ -37,7 +37,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import mplang as mp
+import mplang.v1 as mp
 from examples.xgboost.sgb import (
     DEFAULT_FXP_BITS,
     batch_feature_wise_bucket_sum_fhe_vector,
@@ -47,7 +47,7 @@ from examples.xgboost.sgb import (
     compute_init_pred,
     quantize_gh,
 )
-from mplang.ops import fhe
+from mplang.v1.ops import fhe
 
 
 def _gen_data(n_samples: int, n_total_features: int, n_features_ap: int, seed: int):

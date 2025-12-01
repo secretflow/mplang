@@ -14,7 +14,7 @@
 
 import jax.numpy as jnp
 
-import mplang as mp
+import mplang.v1 as mp
 
 sim3 = mp.Simulator.simple(3)
 

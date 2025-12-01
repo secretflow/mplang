@@ -27,7 +27,7 @@ import yaml
 from jax.example_libraries import stax
 from sklearn.metrics import accuracy_score
 
-import mplang as mp
+import mplang.v1 as mp
 
 parser = argparse.ArgumentParser(description="distributed driver.")
 parser.add_argument("--model", default="network_a", type=str)

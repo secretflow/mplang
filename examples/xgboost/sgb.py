@@ -19,8 +19,8 @@ import jax
 import jax.numpy as jnp
 from jax.ops import segment_sum
 
-import mplang as mp
-from mplang.ops import fhe
+import mplang.v1 as mp
+from mplang.v1.ops import fhe
 
 # ==============================================================================
 # Naming Conventions for Shapes & Variables

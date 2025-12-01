@@ -27,10 +27,10 @@ Key concepts:
 """
 
 import pandas as pd
-
-import mplang as mp
 from mplang.core.dtypes import INT64
 from mplang.ops import sql_cc
+
+import mplang.v1 as mp
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [

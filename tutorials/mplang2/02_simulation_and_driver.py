@@ -28,7 +28,7 @@ Migrated from mplang v1 to mplang2.
 
 import random
 
-import mplang2 as mp
+import mplang.v2 as mp
 
 
 def millionaire():
@@ -88,7 +88,6 @@ def run_with_driver():
         Terminal 2: python tutorials/mplang2/02_simulation_and_driver.py
     """
     import httpx
-
     from mplang2.backends.simp_http_driver import SimpHttpDriver
 
     endpoints = ["http://127.0.0.1:8100", "http://127.0.0.1:8101"]

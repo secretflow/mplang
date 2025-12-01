@@ -7,10 +7,10 @@ Uses EDSL printer to display the computation graph.
 import jax.numpy as jnp
 import numpy as np
 
-import mplang2.edsl as el
-import mplang2.edsl.typing as elt
-from mplang2.dialects.simp import pcall_static
-from mplang2.dialects.tensor import jax_fn
+import mplang.v2.edsl as el
+import mplang.v2.edsl.typing as elt
+from mplang.v2.dialects.simp import pcall_static
+from mplang.v2.dialects.tensor import jax_fn
 
 
 def main():

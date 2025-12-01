@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SecureBoost v2: Optimized implementation using mplang2 low-level BFV APIs.
+"""SecureBoost v2: Optimized implementation using mplang.v2 low-level BFV APIs.
 
 This implementation improves upon v1 by leveraging BFV SIMD slots and the
 groupby primitives for efficient histogram computation.
@@ -43,8 +43,8 @@ import jax.numpy as jnp
 import numpy as np
 from jax.ops import segment_sum
 
-from mplang2.dialects import bfv, simp, tensor
-from mplang2.libs.mpc import aggregation
+from mplang.v2.dialects import bfv, simp, tensor
+from mplang.v2.libs.mpc import aggregation
 
 # ==============================================================================
 # Configuration
@@ -1335,7 +1335,7 @@ def fit_tree_ensemble(
 
 
 class SecureBoost:
-    """SecureBoost classifier using mplang2 low-level BFV APIs.
+    """SecureBoost classifier using mplang.v2 low-level BFV APIs.
 
     This is an optimized implementation that uses BFV SIMD slots for
     efficient histogram computation.
@@ -1540,12 +1540,12 @@ def main():
     print()
 
     # Import implementations to register them
-    import mplang2.backends.tensor_impl
-    import mplang2.edsl as el
-    from mplang2.backends.simp_simulator import SimpSimulator
+    import mplang.v2.backends.tensor_impl
+    import mplang.v2.edsl as el
+    from mplang.v2.backends.simp_simulator import SimpSimulator
 
     # Ensure backend implementations are loaded
-    _ = mplang2.backends.tensor_impl
+    _ = mplang.v2.backends.tensor_impl
 
     with el.Tracer() as tracer:
         # Put data on single party
@@ -1608,18 +1608,18 @@ def main_multiparty():
     2. AP receives encrypted histogram, multiplies with gradient mask
     3. PP decrypts and aggregates
     """
-    import mplang2.edsl as el
-    from mplang2.backends.simp_simulator import SimpSimulator
+    import mplang.v2.edsl as el
+    from mplang.v2.backends.simp_simulator import SimpSimulator
 
     print("=" * 60)
     print("Multi-Party SecureBoost Test (with BFV FHE)")
     print("=" * 60)
 
     # Load BFV backend (registers implementations)
-    from mplang2.backends import load_backend
+    from mplang.v2.backends import load_backend
 
     try:
-        load_backend("mplang2.backends.bfv_impl")
+        load_backend("mplang.v2.backends.bfv_impl")
         print("✓ BFV backend loaded successfully")
     except ImportError as e:
         print(f"✗ Failed to load BFV backend: {e}")
@@ -1703,9 +1703,9 @@ def benchmark_multiparty():
     """Benchmark SecureBoost with BFV FHE for performance analysis."""
     import time
 
-    import mplang2.edsl as el
-    from mplang2.backends import load_backend
-    from mplang2.backends.simp_simulator import SimpSimulator
+    import mplang.v2.edsl as el
+    from mplang.v2.backends import load_backend
+    from mplang.v2.backends.simp_simulator import SimpSimulator
 
     print("=" * 70)
     print("SecureBoost v2 - Multi-Party FHE Performance Benchmark")
@@ -1713,14 +1713,14 @@ def benchmark_multiparty():
 
     # Load BFV backend
     try:
-        load_backend("mplang2.backends.bfv_impl")
+        load_backend("mplang.v2.backends.bfv_impl")
         print("✓ BFV backend loaded")
     except ImportError as e:
         print(f"✗ Failed to load BFV backend: {e}")
         return
 
     # Enable primitive operation profiling (auto-wraps all def_impl functions)
-    from mplang2.edsl import registry
+    from mplang.v2.edsl import registry
 
     registry.enable_profiling()
     print("✓ Primitive operation profiling enabled")

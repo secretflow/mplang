@@ -31,7 +31,7 @@ Prerequisites: Complete 00_device_basics.py
 
 import time
 
-import mplang as mp
+import mplang.v1 as mp
 
 # Define a simple 2-party cluster
 cluster_spec = mp.ClusterSpec.from_dict({

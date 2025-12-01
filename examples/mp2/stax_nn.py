@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""stax_nn example using mplang2.
+"""stax_nn example using mplang.v2.
 
 This demonstrates training a neural network with privacy-preserving
-computation on SPU using the new mplang2 API.
+computation on SPU using the new mplang.v2 API.
 
 Usage:
     # Simulation mode (default)
@@ -41,12 +41,12 @@ import numpy as np
 from jax.example_libraries import optimizers, stax
 from sklearn.metrics import accuracy_score
 
-import mplang2 as mp
+import mplang.v2 as mp
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "stax_nn"))
 import models
 
-parser = argparse.ArgumentParser(description="stax_nn with mplang2")
+parser = argparse.ArgumentParser(description="stax_nn with mplang.v2")
 parser.add_argument("--model", default="network_a", type=str)
 parser.add_argument("-e", "--epoch", default=5, type=int)
 parser.add_argument("-b", "--batch_size", default=128, type=int)
@@ -125,7 +125,7 @@ def train(
 
     print("Start training...")
 
-    # Training loop with mplang2
+    # Training loop with mplang.v2
     @mp.function
     def do_train(opt_state):
         for i in range(1, epochs + 1):
@@ -163,9 +163,9 @@ def train(
     import spu.libspu as libspu
     from jax.tree_util import tree_map
 
-    from mplang2.backends.simp_host import HostVar
-    from mplang2.dialects.spu import SPUConfig
-    from mplang2.edsl.interpreter import InterpObject
+    from mplang.v2.backends.simp_host import HostVar
+    from mplang.v2.dialects.spu import SPUConfig
+    from mplang.v2.edsl.interpreter import InterpObject
 
     config = SPUConfig(protocol="SEMI2K", field="FM128")
     runtime_config = config.to_runtime_config()
@@ -268,7 +268,7 @@ def run_model(model_name):
     if model is None:
         raise ValueError(f"Unknown model: {model_name}")
 
-    print("Run on SPU (mplang2)\n------\n")
+    print("Run on SPU (mplang.v2)\n------\n")
     return train_mnist(model)
 
 
@@ -276,7 +276,7 @@ def main():
     if args.driver:
         # Driver mode: connect to running workers
         print("Using Driver mode - ensure workers are running!")
-        print("Start workers with: python -m mplang2.backends.cli up --world-size 2")
+        print("Start workers with: python -m mplang.v2.backends.cli up --world-size 2")
         driver = mp.Driver(cluster_spec)
         ctx = driver
     else:

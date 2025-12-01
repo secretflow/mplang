@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import random
 
-import mplang as mp
+import mplang.v1 as mp
 from mplang import P0, P1, P2, P2P
 
 cluster_spec = mp.ClusterSpec.from_dict({

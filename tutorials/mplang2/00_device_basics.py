@@ -34,7 +34,7 @@ API patterns:
 - mp.device()(fn): auto-infer device from arguments
 
 Migration notes (mplang -> mplang2):
-- import mplang2 as mp (instead of mplang)
+- import mplang.v2 as mp (instead of mplang)
 - For JAX functions on PPU, use frontend="jax":
     mp.device("P0", "jax")(lambda a, b: a + b)(x, y)
 - For SPU, no special frontend needed (JAX is native)
@@ -45,7 +45,7 @@ import random
 
 import jax.numpy as jnp
 
-import mplang2 as mp
+import mplang.v2 as mp
 
 # Define a simple 3-party cluster with SPU, 2 PPUs, and TEE
 cluster_spec = mp.ClusterSpec.from_dict({

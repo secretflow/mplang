@@ -36,9 +36,10 @@ Migration notes (mplang -> mplang2):
 - Use table.constant() instead of mp.put() for creating tables in trace
 """
 
-import mplang2 as mp
 from mplang2.dialects import table
 from mplang2.edsl.typing import TableType, i64
+
+import mplang.v2 as mp
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [

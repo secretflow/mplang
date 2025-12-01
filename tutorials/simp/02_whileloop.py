@@ -15,7 +15,7 @@
 import jax
 import jax.numpy as jnp
 
-import mplang as mp
+import mplang.v1 as mp
 
 
 @mp.function

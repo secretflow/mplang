@@ -17,7 +17,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-import mplang as mp
+import mplang.v1 as mp
 
 # TL;DR / Quick Patterns:
 # - Elementwise / per-party divergent predicate & both sides cheap -> jax.where

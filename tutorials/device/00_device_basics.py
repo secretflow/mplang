@@ -29,7 +29,7 @@ Key concepts:
 
 import random
 
-import mplang as mp
+import mplang.v1 as mp
 
 # Define a simple 3-party cluster with SPU, 2 PPUs, and TEE
 cluster_spec = mp.ClusterSpec.from_dict({

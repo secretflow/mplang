@@ -14,7 +14,7 @@
 
 import jax.numpy as jnp
 
-import mplang as mp
+import mplang.v1 as mp
 
 
 def pure_python_func():

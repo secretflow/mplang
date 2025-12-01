@@ -18,7 +18,7 @@ from functools import partial
 import jax.numpy as jnp
 import jax.random as jr
 
-import mplang as mp
+import mplang.v1 as mp
 
 
 def rand_from_host():

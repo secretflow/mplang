@@ -7,9 +7,8 @@ This example demonstrates two advanced MPC/HE capabilities:
 """
 
 import jax.numpy as jnp
-import numpy as np
-
 import mplang2.backends.tensor_impl  # noqa: F401
+import numpy as np
 from mplang2.backends.simp_simulator import SimpSimulator
 from mplang2.dialects import bfv, simp, tensor
 from mplang2.libs import aggregation, permutation

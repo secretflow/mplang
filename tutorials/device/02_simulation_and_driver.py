@@ -28,7 +28,7 @@ import random
 
 import yaml
 
-import mplang as mp
+import mplang.v1 as mp
 
 
 def millionaire():

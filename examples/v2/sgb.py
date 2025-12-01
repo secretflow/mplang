@@ -25,7 +25,7 @@ Key optimizations:
 See design/sgb_v2.md for detailed architecture documentation.
 
 Usage:
-    from examples.mp2.sgb import SecureBoost
+    from examples.v2.sgb import SecureBoost
 
     model = SecureBoost(n_estimators=10, max_depth=3)
     model.fit([X_ap, X_pp], y)

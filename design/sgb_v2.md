@@ -6,7 +6,7 @@
 
 - Single-party mode: 87% accuracy on synthetic data
 - Multi-party FHE mode: 76% accuracy with TenSEAL/BFV backend
-- Code location: `examples/mp2/sgb.py`
+- Code location: `examples/v2/sgb.py`
 
 ## Executive Summary
 
@@ -486,6 +486,6 @@ This reduces CTs from 25 to 2-4, bringing estimated time to **15-30 minutes**.
 
 ## References
 
-- [mplang2/libs/mpc/groupby.py](../mplang2/libs/mpc/groupby.py)
-- [mplang2/dialects/bfv.py](../mplang2/dialects/bfv.py)
-- [examples/xgboost/sgb.py](../examples/xgboost/sgb.py) (v1 implementation)
+- [mplang/v2/libs/mpc/groupby.py](../mplang/v2/libs/mpc/groupby.py)
+- [mplang/v2/dialects/bfv.py](../mplang/v2/dialects/bfv.py)
+- [examples/v1/xgboost/sgb.py](../examples/v1/xgboost/sgb.py) (v1 implementation)

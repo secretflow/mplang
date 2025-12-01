@@ -26,6 +26,17 @@ Usage:
 
     app = create_worker_app(rank=0, world_size=3, endpoints=[...])
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+SECURITY NOTE:
+    This module uses pickle for serialization of computation graphs and data
+    between trusted workers in a controlled cluster environment. The /exec and
+    /comm endpoints accept pickled data which can execute arbitrary code.
+
+    DO NOT expose these endpoints to untrusted networks or users.
+    Deploy workers only within a secured internal network with proper
+    authentication and network isolation.
+
+    See: https://docs.python.org/3/library/pickle.html#restricting-globals
 """
 
 from __future__ import annotations

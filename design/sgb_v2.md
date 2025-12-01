@@ -411,6 +411,79 @@ Only effective when `m < poly_modulus_degree` (4096):
 
 The fix I implemented (rotate_columns for m > row_size) is a **safety net** but the algorithm should avoid triggering it.
 
+## Phase 2 Completed: SIMD Bucket Packing + Multi-CT Support (2025-12-01)
+
+### Implementation Summary
+
+**SIMD Bucket Packing** - Pack all buckets into one CT using strided layout:
+
+- `aggregation.py`: Added `strided_rotate_and_sum()`, `batch_bucket_aggregate()`, `extract_bucket_results()`
+- `sgb.py`: Rewrote `fhe_histogram_optimized()` to use packed bucket format
+
+**Multi-CT Support** - Handle `m > slot_count (4096)`:
+
+- `fhe_encrypt_gh()`: Split samples into `ceil(m/slot_count)` chunks
+- `fhe_histogram_optimized()`: Process CT list, accumulate results with `bfv.add`
+- Correctly handle TraceObject limitations using `tensor.run_jax` for slicing
+
+### Benchmark Results
+
+| Config | m | CTs | Trace | Exec | Ops | Accuracy |
+|--------|---|-----|-------|------|-----|----------|
+| Small | 100 | 1 | 0.794s | 1.671s | 173 | 88.00% |
+| Medium | 500 | 1 | 2.509s | 4.424s | 854 | 90.20% |
+| 3k samples | 3000 | 1 | 0.737s | 1.357s | 173 | 81.63% |
+| **5k samples** | 5000 | **2** | 0.751s | 1.896s | 241 | 83.34% |
+
+**Multi-CT Validation**: m=5000 requires 2 CTs, ops increased from 173→241 (+68), exec time +40%.
+
+### Large Scale Estimation (m=100,000, f=100, t=10, d=5)
+
+| Parameter | Value |
+|-----------|-------|
+| Samples | 100,000 |
+| Features | 100 (50 AP + 50 PP) |
+| Trees | 10 |
+| Max Depth | 5 (31 nodes/tree) |
+| **CTs needed** | ceil(100,000 / 4096) = **25** |
+
+**Time Estimation**:
+
+| Component | Scaling Factor | Estimated Time |
+|-----------|----------------|----------------|
+| CT processing | 25× (vs 2 CTs) | ~12× slower |
+| Features | 100× (vs 5) | 20× more histograms |
+| Trees × Nodes | 10×31 (vs 1×3) | ~100× more iterations |
+| **Total Estimate** | | **3-5 hours** |
+
+**Bottleneck Analysis**:
+
+- 25 CTs processed sequentially per histogram call
+- 100 features × 31 nodes × 10 trees = 31,000 histogram calls per level
+- Each histogram: 25 × (JAX mask + FHE mul + rotate_sum + add)
+
+### Optimization Recommendations for Large Scale
+
+| Optimization | Expected Speedup | Complexity |
+|--------------|------------------|------------|
+| **Increase `poly_modulus_degree`** | **6-12×** | Low |
+| ↳ 32768 slots → 4 CTs | (25→4 CTs) | |
+| ↳ 65536 slots → 2 CTs | (25→2 CTs) | |
+| Feature parallelization | 10-20× | Medium |
+| Tree parallelization | 10× | Medium |
+| GPU acceleration (JAX) | 5-10× | Low |
+
+**Recommended Path**: Increase `poly_modulus_degree` to 32768 or 65536 with adjusted BFV security parameters.
+This reduces CTs from 25 to 2-4, bringing estimated time to **15-30 minutes**.
+
+### Histogram Subtraction Analysis
+
+**2B: Histogram Subtraction** optimization (use subtraction for last bucket):
+
+- Saves `log2(stride)` rotations per histogram (~8 for 256 buckets)
+- At large scale with 25 CTs, only saves ~3-5% of total FHE ops
+- **Verdict**: Not worth implementing for large-scale scenarios
+
 ## References
 
 - [mplang2/libs/mpc/groupby.py](../mplang2/libs/mpc/groupby.py)

@@ -13,7 +13,62 @@ import numpy as np
 from mplang2.dialects import bfv, tensor
 
 
-def rotate_and_sum(ciphertext: Any, k: int, galois_keys: Any) -> Any:
+def _safe_rotate(
+    ciphertext: Any, step: int, galois_keys: Any, max_step: int = 1024
+) -> Any:
+    """Rotate ciphertext by step, decomposing large steps if needed.
+
+    SEAL's rotate_rows requires step to be in range (-slot_count/2, slot_count/2).
+    For poly_modulus_degree=4096, slot_count=4096, max valid step is 2047.
+    We use a conservative max_step=1024 by default for safety.
+
+    For large steps, we decompose into multiple rotations:
+    - rotate(x, 3000) = rotate(rotate(rotate(x, 1024), 1024), 952)
+    """
+    if step == 0:
+        return ciphertext
+    if abs(step) <= max_step:
+        return bfv.rotate(ciphertext, step, galois_keys)
+
+    # Decompose large step into multiple rotations
+    current = ciphertext
+    remaining = abs(step)
+    sign = 1 if step > 0 else -1
+
+    while remaining > 0:
+        rot = min(remaining, max_step)
+        current = bfv.rotate(current, sign * rot, galois_keys)
+        remaining -= rot
+
+    return current
+
+
+def _rotate_and_sum_row(
+    ciphertext: Any, k: int, galois_keys: Any, max_step: int = 1024
+) -> Any:
+    """Sum first k elements within a single row (k <= row_size).
+
+    Uses the recursive doubling algorithm with O(log k) rotations.
+    """
+    if k <= 1:
+        return ciphertext
+
+    num_steps = math.ceil(math.log2(k))
+    current = ciphertext
+
+    for i in range(num_steps):
+        step = 1 << i
+        if step >= k:
+            break
+        rotated = _safe_rotate(current, step, galois_keys, max_step)
+        current = bfv.add(current, rotated)
+
+    return current
+
+
+def rotate_and_sum(
+    ciphertext: Any, k: int, galois_keys: Any, slot_count: int = 4096
+) -> Any:
     """Aggregate the first k elements of a ciphertext using O(log k) rotations.
 
     The result is placed in the 0-th slot.
@@ -24,29 +79,46 @@ def rotate_and_sum(ciphertext: Any, k: int, galois_keys: Any) -> Any:
         ciphertext: The BFV ciphertext.
         k: The number of elements to sum.
         galois_keys: Keys required for rotation.
+        slot_count: Total number of slots (default 4096 for poly_degree=4096).
 
     Returns:
         Ciphertext where slot 0 contains sum(ciphertext[0..k-1]).
+
+    Note:
+        SEAL batching arranges slots as 2 rows of slot_count/2 each.
+        - rotate_rows rotates within each row (circular)
+        - rotate_columns swaps the two rows
+
+        For k <= row_size (2048), only row rotations are needed.
+        For k > row_size, we use rotate_columns to aggregate across rows.
     """
-    # We use the recursive doubling algorithm.
-    # To sum k elements, we need ceil(log2(k)) steps.
-    # If k is not a power of 2, we can treat it as next_power_of_2
-    # provided we don't add garbage.
-    # For safety, this function implements the standard log-step reduction
-    # which sums windows of size 2^p.
+    row_size = slot_count // 2
 
-    num_steps = math.ceil(math.log2(k))
-    current = ciphertext
+    if k <= row_size:
+        # Simple case: all elements in row 0
+        return _rotate_and_sum_row(ciphertext, k, galois_keys)
 
-    for i in range(num_steps):
-        step = 1 << i
-        # Rotate left by step
-        # We need to ensure we have the key for this step.
-        # In a real library, we'd check or generate keys.
-        rotated = bfv.rotate(current, step, galois_keys)
-        current = bfv.add(current, rotated)
+    # k > row_size: data spans both rows
+    # Strategy:
+    # 1. Sum row 0 completely (row_size elements)
+    # 2. rotate_columns to bring row 1 to row 0 position
+    # 3. Sum the first (k - row_size) elements of what was row 1
+    # 4. Add the two partial sums
 
-    return current
+    # Sum row 0 completely
+    row0_sum = _rotate_and_sum_row(ciphertext, row_size, galois_keys)
+
+    # Rotate columns: swap row 0 <-> row 1
+    # Now row 1's data is in row 0 position
+    col_rotated = bfv.rotate_columns(ciphertext, galois_keys)
+
+    # Sum the first (k - row_size) elements (originally in row 1)
+    row1_count = k - row_size
+    row1_sum = _rotate_and_sum_row(col_rotated, row1_count, galois_keys)
+
+    # Both row0_sum and row1_sum have their results in slot 0
+    # Add them together
+    return bfv.add(row0_sum, row1_sum)
 
 
 def aggregate_sparse(

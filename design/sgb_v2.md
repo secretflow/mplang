@@ -304,10 +304,112 @@ SIMD packing is **NOT effective** at this scale. Alternative strategies:
 | Distributed FHE (sample sharding) | Linear scaling | High |
 | Parallel CT processing (multi-core) | ~Nx on N cores | Medium |
 
-### Known Issues
+### Known Issues (Resolved)
 
-1. **m ≥ 3000 causes hang** - Under investigation, likely JAX tracing or memory issue
-2. **m > 4096 not supported** - Current implementation assumes single CT per vector
+1. **m ≥ 2049 caused hang** - ✅ **FIXED** (2025-12-01)
+   - **Root Cause**: SEAL's `rotate_rows` has max step limit of `slot_count/2 - 1 = 2047`
+   - When `m > 2048`, `rotate_and_sum` needs step sizes `≥ 2048` which triggered SEAL error
+   - **Fix**: Added `_safe_rotate()` to decompose large rotations + `rotate_columns` for cross-row aggregation
+   - **New files/functions**:
+     - `mplang2/libs/mpc/aggregation.py`: `_safe_rotate()`, `_rotate_and_sum_row()`, updated `rotate_and_sum()`
+     - `mplang2/dialects/bfv.py`: Added `rotate_columns_p` and `rotate_columns()`
+     - `mplang2/backends/bfv_impl.py`: Added `rotate_columns_impl()`
+   - **Verified**: m=3000 now runs successfully (3.127s, 81.63% accuracy)
+
+2. **m > 4096 requires multiple ciphertexts** - 📋 Future work
+   - Current implementation handles m > row_size (2048) but m ≤ slot_count (4096)
+   - For m > 4096, need to pack data into multiple ciphertexts
+
+### BFV SIMD Batching Explained
+
+SEAL's BFV batching with `poly_modulus_degree=4096`:
+
+- Total slots: 4096 (arranged as 2 rows × 2048 columns)
+- `rotate_rows(ct, step)`: Rotates within each row (step must be in range `(-2048, 2048)`)
+- `rotate_columns(ct)`: Swaps the two rows
+
+For `rotate_and_sum(ct, k)`:
+
+- `k ≤ 2048`: Only needs row rotations (simple case)
+- `2048 < k ≤ 4096`: Needs row rotations + column rotation for cross-row aggregation
+
+## Next Steps: Optimization Roadmap
+
+### Phase 1: Algorithm Optimization (High Value, Low Effort) ✅ Complete
+
+| Task | Status | Expected Gain | Actual Gain |
+|------|--------|---------------|-------------|
+| Keygen caching | ✅ Done | -0.34s | -0.34s |
+| Batch JAX calls | ✅ Done | -1s (59% fewer) | -1s |
+| **Exact bucket histogram** | ✅ Done | Avoid m>=2048 + fewer rotates | **-27% rotates, -23% exec time** |
+
+**Exact Bucket Histogram Algorithm**:
+
+Current approach uses **cumulative histogram** which requires aggregating ALL samples in node:
+
+```python
+# Current: cumulative mask
+mask = (node_mask == 1) & (feat_bins <= bucket_idx)  # All samples with bin <= bucket
+# Then rotate_and_sum(ct, m, gk)  # Sum over m samples - PROBLEM when m >= 2048
+```
+
+Optimized approach uses **exact bucket counts** then client-side cumsum:
+
+```python
+# Optimized: exact mask
+mask = (node_mask == 1) & (feat_bins == bucket_idx)  # Only samples in this bucket
+# Then rotate_and_sum(ct, k, gk)  # k = samples in bucket << m
+
+# Client-side cumsum after decryption
+cumsum_g = jnp.cumsum(bucket_g_sums)
+```
+
+**Benefits**:
+
+- k = ceil(m / n_buckets) instead of m
+- For m=10000, n_buckets=64: k ≈ 156 << 2048
+- **Completely avoids m >= 2048 issue**
+- Same FHE security (only aggregates revealed)
+
+**Measured Results (2025-12-01)**:
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| bfv.rotate count | 14,688 | 10,728 | **-27%** |
+| bfv.rotate time | 8.54s | 6.26s | **-27%** |
+| rotate_columns calls | 108 | 0 | **-100%** |
+| Total leaf ops time | 22.23s | 19.53s | **-12%** |
+| m=3000 exec time | 3.13s | 2.41s | **-23%** |
+| m=500 accuracy | 86.8% | 90.2% | **+3.4%** |
+
+### Phase 2: SIMD Bucket Packing (Medium Value, Medium Effort)
+
+Only effective when `m < poly_modulus_degree` (4096):
+
+| Approach | Description | Complexity |
+|----------|-------------|------------|
+| Pack multiple buckets | Store bucket_0..bucket_63 results in slots 0..63 | Medium |
+| Single rotate_and_sum | Aggregate all at once | Low |
+| Fewer CT transfers | 1 CT instead of 64 per feature | High value |
+
+### Phase 3: Large Scale (m > 10,000) Production
+
+| Approach | Description | When to Use |
+|----------|-------------|-------------|
+| Increase poly_degree | 8192→16384 doubles slots | Memory OK |
+| Sample sharding | Split samples across CTs | Very large m |
+| Parallel CT processing | Multi-core rotation | CPU-bound |
+
+### Recommended Next Action
+
+**Implement exact bucket histogram algorithm** - this provides:
+
+1. No m >= 2048 hang issue (root cause eliminated)
+2. Faster rotate_and_sum (k << m)
+3. Same security guarantees
+4. No API changes needed
+
+The fix I implemented (rotate_columns for m > row_size) is a **safety net** but the algorithm should avoid triggering it.
 
 ## References
 

@@ -371,6 +371,19 @@ def _rotate_ae(ct: CiphertextType, gk: KeyType, *, steps: int) -> CiphertextType
     return CiphertextType(ct.vector_type)
 
 
+rotate_columns_p = el.Primitive[el.Object]("bfv.rotate_columns")
+
+
+@rotate_columns_p.def_abstract_eval
+def _rotate_columns_ae(ct: CiphertextType, gk: KeyType) -> CiphertextType:
+    """Swap the two rows in SIMD batching (row 0 <-> row 1)."""
+    if not isinstance(ct, CiphertextType):
+        raise TypeError(f"Expected BFVCiphertext, got {ct}")
+    if not isinstance(gk, KeyType) or gk.kind != "Galois":
+        raise TypeError(f"Expected BFV GaloisKeys, got {gk}")
+    return CiphertextType(ct.vector_type)
+
+
 # ==============================================================================
 # --- User API
 # ==============================================================================
@@ -456,14 +469,31 @@ def relinearize(ciphertext: el.Object, relin_keys: el.Object) -> el.Object:
 
 
 def rotate(ciphertext: el.Object, steps: int, galois_keys: el.Object) -> el.Object:
-    """Cyclic rotation of the encrypted vector slots.
+    """Cyclic rotation of the encrypted vector slots within each row.
 
     Args:
         ciphertext: The ciphertext to rotate.
         steps: Number of steps to rotate. Positive = left, Negative = right.
+               Must be in range (-slot_count/2, slot_count/2).
         galois_keys: Keys required for rotation.
     """
     return rotate_p.bind(ciphertext, galois_keys, steps=steps)
+
+
+def rotate_columns(ciphertext: el.Object, galois_keys: el.Object) -> el.Object:
+    """Swap the two rows in SIMD batching (row 0 <-> row 1).
+
+    In BFV batching with slot_count = N, slots are arranged as:
+    - Row 0: slots 0 to N/2 - 1
+    - Row 1: slots N/2 to N - 1
+
+    rotate_columns swaps these two rows.
+
+    Args:
+        ciphertext: The ciphertext to rotate.
+        galois_keys: Keys required for rotation.
+    """
+    return rotate_columns_p.bind(ciphertext, galois_keys)
 
 
 __all__ = [
@@ -483,6 +513,7 @@ __all__ = [
     "mul",
     "relinearize",
     "rotate",
+    "rotate_columns",
     "sub",
 ]
 

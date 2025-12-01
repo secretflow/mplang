@@ -378,3 +378,15 @@ def rotate_impl(
         ciphertext.data, steps, ciphertext.ctx.galois_keys, new_ct
     )
     return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)
+
+
+@bfv.rotate_columns_p.def_impl
+def rotate_columns_impl(
+    interpreter: Interpreter, op: Operation, ciphertext: BFVValue, gk: BFVPublicContext
+) -> BFVValue:
+    """Swap the two rows in SIMD batching (row 0 <-> row 1)."""
+    new_ct = sealapi.Ciphertext()
+    ciphertext.ctx.evaluator.rotate_columns(
+        ciphertext.data, ciphertext.ctx.galois_keys, new_ct
+    )
+    return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)

@@ -266,29 +266,28 @@ def fhe_encrypt_gh(
         end = min((chunk_idx + 1) * slot_count, n_samples)
         chunk_size = end - start
 
-        # Extract and pad chunk using JAX
-        def slice_and_pad(vec, s=start, e=end, cs=chunk_size, sc=slot_count):
-            chunk = vec[s:e]
-            if cs < sc:
-                chunk = jnp.pad(chunk, (0, sc - cs))
-            return chunk
+        # Extract, pad, encode and encrypt both G and H chunks together
+        def slice_pad_encode_encrypt(
+            g_vec, h_vec, enc, key, s=start, e=end, cs=chunk_size, sc=slot_count
+        ):
+            # Slice and pad using JAX
+            def slice_and_pad_both(gv, hv):
+                g_chunk = gv[s:e]
+                h_chunk = hv[s:e]
+                if cs < sc:
+                    g_chunk = jnp.pad(g_chunk, (0, sc - cs))
+                    h_chunk = jnp.pad(h_chunk, (0, sc - cs))
+                return g_chunk, h_chunk
 
-        g_chunk = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(slice_and_pad, qg),
+            g_chunk, h_chunk = tensor.run_jax(slice_and_pad_both, g_vec, h_vec)
+            # Encode and encrypt
+            g_pt = bfv.encode(g_chunk, enc)
+            h_pt = bfv.encode(h_chunk, enc)
+            return bfv.encrypt(g_pt, key), bfv.encrypt(h_pt, key)
+
+        g_ct, h_ct = simp.pcall_static(
+            (ap_rank,), slice_pad_encode_encrypt, qg, qh, encoder, pk
         )
-        h_chunk = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(slice_and_pad, qh),
-        )
-
-        # Encode and encrypt the chunks
-        def encode_encrypt(chunk, enc, key):
-            pt = bfv.encode(chunk, enc)
-            return bfv.encrypt(pt, key)
-
-        g_ct = simp.pcall_static((ap_rank,), encode_encrypt, g_chunk, encoder, pk)
-        h_ct = simp.pcall_static((ap_rank,), encode_encrypt, h_chunk, encoder, pk)
 
         g_cts.append(g_ct)
         h_cts.append(h_ct)
@@ -414,44 +413,44 @@ def fhe_histogram_optimized(
                     # (already zeros, just return)
                     return output
 
-                mask = simp.pcall_static(
-                    (pp_rank,),
-                    lambda: tensor.run_jax(
-                        build_packed_mask_for_chunk, subgroup_map, bin_indices
-                    ),
-                )
+                # Build mask and encode in one call
+                def build_mask_and_encode(sg_map, b_idx, enc):
+                    mask = tensor.run_jax(build_packed_mask_for_chunk, sg_map, b_idx)
+                    return bfv.encode(mask, enc)
 
-                # Encode mask as plaintext
-                mask_pt = simp.pcall_static((pp_rank,), bfv.encode, mask, encoder)
+                mask_pt = simp.pcall_static(
+                    (pp_rank,),
+                    build_mask_and_encode,
+                    subgroup_map,
+                    bin_indices,
+                    encoder,
+                )
 
                 # Get the CT for this chunk
                 g_ct_chunk = g_cts[chunk_idx]
                 h_ct_chunk = h_cts[chunk_idx]
 
-                # CT * PT multiplication
-                g_masked = simp.pcall_static((pp_rank,), bfv.mul, g_ct_chunk, mask_pt)
-                g_masked = simp.pcall_static(
-                    (pp_rank,), bfv.relinearize, g_masked, relin_keys
-                )
-                h_masked = simp.pcall_static((pp_rank,), bfv.mul, h_ct_chunk, mask_pt)
-                h_masked = simp.pcall_static(
-                    (pp_rank,), bfv.relinearize, h_masked, relin_keys
-                )
+                # CT * PT multiplication + relinearize + aggregate for both G and H
+                def mul_relin_aggregate(g_ct, h_ct, pt, rk, n_b, max_s, gk, sc):
+                    # Mul and relin
+                    g_masked = bfv.relinearize(bfv.mul(g_ct, pt), rk)
+                    h_masked = bfv.relinearize(bfv.mul(h_ct, pt), rk)
+                    # Aggregate
+                    g_agg = aggregation.batch_bucket_aggregate(
+                        g_masked, n_b, max_s, gk, sc
+                    )
+                    h_agg = aggregation.batch_bucket_aggregate(
+                        h_masked, n_b, max_s, gk, sc
+                    )
+                    return g_agg, h_agg
 
-                # Aggregate all buckets simultaneously
-                g_packed = simp.pcall_static(
+                g_packed, h_packed = simp.pcall_static(
                     (pp_rank,),
-                    aggregation.batch_bucket_aggregate,
-                    g_masked,
-                    n_buckets,
-                    max_samples_per_bucket,
-                    galois_keys,
-                    slot_count,
-                )
-                h_packed = simp.pcall_static(
-                    (pp_rank,),
-                    aggregation.batch_bucket_aggregate,
-                    h_masked,
+                    mul_relin_aggregate,
+                    g_ct_chunk,
+                    h_ct_chunk,
+                    mask_pt,
+                    relin_keys,
                     n_buckets,
                     max_samples_per_bucket,
                     galois_keys,
@@ -463,11 +462,17 @@ def fhe_histogram_optimized(
                     g_accumulated = g_packed
                     h_accumulated = h_packed
                 else:
-                    g_accumulated = simp.pcall_static(
-                        (pp_rank,), bfv.add, g_accumulated, g_packed
-                    )
-                    h_accumulated = simp.pcall_static(
-                        (pp_rank,), bfv.add, h_accumulated, h_packed
+
+                    def add_both(g_acc, h_acc, g_new, h_new):
+                        return bfv.add(g_acc, g_new), bfv.add(h_acc, h_new)
+
+                    g_accumulated, h_accumulated = simp.pcall_static(
+                        (pp_rank,),
+                        add_both,
+                        g_accumulated,
+                        h_accumulated,
+                        g_packed,
+                        h_packed,
                     )
 
             # Transfer final packed result to AP
@@ -1267,24 +1272,15 @@ def fit_tree_ensemble(
     trees: list[Tree] = []
 
     for _tree_idx in range(n_estimators):
-        # Compute G/H
-        gh = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(compute_gh, y_data, y_pred),
-        )
+        # Compute G/H, quantize, and split into qg/qh in one call
+        def compute_gh_quantized(y_true, y_pred_logits, scale):
+            gh = compute_gh(y_true, y_pred_logits)
+            qgh = quantize_gh(gh, scale)
+            return gh, qgh[:, 0], qgh[:, 1]
 
-        # Quantize and encrypt
-        qgh = simp.pcall_static(
+        gh, qg, qh = simp.pcall_static(
             (ap_rank,),
-            lambda: tensor.run_jax(quantize_gh, gh, fxp_scale),
-        )
-        qg = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(lambda arr: arr[:, 0], qgh),
-        )
-        qh = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(lambda arr: arr[:, 1], qgh),
+            lambda: tensor.run_jax(compute_gh_quantized, y_data, y_pred, fxp_scale),
         )
 
         # FHE encrypt only if we have passive parties

@@ -16,13 +16,12 @@
 
 Learning objectives:
 1. Use Simulator for local multi-threaded testing
-2. Understand Simulator behavior in mplang2
+2. Use Driver for distributed HTTP-based execution
+3. Understand the differences between Simulator and Driver
 
 Key concepts:
 - Simulator: single-process, all parties in threads, fast iteration
-
-Note: Driver (distributed execution) is not yet available in mplang2.
-This tutorial focuses on Simulator functionality.
+- Driver: multi-process, HTTP-based, for real distributed deployment
 
 Migrated from mplang v1 to mplang2.
 """
@@ -74,16 +73,99 @@ def run_with_simulator():
     print(f"x < y (SPU): {result_vals}")
 
 
-def main():
-    """Run simulator demo."""
+# ============================================================================
+# Driver: Distributed HTTP-based Execution
+# ============================================================================
+
+
+def run_with_driver():
+    """Driver: for real distributed deployment.
+
+    Same API as Simulator, just different backend (HTTP instead of threads).
+
+    Usage:
+        Terminal 1: python -m mplang2.backends.cli up --world-size 2 --base-port 8100
+        Terminal 2: python tutorials/mplang2/02_simulation_and_driver.py
+    """
+    import httpx
+
+    from mplang2.backends.simp_http_driver import SimpHttpDriver
+
+    endpoints = ["http://127.0.0.1:8100", "http://127.0.0.1:8101"]
+
+    print("\n" + "=" * 70)
+    print("Running with Driver (distributed, HTTP-based)")
     print("=" * 70)
-    print("Device Tutorial: Simulator Execution")
+
+    # Check if workers are running
+    print("\nChecking workers...")
+    all_healthy = True
+    for i, ep in enumerate(endpoints):
+        try:
+            resp = httpx.get(f"{ep}/health", timeout=2)
+            if resp.status_code == 200:
+                print(f"  Worker {i} ({ep}): ✓ healthy")
+            else:
+                print(f"  Worker {i} ({ep}): ✗ error (status {resp.status_code})")
+                all_healthy = False
+        except Exception:
+            print(f"  Worker {i} ({ep}): ✗ not running")
+            all_healthy = False
+
+    if not all_healthy:
+        # Workers not running - show help
+        print("\n--- Workers not running. To start: ---")
+        print("""
+    # Quick start: 2 workers on localhost
+    python -m mplang2.backends.cli up --world-size 2 --base-port 8100
+
+    # Or from config file:
+    python -m mplang2.backends.cli up -c examples/conf/3pc.yaml
+
+    # Then re-run this script to execute on distributed workers.
+        """)
+        return
+
+    # Workers running - execute!
+    print("\n--- Executing on distributed workers ---")
+
+    # Create driver - same interface as Simulator!
+    driver = SimpHttpDriver(world_size=2, endpoints=endpoints)
+
+    # Define computation - same as Simulator!
+    @mp.function
+    def secure_add(x, y):
+        return x + y
+
+    # Run with driver context - same as Simulator!
+    import jax.numpy as jnp
+
+    with driver:
+        x = jnp.array([1, 2, 3])
+        y = jnp.array([4, 5, 6])
+        result = secure_add(x, y)
+        print("  Input x: [1, 2, 3]")
+        print("  Input y: [4, 5, 6]")
+        print(f"  Result:  {result.tolist()}")
+
+    driver.shutdown()
+    print("\n✓ Distributed execution completed!")
+
+
+def main():
+    """Run simulator and driver demos."""
+    print("=" * 70)
+    print("Device Tutorial: Simulator vs Driver")
     print("=" * 70)
 
     run_with_simulator()
+    run_with_driver()
 
     print("\n" + "=" * 70)
-    print("Note: Driver (distributed execution) not yet in mplang2.")
+    print("Summary:")
+    print("- Simulator: local threads, fast testing")
+    print("- Driver: HTTP workers, real distributed")
+    print("- Same API: with sim/driver: + @mp.function")
     print("=" * 70)
 
 
@@ -91,5 +173,9 @@ if __name__ == "__main__":
     """
     Usage:
        uv run tutorials/mplang2/02_simulation_and_driver.py
+
+    To run distributed:
+       Terminal 1: python -m mplang2.backends.cli up --world-size 2 --base-port 8100
+       Terminal 2: uv run tutorials/mplang2/02_simulation_and_driver.py
     """
     main()

@@ -184,6 +184,11 @@ def create_worker_app(
             logger.error(f"Worker {rank} comm failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
 
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        """Health check endpoint."""
+        return {"status": "ok", "rank": str(rank), "world_size": str(world_size)}
+
     @app.on_event("shutdown")
     def shutdown_event() -> None:
         """Cleanup on shutdown."""

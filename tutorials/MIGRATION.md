@@ -1,6 +1,6 @@
 # MPLang v1 → MPLang2 Migration Guide
 
-> Last updated: 2025-12-01 (File I/O + Pipeline implemented)
+> Last updated: 2025-12-01 (File I/O + Pipeline + Distributed CLI verified)
 
 ## Overview
 
@@ -17,6 +17,7 @@ Target: Replace `tutorials/device/*` with `tutorials/mplang2/*`.
 |----------|------|
 | Device API | `device()`, `put()`, `get_dev_attr()`, `set_dev_attr()` |
 | Runtime | `Simulator`, `Driver`, `evaluate()`, `fetch()`, `ClusterSpec` |
+| CLI | `python -m mplang2.backends.cli up` (start workers) |
 | Compilation | `@function`, `jit`, `compile()`, `trace()`, `TracedFunction.compiler_ir()` |
 | Type System | `TensorType`, `ScalarType`, `TableType`, `MPType`, `SSType`, `VectorType` |
 | Dialects | `simp`, `tensor`, `table`, `spu`, `tee`, `crypto`, `bfv`, `phe` |
@@ -77,7 +78,7 @@ result = table.run_sql(query, out_type=schema, tbl=tbl)
 |-------------|-------------|--------|
 | 00_device_basics.py | ✅ 00_device_basics.py | Done |
 | 01_function_decorator.py | ✅ 01_function_decorator.py | Done |
-| 02_simulation_and_driver.py | ✅ 02_simulation_and_driver.py | Done |
+| 02_simulation_and_driver.py | ✅ 02_simulation_and_driver.py | Done (includes CLI + live driver) |
 | 03_run_jax.py | ✅ 03_run_jax.py | Done |
 | 04_run_sql.py | ✅ 05_run_sql.py | Done (PPU only, TEE needs work) |
 | 05_pipeline.py | ✅ 06_pipeline.py | Done |

@@ -28,7 +28,7 @@ def run_worker(
     spu_endpoints: dict[int, str] | None = None,
 ) -> None:
     """Run a single worker server."""
-    from mplang2.backends.simp_http import create_worker_app
+    from mplang2.backends.simp_http_worker import create_worker_app
 
     app = create_worker_app(rank, world_size, endpoints, spu_endpoints)
 

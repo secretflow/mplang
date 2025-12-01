@@ -97,10 +97,17 @@ def run_benchmark():
             top_k = tensor.slice_tensor(sorted_enc, (0,), (k_val,))
 
             # Sum top K
-            total = tensor.slice_tensor(top_k, (0,), (1,))
-            for i in range(1, k_val):
-                next_elem = tensor.slice_tensor(top_k, (i,), (i + 1,))
-                total = phe.add(total, next_elem)
+            # Sum top K using a tree-reduction for better performance
+            items = [tensor.slice_tensor(top_k, (i,), (i + 1,)) for i in range(k_val)]
+            while len(items) > 1:
+                next_level = []
+                for i in range(0, len(items), 2):
+                    if i + 1 < len(items):
+                        next_level.append(phe.add(items[i], items[i+1]))
+                    else:
+                        next_level.append(items[i])
+                items = next_level
+            total = items[0]
 
             return total
 

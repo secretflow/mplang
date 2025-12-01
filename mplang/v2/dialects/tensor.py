@@ -410,10 +410,10 @@ class _ElementwiseTracer(el.Tracer):
                 )
 
             # Unwrap to element type
-            return obj_type.element_type
+            return cast(elt.BaseType, obj_type.element_type)
         else:
             # Non-tensor (scalar, custom type) - keep as-is
-            return obj_type
+            return cast(elt.BaseType, obj_type)
 
 
 @elementwise_p.def_trace

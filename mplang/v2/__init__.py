@@ -6,6 +6,14 @@ Once migration is complete, this will replace the original mplang package.
 Public API is designed to be compatible with mplang v1 where possible.
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
+
 __version__ = "0.1.0"
 
 # =============================================================================
@@ -89,7 +97,7 @@ class Simulator:
         set_global_cluster(cluster_spec)
 
     @classmethod
-    def simple(cls, world_size: int, **kwargs) -> "Simulator":
+    def simple(cls, world_size: int, **kwargs: Any) -> Simulator:
         """Create a simple simulator with the given number of parties.
 
         Args:
@@ -117,12 +125,17 @@ class Simulator:
         """Get the underlying SimpSimulator backend."""
         return self._sim
 
-    def __enter__(self) -> "Simulator":
+    def __enter__(self) -> Self:
         """Enter context: push simulator as the default interpreter."""
         push_context(self._sim)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
         """Exit context: pop the simulator."""
         pop_context()
 
@@ -173,12 +186,17 @@ class Driver:
         """Get the underlying SimpHttpDriver backend."""
         return self._driver
 
-    def __enter__(self) -> "Driver":
+    def __enter__(self) -> Self:
         """Enter context: push driver as the default interpreter."""
         push_context(self._driver)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
         """Exit context: pop the driver."""
         pop_context()
 
@@ -187,7 +205,9 @@ class Driver:
         self._driver.shutdown()
 
 
-def evaluate(sim: "Simulator | Driver", fn, *args, **kwargs):
+def evaluate(
+    sim: Simulator | Driver, fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Any:
     """Evaluate a function using the simulator or driver.
 
     Compatible with mplang v1 API: mp.evaluate(sim, fn)
@@ -205,7 +225,7 @@ def evaluate(sim: "Simulator | Driver", fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
 
-def fetch(sim: "Simulator | Driver", result, party: int | str | None = None):
+def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) -> Any:
     """Fetch the result from the simulator or driver.
 
     Compatible with mplang v1 API: mp.fetch(sim, result)
@@ -249,7 +269,9 @@ def fetch(sim: "Simulator | Driver", result, party: int | str | None = None):
 function = jit  # @mp.function -> @mp2.function (JIT compilation)
 
 
-def compile(sim: "Simulator | Driver", fn, *args, **kwargs) -> TracedFunction:
+def compile(
+    sim: Simulator | Driver, fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> TracedFunction:
     """Compile a function to get its IR without executing it.
 
     Compatible with mplang v1 API: mp.compile(sim, fn)

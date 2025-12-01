@@ -14,7 +14,7 @@ import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from jax.tree_util import PyTreeDef, tree_flatten, tree_map
 
@@ -211,7 +211,7 @@ class Tracer(Context):
         Returns:
             The type to use for the graph input
         """
-        return obj.type
+        return cast(BaseType, obj.type)
 
     def _new_arg(self, arg_type: BaseType) -> TraceObject:
         """Create a new graph input for the given type.

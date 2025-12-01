@@ -11,7 +11,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Callable
 from functools import partial, wraps
-from typing import Any
+from typing import Any, cast
 
 from jax.tree_util import tree_flatten, tree_map
 
@@ -667,7 +667,7 @@ def put(to_dev_id: str, obj: Any) -> Object:
         # Host -> SPU: Run identity function on SPU.
         # Note: This results in a Public (replicated) value on the SPU.
         # SPU operations will automatically promote it to Secret if needed.
-        return device(to_dev_id)(lambda x: x)(obj)
+        return cast(Object, device(to_dev_id)(lambda x: x)(obj))
 
     elif dev_info.kind.upper() == "TEE":
         # Host -> TEE: Similar to PPU, create constant on TEE device

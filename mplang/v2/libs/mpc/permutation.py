@@ -276,7 +276,12 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
                     # We can use jnp.zeros_like(vi) but expanded?
                     # Or just allocate.
 
-                    def impl(v_i, v_j, idx_i, idx_j):
+                    def impl(
+                        v_i: jnp.ndarray,
+                        v_j: jnp.ndarray,
+                        idx_i: jnp.ndarray,
+                        idx_j: jnp.ndarray,
+                    ) -> jnp.ndarray:
                         # v_i shape (N/2, ...), idx_i shape (N/2,)
                         # We want output shape (N, ...)
 
@@ -309,8 +314,13 @@ def apply_permutation(data: Any, permutation: Any, sender: int, receiver: int) -
                 idx_i_recv = make_indices((receiver,), idx_i_np)
                 idx_j_recv = make_indices((receiver,), idx_j_np)
 
-                def apply_local_step(d, c, ii, ij):
-                    def impl(curr, ctrls, idx_i, idx_j):
+                def apply_local_step(d: Any, c: Any, ii: Any, ij: Any) -> Any:
+                    def impl(
+                        curr: jnp.ndarray,
+                        ctrls: jnp.ndarray,
+                        idx_i: jnp.ndarray,
+                        idx_j: jnp.ndarray,
+                    ) -> jnp.ndarray:
                         val_i = curr[idx_i]
                         val_j = curr[idx_j]
 

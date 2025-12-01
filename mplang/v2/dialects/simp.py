@@ -101,8 +101,8 @@ class _LocalMPTracer(el.Tracer):
         """
         obj_type = obj.type
         if isinstance(obj_type, elt.MPType):
-            return obj_type.value_type
-        return obj_type
+            return cast(elt.BaseType, obj_type.value_type)
+        return cast(elt.BaseType, obj_type)
 
 
 # ---------------------------------------------------------------------------

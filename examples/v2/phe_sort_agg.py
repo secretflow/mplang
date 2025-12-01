@@ -103,7 +103,7 @@ def run_benchmark():
                 next_level = []
                 for i in range(0, len(items), 2):
                     if i + 1 < len(items):
-                        next_level.append(phe.add(items[i], items[i+1]))
+                        next_level.append(phe.add(items[i], items[i + 1]))
                     else:
                         next_level.append(items[i])
                 items = next_level

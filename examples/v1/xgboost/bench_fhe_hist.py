@@ -36,8 +36,6 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
-
-import mplang.v1 as mp
 from examples.xgboost.sgb import (
     DEFAULT_FXP_BITS,
     batch_feature_wise_bucket_sum_fhe_vector,
@@ -47,6 +45,8 @@ from examples.xgboost.sgb import (
     compute_init_pred,
     quantize_gh,
 )
+
+import mplang.v1 as mp
 from mplang.v1.ops import fhe
 
 

@@ -154,7 +154,9 @@ def oblivious_groupby_sum_bfv(
                 ct_masked = bfv.relinearize(ct_masked, r_key)
                 current_sum = bfv.add(current_sum, ct_masked)
 
-            total_sum_ct = aggregation.rotate_and_sum(current_sum, B, g_key)
+            total_sum_ct = aggregation.rotate_and_sum(
+                current_sum, B, g_key, slot_count=poly_modulus_degree
+            )
             bin_sums[k] = total_sum_ct
 
         return bin_sums

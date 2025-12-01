@@ -1,6 +1,6 @@
 # MPLang v1 → MPLang2 Migration Guide
 
-> Last updated: 2025-11-30 (P0+P3 implemented)
+> Last updated: 2025-12-01 (File I/O + Pipeline implemented)
 
 ## Overview
 
@@ -9,7 +9,7 @@ Target: Replace `tutorials/device/*` with `tutorials/mplang2/*`.
 
 **Goal is NOT 100% API compatibility**, but functional parity with cleaner design.
 
-## Completion Status: ~85%
+## Completion Status: ~95%
 
 ### ✅ Fully Implemented
 
@@ -20,14 +20,14 @@ Target: Replace `tutorials/device/*` with `tutorials/mplang2/*`.
 | Compilation | `@function`, `jit`, `compile()`, `trace()`, `TracedFunction.compiler_ir()` |
 | Type System | `TensorType`, `ScalarType`, `TableType`, `MPType`, `SSType`, `VectorType` |
 | Dialects | `simp`, `tensor`, `table`, `spu`, `tee`, `crypto`, `bfv`, `phe` |
+| Table I/O | `table.read()`, `table.write()` (CSV, Parquet, JSON, Feather) |
+| Type Conversion | `dtypes.to_jax()`, `dtypes.to_numpy()`, `dtypes.from_arrow()`, `dtypes.from_pandas()` |
 
 ### ❌ Missing
 
 | Feature | Used In | Notes |
 |---------|---------|-------|
 | `mp.analysis.dump()` | 06_ir_dump_and_analysis.py | Mermaid diagrams, reports |
-| `TableType.from_dict()` | 04_run_sql.py, 05_pipeline.py | Easy fix |
-| `basic.read()` / `basic.write()` | 05_pipeline.py | File I/O primitives |
 
 ## Key API Differences
 
@@ -80,15 +80,16 @@ result = table.run_sql(query, out_type=schema, tbl=tbl)
 | 02_simulation_and_driver.py | ✅ 02_simulation_and_driver.py | Done |
 | 03_run_jax.py | ✅ 03_run_jax.py | Done |
 | 04_run_sql.py | ✅ 05_run_sql.py | Done (PPU only, TEE needs work) |
-| 05_pipeline.py | ⚠️ Not ported | Needs file I/O |
+| 05_pipeline.py | ✅ 06_pipeline.py | Done |
 | 06_ir_dump_and_analysis.py | ✅ 04_ir_dump_and_analysis.py | Partial (no analysis module) |
 
 ## TODO
 
-1. Add `TableType.from_dict()` helper method
+1. ~~Add `TableType.from_dict()` helper method~~ ❌ Not needed (use `TableType()` directly)
 2. Port `mplang/analysis/diagram.py` → `mplang2/analysis/`
-3. Implement `table.read()` / `table.write()` for file I/O
-4. Port remaining tutorials (04_run_sql, 05_pipeline)
+3. ~~Implement `table.read()` / `table.write()` for file I/O~~ ✅ Done
+4. ~~Port remaining tutorials (04_run_sql, 05_pipeline)~~ ✅ Done
+5. Fix TEE table operations in simulator (low priority)
 
 ---
 
@@ -174,8 +175,8 @@ INTERVAL = CustomType("interval")
 
 1. ~~Add `TableType.from_dict()` helper method~~ ❌ Not needed (use `TableType()` directly)
 2. Port `mplang/analysis/diagram.py` → `mplang2/analysis/`
-3. Implement `table.read()` / `table.write()` for file I/O
+3. ~~Implement `table.read()` / `table.write()` for file I/O~~ ✅ Done
 4. ~~Port 04_run_sql tutorial~~ ✅ Done (as 05_run_sql.py)
-5. Port remaining tutorial (05_pipeline)
-6. Fix TEE table operations in simulator
-7. (Optional) Add `from_pandas_dtype()` / `from_arrow_dtype()` to dtypes.py
+5. ~~Port remaining tutorial (05_pipeline)~~ ✅ Done (as 06_pipeline.py)
+6. Fix TEE table operations in simulator (low priority)
+7. ~~Add `from_pandas_dtype()` / `from_arrow_dtype()` to dtypes.py~~ ✅ Done

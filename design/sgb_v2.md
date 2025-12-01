@@ -242,6 +242,73 @@ ct_rot = bfv.rotate(ct, steps, gk)
 2. **Multi-PP coordination**: How to efficiently aggregate from multiple PPs
 3. **Memory pressure**: Large slot vectors may exceed memory on constrained devices
 
+## Performance Analysis (2025-12-01)
+
+### Profiling Results (m=500, depth=3, 2 trees)
+
+Using `registry.enable_profiling()` for automatic primitive timing:
+
+| Operation | Time | % | Count | Mean |
+|-----------|------|---|-------|------|
+| `tensor.run_jax` | 8.97s | 48.9% | 997 | 9.0ms |
+| `bfv.rotate` | 7.21s | 39.3% | 12,420 | 0.58ms |
+| `bfv.mul` | 0.78s | 4.2% | 1,440 | 0.54ms |
+| Other BFV | 2.15s | 11.8% | - | - |
+| **Total (leaf ops)** | **18.33s** | 100% | - | - |
+
+### SIMD Slot Utilization Analysis
+
+BFV with `poly_modulus_degree=4096` provides 4096 slots per ciphertext.
+
+| Sample Size (m) | Ciphertexts Needed | Slot Usage | SIMD Packing Effective? |
+|-----------------|--------------------| -----------|-------------------------|
+| 500 | 1 | 12.2% | ✅ Yes - 64x potential speedup |
+| 1,000 | 1 | 24.4% | ✅ Yes - 64x potential speedup |
+| 4,096 | 1 | 100% | ❌ No - slots fully used |
+| 10,000 | 3 | 100% | ❌ No - need multiple CTs |
+| 100,000 | 25 | 100% | ❌ No - need multiple CTs |
+
+**Key Finding**: SIMD Packing optimization (packing multiple buckets into one CT) is only effective when `m < poly_modulus_degree`.
+
+### Verified SIMD Behavior
+
+Tested BFV operation times with different sample sizes:
+
+| m | Exec Time | rotate Time | JAX Time |
+|---|-----------|-------------|----------|
+| 500 | 2.91s | 0.59s | 2.15s |
+| 1000 | 2.33s | 0.65s | 1.72s |
+| 2000 | 2.42s | 0.71s | 1.74s |
+
+**Confirmed**: BFV rotate time is nearly constant regardless of slot usage (SIMD parallelism).
+
+### Optimization Strategies by Scale
+
+#### Small Scale (m < 4096) - Current Implementation Target
+
+| Optimization | Expected Gain | Status |
+|--------------|---------------|--------|
+| Keygen caching | -0.34s | ✅ Implemented |
+| Batch JAX calls | -1s (59% fewer calls) | ✅ Implemented |
+| SIMD bucket packing | -6s (64x fewer rotates) | 📋 Planned |
+
+#### Large Scale (m > 10,000) - Production Target
+
+SIMD packing is **NOT effective** at this scale. Alternative strategies:
+
+| Optimization | Expected Gain | Complexity |
+|--------------|---------------|------------|
+| Increase `poly_modulus_degree` (8192→16384) | 2-3x fewer CTs | Low |
+| Reduce bucket count (64→16) | 4x fewer rotates | Low |
+| Cumulative histogram algorithm | ~10x fewer ops | Medium |
+| Distributed FHE (sample sharding) | Linear scaling | High |
+| Parallel CT processing (multi-core) | ~Nx on N cores | Medium |
+
+### Known Issues
+
+1. **m ≥ 3000 causes hang** - Under investigation, likely JAX tracing or memory issue
+2. **m > 4096 not supported** - Current implementation assumes single CT per vector
+
 ## References
 
 - [mplang2/libs/mpc/groupby.py](../mplang2/libs/mpc/groupby.py)

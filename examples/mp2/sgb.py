@@ -373,33 +373,38 @@ def decrypt_histogram_results(
             n_f,
             n_b,
         ):
-            g_vals = []
-            h_vals = []
+            # Decrypt all ciphertexts first (no JAX calls here)
+            g_vecs = []
+            h_vecs = []
 
             for g_ct, h_ct in zip(g_cts, h_cts, strict=False):
                 g_pt = bfv.decrypt(g_ct, secret_key)
                 g_vec = bfv.decode(g_pt, enc)
-                g_scalar = tensor.run_jax(lambda v: v[0], g_vec)  # slot 0
+                g_vecs.append(g_vec)
 
                 h_pt = bfv.decrypt(h_ct, secret_key)
                 h_vec = bfv.decode(h_pt, enc)
-                h_scalar = tensor.run_jax(lambda v: v[0], h_vec)
+                h_vecs.append(h_vec)
 
-                g_vals.append(g_scalar)
-                h_vals.append(h_scalar)
+            # Single JAX call to process all vectors at once
+            def extract_and_reshape(*all_vecs, nf=n_f, nb=n_b, s=scale):
+                n_half = len(all_vecs) // 2
+                g_vecs_list = all_vecs[:n_half]
+                h_vecs_list = all_vecs[n_half:]
 
-            def stack_and_reshape(*all_vals, nf=n_f, nb=n_b, s=scale):
-                n_half = len(all_vals) // 2
-                g_arr = jnp.stack(all_vals[:n_half])
-                h_arr = jnp.stack(all_vals[n_half:])
+                # Extract slot 0 from each vector and stack
+                g_arr = jnp.stack([v[0] for v in g_vecs_list])
+                h_arr = jnp.stack([v[0] for v in h_vecs_list])
+
                 # Dequantize
                 g_arr = g_arr.astype(jnp.float32) / s
                 h_arr = h_arr.astype(jnp.float32) / s
+
                 # Reshape to (n_features, n_buckets, 2)
                 combined = jnp.stack([g_arr, h_arr], axis=-1)
                 return combined.reshape((nf, nb, 2))
 
-            return tensor.run_jax(stack_and_reshape, *g_vals, *h_vals)
+            return tensor.run_jax(extract_and_reshape, *g_vecs, *h_vecs)
 
         node_hist = simp.pcall_static(
             (ap_rank,),

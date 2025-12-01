@@ -68,6 +68,17 @@ class BFVValue:
     is_cipher: bool = True
 
 
+# =============================================================================
+# Keygen Cache (Optimization: avoid regenerating keys for same parameters)
+# =============================================================================
+_KEYGEN_CACHE: dict[tuple[int, int], tuple[BFVPublicContext, BFVSecretContext]] = {}
+
+
+def clear_keygen_cache() -> None:
+    """Clear the keygen cache."""
+    _KEYGEN_CACHE.clear()
+
+
 @bfv.keygen_p.def_impl
 def keygen_impl(
     interpreter: Interpreter, op: Operation, *args: Any
@@ -75,6 +86,11 @@ def keygen_impl(
     poly_modulus_degree = op.attrs.get("poly_modulus_degree", 4096)
     # Use a default plain_modulus if not provided.
     plain_modulus = op.attrs.get("plain_modulus", 1032193)
+
+    # Check cache first
+    cache_key = (poly_modulus_degree, plain_modulus)
+    if cache_key in _KEYGEN_CACHE:
+        return _KEYGEN_CACHE[cache_key]
 
     # Generate context with secret key
     ts_ctx = ts.context(
@@ -88,8 +104,12 @@ def keygen_impl(
     full_context = BFVSecretContext(ts_ctx)
     public_context = full_context.make_public()
 
+    # Cache the result
+    result = (public_context, full_context)
+    _KEYGEN_CACHE[cache_key] = result
+
     # Return (PK, SK)
-    return public_context, full_context
+    return result
 
 
 @bfv.make_relin_keys_p.def_impl

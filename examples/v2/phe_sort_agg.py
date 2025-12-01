@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import logging
+from collections.abc import Callable
+from typing import TypeVar
 
 import jax.numpy as jnp
 import numpy as np
@@ -35,6 +37,34 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+T = TypeVar("T")
+
+
+def tree_reduce(fn: Callable[[T, T], T], items: list[T]) -> T:
+    """Tree-structured reduction with O(log n) depth for parallel execution.
+
+    Unlike functools.reduce which creates a linear dependency chain O(n),
+    tree_reduce creates a balanced tree structure O(log n) that enables
+    parallel execution when the backend supports it.
+
+    Example:
+        functools.reduce: ((((1+2)+3)+4)+5)  # depth=4, sequential
+        tree_reduce:      (((1+2)+(3+4))+5)  # depth=3, level 0 parallelizable
+    """
+    if len(items) == 0:
+        raise ValueError("Cannot reduce empty list")
+    items = list(items)  # Make a copy to avoid mutating input
+    while len(items) > 1:
+        next_level = []
+        for i in range(0, len(items), 2):
+            if i + 1 < len(items):
+                next_level.append(fn(items[i], items[i + 1]))
+            else:
+                next_level.append(items[i])
+        items = next_level
+    return items[0]
 
 
 def run_benchmark():
@@ -96,18 +126,9 @@ def run_benchmark():
             # 3. Aggregate top K
             top_k = tensor.slice_tensor(sorted_enc, (0,), (k_val,))
 
-            # Sum top K
-            # Sum top K using a tree-reduction for better performance
+            # Sum top K using tree reduction for O(log n) depth
             items = [tensor.slice_tensor(top_k, (i,), (i + 1,)) for i in range(k_val)]
-            while len(items) > 1:
-                next_level = []
-                for i in range(0, len(items), 2):
-                    if i + 1 < len(items):
-                        next_level.append(phe.add(items[i], items[i + 1]))
-                    else:
-                        next_level.append(items[i])
-                items = next_level
-            total = items[0]
+            total = tree_reduce(phe.add, items)
 
             return total
 

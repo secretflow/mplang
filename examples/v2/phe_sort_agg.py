@@ -127,7 +127,7 @@ def run_benchmark():
         graph = tracer.finalize(final_result)
 
     # Execute
-    sim = SimpSimulator(world_size=3)
+    sim = SimpSimulator(world_size=2)
     try:
         logger.info("Executing graph...")
         result = sim.evaluate_graph(graph, {})

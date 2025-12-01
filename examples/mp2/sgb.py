@@ -234,21 +234,71 @@ def fhe_encrypt_gh(
     pk: Any,
     encoder: Any,
     ap_rank: int,
-) -> tuple[Any, Any]:
-    """Encrypt quantized G/H vectors at AP."""
+    n_samples: int,
+    slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
+) -> tuple[list[Any], list[Any], int]:
+    """Encrypt quantized G/H vectors at AP, splitting into chunks if m > slot_count.
 
-    def encrypt_fn(vec, enc, key):
-        pt = bfv.encode(vec, enc)
-        return bfv.encrypt(pt, key)
+    When m > slot_count, the vectors are split into ceil(m / slot_count) chunks,
+    each encrypted as a separate ciphertext. This enables processing arbitrarily
+    large datasets with a fixed poly_modulus_degree.
 
-    g_ct = simp.pcall_static((ap_rank,), encrypt_fn, qg, encoder, pk)
-    h_ct = simp.pcall_static((ap_rank,), encrypt_fn, qh, encoder, pk)
-    return g_ct, h_ct
+    Args:
+        qg: Quantized G vector, shape (m,)
+        qh: Quantized H vector, shape (m,)
+        pk: BFV public key
+        encoder: BFV encoder
+        ap_rank: Active party rank
+        n_samples: Number of samples (m)
+        slot_count: Number of slots per ciphertext (default 4096)
+
+    Returns:
+        (g_cts, h_cts, n_chunks): Lists of encrypted G/H chunks and chunk count
+    """
+    # Calculate n_chunks at trace time (known statically)
+    n_chunks = (n_samples + slot_count - 1) // slot_count
+
+    g_cts: list[Any] = []
+    h_cts: list[Any] = []
+
+    for chunk_idx in range(n_chunks):
+        start = chunk_idx * slot_count
+        end = min((chunk_idx + 1) * slot_count, n_samples)
+        chunk_size = end - start
+
+        # Extract and pad chunk using JAX
+        def slice_and_pad(vec, s=start, e=end, cs=chunk_size, sc=slot_count):
+            chunk = vec[s:e]
+            if cs < sc:
+                chunk = jnp.pad(chunk, (0, sc - cs))
+            return chunk
+
+        g_chunk = simp.pcall_static(
+            (ap_rank,),
+            lambda: tensor.run_jax(slice_and_pad, qg),
+        )
+        h_chunk = simp.pcall_static(
+            (ap_rank,),
+            lambda: tensor.run_jax(slice_and_pad, qh),
+        )
+
+        # Encode and encrypt the chunks
+        def encode_encrypt(chunk, enc, key):
+            pt = bfv.encode(chunk, enc)
+            return bfv.encrypt(pt, key)
+
+        g_ct = simp.pcall_static((ap_rank,), encode_encrypt, g_chunk, encoder, pk)
+        h_ct = simp.pcall_static((ap_rank,), encode_encrypt, h_chunk, encoder, pk)
+
+        g_cts.append(g_ct)
+        h_cts.append(h_ct)
+
+    return g_cts, h_cts, n_chunks
 
 
 def fhe_histogram_optimized(
-    g_ct: Any,  # Encrypted G at PP
-    h_ct: Any,  # Encrypted H at PP
+    g_cts: list[Any],  # List of encrypted G chunks at PP
+    h_cts: list[Any],  # List of encrypted H chunks at PP
     subgroup_map: Any,  # (n_nodes, m) binary node membership
     bin_indices: Any,  # (m, n_features) binned features
     n_buckets: int,
@@ -260,33 +310,37 @@ def fhe_histogram_optimized(
     relin_keys: Any,
     galois_keys: Any,
     m: int,
+    n_chunks: int = 1,
     slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
 ) -> tuple[list[list[Any]], list[list[Any]]]:
     """Compute encrypted histogram sums using SIMD bucket packing.
 
-    **Optimization: SIMD Bucket Packing**
+    **Multi-CT Support**
 
-    Instead of processing each bucket separately (64 muls + 64 rotate_and_sums),
-    we pack ALL buckets into a single ciphertext operation:
+    When m > slot_count, data is split into n_chunks ciphertexts:
+    - Chunk 0: samples [0, slot_count)
+    - Chunk 1: samples [slot_count, 2*slot_count)
+    - ...
 
-    1. Divide slot_count into n_buckets regions, each with `stride = slot_count // n_buckets` slots
-    2. Build a scatter mask that places sample i at slot (bucket[i] * stride + offset[i])
+    For each chunk, we compute the histogram separately, then add results
+    in the FHE domain.
+
+    **SIMD Bucket Packing** (per chunk)
+
+    1. Divide slot_count into n_buckets regions, each with `stride` slots
+    2. Build scatter mask placing sample i at slot (bucket[i] * stride + offset[i])
     3. Single CT × packed_mask multiplication
     4. Single rotate_and_sum aggregates ALL buckets simultaneously
-    5. Result: slot[b * stride] contains histogram[b] for each bucket b
-    6. Send ONE ciphertext (not 64) to AP
-
-    Performance improvement:
-    - Before: 64 × (mul + rotate_and_sum + send) per (node, feature)
-    - After: 1 × (mul + rotate_and_sum + send) per (node, feature)
-    - ~64x reduction in FHE operations and communication
+    5. Add chunk results together
 
     Returns:
         g_enc[node][feat]: List of packed encrypted G histograms (one CT per feature)
         h_enc[node][feat]: List of packed encrypted H histograms (one CT per feature)
     """
     stride = slot_count // n_buckets
-    max_samples_per_bucket = min(stride, max(m // n_buckets * 2, 64))
+    # Estimate max samples per bucket per chunk
+    samples_per_chunk = (m + n_chunks - 1) // n_chunks
+    max_samples_per_bucket = min(stride, max(samples_per_chunk // n_buckets * 2, 64))
 
     g_results: list[list[Any]] = []
     h_results: list[list[Any]] = []
@@ -296,101 +350,129 @@ def fhe_histogram_optimized(
         h_node: list[Any] = []
 
         for feat_idx in range(n_features):
-            # Build packed scatter mask for all buckets at once
-            # Each sample i goes to slot: bucket[i] * stride + offset_in_bucket[i]
-            def build_packed_mask(
-                sg_map,
-                b_idx,
-                node_i=node_idx,
-                f_i=feat_idx,
-                n_b=n_buckets,
-                str_=stride,
-                sc=slot_count,
-            ):
-                node_mask = sg_map[node_i]  # (m,)
-                feat_bins = b_idx[:, f_i]  # (m,)
-                valid = node_mask == 1
+            # Accumulator for all chunks
+            g_accumulated = None
+            h_accumulated = None
 
-                # Compute per-bucket offsets using vectorized cumsum
-                # bucket_onehot[i, b] = 1 if sample i is in bucket b and valid
-                bucket_onehot = (
-                    jnp.arange(n_b)[None, :] == feat_bins[:, None]
-                ) & valid[:, None]
+            for chunk_idx in range(n_chunks):
+                chunk_start = chunk_idx * slot_count
+                chunk_end = min((chunk_idx + 1) * slot_count, m)
 
-                # running_counts[i, b] = count of samples in bucket b up to and including i
-                running_counts = jnp.cumsum(bucket_onehot, axis=0)
+                # Build packed scatter mask for this chunk
+                def build_packed_mask_for_chunk(
+                    sg_map,
+                    b_idx,
+                    node_i=node_idx,
+                    f_i=feat_idx,
+                    n_b=n_buckets,
+                    str_=stride,
+                    sc=slot_count,
+                    c_start=chunk_start,
+                    c_end=chunk_end,
+                ):
+                    # Extract chunk slice of subgroup_map and bin_indices
+                    node_mask_full = sg_map[node_i]  # (m,)
+                    feat_bins_full = b_idx[:, f_i]  # (m,)
 
-                # offset[i] = running_counts[i-1, bucket[i]] (0 for i=0)
-                shifted_counts = jnp.zeros_like(running_counts)
-                shifted_counts = shifted_counts.at[1:].set(running_counts[:-1])
-                sample_offsets = jnp.take_along_axis(
-                    shifted_counts, feat_bins[:, None], axis=1
-                ).squeeze(-1)
+                    # Get chunk slice
+                    node_mask = node_mask_full[c_start:c_end]
+                    feat_bins = feat_bins_full[c_start:c_end]
 
-                # Compute scatter index: bucket * stride + offset
-                scatter_indices = jnp.where(
-                    valid,
-                    feat_bins * str_ + sample_offsets,
-                    -1,
+                    valid = node_mask == 1
+
+                    # Compute per-bucket offsets using vectorized cumsum
+                    bucket_onehot = (
+                        jnp.arange(n_b)[None, :] == feat_bins[:, None]
+                    ) & valid[:, None]
+
+                    running_counts = jnp.cumsum(bucket_onehot, axis=0)
+
+                    shifted_counts = jnp.zeros_like(running_counts)
+                    shifted_counts = shifted_counts.at[1:].set(running_counts[:-1])
+                    sample_offsets = jnp.take_along_axis(
+                        shifted_counts, feat_bins[:, None], axis=1
+                    ).squeeze(-1)
+
+                    # Compute scatter index within this chunk
+                    scatter_indices = jnp.where(
+                        valid,
+                        feat_bins * str_ + sample_offsets,
+                        -1,
+                    )
+
+                    # Build output mask for slot_count slots
+                    output = jnp.zeros(sc, dtype=jnp.int64)
+
+                    valid_mask = scatter_indices >= 0
+                    valid_indices = jnp.where(valid_mask, scatter_indices, 0).astype(
+                        jnp.int32
+                    )
+                    valid_ones = jnp.where(valid_mask, 1, 0).astype(jnp.int64)
+                    output = segment_sum(valid_ones, valid_indices, num_segments=sc)
+
+                    # Pad if chunk is smaller than slot_count
+                    # (already zeros, just return)
+                    return output
+
+                mask = simp.pcall_static(
+                    (pp_rank,),
+                    lambda: tensor.run_jax(
+                        build_packed_mask_for_chunk, subgroup_map, bin_indices
+                    ),
                 )
 
-                # Build output mask: output[scatter_idx] = 1 for valid samples
-                # This is a selection mask, not a scatter of values
-                output = jnp.zeros(sc, dtype=jnp.int64)
+                # Encode mask as plaintext
+                mask_pt = simp.pcall_static((pp_rank,), bfv.encode, mask, encoder)
 
-                # Use segment_sum to place 1s at scatter positions
-                valid_mask = scatter_indices >= 0
-                valid_indices = jnp.where(valid_mask, scatter_indices, 0).astype(
-                    jnp.int32
+                # Get the CT for this chunk
+                g_ct_chunk = g_cts[chunk_idx]
+                h_ct_chunk = h_cts[chunk_idx]
+
+                # CT * PT multiplication
+                g_masked = simp.pcall_static((pp_rank,), bfv.mul, g_ct_chunk, mask_pt)
+                g_masked = simp.pcall_static(
+                    (pp_rank,), bfv.relinearize, g_masked, relin_keys
                 )
-                valid_ones = jnp.where(valid_mask, 1, 0).astype(jnp.int64)
-                output = segment_sum(valid_ones, valid_indices, num_segments=sc)
+                h_masked = simp.pcall_static((pp_rank,), bfv.mul, h_ct_chunk, mask_pt)
+                h_masked = simp.pcall_static(
+                    (pp_rank,), bfv.relinearize, h_masked, relin_keys
+                )
 
-                return output
+                # Aggregate all buckets simultaneously
+                g_packed = simp.pcall_static(
+                    (pp_rank,),
+                    aggregation.batch_bucket_aggregate,
+                    g_masked,
+                    n_buckets,
+                    max_samples_per_bucket,
+                    galois_keys,
+                    slot_count,
+                )
+                h_packed = simp.pcall_static(
+                    (pp_rank,),
+                    aggregation.batch_bucket_aggregate,
+                    h_masked,
+                    n_buckets,
+                    max_samples_per_bucket,
+                    galois_keys,
+                    slot_count,
+                )
 
-            mask = simp.pcall_static(
-                (pp_rank,),
-                lambda: tensor.run_jax(build_packed_mask, subgroup_map, bin_indices),
-            )
+                # Accumulate chunk results in FHE domain
+                if g_accumulated is None:
+                    g_accumulated = g_packed
+                    h_accumulated = h_packed
+                else:
+                    g_accumulated = simp.pcall_static(
+                        (pp_rank,), bfv.add, g_accumulated, g_packed
+                    )
+                    h_accumulated = simp.pcall_static(
+                        (pp_rank,), bfv.add, h_accumulated, h_packed
+                    )
 
-            # Encode mask as plaintext
-            mask_pt = simp.pcall_static((pp_rank,), bfv.encode, mask, encoder)
-
-            # CT * PT multiplication (single operation for all buckets!)
-            g_masked = simp.pcall_static((pp_rank,), bfv.mul, g_ct, mask_pt)
-            g_masked = simp.pcall_static(
-                (pp_rank,), bfv.relinearize, g_masked, relin_keys
-            )
-            h_masked = simp.pcall_static((pp_rank,), bfv.mul, h_ct, mask_pt)
-            h_masked = simp.pcall_static(
-                (pp_rank,), bfv.relinearize, h_masked, relin_keys
-            )
-
-            # Aggregate all buckets simultaneously
-            # Single rotate_and_sum works for all buckets because they use
-            # the same relative positions within their stride regions
-            g_packed = simp.pcall_static(
-                (pp_rank,),
-                aggregation.batch_bucket_aggregate,
-                g_masked,
-                n_buckets,
-                max_samples_per_bucket,
-                galois_keys,
-                slot_count,
-            )
-            h_packed = simp.pcall_static(
-                (pp_rank,),
-                aggregation.batch_bucket_aggregate,
-                h_masked,
-                n_buckets,
-                max_samples_per_bucket,
-                galois_keys,
-                slot_count,
-            )
-
-            # Transfer packed result to AP (ONE ciphertext instead of 64!)
-            g_packed_ap = simp.shuffle_static(g_packed, {ap_rank: pp_rank})
-            h_packed_ap = simp.shuffle_static(h_packed, {ap_rank: pp_rank})
+            # Transfer final packed result to AP
+            g_packed_ap = simp.shuffle_static(g_accumulated, {ap_rank: pp_rank})
+            h_packed_ap = simp.shuffle_static(h_accumulated, {ap_rank: pp_rank})
 
             g_node.append(g_packed_ap)
             h_node.append(h_packed_ap)
@@ -582,8 +664,9 @@ def make_compute_leaf_values(n_nodes: int):
 
 def build_tree(
     gh: Any,  # Plaintext G/H at AP, shape (m, 2)
-    g_ct: Any,  # Encrypted G at AP
-    h_ct: Any,  # Encrypted H at AP
+    g_cts: list[Any],  # Encrypted G chunks at AP
+    h_cts: list[Any],  # Encrypted H chunks at AP
+    n_chunks: int,  # Number of CT chunks
     all_bins: list[Any],  # Bin boundaries per party
     all_bin_indices: list[Any],  # Binned features per party
     sk: Any,  # Secret key at AP
@@ -601,6 +684,7 @@ def build_tree(
     n_samples: int,
     n_buckets: int,
     n_features_per_party: list[int],  # Number of features for each party
+    slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
 ) -> Tree:
     """Build a single decision tree level by level.
 
@@ -609,6 +693,10 @@ def build_tree(
     2. Find best split per node across all parties
     3. Update tree structure and sample assignments
     4. Repeat until max_depth reached
+
+    **Multi-CT Support**: When n_samples > slot_count, data is split into
+    n_chunks ciphertexts. Each chunk is processed separately and results
+    are accumulated in the FHE domain.
     """
     m = n_samples
     n_nodes = 2 ** (max_depth + 1) - 1
@@ -666,9 +754,9 @@ def build_tree(
 
         # === PP: FHE histogram computation ===
         for pp_idx, pp_rank in enumerate(pp_ranks):
-            # Transfer encrypted data and keys to PP
-            g_ct_pp = simp.shuffle_static(g_ct, {pp_rank: ap_rank})
-            h_ct_pp = simp.shuffle_static(h_ct, {pp_rank: ap_rank})
+            # Transfer all encrypted CT chunks and keys to PP
+            g_cts_pp = [simp.shuffle_static(g_ct, {pp_rank: ap_rank}) for g_ct in g_cts]
+            h_cts_pp = [simp.shuffle_static(h_ct, {pp_rank: ap_rank}) for h_ct in h_cts]
             bt_level_pp = simp.shuffle_static(bt_level, {pp_rank: ap_rank})
             encoder_pp = simp.shuffle_static(encoder, {pp_rank: ap_rank})
             rk_pp = simp.shuffle_static(relin_keys, {pp_rank: ap_rank})
@@ -681,11 +769,11 @@ def build_tree(
                 lambda fn=subgroup_map_fn: tensor.run_jax(fn, bt_level_pp),
             )
 
-            # Compute encrypted histograms
+            # Compute encrypted histograms (handles multi-CT internally)
             n_pp_features = n_features_per_party[pp_idx + 1]
             g_enc, h_enc = fhe_histogram_optimized(
-                g_ct_pp,
-                h_ct_pp,
+                g_cts_pp,
+                h_cts_pp,
                 subgroup_map,
                 all_bin_indices[pp_idx + 1],
                 n_buckets,
@@ -697,6 +785,8 @@ def build_tree(
                 rk_pp,
                 gk_pp,
                 m,
+                n_chunks,
+                slot_count,
             )
 
             # Decrypt and find best splits at AP
@@ -1198,14 +1288,17 @@ def fit_tree_ensemble(
         )
 
         # FHE encrypt only if we have passive parties
-        g_ct, h_ct = None, None
+        g_cts, h_cts, n_chunks = [], [], 1
         if pp_ranks:
-            g_ct, h_ct = fhe_encrypt_gh(qg, qh, pk, encoder, ap_rank)
+            g_cts, h_cts, n_chunks = fhe_encrypt_gh(
+                qg, qh, pk, encoder, ap_rank, n_samples
+            )
 
         tree = build_tree(
             gh,
-            g_ct,
-            h_ct,
+            g_cts,
+            h_cts,
+            n_chunks,
             all_bins,
             all_bin_indices,
             sk,
@@ -1658,6 +1751,14 @@ def benchmark_multiparty():
         # Test m > 2048 case (requires rotate_columns fix)
         {
             "n_samples": 3000,
+            "n_features_ap": 3,
+            "n_features_pp": 2,
+            "n_trees": 1,
+            "max_depth": 2,
+        },
+        # Test m > 4096 case (multi-CT support)
+        {
+            "n_samples": 5000,
             "n_features_ap": 3,
             "n_features_pp": 2,
             "n_trees": 1,

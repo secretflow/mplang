@@ -260,101 +260,140 @@ def fhe_histogram_optimized(
     relin_keys: Any,
     galois_keys: Any,
     m: int,
+    slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
 ) -> tuple[list[list[Any]], list[list[Any]]]:
-    """Compute encrypted histogram sums using optimized SIMD operations.
+    """Compute encrypted histogram sums using SIMD bucket packing.
 
-    **Optimization: Exact Bucket Histogram**
+    **Optimization: SIMD Bucket Packing**
 
-    Instead of cumulative masks (`bin <= bucket`), we use exact masks (`bin == bucket`).
-    This is more efficient for FHE because:
-    1. rotate_and_sum aggregates fewer non-zero values per bucket
-    2. Avoids the m >= 2048 rotation step limit issue
-    3. Cumulative sums are computed client-side after decryption (free in plaintext)
+    Instead of processing each bucket separately (64 muls + 64 rotate_and_sums),
+    we pack ALL buckets into a single ciphertext operation:
 
-    For each (node, feature, bucket), we:
-    1. Build an exact mask: sample in node AND bin == bucket
-    2. Compute CT × mask_PT (element-wise)
-    3. Rotate-and-sum to aggregate (k << m values per bucket)
-    4. Send scalar ciphertext results to AP
-    5. AP computes cumulative sum after decryption
+    1. Divide slot_count into n_buckets regions, each with `stride = slot_count // n_buckets` slots
+    2. Build a scatter mask that places sample i at slot (bucket[i] * stride + offset[i])
+    3. Single CT × packed_mask multiplication
+    4. Single rotate_and_sum aggregates ALL buckets simultaneously
+    5. Result: slot[b * stride] contains histogram[b] for each bucket b
+    6. Send ONE ciphertext (not 64) to AP
+
+    Performance improvement:
+    - Before: 64 × (mul + rotate_and_sum + send) per (node, feature)
+    - After: 1 × (mul + rotate_and_sum + send) per (node, feature)
+    - ~64x reduction in FHE operations and communication
 
     Returns:
-        g_enc[node][feat*bucket]: List of encrypted G sums (exact per bucket)
-        h_enc[node][feat*bucket]: List of encrypted H sums (exact per bucket)
+        g_enc[node][feat]: List of packed encrypted G histograms (one CT per feature)
+        h_enc[node][feat]: List of packed encrypted H histograms (one CT per feature)
     """
+    stride = slot_count // n_buckets
+    max_samples_per_bucket = min(stride, max(m // n_buckets * 2, 64))
 
     g_results: list[list[Any]] = []
     h_results: list[list[Any]] = []
-
-    # Estimate max samples per bucket for rotate_and_sum
-    # In the worst case, all samples land in one bucket, but typically k ≈ m / n_buckets
-    # We use m as upper bound for safety, but actual aggregation is much smaller
-    k_estimate = min(m, max(m // n_buckets * 2, 64))  # Heuristic upper bound
 
     for node_idx in range(n_nodes):
         g_node: list[Any] = []
         h_node: list[Any] = []
 
         for feat_idx in range(n_features):
-            for bucket_idx in range(n_buckets):
-                # Build EXACT mask for this (node, feature, bucket)
-                # Changed from cumulative (<=) to exact (==)
-                def build_mask(
-                    sg_map,
-                    b_idx,
-                    node_i=node_idx,
-                    f_i=feat_idx,
-                    b_i=bucket_idx,
-                ):
-                    node_mask = sg_map[node_i]  # (m,)
-                    feat_bins = b_idx[:, f_i]  # (m,)
-                    # EXACT match: only samples in this specific bucket
-                    valid = (node_mask == 1) & (feat_bins == b_i)
-                    return valid.astype(jnp.int64)
+            # Build packed scatter mask for all buckets at once
+            # Each sample i goes to slot: bucket[i] * stride + offset_in_bucket[i]
+            def build_packed_mask(
+                sg_map,
+                b_idx,
+                node_i=node_idx,
+                f_i=feat_idx,
+                n_b=n_buckets,
+                str_=stride,
+                sc=slot_count,
+            ):
+                node_mask = sg_map[node_i]  # (m,)
+                feat_bins = b_idx[:, f_i]  # (m,)
+                valid = node_mask == 1
 
-                mask = simp.pcall_static(
-                    (pp_rank,),
-                    lambda: tensor.run_jax(build_mask, subgroup_map, bin_indices),
+                # Compute per-bucket offsets using vectorized cumsum
+                # bucket_onehot[i, b] = 1 if sample i is in bucket b and valid
+                bucket_onehot = (
+                    jnp.arange(n_b)[None, :] == feat_bins[:, None]
+                ) & valid[:, None]
+
+                # running_counts[i, b] = count of samples in bucket b up to and including i
+                running_counts = jnp.cumsum(bucket_onehot, axis=0)
+
+                # offset[i] = running_counts[i-1, bucket[i]] (0 for i=0)
+                shifted_counts = jnp.zeros_like(running_counts)
+                shifted_counts = shifted_counts.at[1:].set(running_counts[:-1])
+                sample_offsets = jnp.take_along_axis(
+                    shifted_counts, feat_bins[:, None], axis=1
+                ).squeeze(-1)
+
+                # Compute scatter index: bucket * stride + offset
+                scatter_indices = jnp.where(
+                    valid,
+                    feat_bins * str_ + sample_offsets,
+                    -1,
                 )
 
-                # Encode mask as plaintext
-                mask_pt = simp.pcall_static((pp_rank,), bfv.encode, mask, encoder)
+                # Build output mask: output[scatter_idx] = 1 for valid samples
+                # This is a selection mask, not a scatter of values
+                output = jnp.zeros(sc, dtype=jnp.int64)
 
-                # CT * PT multiplication
-                g_masked = simp.pcall_static((pp_rank,), bfv.mul, g_ct, mask_pt)
-                g_masked = simp.pcall_static(
-                    (pp_rank,), bfv.relinearize, g_masked, relin_keys
+                # Use segment_sum to place 1s at scatter positions
+                valid_mask = scatter_indices >= 0
+                valid_indices = jnp.where(valid_mask, scatter_indices, 0).astype(
+                    jnp.int32
                 )
-                h_masked = simp.pcall_static((pp_rank,), bfv.mul, h_ct, mask_pt)
-                h_masked = simp.pcall_static(
-                    (pp_rank,), bfv.relinearize, h_masked, relin_keys
-                )
+                valid_ones = jnp.where(valid_mask, 1, 0).astype(jnp.int64)
+                output = segment_sum(valid_ones, valid_indices, num_segments=sc)
 
-                # Aggregate slots using rotate-and-sum
-                # Note: We use k_estimate instead of m. Even though the mask zeros out
-                # most values, we still need to sum all slots. Using a smaller k
-                # when we know most values are zero could be a future optimization.
-                g_sum = simp.pcall_static(
-                    (pp_rank,),
-                    aggregation.rotate_and_sum,
-                    g_masked,
-                    k_estimate,
-                    galois_keys,
-                )
-                h_sum = simp.pcall_static(
-                    (pp_rank,),
-                    aggregation.rotate_and_sum,
-                    h_masked,
-                    k_estimate,
-                    galois_keys,
-                )
+                return output
 
-                # Transfer to AP
-                g_sum_ap = simp.shuffle_static(g_sum, {ap_rank: pp_rank})
-                h_sum_ap = simp.shuffle_static(h_sum, {ap_rank: pp_rank})
+            mask = simp.pcall_static(
+                (pp_rank,),
+                lambda: tensor.run_jax(build_packed_mask, subgroup_map, bin_indices),
+            )
 
-                g_node.append(g_sum_ap)
-                h_node.append(h_sum_ap)
+            # Encode mask as plaintext
+            mask_pt = simp.pcall_static((pp_rank,), bfv.encode, mask, encoder)
+
+            # CT * PT multiplication (single operation for all buckets!)
+            g_masked = simp.pcall_static((pp_rank,), bfv.mul, g_ct, mask_pt)
+            g_masked = simp.pcall_static(
+                (pp_rank,), bfv.relinearize, g_masked, relin_keys
+            )
+            h_masked = simp.pcall_static((pp_rank,), bfv.mul, h_ct, mask_pt)
+            h_masked = simp.pcall_static(
+                (pp_rank,), bfv.relinearize, h_masked, relin_keys
+            )
+
+            # Aggregate all buckets simultaneously
+            # Single rotate_and_sum works for all buckets because they use
+            # the same relative positions within their stride regions
+            g_packed = simp.pcall_static(
+                (pp_rank,),
+                aggregation.batch_bucket_aggregate,
+                g_masked,
+                n_buckets,
+                max_samples_per_bucket,
+                galois_keys,
+                slot_count,
+            )
+            h_packed = simp.pcall_static(
+                (pp_rank,),
+                aggregation.batch_bucket_aggregate,
+                h_masked,
+                n_buckets,
+                max_samples_per_bucket,
+                galois_keys,
+                slot_count,
+            )
+
+            # Transfer packed result to AP (ONE ciphertext instead of 64!)
+            g_packed_ap = simp.shuffle_static(g_packed, {ap_rank: pp_rank})
+            h_packed_ap = simp.shuffle_static(h_packed, {ap_rank: pp_rank})
+
+            g_node.append(g_packed_ap)
+            h_node.append(h_packed_ap)
 
         g_results.append(g_node)
         h_results.append(h_node)
@@ -372,22 +411,27 @@ def decrypt_histogram_results(
     n_features: int,
     n_buckets: int,
     ap_rank: int,
+    slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
 ) -> list[Any]:
     """Decrypt and assemble histogram results at AP.
 
-    **Optimization: Cumulative Sum After Decryption**
+    **SIMD Bucket Packing Format**
 
-    Since fhe_histogram_optimized now returns EXACT bucket counts (not cumulative),
-    we compute the cumulative sum here in plaintext. This is essentially free
-    compared to FHE operations and allows rotate_and_sum to use smaller k values.
+    With SIMD bucket packing, each ciphertext contains ALL buckets for one feature:
+    - g_enc_lists[node][feat] is a single packed CT
+    - slot[b * stride] contains histogram[b] for bucket b
+    - stride = slot_count // n_buckets
+
+    We extract bucket results from strided positions, then compute cumulative sum.
 
     Returns list of (n_features, n_buckets, 2) arrays, one per node.
     The returned histograms are CUMULATIVE (sum of all bins <= bucket_idx).
     """
+    stride = slot_count // n_buckets
     results: list[Any] = []
 
     for node_idx in range(n_nodes):
-        g_list = g_enc_lists[node_idx]
+        g_list = g_enc_lists[node_idx]  # List of n_features packed CTs
         h_list = h_enc_lists[node_idx]
 
         def decrypt_and_combine(
@@ -398,8 +442,9 @@ def decrypt_histogram_results(
             scale,
             n_f,
             n_b,
+            str_,
         ):
-            # Decrypt all ciphertexts first (no JAX calls here)
+            # Decrypt all ciphertexts (one per feature, each contains all buckets)
             g_vecs = []
             h_vecs = []
 
@@ -412,35 +457,37 @@ def decrypt_histogram_results(
                 h_vec = bfv.decode(h_pt, enc)
                 h_vecs.append(h_vec)
 
-            # Single JAX call to process all vectors at once
-            def extract_reshape_and_cumsum(*all_vecs, nf=n_f, nb=n_b, s=scale):
+            # Single JAX call to extract bucket values from strided positions
+            def extract_and_cumsum(*all_vecs, nf=n_f, nb=n_b, s=scale, st=str_):
                 n_half = len(all_vecs) // 2
                 g_vecs_list = all_vecs[:n_half]
                 h_vecs_list = all_vecs[n_half:]
 
-                # Extract slot 0 from each vector and stack
-                g_arr = jnp.stack([v[0] for v in g_vecs_list])
-                h_arr = jnp.stack([v[0] for v in h_vecs_list])
+                # Extract values at strided positions: slot[b * stride] for each bucket b
+                bucket_indices = jnp.arange(nb) * st
+
+                # For each feature's vector, extract the bucket values
+                g_buckets = jnp.stack([
+                    v[bucket_indices] for v in g_vecs_list
+                ])  # (n_features, n_buckets)
+                h_buckets = jnp.stack([
+                    v[bucket_indices] for v in h_vecs_list
+                ])  # (n_features, n_buckets)
 
                 # Dequantize
-                g_arr = g_arr.astype(jnp.float32) / s
-                h_arr = h_arr.astype(jnp.float32) / s
-
-                # Reshape to (n_features, n_buckets)
-                g_exact = g_arr.reshape((nf, nb))
-                h_exact = h_arr.reshape((nf, nb))
+                g_buckets = g_buckets.astype(jnp.float32) / s
+                h_buckets = h_buckets.astype(jnp.float32) / s
 
                 # Compute CUMULATIVE sum along bucket axis
-                # This converts exact bucket counts to cumulative histogram
                 # cumsum[i] = sum(exact[0:i+1]) = sum of all bins <= i
-                g_cumsum = jnp.cumsum(g_exact, axis=1)
-                h_cumsum = jnp.cumsum(h_exact, axis=1)
+                g_cumsum = jnp.cumsum(g_buckets, axis=1)
+                h_cumsum = jnp.cumsum(h_buckets, axis=1)
 
                 # Stack to (n_features, n_buckets, 2)
                 combined = jnp.stack([g_cumsum, h_cumsum], axis=-1)
                 return combined
 
-            return tensor.run_jax(extract_reshape_and_cumsum, *g_vecs, *h_vecs)
+            return tensor.run_jax(extract_and_cumsum, *g_vecs, *h_vecs)
 
         node_hist = simp.pcall_static(
             (ap_rank,),
@@ -452,6 +499,7 @@ def decrypt_histogram_results(
             fxp_scale,
             n_features,
             n_buckets,
+            stride,
         )
         results.append(node_hist)
 

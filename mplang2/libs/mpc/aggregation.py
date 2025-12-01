@@ -232,3 +232,127 @@ def masked_aggregate(ciphertexts: list[Any], masks: list[Any]) -> Any:
             total = bfv.add(total, masked)
 
     return total
+
+
+# ==============================================================================
+# SIMD Bucket Packing for Histogram Computation
+# ==============================================================================
+
+
+def strided_rotate_and_sum(
+    ciphertext: Any,
+    stride: int,
+    n_elements: int,
+    galois_keys: Any,
+    max_step: int = 1024,
+) -> Any:
+    """Aggregate elements at positions [0, stride, 2*stride, ...] into slot 0.
+
+    This is used for SIMD bucket packing where each bucket's values are
+    placed at strided positions.
+
+    Args:
+        ciphertext: The BFV ciphertext with values at strided positions.
+        stride: Distance between consecutive elements to sum.
+        n_elements: Number of elements to aggregate (at positions 0, stride, ..., (n-1)*stride).
+        galois_keys: Rotation keys.
+        max_step: Maximum rotation step for safe_rotate.
+
+    Returns:
+        Ciphertext where slot 0 contains sum of strided elements.
+
+    Example:
+        stride=64, n_elements=47 (bucket has 47 samples)
+        Values at slots: 0, 64, 128, 192, ...
+        Result: slot[0] = sum of all these values
+    """
+    if n_elements <= 1:
+        return ciphertext
+
+    # Use recursive doubling with strided rotations
+    # Step 1: rotate by stride, add -> pairs summed at even positions
+    # Step 2: rotate by 2*stride, add -> quads summed at positions 0, 4*stride, ...
+    # ...
+    num_steps = math.ceil(math.log2(n_elements))
+    current = ciphertext
+
+    for i in range(num_steps):
+        step = stride * (1 << i)
+        if step >= n_elements * stride:
+            break
+        rotated = _safe_rotate(current, step, galois_keys, max_step)
+        current = bfv.add(current, rotated)
+
+    return current
+
+
+def batch_bucket_aggregate(
+    ciphertext: Any,
+    n_buckets: int,
+    samples_per_bucket: int,
+    galois_keys: Any,
+    slot_count: int = 4096,
+) -> Any:
+    """Aggregate samples within each bucket region in a packed ciphertext.
+
+    Assumes the ciphertext has the following layout:
+    - slot_count is divided into n_buckets regions of size `stride = slot_count // n_buckets`
+    - Each bucket b occupies slots [b*stride, b*stride + samples_per_bucket)
+    - Samples are placed at consecutive positions within their bucket region
+
+    After aggregation, slot[b * stride] contains sum of bucket b.
+
+    Args:
+        ciphertext: Packed ciphertext with samples in bucket regions.
+        n_buckets: Number of buckets.
+        samples_per_bucket: Max samples per bucket (for rotation count).
+        galois_keys: Rotation keys.
+        slot_count: Total BFV slots.
+
+    Returns:
+        Ciphertext where slot[b * stride] = sum of bucket b's values.
+    """
+    if samples_per_bucket <= 1:
+        return ciphertext
+
+    # Use recursive doubling within each bucket region
+    # Since all buckets use the same relative positions, one set of rotations
+    # aggregates ALL buckets simultaneously!
+    num_steps = math.ceil(math.log2(samples_per_bucket))
+    current = ciphertext
+
+    for i in range(num_steps):
+        step = 1 << i
+        if step >= samples_per_bucket:
+            break
+        # Rotating by `step` shifts values within each bucket region
+        # Add original + rotated to sum pairs/quads/etc.
+        rotated = _safe_rotate(current, step, galois_keys)
+        current = bfv.add(current, rotated)
+
+    return current
+
+
+def extract_bucket_results(
+    vector: Any,
+    n_buckets: int,
+    slot_count: int = 4096,
+) -> Any:
+    """Extract bucket sums from a packed result vector.
+
+    After batch_bucket_aggregate, each bucket's sum is at slot[b * stride].
+    This function extracts those values.
+
+    Args:
+        vector: Decoded vector from packed ciphertext.
+        n_buckets: Number of buckets.
+        slot_count: Total slots.
+
+    Returns:
+        (n_buckets,) array of bucket sums.
+    """
+    import jax.numpy as jnp
+
+    stride = slot_count // n_buckets
+    indices = jnp.arange(n_buckets) * stride
+    return vector[indices]

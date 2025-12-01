@@ -225,7 +225,8 @@ class FileProvider(DataProvider):
         if isinstance(value, TableValue):
             table_utils.write_table(value.to_arrow(), path, format="parquet")
         elif isinstance(value, TensorValue):
-            np.save(path, value.to_numpy())
+            with open(path, "wb") as f:
+                np.save(f, value.to_numpy())
         else:
             payload = encode_value(value)
             with open(path, "wb") as f:

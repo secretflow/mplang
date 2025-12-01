@@ -38,7 +38,7 @@ Migration notes (mplang -> mplang2):
 
 import mplang2 as mp
 from mplang2.dialects import table
-from mplang2.edsl.typing import TableType, TensorType, i64
+from mplang2.edsl.typing import TableType, i64
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
@@ -60,19 +60,20 @@ cluster_spec = mp.ClusterSpec.from_dict({
 
 
 # Define reusable schemas using TableType() or Table[{}] syntax
+# Schema values should be scalar types (i64, f64, STRING) not TensorType
 input_schema = TableType({
-    "id": TensorType(i64, ()),
-    "value": TensorType(i64, ()),
+    "id": i64,
+    "value": i64,
 })
 
 doubled_schema = TableType({
-    "id": TensorType(i64, ()),
-    "doubled": TensorType(i64, ()),
+    "id": i64,
+    "doubled": i64,
 })
 
 union_schema = TableType({
-    "user_id": TensorType(i64, ()),
-    "amount": TensorType(i64, ()),
+    "user_id": i64,
+    "amount": i64,
 })
 
 

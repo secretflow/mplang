@@ -11,6 +11,8 @@ run_sql_p: el.Primitive[Any] = el.Primitive("table.run_sql")
 table2tensor_p: el.Primitive[el.Object] = el.Primitive("table.table2tensor")
 tensor2table_p: el.Primitive[el.Object] = el.Primitive("table.tensor2table")
 constant_p: el.Primitive[el.Object] = el.Primitive("table.constant")
+read_p: el.Primitive[el.Object] = el.Primitive("table.read")
+write_p: el.Primitive[el.Object] = el.Primitive("table.write")
 
 
 def _current_tracer() -> el.Tracer:
@@ -111,8 +113,8 @@ def _tensor2table_ae(
         if name in seen:
             raise ValueError(f"duplicate column name: {name!r}")
         seen.add(name)
-        schema[name] = elt.TensorType(tensor_t.element_type, ())
-    # Each column shares the tensor dtype; treat scalar leaves per row.
+        schema[name] = tensor_t.element_type
+    # Each column shares the tensor's element dtype.
     return elt.TableType(schema)
 
 
@@ -150,49 +152,42 @@ def tensor2table(tensor: el.TraceObject, *, column_names: list[str]) -> el.Objec
 
 
 @constant_p.def_abstract_eval
-def _constant_ae(data: dict[str, list]) -> elt.TableType:
+def _constant_ae(*, data: Any) -> elt.TableType:
     """Infer table type for constant data.
 
     Args:
         data: Dictionary mapping column names to lists of values,
-              or any data convertible to pandas DataFrame
+              pandas DataFrame, PyArrow Table, or any data convertible to DataFrame
 
     Returns:
-        TableType inferred from DataFrame schema
+        TableType inferred from schema
 
     Raises:
         TypeError: If data cannot be converted to DataFrame
     """
     import pandas as pd
+    import pyarrow as pa
 
-    # Unified pandas bridge for all data types
-    df = pd.DataFrame(data)
+    from mplang2.dialects import dtypes
+
+    # Handle PyArrow Table directly
+    if isinstance(data, pa.Table):
+        schema: dict[str, elt.BaseType] = {}
+        for field in data.schema:
+            schema[field.name] = dtypes.from_arrow(field.type)
+        return elt.TableType(schema)
+
+    # Handle pandas DataFrame
+    if isinstance(data, pd.DataFrame):
+        df = data
+    else:
+        # Dict or other types - convert to DataFrame
+        df = pd.DataFrame(data)
 
     # Infer schema from pandas dtypes
-    schema: dict[str, elt.BaseType] = {}
+    schema = {}
     for col_name in df.columns:
-        pd_dtype = df[col_name].dtype
-
-        # Map pandas dtypes to EDSL scalar types
-        if pd_dtype == "bool":
-            col_type: elt.TensorType = elt.TensorType(elt.i8, ())
-        elif pd_dtype in ("int64", "Int64"):
-            col_type = elt.TensorType(elt.i64, ())
-        elif pd_dtype in ("int32", "Int32"):
-            col_type = elt.TensorType(elt.i32, ())
-        elif pd_dtype in ("float64", "Float64"):
-            col_type = elt.TensorType(elt.f64, ())
-        elif pd_dtype in ("float32", "Float32"):
-            col_type = elt.TensorType(elt.f32, ())
-        elif pd_dtype == "object" or pd_dtype.name.startswith("string"):
-            # String columns - use i64 as placeholder
-            col_type = elt.TensorType(elt.i64, ())
-        else:
-            raise TypeError(
-                f"Unsupported pandas dtype for column '{col_name}': {pd_dtype}"
-            )
-
-        schema[str(col_name)] = col_type
+        schema[str(col_name)] = dtypes.from_pandas(df[col_name].dtype)
 
     return elt.TableType(schema)
 
@@ -231,13 +226,141 @@ def constant(data: dict[str, list]) -> el.Object:
     return constant_p.bind(data=data)  # type: ignore[no-any-return]
 
 
+# =============================================================================
+# Table I/O: read and write
+# =============================================================================
+
+
+@read_p.def_abstract_eval
+def _read_ae(*, path: str, schema: elt.TableType, format: str) -> elt.TableType:
+    """Infer output type for table.read.
+
+    Args:
+        path: File path to read from
+        schema: Expected table schema
+        format: File format ("auto", "csv", "parquet")
+
+    Returns:
+        The provided schema (since we can't inspect the file at trace time)
+
+    Raises:
+        TypeError: If schema is not a TableType
+        ValueError: If path is empty or format is invalid
+    """
+    if not isinstance(path, str) or not path:
+        raise ValueError("path must be a non-empty string")
+    if not isinstance(schema, elt.TableType):
+        raise TypeError(f"schema must be TableType, got {type(schema).__name__}")
+    if format not in ("auto", "csv", "parquet"):
+        raise ValueError(f"format must be 'auto', 'csv', or 'parquet', got {format!r}")
+    return schema
+
+
+def read(
+    path: str,
+    *,
+    schema: elt.TableType,
+    format: str = "auto",
+) -> el.Object:
+    """Read a table from a file.
+
+    This creates a table.read operation that reads data from the specified path
+    at runtime. The schema must be provided since the file cannot be inspected
+    at trace/compile time.
+
+    Args:
+        path: File path to read from. In distributed scenarios, each party
+            interprets this path relative to its own filesystem.
+        schema: Expected table schema. Must match the actual file structure.
+        format: File format. Options:
+            - "auto": Detect from file extension (.csv, .parquet)
+            - "csv": Read as CSV
+            - "parquet": Read as Parquet
+
+    Returns:
+        Table object with the specified schema.
+
+    Example:
+        >>> schema = TableType({
+        ...     "id": TensorType(i64, ()),
+        ...     "value": TensorType(f64, ()),
+        ... })
+        >>> tbl = table.read("/data/input.csv", schema=schema)
+    """
+    return read_p.bind(path=path, schema=schema, format=format)  # type: ignore[no-any-return]
+
+
+@write_p.def_abstract_eval
+def _write_ae(table_type: elt.TableType, *, path: str, format: str) -> elt.TableType:
+    """Infer output type for table.write.
+
+    Args:
+        table_type: Input table's type
+        path: File path to write to
+        format: Output format ("csv", "parquet")
+
+    Returns:
+        The input table type (passthrough)
+
+    Raises:
+        TypeError: If input is not a TableType
+        ValueError: If path is empty or format is invalid
+    """
+    if not isinstance(path, str) or not path:
+        raise ValueError("path must be a non-empty string")
+    if not isinstance(table_type, elt.TableType):
+        raise TypeError(f"Expected TableType input, got {type(table_type).__name__}")
+    if format not in ("csv", "parquet"):
+        raise ValueError(f"format must be 'csv' or 'parquet', got {format!r}")
+    return table_type
+
+
+def write(
+    table: el.Object | Any,
+    path: str,
+    *,
+    format: str = "parquet",
+) -> el.Object | None:
+    """Write a table to a file.
+
+    This creates a table.write operation that persists the table data at runtime.
+    The operation returns the input table unchanged, allowing chaining.
+
+    If a runtime value (e.g., PyArrow Table, DataFrame, dict) is passed instead of
+    a traced object, it will be wrapped with table.constant() automatically.
+
+    Args:
+        table: Table to write. Can be a TraceObject, PyArrow Table, DataFrame, or dict.
+        path: Destination file path. In distributed scenarios, each party
+            interprets this path relative to its own filesystem.
+        format: Output format. Options:
+            - "csv": Write as CSV
+            - "parquet": Write as Parquet (default, more efficient)
+
+    Returns:
+        The input table (passthrough for chaining), or None in interpreter mode.
+
+    Example:
+        >>> result = table.run_sql("SELECT ...", out_type=schema, input=tbl)
+        >>> table.write(result, "/data/output.parquet")
+    """
+    # Auto-wrap runtime values
+    if not isinstance(table, el.Object):
+        table = constant(table)
+    return write_p.bind(table, path=path, format=format)  # type: ignore[no-any-return]
+
+
 __all__ = [
     "constant",
     "constant_p",
+    "read",
+    "read_p",
     "run_sql",
     "run_sql_p",
     "table2tensor",
     "table2tensor_p",
     "tensor2table",
     "tensor2table_p",
+    "write",
+    "write_p",
 ]

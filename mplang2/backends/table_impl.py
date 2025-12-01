@@ -102,3 +102,81 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
         return pa.Table.from_pandas(data)
 
     return pa.Table.from_pydict(data)
+
+
+def _infer_format(path: str, format_hint: str) -> str:
+    """Infer file format from path extension or hint."""
+    if format_hint != "auto":
+        return format_hint
+
+    path_lower = path.lower()
+    if path_lower.endswith((".parquet", ".pq")):
+        return "parquet"
+    elif path_lower.endswith(".csv"):
+        return "csv"
+    elif path_lower.endswith((".json", ".jsonl")):
+        return "json"
+    elif path_lower.endswith((".feather", ".arrow")):
+        return "feather"
+    else:
+        # Default to parquet
+        return "parquet"
+
+
+@table.read_p.def_impl
+def read_impl(interpreter: Interpreter, op: Operation) -> Any:
+    """Read table from file.
+
+    Supported formats: parquet, csv, json, feather
+    """
+    import pyarrow.csv as pv_csv
+    import pyarrow.json as pv_json
+    import pyarrow.parquet as pq
+
+    path: str = op.attrs["path"]
+    format_hint: str = op.attrs.get("format", "auto")
+
+    fmt = _infer_format(path, format_hint)
+
+    if fmt == "parquet":
+        return pq.read_table(path)
+    elif fmt == "csv":
+        return pv_csv.read_csv(path)
+    elif fmt == "json":
+        return pv_json.read_json(path)
+    elif fmt == "feather":
+        import pyarrow.feather as feather
+
+        return feather.read_table(path)
+    else:
+        raise ValueError(f"Unsupported format: {fmt}")
+
+
+@table.write_p.def_impl
+def write_impl(interpreter: Interpreter, op: Operation, table_val: Any) -> None:
+    """Write table to file.
+
+    Supported formats: parquet, csv, json, feather
+    """
+    import pyarrow.csv as pv_csv
+    import pyarrow.parquet as pq
+
+    path: str = op.attrs["path"]
+    format_hint: str = op.attrs.get("format", "parquet")
+
+    fmt = _infer_format(path, format_hint)
+
+    if fmt == "parquet":
+        pq.write_table(table_val, path)
+    elif fmt == "csv":
+        pv_csv.write_csv(table_val, path)
+    elif fmt == "json":
+        # PyArrow doesn't have direct JSON write, convert to pandas
+        df = table_val.to_pandas()
+        df.to_json(path, orient="records", lines=True)
+    elif fmt == "feather":
+        import pyarrow.feather as feather
+
+        feather.write_feather(table_val, path)
+    else:
+        raise ValueError(f"Unsupported format: {fmt}")

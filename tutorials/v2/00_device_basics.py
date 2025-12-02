@@ -17,7 +17,7 @@
 Learning objectives:
 1. Understand device types: PPU (public), SPU (MPC), TEE (trusted)
 2. Use @mp.device for explicit and automatic device placement
-3. Use @mp.device(..., "jax") for JAX function execution on PPU
+3. Use @mp.device("P0").jax for JAX function execution on PPU
 4. Understand pmask (compile-time) and rmask (runtime) concepts
 5. Master auto device inference rules
 
@@ -30,13 +30,13 @@ Key concepts:
 API patterns:
 - mp.put("P0", value): place data on a specific device
 - mp.device("P0")(fn)(*args): generic tracing execution on device
-- mp.device("P0", "jax")(fn)(*args): JAX execution (for numpy-like operators on PPU)
+- mp.device("P0").jax(fn)(*args): JAX execution (for numpy-like operators on PPU)
 - mp.device()(fn): auto-infer device from arguments
 
 Migration notes (mplang -> mplang2):
 - import mplang.v2 as mp (instead of mplang)
-- For JAX functions on PPU, use frontend="jax":
-    mp.device("P0", "jax")(lambda a, b: a + b)(x, y)
+- For JAX functions on PPU, use .jax property:
+    mp.device("P0").jax(lambda a, b: a + b)(x, y)
 - For SPU, no special frontend needed (JAX is native)
 - For constants, use mp.put("P0", value)
 """
@@ -101,8 +101,8 @@ def auto_device():
     y = mp.put("P0", jnp.array(2))
     z = mp.put("P1", jnp.array(3))
 
-    # Same PPU (P0): use device("P0", "jax") for JAX operators
-    sum_x_y = mp.device("P0", "jax")(add_jax)(x, y)
+    # Same PPU (P0): use device("P0").jax for JAX operators
+    sum_x_y = mp.device("P0").jax(add_jax)(x, y)
     assert mp.get_dev_attr(sum_x_y) == "P0"
 
     sealed_sum = mp.put("SP0", sum_x_y)
@@ -178,7 +178,7 @@ def main():
     print("\n" + "=" * 70)
     print("Key takeaways:")
     print("1. mp.put('DevName', value): place data on a specific device")
-    print("2. mp.device('Dev', 'jax')(fn): execute JAX function on PPU")
+    print("2. mp.device('Dev').jax(fn): execute JAX function on PPU")
     print("3. mp.device('Dev')(fn): generic traced execution (SPU uses JAX natively)")
     print("4. SPU results are secret-shared; use mp.put to reveal to a PPU")
     print("5. mp.get_dev_attr: inspect device of a variable")

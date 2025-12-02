@@ -21,8 +21,6 @@ This module tests:
 - Warning behaviors
 """
 
-import warnings
-
 import jax.numpy as jnp
 import pytest
 
@@ -30,7 +28,6 @@ from mplang.v2.libs.device import (
     DeviceError,
     DeviceInferenceError,
     DeviceNotFoundError,
-    FrontendError,
     device,
     get_dev_attr,
     is_device_obj,
@@ -50,7 +47,6 @@ class TestExceptionHierarchy:
         """All device exceptions should inherit from DeviceError."""
         assert issubclass(DeviceNotFoundError, DeviceError)
         assert issubclass(DeviceInferenceError, DeviceError)
-        assert issubclass(FrontendError, DeviceError)
 
     def test_device_error_is_exception(self):
         """DeviceError should be a standard Exception."""
@@ -62,7 +58,6 @@ class TestExceptionHierarchy:
             (DeviceError, "base device error"),
             (DeviceNotFoundError, "device X not found"),
             (DeviceInferenceError, "ambiguous device"),
-            (FrontendError, "invalid frontend"),
         ],
     )
     def test_exception_preserves_message(self, exc_class, message):
@@ -159,33 +154,17 @@ class TestDeviceInferenceError:
 
 
 # =============================================================================
-# FrontendError
+# JAX Frontend via .jax property
 # =============================================================================
 
 
-class TestFrontendError:
-    """Test FrontendError for invalid frontend values."""
+class TestJaxProperty:
+    """Test .jax property for JAX frontend."""
 
-    @pytest.mark.parametrize(
-        "invalid_frontend",
-        ["unknown", "tensorflow", "pytorch", "numpy", "invalid_frontend"],
-    )
-    def test_unknown_frontend_raises_error(self, ctx_3pc, invalid_frontend):
-        """Unknown frontend should raise FrontendError."""
-        with pytest.raises(FrontendError) as exc_info:
+    def test_device_jax_property_ppu(self, ctx_3pc):
+        """device('P0').jax should work for JAX functions on PPU."""
 
-            @device("P0", invalid_frontend)
-            def fn(x):
-                return x
-
-        error_msg = str(exc_info.value)
-        assert invalid_frontend in error_msg
-        assert "Supported frontends" in error_msg
-
-    def test_valid_frontend_jax(self, ctx_3pc):
-        """Frontend 'jax' should work without errors."""
-
-        @device("P0", "jax")
+        @device("P0").jax
         def add(a, b):
             return a + b
 
@@ -195,29 +174,27 @@ class TestFrontendError:
 
         assert get_dev_attr(result) == "P0"
 
+    def test_device_jax_property_spu(self, ctx_3pc):
+        """device('SP0').jax should work for JAX functions on SPU.
+
+        SPU natively uses JAX via spu.run_jax, so .jax is a no-op wrapper
+        that allows consistent syntax across device types.
+        """
+
+        @device("SP0").jax
+        def add(a, b):
+            return a + b
+
+        x = put("P0", jnp.array([1.0, 2.0]))
+        y = put("P1", jnp.array([3.0, 4.0]))
+        result = add(x, y)
+
+        assert get_dev_attr(result) == "SP0"
+
 
 # =============================================================================
-# Warnings
+# Warnings (currently no warning tests)
 # =============================================================================
-
-
-class TestWarnings:
-    """Test warning behaviors in device API."""
-
-    def test_spu_with_jax_frontend_warns(self, ctx_3pc):
-        """Using frontend='jax' with SPU should emit a warning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-
-            @device("SP0", "jax")
-            def add(a, b):
-                return a + b
-
-            assert len(w) == 1
-            assert issubclass(w[0].category, UserWarning)
-            warning_msg = str(w[0].message).lower()
-            assert "redundant" in warning_msg
-            assert "sp0" in warning_msg
 
 
 # =============================================================================
@@ -233,7 +210,6 @@ class TestExceptionCatching:
         [
             ("invalid_device", DeviceNotFoundError),
             ("no_device_args", DeviceInferenceError),
-            ("bad_frontend", FrontendError),
         ],
     )
     def test_specific_exceptions_raised(self, ctx_3pc, trigger, expected_type):
@@ -248,15 +224,10 @@ class TestExceptionCatching:
                     return a
 
                 fn(jnp.array([1]))
-            elif trigger == "bad_frontend":
-
-                @device("P0", "bad")
-                def fn2(a):
-                    return a
 
     @pytest.mark.parametrize(
         "trigger",
-        ["invalid_device", "no_device_args", "bad_frontend"],
+        ["invalid_device", "no_device_args"],
     )
     def test_base_exception_catches_all(self, ctx_3pc, trigger):
         """DeviceError should catch all device-related exceptions."""
@@ -270,11 +241,6 @@ class TestExceptionCatching:
                     return a
 
                 fn(jnp.array([1]))
-            elif trigger == "bad_frontend":
-
-                @device("P0", "bad")
-                def fn2(a):
-                    return a
 
 
 # =============================================================================
@@ -285,11 +251,11 @@ class TestExceptionCatching:
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
-    def test_device_none_none_with_inference(self, ctx_3pc):
-        """device(None, None) should work with device inference."""
+    def test_device_none_with_inference(self, ctx_3pc):
+        """device(None) should work with device inference."""
         x = put("P0", jnp.array([1]))
 
-        @device(None, None)
+        @device(None)
         def identity(a):
             return a
 
@@ -312,18 +278,15 @@ class TestEdgeCases:
     def test_device_context_default_values(self):
         """DeviceContext should have correct default values."""
         ctx1 = device("P0")
-        ctx2 = device("P0", None)
+        ctx2 = device("P0")
 
         assert ctx1.dev_id == "P0"
-        assert ctx1.frontend is None
         assert ctx2.dev_id == "P0"
-        assert ctx2.frontend is None
 
-    def test_device_context_with_frontend(self):
-        """DeviceContext should store frontend correctly."""
-        ctx = device("P0", "jax")
-        assert ctx.dev_id == "P0"
-        assert ctx.frontend == "jax"
+    def test_device_context_with_jax_property(self):
+        """DeviceContext.jax should return a callable wrapper."""
+        jax_wrapper = device("P0").jax
+        assert callable(jax_wrapper)
 
 
 # =============================================================================

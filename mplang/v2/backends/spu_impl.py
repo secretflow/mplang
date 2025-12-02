@@ -17,15 +17,91 @@
 Implements execution logic for SPU primitives using libspu.
 """
 
-from typing import Any
+from __future__ import annotations
+
+import base64
+from typing import Any, ClassVar
 
 import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
+from mplang.v2.backends.value import Value
 from mplang.v2.dialects import spu
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
 from mplang.v2.edsl.interpreter import Interpreter
+
+# =============================================================================
+# SPU Share Wrapper
+# =============================================================================
+
+
+@serde.register_class
+class SPUShare(Value):
+    """Wrapper for libspu.Share representing an SPU secret share.
+
+    This wraps the external libspu library's Share type to provide
+    proper serialization support via the Value base class.
+
+    In-memory, we hold the libspu.Share directly to avoid copying.
+    Serialization extracts meta/share_chunks when needed.
+    """
+
+    _serde_kind: ClassVar[str] = "spu_impl.SPUShare"
+
+    __slots__ = ("_share",)
+
+    def __init__(self, share: libspu.Share) -> None:
+        self._share = share
+
+    @property
+    def libspu_share(self) -> libspu.Share:
+        """Get the underlying libspu.Share object."""
+        return self._share
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "meta": base64.b64encode(self._share.meta).decode("ascii"),
+            "share_chunks": [
+                base64.b64encode(chunk).decode("ascii")
+                for chunk in self._share.share_chunks
+            ],
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> SPUShare:
+        share = libspu.Share()
+        share.meta = base64.b64decode(data["meta"])
+        share.share_chunks = [
+            base64.b64decode(chunk_b64) for chunk_b64 in data["share_chunks"]
+        ]
+        return cls(share)
+
+    @classmethod
+    def from_libspu(cls, share: libspu.Share) -> SPUShare:
+        """Create SPUShare from a libspu.Share (zero-copy)."""
+        return cls(share)
+
+
+# =============================================================================
+# SPU Config Helpers
+# =============================================================================
+
+
+def to_runtime_config(config: spu.SPUConfig) -> libspu.RuntimeConfig:
+    """Convert SPUConfig to libspu.RuntimeConfig.
+
+    This is a runtime-only function that maps the string-based configuration
+    to libspu enums. Should only be called in the backend implementation.
+    """
+    runtime_config = libspu.RuntimeConfig()
+    # ProtocolKind uses "SEMI2K" not "PROT_SEMI2K"
+    runtime_config.protocol = getattr(libspu.ProtocolKind, config.protocol)
+    runtime_config.field = getattr(libspu.FieldType, config.field)
+    runtime_config.fxp_fraction_bits = config.fxp_fraction_bits
+    return runtime_config
+
 
 # Global cache for SPU runtimes per (local_rank, world_size) pair
 # Key: (local_rank, spu_world_size, protocol, field, link_mode), Value: (Runtime, Io)
@@ -34,7 +110,7 @@ _SPU_RUNTIMES: dict[
 ] = {}
 
 
-def _create_mem_link(local_rank: int, spu_world_size: int) -> "libspu.link.Context":
+def _create_mem_link(local_rank: int, spu_world_size: int) -> libspu.link.Context:
     """Create in-memory link for simulation."""
     desc = libspu.link.Desc()  # type: ignore
     desc.recv_timeout_ms = 30 * 1000
@@ -43,9 +119,7 @@ def _create_mem_link(local_rank: int, spu_world_size: int) -> "libspu.link.Conte
     return libspu.link.create_mem(desc, local_rank)
 
 
-def _create_brpc_link(
-    local_rank: int, spu_endpoints: list[str]
-) -> "libspu.link.Context":
+def _create_brpc_link(local_rank: int, spu_endpoints: list[str]) -> libspu.link.Context:
     """Create BRPC link for distributed execution.
 
     Args:
@@ -97,7 +171,7 @@ def _get_spu_ctx(
         link = _create_mem_link(local_rank, spu_world_size)
 
     # Use config from SPUConfig
-    runtime_config = config.to_runtime_config()
+    runtime_config = to_runtime_config(config)
 
     # Create Runtime and Io
     runtime = spu_api.Runtime(link, runtime_config)
@@ -108,37 +182,41 @@ def _get_spu_ctx(
 
 
 @spu.makeshares_p.def_impl
-def makeshares_impl(interpreter: Interpreter, op: Operation, data: Any) -> Any:
+def makeshares_impl(
+    interpreter: Interpreter, op: Operation, data: Any
+) -> tuple[SPUShare, ...]:
     """Generate secret shares for data using spu.Io."""
     count = op.attrs["count"]
     config: spu.SPUConfig = op.attrs["config"]
 
     # We create a standalone Io for share generation (no link needed for make_shares)
-    runtime_config = config.to_runtime_config()
+    runtime_config = to_runtime_config(config)
     io = spu_api.Io(count, runtime_config)
 
     # data is expected to be numpy array or scalar
     data = np.array(data)
 
     # Generate shares (VIS_SECRET)
-    shares = io.make_shares(data, libspu.Visibility.VIS_SECRET)
+    libspu_shares = io.make_shares(data, libspu.Visibility.VIS_SECRET)
 
-    # shares is a list of libspu.Share (C++ objects)
-    # We return them as a tuple. They will be moved by simp.shuffle.
-    return tuple(shares)
+    # Wrap libspu.Share objects in SPUShare
+    return tuple(SPUShare.from_libspu(share) for share in libspu_shares)
 
 
 @spu.reconstruct_p.def_impl
-def reconstruct_impl(interpreter: Interpreter, op: Operation, *shares: Any) -> Any:
+def reconstruct_impl(interpreter: Interpreter, op: Operation, *shares: SPUShare) -> Any:
     """Reconstruct data from secret shares using spu.Io."""
     count = len(shares)
     config: spu.SPUConfig = op.attrs["config"]
 
-    runtime_config = config.to_runtime_config()
+    runtime_config = to_runtime_config(config)
     io = spu_api.Io(count, runtime_config)
 
+    # Unwrap SPUShare to libspu.Share
+    libspu_shares = [share.libspu_share for share in shares]
+
     # Reconstruct
-    result = io.reconstruct(list(shares))
+    result = io.reconstruct(libspu_shares)
 
     # Result is numpy array
     return result
@@ -212,7 +290,10 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     # Set inputs
     for name, share in zip(input_names, args, strict=True):
-        if not isinstance(share, libspu.Share):
+        # Handle SPUShare wrapper - unwrap to libspu.Share
+        if isinstance(share, SPUShare):
+            libspu_share = share.libspu_share
+        else:
             # Handle public input (numpy array)
             # Generate shares with VIS_PUBLIC
             # make_shares expects numpy array
@@ -220,17 +301,18 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
                 share = np.array(share)
 
             shares = io.make_shares(share, libspu.Visibility.VIS_PUBLIC)
-            share = shares[local_rank]
+            libspu_share = shares[local_rank]
 
-        runtime.set_var(name, share)
+        runtime.set_var(name, libspu_share)
 
     # Run
     runtime.run(executable)
 
-    # Get outputs
+    # Get outputs and wrap in SPUShare
     results = []
     for name in output_names:
-        results.append(runtime.get_var(name))
+        libspu_share = runtime.get_var(name)
+        results.append(SPUShare.from_libspu(libspu_share))
 
     if len(results) == 1:
         return results[0]

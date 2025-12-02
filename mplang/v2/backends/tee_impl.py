@@ -24,14 +24,17 @@ hardware attestation (Intel SGX DCAP, AMD SEV-SNP, etc.).
 
 from __future__ import annotations
 
+import base64
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
 from mplang.v2.backends.crypto_impl import RuntimePublicKey
+from mplang.v2.backends.value import Value
 from mplang.v2.dialects import tee
+from mplang.v2.edsl import serde
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.graph import Operation
@@ -43,8 +46,9 @@ if TYPE_CHECKING:
 # ==============================================================================
 
 
+@serde.register_class
 @dataclass
-class MockQuote:
+class MockQuote(Value):
     """Mock TEE quote structure.
 
     In production, this would contain:
@@ -58,9 +62,26 @@ class MockQuote:
     hardware-generated attestation data that doesn't exist outside a real TEE.
     """
 
+    _serde_kind: ClassVar[str] = "tee_impl.MockQuote"
+
     platform: str
     bound_pk: bytes  # The public key bytes bound in this quote (32 bytes for x25519)
     suite: str  # The KEM suite (e.g., "x25519")
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "platform": self.platform,
+            "bound_pk": base64.b64encode(self.bound_pk).decode("ascii"),
+            "suite": self.suite,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> MockQuote:
+        return cls(
+            platform=data["platform"],
+            bound_pk=base64.b64decode(data["bound_pk"]),
+            suite=data["suite"],
+        )
 
     def to_bytes(self) -> bytes:
         """Serialize quote for transmission."""

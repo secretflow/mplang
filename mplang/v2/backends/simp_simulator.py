@@ -125,7 +125,10 @@ class SimpSimulator(SimpHost):
         if self.use_serde:
             # Import modules to ensure all types are registered
             from mplang.v2 import dialects as _dialects  # noqa: F401
-            from mplang.v2.backends import serde as _backends_serde  # noqa: F401
+            from mplang.v2.backends import bfv_impl as _bfv_impl  # noqa: F401
+            from mplang.v2.backends import crypto_impl as _crypto_impl  # noqa: F401
+            from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
+            from mplang.v2.backends import tee_impl as _tee_impl  # noqa: F401
             from mplang.v2.edsl import serde
 
             graph = serde.loads(serde.dumps(graph))

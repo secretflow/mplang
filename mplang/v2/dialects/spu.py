@@ -77,9 +77,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Literal, cast
 
-import spu.libspu as libspu
 import spu.utils.frontend as spu_fe
 from jax import ShapeDtypeStruct
 from jax.tree_util import tree_flatten, tree_unflatten
@@ -109,15 +108,6 @@ class SPUConfig:
     protocol: str = "SEMI2K"
     field: str = "FM128"
     fxp_fraction_bits: int = 18
-
-    def to_runtime_config(self) -> libspu.RuntimeConfig:
-        """Convert to libspu.RuntimeConfig."""
-        config = libspu.RuntimeConfig()
-        # ProtocolKind uses "SEMI2K" not "PROT_SEMI2K"
-        config.protocol = getattr(libspu.ProtocolKind, self.protocol)
-        config.field = getattr(libspu.FieldType, self.field)
-        config.fxp_fraction_bits = self.fxp_fraction_bits
-        return config
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> SPUConfig:
@@ -184,12 +174,16 @@ def _reconstruct_ae(*shares: elt.SSType, config: SPUConfig) -> elt.TensorType:
     return first.pt_type
 
 
+# Visibility type for IR attrs (string-based, mapped to libspu.Visibility at runtime)
+Visibility = Literal["secret", "public", "private"]
+
+
 @exec_p.def_abstract_eval
 def _exec_ae(
     *args: elt.SSType | elt.TensorType,
     executable: bytes,
-    input_vis: list[libspu.Visibility],
-    output_vis: list[libspu.Visibility],
+    input_vis: list[Visibility],
+    output_vis: list[Visibility],
     output_shapes: list[tuple[int, ...]],
     output_dtypes: list[elt.ScalarType],
     input_names: list[str],
@@ -281,15 +275,15 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
 
     # 2. Prepare for compilation
     jax_args_flat = []
-    input_vis = []
+    input_vis: list[Visibility] = []  # String-based visibility for IR
 
     for arg in in_vars:
         if isinstance(arg.type, elt.SSType):
             pt_type = arg.type.pt_type
-            vis = libspu.Visibility.VIS_SECRET
+            vis: Visibility = "secret"
         elif isinstance(arg.type, elt.TensorType):
             pt_type = arg.type
-            vis = libspu.Visibility.VIS_PUBLIC
+            vis = "public"
         else:
             raise TypeError(f"Unsupported input type: {arg.type}")
 
@@ -304,6 +298,17 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         input_vis.append(vis)
 
     # 3. Compile
+    # Map string visibility to libspu.Visibility for spu_fe.compile
+    # Import libspu only at compile time, not stored in IR
+    import spu.libspu as libspu
+
+    def vis_to_libspu(v: Visibility) -> libspu.Visibility:
+        return (
+            libspu.Visibility.VIS_SECRET
+            if v == "secret"
+            else libspu.Visibility.VIS_PUBLIC
+        )
+
     # Note: normalized_fn takes a list of variables as input
     executable, output_info = spu_fe.compile(
         spu_fe.Kind.JAX,
@@ -311,7 +316,7 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         [jax_args_flat],
         {},
         input_names=[f"in{i}" for i in range(len(in_vars))],
-        input_vis=input_vis,
+        input_vis=[vis_to_libspu(v) for v in input_vis],
         outputNameGen=lambda outs: [f"out{i}" for i in range(len(outs))],
     )
 
@@ -320,7 +325,7 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     output_shapes = [out.shape for out in flat_outputs_info]
 
     output_dtypes = [dtypes.from_dtype(out.dtype) for out in flat_outputs_info]
-    output_vis_list = [libspu.Visibility.VIS_SECRET] * len(flat_outputs_info)
+    output_vis_list: list[Visibility] = ["secret"] * len(flat_outputs_info)
 
     res_shares = exec_p.bind(
         *in_vars,

@@ -51,8 +51,6 @@ from __future__ import annotations
 import base64
 import gzip
 import json
-from enum import Enum
-from importlib import import_module
 from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
@@ -166,19 +164,6 @@ def to_json(obj: Any) -> dict[str, Any]:
         return {"_kind": "_null"}
     if isinstance(obj, bool):  # Must check before int (bool is subclass of int)
         return {"_kind": "_bool", "v": obj}
-
-    # Enum (must check before int as IntEnum is subclass of int)
-    # Also handles pybind11 enums which have name/value attrs and __members__ on class
-    if isinstance(obj, Enum) or (
-        hasattr(obj, "name")
-        and hasattr(obj, "value")
-        and hasattr(type(obj), "__members__")
-    ):
-        return {
-            "_kind": "_enum",
-            "cls": f"{type(obj).__module__}.{type(obj).__name__}",
-            "name": obj.name,
-        }
 
     if isinstance(obj, int):
         return {"_kind": "_int", "v": obj}
@@ -326,19 +311,6 @@ def from_json(data: dict[str, Any]) -> Any:
     # Bytes
     if kind == "_bytes":
         return base64.b64decode(data["data"])
-
-    # Enum (handles both Python Enum and pybind11 enums)
-    if kind == "_enum":
-        cls_path = data["cls"]
-        module_path, cls_name = cls_path.rsplit(".", 1)
-        module = import_module(module_path)
-        enum_cls = getattr(module, cls_name)
-        # Python Enum uses [], pybind11 enum uses getattr
-        if isinstance(enum_cls, type) and issubclass(enum_cls, Enum):
-            return enum_cls[data["name"]]
-        else:
-            # pybind11 enum
-            return getattr(enum_cls, data["name"])
 
     # Registered classes
     if kind in _CLASS_REGISTRY:

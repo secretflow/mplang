@@ -19,20 +19,49 @@ Implements execution logic for BFV primitives using TenSEAL low-level API (seala
 
 from __future__ import annotations
 
+import base64
+import os
+import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import tenseal as ts
 import tenseal.sealapi as sealapi
 
+from mplang.v2.backends.value import Value
 from mplang.v2.dialects import bfv
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
 from mplang.v2.edsl.interpreter import Interpreter
 
+# =============================================================================
+# Helper for SEAL serialization
+# =============================================================================
 
-class BFVPublicContext:
+
+def _get_seal_temp_path() -> str:
+    """Get a temp file path for SEAL serialization.
+
+    Uses /dev/shm on Linux for better performance (RAM-based tmpfs),
+    falls back to regular tempfile on other platforms.
+    """
+    # Try /dev/shm first (Linux RAM-based tmpfs, ~30% faster)
+    shm_dir = "/dev/shm"
+    if os.path.isdir(shm_dir) and os.access(shm_dir, os.W_OK):
+        return os.path.join(shm_dir, f"seal_{uuid.uuid4().hex}.bin")
+
+    # Fallback to regular temp directory
+    import tempfile
+
+    return os.path.join(tempfile.gettempdir(), f"seal_{uuid.uuid4().hex}.bin")
+
+
+@serde.register_class
+class BFVPublicContext(Value):
     """Wraps TenSEAL context and exposes low-level SEAL objects (Public only)."""
+
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVPublicContext"
 
     def __init__(self, ts_ctx: ts.Context):
         self.ts_ctx = ts_ctx
@@ -51,9 +80,23 @@ class BFVPublicContext:
 
         self.encryptor = sealapi.Encryptor(self.cpp_ctx, self.public_key)
 
+    def to_json(self) -> dict[str, Any]:
+        # Serialize TenSEAL context (without secret key)
+        serialized = self.ts_ctx.serialize(save_secret_key=False)
+        return {"ctx_bytes": base64.b64encode(serialized).decode("ascii")}
 
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> BFVPublicContext:
+        ctx_bytes = base64.b64decode(data["ctx_bytes"])
+        ts_ctx = ts.context_from(ctx_bytes)
+        return cls(ts_ctx)
+
+
+@serde.register_class
 class BFVSecretContext(BFVPublicContext):
     """Wraps TenSEAL context and exposes low-level SEAL objects (including Secret)."""
+
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVSecretContext"
 
     def __init__(self, ts_ctx: ts.Context):
         if not ts_ctx.has_secret_key():
@@ -72,14 +115,73 @@ class BFVSecretContext(BFVPublicContext):
         new_ts_ctx = ts.context_from(serialized)
         return BFVPublicContext(new_ts_ctx)
 
+    def to_json(self) -> dict[str, Any]:
+        # Serialize TenSEAL context (with secret key)
+        serialized = self.ts_ctx.serialize(save_secret_key=True)
+        return {"ctx_bytes": base64.b64encode(serialized).decode("ascii")}
 
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> BFVSecretContext:
+        ctx_bytes = base64.b64decode(data["ctx_bytes"])
+        ts_ctx = ts.context_from(ctx_bytes)
+        return cls(ts_ctx)
+
+
+@serde.register_class
 @dataclass
-class BFVValue:
+class BFVValue(Value):
     """Runtime value holding a SEAL Ciphertext or Plaintext."""
+
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVValue"
 
     data: sealapi.Ciphertext | sealapi.Plaintext
     ctx: BFVPublicContext
     is_cipher: bool = True
+
+    def to_json(self) -> dict[str, Any]:
+        # Serialize the ciphertext/plaintext via temp file (SEAL API requirement)
+        # Use /dev/shm on Linux for better performance (no disk I/O)
+        fname = _get_seal_temp_path()
+        try:
+            self.data.save(fname)
+            with open(fname, "rb") as f:
+                data_bytes = f.read()
+        finally:
+            if os.path.exists(fname):
+                os.unlink(fname)
+
+        # Also need to serialize the context reference
+        ctx_json = serde.to_json(self.ctx)
+        return {
+            "data_bytes": base64.b64encode(data_bytes).decode("ascii"),
+            "is_cipher": self.is_cipher,
+            "ctx": ctx_json,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> BFVValue:
+        ctx = serde.from_json(data["ctx"])
+        data_bytes = base64.b64decode(data["data_bytes"])
+        is_cipher = data["is_cipher"]
+
+        # Load via temp file (SEAL API requirement)
+        # Use /dev/shm on Linux for better performance (no disk I/O)
+        fname = _get_seal_temp_path()
+        try:
+            with open(fname, "wb") as f:
+                f.write(data_bytes)
+
+            if is_cipher:
+                ct = sealapi.Ciphertext()
+                ct.load(ctx.cpp_ctx, fname)
+                return cls(data=ct, ctx=ctx, is_cipher=True)
+            else:
+                pt = sealapi.Plaintext()
+                pt.load(ctx.cpp_ctx, fname)
+                return cls(data=pt, ctx=ctx, is_cipher=False)
+        finally:
+            if os.path.exists(fname):
+                os.unlink(fname)
 
 
 # =============================================================================

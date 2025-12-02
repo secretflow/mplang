@@ -14,17 +14,62 @@
 
 """Crypto backend implementation using cryptography and coincurve."""
 
+from __future__ import annotations
+
+import base64
 import hashlib
 import os
 import pickle
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import coincurve
+import jax
 import jax.numpy as jnp
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from mplang.v2.backends.value import Value
 from mplang.v2.dialects import crypto
+from mplang.v2.edsl import serde
+from mplang.v2.edsl.graph import Operation
+from mplang.v2.edsl.interpreter import Interpreter
+
+# =============================================================================
+# ECC Point Wrapper (secp256k1)
+# =============================================================================
+
+
+@serde.register_class
+@dataclass
+class ECPoint(Value):
+    """Wrapper for coincurve.PublicKey representing an elliptic curve point.
+
+    This wraps the external coincurve library's PublicKey type to provide
+    proper serialization support via the Value base class.
+    """
+
+    _serde_kind: ClassVar[str] = "crypto_impl.ECPoint"
+
+    # The raw public key bytes (compressed format, 33 bytes)
+    key_bytes: bytes
+
+    def to_json(self) -> dict[str, Any]:
+        return {"data": base64.b64encode(self.key_bytes).decode("ascii")}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> ECPoint:
+        return cls(key_bytes=base64.b64decode(data["data"]))
+
+    @property
+    def coincurve_key(self) -> coincurve.PublicKey:
+        """Get the underlying coincurve.PublicKey object."""
+        return coincurve.PublicKey(self.key_bytes)
+
+    @classmethod
+    def from_coincurve(cls, pk: coincurve.PublicKey) -> ECPoint:
+        """Create ECPoint from a coincurve.PublicKey."""
+        return cls(key_bytes=pk.format(compressed=True))
+
 
 # --- ECC Impl (Coincurve) ---
 
@@ -33,16 +78,18 @@ N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 
 @crypto.generator_p.def_impl
-def generator_impl(interpreter: Any, op: Any) -> Any:
+def generator_impl(interpreter: Interpreter, op: Operation) -> ECPoint:
     # Compressed G
     g_bytes = bytes.fromhex(
         "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
     )
-    return coincurve.PublicKey(g_bytes)
+    return ECPoint(key_bytes=g_bytes)
 
 
 @crypto.mul_p.def_impl
-def mul_impl(interpreter: Any, op: Any, point: Any, scalar: Any) -> Any:
+def mul_impl(
+    interpreter: Interpreter, op: Operation, point: ECPoint | None, scalar: Any
+) -> ECPoint | None:
     s_val = scalar
     if hasattr(s_val, "item"):
         s_val = s_val.item()
@@ -56,58 +103,62 @@ def mul_impl(interpreter: Any, op: Any, point: Any, scalar: Any) -> Any:
 
     # coincurve multiply expects bytes
     s_bytes = s_val.to_bytes(32, "big")
-    return point.multiply(s_bytes)
+    result = point.coincurve_key.multiply(s_bytes)
+    return ECPoint.from_coincurve(result)
 
 
 @crypto.add_p.def_impl
-def add_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
+def add_impl(
+    interpreter: Interpreter, op: Operation, p1: ECPoint | None, p2: ECPoint | None
+) -> ECPoint | None:
     if p1 is None:
         return p2
     if p2 is None:
         return p1
-    return p1.combine([p2])
+    result = p1.coincurve_key.combine([p2.coincurve_key])
+    return ECPoint.from_coincurve(result)
 
 
 @crypto.sub_p.def_impl
-def sub_impl(interpreter: Any, op: Any, p1: Any, p2: Any) -> Any:
+def sub_impl(
+    interpreter: Interpreter, op: Operation, p1: ECPoint | None, p2: ECPoint | None
+) -> ECPoint | None:
     # p1 - p2 = p1 + (-p2)
     if p2 is None:
         return p1
 
-    # Negate p2
-    # coincurve doesn't have direct negate?
-    # We can multiply by -1 (N-1)
+    # Negate p2 by multiplying by (N-1)
     neg_scalar = (N - 1).to_bytes(32, "big")
-    neg_p2 = p2.multiply(neg_scalar)
+    neg_p2 = p2.coincurve_key.multiply(neg_scalar)
 
     if p1 is None:
-        return neg_p2
+        return ECPoint.from_coincurve(neg_p2)
 
-    return p1.combine([neg_p2])
+    result = p1.coincurve_key.combine([neg_p2])
+    return ECPoint.from_coincurve(result)
 
 
 @crypto.random_scalar_p.def_impl
-def random_scalar_impl(interpreter: Any, op: Any) -> Any:
+def random_scalar_impl(interpreter: Interpreter, op: Operation) -> int:
     return int.from_bytes(os.urandom(32), "big") % N
 
 
 @crypto.scalar_from_int_p.def_impl
-def scalar_from_int_impl(interpreter: Any, op: Any, val: Any) -> Any:
+def scalar_from_int_impl(interpreter: Interpreter, op: Operation, val: Any) -> int:
     return int(val)
 
 
 @crypto.point_to_bytes_p.def_impl
-def point_to_bytes_impl(interpreter: Any, op: Any, point: Any) -> Any:
+def point_to_bytes_impl(
+    interpreter: Interpreter, op: Operation, point: ECPoint | None
+) -> jnp.ndarray:
     if point is None:
         # Infinity / Identity -> Zeros
-        # 65 bytes to match uncompressed format length?
-        # Or 64? Previous was 64.
-        # coincurve uncompressed is 65.
-        # Let's return 65 zeros.
+        # 65 bytes to match uncompressed format length
         return jnp.zeros(65, dtype=jnp.uint8)
 
     # Returns 65 bytes (uncompressed)
-    b = point.format(compressed=False)
+    b = point.coincurve_key.format(compressed=False)
     return jnp.frombuffer(b, dtype=jnp.uint8)
 
 
@@ -115,7 +166,7 @@ def point_to_bytes_impl(interpreter: Any, op: Any, point: Any) -> Any:
 
 
 @crypto.hash_p.def_impl
-def hash_impl(interpreter: Any, op: Any, data: Any) -> Any:
+def hash_impl(interpreter: Interpreter, op: Operation, data: Any) -> jnp.ndarray:
     d = data
     if hasattr(d, "tobytes"):
         d = d.tobytes()
@@ -128,7 +179,12 @@ def hash_impl(interpreter: Any, op: Any, data: Any) -> Any:
 
 
 @crypto.sym_encrypt_p.def_impl
-def sym_encrypt_impl(interpreter: Any, op: Any, key: Any, plaintext: Any) -> Any:
+def sym_encrypt_impl(
+    interpreter: Interpreter,
+    op: Operation,
+    key: RuntimeSymmetricKey | jax.Array,
+    plaintext: Any,
+) -> jax.Array:
     k = key
     # Support RuntimeSymmetricKey from kem_derive
     if isinstance(k, RuntimeSymmetricKey):
@@ -156,10 +212,10 @@ def sym_encrypt_impl(interpreter: Any, op: Any, key: Any, plaintext: Any) -> Any
 
 @crypto.sym_decrypt_p.def_impl
 def sym_decrypt_impl(
-    interpreter: Any,
-    op: Any,
-    key: Any,
-    ciphertext: Any,
+    interpreter: Interpreter,
+    op: Operation,
+    key: RuntimeSymmetricKey | jax.Array,
+    ciphertext: jax.Array | bytes,
     target_type: Any = None,
 ) -> Any:
     k = key
@@ -188,7 +244,7 @@ def sym_decrypt_impl(
 
 @crypto.select_p.def_impl
 def select_impl(
-    interpreter: Any, op: Any, cond: Any, true_val: Any, false_val: Any
+    interpreter: Interpreter, op: Operation, cond: Any, true_val: Any, false_val: Any
 ) -> Any:
     c = cond
     if hasattr(c, "item"):
@@ -202,8 +258,9 @@ def select_impl(
 # ==============================================================================
 
 
+@serde.register_class
 @dataclass
-class RuntimePrivateKey:
+class RuntimePrivateKey(Value):
     """Runtime representation of a KEM private key.
 
     This wraps the raw key bytes from a real cryptographic implementation
@@ -211,35 +268,84 @@ class RuntimePrivateKey:
     library which provides secure, audited implementations.
     """
 
+    _serde_kind: ClassVar[str] = "crypto_impl.RuntimePrivateKey"
+
     suite: str
     key_bytes: bytes
 
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "suite": self.suite,
+            "key_bytes": base64.b64encode(self.key_bytes).decode("ascii"),
+        }
 
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> RuntimePrivateKey:
+        return cls(
+            suite=data["suite"],
+            key_bytes=base64.b64decode(data["key_bytes"]),
+        )
+
+
+@serde.register_class
 @dataclass
-class RuntimePublicKey:
+class RuntimePublicKey(Value):
     """Runtime representation of a KEM public key.
 
     This wraps the raw key bytes from a real cryptographic implementation.
     """
 
+    _serde_kind: ClassVar[str] = "crypto_impl.RuntimePublicKey"
+
     suite: str
     key_bytes: bytes
 
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "suite": self.suite,
+            "key_bytes": base64.b64encode(self.key_bytes).decode("ascii"),
+        }
 
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> RuntimePublicKey:
+        return cls(
+            suite=data["suite"],
+            key_bytes=base64.b64decode(data["key_bytes"]),
+        )
+
+
+@serde.register_class
 @dataclass
-class RuntimeSymmetricKey:
+class RuntimeSymmetricKey(Value):
     """Runtime representation of a symmetric encryption key.
 
     This wraps the raw key bytes derived from ECDH key exchange.
     The key is used with AES-256-GCM for authenticated encryption.
     """
 
+    _serde_kind: ClassVar[str] = "crypto_impl.RuntimeSymmetricKey"
+
     suite: str
     key_bytes: bytes
 
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "suite": self.suite,
+            "key_bytes": base64.b64encode(self.key_bytes).decode("ascii"),
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> RuntimeSymmetricKey:
+        return cls(
+            suite=data["suite"],
+            key_bytes=base64.b64decode(data["key_bytes"]),
+        )
+
 
 @crypto.kem_keygen_p.def_impl
-def kem_keygen_impl(interpreter: Any, op: Any, suite: str = "x25519") -> Any:
+def kem_keygen_impl(
+    interpreter: Interpreter, op: Operation, suite: str = "x25519"
+) -> tuple[RuntimePrivateKey, RuntimePublicKey]:
     """Generate a KEM key pair."""
     if suite == "x25519":
         from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -275,8 +381,11 @@ def kem_keygen_impl(interpreter: Any, op: Any, suite: str = "x25519") -> Any:
 
 @crypto.kem_derive_p.def_impl
 def kem_derive_impl(
-    interpreter: Any, op: Any, private_key: Any, public_key: Any
-) -> Any:
+    interpreter: Interpreter,
+    op: Operation,
+    private_key: RuntimePrivateKey,
+    public_key: RuntimePublicKey,
+) -> RuntimeSymmetricKey:
     """Derive a symmetric key using ECDH."""
     suite = getattr(private_key, "suite", "x25519")
 

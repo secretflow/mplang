@@ -301,9 +301,21 @@ class DeviceContext:
             return self.dev_id
         return _infer_device_from_args(*args, **kwargs)
 
+    def _is_spu_device(self) -> bool:
+        """Check if this device context targets an SPU device."""
+        if self.dev_id is None:
+            return False
+        cluster = get_global_cluster()
+        if self.dev_id not in cluster.devices:
+            return False
+        return cluster.devices[self.dev_id].kind.upper() == "SPU"
+
     @property
     def jax(self) -> Callable[[Callable], Callable]:
         """Return a decorator that wraps JAX functions for this device.
+
+        For PPU/TEE: applies tensor.jax_fn to compile JAX code via StableHLO.
+        For SPU: no-op wrapper, as SPU natively uses JAX via spu.run_jax.
 
         This is syntax sugar for using jax_fn adaptor:
             device("P0").jax(fn)  ==  device("P0")(jax_fn(fn))
@@ -316,21 +328,14 @@ class DeviceContext:
             # As inline call
             result = device("P0").jax(fn)(x, y)
         """
-        if self.dev_id is not None:
-            # Import get_global_cluster here to avoid circular dependencies
-            from mplang.v2.libs.device.cluster import get_global_cluster
-            cluster = get_global_cluster()
-            if self.dev_id in cluster.devices:
-                dev_info = cluster.devices[self.dev_id]
-                if dev_info.kind.upper() == "SPU":
-                    raise TypeError(
-                        f".jax cannot be used with SPU device '{self.dev_id}'. "
-                        f"SPU always uses JAX natively. Use device('{self.dev_id}') instead."
-                    )
-
-        from mplang.v2.dialects.tensor import jax_fn
 
         def wrapper(fn: Callable) -> Callable:
+            # SPU natively uses JAX via spu.run_jax, no extra wrapping needed
+            if self._is_spu_device():
+                return self(fn)
+            # PPU/TEE need tensor.jax_fn to compile JAX code
+            from mplang.v2.dialects.tensor import jax_fn
+
             return self(jax_fn(fn))
 
         return wrapper

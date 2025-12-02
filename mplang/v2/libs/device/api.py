@@ -22,7 +22,6 @@ and execution dispatch automatically.
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Callable
 from functools import partial, wraps
 from typing import Any, cast
@@ -51,9 +50,6 @@ _tee_session_cache: dict[tuple[str, str], tuple[int, Object, Object]] = {}
 # Automatic transfer between devices when parameter is not on the target device.
 g_auto_trans: bool = True
 
-# Supported frontend types
-SUPPORTED_FRONTENDS = {"jax"}
-
 
 class DeviceError(Exception):
     """Base exception for device-related errors."""
@@ -65,10 +61,6 @@ class DeviceNotFoundError(DeviceError):
 
 class DeviceInferenceError(DeviceError):
     """Raised when device cannot be inferred from arguments."""
-
-
-class FrontendError(DeviceError):
-    """Raised for frontend-related errors."""
 
 
 def is_device_obj(obj: Any) -> bool:
@@ -282,25 +274,26 @@ class DeviceContext:
         @device()
         def add(a, b): ...
 
-        # Explicit device + JAX frontend (for PPU)
-        @device("P0", "jax")
+        # JAX frontend via .jax property (recommended for PPU)
+        @device("P0").jax
         def add(a, b): return a + b
 
-        # Or use separate decorators
+        # Or use separate decorators (equivalent)
         @device("P0")
         @jax_fn
         def add(a, b): return a + b
+
+        # Inline call style
+        result = device("P0").jax(fn)(x, y)
     """
 
-    def __init__(self, dev_id: str | None = None, frontend: str | None = None):
+    def __init__(self, dev_id: str | None = None):
         """Create a DeviceContext.
 
         Args:
             dev_id: Device ID (e.g., "P0", "SP0") or None for auto-inference.
-            frontend: Frontend type (e.g., "jax") or None for generic tracing.
         """
         self.dev_id = dev_id
-        self.frontend = frontend
 
     def _resolve_device(self, *args: Any, **kwargs: Any) -> str:
         """Resolve device ID, inferring from args if needed."""
@@ -308,34 +301,30 @@ class DeviceContext:
             return self.dev_id
         return _infer_device_from_args(*args, **kwargs)
 
+    @property
+    def jax(self) -> Callable[[Callable], Callable]:
+        """Return a decorator that wraps JAX functions for this device.
+
+        This is syntax sugar for using jax_fn adaptor:
+            device("P0").jax(fn)  ==  device("P0")(jax_fn(fn))
+
+        Examples:
+            # As decorator
+            @device("P0").jax
+            def add(a, b): return a + b
+
+            # As inline call
+            result = device("P0").jax(fn)(x, y)
+        """
+        from mplang.v2.dialects.tensor import jax_fn
+
+        def wrapper(fn: Callable) -> Callable:
+            return self(jax_fn(fn))
+
+        return wrapper
+
     def __call__(self, fn: Callable) -> Callable:
         """Wrap function for execution on this device."""
-        # Validate frontend
-        if self.frontend is not None and self.frontend not in SUPPORTED_FRONTENDS:
-            raise FrontendError(
-                f"Unknown frontend: '{self.frontend}'. "
-                f"Supported frontends: {SUPPORTED_FRONTENDS}"
-            )
-
-        # Check for SPU + jax warning
-        if self.frontend == "jax" and self.dev_id is not None:
-            cluster = get_global_cluster()
-            if self.dev_id in cluster.devices:
-                dev_info = cluster.devices[self.dev_id]
-                if dev_info.kind.upper() == "SPU":
-                    warnings.warn(
-                        f"frontend='jax' is redundant for SPU device '{self.dev_id}'. "
-                        f"SPU always uses JAX backend via spu.run_jax. "
-                        f"Use device('{self.dev_id}') instead.",
-                        UserWarning,
-                        stacklevel=3,
-                    )
-
-        # Apply frontend-specific transformation
-        if self.frontend == "jax":
-            from mplang.v2.dialects.tensor import jax_fn
-
-            fn = jax_fn(fn)
 
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -345,13 +334,11 @@ class DeviceContext:
         return wrapped
 
 
-def device(dev_id: str | None = None, frontend: str | None = None) -> DeviceContext:
+def device(dev_id: str | None = None) -> DeviceContext:
     """Create a device context for device-specific execution.
 
     Args:
         dev_id: Device ID (e.g., "P0", "SP0") or None for auto-inference.
-        frontend: Frontend type. Use "jax" for JAX functions on PPU.
-                  None means generic traceable function.
 
     Returns:
         DeviceContext that wraps functions for device execution.
@@ -365,20 +352,19 @@ def device(dev_id: str | None = None, frontend: str | None = None) -> DeviceCont
         @device()
         def fn(a, b): ...
 
-        # Explicit device + JAX frontend (for PPU)
-        @device("P0", "jax")
+        # JAX frontend via .jax property (recommended for PPU)
+        @device("P0").jax
         def add(a, b): return a + b
+
+        # Inline call
+        result = device("P0").jax(fn)(x, y)
 
         # Separate decorators (equivalent to above)
         @device("P0")
         @jax_fn
         def add(a, b): return a + b
-
-        # Auto-infer + JAX
-        @device(None, "jax")
-        def add(a, b): return a + b
     """
-    return DeviceContext(dev_id, frontend)
+    return DeviceContext(dev_id)
 
 
 def _ensure_tee_session(

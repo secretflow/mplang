@@ -72,7 +72,7 @@ def heavy_computation():
 
     # Compile captures the loop structure
     for i in range(100):
-        x = mp.device("P0", "jax")(lambda a: a + i)(x)
+        x = mp.device("P0").jax(lambda a: a + i)(x)
 
     return x
 

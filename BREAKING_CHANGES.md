@@ -44,9 +44,9 @@ import mplang.v2 as mp  # Migrate to v2
 # v1: Implicit JAX tracing
 result = mp.device("P0")(lambda a, b: jnp.add(a, b))(x, y)
 
-# v2: Explicit frontend for PPU
-result = mp.device("P0", "jax")(lambda a, b: jnp.add(a, b))(x, y)
-#                        ^^^^^ Required for JAX on PPU
+# v2: Explicit frontend via .jax property for PPU
+result = mp.device("P0").jax(lambda a, b: jnp.add(a, b))(x, y)
+#                       ^^^^ Use .jax for JAX on PPU
 
 # SPU always uses JAX natively (no frontend needed)
 result = mp.device("SP0")(lambda a, b: jnp.add(a, b))(x, y)  # Same in v1/v2
@@ -268,7 +268,7 @@ find . -name "*.py" -type f -exec sed -i \
 | Feature | v1 API | v2 API |
 |---------|--------|--------|
 | Import | `import mplang as mp` | `import mplang.v2 as mp` |
-| PPU JAX | `device("P0")(fn)(...)` | `device("P0", "jax")(fn)(...)` |
+| PPU JAX | `device("P0")(fn)(...)` | `device("P0").jax(fn)(...)` |
 | Constants | `device("P0")(lambda: 42)()` | `put("P0", 42)` |
 | SQL | `sql_cc.run_sql(q, tbl=t)` | `table.run_sql(q, out_type=s, tbl=t)` |
 | IR dump | `traced.dump_ir()` | `traced.compiler_ir()` |

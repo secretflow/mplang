@@ -24,20 +24,13 @@ from .api import (
     DeviceError,
     DeviceInferenceError,
     DeviceNotFoundError,
-    FrontendError,
     device,
     get_dev_attr,
     is_device_obj,
     put,
     set_dev_attr,
 )
-from .cluster import (
-    ClusterSpec,
-    Device,
-    Node,
-    get_global_cluster,
-    set_global_cluster,
-)
+from .cluster import ClusterSpec, Device, Node, get_global_cluster, set_global_cluster
 
 __all__ = [
     "ClusterSpec",
@@ -46,7 +39,6 @@ __all__ = [
     "DeviceError",
     "DeviceInferenceError",
     "DeviceNotFoundError",
-    "FrontendError",
     "Node",
     "device",
     "get_dev_attr",

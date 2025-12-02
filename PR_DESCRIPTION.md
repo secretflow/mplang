@@ -35,7 +35,7 @@ This PR introduces **MPLang2**, a complete architectural rewrite of the MPLang f
 
 - **All dialects equal**: `simp`, `tensor`, `table`, `spu`, `crypto`, `bfv`, `phe` all first-class
 - **Extensible types**: `BaseType` → `ScalarType | TensorType | TableType | SSType | VectorType | CustomType`
-- **Explicit frontends**: `device("P0", "jax")` makes JAX execution explicit
+- **Explicit frontends**: `device("P0").jax` makes JAX execution explicit
 - **Simplified placement**: `put()` for constants, cleaner than `device()(lambda: val)()`
 
 ---
@@ -150,7 +150,7 @@ See [BREAKING_CHANGES.md](./BREAKING_CHANGES.md) for detailed migration guide.
 **Key API Differences**:
 
 1. **Import**: `import mplang.v2 as mp` (explicit version)
-2. **Device+JAX**: `device("P0", "jax")(fn)` (explicit frontend for PPU)
+2. **Device+JAX**: `device("P0").jax(fn)` (explicit frontend for PPU)
 3. **Constants**: `put("P0", 42)` (replaces `device("P0")(lambda: 42)()`)
 4. **SQL**: `table.run_sql(q, out_type=schema, tbl=t)` (explicit output type)
 

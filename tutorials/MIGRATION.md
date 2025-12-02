@@ -33,6 +33,7 @@ Target: Replace `tutorials/device/*` with `tutorials/mplang2/*`.
 ## Key API Differences
 
 ### Import
+
 ```python
 # v1
 import mplang as mp
@@ -42,17 +43,19 @@ import mplang2 as mp
 ```
 
 ### Device Execution with JAX
+
 ```python
 # v1: implicit JAX tracing
 mp.device("P0")(lambda a, b: a + b)(x, y)
 
-# v2: explicit frontend for PPU
-mp.device("P0", "jax")(lambda a, b: a + b)(x, y)
+# v2: explicit frontend via .jax property for PPU
+mp.device("P0").jax(lambda a, b: a + b)(x, y)
 # SPU always uses JAX natively, no frontend needed
 mp.device("SP0")(lambda a, b: a + b)(x, y)
 ```
 
 ### Constants / Data Placement
+
 ```python
 # v1
 x = mp.device("P0")(lambda: 42)()
@@ -62,6 +65,7 @@ x = mp.put("P0", 42)
 ```
 
 ### SQL
+
 ```python
 # v1
 from mplang.ops import sql_cc
@@ -105,6 +109,7 @@ result = table.run_sql(query, out_type=schema, tbl=tbl)
 | Type Safety | Runtime checks | Compile-time type distinction |
 
 ### v1 DType (`mplang/core/dtypes.py`)
+
 ```python
 @dataclass(frozen=True)
 class DType:
@@ -117,6 +122,7 @@ class DType:
 ```
 
 ### v2 Types (`mplang2/edsl/typing.py`)
+
 ```python
 class ScalarType(BaseType): ...
 class IntegerType(ScalarType):  # i8, i16, i32, i64, u8...
@@ -144,6 +150,7 @@ class ComplexType(ScalarType):  # c64, c128
 ### Completed Improvements (2025-11-30)
 
 **P0: Added `mplang2/dialects/dtypes.py`** (renamed from type_utils.py) with clean API:
+
 ```python
 from mplang2.dialects import dtypes
 
@@ -155,6 +162,7 @@ dtypes.from_dtype("float32")         # works with strings too
 ```
 
 **P3: Added `bool_` and Table-only types to `mplang2/edsl/typing.py`**:
+
 ```python
 # Boolean
 bool_ = IntegerType(bitwidth=1, signed=True)

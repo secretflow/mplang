@@ -56,8 +56,8 @@ def jax_on_ppu():
     x = mp.put("P0", jnp.array([1.0, 2.0, 3.0]))
 
     # Run JAX computation on P0
-    # Use frontend="jax" for functions that use JAX operators
-    result = mp.device("P0", "jax")(lambda v: jnp.sum(v**2))(x)
+    # Use .jax for functions that use JAX operators
+    result = mp.device("P0").jax(lambda v: jnp.sum(v**2))(x)
 
     return result
 
@@ -89,9 +89,9 @@ def cross_device_pipeline():
     processed = mp.device("SP0")(lambda v: v * 2)(x)
 
     # Stage 3: Bring back to P0 and compute sum
-    # PPU needs frontend="jax" for JAX operators
+    # PPU needs .jax for JAX operators
     tmp_p0 = mp.put("P0", processed)
-    final = mp.device("P0", "jax")(lambda v: jnp.sum(v))(tmp_p0)
+    final = mp.device("P0").jax(lambda v: jnp.sum(v))(tmp_p0)
 
     return final
 

@@ -119,7 +119,7 @@ class TestTeeExecution:
     def test_device_decorator_on_tee(self, ctx_3pc):
         """@device decorator should work with TEE device."""
 
-        @device("TEE0", "jax")
+        @device("TEE0").jax
         def add_one(x):
             return x + 1
 
@@ -143,7 +143,7 @@ class TestTeeExecution:
     def test_tee_computation(self, ctx_3pc):
         """Computation should work correctly on TEE."""
 
-        @device("TEE0", "jax")
+        @device("TEE0").jax
         def compute(x, y):
             return x * 2 + y
 
@@ -188,7 +188,7 @@ class TestAutoTransferTee:
     def test_auto_transfer_ppu_to_tee(self, ctx_3pc):
         """PPU data should auto-transfer to TEE when function runs on TEE."""
 
-        @device("TEE0", "jax")
+        @device("TEE0").jax
         def add(x, y):
             return x + y
 

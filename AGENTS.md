@@ -79,7 +79,7 @@ Neither v1 nor v2 focuses on optimization passes yet; v2's goals are **typing** 
 ### Key API diffs (v1 → v2)
 
 - Import: `import mplang2 as mp`
-- JAX on PPU: `mp.device("P0", "jax")(fn)` (explicit frontend).
+- JAX on PPU: `mp.device("P0").jax(fn)` (explicit frontend via .jax property).
 - Constants: `mp.put("P0", 42)` instead of `mp.device("P0")(lambda: 42)()`.
 - IR inspection: `mp.jit(fn).compiler_ir()`.
 

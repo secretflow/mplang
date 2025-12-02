@@ -316,6 +316,18 @@ class DeviceContext:
             # As inline call
             result = device("P0").jax(fn)(x, y)
         """
+        if self.dev_id is not None:
+            # Import get_global_cluster here to avoid circular dependencies
+            from mplang.v2.libs.device.cluster import get_global_cluster
+            cluster = get_global_cluster()
+            if self.dev_id in cluster.devices:
+                dev_info = cluster.devices[self.dev_id]
+                if dev_info.kind.upper() == "SPU":
+                    raise TypeError(
+                        f".jax cannot be used with SPU device '{self.dev_id}'. "
+                        f"SPU always uses JAX natively. Use device('{self.dev_id}') instead."
+                    )
+
         from mplang.v2.dialects.tensor import jax_fn
 
         def wrapper(fn: Callable) -> Callable:

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -90,9 +91,12 @@ def jax2stablehlo(
             # JAX eliminated some unused parameters during compilation
             # Keep the indices in sorted order for consistent mapping
             arg_keep_map = sorted(kept_var_idx)
-    except Exception:
+    except Exception as e:
         # Fallback: if jax.export fails, we can still use the compiled result without parameter tracking
         # This ensures backward compatibility even if export has issues
+        logging.warning(
+            f"jax.export failed to get kept_var_idx, proceeding without it. Error: {e}"
+        )
         pass
 
     # This format tells JaxRT how to handle the compiled result

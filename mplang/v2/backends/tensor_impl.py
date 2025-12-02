@@ -203,14 +203,12 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     jax_args = [jax.device_put(jnp.asarray(arg)) for arg in jax_input_args]
 
     try:
-        result = compiled.execute_sharded(jax_args)
-        arrays = result.disassemble_into_single_device_arrays()
-        flat: list[Any] = []
-        for lst in arrays:
-            if isinstance(lst, list) and len(lst) == 1:
-                flat.append(np.asarray(lst[0]))
-            else:
-                flat.extend(np.asarray(a) for a in lst)
+        # Execute with the new LoadedExecutable interface
+        result = compiled.execute(jax_args)
+
+        # Use jax.tree_util.tree_flatten to robustly handle any PyTree structure
+        flat_results, _ = jax.tree_util.tree_flatten(result)
+        flat = [np.asarray(item) for item in flat_results]
 
         # If single output, return it directly (but run_jax usually returns list of vars)
         # The primitive expects a list of results matching outputs.

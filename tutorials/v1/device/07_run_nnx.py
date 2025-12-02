@@ -46,8 +46,7 @@ import mplang.v1 as mp
 import optax
 from flax import nnx
 
-# Configure JAX for proper precision
-jax.config.update("jax_enable_x64", True)
+# JAX will use float32 by default, which is efficient and sufficient for most ML tasks
 
 
 class MultiStepMLP(nnx.Module):
@@ -108,9 +107,10 @@ class StatefulMLP(nnx.Module):
             rngs: Random number generators for initialization
         """
         self.linear1 = nnx.Linear(input_dim, hidden_dim, rngs=rngs)
-        self.bn1 = nnx.BatchNorm(hidden_dim, rngs=rngs)
+        # Explicitly set dtype=jnp.float32 for batch norm to prevent type promotion
+        self.bn1 = nnx.BatchNorm(hidden_dim, dtype=jnp.float32, rngs=rngs)
         self.linear2 = nnx.Linear(hidden_dim, hidden_dim, rngs=rngs)
-        self.bn2 = nnx.BatchNorm(hidden_dim, rngs=rngs)
+        self.bn2 = nnx.BatchNorm(hidden_dim, dtype=jnp.float32, rngs=rngs)
         self.linear3 = nnx.Linear(hidden_dim, output_dim, rngs=rngs)
 
     def __call__(self, x: jax.Array, *, training: bool = True) -> jax.Array:
@@ -157,7 +157,7 @@ def create_binary_classification_dataset(
     class_score = jnp.sum(features[:, :half], axis=1) - jnp.sum(
         features[:, half:], axis=1
     )
-    labels = (class_score > 0).astype(jnp.float64)
+    labels = (class_score > 0).astype(jnp.float32)
 
     return features, labels
 
@@ -275,7 +275,7 @@ def multi_step_training_ppu(
             logits = model(x, training=True)
 
             # Cross-entropy loss for binary classification
-            targets = jax.nn.one_hot(y.astype(jnp.int32), 2, dtype=jnp.float64)
+            targets = jax.nn.one_hot(y.astype(jnp.int32), 2)
             loss = optax.softmax_cross_entropy(logits, targets).mean()
 
             return loss
@@ -374,23 +374,12 @@ def stateful_multi_step_training_ppu(
             logits = model(x, training=True)
 
             # Cross-entropy loss for binary classification
-            targets = jax.nn.one_hot(y.astype(jnp.int32), 2, dtype=jnp.float64)
+            targets = jax.nn.one_hot(y.astype(jnp.int32), 2)
             loss = optax.softmax_cross_entropy(logits, targets).mean()
 
             # Return both loss and updated model state (with batch norm updates)
             updated_state = nnx.state(model)
-
-            # Ensure all state components maintain float64 dtype consistency
-            param_state = nnx.state(updated_state, nnx.Param)
-            bn_stats = nnx.state(updated_state, nnx.BatchStat)
-
-            # Convert all to float64 to maintain consistency with JAX config
-            param_state_f64 = jax.tree.map(lambda x: x.astype(jnp.float64), param_state)
-            bn_stats_f64 = jax.tree.map(lambda x: x.astype(jnp.float64), bn_stats)
-
-            final_state = nnx.State.merge(param_state_f64, bn_stats_f64)
-
-            return loss, final_state
+            return loss, updated_state
 
         # Compute loss and gradients, capturing updated batch norm stats
         (loss, updated_state), gradients = jax.value_and_grad(
@@ -410,6 +399,16 @@ def stateful_multi_step_training_ppu(
 
         # Get updated batch norm statistics from the forward pass
         updated_bn_stats = nnx.state(updated_state, nnx.BatchStat)
+
+        # Ensure batch norm statistics remain float32 (prevent dtype drift)
+        updated_bn_stats = jax.tree.map(
+            lambda x: (
+                x.astype(jnp.float32)
+                if hasattr(x, "dtype") and x.dtype != jnp.float32
+                else x
+            ),
+            updated_bn_stats,
+        )
 
         # Combine updated parameters with updated batch norm stats
         new_model_state = nnx.State.merge(updated_params, updated_bn_stats)
@@ -451,28 +450,9 @@ def stateful_multi_step_training_ppu(
     features = mp.device("P0")(lambda: train_features)()
     labels = mp.device("P0")(lambda: train_labels)()
 
-    # Ensure initial model state has consistent dtypes - convert to float64 to match JAX config
-    def ensure_consistent_dtypes(state):
-        # Convert all parameters to float64 for consistency with JAX config
-        params = nnx.state(state, nnx.Param)
-        bn_stats = nnx.state(state, nnx.BatchStat)
-
-        # Convert all to float64 to match JAX precision setting
-        params_f64 = jax.tree.map(lambda x: x.astype(jnp.float64), params)
-        bn_stats_f64 = jax.tree.map(lambda x: x.astype(jnp.float64), bn_stats)
-
-        return nnx.State.merge(params_f64, bn_stats_f64)
-
-    consistent_initial_state = ensure_consistent_dtypes(initial_model_state)
-
-    # Reinitialize optimizer state with float64 parameters to ensure consistency
-    optimizer = optax.adam(learning_rate=0.01)
-    consistent_params = nnx.state(consistent_initial_state, nnx.Param)
-    consistent_opt_state = optimizer.init(consistent_params)
-
     # Run stateful multi-step training on PPU
     training_result = mp.device("P0", fe_type="nnx")(stateful_training_loop)(
-        consistent_initial_state, consistent_opt_state, features, labels, num_steps
+        initial_model_state, initial_opt_state, features, labels, num_steps
     )
 
     # Return the result (contains loss history and batch norm statistics)

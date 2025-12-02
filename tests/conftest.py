@@ -14,4 +14,4 @@
 
 # Auto-loaded pytest configuration to expose shared fixtures.
 # Register server fixtures as a pytest plugin for proper assert-rewrite.
-pytest_plugins = ("tests.utils.server_fixtures",)
+pytest_plugins = ("tests.v1.utils.server_fixtures",)

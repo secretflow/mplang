@@ -21,11 +21,15 @@ This example demonstrates two advanced MPC/HE capabilities:
 """
 
 import jax.numpy as jnp
-import mplang2.backends.tensor_impl  # noqa: F401
 import numpy as np
-from mplang2.backends.simp_simulator import SimpSimulator
-from mplang2.dialects import bfv, simp, tensor
-from mplang2.libs import aggregation, permutation
+
+import mplang.v2.backends.bfv_impl
+import mplang.v2.backends.tensor_impl  # noqa: F401
+import mplang.v2.dialects.bfv as bfv
+import mplang.v2.dialects.simp as simp
+import mplang.v2.dialects.tensor as tensor
+from mplang.v2.backends.simp_simulator import SimpSimulator
+from mplang.v2.libs.mpc import apply_permutation, rotate_and_sum
 
 
 def main():
@@ -66,7 +70,7 @@ def run_secure_permutation(interp):
         perm = simp.pcall_static((1,), make_perm, p0, p1)
 
         # Run secure permutation
-        return permutation.apply_permutation([d0, d1], perm, sender=0, receiver=1)
+        return apply_permutation([d0, d1], perm, sender=0, receiver=1)
 
     with interp:
         d0_obj = simp.constant((0,), data_n2[0])
@@ -110,8 +114,8 @@ def run_homomorphic_aggregation(interp):
     # 3. Aggregation (P1)
     # P1 has ct and gk. P1 computes sum of first 8 elements.
 
-    def compute(ct, gk):
-        return aggregation.rotate_and_sum(ct, k=8, galois_keys=gk)
+    def compute(ct_in, gk_in):
+        return rotate_and_sum(ct_in, k=8, galois_keys=gk_in)
 
     res_ct = compute(ct, gk)
 

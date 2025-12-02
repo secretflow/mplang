@@ -161,8 +161,8 @@ class TestDeviceInferenceError:
 class TestJaxProperty:
     """Test .jax property for JAX frontend."""
 
-    def test_device_jax_property(self, ctx_3pc):
-        """device('P0').jax should work for JAX functions."""
+    def test_device_jax_property_ppu(self, ctx_3pc):
+        """device('P0').jax should work for JAX functions on PPU."""
 
         @device("P0").jax
         def add(a, b):
@@ -173,6 +173,23 @@ class TestJaxProperty:
         result = add(x, y)
 
         assert get_dev_attr(result) == "P0"
+
+    def test_device_jax_property_spu(self, ctx_3pc):
+        """device('SP0').jax should work for JAX functions on SPU.
+
+        SPU natively uses JAX via spu.run_jax, so .jax is a no-op wrapper
+        that allows consistent syntax across device types.
+        """
+
+        @device("SP0").jax
+        def add(a, b):
+            return a + b
+
+        x = put("P0", jnp.array([1.0, 2.0]))
+        y = put("P1", jnp.array([3.0, 4.0]))
+        result = add(x, y)
+
+        assert get_dev_attr(result) == "SP0"
 
 
 # =============================================================================

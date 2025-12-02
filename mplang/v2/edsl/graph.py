@@ -59,8 +59,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.typing import BaseType
 
 
@@ -179,6 +180,7 @@ class Operation:
             out.defining_op = None
 
 
+@serde.register_class
 class Graph:
     """Computation graph as a flat list of operations.
 
@@ -195,6 +197,8 @@ class Graph:
         z, = graph.add_op("add", [x, y])
         graph.add_output(z)
     """
+
+    _serde_kind: ClassVar[str] = "mplang.Graph"
 
     def __init__(self) -> None:
         self.operations: list[Operation] = []
@@ -355,3 +359,101 @@ class Graph:
 
     def __str__(self) -> str:
         return self.to_string()
+
+    # =========================================================================
+    # Serialization
+    # =========================================================================
+
+    def to_json(self) -> dict:
+        """Serialize graph to JSON-compatible dict."""
+
+        def _type_to_json(t: BaseType) -> dict:
+            return serde.to_json(t)
+
+        def _attr_to_json(value: Any) -> dict:
+            return serde.to_json(value)
+
+        def _attrs_to_json(attrs: dict[str, Any]) -> dict[str, Any]:
+            return {k: _attr_to_json(v) for k, v in attrs.items()}
+
+        return {
+            "inputs": [
+                {"name": v.name, "type": _type_to_json(v.type)} for v in self.inputs
+            ],
+            "operations": [
+                {
+                    "opcode": op.opcode,
+                    "inputs": [v.name for v in op.inputs],
+                    "outputs": [
+                        {"name": v.name, "type": _type_to_json(v.type)}
+                        for v in op.outputs
+                    ],
+                    "attrs": _attrs_to_json(op.attrs),
+                    "regions": [serde.to_json(r) for r in op.regions],
+                    "name": op.name,
+                }
+                for op in self.operations
+            ],
+            "outputs": [v.name for v in self.outputs],
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> Graph:
+        """Deserialize graph from JSON-compatible dict."""
+
+        def _type_from_json(d: dict) -> BaseType:
+            result = serde.from_json(d)
+            if not isinstance(result, BaseType):
+                raise TypeError(f"Expected BaseType, got {type(result)}")
+            return result
+
+        def _attr_from_json(value: dict) -> Any:
+            return serde.from_json(value)
+
+        def _attrs_from_json(attrs: dict[str, Any]) -> dict[str, Any]:
+            return {k: _attr_from_json(v) for k, v in attrs.items()}
+
+        graph = cls()
+
+        # Reconstruct inputs
+        for inp_data in data["inputs"]:
+            graph.add_input(inp_data["name"], _type_from_json(inp_data["type"]))
+
+        # Reconstruct operations
+        for op_data in data["operations"]:
+            # Resolve input values by name
+            inputs = [graph.values[name] for name in op_data["inputs"]]
+
+            # Get output types
+            output_types = [_type_from_json(out["type"]) for out in op_data["outputs"]]
+
+            # Deserialize nested graphs (regions)
+            regions = [serde.from_json(r) for r in op_data.get("regions", [])]
+
+            # Add operation
+            outputs = graph.add_op(
+                op_data["opcode"],
+                inputs,
+                output_types=output_types,
+                attrs=_attrs_from_json(op_data.get("attrs", {})),
+                regions=regions,
+            )
+
+            # Rename outputs to match original names
+            for out_val, out_data in zip(outputs, op_data["outputs"], strict=False):
+                original_name = out_data["name"]
+                if out_val.name != original_name:
+                    # Update the values dict with the original name
+                    del graph.values[out_val.name]
+                    out_val.name = original_name
+                    graph.values[original_name] = out_val
+
+            # Set operation name if provided
+            if op_data.get("name"):
+                graph.operations[-1].name = op_data["name"]
+
+        # Reconstruct outputs
+        for name in data["outputs"]:
+            graph.add_output(graph.values[name])
+
+        return graph

@@ -89,10 +89,11 @@ res = bfv.decode(pt_res, encoder)  # Returns Tensor
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
+from mplang.v2.edsl import serde
 
 # ==============================================================================
 # --- Type Definitions
@@ -101,6 +102,7 @@ import mplang.v2.edsl.typing as elt
 KeyKind = Literal["Public", "Private", "Relin", "Galois"]
 
 
+@serde.register_class
 class KeyType(elt.BaseType):
     """Type for BFV keys."""
 
@@ -123,7 +125,21 @@ class KeyType(elt.BaseType):
     def __hash__(self) -> int:
         return hash(("BFVKeyType", self.kind, self.poly_modulus_degree))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "bfv.KeyType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "poly_modulus_degree": self.poly_modulus_degree,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> KeyType:
+        return cls(kind=data["kind"], poly_modulus_degree=data["poly_modulus_degree"])
+
+
+@serde.register_class
 class PlaintextType(elt.BaseType):
     """Represents a BFV plaintext (a polynomial encoding a vector of integers).
 
@@ -149,7 +165,21 @@ class PlaintextType(elt.BaseType):
     def __hash__(self) -> int:
         return hash(("BFVPlaintextType", self.vector_type))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "bfv.PlaintextType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"vector_type": serde.to_json(self.vector_type)}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> PlaintextType:
+        vt = serde.from_json(data["vector_type"])
+        if not isinstance(vt, elt.VectorType):
+            raise TypeError(f"Expected VectorType, got {type(vt)}")
+        return cls(vector_type=vt)
+
+
+@serde.register_class
 class CiphertextType(elt.BaseType, elt.EncryptedTrait):
     """Represents a BFV ciphertext (encrypting a Plaintext)."""
 
@@ -176,8 +206,22 @@ class CiphertextType(elt.BaseType, elt.EncryptedTrait):
     def __hash__(self) -> int:
         return hash(("BFVCiphertextType", self.vector_type))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "bfv.CiphertextType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"vector_type": serde.to_json(self.vector_type)}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> CiphertextType:
+        vt = serde.from_json(data["vector_type"])
+        if not isinstance(vt, elt.VectorType):
+            raise TypeError(f"Expected VectorType, got {type(vt)}")
+        return cls(vector_type=vt)
+
 
 # Opaque types
+@serde.register_class
 class EncoderType(elt.BaseType):
     """Type for BFV BatchEncoder."""
 
@@ -194,6 +238,16 @@ class EncoderType(elt.BaseType):
 
     def __hash__(self) -> int:
         return hash(("BFVEncoder", self.poly_modulus_degree))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "bfv.EncoderType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"poly_modulus_degree": self.poly_modulus_degree}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> EncoderType:
+        return cls(poly_modulus_degree=data["poly_modulus_degree"])
 
 
 # ==============================================================================
@@ -530,6 +584,3 @@ __all__ = [
     "rotate_columns",
     "sub",
 ]
-
-
-# ==============================================================================

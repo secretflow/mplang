@@ -27,15 +27,14 @@ Usage:
 
 from __future__ import annotations
 
-import base64
 import concurrent.futures
 import logging
 from typing import Any
 
-import cloudpickle as pickle
 import httpx
 
 from mplang.v2.backends.simp_host import SimpHost
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
 
 logger = logging.getLogger(__name__)
@@ -80,19 +79,20 @@ class SimpHttpDriver(SimpHost):
         url = f"{self.endpoints[rank]}/exec"
         logger.debug(f"Driver submitting to rank {rank} url={url}")
 
-        graph_pkl = base64.b64encode(pickle.dumps(graph)).decode("utf-8")
-        inputs_pkl = base64.b64encode(pickle.dumps(inputs)).decode("utf-8")
+        # Use secure JSON serialization instead of pickle
+        graph_b64 = serde.dumps_b64(graph)
+        inputs_b64 = serde.dumps_b64(inputs)
 
         try:
             resp = httpx.post(
                 url,
-                json={"graph_pkl": graph_pkl, "inputs_pkl": inputs_pkl},
+                json={"graph": graph_b64, "inputs": inputs_b64},
                 timeout=None,  # Execution might take long
             )
             resp.raise_for_status()
             data = resp.json()
             logger.debug(f"Driver received result from rank {rank}")
-            return pickle.loads(base64.b64decode(data["result"]))
+            return serde.loads_b64(data["result"])
         except Exception as e:
             logger.error(f"Driver failed to execute on rank {rank}: {e}")
             raise RuntimeError(f"Failed to execute on rank {rank}: {e}") from e

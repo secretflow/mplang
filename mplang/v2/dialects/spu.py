@@ -77,7 +77,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import spu.libspu as libspu
 import spu.utils.frontend as spu_fe
@@ -88,12 +88,14 @@ import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v1.utils.func_utils import normalize_fn
 from mplang.v2.dialects import dtypes
+from mplang.v2.edsl import serde
 
 # ==============================================================================
 # --- Configuration
 # ==============================================================================
 
 
+@serde.register_class
 @dataclass(frozen=True)
 class SPUConfig:
     """SPU configuration (subset of libspu.RuntimeConfig).
@@ -123,6 +125,24 @@ class SPUConfig:
             protocol=d.get("protocol", "SEMI2K"),
             field=d.get("field", "FM128"),
             fxp_fraction_bits=d.get("fxp_fraction_bits", 18),
+        )
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "spu.SPUConfig"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "protocol": self.protocol,
+            "field": self.field,
+            "fxp_fraction_bits": self.fxp_fraction_bits,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> SPUConfig:
+        return cls(
+            protocol=data["protocol"],
+            field=data["field"],
+            fxp_fraction_bits=data["fxp_fraction_bits"],
         )
 
 

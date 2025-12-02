@@ -95,10 +95,18 @@ def get_or_create_context(world_size: int = 3) -> Context:
 
 
 class SimpSimulator(SimpHost):
-    """SIMP simulator running locally with threads."""
+    """SIMP simulator running locally with threads.
 
-    def __init__(self, world_size: int = 3):
+    Args:
+        world_size: Number of parties to simulate.
+        use_serde: If True, serialize/deserialize graph and inputs through serde
+            before execution. This validates that all types are properly registered
+            with serde, catching serialization issues early (before HTTP deployment).
+    """
+
+    def __init__(self, world_size: int = 3, *, use_serde: bool = True):
         super().__init__(world_size)
+        self.use_serde = use_serde
         self.ctx = get_or_create_context(world_size)
         # Create persistent workers (Actors)
         self.workers = [
@@ -113,6 +121,16 @@ class SimpSimulator(SimpHost):
         return [f.result() for f in futures]
 
     def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+        # Optionally round-trip through serde to validate serialization
+        if self.use_serde:
+            # Import modules to ensure all types are registered
+            from mplang.v2 import dialects as _dialects  # noqa: F401
+            from mplang.v2.backends import serde as _backends_serde  # noqa: F401
+            from mplang.v2.edsl import serde
+
+            graph = serde.loads(serde.dumps(graph))
+            inputs = serde.loads(serde.dumps(inputs))
+
         worker = self.workers[rank]
         if not isinstance(graph, Graph):
             raise TypeError(

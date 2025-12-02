@@ -117,6 +117,7 @@ def nnx2stablehlo(
         logging.warning(
             f"jax.export failed to get kept_var_idx, proceeding without it. Error: {e}"
         )
+        pass
 
     # This format tells JaxRT how to handle the compiled result
     # Use the same format as JAX since NNX compiles to the same backend

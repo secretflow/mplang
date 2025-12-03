@@ -778,8 +778,404 @@ def make_compute_leaf_values(n_nodes: int):
 
 
 # ==============================================================================
-# Tree Building
+# Tree Building Helpers
 # ==============================================================================
+
+
+def _find_splits_ap(
+    ap_rank: int,
+    n_level: int,
+    n_buckets: int,
+    gh: Any,
+    bt_level: Any,
+    bin_indices: Any,
+    reg_lambda: float,
+    gamma: float,
+    min_child_weight: float,
+) -> tuple[Any, Any, Any]:
+    """Compute local histograms and find best splits at AP."""
+    local_hist_fn = make_local_build_histogram(n_level, n_buckets)
+    ap_hist = simp.pcall_static(
+        (ap_rank,),
+        lambda fn=local_hist_fn: tensor.run_jax(fn, gh, bt_level, bin_indices),
+    )
+    ap_gains, ap_feats, ap_threshs = simp.pcall_static(
+        (ap_rank,),
+        lambda rl=reg_lambda, gm=gamma, mcw=min_child_weight: tensor.run_jax(
+            local_compute_best_splits, ap_hist, rl, gm, mcw
+        ),
+    )
+    return ap_gains, ap_feats, ap_threshs
+
+
+def _find_splits_pps(
+    level: int,
+    pp_ranks: list[int],
+    ap_rank: int,
+    g_cts: list[Any],
+    h_cts: list[Any],
+    bt_level: Any,
+    all_bin_indices: list[Any],
+    n_features_per_party: list[int],
+    last_level_hists: list[Any],
+    encoder: Any,
+    relin_keys: Any,
+    galois_keys: Any,
+    sk: Any,
+    fxp_scale: int,
+    m: int,
+    n_chunks: int,
+    slot_count: int,
+    n_buckets: int,
+    reg_lambda: float,
+    gamma: float,
+    min_child_weight: float,
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """Compute remote histograms via FHE and find best splits at PPs."""
+    pp_gains_list = []
+    pp_feats_list = []
+    pp_threshs_list = []
+
+    n_level = 2**level
+
+    for pp_idx, pp_rank in enumerate(pp_ranks):
+        # Transfer all encrypted CT chunks and keys to PP
+        g_cts_pp = [simp.shuffle_static(g_ct, {pp_rank: ap_rank}) for g_ct in g_cts]
+        h_cts_pp = [simp.shuffle_static(h_ct, {pp_rank: ap_rank}) for h_ct in h_cts]
+        bt_level_pp = simp.shuffle_static(bt_level, {pp_rank: ap_rank})
+        encoder_pp = simp.shuffle_static(encoder, {pp_rank: ap_rank})
+        rk_pp = simp.shuffle_static(relin_keys, {pp_rank: ap_rank})
+        gk_pp = simp.shuffle_static(galois_keys, {pp_rank: ap_rank})
+
+        # Build subgroup map at PP
+        subgroup_map_fn = make_get_subgroup_map(n_level)
+        subgroup_map = simp.pcall_static(
+            (pp_rank,),
+            lambda fn=subgroup_map_fn: tensor.run_jax(fn, bt_level_pp),
+        )
+
+        n_pp_features = n_features_per_party[pp_idx + 1]
+
+        if level == 0:
+            # Root level: Compute full FHE
+            g_enc, h_enc = fhe_histogram_optimized(
+                g_cts_pp,
+                h_cts_pp,
+                subgroup_map,
+                all_bin_indices[pp_idx + 1],
+                n_buckets,
+                n_level,
+                n_pp_features,
+                pp_rank,
+                ap_rank,
+                encoder_pp,
+                rk_pp,
+                gk_pp,
+                m,
+                n_chunks,
+                slot_count,
+            )
+
+            pp_hists = decrypt_histogram_results(
+                g_enc,
+                h_enc,
+                sk,
+                encoder,
+                fxp_scale,
+                n_level,
+                n_pp_features,
+                n_buckets,
+                ap_rank,
+            )
+            # Store for next level
+            last_level_hists[pp_idx + 1] = pp_hists
+
+        else:
+            # Histogram Subtraction Optimization
+            # 1. Slice subgroup_map to get Left children (even indices 0, 2, ...)
+            def slice_left(sm):
+                return sm[0::2]
+
+            subgroup_map_left = simp.pcall_static(
+                (pp_rank,),
+                lambda sm=subgroup_map: tensor.run_jax(slice_left, sm),
+            )
+
+            # 2. Run FHE for Left children
+            n_left = n_level // 2
+            g_enc, h_enc = fhe_histogram_optimized(
+                g_cts_pp,
+                h_cts_pp,
+                subgroup_map_left,
+                all_bin_indices[pp_idx + 1],
+                n_buckets,
+                n_left,
+                n_pp_features,
+                pp_rank,
+                ap_rank,
+                encoder_pp,
+                rk_pp,
+                gk_pp,
+                m,
+                n_chunks,
+                slot_count,
+            )
+
+            # 3. Decrypt Left
+            left_hists = decrypt_histogram_results(
+                g_enc,
+                h_enc,
+                sk,
+                encoder,
+                fxp_scale,
+                n_left,
+                n_pp_features,
+                n_buckets,
+                ap_rank,
+            )
+
+            # 4. Derive Right and Reconstruct
+            parent_hists = last_level_hists[pp_idx + 1]
+
+            def derive_right_and_combine(l_hists, p_hists):
+                # l_hists: (n_left, ...)
+                # p_hists: (n_left, ...) - parents correspond exactly to left children
+                r_hists = p_hists - l_hists
+
+                # Interleave [L, R]
+                # Stack on new axis 1 -> (n_left, 2, ...)
+                combined = jnp.stack([l_hists, r_hists], axis=1)
+                # Reshape -> (2*n_left, ...)
+                return combined.reshape((-1, *l_hists.shape[1:]))
+
+            pp_hists = simp.pcall_static(
+                (ap_rank,),
+                lambda: tensor.run_jax(
+                    derive_right_and_combine, left_hists, parent_hists
+                ),
+            )
+
+            # Store for next level (if needed)
+            # Note: We don't know max_depth here, but storing it is harmless if not used
+            last_level_hists[pp_idx + 1] = pp_hists
+
+        # Stack and find best splits
+        def find_splits(hists, rl=reg_lambda, gm=gamma, mcw=min_child_weight):
+            # hists is already (n_nodes, n_feat, n_buck, 2)
+            return jax.vmap(lambda h: compute_best_split_from_hist(h, rl, gm, mcw))(
+                hists
+            )
+
+        pp_gains, pp_feats, pp_threshs = simp.pcall_static(
+            (ap_rank,),
+            lambda: tensor.run_jax(find_splits, pp_hists),
+        )
+
+        pp_gains_list.append(pp_gains)
+        pp_feats_list.append(pp_feats)
+        pp_threshs_list.append(pp_threshs)
+
+    return pp_gains_list, pp_feats_list, pp_threshs_list
+
+
+def _update_tree_state(
+    ap_rank: int,
+    pp_ranks: list[int],
+    all_ranks: list[int],
+    all_feats: list[Any],
+    all_thresholds: list[Any],
+    bt: Any,
+    bt_level: Any,
+    is_leaf: Any,
+    owned_party: Any,
+    cur_indices: Any,
+    best_party: Any,
+    best_gains: Any,
+    all_feats_level: list[Any],
+    all_threshs_level: list[Any],
+    all_bins: list[Any],
+    all_bin_indices: list[Any],
+) -> tuple[Any, Any, list[Any], list[Any], Any]:
+    """Update tree structure and sample assignments based on best splits."""
+    # Update is_leaf
+    is_leaf = simp.pcall_static(
+        (ap_rank,),
+        lambda: tensor.run_jax(update_is_leaf, is_leaf, best_gains, cur_indices),
+    )
+
+    # Broadcast is_leaf to all parties (keep source, shuffle to each target, then converge)
+    if pp_ranks:
+        is_leaf_parts = [is_leaf]  # Start with AP's copy
+        for r in pp_ranks:
+            is_leaf_parts.append(simp.shuffle_static(is_leaf, {r: ap_rank}))
+        is_leaf = simp.converge(*is_leaf_parts)
+
+    # Update owned_party
+    owned_party = simp.pcall_static(
+        (ap_rank,),
+        lambda: tensor.run_jax(
+            lambda op, bp, ci: op.at[ci].set(bp),
+            owned_party,
+            best_party,
+            cur_indices,
+        ),
+    )
+
+    # Broadcast owned_party to all parties
+    if pp_ranks:
+        owned_party_parts = [owned_party]
+        for r in pp_ranks:
+            owned_party_parts.append(simp.shuffle_static(owned_party, {r: ap_rank}))
+        owned_party = simp.converge(*owned_party_parts)
+
+    # === Update features and thresholds for each party ===
+    # Route best_feats/best_threshs to correct parties based on best_party
+    all_tmp_bt: list[Any] = []
+
+    for party_idx, party_rank in enumerate(all_ranks):
+        # Transfer data to this party if needed
+        if party_idx > 0:
+            # PP's results are already at AP, send back to PP
+            all_feats_level[party_idx] = simp.shuffle_static(
+                all_feats_level[party_idx], {party_rank: ap_rank}
+            )
+            all_threshs_level[party_idx] = simp.shuffle_static(
+                all_threshs_level[party_idx], {party_rank: ap_rank}
+            )
+            # Also need cur_indices, owned_party, is_leaf at PP
+            cur_indices_party = simp.shuffle_static(cur_indices, {party_rank: ap_rank})
+            owned_party_party = simp.shuffle_static(owned_party, {party_rank: ap_rank})
+            is_leaf_party = simp.shuffle_static(is_leaf, {party_rank: ap_rank})
+        else:
+            cur_indices_party = cur_indices
+            owned_party_party = owned_party
+            is_leaf_party = is_leaf
+
+        # Update this party's feature and threshold arrays
+        def update_party_feats(
+            feats,
+            best_feat,
+            indices,
+            owned,
+            leaf,
+            pid=party_idx,
+        ):
+            tmp = feats.at[indices].set(best_feat)
+            tmp = jnp.where(leaf.astype(bool), jnp.int64(-1), tmp)
+            mask = owned == pid
+            return jnp.where(mask, tmp, jnp.int64(-1))
+
+        all_feats[party_idx] = simp.pcall_static(
+            (party_rank,),
+            lambda pf=all_feats[party_idx],
+            bf=all_feats_level[party_idx],
+            ci=cur_indices_party,
+            op=owned_party_party,
+            il=is_leaf_party: tensor.run_jax(update_party_feats, pf, bf, ci, op, il),
+        )
+
+        def update_party_thresholds(
+            thresholds,
+            bins_arr,
+            best_feat,
+            best_thresh_idx,
+            indices,
+            owned,
+            leaf,
+            pid=party_idx,
+        ):
+            # Get actual threshold values from bins
+            best_thresh = bins_arr[best_feat, best_thresh_idx]
+            tmp = thresholds.at[indices].set(best_thresh)
+            tmp = jnp.where(leaf.astype(bool), jnp.float32(jnp.inf), tmp)
+            mask = owned == pid
+            return jnp.where(mask, tmp, jnp.float32(jnp.inf))
+
+        all_thresholds[party_idx] = simp.pcall_static(
+            (party_rank,),
+            lambda pt=all_thresholds[party_idx],
+            b=all_bins[party_idx],
+            bf=all_feats_level[party_idx],
+            bt_idx=all_threshs_level[party_idx],
+            ci=cur_indices_party,
+            op=owned_party_party,
+            il=is_leaf_party: tensor.run_jax(
+                update_party_thresholds,
+                pt,
+                b,
+                bf,
+                bt_idx,
+                ci,
+                op,
+                il,
+            ),
+        )
+
+        # Compute temporary bt for this party
+        # Need bt and bt_level at this party too
+        if party_idx > 0:
+            bt_party = simp.shuffle_static(bt, {party_rank: ap_rank})
+            bt_level_party = simp.shuffle_static(bt_level, {party_rank: ap_rank})
+        else:
+            bt_party = bt
+            bt_level_party = bt_level
+
+        tmp_bt = simp.pcall_static(
+            (party_rank,),
+            lambda bi=all_bin_indices[party_idx],
+            bf=all_feats_level[party_idx],
+            bt_idx=all_threshs_level[party_idx],
+            bt_arr=bt_party,
+            bt_lv=bt_level_party,
+            il=is_leaf_party: tensor.run_jax(
+                update_bt, bt_arr, bt_lv, il, bi, bf, bt_idx
+            ),
+        )
+
+        # Transfer PP's tmp_bt to AP for merging
+        if party_idx > 0:
+            tmp_bt = simp.shuffle_static(tmp_bt, {ap_rank: party_rank})
+
+        all_tmp_bt.append(tmp_bt)
+
+    # === Merge bt updates based on best_party ===
+    def merge_bt_updates(
+        current_bt,
+        all_tmp,
+        best_party_arr,
+        level_indices,
+    ):
+        stacked = jnp.stack(all_tmp, axis=0)  # (n_parties, m)
+        updated_bt = current_bt
+
+        def update_for_node(carry, i):
+            bt_arr = carry
+            node_idx = level_indices[i]
+            winning_party = best_party_arr[i]
+            samples_in_node = current_bt == node_idx
+            winning_bt = stacked[winning_party]
+            return jnp.where(samples_in_node, winning_bt, bt_arr), None
+
+        updated_bt, _ = jax.lax.scan(
+            update_for_node, updated_bt, jnp.arange(len(level_indices))
+        )
+        return updated_bt
+
+    bt = simp.pcall_static(
+        (ap_rank,),
+        lambda: tensor.run_jax(
+            merge_bt_updates, bt, all_tmp_bt, best_party, cur_indices
+        ),
+    )
+
+    # Broadcast updated bt to all parties
+    if pp_ranks:
+        bt_parts = [bt]
+        for r in pp_ranks:
+            bt_parts.append(simp.shuffle_static(bt, {r: ap_rank}))
+        bt = simp.converge(*bt_parts)
+
+    return is_leaf, owned_party, all_feats, all_thresholds, bt
 
 
 def build_tree(
@@ -859,18 +1255,16 @@ def build_tree(
         )
 
         # === AP: Local histogram computation ===
-        local_hist_fn = make_local_build_histogram(n_level, n_buckets)
-        ap_hist = simp.pcall_static(
-            (ap_rank,),
-            lambda fn=local_hist_fn: tensor.run_jax(
-                fn, gh, bt_level, all_bin_indices[0]
-            ),
-        )
-        ap_gains, ap_feats, ap_threshs = simp.pcall_static(
-            (ap_rank,),
-            lambda rl=reg_lambda, gm=gamma, mcw=min_child_weight: tensor.run_jax(
-                local_compute_best_splits, ap_hist, rl, gm, mcw
-            ),
+        ap_gains, ap_feats, ap_threshs = _find_splits_ap(
+            ap_rank,
+            n_level,
+            n_buckets,
+            gh,
+            bt_level,
+            all_bin_indices[0],
+            reg_lambda,
+            gamma,
+            min_child_weight,
         )
 
         all_gains = [ap_gains]
@@ -878,143 +1272,33 @@ def build_tree(
         all_threshs_level = [ap_threshs]
 
         # === PP: FHE histogram computation ===
-        for pp_idx, pp_rank in enumerate(pp_ranks):
-            print(f"DEBUG: Level {level} PP {pp_rank} Start")
-            # Transfer all encrypted CT chunks and keys to PP
-            g_cts_pp = [simp.shuffle_static(g_ct, {pp_rank: ap_rank}) for g_ct in g_cts]
-            h_cts_pp = [simp.shuffle_static(h_ct, {pp_rank: ap_rank}) for h_ct in h_cts]
-            bt_level_pp = simp.shuffle_static(bt_level, {pp_rank: ap_rank})
-            encoder_pp = simp.shuffle_static(encoder, {pp_rank: ap_rank})
-            rk_pp = simp.shuffle_static(relin_keys, {pp_rank: ap_rank})
-            gk_pp = simp.shuffle_static(galois_keys, {pp_rank: ap_rank})
+        pp_gains_list, pp_feats_list, pp_threshs_list = _find_splits_pps(
+            level,
+            pp_ranks,
+            ap_rank,
+            g_cts,
+            h_cts,
+            bt_level,
+            all_bin_indices,
+            n_features_per_party,
+            last_level_hists,
+            encoder,
+            relin_keys,
+            galois_keys,
+            sk,
+            fxp_scale,
+            m,
+            n_chunks,
+            slot_count,
+            n_buckets,
+            reg_lambda,
+            gamma,
+            min_child_weight,
+        )
 
-            # Build subgroup map at PP
-            subgroup_map_fn = make_get_subgroup_map(n_level)
-            subgroup_map = simp.pcall_static(
-                (pp_rank,),
-                lambda fn=subgroup_map_fn: tensor.run_jax(fn, bt_level_pp),
-            )
-
-            n_pp_features = n_features_per_party[pp_idx + 1]
-
-            if level == 0:
-                # Root level: Compute full FHE
-                g_enc, h_enc = fhe_histogram_optimized(
-                    g_cts_pp,
-                    h_cts_pp,
-                    subgroup_map,
-                    all_bin_indices[pp_idx + 1],
-                    n_buckets,
-                    n_level,
-                    n_pp_features,
-                    pp_rank,
-                    ap_rank,
-                    encoder_pp,
-                    rk_pp,
-                    gk_pp,
-                    m,
-                    n_chunks,
-                    slot_count,
-                )
-
-                pp_hists = decrypt_histogram_results(
-                    g_enc,
-                    h_enc,
-                    sk,
-                    encoder,
-                    fxp_scale,
-                    n_level,
-                    n_pp_features,
-                    n_buckets,
-                    ap_rank,
-                )
-                # Store for next level
-                last_level_hists[pp_idx + 1] = pp_hists
-
-            else:
-                # Histogram Subtraction Optimization
-                # 1. Slice subgroup_map to get Left children (even indices 0, 2, ...)
-                def slice_left(sm):
-                    return sm[0::2]
-
-                subgroup_map_left = simp.pcall_static(
-                    (pp_rank,),
-                    lambda sm=subgroup_map: tensor.run_jax(slice_left, sm),
-                )
-
-                # 2. Run FHE for Left children
-                n_left = n_level // 2
-                g_enc, h_enc = fhe_histogram_optimized(
-                    g_cts_pp,
-                    h_cts_pp,
-                    subgroup_map_left,
-                    all_bin_indices[pp_idx + 1],
-                    n_buckets,
-                    n_left,
-                    n_pp_features,
-                    pp_rank,
-                    ap_rank,
-                    encoder_pp,
-                    rk_pp,
-                    gk_pp,
-                    m,
-                    n_chunks,
-                    slot_count,
-                )
-
-                # 3. Decrypt Left
-                left_hists = decrypt_histogram_results(
-                    g_enc,
-                    h_enc,
-                    sk,
-                    encoder,
-                    fxp_scale,
-                    n_left,
-                    n_pp_features,
-                    n_buckets,
-                    ap_rank,
-                )
-
-                # 4. Derive Right and Reconstruct
-                parent_hists = last_level_hists[pp_idx + 1]
-
-                def derive_right_and_combine(l_hists, p_hists):
-                    # l_hists: (n_left, ...)
-                    # p_hists: (n_left, ...) - parents correspond exactly to left children
-                    r_hists = p_hists - l_hists
-
-                    # Interleave [L, R]
-                    # Stack on new axis 1 -> (n_left, 2, ...)
-                    combined = jnp.stack([l_hists, r_hists], axis=1)
-                    # Reshape -> (2*n_left, ...)
-                    return combined.reshape((-1, *l_hists.shape[1:]))
-
-                pp_hists = simp.pcall_static(
-                    (ap_rank,),
-                    lambda: tensor.run_jax(
-                        derive_right_and_combine, left_hists, parent_hists
-                    ),
-                )
-
-                # Store for next level (if needed)
-                if level < max_depth - 1:
-                    last_level_hists[pp_idx + 1] = pp_hists
-
-            # Stack and find best splits
-            def find_splits(hists, rl=reg_lambda, gm=gamma, mcw=min_child_weight):
-                # hists is already (n_nodes, n_feat, n_buck, 2)
-                return jax.vmap(lambda h: compute_best_split_from_hist(h, rl, gm, mcw))(
-                    hists
-                )
-
-            pp_gains, pp_feats, pp_threshs = simp.pcall_static(
-                (ap_rank,),
-                lambda: tensor.run_jax(find_splits, pp_hists),
-            )
-
-            all_gains.append(pp_gains)
-            all_feats_level.append(pp_feats)
-            all_threshs_level.append(pp_threshs)
+        all_gains.extend(pp_gains_list)
+        all_feats_level.extend(pp_feats_list)
+        all_threshs_level.extend(pp_threshs_list)
 
         # === Find global best split across all parties ===
         def find_global_best(*gains):
@@ -1030,189 +1314,25 @@ def build_tree(
             lambda: tensor.run_jax(find_global_best, *all_gains),
         )
 
-        # Update is_leaf
-        is_leaf = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(update_is_leaf, is_leaf, best_gains, cur_indices),
+        # === Update Tree State ===
+        is_leaf, owned_party, all_feats, all_thresholds, bt = _update_tree_state(
+            ap_rank,
+            pp_ranks,
+            all_ranks,
+            all_feats,
+            all_thresholds,
+            bt,
+            bt_level,
+            is_leaf,
+            owned_party,
+            cur_indices,
+            best_party,
+            best_gains,
+            all_feats_level,
+            all_threshs_level,
+            all_bins,
+            all_bin_indices,
         )
-
-        # Broadcast is_leaf to all parties (keep source, shuffle to each target, then converge)
-        if pp_ranks:
-            is_leaf_parts = [is_leaf]  # Start with AP's copy
-            for r in pp_ranks:
-                is_leaf_parts.append(simp.shuffle_static(is_leaf, {r: ap_rank}))
-            is_leaf = simp.converge(*is_leaf_parts)
-
-        # Update owned_party
-        owned_party = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(
-                lambda op, bp, ci: op.at[ci].set(bp),
-                owned_party,
-                best_party,
-                cur_indices,
-            ),
-        )
-
-        # Broadcast owned_party to all parties
-        if pp_ranks:
-            owned_party_parts = [owned_party]
-            for r in pp_ranks:
-                owned_party_parts.append(simp.shuffle_static(owned_party, {r: ap_rank}))
-            owned_party = simp.converge(*owned_party_parts)
-
-        # === Update features and thresholds for each party ===
-        # Route best_feats/best_threshs to correct parties based on best_party
-        all_tmp_bt: list[Any] = []
-
-        for party_idx, party_rank in enumerate(all_ranks):
-            # Transfer data to this party if needed
-            if party_idx > 0:
-                # PP's results are already at AP, send back to PP
-                all_feats_level[party_idx] = simp.shuffle_static(
-                    all_feats_level[party_idx], {party_rank: ap_rank}
-                )
-                all_threshs_level[party_idx] = simp.shuffle_static(
-                    all_threshs_level[party_idx], {party_rank: ap_rank}
-                )
-                # Also need cur_indices, owned_party, is_leaf at PP
-                cur_indices_party = simp.shuffle_static(
-                    cur_indices, {party_rank: ap_rank}
-                )
-                owned_party_party = simp.shuffle_static(
-                    owned_party, {party_rank: ap_rank}
-                )
-                is_leaf_party = simp.shuffle_static(is_leaf, {party_rank: ap_rank})
-            else:
-                cur_indices_party = cur_indices
-                owned_party_party = owned_party
-                is_leaf_party = is_leaf
-
-            # Update this party's feature and threshold arrays
-            def update_party_feats(
-                feats,
-                best_feat,
-                indices,
-                owned,
-                leaf,
-                pid=party_idx,
-            ):
-                tmp = feats.at[indices].set(best_feat)
-                tmp = jnp.where(leaf.astype(bool), jnp.int64(-1), tmp)
-                mask = owned == pid
-                return jnp.where(mask, tmp, jnp.int64(-1))
-
-            all_feats[party_idx] = simp.pcall_static(
-                (party_rank,),
-                lambda pf=all_feats[party_idx],
-                bf=all_feats_level[party_idx],
-                ci=cur_indices_party,
-                op=owned_party_party,
-                il=is_leaf_party: tensor.run_jax(
-                    update_party_feats, pf, bf, ci, op, il
-                ),
-            )
-
-            def update_party_thresholds(
-                thresholds,
-                bins_arr,
-                best_feat,
-                best_thresh_idx,
-                indices,
-                owned,
-                leaf,
-                pid=party_idx,
-            ):
-                # Get actual threshold values from bins
-                best_thresh = bins_arr[best_feat, best_thresh_idx]
-                tmp = thresholds.at[indices].set(best_thresh)
-                tmp = jnp.where(leaf.astype(bool), jnp.float32(jnp.inf), tmp)
-                mask = owned == pid
-                return jnp.where(mask, tmp, jnp.float32(jnp.inf))
-
-            all_thresholds[party_idx] = simp.pcall_static(
-                (party_rank,),
-                lambda pt=all_thresholds[party_idx],
-                b=all_bins[party_idx],
-                bf=all_feats_level[party_idx],
-                bt_idx=all_threshs_level[party_idx],
-                ci=cur_indices_party,
-                op=owned_party_party,
-                il=is_leaf_party: tensor.run_jax(
-                    update_party_thresholds,
-                    pt,
-                    b,
-                    bf,
-                    bt_idx,
-                    ci,
-                    op,
-                    il,
-                ),
-            )
-
-            # Compute temporary bt for this party
-            # Need bt and bt_level at this party too
-            if party_idx > 0:
-                bt_party = simp.shuffle_static(bt, {party_rank: ap_rank})
-                bt_level_party = simp.shuffle_static(bt_level, {party_rank: ap_rank})
-            else:
-                bt_party = bt
-                bt_level_party = bt_level
-
-            tmp_bt = simp.pcall_static(
-                (party_rank,),
-                lambda bi=all_bin_indices[party_idx],
-                bf=all_feats_level[party_idx],
-                bt_idx=all_threshs_level[party_idx],
-                bt_arr=bt_party,
-                bt_lv=bt_level_party,
-                il=is_leaf_party: tensor.run_jax(
-                    update_bt, bt_arr, bt_lv, il, bi, bf, bt_idx
-                ),
-            )
-
-            # Transfer PP's tmp_bt to AP for merging
-            if party_idx > 0:
-                tmp_bt = simp.shuffle_static(tmp_bt, {ap_rank: party_rank})
-
-            all_tmp_bt.append(tmp_bt)
-
-        # === Merge bt updates based on best_party ===
-        def merge_bt_updates(
-            current_bt,
-            all_tmp,
-            best_party_arr,
-            level_indices,
-        ):
-            stacked = jnp.stack(all_tmp, axis=0)  # (n_parties, m)
-            updated_bt = current_bt
-
-            def update_for_node(carry, i):
-                bt_arr = carry
-                node_idx = level_indices[i]
-                winning_party = best_party_arr[i]
-                samples_in_node = current_bt == node_idx
-                winning_bt = stacked[winning_party]
-                return jnp.where(samples_in_node, winning_bt, bt_arr), None
-
-            updated_bt, _ = jax.lax.scan(
-                update_for_node, updated_bt, jnp.arange(len(level_indices))
-            )
-            return updated_bt
-
-        bt = simp.pcall_static(
-            (ap_rank,),
-            lambda: tensor.run_jax(
-                merge_bt_updates, bt, all_tmp_bt, best_party, cur_indices
-            ),
-        )
-
-        # Broadcast updated bt to all parties
-        if pp_ranks:
-            bt_parts = [bt]
-            for r in pp_ranks:
-                bt_parts.append(simp.shuffle_static(bt, {r: ap_rank}))
-            bt = simp.converge(*bt_parts)
 
     # Force final level nodes to be leaves
     final_start = 2**max_depth - 1

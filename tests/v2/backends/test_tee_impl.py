@@ -24,20 +24,20 @@ import mplang.v2.dialects.tee as tee
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
-from mplang.v2.backends.tee_impl import MockQuote
+from mplang.v2.backends.tee_impl import MockQuoteValue
 
 
 class TestMockQuoteDataStructure:
-    """Test MockQuote data structure directly."""
+    """Test MockQuoteValue data structure directly."""
 
     def test_mock_quote_roundtrip(self):
-        """Test MockQuote serialization/deserialization."""
+        """Test MockQuoteValue serialization/deserialization."""
         pk = bytes(np.random.randint(0, 256, size=32, dtype=np.uint8))
 
-        quote = MockQuote(platform="sgx", bound_pk=pk, suite="x25519")
+        quote = MockQuoteValue(platform="sgx", bound_pk=pk, suite="x25519")
         data = quote.to_bytes()
 
-        recovered = MockQuote.from_bytes(data)
+        recovered = MockQuoteValue.from_bytes(data)
         assert recovered.platform == "sgx"
         assert recovered.bound_pk == pk
         assert recovered.suite == "x25519"
@@ -61,7 +61,7 @@ class TestMockTEEExecution:
     def test_attest_execution(self):
         """Test attest primitive execution produces correct type.
 
-        Note: After simplification, attest returns a RuntimePublicKey (at runtime)
+        Note: After simplification, attest returns a PublicKeyValue (at runtime)
         with PublicKeyType (at type level), not AttestedKeyType.
         """
         with el.Interpreter():
@@ -74,7 +74,7 @@ class TestMockTEEExecution:
                 attested_pk = tee.attest(quote, expected_curve="x25519")
 
             # Type level still shows AttestedKeyType (for type checking)
-            # But runtime returns RuntimePublicKey directly
+            # But runtime returns PublicKeyValue directly
             assert isinstance(attested_pk.type, tee.AttestedKeyType)
             assert attested_pk.type.platform == "sgx"
             assert attested_pk.type.curve == "x25519"

@@ -257,7 +257,7 @@ def test_bfv_security_types():
     ct = bfv.encrypt(pt, pk)
 
     # Try to decrypt with PK (should fail)
-    # pk is BFVPublicContext, does not have decryptor
+    # pk is BFVPublicContextValue, does not have decryptor
     # The dialect type checker raises TypeError because it expects PrivateKey
     with pytest.raises(TypeError):
         bfv.decrypt(ct, pk)

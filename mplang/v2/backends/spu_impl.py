@@ -39,7 +39,7 @@ from mplang.v2.edsl.interpreter import Interpreter
 
 
 @serde.register_class
-class SPUShare(WrapValue[libspu.Share]):
+class SPUShareValue(WrapValue[libspu.Share]):
     """Wrapper for libspu.Share representing an SPU secret share.
 
     This wraps the external libspu library's Share type to provide
@@ -49,10 +49,10 @@ class SPUShare(WrapValue[libspu.Share]):
     Serialization extracts meta/share_chunks when needed.
     """
 
-    _serde_kind: ClassVar[str] = "spu_impl.SPUShare"
+    _serde_kind: ClassVar[str] = "spu_impl.SPUShareValue"
 
     def _convert(self, data: Any) -> libspu.Share:
-        if isinstance(data, SPUShare):
+        if isinstance(data, SPUShareValue):
             return data.unwrap()
         if isinstance(data, libspu.Share):
             return data
@@ -73,7 +73,7 @@ class SPUShare(WrapValue[libspu.Share]):
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> SPUShare:
+    def from_json(cls, data: dict[str, Any]) -> SPUShareValue:
         share = libspu.Share()
         share.meta = base64.b64decode(data["meta"])
         share.share_chunks = [
@@ -82,8 +82,8 @@ class SPUShare(WrapValue[libspu.Share]):
         return cls(share)
 
     @classmethod
-    def from_libspu(cls, share: libspu.Share) -> SPUShare:
-        """Create SPUShare from a libspu.Share (zero-copy)."""
+    def from_libspu(cls, share: libspu.Share) -> SPUShareValue:
+        """Create SPUShareValue from a libspu.Share (zero-copy)."""
         return cls(share)
 
 
@@ -187,7 +187,7 @@ def _get_spu_ctx(
 @spu.makeshares_p.def_impl
 def makeshares_impl(
     interpreter: Interpreter, op: Operation, data: TensorValue
-) -> tuple[SPUShare, ...]:
+) -> tuple[SPUShareValue, ...]:
     """Generate secret shares for data using spu.Io."""
     count = op.attrs["count"]
     config: spu.SPUConfig = op.attrs["config"]
@@ -205,13 +205,13 @@ def makeshares_impl(
     # Generate shares (VIS_SECRET)
     libspu_shares = io.make_shares(arr, libspu.Visibility.VIS_SECRET)
 
-    # Wrap libspu.Share objects in SPUShare
-    return tuple(SPUShare.from_libspu(share) for share in libspu_shares)
+    # Wrap libspu.Share objects in SPUShareValue
+    return tuple(SPUShareValue.from_libspu(share) for share in libspu_shares)
 
 
 @spu.reconstruct_p.def_impl
 def reconstruct_impl(
-    interpreter: Interpreter, op: Operation, *shares: SPUShare
+    interpreter: Interpreter, op: Operation, *shares: SPUShareValue
 ) -> TensorValue:
     """Reconstruct data from secret shares using spu.Io."""
     count = len(shares)
@@ -220,7 +220,7 @@ def reconstruct_impl(
     runtime_config = to_runtime_config(config)
     io = spu_api.Io(count, runtime_config)
 
-    # Unwrap SPUShare to libspu.Share
+    # Unwrap SPUShareValue to libspu.Share
     libspu_shares = [share.libspu_share for share in shares]
 
     # Reconstruct
@@ -298,8 +298,8 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     # Set inputs
     for name, share in zip(input_names, args, strict=True):
-        # Handle SPUShare wrapper - unwrap to libspu.Share
-        if isinstance(share, SPUShare):
+        # Handle SPUShareValue wrapper - unwrap to libspu.Share
+        if isinstance(share, SPUShareValue):
             libspu_share = share.libspu_share
         else:
             # Handle public input (numpy array)
@@ -316,11 +316,11 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     # Run
     runtime.run(executable)
 
-    # Get outputs and wrap in SPUShare
+    # Get outputs and wrap in SPUShareValue
     results = []
     for name in output_names:
         libspu_share = runtime.get_var(name)
-        results.append(SPUShare.from_libspu(libspu_share))
+        results.append(SPUShareValue.from_libspu(libspu_share))
 
     if len(results) == 1:
         return results[0]

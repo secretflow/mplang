@@ -1,101 +1,68 @@
-# RuntimeValue Base Class Design (Optimized)
+# Runtime Value System
 
-## Status: Draft
+## Status: Implemented
 
 ## Author: @jint
 
-## Date: 2025-12-02
+## Date: 2025-12-03
 
 ---
 
-## 1. Motivation
+## 1. Overview
 
-### Current Problems
+MPLang v2 uses a unified `Value` base class for all runtime values. This provides:
 
-1. **No Type Safety**: `def_impl` functions use `Any` everywhere.
-
-   ```python
-   def add_impl(interpreter, op, lhs: Any, rhs: Any) -> BFVValue | np.ndarray
-   ```
-
-2. **Scattered Serde**: Serialization logic was spread across multiple files (`dialects/serde.py`, `backends/serde.py`). While we recently cleaned up `dialects/serde.py`, `backends/serde.py` still relies on monkey-patching.
-3. **Mixed Return Types**: Impls return raw `np.ndarray`, `BFVValue`, `bytes`, etc. without a common interface.
-
-### Goals
-
-- Unified base class for all runtime values.
-- Built-in serialization using the `@serde.register_class` pattern (no monkey-patching).
-- Debug/profiling metadata.
+- **Type Safety**: `def_impl` functions use typed `Value` subclasses instead of `Any`.
+- **Unified Serde**: All values implement `to_json`/`from_json` via `@serde.register_class`.
+- **Consistent Naming**: All subclasses use `XxxValue` suffix convention.
 
 ---
 
-## 2. Design
+## 2. Value Hierarchy
 
-### 2.1 RuntimeValue Base Class
-
-```python
-# mplang/v2/edsl/runtime.py
-
-from __future__ import annotations
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import ClassVar, Any
-import time
-
-# Use top-level import for serde to avoid circular deps (proven safe in recent refactor)
-from mplang.v2.edsl import serde
-
-
-@dataclass
-class RuntimeValue(ABC):
-    """Base class for all runtime values in MPLang.
-
-    Provides:
-    - Unified serialization interface via `to_json`/`from_json`
-    - Debug/profiling metadata via `_created_at`, `_source_op`
-    """
-
-    # Class-level type identifier for serde dispatch.
-    # Subclasses must define this (or let @serde.register_class handle it).
-    _serde_kind: ClassVar[str]
-
-    # Optional metadata for debugging/profiling
-    _created_at: float = field(default_factory=time.time, repr=False, compare=False)
-    _source_op: str | None = field(default=None, repr=False, compare=False)
-
-    # =========== Serialization Interface ===========
-
-    @abstractmethod
-    def to_json(self) -> dict[str, Any]:
-        """Serialize to JSON-compatible dict.
-
-        Note: Do NOT include `_kind` in the returned dict; `serde.to_json` adds it automatically.
-        """
-        ...
-
-    @classmethod
-    @abstractmethod
-    def from_json(cls, data: dict[str, Any]) -> "RuntimeValue":
-        """Deserialize from JSON-compatible dict."""
-        ...
+```
+Value (ABC)                          # mplang/v2/backends/value.py
+├── WrapValue[T]                     # Generic wrapper for underlying data
+│   ├── TensorValue                  # np.ndarray (tensor_impl.py)
+│   ├── TableValue                   # pa.Table (table_impl.py)
+│   ├── BytesValue                   # bytes (crypto_impl.py)
+│   ├── ECPointValue                 # EC point bytes (crypto_impl.py)
+│   ├── SPUShareValue                # libspu.Share (spu_impl.py)
+│   ├── BFVPublicContextValue        # ts.Context without secret key (bfv_impl.py)
+│   └── BFVSecretContextValue        # ts.Context with secret key (bfv_impl.py)
+├── PrivateKeyValue                  # KEM private key (crypto_impl.py)
+├── PublicKeyValue                   # KEM public key (crypto_impl.py)
+├── SymmetricKeyValue                # Symmetric key (crypto_impl.py)
+├── BFVValue                         # BFV ciphertext/plaintext vector (bfv_impl.py)
+└── MockQuoteValue                   # TEE attestation quote (tee_impl.py)
 ```
 
-### 2.2 Concrete Implementations
+---
 
-We use the `@serde.register_class` decorator to register types immediately.
+## 3. Implementation Pattern
+
+### 3.1 WrapValue Pattern
+
+For values wrapping a single underlying object, use `WrapValue[T]`:
 
 ```python
-# ============= TensorValue =============
-
 @serde.register_class
 @dataclass
-class TensorValue(RuntimeValue):
-    """Wraps numpy/jax arrays as runtime values."""
-    _serde_kind: ClassVar[str] = "runtime.TensorValue"
+class TensorValue(WrapValue[np.ndarray]):
+    """Wraps numpy arrays as runtime values."""
+    _serde_kind: ClassVar[str] = "tensor_impl.TensorValue"
 
-    data: np.ndarray
+    @classmethod
+    def _convert(cls, data: Any) -> np.ndarray:
+        """Convert input to canonical form."""
+        if isinstance(data, TensorValue):
+            return data.data
+        if isinstance(data, np.ndarray):
+            return data
+        # Handle JAX arrays, etc.
+        return np.asarray(data)
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         return {
             "data": base64.b64encode(self.data.tobytes()).decode("ascii"),
             "dtype": str(self.data.dtype),
@@ -103,191 +70,158 @@ class TensorValue(RuntimeValue):
         }
 
     @classmethod
-    def from_json(cls, data: dict) -> "TensorValue":
+    def from_json(cls, data: dict[str, Any]) -> TensorValue:
         arr = np.frombuffer(
             base64.b64decode(data["data"]), dtype=data["dtype"]
         ).reshape(data["shape"])
-        return cls(data=arr)
+        return cls(arr)
+```
 
+### 3.2 Direct Value Pattern
 
-# ============= BFVCipherValue =============
+For values with multiple fields, extend `Value` directly:
 
+```python
 @serde.register_class
 @dataclass
-class BFVCipherValue(RuntimeValue):
-    """Wraps BFV ciphertext as runtime value."""
-    _serde_kind: ClassVar[str] = "runtime.BFVCipherValue"
+class BFVValue(Value):
+    """BFV encrypted/encoded vector."""
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVValue"
 
-    ciphertext: Any  # sealapi.Ciphertext
-    context: "BFVPublicContext"
+    ctx: BFVPublicContextValue
+    vec: ts.BFVVector
 
-    def to_json(self) -> dict:
-        # Use /dev/shm on Linux for better performance
-        fname = _get_seal_temp_path()
-        try:
-            self.ciphertext.save(fname)
-            with open(fname, "rb") as f:
-                data_bytes = f.read()
-        finally:
-            os.unlink(fname)
-
+    def to_json(self) -> dict[str, Any]:
         return {
-            "data_bytes": base64.b64encode(data_bytes).decode("ascii"),
-            "ctx": self.context.to_json(),
+            "ctx": self.ctx.to_json(),
+            "vec": base64.b64encode(self.vec.serialize()).decode("ascii"),
         }
 
     @classmethod
-    def from_json(cls, data: dict) -> "BFVCipherValue":
-        # ... symmetric implementation
-        ...
+    def from_json(cls, data: dict[str, Any]) -> BFVValue:
+        ctx = BFVPublicContextValue.from_json(data["ctx"])
+        vec = ts.bfv_vector_from(ctx.data, base64.b64decode(data["vec"]))
+        return cls(ctx=ctx, vec=vec)
+```
 
+---
 
-# ============= KeyValue =============
+## 4. Serde Integration
 
+Values are registered with `@serde.register_class` decorator. The `edsl/serde.py` module handles dispatch:
+
+```python
+# Serialization: automatic _kind injection
+def to_json(obj: Any) -> Any:
+    if hasattr(obj, "_serde_kind") and hasattr(obj, "to_json"):
+        data = obj.to_json()
+        data["_kind"] = obj._serde_kind
+        return data
+    # ... handle primitives, lists, dicts
+
+# Deserialization: registry lookup
+def from_json(data: Any) -> Any:
+    if isinstance(data, dict) and "_kind" in data:
+        cls = _CLASS_REGISTRY[data["_kind"]]
+        return cls.from_json(data)
+    # ... handle primitives, lists, dicts
+```
+
+---
+
+## 5. Usage in def_impl
+
+All `def_impl` functions use `Value` subclasses for type safety:
+
+```python
+@tensor_dialect.def_impl("tensor.add")
+def add_impl(
+    interpreter: Interpreter,
+    op: Operation,
+    lhs: TensorValue,
+    rhs: TensorValue,
+) -> TensorValue:
+    result = lhs.data + rhs.data
+    return TensorValue(result)
+```
+
+---
+
+## 6. Extension Guide
+
+### Adding a New Value Type
+
+1. **Create the class** in the appropriate `*_impl.py`:
+
+```python
 @serde.register_class
 @dataclass
-class KeyValue(RuntimeValue):
-    """Wraps cryptographic keys as runtime values."""
-    _serde_kind: ClassVar[str] = "runtime.KeyValue"
-
-    key_bytes: bytes
-    key_type: str  # "public", "private", "symmetric"
-    suite: str     # "ec256", "aes128", etc.
-
-    def to_json(self) -> dict:
-        return {
-            "key_bytes": base64.b64encode(self.key_bytes).decode("ascii"),
-            "key_type": self.key_type,
-            "suite": self.suite,
-        }
+class MyValue(WrapValue[MyUnderlyingType]):
+    _serde_kind: ClassVar[str] = "my_impl.MyValue"
 
     @classmethod
-    def from_json(cls, data: dict) -> "KeyValue":
-        return cls(
-            key_bytes=base64.b64decode(data["key_bytes"]),
-            key_type=data["key_type"],
-            suite=data["suite"],
-        )
-```
+    def _convert(cls, data: Any) -> MyUnderlyingType:
+        # Convert input to canonical form
+        ...
 
-### 2.3 Type Hierarchy
-
-```
-RuntimeValue (ABC)
-├── TensorValue          # numpy/jax arrays
-├── TableValue           # pyarrow tables
-├── ScalarValue          # int/float/bool/str
-├── BytesValue           # raw bytes
-├── KeyValue             # crypto keys
-├── BFVCipherValue       # BFV ciphertext
-├── BFVPlainValue        # BFV plaintext
-├── BFVContextValue      # BFV context (public/secret)
-├── PHECipherValue       # PHE ciphertext
-├── SPUShareValue        # SPU secret share
-└── TEEQuoteValue        # TEE attestation quote
-```
-
----
-
-## 3. Serde Simplification
-
-### Current State
-
-- `edsl/serde.py`: Core logic + primitives.
-- `dialects/serde.py`: **Deleted** (merged into dialects).
-- `backends/serde.py`: Still exists, uses monkey-patching for runtime objects.
-
-### After
-
-- `edsl/serde.py`: Unchanged. It already supports any object with `_serde_kind` and `to_json`.
-- `backends/serde.py`: **Delete**. All runtime values will define their own serialization via `RuntimeValue` subclasses and `@serde.register_class`.
-
-### Serde Registration Logic
-
-No changes needed to `edsl/serde.py`. The existing logic handles registered classes automatically:
-
-```python
-# Existing logic in edsl/serde.py handles this:
-if hasattr(obj, "_serde_kind") and hasattr(obj, "to_json"):
-    data = obj.to_json()
-    data["_kind"] = obj._serde_kind
-    return data
-```
-
----
-
-## 4. Implementation Plan
-
-### Phase 1: Core Infrastructure (Week 1)
-
-1. Create `mplang/v2/edsl/runtime.py` with `RuntimeValue` base class.
-2. Implement `TensorValue`, `ScalarValue`, `BytesValue` using `@serde.register_class`.
-3. Verify `edsl/serde.py` handles them correctly without modification.
-4. Add tests in `tests/v2/edsl/test_runtime_value.py`.
-
-### Phase 2: Migrate BFV Types (Week 2)
-
-1. Rename `BFVValue` -> `BFVCipherValue`/`BFVPlainValue` (extend `RuntimeValue`).
-2. Rename `BFVPublicContext`/`BFVSecretContext` -> `BFVContextValue`.
-3. Delete `backends/serde.py` (move logic inline).
-4. Update `bfv_impl.py` to use new types.
-5. Add tests.
-
-### Phase 3: Migrate Crypto Types (Week 2)
-
-1. Replace `RuntimePublicKey`/`RuntimePrivateKey`/`RuntimeSymmetricKey` with `KeyValue`.
-2. Update `crypto_impl.py`.
-3. Add tests.
-
-### Phase 4: Migrate Other Types (Week 3)
-
-1. `TableValue` for PyArrow tables.
-2. `PHECipherValue` for PHE.
-3. `SPUShareValue` for SPU.
-4. `TEEQuoteValue` for TEE.
-
----
-
-## 5. Migration Guide
-
-### Before
-
-```python
-# bfv_impl.py
-@dataclass
-class BFVValue:
-    data: sealapi.Ciphertext | sealapi.Plaintext
-    ctx: BFVPublicContext
-    is_cipher: bool = True
-
-# backends/serde.py
-BFVValue._serde_kind = "bfv_impl.BFVValue"
-def bfv_value_to_json(self): ...
-BFVValue.to_json = bfv_value_to_json  # Monkey-patch!
-serde.register_class(BFVValue)
-```
-
-### After
-
-```python
-# bfv_impl.py
-from mplang.v2.edsl import serde, runtime
-
-@serde.register_class
-@dataclass
-class BFVCipherValue(runtime.RuntimeValue):
-    _serde_kind: ClassVar[str] = "runtime.BFVCipherValue"
-
-    ciphertext: sealapi.Ciphertext
-    context: BFVContextValue
-
-    def to_json(self) -> dict:
-        # Built-in, no monkey-patching
+    def to_json(self) -> dict[str, Any]:
+        # Serialize to JSON-compatible dict
         ...
 
     @classmethod
-    def from_json(cls, data: dict) -> "BFVCipherValue":
+    def from_json(cls, data: dict[str, Any]) -> MyValue:
+        # Deserialize from dict
         ...
-
-# No backends/serde.py needed!
 ```
+
+2. **Use in def_impl functions** with proper type hints.
+
+3. **Add tests** for serde roundtrip and impl functions.
+
+### Naming Convention
+
+- Use `XxxValue` suffix for all Value subclasses
+- The `_serde_kind` should be `"module.ClassName"` format
+
+### Performance Considerations
+
+- Use `WrapValue` for zero-copy wrapping when possible
+- For large data (tensors, tables), use efficient binary formats (Arrow IPC, numpy bytes)
+- Lazy serialization: serialize only during actual network transfer
+
+---
+
+## 7. Current Value Types
+
+| Value Class | Wrapped Type | Location | Description |
+|-------------|--------------|----------|-------------|
+| `TensorValue` | `np.ndarray` | tensor_impl.py | NumPy/JAX arrays |
+| `TableValue` | `pa.Table` | table_impl.py | PyArrow tables |
+| `BytesValue` | `bytes` | crypto_impl.py | Raw byte data |
+| `ECPointValue` | `bytes` | crypto_impl.py | EC curve points |
+| `PrivateKeyValue` | - | crypto_impl.py | KEM private keys |
+| `PublicKeyValue` | - | crypto_impl.py | KEM public keys |
+| `SymmetricKeyValue` | - | crypto_impl.py | Symmetric keys |
+| `SPUShareValue` | `libspu.Share` | spu_impl.py | SPU secret shares |
+| `BFVPublicContextValue` | `ts.Context` | bfv_impl.py | BFV context (public) |
+| `BFVSecretContextValue` | `ts.Context` | bfv_impl.py | BFV context (secret) |
+| `BFVValue` | `ts.BFVVector` | bfv_impl.py | BFV vector (cipher/plain) |
+| `MockQuoteValue` | - | tee_impl.py | TEE attestation quote |
+
+---
+
+## 8. Future Extensions
+
+### Potential New Value Types
+
+- `PHECipherValue` - Paillier homomorphic encryption ciphertext
+- `PHEPublicKeyValue` / `PHEPrivateKeyValue` - PHE key pairs
+- `CKKSValue` - CKKS scheme for approximate arithmetic
+- `OTMessageValue` - Oblivious transfer messages
+
+### Potential Improvements
+
+- **Streaming serde**: For very large values, support chunked serialization
+- **Compression**: Optional compression for network transfer
+- **Versioning**: Add version field to `_serde_kind` for backward compatibility
+- **Validation**: Add schema validation in `from_json`

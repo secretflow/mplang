@@ -27,9 +27,9 @@ import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.crypto_impl import (
     BytesValue,
-    RuntimePrivateKey,
-    RuntimePublicKey,
-    RuntimeSymmetricKey,
+    PrivateKeyValue,
+    PublicKeyValue,
+    SymmetricKeyValue,
 )
 from mplang.v2.backends.tensor_impl import TensorValue
 
@@ -50,8 +50,8 @@ class TestKEMExecution:
             sk, pk = crypto.kem_keygen("x25519")
 
             # Check types
-            assert isinstance(sk.runtime_obj, RuntimePrivateKey)
-            assert isinstance(pk.runtime_obj, RuntimePublicKey)
+            assert isinstance(sk.runtime_obj, PrivateKeyValue)
+            assert isinstance(pk.runtime_obj, PublicKeyValue)
 
             # Check suite
             assert sk.runtime_obj.suite == "x25519"
@@ -78,7 +78,7 @@ class TestKEMExecution:
             symmetric_key = crypto.kem_derive(sk, pk)
 
             # Check type
-            assert isinstance(symmetric_key.runtime_obj, RuntimeSymmetricKey)
+            assert isinstance(symmetric_key.runtime_obj, SymmetricKeyValue)
             assert symmetric_key.runtime_obj.suite == "x25519"
 
             # Check key size

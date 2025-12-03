@@ -77,17 +77,17 @@ class BytesValue(WrapValue[bytes]):
 
 
 @serde.register_class
-class ECPoint(WrapValue[bytes]):
+class ECPointValue(WrapValue[bytes]):
     """Wrapper for coincurve.PublicKey representing an elliptic curve point.
 
     This wraps the external coincurve library's PublicKey type to provide
     proper serialization support via the Value base class.
     """
 
-    _serde_kind: ClassVar[str] = "crypto_impl.ECPoint"
+    _serde_kind: ClassVar[str] = "crypto_impl.ECPointValue"
 
     def _convert(self, data: Any) -> bytes:
-        if isinstance(data, ECPoint):
+        if isinstance(data, ECPointValue):
             return data.unwrap()
         if isinstance(data, bytes):
             return data
@@ -103,7 +103,7 @@ class ECPoint(WrapValue[bytes]):
         return {"data": base64.b64encode(self._data).decode("ascii")}
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> ECPoint:
+    def from_json(cls, data: dict[str, Any]) -> ECPointValue:
         return cls(base64.b64decode(data["data"]))
 
     @property
@@ -112,8 +112,8 @@ class ECPoint(WrapValue[bytes]):
         return coincurve.PublicKey(self._data)
 
     @classmethod
-    def from_coincurve(cls, pk: coincurve.PublicKey) -> ECPoint:
-        """Create ECPoint from a coincurve.PublicKey."""
+    def from_coincurve(cls, pk: coincurve.PublicKey) -> ECPointValue:
+        """Create ECPointValue from a coincurve.PublicKey."""
         return cls(pk)
 
 
@@ -124,21 +124,21 @@ N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 
 
 @crypto.generator_p.def_impl
-def generator_impl(interpreter: Interpreter, op: Operation) -> ECPoint:
+def generator_impl(interpreter: Interpreter, op: Operation) -> ECPointValue:
     # Compressed G
     g_bytes = bytes.fromhex(
         "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
     )
-    return ECPoint(g_bytes)
+    return ECPointValue(g_bytes)
 
 
 @crypto.mul_p.def_impl
 def mul_impl(
     interpreter: Interpreter,
     op: Operation,
-    point: ECPoint | None,
+    point: ECPointValue | None,
     scalar: int | TensorValue,
-) -> ECPoint | None:
+) -> ECPointValue | None:
     # scalar can be:
     # - int: from ec_random_scalar or ec_scalar_from_int
     # - TensorValue: shouldn't happen but handle for robustness
@@ -168,25 +168,31 @@ def mul_impl(
     # coincurve multiply expects bytes
     s_bytes = s_val.to_bytes(32, "big")
     result = point.coincurve_key.multiply(s_bytes)
-    return ECPoint.from_coincurve(result)
+    return ECPointValue.from_coincurve(result)
 
 
 @crypto.add_p.def_impl
 def add_impl(
-    interpreter: Interpreter, op: Operation, p1: ECPoint | None, p2: ECPoint | None
-) -> ECPoint | None:
+    interpreter: Interpreter,
+    op: Operation,
+    p1: ECPointValue | None,
+    p2: ECPointValue | None,
+) -> ECPointValue | None:
     if p1 is None:
         return p2
     if p2 is None:
         return p1
     result = p1.coincurve_key.combine([p2.coincurve_key])
-    return ECPoint.from_coincurve(result)
+    return ECPointValue.from_coincurve(result)
 
 
 @crypto.sub_p.def_impl
 def sub_impl(
-    interpreter: Interpreter, op: Operation, p1: ECPoint | None, p2: ECPoint | None
-) -> ECPoint | None:
+    interpreter: Interpreter,
+    op: Operation,
+    p1: ECPointValue | None,
+    p2: ECPointValue | None,
+) -> ECPointValue | None:
     # p1 - p2 = p1 + (-p2)
     if p2 is None:
         return p1
@@ -196,10 +202,10 @@ def sub_impl(
     neg_p2 = p2.coincurve_key.multiply(neg_scalar)
 
     if p1 is None:
-        return ECPoint.from_coincurve(neg_p2)
+        return ECPointValue.from_coincurve(neg_p2)
 
     result = p1.coincurve_key.combine([neg_p2])
-    return ECPoint.from_coincurve(result)
+    return ECPointValue.from_coincurve(result)
 
 
 @crypto.random_scalar_p.def_impl
@@ -234,7 +240,7 @@ def scalar_from_int_impl(
 
 @crypto.point_to_bytes_p.def_impl
 def point_to_bytes_impl(
-    interpreter: Interpreter, op: Operation, point: ECPoint | None
+    interpreter: Interpreter, op: Operation, point: ECPointValue | None
 ) -> BytesValue:
     if point is None:
         # Infinity / Identity -> Zeros (65 bytes to match uncompressed format)
@@ -269,7 +275,7 @@ def hash_impl(
 def sym_encrypt_impl(
     interpreter: Interpreter,
     op: Operation,
-    key: RuntimeSymmetricKey | BytesValue,
+    key: SymmetricKeyValue | BytesValue,
     plaintext: Any,
 ) -> BytesValue:
     """Encrypt plaintext using AES-GCM with the given symmetric key.
@@ -279,13 +285,13 @@ def sym_encrypt_impl(
     (with TensorValue) and elementwise operations (with raw scalars).
     """
     # Get raw key bytes - strict type checking
-    if isinstance(key, RuntimeSymmetricKey):
+    if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes
     elif isinstance(key, BytesValue):
         k = key.unwrap()
     else:
         raise TypeError(
-            f"sym_encrypt key must be RuntimeSymmetricKey or BytesValue, "
+            f"sym_encrypt key must be SymmetricKeyValue or BytesValue, "
             f"got {type(key).__name__}"
         )
 
@@ -306,7 +312,7 @@ def sym_encrypt_impl(
 def sym_decrypt_impl(
     interpreter: Interpreter,
     op: Operation,
-    key: RuntimeSymmetricKey | BytesValue,
+    key: SymmetricKeyValue | BytesValue,
     ciphertext: BytesValue,
     target_type: Any = None,
 ) -> Any:
@@ -317,13 +323,13 @@ def sym_decrypt_impl(
     a numpy array, or a scalar (int, float, etc.) when used in elementwise ops.
     """
     # Get raw key bytes - strict type checking
-    if isinstance(key, RuntimeSymmetricKey):
+    if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes
     elif isinstance(key, BytesValue):
         k = key.unwrap()
     else:
         raise TypeError(
-            f"sym_decrypt key must be RuntimeSymmetricKey or BytesValue, "
+            f"sym_decrypt key must be SymmetricKeyValue or BytesValue, "
             f"got {type(key).__name__}"
         )
 
@@ -375,7 +381,7 @@ def select_impl(
 
 @serde.register_class
 @dataclass
-class RuntimePrivateKey(Value):
+class PrivateKeyValue(Value):
     """Runtime representation of a KEM private key.
 
     This wraps the raw key bytes from a real cryptographic implementation
@@ -383,7 +389,7 @@ class RuntimePrivateKey(Value):
     library which provides secure, audited implementations.
     """
 
-    _serde_kind: ClassVar[str] = "crypto_impl.RuntimePrivateKey"
+    _serde_kind: ClassVar[str] = "crypto_impl.PrivateKeyValue"
 
     suite: str
     key_bytes: bytes
@@ -395,7 +401,7 @@ class RuntimePrivateKey(Value):
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RuntimePrivateKey:
+    def from_json(cls, data: dict[str, Any]) -> PrivateKeyValue:
         return cls(
             suite=data["suite"],
             key_bytes=base64.b64decode(data["key_bytes"]),
@@ -404,13 +410,13 @@ class RuntimePrivateKey(Value):
 
 @serde.register_class
 @dataclass
-class RuntimePublicKey(Value):
+class PublicKeyValue(Value):
     """Runtime representation of a KEM public key.
 
     This wraps the raw key bytes from a real cryptographic implementation.
     """
 
-    _serde_kind: ClassVar[str] = "crypto_impl.RuntimePublicKey"
+    _serde_kind: ClassVar[str] = "crypto_impl.PublicKeyValue"
 
     suite: str
     key_bytes: bytes
@@ -422,7 +428,7 @@ class RuntimePublicKey(Value):
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RuntimePublicKey:
+    def from_json(cls, data: dict[str, Any]) -> PublicKeyValue:
         return cls(
             suite=data["suite"],
             key_bytes=base64.b64decode(data["key_bytes"]),
@@ -431,14 +437,14 @@ class RuntimePublicKey(Value):
 
 @serde.register_class
 @dataclass
-class RuntimeSymmetricKey(Value):
+class SymmetricKeyValue(Value):
     """Runtime representation of a symmetric encryption key.
 
     This wraps the raw key bytes derived from ECDH key exchange.
     The key is used with AES-256-GCM for authenticated encryption.
     """
 
-    _serde_kind: ClassVar[str] = "crypto_impl.RuntimeSymmetricKey"
+    _serde_kind: ClassVar[str] = "crypto_impl.SymmetricKeyValue"
 
     suite: str
     key_bytes: bytes
@@ -450,7 +456,7 @@ class RuntimeSymmetricKey(Value):
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RuntimeSymmetricKey:
+    def from_json(cls, data: dict[str, Any]) -> SymmetricKeyValue:
         return cls(
             suite=data["suite"],
             key_bytes=base64.b64decode(data["key_bytes"]),
@@ -460,7 +466,7 @@ class RuntimeSymmetricKey(Value):
 @crypto.kem_keygen_p.def_impl
 def kem_keygen_impl(
     interpreter: Interpreter, op: Operation, suite: str = "x25519"
-) -> tuple[RuntimePrivateKey, RuntimePublicKey]:
+) -> tuple[PrivateKeyValue, PublicKeyValue]:
     """Generate a KEM key pair."""
     if suite == "x25519":
         from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -481,16 +487,16 @@ def kem_keygen_impl(
         pk_bytes = public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
 
         return (
-            RuntimePrivateKey(suite=suite, key_bytes=sk_bytes),
-            RuntimePublicKey(suite=suite, key_bytes=pk_bytes),
+            PrivateKeyValue(suite=suite, key_bytes=sk_bytes),
+            PublicKeyValue(suite=suite, key_bytes=pk_bytes),
         )
     else:
         # Fallback to random bytes for unknown suites
         sk_bytes = os.urandom(32)
         pk_bytes = os.urandom(32)
         return (
-            RuntimePrivateKey(suite=suite, key_bytes=sk_bytes),
-            RuntimePublicKey(suite=suite, key_bytes=pk_bytes),
+            PrivateKeyValue(suite=suite, key_bytes=sk_bytes),
+            PublicKeyValue(suite=suite, key_bytes=pk_bytes),
         )
 
 
@@ -498,9 +504,9 @@ def kem_keygen_impl(
 def kem_derive_impl(
     interpreter: Interpreter,
     op: Operation,
-    private_key: RuntimePrivateKey,
-    public_key: RuntimePublicKey,
-) -> RuntimeSymmetricKey:
+    private_key: PrivateKeyValue,
+    public_key: PublicKeyValue,
+) -> SymmetricKeyValue:
     """Derive a symmetric key using ECDH."""
     suite = getattr(private_key, "suite", "x25519")
 
@@ -514,10 +520,10 @@ def kem_derive_impl(
         pk = X25519PublicKey.from_public_bytes(public_key.key_bytes)
         shared_secret = sk.exchange(pk)
 
-        return RuntimeSymmetricKey(suite=suite, key_bytes=shared_secret)
+        return SymmetricKeyValue(suite=suite, key_bytes=shared_secret)
     else:
         # Fallback for unknown suites: XOR the key bytes (not cryptographically secure)
         sk_bytes = private_key.key_bytes
         pk_bytes = public_key.key_bytes
         secret = bytes(a ^ b for a, b in zip(sk_bytes, pk_bytes, strict=True))
-        return RuntimeSymmetricKey(suite=suite, key_bytes=secret)
+        return SymmetricKeyValue(suite=suite, key_bytes=secret)

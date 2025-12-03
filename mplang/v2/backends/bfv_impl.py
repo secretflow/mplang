@@ -59,10 +59,10 @@ def _get_seal_temp_path() -> str:
 
 
 @serde.register_class
-class BFVPublicContext(WrapValue[ts.Context]):
+class BFVPublicContextValue(WrapValue[ts.Context]):
     """Wraps TenSEAL context and exposes low-level SEAL objects (Public only)."""
 
-    _serde_kind: ClassVar[str] = "bfv_impl.BFVPublicContext"
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVPublicContextValue"
 
     def __init__(self, data: Any):
         super().__init__(data)
@@ -83,7 +83,7 @@ class BFVPublicContext(WrapValue[ts.Context]):
         self.encryptor = sealapi.Encryptor(self.cpp_ctx, self.public_key)
 
     def _convert(self, data: Any) -> ts.Context:
-        if isinstance(data, BFVPublicContext):
+        if isinstance(data, BFVPublicContextValue):
             return data.unwrap()
         if isinstance(data, ts.Context):
             return data
@@ -95,20 +95,20 @@ class BFVPublicContext(WrapValue[ts.Context]):
         return {"ctx_bytes": base64.b64encode(serialized).decode("ascii")}
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> BFVPublicContext:
+    def from_json(cls, data: dict[str, Any]) -> BFVPublicContextValue:
         ctx_bytes = base64.b64decode(data["ctx_bytes"])
         ts_ctx = ts.context_from(ctx_bytes)
         return cls(ts_ctx)
 
 
 @serde.register_class
-class BFVSecretContext(BFVPublicContext):
+class BFVSecretContextValue(BFVPublicContextValue):
     """Wraps TenSEAL context and exposes low-level SEAL objects (including Secret)."""
 
-    _serde_kind: ClassVar[str] = "bfv_impl.BFVSecretContext"
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVSecretContextValue"
 
     def __init__(self, data: Any):
-        # BFVPublicContext.__init__ calls WrapValue.__init__ which calls _convert
+        # BFVPublicContextValue.__init__ calls WrapValue.__init__ which calls _convert
         # We need to ensure _convert is called and validation happens
         super().__init__(data)
 
@@ -118,13 +118,13 @@ class BFVSecretContext(BFVPublicContext):
         self.secret_key = self.ts_ctx.secret_key().data
         self.decryptor = sealapi.Decryptor(self.cpp_ctx, self.secret_key)
 
-    def make_public(self) -> BFVPublicContext:
+    def make_public(self) -> BFVPublicContextValue:
         """Create a public-only version of this context."""
         # Serialize without secret key
         serialized = self.ts_ctx.serialize(save_secret_key=False)
         # Deserialize to create a new context
         new_ts_ctx = ts.context_from(serialized)
-        return BFVPublicContext(new_ts_ctx)
+        return BFVPublicContextValue(new_ts_ctx)
 
     def to_json(self) -> dict[str, Any]:
         # Serialize TenSEAL context (with secret key)
@@ -132,7 +132,7 @@ class BFVSecretContext(BFVPublicContext):
         return {"ctx_bytes": base64.b64encode(serialized).decode("ascii")}
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> BFVSecretContext:
+    def from_json(cls, data: dict[str, Any]) -> BFVSecretContextValue:
         ctx_bytes = base64.b64decode(data["ctx_bytes"])
         ts_ctx = ts.context_from(ctx_bytes)
         return cls(ts_ctx)
@@ -146,7 +146,7 @@ class BFVValue(Value):
     _serde_kind: ClassVar[str] = "bfv_impl.BFVValue"
 
     data: Any  # sealapi.Ciphertext | sealapi.Plaintext
-    ctx: BFVPublicContext
+    ctx: BFVPublicContextValue
     is_cipher: bool = True
 
     def to_json(self) -> dict[str, Any]:
@@ -198,7 +198,9 @@ class BFVValue(Value):
 # =============================================================================
 # Keygen Cache (Optimization: avoid regenerating keys for same parameters)
 # =============================================================================
-_KEYGEN_CACHE: dict[tuple[int, int], tuple[BFVPublicContext, BFVSecretContext]] = {}
+_KEYGEN_CACHE: dict[
+    tuple[int, int], tuple[BFVPublicContextValue, BFVSecretContextValue]
+] = {}
 
 
 def clear_keygen_cache() -> None:
@@ -209,7 +211,7 @@ def clear_keygen_cache() -> None:
 @bfv.keygen_p.def_impl
 def keygen_impl(
     interpreter: Interpreter, op: Operation, *args: Any
-) -> tuple[BFVPublicContext, BFVSecretContext]:
+) -> tuple[BFVPublicContextValue, BFVSecretContextValue]:
     poly_modulus_degree = op.attrs.get("poly_modulus_degree", 4096)
     # Use a default plain_modulus if not provided.
     plain_modulus = op.attrs.get("plain_modulus", 1032193)
@@ -228,7 +230,7 @@ def keygen_impl(
     ts_ctx.generate_galois_keys()
     ts_ctx.generate_relin_keys()
 
-    full_context = BFVSecretContext(ts_ctx)
+    full_context = BFVSecretContextValue(ts_ctx)
     public_context = full_context.make_public()
 
     # Cache the result
@@ -241,15 +243,15 @@ def keygen_impl(
 
 @bfv.make_relin_keys_p.def_impl
 def make_relin_keys_impl(
-    interpreter: Interpreter, op: Operation, sk: BFVSecretContext
-) -> BFVSecretContext:
+    interpreter: Interpreter, op: Operation, sk: BFVSecretContextValue
+) -> BFVSecretContextValue:
     return sk
 
 
 @bfv.make_galois_keys_p.def_impl
 def make_galois_keys_impl(
-    interpreter: Interpreter, op: Operation, sk: BFVSecretContext
-) -> BFVSecretContext:
+    interpreter: Interpreter, op: Operation, sk: BFVSecretContextValue
+) -> BFVSecretContextValue:
     return sk
 
 
@@ -274,10 +276,10 @@ def encrypt_impl(
     interpreter: Interpreter,
     op: Operation,
     plaintext: TensorValue,
-    pk: BFVPublicContext,
+    pk: BFVPublicContextValue,
 ) -> BFVValue:
     # plaintext is TensorValue (from encode_impl)
-    # pk is BFVPublicContext
+    # pk is BFVPublicContextValue
     plaintext_arr = plaintext.unwrap().flatten()
 
     # 1. Create Plaintext
@@ -297,10 +299,13 @@ def encrypt_impl(
 
 @bfv.decrypt_p.def_impl
 def decrypt_impl(
-    interpreter: Interpreter, op: Operation, ciphertext: BFVValue, sk: BFVSecretContext
+    interpreter: Interpreter,
+    op: Operation,
+    ciphertext: BFVValue,
+    sk: BFVSecretContextValue,
 ) -> BFVValue:
     # ciphertext is BFVValue
-    # sk is BFVSecretContext
+    # sk is BFVSecretContextValue
 
     pt = sealapi.Plaintext()
     sk.decryptor.decrypt(ciphertext.data, pt)
@@ -319,7 +324,7 @@ def decode_impl(
     return TensorValue.wrap(np.array(vec))
 
 
-def _ensure_plaintext(ctx: BFVPublicContext, data: BFVValue | TensorValue) -> Any:
+def _ensure_plaintext(ctx: BFVPublicContextValue, data: BFVValue | TensorValue) -> Any:
     """Convert data to sealapi.Plaintext using the given context."""
     if isinstance(data, BFVValue):
         if data.is_cipher:
@@ -487,9 +492,12 @@ def mul_impl(
 
 @bfv.relinearize_p.def_impl
 def relinearize_impl(
-    interpreter: Interpreter, op: Operation, ciphertext: BFVValue, rk: BFVPublicContext
+    interpreter: Interpreter,
+    op: Operation,
+    ciphertext: BFVValue,
+    rk: BFVPublicContextValue,
 ) -> BFVValue:
-    # rk is BFVPublicContext (same as ciphertext.ctx)
+    # rk is BFVPublicContextValue (same as ciphertext.ctx)
 
     # Check if relinearization is needed (size > 2)
     if ciphertext.data.size() > 2:
@@ -504,7 +512,10 @@ def relinearize_impl(
 
 @bfv.rotate_p.def_impl
 def rotate_impl(
-    interpreter: Interpreter, op: Operation, ciphertext: BFVValue, gk: BFVPublicContext
+    interpreter: Interpreter,
+    op: Operation,
+    ciphertext: BFVValue,
+    gk: BFVPublicContextValue,
 ) -> BFVValue:
     """Implement rotation using low-level SEAL API directly."""
     steps = op.attrs.get("steps", 0)
@@ -512,7 +523,7 @@ def rotate_impl(
         return ciphertext
 
     # ciphertext is BFVValue
-    # gk is BFVPublicContext
+    # gk is BFVPublicContextValue
 
     new_ct = sealapi.Ciphertext()
     ciphertext.ctx.evaluator.rotate_rows(
@@ -523,7 +534,10 @@ def rotate_impl(
 
 @bfv.rotate_columns_p.def_impl
 def rotate_columns_impl(
-    interpreter: Interpreter, op: Operation, ciphertext: BFVValue, gk: BFVPublicContext
+    interpreter: Interpreter,
+    op: Operation,
+    ciphertext: BFVValue,
+    gk: BFVPublicContextValue,
 ) -> BFVValue:
     """Swap the two rows in SIMD batching (row 0 <-> row 1)."""
     new_ct = sealapi.Ciphertext()

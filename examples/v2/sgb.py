@@ -1581,7 +1581,7 @@ def main():
     result = host.evaluate_graph(graph, [])
 
     # Calculate accuracy
-    y_pred_probs = result[0]
+    y_pred_probs = result[0].unwrap()
     y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
     accuracy = np.mean(y_pred_class == y)
     print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
@@ -1683,7 +1683,7 @@ def main_multiparty():
     result = host.evaluate_graph(graph, [])
 
     # Calculate accuracy
-    y_pred_probs = result[0]
+    y_pred_probs = result[0].unwrap()
     y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
     accuracy = np.mean(y_pred_class == y)
     print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
@@ -1827,7 +1827,7 @@ def benchmark_multiparty():
         exec_time = time.perf_counter() - t0
 
         # Calculate accuracy
-        y_pred_probs = result[0]
+        y_pred_probs = result[0].unwrap()
         y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
         accuracy = np.mean(y_pred_class == y)
 

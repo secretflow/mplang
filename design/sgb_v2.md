@@ -333,6 +333,20 @@ For `rotate_and_sum(ct, k)`:
 - `k ≤ 2048`: Only needs row rotations (simple case)
 - `2048 < k ≤ 4096`: Needs row rotations + column rotation for cross-row aggregation
 
+### Multi-Party Control Flow Strategy
+
+The implementation supports >2 parties (1 AP + N PPs) without requiring dynamic communication primitives like `pshuffle_dynamic`.
+
+**Strategy: Speculative Execution + Gather & Select**
+
+
+1. **Speculative Calculation**: Every party (AP and all PPs) computes a candidate `bt` update assuming *they* are the winner of the split.
+2. **Static Transfer**: All candidate `bt` updates are transferred to AP using `simp.shuffle_static` (since party ranks are known at compile time).
+3. **Dynamic Selection**: AP uses JAX's dynamic indexing (`best_party` tensor) to select the correct `bt` update for each node from the gathered candidates.
+
+**Pros**: Avoids complex dynamic control flow in the MPC layer.
+**Cons**: Higher communication (transfers candidates from all parties), but acceptable for typical federation sizes (2-10 parties).
+
 ## Next Steps: Optimization Roadmap
 
 ### Phase 1: Algorithm Optimization (High Value, Low Effort) ✅ Complete

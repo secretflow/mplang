@@ -1,7 +1,6 @@
 # SecureBoost v2 Optimization Log
 
 **Date:** December 3, 2025
-**Author:** GitHub Copilot & User
 
 This document records the optimization journey for the SecureBoost (SGB) v2 implementation in `examples/v2/sgb.py`.
 

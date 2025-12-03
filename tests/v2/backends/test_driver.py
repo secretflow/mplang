@@ -141,7 +141,9 @@ class TestDriverExecution:
         value = mp.fetch(driver_cluster, result, party="P1")
         assert value == 100
 
-    @pytest.mark.skip(reason="SPU requires spu dialect impl in worker")
+    @pytest.mark.skip(
+        reason="SPU requires BRPC link setup in HTTP worker, not yet implemented"
+    )
     def test_spu_computation(self, driver_cluster):
         """Test secure computation on SPU."""
 

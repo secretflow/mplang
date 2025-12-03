@@ -46,6 +46,7 @@ from pydantic import BaseModel
 
 # Register operation implementations (side-effect imports)
 from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
+from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
 from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl import serde

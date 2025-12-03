@@ -60,7 +60,7 @@ class BytesValue(WrapValue[bytes]):
             return bytes(data)
         # Handle numpy arrays
         if hasattr(data, "tobytes"):
-            return data.tobytes()
+            return bytes(data.tobytes())  # type: ignore[union-attr]
         raise TypeError(f"Cannot convert {type(data).__name__} to bytes")
 
     def to_json(self) -> dict[str, Any]:
@@ -143,10 +143,13 @@ def mul_impl(
     # - int: from ec_random_scalar or ec_scalar_from_int
     # - TensorValue: shouldn't happen but handle for robustness
     # - numpy scalar: from inside elementwise (shouldn't reach here as mul is not in elementwise)
+    s_val: int
     if isinstance(scalar, TensorValue):
-        s_val = scalar.unwrap()
-        if hasattr(s_val, "item"):
-            s_val = s_val.item()
+        raw = scalar.unwrap()
+        if hasattr(raw, "item"):
+            s_val = int(raw.item())
+        else:
+            s_val = int(raw)
     elif isinstance(scalar, (int, np.integer)):
         s_val = int(scalar)
     else:
@@ -267,8 +270,14 @@ def sym_encrypt_impl(
     interpreter: Interpreter,
     op: Operation,
     key: RuntimeSymmetricKey | BytesValue,
-    plaintext: Value,
+    plaintext: Any,
 ) -> BytesValue:
+    """Encrypt plaintext using AES-GCM with the given symmetric key.
+
+    The plaintext can be any JSON-serializable value (Value subclasses,
+    numpy arrays, scalars, etc.). This supports both high-level API usage
+    (with TensorValue) and elementwise operations (with raw scalars).
+    """
     # Get raw key bytes - strict type checking
     if isinstance(key, RuntimeSymmetricKey):
         k = key.key_bytes
@@ -280,7 +289,8 @@ def sym_encrypt_impl(
             f"got {type(key).__name__}"
         )
 
-    # Serialize the plaintext Value using secure JSON serde
+    # Serialize the plaintext using secure JSON serde
+    # serde.dumps handles Value subclasses, numpy arrays, scalars, etc.
     pt_bytes = serde.dumps(plaintext)
 
     # AES-GCM encryption
@@ -299,7 +309,13 @@ def sym_decrypt_impl(
     key: RuntimeSymmetricKey | BytesValue,
     ciphertext: BytesValue,
     target_type: Any = None,
-) -> Value:
+) -> Any:
+    """Decrypt ciphertext using AES-GCM with the given symmetric key.
+
+    Returns the original plaintext value that was encrypted. The type depends
+    on what was encrypted - could be a Value subclass (TensorValue, BytesValue),
+    a numpy array, or a scalar (int, float, etc.) when used in elementwise ops.
+    """
     # Get raw key bytes - strict type checking
     if isinstance(key, RuntimeSymmetricKey):
         k = key.key_bytes
@@ -326,7 +342,8 @@ def sym_decrypt_impl(
     aesgcm = AESGCM(k)
     pt_bytes = aesgcm.decrypt(nonce, ct, None)
 
-    # Deserialize back to Value using secure JSON serde
+    # Deserialize back using secure JSON serde
+    # Returns the original type that was encrypted
     return serde.loads(pt_bytes)
 
 
@@ -339,10 +356,13 @@ def select_impl(
     false_val: Value,
 ) -> Value:
     # Handle both TensorValue and raw scalar (from elementwise)
+    c: int
     if isinstance(cond, TensorValue):
-        c = cond.unwrap()
-        if hasattr(c, "item"):
-            c = c.item()
+        raw = cond.unwrap()
+        if hasattr(raw, "item"):
+            c = int(raw.item())
+        else:
+            c = int(raw)
     else:
         c = int(cond)
     return true_val if c else false_val

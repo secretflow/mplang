@@ -155,7 +155,7 @@ def to_json(obj: Any) -> dict[str, Any]:
     """
     # Registered classes
     if hasattr(obj, "_serde_kind") and hasattr(obj, "to_json"):
-        data = obj.to_json()
+        data: dict[str, Any] = obj.to_json()
         data["_kind"] = obj._serde_kind
         return data
 
@@ -302,7 +302,7 @@ def from_json(data: dict[str, Any]) -> Any:
         cls = _CLASS_REGISTRY[kind]
         # Remove _kind before passing to from_json
         data_copy = {k: v for k, v in data.items() if k != "_kind"}
-        return cls.from_json(data_copy)
+        return cls.from_json(data_copy)  # type: ignore[attr-defined]
 
     raise ValueError(
         f"Unknown type kind: '{kind}'. "

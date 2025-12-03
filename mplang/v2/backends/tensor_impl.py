@@ -62,7 +62,7 @@ class TensorValue(WrapValue[np.ndarray]):
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return self._data.dtype
+        return np.dtype(self._data.dtype)
 
     @property
     def ndim(self) -> int:
@@ -238,8 +238,8 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
                 isinstance(outer_val.type, elt.TensorType)
                 and outer_val.type.shape != ()
             ):
-                # Tensor argument: pick element
-                scalar_inputs.append(arg[index])
+                # Tensor argument: pick element (arg is array-like at runtime)
+                scalar_inputs.append(arg[index])  # type: ignore[index]
             else:
                 # Scalar/Broadcast argument: use as is
                 scalar_inputs.append(arg)

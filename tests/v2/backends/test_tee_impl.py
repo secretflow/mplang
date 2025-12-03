@@ -21,6 +21,7 @@ import mplang.v2.backends.crypto_impl
 import mplang.v2.backends.tee_impl  # noqa: F401 - Register implementations
 import mplang.v2.dialects.crypto as crypto
 import mplang.v2.dialects.tee as tee
+import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.tee_impl import MockQuote
@@ -139,14 +140,14 @@ class TestTEEWithCryptoIntegration:
 
             # Encrypt with TEE's key, decrypt with verifier's key
             message = np.array([72, 101, 108, 108, 111], dtype=np.uint8)  # "Hello"
-            message_obj = el.InterpObject(message, elt.TensorType(elt.u8, (5,)))
+            message_obj = tensor.constant(message)
             ciphertext = crypto.sym_encrypt(tee_key, message_obj)
             plaintext = crypto.sym_decrypt(
                 verifier_key, ciphertext, elt.TensorType(elt.u8, (5,))
             )
 
             # Verify decryption succeeds (same key due to ECDH)
-            np.testing.assert_array_equal(plaintext.runtime_obj, message)
+            np.testing.assert_array_equal(plaintext.runtime_obj.unwrap(), message)
 
             # Verify types
             assert isinstance(tee_key.type, crypto.SymmetricKeyType)

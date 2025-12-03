@@ -22,6 +22,7 @@ import pytest
 
 import mplang.v2.backends.crypto_impl  # noqa: F401 - Register implementations
 import mplang.v2.dialects.crypto as crypto
+import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.crypto_impl import (
@@ -107,9 +108,9 @@ class TestSymmetricEncryption:
             sk, pk = crypto.kem_keygen("x25519")
             key = crypto.kem_derive(sk, pk)
 
-            # Create message
+            # Create message using tensor.constant
             message = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
-            message_obj = el.InterpObject(message, elt.TensorType(elt.u8, (5,)))
+            message_obj = tensor.constant(message)
 
             # Encrypt
             ciphertext = crypto.sym_encrypt(key, message_obj)
@@ -129,9 +130,9 @@ class TestSymmetricEncryption:
             sk, pk = crypto.kem_keygen("x25519")
             key = crypto.kem_derive(sk, pk)
 
-            # "Hello" as bytes
+            # "Hello" as bytes, using tensor.constant
             message = np.array([72, 101, 108, 108, 111], dtype=np.uint8)
-            message_obj = el.InterpObject(message, elt.TensorType(elt.u8, (5,)))
+            message_obj = tensor.constant(message)
 
             ciphertext = crypto.sym_encrypt(key, message_obj)
             plaintext = crypto.sym_decrypt(
@@ -152,7 +153,7 @@ class TestSymmetricEncryption:
 
             # Encrypt with key1
             message = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
-            message_obj = el.InterpObject(message, elt.TensorType(elt.u8, (5,)))
+            message_obj = tensor.constant(message)
             ciphertext = crypto.sym_encrypt(key1, message_obj)
 
             # Decrypt with key2 should fail
@@ -166,7 +167,7 @@ class TestSymmetricEncryption:
             key = crypto.kem_derive(sk, pk)
 
             message = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
-            message_obj = el.InterpObject(message, elt.TensorType(elt.u8, (5,)))
+            message_obj = tensor.constant(message)
 
             ct1 = crypto.sym_encrypt(key, message_obj)
             ct2 = crypto.sym_encrypt(key, message_obj)
@@ -189,11 +190,11 @@ class TestDigitalEnvelope:
             # Step 1: Alice derives symmetric key using her sk and Bob's pk
             alice_key = crypto.kem_derive(alice_sk, bob_pk)
 
-            # Step 2: Alice encrypts the message
+            # Step 2: Alice encrypts the message using tensor.constant
             secret_message = np.array(
                 [83, 101, 99, 114, 101, 116], dtype=np.uint8
             )  # "Secret"
-            msg_obj = el.InterpObject(secret_message, elt.TensorType(elt.u8, (6,)))
+            msg_obj = tensor.constant(secret_message)
             ciphertext = crypto.sym_encrypt(alice_key, msg_obj)
 
             # Alice sends (alice_pk, ciphertext) to Bob
@@ -223,16 +224,16 @@ class TestDigitalEnvelope:
             alice_key = crypto.kem_derive(alice_sk, bob_pk)
             bob_key = crypto.kem_derive(bob_sk, alice_pk)
 
-            # Alice sends to Bob
+            # Alice sends to Bob using tensor.constant
             msg_a = np.array([65, 66, 67], dtype=np.uint8)  # "ABC"
-            msg_a_obj = el.InterpObject(msg_a, elt.TensorType(elt.u8, (3,)))
+            msg_a_obj = tensor.constant(msg_a)
             ct_a = crypto.sym_encrypt(alice_key, msg_a_obj)
             pt_a = crypto.sym_decrypt(bob_key, ct_a, elt.TensorType(elt.u8, (3,)))
             np.testing.assert_array_equal(_unwrap(pt_a.runtime_obj), msg_a)
 
-            # Bob sends to Alice
+            # Bob sends to Alice using tensor.constant
             msg_b = np.array([88, 89, 90], dtype=np.uint8)  # "XYZ"
-            msg_b_obj = el.InterpObject(msg_b, elt.TensorType(elt.u8, (3,)))
+            msg_b_obj = tensor.constant(msg_b)
             ct_b = crypto.sym_encrypt(bob_key, msg_b_obj)
             pt_b = crypto.sym_decrypt(alice_key, ct_b, elt.TensorType(elt.u8, (3,)))
             np.testing.assert_array_equal(_unwrap(pt_b.runtime_obj), msg_b)

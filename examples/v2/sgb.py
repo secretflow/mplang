@@ -51,7 +51,11 @@ from mplang.v2.libs.mpc import aggregation
 # ==============================================================================
 
 DEFAULT_FXP_BITS = 15  # Fixed-point scale = 2^15 = 32768
-DEFAULT_POLY_MODULUS_DEGREE = 8192  # BFV slot count (Increased for depth)
+# BFV slot count (Increased for depth)
+# NOTE: For 1M samples, the sum of gradients can reach ~3.2e10 (2^35).
+# The default plain_modulus (1032193 ~ 2^20) will cause overflow.
+# For large datasets, you MUST increase plain_modulus (e.g. to a 40-bit prime).
+DEFAULT_POLY_MODULUS_DEGREE = 8192
 
 
 # ==============================================================================

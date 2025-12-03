@@ -60,11 +60,12 @@ Security Note:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, ClassVar, Literal
 
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.crypto import PublicKeyType
+from mplang.v2.edsl import serde
 
 # ==============================================================================
 # --- Type Definitions
@@ -74,6 +75,7 @@ Platform = Literal["mock", "sgx", "tdx", "sev"]
 KeyCurve = Literal["x25519", "secp256k1"]
 
 
+@serde.register_class
 class QuoteType(elt.BaseType):
     """Type for a TEE attestation quote.
 
@@ -106,7 +108,18 @@ class QuoteType(elt.BaseType):
     def __hash__(self) -> int:
         return hash(("QuoteType", self.platform))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "tee.QuoteType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"platform": self.platform}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> QuoteType:
+        return cls(platform=data["platform"])
+
+
+@serde.register_class
 class AttestedKeyType(elt.BaseType):
     """Type for an attested public key extracted from a verified quote.
 
@@ -143,7 +156,18 @@ class AttestedKeyType(elt.BaseType):
     def __hash__(self) -> int:
         return hash(("AttestedKeyType", self.platform, self.curve))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "tee.AttestedKeyType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"platform": self.platform, "curve": self.curve}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> AttestedKeyType:
+        return cls(platform=data["platform"], curve=data["curve"])
+
+
+@serde.register_class
 class MeasurementType(elt.BaseType):
     """Type for TEE code measurement (e.g., MRENCLAVE, MRTD).
 
@@ -170,6 +194,16 @@ class MeasurementType(elt.BaseType):
 
     def __hash__(self) -> int:
         return hash(("MeasurementType", self.platform))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "tee.MeasurementType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"platform": self.platform}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> MeasurementType:
+        return cls(platform=data["platform"])
 
 
 # ==============================================================================

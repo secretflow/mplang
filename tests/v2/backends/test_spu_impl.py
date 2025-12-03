@@ -99,10 +99,13 @@ def test_spu_e2e_simulation():
         results = sim._collect(futures)
 
         # 5. Verify
-        # Result from party 0 should be the tensor
+        # Result from party 0 should be the tensor (wrapped in TensorValue)
         res_p0 = results[0]
 
         assert res_p0 is not None
+        # Unwrap TensorValue if needed
+        if hasattr(res_p0, "unwrap"):
+            res_p0 = res_p0.unwrap()
         np.testing.assert_allclose(res_p0, [4.0, 6.0])
 
         assert results[1] is None

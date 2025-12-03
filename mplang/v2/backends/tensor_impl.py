@@ -17,23 +17,145 @@
 Implements execution logic for Tensor primitives.
 """
 
+from __future__ import annotations
+
 import base64
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import jax
 import jax.extend as jxt
 import jax.numpy as jnp
 import numpy as np
 from jax._src import compiler
+from numpy.typing import ArrayLike
 
 import mplang.v2.edsl.typing as elt
+from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import dtypes, tensor
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
 from mplang.v2.edsl.interpreter import Interpreter, interpret
 
+# =============================================================================
+# TensorValue Wrapper
+# =============================================================================
+
+
+@serde.register_class
+class TensorValue(WrapValue[np.ndarray]):
+    """Runtime value wrapping a numpy array.
+
+    Handles numpy arrays, JAX arrays, and other numpy-like objects via duck typing.
+    Serialization uses base64-encoded raw bytes for efficiency.
+
+    Note: This is for numeric tensors only. Object dtype arrays (containing
+    encrypted values, etc.) should NOT be wrapped - they are handled separately
+    by elementwise_impl which returns raw np.ndarray(dtype=object).
+    """
+
+    _serde_kind: ClassVar[str] = "tensor_impl.TensorValue"
+
+    # Expose common array properties for convenience
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self._data.shape
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return np.dtype(self._data.dtype)
+
+    @property
+    def ndim(self) -> int:
+        return self._data.ndim
+
+    def __getitem__(self, key: Any) -> Any:
+        """Allow indexing into the underlying array."""
+        return self._data[key]
+
+    # =========== Wrap/Unwrap ===========
+
+    def _convert(self, data: Any) -> np.ndarray:
+        """Convert input data to numpy array."""
+        if isinstance(data, TensorValue):
+            return data.unwrap()
+        # Handle JAX arrays and other numpy-like objects via np.asarray
+        if hasattr(data, "__jax_array__") or (
+            hasattr(data, "__module__")
+            and data.__module__ is not None
+            and "jax" in data.__module__
+        ):
+            return np.asarray(data)
+        if isinstance(data, np.ndarray):
+            return data
+        # Try converting other array-like objects
+        return np.asarray(data)
+
+    # unwrap() is inherited from WrapValue
+
+    # unwrap() is inherited from WrapValue
+
+    # =========== Serialization ===========
+
+    def to_json(self) -> dict[str, Any]:
+        # Handle object dtype arrays - serialize element by element
+        if self._data.dtype == np.object_:
+            return {
+                "kind": "object",
+                "shape": list(self._data.shape),
+                "items": [serde.to_json(item) for item in self._data.flat],
+            }
+        # Standard numeric arrays - use raw bytes
+        return {
+            "kind": "numeric",
+            "dtype": str(self._data.dtype),
+            "shape": list(self._data.shape),
+            "data": base64.b64encode(self._data.tobytes()).decode("ascii"),
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> TensorValue:
+        kind = data.get("kind", "numeric")
+        shape = tuple(data["shape"])
+
+        if kind == "object":
+            items = [serde.from_json(item) for item in data["items"]]
+            arr = np.empty(len(items), dtype=object)
+            for i, item in enumerate(items):
+                arr[i] = item
+            return cls(arr.reshape(shape))
+        else:
+            arr = np.frombuffer(
+                base64.b64decode(data["data"]),
+                dtype=np.dtype(data["dtype"]),
+            )
+            return cls(arr.reshape(shape).copy())
+
+
+# Module-level helpers for convenience (delegate to class methods)
+def _wrap(val: ArrayLike | TensorValue) -> TensorValue:
+    """Wrap an array-like value into TensorValue."""
+    return TensorValue.wrap(val)
+
+
+def _unwrap(val: TensorValue | np.ndarray | ArrayLike) -> np.ndarray:
+    """Unwrap TensorValue to np.ndarray, also accepts raw arrays."""
+    if isinstance(val, TensorValue):
+        return val.unwrap()
+    if isinstance(val, np.ndarray):
+        return val
+    # Handle JAX arrays
+    if hasattr(val, "__jax_array__"):
+        return np.asarray(val)
+    return np.asarray(val)
+
+
+# =============================================================================
+# Tensor Primitive Implementations
+# =============================================================================
+
 
 @tensor.constant_p.def_impl
-def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
+def constant_impl(interpreter: Interpreter, op: Operation) -> TensorValue:
     # Recover dtype and shape from IR type
     output_type = op.outputs[0].type
     if not isinstance(output_type, elt.TensorType):
@@ -50,18 +172,27 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> Any:
     data_bytes = base64.b64decode(data_b64)
 
     # Create array
-    return np.frombuffer(data_bytes, dtype=cast(Any, dtype)).reshape(shape).copy()
+    arr = np.frombuffer(data_bytes, dtype=cast(Any, dtype)).reshape(shape).copy()
+    return _wrap(arr)
 
 
 @tensor.concat_p.def_impl
-def concat_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+def concat_impl(
+    interpreter: Interpreter, op: Operation, *args: TensorValue
+) -> TensorValue:
     axis = op.attrs.get("axis", 0)
-    return np.concatenate(args, axis=axis)
+    unwrapped = [_unwrap(a) for a in args]
+    return _wrap(np.concatenate(unwrapped, axis=axis))
 
 
 @tensor.elementwise_p.def_impl
-def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
-    """Execute elementwise operation by iterating over tensor elements."""
+def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> Any:
+    """Execute elementwise operation by iterating over tensor elements.
+
+    Note: args typed as Value (base class) because elementwise handles polymorphic
+    inputs - TensorValue for numeric tensors, or np.ndarray with dtype=object
+    containing encrypted values (BFVValue, etc.) that are processed element-wise.
+    """
     # args are the input tensors (or scalars)
     # op.regions[0] is the scalar computation graph
 
@@ -107,8 +238,8 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
                 isinstance(outer_val.type, elt.TensorType)
                 and outer_val.type.shape != ()
             ):
-                # Tensor argument: pick element
-                scalar_inputs.append(arg[index])
+                # Tensor argument: pick element (arg is array-like at runtime)
+                scalar_inputs.append(arg[index])  # type: ignore[index]
             else:
                 # Scalar/Broadcast argument: use as is
                 scalar_inputs.append(arg)
@@ -125,14 +256,16 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any
     return results
 
 
-def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[Any]:
+def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[np.ndarray]:
     """Ensure runtime values match the IR types expected by JAX/StableHLO.
 
     This handles implicit casting from Python types (int, float) to strict Numpy types
     required by the compiled executable.
     """
-    casted_args = []
+    casted_args: list[np.ndarray] = []
     for i, arg in enumerate(args):
+        # Unwrap TensorValue if needed
+        raw_arg = _unwrap(arg) if isinstance(arg, TensorValue) else arg
         if i < len(op_inputs):
             input_type = op_inputs[i].type
             if isinstance(input_type, elt.TensorType):
@@ -140,13 +273,13 @@ def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[Any]
                 if dtype is not None:
                     # Only cast if strictly necessary to avoid overhead
                     # np.asarray handles scalar->array and dtype conversion
-                    casted_args.append(np.asarray(arg, dtype=cast(Any, dtype)))
+                    casted_args.append(np.asarray(raw_arg, dtype=cast(Any, dtype)))
                 else:
-                    casted_args.append(arg)
+                    casted_args.append(np.asarray(raw_arg))
             else:
-                casted_args.append(arg)
+                casted_args.append(np.asarray(raw_arg))
         else:
-            casted_args.append(arg)
+            casted_args.append(np.asarray(raw_arg))
     return casted_args
 
 
@@ -155,7 +288,9 @@ _STABLEHLO_CACHE: dict[int, Any] = {}
 
 
 @tensor.run_jax_p.def_impl
-def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+def run_jax_impl(
+    interpreter: Interpreter, op: Operation, *args: TensorValue
+) -> TensorValue | list[TensorValue]:
     """Execute JAX function."""
     # Execute via StableHLO
     stablehlo_code = op.attrs.get("stablehlo_code")
@@ -197,12 +332,12 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     try:
         result = compiled.execute_sharded(jax_args)
         arrays = result.disassemble_into_single_device_arrays()
-        flat: list[Any] = []
+        flat: list[TensorValue] = []
         for lst in arrays:
             if isinstance(lst, list) and len(lst) == 1:
-                flat.append(np.asarray(lst[0]))
+                flat.append(_wrap(np.asarray(lst[0])))
             else:
-                flat.extend(np.asarray(a) for a in lst)
+                flat.extend(_wrap(np.asarray(a)) for a in lst)
 
         # If single output, return it directly (but run_jax usually returns list of vars)
         # The primitive expects a list of results matching outputs.
@@ -216,17 +351,21 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
 @tensor.gather_p.def_impl
 def gather_impl(
-    interpreter: Interpreter, op: Operation, operand: Any, indices: Any
-) -> Any:
+    interpreter: Interpreter, op: Operation, operand: TensorValue, indices: TensorValue
+) -> TensorValue:
     axis = op.attrs.get("axis", 0)
+    operand_arr = _unwrap(operand)
+    indices_arr = _unwrap(indices)
     # Ensure indices are integers (they might be JAX arrays or numpy arrays)
-    if hasattr(indices, "astype"):
-        indices = indices.astype(int)
-    return np.take(operand, indices, axis=axis)
+    if hasattr(indices_arr, "astype"):
+        indices_arr = indices_arr.astype(int)
+    return _wrap(np.take(operand_arr, indices_arr, axis=axis))
 
 
 @tensor.slice_p.def_impl
-def slice_impl(interpreter: Interpreter, op: Operation, operand: Any) -> Any:
+def slice_impl(
+    interpreter: Interpreter, op: Operation, operand: TensorValue
+) -> TensorValue:
     starts = op.attrs["starts"]
     ends = op.attrs["ends"]
     strides = op.attrs.get("strides")
@@ -238,15 +377,18 @@ def slice_impl(interpreter: Interpreter, op: Operation, operand: Any) -> Any:
         stride = strides[i] if strides else 1
         slices.append(slice(start, end, stride))
 
+    operand_arr = _unwrap(operand)
     # If operand is numpy array, we can slice directly
     # If operand has more dimensions than slices provided, we assume full slice for remaining
-    if hasattr(operand, "ndim") and len(slices) < operand.ndim:
+    if len(slices) < operand_arr.ndim:
         slices.append(Ellipsis)
 
-    return operand[tuple(slices)]
+    return _wrap(operand_arr[tuple(slices)])
 
 
 @tensor.reshape_p.def_impl
-def reshape_impl(interpreter: Interpreter, op: Operation, tensor_data: Any) -> Any:
+def reshape_impl(
+    interpreter: Interpreter, op: Operation, tensor_data: TensorValue
+) -> TensorValue:
     new_shape = op.attrs["new_shape"]
-    return tensor_data.reshape(new_shape)
+    return _wrap(_unwrap(tensor_data).reshape(new_shape))

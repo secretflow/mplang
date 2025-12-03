@@ -19,14 +19,18 @@ Provides cryptographic primitives including ECC, Hashing, and Symmetric Encrypti
 
 from __future__ import annotations
 
+from typing import Any, ClassVar
+
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
+from mplang.v2.edsl import serde
 
 # ==============================================================================
 # --- Type Definitions
 # ==============================================================================
 
 
+@serde.register_class
 class PointType(elt.BaseType):
     """Type for an ECC Point."""
 
@@ -36,7 +40,26 @@ class PointType(elt.BaseType):
     def __str__(self) -> str:
         return f"Point[{self.curve}]"
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PointType):
+            return False
+        return self.curve == other.curve
 
+    def __hash__(self) -> int:
+        return hash(("PointType", self.curve))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "crypto.PointType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"curve": self.curve}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> PointType:
+        return cls(curve=data["curve"])
+
+
+@serde.register_class
 class ScalarType(elt.BaseType):
     """Type for an ECC Scalar (integer modulo curve order)."""
 
@@ -46,7 +69,26 @@ class ScalarType(elt.BaseType):
     def __str__(self) -> str:
         return f"Scalar[{self.curve}]"
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ScalarType):
+            return False
+        return self.curve == other.curve
 
+    def __hash__(self) -> int:
+        return hash(("ScalarType", self.curve))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "crypto.ScalarType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"curve": self.curve}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> ScalarType:
+        return cls(curve=data["curve"])
+
+
+@serde.register_class
 class PrivateKeyType(elt.BaseType):
     """Type for a KEM private key."""
 
@@ -64,7 +106,18 @@ class PrivateKeyType(elt.BaseType):
     def __hash__(self) -> int:
         return hash(("PrivateKeyType", self.suite))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "crypto.PrivateKeyType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"suite": self.suite}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> PrivateKeyType:
+        return cls(suite=data["suite"])
+
+
+@serde.register_class
 class PublicKeyType(elt.BaseType):
     """Type for a KEM public key."""
 
@@ -82,7 +135,18 @@ class PublicKeyType(elt.BaseType):
     def __hash__(self) -> int:
         return hash(("PublicKeyType", self.suite))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "crypto.PublicKeyType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"suite": self.suite}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> PublicKeyType:
+        return cls(suite=data["suite"])
+
+
+@serde.register_class
 class SymmetricKeyType(elt.BaseType):
     """Type for a symmetric encryption key (e.g., from KEM derive)."""
 
@@ -99,6 +163,16 @@ class SymmetricKeyType(elt.BaseType):
 
     def __hash__(self) -> int:
         return hash(("SymmetricKeyType", self.suite))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "crypto.SymmetricKeyType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"suite": self.suite}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> SymmetricKeyType:
+        return cls(suite=data["suite"])
 
 
 # ==============================================================================

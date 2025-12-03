@@ -257,7 +257,17 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
         The concrete Python value, or list of values from all parties if party is None.
     """
     from mplang.v2.backends.simp_host import HostVar
+    from mplang.v2.backends.table_impl import TableValue
+    from mplang.v2.backends.tensor_impl import TensorValue
     from mplang.v2.edsl.interpreter import InterpObject
+
+    def _unwrap_value(val: Any) -> Any:
+        """Unwrap Value types to get the underlying data."""
+        if isinstance(val, TensorValue):
+            return val.data
+        elif isinstance(val, TableValue):
+            return val.data
+        return val
 
     # Unwrap InterpObject to get the runtime value
     if isinstance(result, InterpObject):
@@ -272,11 +282,12 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
                     party = device_info.members[0].rank
                 else:
                     raise ValueError(f"Unknown party: {party}")
-            return result[party]
-        # Return all parties' values as a list
-        return result.values
-    # Already a concrete value
-    return result
+            return _unwrap_value(result[party])
+        # Return all parties' values as a list (unwrap each)
+        return [_unwrap_value(v) for v in result.values]
+
+    # Unwrap Value types to get the underlying data
+    return _unwrap_value(result)
 
 
 # Alias for compatibility

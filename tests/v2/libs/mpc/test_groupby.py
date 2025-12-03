@@ -25,6 +25,13 @@ from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc import groupby
 
 
+def _unwrap(val):
+    """Unwrap TensorValue if needed."""
+    if hasattr(val, "unwrap"):
+        return val.unwrap()
+    return val
+
+
 class TestGroupbyBFV:
     def setup_method(self):
         self.interp = SimpSimulator(world_size=2)
@@ -53,7 +60,7 @@ class TestGroupbyBFV:
 
         # Result is on Receiver (P1)
         res_vals = res.runtime_obj.values
-        p1_res = res_vals[1]
+        p1_res = _unwrap(res_vals[1])
 
         expected = np.array([22, 15, 18], dtype=np.int64)
         np.testing.assert_array_equal(p1_res, expected)
@@ -82,7 +89,7 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        p1_res = res.runtime_obj.values[1]
+        p1_res = _unwrap(res.runtime_obj.values[1])
         np.testing.assert_array_equal(p1_res, expected)
 
     def test_exact_chunk_multiple(self):
@@ -112,7 +119,7 @@ class TestGroupbyBFV:
                 plain_modulus=536903681,
             )
 
-        p1_res = res.runtime_obj.values[1]
+        p1_res = _unwrap(res.runtime_obj.values[1])
         np.testing.assert_array_equal(p1_res, expected)
 
     def test_empty_bins(self):
@@ -135,7 +142,7 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        p1_res = res.runtime_obj.values[1]
+        p1_res = _unwrap(res.runtime_obj.values[1])
         np.testing.assert_array_equal(p1_res, expected)
 
 
@@ -169,7 +176,7 @@ class TestGroupbyShuffle:
 
         # Result is on Receiver (P1)
         res_vals = res.runtime_obj.values
-        p1_res = res_vals[1]
+        p1_res = _unwrap(res_vals[1])
 
         expected = np.array([22, 15, 18], dtype=np.int64)
         np.testing.assert_array_equal(p1_res, expected)
@@ -195,4 +202,4 @@ class TestGroupbyShuffle:
             )
 
         p1_res = res.runtime_obj.values[1]
-        np.testing.assert_array_equal(p1_res, expected)
+        np.testing.assert_array_equal(_unwrap(p1_res), expected)

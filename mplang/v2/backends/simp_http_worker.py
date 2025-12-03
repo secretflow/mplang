@@ -27,35 +27,29 @@ Usage:
     app = create_worker_app(rank=0, world_size=3, endpoints=[...])
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-SECURITY NOTE:
-    This module uses pickle for serialization of computation graphs and data
-    between trusted workers in a controlled cluster environment. The /exec and
-    /comm endpoints accept pickled data which can execute arbitrary code.
-
-    DO NOT expose these endpoints to untrusted networks or users.
-    Deploy workers only within a secured internal network with proper
-    authentication and network isolation.
-
-    See: https://docs.python.org/3/library/pickle.html#restricting-globals
+Security:
+    This module uses secure JSON-based serialization (serde) for computation
+    graphs and data between workers. Unlike pickle, JSON deserialization
+    cannot execute arbitrary code, making it safe for network communication.
 """
 
 from __future__ import annotations
 
-import base64
 import concurrent.futures
 import logging
 import threading
 from typing import Any
 
-import cloudpickle as pickle
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # Register operation implementations (side-effect imports)
 from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
+from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
 from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import WorkerInterpreter
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
 
 logger = logging.getLogger(__name__)
@@ -92,7 +86,8 @@ class HttpCommunicator:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}")
-        payload = base64.b64encode(pickle.dumps(data)).decode("utf-8")
+        # Use secure JSON serialization
+        payload = serde.dumps_b64(data)
         try:
             resp = httpx.put(
                 url, json={"data": payload, "from_rank": self.rank}, timeout=60.0
@@ -136,8 +131,8 @@ class HttpCommunicator:
 class ExecRequest(BaseModel):
     """Request model for /exec endpoint."""
 
-    graph_pkl: str
-    inputs_pkl: str
+    graph: str
+    inputs: str
 
 
 class CommRequest(BaseModel):
@@ -188,11 +183,12 @@ def create_worker_app(
         """Execute a graph on this worker."""
         logger.debug(f"Worker {rank} received exec request")
         try:
-            graph = pickle.loads(base64.b64decode(req.graph_pkl))
-            inputs = pickle.loads(base64.b64decode(req.inputs_pkl))
+            # Use secure JSON deserialization
+            graph = serde.loads_b64(req.graph)
+            inputs = serde.loads_b64(req.inputs)
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(exec_pool, _do_execute, graph, inputs)
-            return {"result": base64.b64encode(pickle.dumps(result)).decode("utf-8")}
+            return {"result": serde.dumps_b64(result)}
         except Exception as e:
             logger.error(f"Worker {rank} exec failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -202,7 +198,8 @@ def create_worker_app(
         """Receive communication data from another worker."""
         logger.debug(f"Worker {rank} received comm key={key} from {req.from_rank}")
         try:
-            data = pickle.loads(base64.b64decode(req.data))
+            # Use secure JSON deserialization
+            data = serde.loads_b64(req.data)
             comm.on_receive(key, data)
             return {"status": "ok"}
         except Exception as e:

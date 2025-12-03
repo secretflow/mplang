@@ -25,6 +25,7 @@ import uvicorn
 import mplang.v2.edsl as el
 from mplang.v2.backends.simp_http_driver import SimpHttpDriver
 from mplang.v2.backends.simp_http_worker import create_worker_app
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 
 logging.basicConfig(level=logging.DEBUG)
@@ -105,4 +106,5 @@ def test_http_e2e(http_cluster):
     # Party 1 result should be [2.0, 3.0]
 
     assert results[0] is None
-    np.testing.assert_allclose(results[1], [2.0, 3.0])
+    result_1 = results[1].data if isinstance(results[1], TensorValue) else results[1]
+    np.testing.assert_allclose(result_1, [2.0, 3.0])

@@ -122,7 +122,9 @@ consistent within the practical scope of this library.
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
+
+from mplang.v2.edsl import serde
 
 # ==============================================================================
 # --- Base Type & Type Aliases
@@ -171,6 +173,7 @@ class ScalarType(BaseType):
     """
 
 
+@serde.register_class
 class IntegerType(ScalarType):
     """Represents a variable-length integer type.
 
@@ -213,7 +216,18 @@ class IntegerType(ScalarType):
     def __hash__(self) -> int:
         return hash(("IntegerType", self.bitwidth, self.signed))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.IntegerType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"bitwidth": self.bitwidth, "signed": self.signed}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> IntegerType:
+        return cls(bitwidth=data["bitwidth"], signed=data["signed"])
+
+
+@serde.register_class
 class FloatType(ScalarType):
     """Represents a floating-point type.
 
@@ -248,7 +262,18 @@ class FloatType(ScalarType):
     def __hash__(self) -> int:
         return hash(("FloatType", self.bitwidth))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.FloatType"
 
+    def to_json(self) -> dict[str, Any]:
+        return {"bitwidth": self.bitwidth}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> FloatType:
+        return cls(bitwidth=data["bitwidth"])
+
+
+@serde.register_class
 class ComplexType(ScalarType):
     """Represents a complex number type.
 
@@ -283,6 +308,19 @@ class ComplexType(ScalarType):
 
     def __hash__(self) -> int:
         return hash(("ComplexType", self.inner_type))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.ComplexType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"inner_type": serde.to_json(self.inner_type)}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> ComplexType:
+        inner = serde.from_json(data["inner_type"])
+        if not isinstance(inner, FloatType):
+            raise TypeError(f"ComplexType inner must be FloatType, got {type(inner)}")
+        return cls(inner_type=inner)
 
 
 # ==============================================================================
@@ -322,6 +360,7 @@ u128 = IntegerType(bitwidth=128, signed=False)
 u256 = IntegerType(bitwidth=256, signed=False)
 
 
+@serde.register_class
 class TensorType(BaseType, Generic[T]):
     """Represents a ranked tensor of a given element type and shape.
 
@@ -428,10 +467,26 @@ class TensorType(BaseType, Generic[T]):
         """Check if tensor has any dynamic dimensions (-1)."""
         return any(dim == -1 for dim in self.shape)
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.TensorType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "element_type": serde.to_json(self.element_type),
+            "shape": list(self.shape),
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> TensorType[Any]:
+        element_type = serde.from_json(data["element_type"])
+        shape = tuple(data["shape"])
+        return cls(element_type, shape)
+
 
 Tensor = TensorType
 
 
+@serde.register_class
 class VectorType(BaseType):
     """Represents a packed SIMD vector of a given element type and size.
 
@@ -474,10 +529,29 @@ class VectorType(BaseType):
     def __hash__(self) -> int:
         return hash(("VectorType", self.element_type, self.size))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.VectorType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "element_type": serde.to_json(self.element_type),
+            "size": self.size,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> VectorType:
+        element_type = serde.from_json(data["element_type"])
+        if not isinstance(element_type, ScalarType):
+            raise TypeError(
+                f"VectorType element must be ScalarType, got {type(element_type)}"
+            )
+        return cls(element_type, data["size"])
+
 
 Vector = VectorType
 
 
+@serde.register_class
 class TableType(BaseType):
     """Represents a table with a named schema of types.
 
@@ -508,10 +582,24 @@ class TableType(BaseType):
     def __hash__(self) -> int:
         return hash(("TableType", tuple(self.schema.items())))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.TableType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "schema": {name: serde.to_json(t) for name, t in self.schema.items()},
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> TableType:
+        schema = {name: serde.from_json(t) for name, t in data["schema"].items()}
+        return cls(schema)
+
 
 Table = TableType
 
 
+@serde.register_class
 class CustomType(BaseType):
     """Opaque/custom type identified by a string kind.
 
@@ -584,6 +672,16 @@ class CustomType(BaseType):
         """
         return cls(kind)
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.CustomType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {"kind": self.kind}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> CustomType:
+        return cls(data["kind"])
+
 
 # Shorthand alias
 Custom = CustomType
@@ -609,6 +707,7 @@ INTERVAL = CustomType("interval")
 # ==============================================================================
 
 
+@serde.register_class
 class SSType(BaseType, EncryptedTrait, Generic[T]):
     """Represents a single share of a secret value `T`."""
 
@@ -634,6 +733,20 @@ class SSType(BaseType, EncryptedTrait, Generic[T]):
     def __hash__(self) -> int:
         return hash(("SSType", self.pt_type, self.enc_schema))
 
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.SSType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "secret_type": serde.to_json(self._pt_type),
+            "enc_schema": self._enc_schema,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> SSType[Any]:
+        secret_type = serde.from_json(data["secret_type"])
+        return cls(secret_type, enc_schema=data.get("enc_schema", "ss"))
+
 
 SS = SSType
 
@@ -642,6 +755,7 @@ SS = SSType
 # ==============================================================================
 
 
+@serde.register_class
 class MPType(BaseType, Generic[T]):
     """Represents a logical value distributed among multiple parties.
 
@@ -685,3 +799,18 @@ class MPType(BaseType, Generic[T]):
 
     def __hash__(self) -> int:
         return hash(("MPType", self.value_type, self.parties))
+
+    # --- Serde methods ---
+    _serde_kind: ClassVar[str] = "mplang.MPType"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "value_type": serde.to_json(self._value_type),
+            "parties": list(self._parties) if self._parties is not None else None,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> MPType[Any]:
+        value_type = serde.from_json(data["value_type"])
+        parties = tuple(data["parties"]) if data["parties"] is not None else None
+        return cls(value_type, parties)

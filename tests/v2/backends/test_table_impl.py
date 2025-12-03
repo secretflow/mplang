@@ -19,7 +19,17 @@ import pyarrow as pa
 
 import mplang.v2.backends.table_impl  # noqa: F401
 import mplang.v2.edsl.typing as elt
+from mplang.v2.backends.table_impl import TableValue
 from mplang.v2.dialects import table
+
+
+def _get_table(val) -> pa.Table:
+    """Extract pa.Table from various wrapper types."""
+    if hasattr(val, "runtime_obj"):
+        val = val.runtime_obj
+    if isinstance(val, TableValue):
+        return val.unwrap()
+    return val
 
 
 def test_table_ops_e2e():
@@ -60,8 +70,8 @@ def test_table_ops_e2e():
     result = workload()
 
     # Verify
-    # result should be an object wrapping the runtime value (pyarrow Table)
-    res_table = result.runtime_obj
+    # result should be an object wrapping the runtime value (TableValue -> pyarrow Table)
+    res_table = _get_table(result)
     assert isinstance(res_table, pa.Table)
 
     df = res_table.to_pandas()
@@ -76,6 +86,7 @@ def test_table_constant_dataframe():
     df_in = pd.DataFrame({"x": [10, 20], "y": ["foo", "bar"]})
     t = table.constant(df_in)
 
-    assert isinstance(t.runtime_obj, pa.Table)
-    df_out = t.runtime_obj.to_pandas()
+    res_table = _get_table(t)
+    assert isinstance(res_table, pa.Table)
+    df_out = res_table.to_pandas()
     pd.testing.assert_frame_equal(df_in, df_out)

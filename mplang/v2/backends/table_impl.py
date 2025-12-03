@@ -54,6 +54,9 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     # Execute query and fetch result as Arrow table
     try:
         res = conn.execute(query).arrow()
+        # Ensure we return a Table, not a RecordBatchReader
+        if isinstance(res, pa.lib.RecordBatchReader):
+            res = res.read_all()
         return res
     except Exception as e:
         raise RuntimeError(f"Failed to execute SQL query: {query}") from e
@@ -62,6 +65,10 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 @table.table2tensor_p.def_impl
 def table2tensor_impl(interpreter: Interpreter, op: Operation, table_val: Any) -> Any:
     """Convert table to tensor (numpy array)."""
+    # Handle RecordBatchReader from newer PyArrow versions
+    if isinstance(table_val, pa.lib.RecordBatchReader):
+        table_val = table_val.read_all()
+
     if not isinstance(table_val, (pa.Table, pd.DataFrame)):
         raise TypeError(
             f"Expected pyarrow.Table or pd.DataFrame, got {type(table_val)}"

@@ -19,7 +19,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
-import pickle
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -281,8 +280,8 @@ def sym_encrypt_impl(
             f"got {type(key).__name__}"
         )
 
-    # Serialize the plaintext Value
-    pt_bytes = pickle.dumps(plaintext)
+    # Serialize the plaintext Value using secure JSON serde
+    pt_bytes = serde.dumps(plaintext)
 
     # AES-GCM encryption
     aesgcm = AESGCM(k)
@@ -327,8 +326,8 @@ def sym_decrypt_impl(
     aesgcm = AESGCM(k)
     pt_bytes = aesgcm.decrypt(nonce, ct, None)
 
-    # Deserialize back to Value
-    return pickle.loads(pt_bytes)
+    # Deserialize back to Value using secure JSON serde
+    return serde.loads(pt_bytes)
 
 
 @crypto.select_p.def_impl

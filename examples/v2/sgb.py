@@ -51,7 +51,7 @@ from mplang.v2.libs.mpc import aggregation
 # ==============================================================================
 
 DEFAULT_FXP_BITS = 15  # Fixed-point scale = 2^15 = 32768
-DEFAULT_POLY_MODULUS_DEGREE = 4096  # BFV slot count
+DEFAULT_POLY_MODULUS_DEGREE = 8192  # BFV slot count (Increased for depth)
 
 
 # ==============================================================================
@@ -249,6 +249,46 @@ def _build_packed_mask_jit(node_mask, feat_bins, n_buckets, stride, slot_count):
     return output
 
 
+def compute_all_masks(
+    subgroup_map, bin_indices, n_buckets, stride, slot_count, n_chunks
+):
+    # subgroup_map: (n_nodes, m)
+    # bin_indices: (m, n_features)
+
+    m = bin_indices.shape[0]
+    n_features = bin_indices.shape[1]
+    n_nodes = subgroup_map.shape[0]
+
+    # Pad
+    pad_len = n_chunks * slot_count - m
+    if pad_len > 0:
+        subgroup_map = jnp.pad(subgroup_map, ((0, 0), (0, pad_len)))
+        bin_indices = jnp.pad(bin_indices, ((0, pad_len), (0, 0)))
+
+    # Reshape chunks
+    # subgroup_map: (n_nodes, n_chunks, slot_count)
+    sg_chunks = subgroup_map.reshape(n_nodes, n_chunks, slot_count)
+
+    # bin_indices: (n_chunks, slot_count, n_features) -> (n_features, n_chunks, slot_count)
+    bi_chunks = bin_indices.reshape(n_chunks, slot_count, n_features).transpose(2, 0, 1)
+
+    # vmap over chunks
+    def process_chunk(nm, fb):
+        return _build_packed_mask_jit(nm, fb, n_buckets, stride, slot_count)
+
+    v_chunk = jax.vmap(process_chunk, in_axes=(0, 0))
+
+    # vmap over features (nm fixed, fb varies)
+    v_feat = jax.vmap(v_chunk, in_axes=(None, 0))
+
+    # vmap over nodes (nm varies, fb fixed)
+    v_node = jax.vmap(v_feat, in_axes=(0, None))
+
+    all_masks = v_node(sg_chunks, bi_chunks)
+    # Flatten and convert to tuple of arrays
+    return tuple(all_masks.reshape(-1, slot_count))
+
+
 def _compute_histogram_chunk_batch(
     subgroup_map,
     bin_indices,
@@ -266,39 +306,31 @@ def _compute_histogram_chunk_batch(
     max_samples_per_bucket,
     m,
 ):
+    # Precompute all masks in one go
+    compute_all_masks_jit = partial(
+        compute_all_masks,
+        n_buckets=n_buckets,
+        stride=stride,
+        slot_count=slot_count,
+        n_chunks=n_chunks,
+    )
+    all_masks_list = tensor.run_jax(
+        compute_all_masks_jit,
+        subgroup_map,
+        bin_indices,
+    )
+    mask_iter = iter(all_masks_list)
+
     g_results_flat = []
     h_results_flat = []
 
-    for node_idx in range(n_nodes):
-        for feat_idx in range(n_features):
+    for _node_idx in range(n_nodes):
+        for _feat_idx in range(n_features):
             g_accumulated = None
             h_accumulated = None
 
             for chunk_idx in range(n_chunks):
-                chunk_start = chunk_idx * slot_count
-                chunk_end = min((chunk_idx + 1) * slot_count, m)
-
-                # Use run_jax to compute mask for this chunk
-                def compute_mask(
-                    sg_map, b_idx, n_i, f_i, c_start, c_end, n_b, str_, sc
-                ):
-                    node_mask = sg_map[n_i][c_start:c_end]
-                    feat_bins = b_idx[:, f_i][c_start:c_end]
-                    return _build_packed_mask_jit(node_mask, feat_bins, n_b, str_, sc)
-
-                mask = tensor.run_jax(
-                    compute_mask,
-                    subgroup_map,
-                    bin_indices,
-                    node_idx,
-                    feat_idx,
-                    chunk_start,
-                    chunk_end,
-                    n_buckets,
-                    stride,
-                    slot_count,
-                )
-
+                mask = next(mask_iter)
                 mask_pt = bfv.encode(mask, encoder)
 
                 g_ct_chunk = g_cts[chunk_idx]
@@ -324,21 +356,101 @@ def _compute_histogram_chunk_batch(
             g_results_flat.append(g_accumulated)
             h_results_flat.append(h_accumulated)
 
-    return g_results_flat, h_results_flat
+    # ==========================================================================
+    # Optimization: Pack features into fewer ciphertexts to reduce communication
+    # ==========================================================================
+    # Current layout: One CT per (node, feature).
+    # Packed layout: One CT per node (containing all features), if n_features <= stride.
+    #
+    # Strategy:
+    # 1. Mask out garbage slots (keep only b*stride).
+    # 2. Rotate feature f by -f so it lands at b*stride + f.
+    # 3. Sum up all features.
+
+    # Create mask for valid slots (0, stride, 2*stride, ...)
+    # n_buckets and stride are static integers, so we can compute mask in Python
+    m_np = np.zeros(slot_count, dtype=np.int64)
+    idx_np = np.arange(n_buckets) * stride
+    m_np[idx_np] = 1
+    mask_arr = tensor.constant(m_np)
+    mask_pt = bfv.encode(mask_arr, encoder)
+
+    g_packed_flat = []
+    h_packed_flat = []
+
+    for node_idx in range(n_nodes):
+        # Extract CTs for this node
+        start = node_idx * n_features
+        end = (node_idx + 1) * n_features
+        node_g_cts = g_results_flat[start:end]
+        node_h_cts = h_results_flat[start:end]
+
+        # Pack into batches of size `stride`
+        for batch_start in range(0, n_features, stride):
+            batch_end = min(batch_start + stride, n_features)
+
+            def pack_batch(cts, offset_start):
+                packed = None
+                for i, ct in enumerate(cts):
+                    # Relative offset in the packed CT
+                    rel_offset = i
+                    # Mask valid slots
+                    masked = bfv.relinearize(bfv.mul(ct, mask_pt), relin_keys)
+                    # Rotate to position
+                    rotated = bfv.rotate(masked, -rel_offset, galois_keys)
+
+                    if packed is None:
+                        packed = rotated
+                    else:
+                        packed = bfv.add(packed, rotated)
+                return packed
+
+            g_packed_flat.append(
+                pack_batch(node_g_cts[batch_start:batch_end], batch_start)
+            )
+            h_packed_flat.append(
+                pack_batch(node_h_cts[batch_start:batch_end], batch_start)
+            )
+
+    return g_packed_flat, h_packed_flat
 
 
 def _process_decrypted_jit(
     g_vecs, h_vecs, scale, n_nodes, n_features, n_buckets, stride
 ):
+    # g_vecs is list of packed vectors.
+    # Shape of each vector: (slot_count,)
     g_stack = jnp.stack(g_vecs)
     h_stack = jnp.stack(h_vecs)
 
-    bucket_indices = jnp.arange(n_buckets) * stride
-    g_buckets = g_stack[:, bucket_indices]
-    h_buckets = h_stack[:, bucket_indices]
+    # We need to reconstruct (n_nodes, n_features, n_buckets)
+    g_unpacked = []
+    h_unpacked = []
 
-    g_buckets = g_buckets.astype(jnp.float32) / scale
-    h_buckets = h_buckets.astype(jnp.float32) / scale
+    cts_per_node = (n_features + stride - 1) // stride
+
+    for node_i in range(n_nodes):
+        for feat_i in range(n_features):
+            # Which CT?
+            ct_idx = node_i * cts_per_node + (feat_i // stride)
+            # Which offset in CT?
+            offset = feat_i % stride
+
+            # Indices for buckets: b*stride + offset
+            bucket_indices = jnp.arange(n_buckets) * stride + offset
+
+            g_vals = g_stack[ct_idx, bucket_indices]
+            h_vals = h_stack[ct_idx, bucket_indices]
+
+            g_unpacked.append(g_vals)
+            h_unpacked.append(h_vals)
+
+    # Now we have flat list of (n_buckets,) arrays
+    g_flat = jnp.stack(g_unpacked)  # (n_nodes*n_features, n_buckets)
+    h_flat = jnp.stack(h_unpacked)
+
+    g_buckets = g_flat.astype(jnp.float32) / scale
+    h_buckets = h_flat.astype(jnp.float32) / scale
 
     g_cumsum = jnp.cumsum(g_buckets, axis=1)
     h_cumsum = jnp.cumsum(h_buckets, axis=1)
@@ -364,15 +476,18 @@ def _decrypt_batch(
     g_vecs = [bfv.decode(bfv.decrypt(ct, sk), encoder) for ct in g_enc_flat]
     h_vecs = [bfv.decode(bfv.decrypt(ct, sk), encoder) for ct in h_enc_flat]
 
-    return tensor.run_jax(
+    fn_jit = partial(
         _process_decrypted_jit,
+        n_nodes=n_nodes,
+        n_features=n_features,
+        n_buckets=n_buckets,
+        stride=stride,
+    )
+    return tensor.run_jax(
+        fn_jit,
         g_vecs,
         h_vecs,
         fxp_scale,
-        n_nodes,
-        n_features,
-        n_buckets,
-        stride,
     )
 
 

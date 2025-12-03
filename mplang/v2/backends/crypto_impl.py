@@ -262,10 +262,10 @@ def hash_impl(
     # Convert to bytes based on type
     if isinstance(raw, bytes):
         d = raw
-    elif hasattr(raw, "tobytes"):
-        d = raw.tobytes()  # numpy array
+    elif isinstance(raw, np.ndarray):
+        d = raw.tobytes()
     else:
-        d = bytes(raw)  # list/tuple
+        raise TypeError(f"Unexpected unwrapped type for hash: {type(raw)}")
 
     h = hashlib.sha256(d).digest()
     return BytesValue(h)

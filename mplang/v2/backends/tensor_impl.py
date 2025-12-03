@@ -122,13 +122,13 @@ class TensorValue(WrapValue[np.ndarray]):
             arr = np.empty(len(items), dtype=object)
             for i, item in enumerate(items):
                 arr[i] = item
-            return cls(arr.reshape(shape) if shape else arr)
+            return cls(arr.reshape(shape))
         else:
             arr = np.frombuffer(
                 base64.b64decode(data["data"]),
                 dtype=np.dtype(data["dtype"]),
             )
-            return cls(arr.reshape(shape).copy() if shape else arr.copy())
+            return cls(arr.reshape(shape).copy())
 
 
 # Module-level helpers for convenience (delegate to class methods)

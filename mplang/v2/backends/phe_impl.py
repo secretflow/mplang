@@ -97,7 +97,7 @@ def create_encoder_impl(
 
 @phe.encode_p.def_impl
 def encode_impl(
-    interpreter: Interpreter, op: Operation, value: Any, encoder: PHEEncoder
+    interpreter: Interpreter, op: Operation, value: float, encoder: PHEEncoder
 ) -> int:
     return int(value * encoder.scale)
 

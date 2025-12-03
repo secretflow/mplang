@@ -30,7 +30,7 @@ from jax._src import compiler
 from numpy.typing import ArrayLike
 
 import mplang.v2.edsl.typing as elt
-from mplang.v2.backends.value import WrapValue
+from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
@@ -177,15 +177,22 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> TensorValue:
 
 
 @tensor.concat_p.def_impl
-def concat_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TensorValue:
+def concat_impl(
+    interpreter: Interpreter, op: Operation, *args: TensorValue
+) -> TensorValue:
     axis = op.attrs.get("axis", 0)
     unwrapped = [_unwrap(a) for a in args]
     return _wrap(np.concatenate(unwrapped, axis=axis))
 
 
 @tensor.elementwise_p.def_impl
-def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
-    """Execute elementwise operation by iterating over tensor elements."""
+def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> Any:
+    """Execute elementwise operation by iterating over tensor elements.
+
+    Note: args typed as Value (base class) because elementwise handles polymorphic
+    inputs - TensorValue for numeric tensors, or np.ndarray with dtype=object
+    containing encrypted values (BFVValue, etc.) that are processed element-wise.
+    """
     # args are the input tensors (or scalars)
     # op.regions[0] is the scalar computation graph
 
@@ -281,7 +288,9 @@ _STABLEHLO_CACHE: dict[int, Any] = {}
 
 
 @tensor.run_jax_p.def_impl
-def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+def run_jax_impl(
+    interpreter: Interpreter, op: Operation, *args: TensorValue
+) -> TensorValue | list[TensorValue]:
     """Execute JAX function."""
     # Execute via StableHLO
     stablehlo_code = op.attrs.get("stablehlo_code")
@@ -342,7 +351,7 @@ def run_jax_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
 @tensor.gather_p.def_impl
 def gather_impl(
-    interpreter: Interpreter, op: Operation, operand: Any, indices: Any
+    interpreter: Interpreter, op: Operation, operand: TensorValue, indices: TensorValue
 ) -> TensorValue:
     axis = op.attrs.get("axis", 0)
     operand_arr = _unwrap(operand)
@@ -354,7 +363,9 @@ def gather_impl(
 
 
 @tensor.slice_p.def_impl
-def slice_impl(interpreter: Interpreter, op: Operation, operand: Any) -> TensorValue:
+def slice_impl(
+    interpreter: Interpreter, op: Operation, operand: TensorValue
+) -> TensorValue:
     starts = op.attrs["starts"]
     ends = op.attrs["ends"]
     strides = op.attrs.get("strides")
@@ -377,7 +388,7 @@ def slice_impl(interpreter: Interpreter, op: Operation, operand: Any) -> TensorV
 
 @tensor.reshape_p.def_impl
 def reshape_impl(
-    interpreter: Interpreter, op: Operation, tensor_data: Any
+    interpreter: Interpreter, op: Operation, tensor_data: TensorValue
 ) -> TensorValue:
     new_shape = op.attrs["new_shape"]
     return _wrap(_unwrap(tensor_data).reshape(new_shape))

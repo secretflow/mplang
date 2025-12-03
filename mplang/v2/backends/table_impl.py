@@ -23,10 +23,10 @@ import base64
 from typing import Any, ClassVar
 
 import duckdb
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.backends.value import WrapValue
 from mplang.v2.dialects import table
 from mplang.v2.edsl import serde
@@ -144,35 +144,27 @@ def table2tensor_impl(interpreter: Interpreter, op: Operation, table_val: Any) -
 
 @table.tensor2table_p.def_impl
 def tensor2table_impl(
-    interpreter: Interpreter, op: Operation, tensor_val: Any
+    interpreter: Interpreter, op: Operation, tensor_val: TensorValue
 ) -> TableValue:
     """Convert tensor (numpy array) to table."""
-    from mplang.v2.backends.tensor_impl import TensorValue
-
     column_names = op.attrs["column_names"]
 
-    # Unwrap TensorValue if needed
-    if isinstance(tensor_val, TensorValue):
-        tensor_val = tensor_val.unwrap()
+    # Unwrap TensorValue
+    arr = tensor_val.unwrap()
 
-    if not isinstance(tensor_val, np.ndarray):
-        raise TypeError(
-            f"Expected numpy.ndarray or TensorValue, got {type(tensor_val)}"
-        )
+    if arr.ndim != 2:
+        raise ValueError(f"Expected 2D array, got {arr.ndim}D")
 
-    if tensor_val.ndim != 2:
-        raise ValueError(f"Expected 2D array, got {tensor_val.ndim}D")
-
-    if tensor_val.shape[1] != len(column_names):
+    if arr.shape[1] != len(column_names):
         raise ValueError(
-            f"Shape mismatch: tensor has {tensor_val.shape[1]} columns, "
+            f"Shape mismatch: tensor has {arr.shape[1]} columns, "
             f"but {len(column_names)} names provided"
         )
 
     # Create dictionary for DataFrame/Table creation
     data = {}
     for i, name in enumerate(column_names):
-        data[name] = tensor_val[:, i]
+        data[name] = arr[:, i]
 
     return _wrap(pa.Table.from_pydict(data))
 

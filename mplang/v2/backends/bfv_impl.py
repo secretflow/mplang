@@ -30,7 +30,6 @@ import tenseal as ts
 import tenseal.sealapi as sealapi
 
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.backends.tensor_impl import _unwrap as tensor_unwrap
 from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import bfv
 from mplang.v2.edsl import serde
@@ -263,37 +262,30 @@ def create_encoder_impl(interpreter: Interpreter, op: Operation) -> dict[str, An
 def encode_impl(
     interpreter: Interpreter,
     op: Operation,
-    data: TensorValue | np.ndarray,
+    data: TensorValue,
     encoder: dict[str, Any],
-) -> np.ndarray:
-    # Return raw data as "Logical Plaintext"
-    # Unwrap TensorValue if needed
-    if isinstance(data, TensorValue):
-        data = tensor_unwrap(data)
-    return np.asarray(data)
+) -> TensorValue:
+    # Return raw data as "Logical Plaintext" wrapped in TensorValue
+    return TensorValue.wrap(np.asarray(data.unwrap()))
 
 
 @bfv.encrypt_p.def_impl
 def encrypt_impl(
     interpreter: Interpreter,
     op: Operation,
-    plaintext: TensorValue | np.ndarray,
+    plaintext: TensorValue,
     pk: BFVPublicContext,
 ) -> BFVValue:
-    # plaintext is numpy array (from encode_impl) or TensorValue
+    # plaintext is TensorValue (from encode_impl)
     # pk is BFVPublicContext
-
-    # Unwrap TensorValue if needed
-    if isinstance(plaintext, TensorValue):
-        plaintext = tensor_unwrap(plaintext)
-    plaintext = np.asarray(plaintext).flatten()
+    plaintext_arr = plaintext.unwrap().flatten()
 
     # 1. Create Plaintext
     pt = sealapi.Plaintext()
 
     # 2. Encode
     # We need to handle types. Assuming int64 vector.
-    vec = [int(x) for x in plaintext]
+    vec = [int(x) for x in plaintext_arr]
     pk.batch_encoder.encode(vec, pt)
 
     # 3. Encrypt
@@ -319,38 +311,38 @@ def decrypt_impl(
 @bfv.decode_p.def_impl
 def decode_impl(
     interpreter: Interpreter, op: Operation, plaintext: BFVValue, encoder: Any
-) -> np.ndarray:
+) -> TensorValue:
     # plaintext is BFVValue(Plaintext)
     # encoder is dummy config
 
     vec = plaintext.ctx.batch_encoder.decode_int64(plaintext.data)
-    return np.array(vec)
+    return TensorValue.wrap(np.array(vec))
 
 
-def _ensure_plaintext(
-    ctx: BFVPublicContext, data: BFVValue | np.ndarray | list
-) -> sealapi.Plaintext:
+def _ensure_plaintext(ctx: BFVPublicContext, data: BFVValue | TensorValue) -> Any:
     """Convert data to sealapi.Plaintext using the given context."""
     if isinstance(data, BFVValue):
         if data.is_cipher:
             raise TypeError("Expected Plaintext, got Ciphertext")
         return data.data
 
-    # Assume data is raw values (numpy array or list)
+    # data is TensorValue
+    if not isinstance(data, TensorValue):
+        raise TypeError(f"Expected BFVValue or TensorValue, got {type(data)}")
     pt = sealapi.Plaintext()
-    # Handle numpy arrays
-    if isinstance(data, np.ndarray):
-        data = data.tolist()
-    # Ensure int
-    vec = [int(x) for x in data]
+    arr = data.unwrap()
+    vec = [int(x) for x in arr.flatten()]
     ctx.batch_encoder.encode(vec, pt)
     return pt
 
 
 @bfv.add_p.def_impl
 def add_impl(
-    interpreter: Interpreter, op: Operation, lhs: Any, rhs: Any
-) -> BFVValue | np.ndarray:
+    interpreter: Interpreter,
+    op: Operation,
+    lhs: BFVValue | TensorValue,
+    rhs: BFVValue | TensorValue,
+) -> BFVValue | TensorValue:
     # Case 1: Both are BFVValues
     if isinstance(lhs, BFVValue) and isinstance(rhs, BFVValue):
         result_ct = sealapi.Ciphertext()
@@ -382,14 +374,19 @@ def add_impl(
         rhs.ctx.evaluator.add_plain(rhs.data, pt, result_ct)
         return BFVValue(result_ct, rhs.ctx, is_cipher=True)
 
-    # Handle Plaintext + Plaintext (numpy + numpy)
-    return lhs + rhs  # type: ignore
+    # Handle Plaintext + Plaintext (TensorValue + TensorValue)
+    if isinstance(lhs, TensorValue) and isinstance(rhs, TensorValue):
+        return TensorValue.wrap(lhs.unwrap() + rhs.unwrap())
+    raise TypeError(f"Unsupported types for add: {type(lhs)}, {type(rhs)}")
 
 
 @bfv.sub_p.def_impl
 def sub_impl(
-    interpreter: Interpreter, op: Operation, lhs: Any, rhs: Any
-) -> BFVValue | np.ndarray:
+    interpreter: Interpreter,
+    op: Operation,
+    lhs: BFVValue | TensorValue,
+    rhs: BFVValue | TensorValue,
+) -> BFVValue | TensorValue:
     # Case 1: Both are BFVValues
     if isinstance(lhs, BFVValue) and isinstance(rhs, BFVValue):
         result_ct = sealapi.Ciphertext()
@@ -426,14 +423,19 @@ def sub_impl(
         rhs.ctx.evaluator.add_plain(neg_ct, pt, result_ct)
         return BFVValue(result_ct, rhs.ctx, is_cipher=True)
 
-    # Handle Plaintext + Plaintext (numpy + numpy)
-    return lhs - rhs  # type: ignore
+    # Handle Plaintext - Plaintext (TensorValue - TensorValue)
+    if isinstance(lhs, TensorValue) and isinstance(rhs, TensorValue):
+        return TensorValue.wrap(lhs.unwrap() - rhs.unwrap())
+    raise TypeError(f"Unsupported types for sub: {type(lhs)}, {type(rhs)}")
 
 
 @bfv.mul_p.def_impl
 def mul_impl(
-    interpreter: Interpreter, op: Operation, lhs: Any, rhs: Any
-) -> BFVValue | np.ndarray:
+    interpreter: Interpreter,
+    op: Operation,
+    lhs: BFVValue | TensorValue,
+    rhs: BFVValue | TensorValue,
+) -> BFVValue | TensorValue:
     # Case 1: Both are BFVValues
     if isinstance(lhs, BFVValue) and isinstance(rhs, BFVValue):
         result_ct = sealapi.Ciphertext()
@@ -452,14 +454,10 @@ def mul_impl(
                 "BFV Plaintext * Plaintext multiplication not implemented yet"
             )
 
-    # Case 2: One is BFVValue (Ciphertext), other is Raw
+    # Case 2: One is BFVValue (Ciphertext), other is TensorValue
     if isinstance(lhs, BFVValue) and lhs.is_cipher:
         # Check for zero plaintext to avoid "transparent ciphertext" error
-        if isinstance(rhs, (int, float)) and rhs == 0:
-            result_ct = sealapi.Ciphertext()
-            lhs.ctx.encryptor.encrypt_zero(result_ct)
-            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
-        if isinstance(rhs, np.ndarray) and np.all(rhs == 0):
+        if isinstance(rhs, TensorValue) and np.all(rhs.unwrap() == 0):
             result_ct = sealapi.Ciphertext()
             lhs.ctx.encryptor.encrypt_zero(result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
@@ -471,11 +469,7 @@ def mul_impl(
 
     if isinstance(rhs, BFVValue) and rhs.is_cipher:
         # Check for zero plaintext to avoid "transparent ciphertext" error
-        if isinstance(lhs, (int, float)) and lhs == 0:
-            result_ct = sealapi.Ciphertext()
-            rhs.ctx.encryptor.encrypt_zero(result_ct)
-            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
-        if isinstance(lhs, np.ndarray) and np.all(lhs == 0):
+        if isinstance(lhs, TensorValue) and np.all(lhs.unwrap() == 0):
             result_ct = sealapi.Ciphertext()
             rhs.ctx.encryptor.encrypt_zero(result_ct)
             return BFVValue(result_ct, rhs.ctx, is_cipher=True)
@@ -485,7 +479,10 @@ def mul_impl(
         rhs.ctx.evaluator.multiply_plain(rhs.data, pt, result_ct)
         return BFVValue(result_ct, rhs.ctx, is_cipher=True)
 
-    return lhs * rhs  # type: ignore
+    # Handle Plaintext * Plaintext (TensorValue * TensorValue)
+    if isinstance(lhs, TensorValue) and isinstance(rhs, TensorValue):
+        return TensorValue.wrap(lhs.unwrap() * rhs.unwrap())
+    raise TypeError(f"Unsupported types for mul: {type(lhs)}, {type(rhs)}")
 
 
 @bfv.relinearize_p.def_impl

@@ -26,6 +26,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.backends.value import WrapValue
 from mplang.v2.dialects import spu
 from mplang.v2.edsl import serde
@@ -185,7 +186,7 @@ def _get_spu_ctx(
 
 @spu.makeshares_p.def_impl
 def makeshares_impl(
-    interpreter: Interpreter, op: Operation, data: Any
+    interpreter: Interpreter, op: Operation, data: TensorValue
 ) -> tuple[SPUShare, ...]:
     """Generate secret shares for data using spu.Io."""
     count = op.attrs["count"]
@@ -195,22 +196,23 @@ def makeshares_impl(
     runtime_config = to_runtime_config(config)
     io = spu_api.Io(count, runtime_config)
 
-    # Unwrap if it's a Value
-    if isinstance(data, WrapValue):
-        data = data.unwrap()
+    # Unwrap TensorValue
+    arr = data.unwrap()
 
-    # data is expected to be numpy array or scalar
-    data = np.array(data)
+    # data is expected to be numpy array
+    arr = np.asarray(arr)
 
     # Generate shares (VIS_SECRET)
-    libspu_shares = io.make_shares(data, libspu.Visibility.VIS_SECRET)
+    libspu_shares = io.make_shares(arr, libspu.Visibility.VIS_SECRET)
 
     # Wrap libspu.Share objects in SPUShare
     return tuple(SPUShare.from_libspu(share) for share in libspu_shares)
 
 
 @spu.reconstruct_p.def_impl
-def reconstruct_impl(interpreter: Interpreter, op: Operation, *shares: SPUShare) -> Any:
+def reconstruct_impl(
+    interpreter: Interpreter, op: Operation, *shares: SPUShare
+) -> TensorValue:
     """Reconstruct data from secret shares using spu.Io."""
     count = len(shares)
     config: spu.SPUConfig = op.attrs["config"]
@@ -224,8 +226,8 @@ def reconstruct_impl(interpreter: Interpreter, op: Operation, *shares: SPUShare)
     # Reconstruct
     result = io.reconstruct(libspu_shares)
 
-    # Result is numpy array
-    return result
+    # Wrap result as TensorValue
+    return TensorValue.wrap(result)
 
 
 @spu.exec_p.def_impl

@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
-from mplang.v2.backends.crypto_impl import RuntimePublicKey
+from mplang.v2.backends.crypto_impl import BytesValue, RuntimePublicKey
 from mplang.v2.backends.value import Value
 from mplang.v2.dialects import tee
 from mplang.v2.edsl import serde
@@ -168,7 +168,7 @@ def _quote_gen_impl(
 def _attest_impl(
     interpreter: Interpreter,
     op: Operation,
-    quote: Any,
+    quote: MockQuote | BytesValue,
 ) -> RuntimePublicKey:
     """Verify a mock quote and extract the attested public key.
 
@@ -182,7 +182,7 @@ def _attest_impl(
     Args:
         interpreter: The interpreter context
         op: The operation being executed
-        quote: The quote to verify (MockQuote or bytes)
+        quote: The quote to verify (MockQuote or BytesValue for serialized quotes)
 
     Returns:
         RuntimePublicKey - the verified public key, ready for use with kem_derive
@@ -192,12 +192,15 @@ def _attest_impl(
     # Handle different quote formats
     if isinstance(quote, MockQuote):
         mock_quote = quote
+    elif isinstance(quote, BytesValue):
+        mock_quote = MockQuote.from_bytes(quote.unwrap())
     elif isinstance(quote, (bytes, bytearray, np.ndarray)):
+        # Fallback for raw bytes (backwards compatibility / real TEE interop)
         if isinstance(quote, np.ndarray):
             quote = bytes(quote)
         mock_quote = MockQuote.from_bytes(bytes(quote))
     else:
-        raise TypeError(f"Expected MockQuote or bytes, got {type(quote)}")
+        raise TypeError(f"Expected MockQuote or BytesValue, got {type(quote)}")
 
     # Return a real RuntimePublicKey that can be used directly with kem_derive
     return RuntimePublicKey(

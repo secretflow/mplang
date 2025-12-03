@@ -68,17 +68,25 @@ subclasses within each `*_impl.py`. This provides:
 - [x] **Strict type checking in bfv_impl.py**: Replaced `hasattr(data, "data")` checks with
   proper `isinstance(data, TensorValue)` checks in `encode_impl` and `encrypt_impl`.
 
-- [ ] **Complete type annotations in remaining impl files**: Continue improving `def_impl` function
+- [x] **Complete type annotations in remaining impl files**: Improved `def_impl` function
   signatures in:
-  - `phe_impl.py` - Some `Any` types remain for PHE values
-  - `table_impl.py` - Table/DataFrame types could be more specific
-  - `spu_impl.py` - Some `Any` types remain
+  - `phe_impl.py` - Added strict types for PHEContext, PHEEncoder, WrappedCiphertext
+  - `table_impl.py` - Added strict types for TableValue and table-like inputs
+  - `spu_impl.py` - Added strict types for SPUShare, SPUConfig, and share handling
+
+- [x] **Enforce Value-only parameters in def_impl**: All `def_impl` functions now only accept
+  `Value` subclasses as parameters (not raw `np.ndarray`, `int`, etc.). This ensures type system
+  consistency between abstract_eval and impl:
+  - `bfv_impl.py`: `encode_impl`, `encrypt_impl`, `add/sub/mul_impl` now use `TensorValue`
+  - `spu_impl.py`: `makeshares_impl` accepts `TensorValue`, `reconstruct_impl` returns `TensorValue`
+  - `table_impl.py`: `tensor2table_impl` accepts `TensorValue`
 
 ## Performance
 
-- [ ] **Benchmark serde performance**: After all serde refactoring is complete, compare v2 test
-  suite performance with the previous commit to measure any serialization overhead introduced
-  by the new `@serde.register_class` pattern. Run `uv run pytest tests/v2/ --durations=0`.
+- [x] **Benchmark serde performance**: Identified major performance regression (75s vs 12s) caused
+  by `use_serde=True` doing eager serialization in `SimpSimulator._run_party`. Fixed by implementing
+  **lazy serde**: moved serialization to `ThreadCommunicator.send()` to only serialize data during
+  actual inter-party communication, matching HTTP worker behavior. Test time: 75s → 14s.
 
 ## Completed
 

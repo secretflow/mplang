@@ -836,6 +836,11 @@ def build_tree(
     owned_party = init_array(ap_rank, n_nodes, np.int64, -1)
     bt = init_array(ap_rank, m, np.int64, 0)
 
+    # Store parent histograms for subtraction optimization
+    # List of TraceObjects (JAX arrays) representing stacked histograms for previous level
+    # Index 0 is AP (unused), 1..k are PPs
+    last_level_hists: list[Any] = [None] * (len(pp_ranks) + 1)
+
     for level in range(max_depth):
         n_level = 2**level
         level_offset = 2**level - 1
@@ -874,6 +879,7 @@ def build_tree(
 
         # === PP: FHE histogram computation ===
         for pp_idx, pp_rank in enumerate(pp_ranks):
+            print(f"DEBUG: Level {level} PP {pp_rank} Start")
             # Transfer all encrypted CT chunks and keys to PP
             g_cts_pp = [simp.shuffle_static(g_ct, {pp_rank: ap_rank}) for g_ct in g_cts]
             h_cts_pp = [simp.shuffle_static(h_ct, {pp_rank: ap_rank}) for h_ct in h_cts]
@@ -889,38 +895,110 @@ def build_tree(
                 lambda fn=subgroup_map_fn: tensor.run_jax(fn, bt_level_pp),
             )
 
-            # Compute encrypted histograms (handles multi-CT internally)
             n_pp_features = n_features_per_party[pp_idx + 1]
-            g_enc, h_enc = fhe_histogram_optimized(
-                g_cts_pp,
-                h_cts_pp,
-                subgroup_map,
-                all_bin_indices[pp_idx + 1],
-                n_buckets,
-                n_level,
-                n_pp_features,
-                pp_rank,
-                ap_rank,
-                encoder_pp,
-                rk_pp,
-                gk_pp,
-                m,
-                n_chunks,
-                slot_count,
-            )
 
-            # Decrypt and find best splits at AP
-            pp_hists = decrypt_histogram_results(
-                g_enc,
-                h_enc,
-                sk,
-                encoder,
-                fxp_scale,
-                n_level,
-                n_pp_features,
-                n_buckets,
-                ap_rank,
-            )
+            if level == 0:
+                # Root level: Compute full FHE
+                g_enc, h_enc = fhe_histogram_optimized(
+                    g_cts_pp,
+                    h_cts_pp,
+                    subgroup_map,
+                    all_bin_indices[pp_idx + 1],
+                    n_buckets,
+                    n_level,
+                    n_pp_features,
+                    pp_rank,
+                    ap_rank,
+                    encoder_pp,
+                    rk_pp,
+                    gk_pp,
+                    m,
+                    n_chunks,
+                    slot_count,
+                )
+
+                pp_hists = decrypt_histogram_results(
+                    g_enc,
+                    h_enc,
+                    sk,
+                    encoder,
+                    fxp_scale,
+                    n_level,
+                    n_pp_features,
+                    n_buckets,
+                    ap_rank,
+                )
+                # Store for next level
+                last_level_hists[pp_idx + 1] = pp_hists
+
+            else:
+                # Histogram Subtraction Optimization
+                # 1. Slice subgroup_map to get Left children (even indices 0, 2, ...)
+                def slice_left(sm):
+                    return sm[0::2]
+
+                subgroup_map_left = simp.pcall_static(
+                    (pp_rank,),
+                    lambda sm=subgroup_map: tensor.run_jax(slice_left, sm),
+                )
+
+                # 2. Run FHE for Left children
+                n_left = n_level // 2
+                g_enc, h_enc = fhe_histogram_optimized(
+                    g_cts_pp,
+                    h_cts_pp,
+                    subgroup_map_left,
+                    all_bin_indices[pp_idx + 1],
+                    n_buckets,
+                    n_left,
+                    n_pp_features,
+                    pp_rank,
+                    ap_rank,
+                    encoder_pp,
+                    rk_pp,
+                    gk_pp,
+                    m,
+                    n_chunks,
+                    slot_count,
+                )
+
+                # 3. Decrypt Left
+                left_hists = decrypt_histogram_results(
+                    g_enc,
+                    h_enc,
+                    sk,
+                    encoder,
+                    fxp_scale,
+                    n_left,
+                    n_pp_features,
+                    n_buckets,
+                    ap_rank,
+                )
+
+                # 4. Derive Right and Reconstruct
+                parent_hists = last_level_hists[pp_idx + 1]
+
+                def derive_right_and_combine(l_hists, p_hists):
+                    # l_hists: (n_left, ...)
+                    # p_hists: (n_left, ...) - parents correspond exactly to left children
+                    r_hists = p_hists - l_hists
+
+                    # Interleave [L, R]
+                    # Stack on new axis 1 -> (n_left, 2, ...)
+                    combined = jnp.stack([l_hists, r_hists], axis=1)
+                    # Reshape -> (2*n_left, ...)
+                    return combined.reshape((-1, *l_hists.shape[1:]))
+
+                pp_hists = simp.pcall_static(
+                    (ap_rank,),
+                    lambda: tensor.run_jax(
+                        derive_right_and_combine, left_hists, parent_hists
+                    ),
+                )
+
+                # Store for next level (if needed)
+                if level < max_depth - 1:
+                    last_level_hists[pp_idx + 1] = pp_hists
 
             # Stack and find best splits
             def find_splits(hists, rl=reg_lambda, gm=gamma, mcw=min_child_weight):

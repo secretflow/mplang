@@ -31,11 +31,19 @@ from mplang.v2.edsl.graph import Graph
 
 
 class ThreadCommunicator:
-    """Thread-based communicator for in-memory communication."""
+    """Thread-based communicator for in-memory communication.
 
-    def __init__(self, rank: int, world_size: int):
+    Args:
+        rank: This communicator's rank.
+        world_size: Total number of parties.
+        use_serde: If True, serialize/deserialize data through serde on send,
+            simulating real HTTP communication behavior.
+    """
+
+    def __init__(self, rank: int, world_size: int, *, use_serde: bool = False):
         self.rank = rank
         self.world_size = world_size
+        self.use_serde = use_serde
         self.peers: list[ThreadCommunicator] = []
         self._mailbox: dict[str, Any] = {}
         self._cond = threading.Condition()
@@ -53,6 +61,11 @@ class ThreadCommunicator:
 
     def send(self, to: int, key: str, data: Any) -> None:
         assert 0 <= to < self.world_size
+        # Optionally round-trip through serde to simulate HTTP communication
+        if self.use_serde:
+            from mplang.v2.edsl import serde
+
+            data = serde.loads(serde.dumps(data))
         self.peers[to]._on_receive(self.rank, key, data)
 
     def recv(self, frm: int, key: str) -> Any:
@@ -76,9 +89,13 @@ class ThreadCommunicator:
 class Context:
     """Context for SIMP simulation."""
 
-    def __init__(self, world_size: int):
+    def __init__(self, world_size: int, *, use_serde: bool = False):
         self.world_size = world_size
-        self.comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        self.use_serde = use_serde
+        self.comms = [
+            ThreadCommunicator(i, world_size, use_serde=use_serde)
+            for i in range(world_size)
+        ]
         for comm in self.comms:
             comm.set_peers(self.comms)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
@@ -93,14 +110,14 @@ class Context:
 _SIM_CONTEXT: Context | None = None
 
 
-def get_or_create_context(world_size: int = 3) -> Context:
+def get_or_create_context(world_size: int = 3, *, use_serde: bool = False) -> Context:
     global _SIM_CONTEXT
     if _SIM_CONTEXT is None:
-        _SIM_CONTEXT = Context(world_size)
-    elif _SIM_CONTEXT.world_size != world_size:
-        # Recreate context if world_size mismatch
+        _SIM_CONTEXT = Context(world_size, use_serde=use_serde)
+    elif _SIM_CONTEXT.world_size != world_size or _SIM_CONTEXT.use_serde != use_serde:
+        # Recreate context if world_size or use_serde mismatch
         _SIM_CONTEXT.shutdown(wait=True)
-        _SIM_CONTEXT = Context(world_size)
+        _SIM_CONTEXT = Context(world_size, use_serde=use_serde)
     return _SIM_CONTEXT
 
 
@@ -109,15 +126,15 @@ class SimpSimulator(SimpHost):
 
     Args:
         world_size: Number of parties to simulate.
-        use_serde: If True, serialize/deserialize graph and inputs through serde
-            before execution. This validates that all types are properly registered
-            with serde, catching serialization issues early (before HTTP deployment).
+        use_serde: If True, serialize/deserialize data through serde on inter-party
+            communication (send/recv). This simulates real HTTP behavior and validates
+            that all transmitted types are properly registered with serde.
     """
 
-    def __init__(self, world_size: int = 3, *, use_serde: bool = True):
+    def __init__(self, world_size: int = 3, *, use_serde: bool = False):
         super().__init__(world_size)
         self.use_serde = use_serde
-        self.ctx = get_or_create_context(world_size)
+        self.ctx = get_or_create_context(world_size, use_serde=use_serde)
         # Create persistent workers (Actors)
         self.workers = [
             WorkerInterpreter(rank, world_size, self.ctx.comms[rank])
@@ -149,19 +166,6 @@ class SimpSimulator(SimpHost):
         return [f.result() for f in futures]
 
     def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
-        # Optionally round-trip through serde to validate serialization
-        if self.use_serde:
-            # Import modules to ensure all types are registered
-            from mplang.v2 import dialects as _dialects  # noqa: F401
-            from mplang.v2.backends import bfv_impl as _bfv_impl  # noqa: F401
-            from mplang.v2.backends import crypto_impl as _crypto_impl  # noqa: F401
-            from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
-            from mplang.v2.backends import tee_impl as _tee_impl  # noqa: F401
-            from mplang.v2.edsl import serde
-
-            graph = serde.loads(serde.dumps(graph))
-            inputs = serde.loads(serde.dumps(inputs))
-
         worker = self.workers[rank]
         if not isinstance(graph, Graph):
             raise TypeError(

@@ -18,7 +18,17 @@ import pytest
 import mplang.v2.backends.bfv_impl as _bfv_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl as _tensor_impl  # noqa: F401
 import mplang.v2.edsl as el
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import bfv, tensor
+
+
+def _get_array(val):
+    """Extract numpy array from various wrapper types."""
+    if hasattr(val, "runtime_obj"):
+        val = val.runtime_obj
+    if isinstance(val, TensorValue):
+        return val.data
+    return val
 
 
 def test_bfv_e2e():
@@ -284,10 +294,7 @@ def test_bfv_shapes_2d():
     res_shaped = tensor.reshape(res_sliced, (10, 10))
 
     # Verify
-    if hasattr(res_shaped, "runtime_obj"):
-        res_val = res_shaped.runtime_obj
-    else:
-        res_val = res_shaped
+    res_val = _get_array(res_shaped)
 
     assert res_val.shape == (10, 10)
     np.testing.assert_array_equal(res_val, data)
@@ -310,10 +317,7 @@ def test_bfv_shapes_3d():
     res_sliced = tensor.slice_tensor(res_flat, starts=(0,), ends=(50,))
     res = tensor.reshape(res_sliced, (2, 5, 5))
 
-    if hasattr(res, "runtime_obj"):
-        res_val = res.runtime_obj
-    else:
-        res_val = res
+    res_val = _get_array(res)
 
     assert res_val.shape == (2, 5, 5)
     np.testing.assert_array_equal(res_val, data)

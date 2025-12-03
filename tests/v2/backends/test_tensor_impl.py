@@ -16,7 +16,9 @@ import jax.numpy as jnp
 import numpy as np
 
 import mplang.v2.backends.tensor_impl  # noqa: F401
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import tensor
+from mplang.v2.edsl import serde
 
 
 def test_tensor_ops_e2e():
@@ -44,7 +46,7 @@ def test_tensor_ops_e2e():
 
     # Verify
     expected = np.array([1, 4, 9, 16, 25, 36], dtype=np.float32)
-    np.testing.assert_allclose(result.runtime_obj, expected)
+    np.testing.assert_allclose(result.runtime_obj.unwrap(), expected)
 
 
 def test_tensor_elementwise():
@@ -62,9 +64,11 @@ def test_tensor_elementwise():
         return z
 
     result = workload()
-    # elementwise_impl returns object array, cast to float for comparison
-    result = result.runtime_obj.astype(np.float32)
+    # elementwise_impl returns object array of TensorValues, unwrap them
+    flat = [x.unwrap() for x in result.runtime_obj.ravel()]
+    result = np.array(flat).reshape(result.runtime_obj.shape).astype(np.float32)
     expected = np.array([13, 24], dtype=np.float32)
+    np.testing.assert_allclose(result, expected)
     np.testing.assert_allclose(result, expected)
 
 
@@ -82,7 +86,9 @@ def test_tensor_elementwise_broadcasting():
         return z
 
     result = workload()
-    result = result.runtime_obj.astype(np.float32)
+    # elementwise_impl returns object array of TensorValues, unwrap them
+    flat = [x.unwrap() for x in result.runtime_obj.ravel()]
+    result = np.array(flat).reshape(result.runtime_obj.shape).astype(np.float32)
     expected = np.array([15, 25, 35], dtype=np.float32)
     np.testing.assert_allclose(result, expected)
 
@@ -102,5 +108,56 @@ def test_tensor_elementwise_scalar():
 
     result = workload()
     # Result should be a 0-d array or scalar
-    assert np.ndim(result.runtime_obj) == 0
-    assert result.runtime_obj == 200.0
+    assert np.ndim(result.runtime_obj.unwrap()) == 0
+    assert result.runtime_obj.unwrap() == 200.0
+
+
+# =============================================================================
+# Tests: Serialization (Moved from test_serde.py)
+# =============================================================================
+
+
+class TestNumpyArrays:
+    """Test serialization of numpy arrays via TensorValue wrapper."""
+
+    def test_1d_array(self):
+        arr = np.array([1, 2, 3], dtype=np.int32)
+        tv = TensorValue(arr)
+        result = serde.from_json(serde.to_json(tv))
+        assert isinstance(result, TensorValue)
+        np.testing.assert_array_equal(result.unwrap(), arr)
+        assert result.dtype == arr.dtype
+
+    def test_2d_array(self):
+        arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        tv = TensorValue(arr)
+        result = serde.from_json(serde.to_json(tv))
+        assert isinstance(result, TensorValue)
+        np.testing.assert_array_equal(result.unwrap(), arr)
+        assert result.dtype == arr.dtype
+
+    def test_various_dtypes(self):
+        for dtype in [np.float32, np.float64, np.int32, np.int64, np.bool_]:
+            arr = np.array([1, 0, 1], dtype=dtype)
+            tv = TensorValue(arr)
+            result = serde.from_json(serde.to_json(tv))
+            assert isinstance(result, TensorValue)
+            np.testing.assert_array_equal(result.unwrap(), arr)
+            assert result.dtype == arr.dtype
+
+    def test_scalar_array(self):
+        arr = np.array(42, dtype=np.int32)
+        tv = TensorValue(arr)
+        result = serde.from_json(serde.to_json(tv))
+        assert isinstance(result, TensorValue)
+        np.testing.assert_array_equal(result.unwrap(), arr)
+
+    def test_b64_roundtrip_tensor(self):
+        """Test base64 roundtrip with TensorValue."""
+        arr = np.array([1, 2, 3], dtype=np.float32)
+        data = {"array": TensorValue(arr)}
+        b64_str = serde.dumps_b64(data)
+        assert isinstance(b64_str, str)
+        result = serde.loads_b64(b64_str)
+        assert isinstance(result["array"], TensorValue)
+        np.testing.assert_array_equal(result["array"].unwrap(), arr)

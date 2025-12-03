@@ -40,10 +40,16 @@ class ThreadCommunicator:
         self._mailbox: dict[str, Any] = {}
         self._cond = threading.Condition()
         self._sent_events: dict[str, threading.Event] = {}
+        self._shutdown = False
 
     def set_peers(self, peers: list[ThreadCommunicator]) -> None:
         assert len(peers) == self.world_size
         self.peers = peers
+
+    def shutdown(self) -> None:
+        with self._cond:
+            self._shutdown = True
+            self._cond.notify_all()
 
     def send(self, to: int, key: str, data: Any) -> None:
         assert 0 <= to < self.world_size
@@ -51,8 +57,10 @@ class ThreadCommunicator:
 
     def recv(self, frm: int, key: str) -> Any:
         with self._cond:
-            while key not in self._mailbox:
+            while key not in self._mailbox and not self._shutdown:
                 self._cond.wait()
+            if self._shutdown:
+                raise RuntimeError("Communicator shut down")
             return self._mailbox.pop(key)
 
     def _on_receive(self, frm: int, key: str, data: Any) -> None:
@@ -76,6 +84,8 @@ class Context:
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
 
     def shutdown(self, wait: bool = True) -> None:
+        for comm in self.comms:
+            comm.shutdown()
         self.executor.shutdown(wait=wait)
 
 
@@ -118,6 +128,24 @@ class SimpSimulator(SimpHost):
         return self.ctx.executor.submit(self._run_party, rank, graph, inputs)
 
     def _collect(self, futures: list[Any]) -> list[Any]:
+        # Wait for all to complete, or the first exception
+        done, _ = concurrent.futures.wait(
+            futures, return_when=concurrent.futures.FIRST_EXCEPTION
+        )
+
+        # If any future raised an exception, re-raise it immediately
+        for f in done:
+            exc = f.exception()
+            if exc:
+                # Cancel pending futures (best effort)
+                for nf in futures:
+                    nf.cancel()
+                # Shutdown context to unblock running threads
+                self.ctx.shutdown(wait=False)
+                raise exc
+
+        # If no exceptions, all futures should be done (because FIRST_EXCEPTION
+        # implies ALL_COMPLETED if no exception occurs)
         return [f.result() for f in futures]
 
     def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:

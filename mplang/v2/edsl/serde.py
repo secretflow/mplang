@@ -178,6 +178,27 @@ def to_json(obj: Any) -> dict[str, Any]:
     if isinstance(obj, np.floating):
         return {"_kind": "_float", "v": float(obj)}
 
+    # Numpy array - handle both numeric and object arrays
+    if isinstance(obj, np.ndarray):
+        # Object arrays need element-wise serialization
+        if obj.dtype == np.object_:
+            return {
+                "_kind": "_ndarray_object",
+                "shape": list(obj.shape),
+                "items": [to_json(item) for item in obj.flat],
+            }
+        # Numeric arrays use efficient binary format
+        return {
+            "_kind": "_ndarray",
+            "dtype": str(obj.dtype),
+            "shape": list(obj.shape),
+            "data": base64.b64encode(obj.tobytes()).decode("ascii"),
+        }
+
+    # Array-like (JAX, etc.) - convert to numpy
+    if hasattr(obj, "__array__"):
+        return to_json(np.asarray(obj))
+
     # Collections
     if isinstance(obj, (list, tuple)):
         return {
@@ -196,44 +217,6 @@ def to_json(obj: Any) -> dict[str, Any]:
         return {
             "_kind": "_dict",
             "items": {k: to_json(v) for k, v in obj.items()},
-        }
-
-    # Numpy arrays (also handles JAX arrays via conversion)
-    if isinstance(obj, np.ndarray):
-        # Special handling for object dtype arrays - serialize element by element
-        if obj.dtype == np.object_:
-            return {
-                "_kind": "_ndarray_object",
-                "shape": list(obj.shape),
-                "items": [to_json(item) for item in obj.flat],
-            }
-        return {
-            "_kind": "_ndarray",
-            "dtype": str(obj.dtype),
-            "shape": list(obj.shape),
-            "data": base64.b64encode(obj.tobytes()).decode("ascii"),
-        }
-
-    # JAX arrays - convert to numpy
-    if hasattr(obj, "__jax_array__") or (
-        hasattr(obj, "__module__")
-        and obj.__module__ is not None
-        and "jax" in obj.__module__
-        and hasattr(obj, "tobytes")
-    ):
-        arr = np.asarray(obj)
-        # Special handling for object dtype arrays
-        if arr.dtype == np.object_:
-            return {
-                "_kind": "_ndarray_object",
-                "shape": list(arr.shape),
-                "items": [to_json(item) for item in arr.flat],
-            }
-        return {
-            "_kind": "_ndarray",
-            "dtype": str(arr.dtype),
-            "shape": list(arr.shape),
-            "data": base64.b64encode(arr.tobytes()).decode("ascii"),
         }
 
     # Bytes
@@ -292,25 +275,27 @@ def from_json(data: dict[str, Any]) -> Any:
         # Handle dicts with non-string keys
         return {from_json(pair[0]): from_json(pair[1]) for pair in data["pairs"]}
 
-    # Numpy arrays
-    if kind == "_ndarray":
-        arr = np.frombuffer(
-            base64.b64decode(data["data"]),
-            dtype=np.dtype(data["dtype"]),
-        )
-        return arr.reshape(data["shape"]) if data["shape"] else arr
+    # Bytes
+    if kind == "_bytes":
+        return base64.b64decode(data["data"])
 
-    # Numpy object arrays (element by element)
+    # Legacy numpy array formats - kept for backward compatibility
+    # New serializations go through TensorValue (tensor_impl.TensorValue)
+    if kind == "_ndarray":
+        dtype_str = data["dtype"]
+        shape = tuple(data["shape"])
+        buffer = base64.b64decode(data["data"])
+        dtype = np.dtype(dtype_str)
+        return np.frombuffer(buffer, dtype=dtype).reshape(shape).copy()
+
     if kind == "_ndarray_object":
+        shape = tuple(data["shape"])
         items = [from_json(item) for item in data["items"]]
         arr = np.empty(len(items), dtype=object)
         for i, item in enumerate(items):
             arr[i] = item
-        return arr.reshape(data["shape"]) if data["shape"] else arr
-
-    # Bytes
-    if kind == "_bytes":
-        return base64.b64decode(data["data"])
+        # Always reshape - empty tuple () means scalar, which requires reshape
+        return arr.reshape(shape)
 
     # Registered classes
     if kind in _CLASS_REGISTRY:

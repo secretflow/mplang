@@ -24,15 +24,53 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 import coincurve
-import jax
-import jax.numpy as jnp
+import numpy as np
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from mplang.v2.backends.value import Value
+from mplang.v2.backends.tensor_impl import TensorValue
+from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import crypto
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
 from mplang.v2.edsl.interpreter import Interpreter
+
+# =============================================================================
+# BytesValue - Wrapper for raw bytes (keys, hashes, ciphertexts)
+# =============================================================================
+
+
+@serde.register_class
+class BytesValue(WrapValue[bytes]):
+    """Runtime value wrapping raw bytes.
+
+    Used for cryptographic data like:
+    - Hash outputs (32 bytes for SHA-256)
+    - Symmetric keys (32 bytes for AES-256)
+    - Ciphertexts (variable length)
+    - EC point serializations
+    """
+
+    _serde_kind: ClassVar[str] = "crypto_impl.BytesValue"
+
+    def _convert(self, data: Any) -> bytes:
+        if isinstance(data, BytesValue):
+            return data.unwrap()
+        if isinstance(data, bytes):
+            return data
+        if isinstance(data, (bytearray, memoryview)):
+            return bytes(data)
+        # Handle numpy arrays
+        if hasattr(data, "tobytes"):
+            return data.tobytes()
+        raise TypeError(f"Cannot convert {type(data).__name__} to bytes")
+
+    def to_json(self) -> dict[str, Any]:
+        return {"data": base64.b64encode(self._data).decode("ascii")}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> BytesValue:
+        return cls(base64.b64decode(data["data"]))
+
 
 # =============================================================================
 # ECC Point Wrapper (secp256k1)
@@ -40,8 +78,7 @@ from mplang.v2.edsl.interpreter import Interpreter
 
 
 @serde.register_class
-@dataclass
-class ECPoint(Value):
+class ECPoint(WrapValue[bytes]):
     """Wrapper for coincurve.PublicKey representing an elliptic curve point.
 
     This wraps the external coincurve library's PublicKey type to provide
@@ -50,25 +87,35 @@ class ECPoint(Value):
 
     _serde_kind: ClassVar[str] = "crypto_impl.ECPoint"
 
-    # The raw public key bytes (compressed format, 33 bytes)
-    key_bytes: bytes
+    def _convert(self, data: Any) -> bytes:
+        if isinstance(data, ECPoint):
+            return data.unwrap()
+        if isinstance(data, bytes):
+            return data
+        if isinstance(data, coincurve.PublicKey):
+            return data.format(compressed=True)
+        raise TypeError(f"Expected bytes or coincurve.PublicKey, got {type(data)}")
+
+    @property
+    def key_bytes(self) -> bytes:
+        return self._data
 
     def to_json(self) -> dict[str, Any]:
-        return {"data": base64.b64encode(self.key_bytes).decode("ascii")}
+        return {"data": base64.b64encode(self._data).decode("ascii")}
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> ECPoint:
-        return cls(key_bytes=base64.b64decode(data["data"]))
+        return cls(base64.b64decode(data["data"]))
 
     @property
     def coincurve_key(self) -> coincurve.PublicKey:
         """Get the underlying coincurve.PublicKey object."""
-        return coincurve.PublicKey(self.key_bytes)
+        return coincurve.PublicKey(self._data)
 
     @classmethod
     def from_coincurve(cls, pk: coincurve.PublicKey) -> ECPoint:
         """Create ECPoint from a coincurve.PublicKey."""
-        return cls(key_bytes=pk.format(compressed=True))
+        return cls(pk)
 
 
 # --- ECC Impl (Coincurve) ---
@@ -83,17 +130,32 @@ def generator_impl(interpreter: Interpreter, op: Operation) -> ECPoint:
     g_bytes = bytes.fromhex(
         "0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"
     )
-    return ECPoint(key_bytes=g_bytes)
+    return ECPoint(g_bytes)
 
 
 @crypto.mul_p.def_impl
 def mul_impl(
-    interpreter: Interpreter, op: Operation, point: ECPoint | None, scalar: Any
+    interpreter: Interpreter,
+    op: Operation,
+    point: ECPoint | None,
+    scalar: int | TensorValue,
 ) -> ECPoint | None:
-    s_val = scalar
-    if hasattr(s_val, "item"):
-        s_val = s_val.item()
-    s_val = int(s_val) % N
+    # scalar can be:
+    # - int: from ec_random_scalar or ec_scalar_from_int
+    # - TensorValue: shouldn't happen but handle for robustness
+    # - numpy scalar: from inside elementwise (shouldn't reach here as mul is not in elementwise)
+    if isinstance(scalar, TensorValue):
+        s_val = scalar.unwrap()
+        if hasattr(s_val, "item"):
+            s_val = s_val.item()
+    elif isinstance(scalar, (int, np.integer)):
+        s_val = int(scalar)
+    else:
+        raise TypeError(
+            f"mul_impl scalar must be int or TensorValue, got {type(scalar).__name__}"
+        )
+
+    s_val = s_val % N
 
     if s_val == 0:
         return None
@@ -144,112 +206,146 @@ def random_scalar_impl(interpreter: Interpreter, op: Operation) -> int:
 
 
 @crypto.scalar_from_int_p.def_impl
-def scalar_from_int_impl(interpreter: Interpreter, op: Operation, val: Any) -> int:
-    return int(val)
+def scalar_from_int_impl(
+    interpreter: Interpreter, op: Operation, val: TensorValue | int
+) -> int:
+    """Convert a tensor/scalar value to an EC scalar (int).
+
+    val can be:
+    - TensorValue: wrapping a scalar numpy array
+    - int/bool: direct Python integer or boolean
+    - numpy scalar (np.integer, np.bool_): from inside elementwise operations
+    """
+    if isinstance(val, TensorValue):
+        raw = val.unwrap()
+        if hasattr(raw, "item"):
+            return int(raw.item())
+        return int(raw)
+    elif isinstance(val, (int, bool, np.integer, np.bool_)):
+        return int(val)
+    else:
+        raise TypeError(
+            f"scalar_from_int val must be TensorValue or int-like, "
+            f"got {type(val).__name__}"
+        )
 
 
 @crypto.point_to_bytes_p.def_impl
 def point_to_bytes_impl(
     interpreter: Interpreter, op: Operation, point: ECPoint | None
-) -> jnp.ndarray:
+) -> BytesValue:
     if point is None:
-        # Infinity / Identity -> Zeros
-        # 65 bytes to match uncompressed format length
-        return jnp.zeros(65, dtype=jnp.uint8)
+        # Infinity / Identity -> Zeros (65 bytes to match uncompressed format)
+        return BytesValue(bytes(65))
 
     # Returns 65 bytes (uncompressed)
     b = point.coincurve_key.format(compressed=False)
-    return jnp.frombuffer(b, dtype=jnp.uint8)
+    return BytesValue(b)
 
 
 # --- Sym / Hash Impl ---
 
 
 @crypto.hash_p.def_impl
-def hash_impl(interpreter: Interpreter, op: Operation, data: Any) -> jnp.ndarray:
-    d = data
-    if hasattr(d, "tobytes"):
-        d = d.tobytes()
-    elif isinstance(d, (list, tuple)):
-        d = bytes(d)
+def hash_impl(
+    interpreter: Interpreter, op: Operation, data: BytesValue | TensorValue
+) -> BytesValue:
+    raw = data.unwrap()
+    # Convert to bytes based on type
+    if isinstance(raw, bytes):
+        d = raw
+    elif hasattr(raw, "tobytes"):
+        d = raw.tobytes()  # numpy array
+    else:
+        d = bytes(raw)  # list/tuple
 
     h = hashlib.sha256(d).digest()
-    arr = jnp.frombuffer(h, dtype=jnp.uint8)
-    return arr
+    return BytesValue(h)
 
 
 @crypto.sym_encrypt_p.def_impl
 def sym_encrypt_impl(
     interpreter: Interpreter,
     op: Operation,
-    key: RuntimeSymmetricKey | jax.Array,
-    plaintext: Any,
-) -> jax.Array:
-    k = key
-    # Support RuntimeSymmetricKey from kem_derive
-    if isinstance(k, RuntimeSymmetricKey):
-        k = k.key_bytes
-    elif hasattr(k, "tobytes"):
-        k = k.tobytes()
+    key: RuntimeSymmetricKey | BytesValue,
+    plaintext: Value,
+) -> BytesValue:
+    # Get raw key bytes - strict type checking
+    if isinstance(key, RuntimeSymmetricKey):
+        k = key.key_bytes
+    elif isinstance(key, BytesValue):
+        k = key.unwrap()
+    else:
+        raise TypeError(
+            f"sym_encrypt key must be RuntimeSymmetricKey or BytesValue, "
+            f"got {type(key).__name__}"
+        )
 
-    # Ensure key is 32 bytes (AES-256)
-    if len(k) != 32:
-        pass
+    # Serialize the plaintext Value
+    pt_bytes = pickle.dumps(plaintext)
 
-    pt = plaintext
-    pt_bytes = pickle.dumps(pt)
-
-    # AES-GCM
+    # AES-GCM encryption
     aesgcm = AESGCM(k)
     nonce = os.urandom(12)
     ct = aesgcm.encrypt(nonce, pt_bytes, None)
 
     # Result: nonce + ct
-    res = nonce + ct
-    arr = jnp.frombuffer(res, dtype=jnp.uint8)
-    return arr
+    return BytesValue(nonce + ct)
 
 
 @crypto.sym_decrypt_p.def_impl
 def sym_decrypt_impl(
     interpreter: Interpreter,
     op: Operation,
-    key: RuntimeSymmetricKey | jax.Array,
-    ciphertext: jax.Array | bytes,
+    key: RuntimeSymmetricKey | BytesValue,
+    ciphertext: BytesValue,
     target_type: Any = None,
-) -> Any:
-    k = key
-    # Support RuntimeSymmetricKey from kem_derive
-    if isinstance(k, RuntimeSymmetricKey):
-        k = k.key_bytes
-    elif hasattr(k, "tobytes"):
-        k = k.tobytes()
+) -> Value:
+    # Get raw key bytes - strict type checking
+    if isinstance(key, RuntimeSymmetricKey):
+        k = key.key_bytes
+    elif isinstance(key, BytesValue):
+        k = key.unwrap()
+    else:
+        raise TypeError(
+            f"sym_decrypt key must be RuntimeSymmetricKey or BytesValue, "
+            f"got {type(key).__name__}"
+        )
 
-    ct_full = ciphertext
-    if hasattr(ct_full, "tobytes"):
-        ct_full = ct_full.tobytes()
-    elif isinstance(ct_full, (list, tuple)):
-        ct_full = bytes(ct_full)
+    # Get ciphertext bytes - strict type checking
+    if not isinstance(ciphertext, BytesValue):
+        raise TypeError(
+            f"sym_decrypt ciphertext must be BytesValue, "
+            f"got {type(ciphertext).__name__}"
+        )
+    ct_full = ciphertext.unwrap()
 
-    # Extract nonce
+    # Extract nonce and decrypt
     nonce = ct_full[:12]
     ct = ct_full[12:]
 
     aesgcm = AESGCM(k)
     pt_bytes = aesgcm.decrypt(nonce, ct, None)
 
-    pt = pickle.loads(pt_bytes)
-    return pt
+    # Deserialize back to Value
+    return pickle.loads(pt_bytes)
 
 
 @crypto.select_p.def_impl
 def select_impl(
-    interpreter: Interpreter, op: Operation, cond: Any, true_val: Any, false_val: Any
-) -> Any:
-    c = cond
-    if hasattr(c, "item"):
-        c = c.item()
-
+    interpreter: Interpreter,
+    op: Operation,
+    cond: TensorValue | int,
+    true_val: Value,
+    false_val: Value,
+) -> Value:
+    # Handle both TensorValue and raw scalar (from elementwise)
+    if isinstance(cond, TensorValue):
+        c = cond.unwrap()
+        if hasattr(c, "item"):
+            c = c.item()
+    else:
+        c = int(cond)
     return true_val if c else false_val
 
 

@@ -26,7 +26,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.v2.backends.value import Value
+from mplang.v2.backends.value import WrapValue
 from mplang.v2.dialects import spu
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
@@ -38,7 +38,7 @@ from mplang.v2.edsl.interpreter import Interpreter
 
 
 @serde.register_class
-class SPUShare(Value):
+class SPUShare(WrapValue[libspu.Share]):
     """Wrapper for libspu.Share representing an SPU secret share.
 
     This wraps the external libspu library's Share type to provide
@@ -50,22 +50,24 @@ class SPUShare(Value):
 
     _serde_kind: ClassVar[str] = "spu_impl.SPUShare"
 
-    __slots__ = ("_share",)
-
-    def __init__(self, share: libspu.Share) -> None:
-        self._share = share
+    def _convert(self, data: Any) -> libspu.Share:
+        if isinstance(data, SPUShare):
+            return data.unwrap()
+        if isinstance(data, libspu.Share):
+            return data
+        raise TypeError(f"Expected libspu.Share, got {type(data)}")
 
     @property
     def libspu_share(self) -> libspu.Share:
         """Get the underlying libspu.Share object."""
-        return self._share
+        return self._data
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "meta": base64.b64encode(self._share.meta).decode("ascii"),
+            "meta": base64.b64encode(self._data.meta).decode("ascii"),
             "share_chunks": [
                 base64.b64encode(chunk).decode("ascii")
-                for chunk in self._share.share_chunks
+                for chunk in self._data.share_chunks
             ],
         }
 
@@ -192,6 +194,10 @@ def makeshares_impl(
     # We create a standalone Io for share generation (no link needed for make_shares)
     runtime_config = to_runtime_config(config)
     io = spu_api.Io(count, runtime_config)
+
+    # Unwrap if it's a Value
+    if isinstance(data, WrapValue):
+        data = data.unwrap()
 
     # data is expected to be numpy array or scalar
     data = np.array(data)

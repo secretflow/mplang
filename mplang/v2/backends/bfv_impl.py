@@ -29,7 +29,9 @@ import numpy as np
 import tenseal as ts
 import tenseal.sealapi as sealapi
 
-from mplang.v2.backends.value import Value
+from mplang.v2.backends.tensor_impl import TensorValue
+from mplang.v2.backends.tensor_impl import _unwrap as tensor_unwrap
+from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import bfv
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
@@ -58,13 +60,14 @@ def _get_seal_temp_path() -> str:
 
 
 @serde.register_class
-class BFVPublicContext(Value):
+class BFVPublicContext(WrapValue[ts.Context]):
     """Wraps TenSEAL context and exposes low-level SEAL objects (Public only)."""
 
     _serde_kind: ClassVar[str] = "bfv_impl.BFVPublicContext"
 
-    def __init__(self, ts_ctx: ts.Context):
-        self.ts_ctx = ts_ctx
+    def __init__(self, data: Any):
+        super().__init__(data)
+        self.ts_ctx = self._data
 
         # Extract underlying C++ objects
         self.seal_ctx = self.ts_ctx.seal_context()
@@ -79,6 +82,13 @@ class BFVPublicContext(Value):
         self.galois_keys = self.ts_ctx.galois_keys().data
 
         self.encryptor = sealapi.Encryptor(self.cpp_ctx, self.public_key)
+
+    def _convert(self, data: Any) -> ts.Context:
+        if isinstance(data, BFVPublicContext):
+            return data.unwrap()
+        if isinstance(data, ts.Context):
+            return data
+        raise TypeError(f"Expected ts.Context, got {type(data)}")
 
     def to_json(self) -> dict[str, Any]:
         # Serialize TenSEAL context (without secret key)
@@ -98,11 +108,13 @@ class BFVSecretContext(BFVPublicContext):
 
     _serde_kind: ClassVar[str] = "bfv_impl.BFVSecretContext"
 
-    def __init__(self, ts_ctx: ts.Context):
-        if not ts_ctx.has_secret_key():
-            raise ValueError("Context does not have a secret key")
+    def __init__(self, data: Any):
+        # BFVPublicContext.__init__ calls WrapValue.__init__ which calls _convert
+        # We need to ensure _convert is called and validation happens
+        super().__init__(data)
 
-        super().__init__(ts_ctx)
+        if not self.ts_ctx.has_secret_key():
+            raise ValueError("Context does not have a secret key")
 
         self.secret_key = self.ts_ctx.secret_key().data
         self.decryptor = sealapi.Decryptor(self.cpp_ctx, self.secret_key)
@@ -134,7 +146,7 @@ class BFVValue(Value):
 
     _serde_kind: ClassVar[str] = "bfv_impl.BFVValue"
 
-    data: sealapi.Ciphertext | sealapi.Plaintext
+    data: Any  # sealapi.Ciphertext | sealapi.Plaintext
     ctx: BFVPublicContext
     is_cipher: bool = True
 
@@ -249,18 +261,32 @@ def create_encoder_impl(interpreter: Interpreter, op: Operation) -> dict[str, An
 
 @bfv.encode_p.def_impl
 def encode_impl(
-    interpreter: Interpreter, op: Operation, data: Any, encoder: dict[str, Any]
+    interpreter: Interpreter,
+    op: Operation,
+    data: TensorValue | np.ndarray,
+    encoder: dict[str, Any],
 ) -> np.ndarray:
     # Return raw data as "Logical Plaintext"
-    return np.array(data)
+    # Unwrap TensorValue if needed
+    if isinstance(data, TensorValue):
+        data = tensor_unwrap(data)
+    return np.asarray(data)
 
 
 @bfv.encrypt_p.def_impl
 def encrypt_impl(
-    interpreter: Interpreter, op: Operation, plaintext: np.ndarray, pk: BFVPublicContext
+    interpreter: Interpreter,
+    op: Operation,
+    plaintext: TensorValue | np.ndarray,
+    pk: BFVPublicContext,
 ) -> BFVValue:
-    # plaintext is numpy array (from encode_impl)
+    # plaintext is numpy array (from encode_impl) or TensorValue
     # pk is BFVPublicContext
+
+    # Unwrap TensorValue if needed
+    if isinstance(plaintext, TensorValue):
+        plaintext = tensor_unwrap(plaintext)
+    plaintext = np.asarray(plaintext).flatten()
 
     # 1. Create Plaintext
     pt = sealapi.Plaintext()
@@ -301,17 +327,19 @@ def decode_impl(
     return np.array(vec)
 
 
-def _ensure_plaintext(ctx: BFVPublicContext, data: Any) -> sealapi.Plaintext:
+def _ensure_plaintext(
+    ctx: BFVPublicContext, data: BFVValue | np.ndarray | list
+) -> sealapi.Plaintext:
     """Convert data to sealapi.Plaintext using the given context."""
     if isinstance(data, BFVValue):
         if data.is_cipher:
             raise TypeError("Expected Plaintext, got Ciphertext")
         return data.data
 
-    # Assume data is raw values (list/numpy)
+    # Assume data is raw values (numpy array or list)
     pt = sealapi.Plaintext()
-    # Handle numpy types
-    if hasattr(data, "tolist"):
+    # Handle numpy arrays
+    if isinstance(data, np.ndarray):
         data = data.tolist()
     # Ensure int
     vec = [int(x) for x in data]

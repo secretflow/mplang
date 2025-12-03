@@ -19,8 +19,16 @@ import jax.numpy as jnp
 import mplang.v2.backends.crypto_impl
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_simulator import SimpSimulator
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc import permutation
+
+
+def _unwrap(val):
+    """Unwrap TensorValue to numpy array."""
+    if isinstance(val, TensorValue):
+        return val.unwrap()
+    return val
 
 
 def test_secure_switch_straight():
@@ -40,8 +48,8 @@ def test_secure_switch_straight():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    assert y0.runtime_obj.values[1] == 10
-    assert y1.runtime_obj.values[1] == 20
+    assert _unwrap(y0.runtime_obj.values[1]).item() == 10
+    assert _unwrap(y1.runtime_obj.values[1]).item() == 20
 
 
 def test_secure_switch_swap():
@@ -61,8 +69,8 @@ def test_secure_switch_swap():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    assert y0.runtime_obj.values[1] == 20
-    assert y1.runtime_obj.values[1] == 10
+    assert _unwrap(y0.runtime_obj.values[1]).item() == 20
+    assert _unwrap(y1.runtime_obj.values[1]).item() == 10
 
 
 def test_apply_permutation_n2():
@@ -99,5 +107,5 @@ def test_apply_permutation_n2():
 
     # res is a list of Objects on Receiver
 
-    assert res[0].runtime_obj.values[1] == 20
-    assert res[1].runtime_obj.values[1] == 10
+    assert _unwrap(res[0].runtime_obj.values[1]).item() == 20
+    assert _unwrap(res[1].runtime_obj.values[1]).item() == 10

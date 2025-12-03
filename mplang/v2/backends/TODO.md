@@ -1,13 +1,51 @@
 # Backend Values TODO
 
-## Serde Support
+## Value Wrappers for Dialect Data
 
-- [ ] **Add PyArrow Table serde support**: `pa.Table` is used by `table_impl.py` but has no serde
-  support in `mplang/v2/edsl/serde.py`. Consider using Arrow IPC format for serialization.
+Design principle: Keep `edsl/serde.py` simple by wrapping dialect-specific data types in `Value`
+subclasses within each `*_impl.py`. This provides:
 
-- [ ] **Review numpy special handling in serde**: Check if the special handling for `np.ndarray` in
-  `serde.py` (lines ~217-248) can be removed now that we have `@serde.register_class` pattern.
-  May be able to unify with Value pattern.
+- Clear separation of concerns (serde stays generic)
+- Extensibility for future data formats
+- Consistent pattern across all backends
+
+### TableValue (table_impl.py)
+
+- [x] **Create `TableValue` wrapper class**: Wrap `pa.Table` in a `Value` subclass with proper serde.
+  - Use Arrow IPC format for serialization (efficient, preserves schema)
+  - Add `_wrap(pa.Table | pd.DataFrame) -> TableValue` helper
+  - Add `_unwrap(TableValue) -> pa.Table` helper
+  - Future: extend to support other table backends (Polars, DuckDB relations, etc.)
+
+- [x] **Update table_impl.py def_impl functions**: Use `_wrap`/`_unwrap` helpers at entry/exit
+  points of each implementation function.
+
+### TensorValue (tensor_impl.py)
+
+- [x] **Create `TensorValue` wrapper class**: Wrap numpy and numpy-like arrays in a `Value` subclass.
+  - Handle `np.ndarray` directly
+  - Handle JAX arrays via `np.asarray()` conversion
+  - Handle other numpy-like objects (e.g., `jnp.ndarray`, cupy arrays) with duck typing
+  - Use base64-encoded bytes for serialization (consistent with current serde)
+
+- [x] **Update tensor_impl.py def_impl functions**: Use `_wrap`/`_unwrap` pattern.
+
+- [x] **Remove numpy special handling from serde.py**: ~After `TensorValue` is implemented, remove the special `np.ndarray` handling~. **Reverted**: We kept explicit `np.ndarray` handling in `serde.py` to support direct serialization of inputs (like JAX arrays) without forcing manual wrapping in `TensorValue` everywhere.
+
+## Refactoring (WrapValue Pattern)
+
+- [x] **Create `WrapValue[T]` base class**: Generic base class in `value.py` implementing the `_convert`/`wrap`/`unwrap` pattern.
+- [x] **Refactor `TensorValue`**: Inherit from `WrapValue[np.ndarray]`.
+- [x] **Refactor `TableValue`**: Inherit from `WrapValue[pa.Table]`.
+- [x] **Refactor `SPUShare`**: Inherit from `WrapValue[libspu.Share]`.
+- [x] **Refactor `ECPoint`**: Inherit from `WrapValue[bytes]`.
+- [x] **Refactor `BFVPublicContext`/`BFVSecretContext`**: Inherit from `WrapValue[ts.Context]`.
+- [x] **Create `BytesValue`**: Inherit from `WrapValue[bytes]` for crypto byte data (hashes, keys, ciphertexts).
+
+## Stability & Fixes
+
+- [x] **Fix SimpSimulator Hangs**: Implemented fail-fast logic in `SimpSimulator` to cancel pending futures and shutdown communicators immediately upon any worker exception.
+- [x] **Fix Serde Recursion**: Fixed `RecursionError` in `serde.py` when serializing JAX arrays by adding explicit `np.ndarray` support.
 
 ## Naming Conventions
 
@@ -19,12 +57,22 @@
 
 ## Type Annotations
 
+- [x] **Strict type checking in crypto_impl.py**: Refactored all `def_impl` functions to use strict
+  `isinstance` checks instead of `hasattr` duck typing. Supported types are explicitly listed:
+  - `sym_encrypt/decrypt`: Accept `RuntimeSymmetricKey | BytesValue` for keys
+  - `scalar_from_int`: Accept `TensorValue | int | bool | np.integer | np.bool_`
+  - `mul_impl`: Accept `int | TensorValue | np.integer` for scalar
+  - `select_impl`: Accept `TensorValue | int` for condition
+  - Created `BytesValue(WrapValue[bytes])` for hash/key/ciphertext data
+
+- [x] **Strict type checking in bfv_impl.py**: Replaced `hasattr(data, "data")` checks with
+  proper `isinstance(data, TensorValue)` checks in `encode_impl` and `encrypt_impl`.
+
 - [ ] **Complete type annotations in remaining impl files**: Continue improving `def_impl` function
   signatures in:
-  - `bfv_impl.py` - Some `Any` types remain for BFV values
   - `phe_impl.py` - Some `Any` types remain for PHE values
   - `table_impl.py` - Table/DataFrame types could be more specific
-  - `tensor_impl.py` - Return types could use `np.ndarray`
+  - `spu_impl.py` - Some `Any` types remain
 
 ## Performance
 
@@ -47,3 +95,7 @@
 - [x] Remove `libspu.Visibility` from IR attrs - use string-based `Visibility` type instead
 - [x] Move `SPUConfig.to_runtime_config()` to `spu_impl.py` (runtime-only)
 - [x] Remove Enum serde code and `import_module` security risk from `serde.py`
+- [x] Create `BytesValue` wrapper for cryptographic byte data (hash outputs, keys, ciphertexts)
+- [x] Refactor `crypto_impl.py` to use strict `isinstance` type checks (no `hasattr` duck typing)
+- [x] Refactor `bfv_impl.py` to use `isinstance(data, TensorValue)` checks
+- [x] Remove invalid test `TestKEMWithRawTensorKey` that bypassed proper Value wrapping

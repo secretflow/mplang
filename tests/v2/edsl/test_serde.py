@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from mplang.v2.edsl import serde
@@ -161,39 +160,6 @@ class TestCollections:
 
 
 # =============================================================================
-# Tests: Numpy Arrays
-# =============================================================================
-
-
-class TestNumpyArrays:
-    """Test serialization of numpy arrays."""
-
-    def test_1d_array(self):
-        arr = np.array([1, 2, 3], dtype=np.int32)
-        result = serde.from_json(serde.to_json(arr))
-        np.testing.assert_array_equal(result, arr)
-        assert result.dtype == arr.dtype
-
-    def test_2d_array(self):
-        arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
-        result = serde.from_json(serde.to_json(arr))
-        np.testing.assert_array_equal(result, arr)
-        assert result.dtype == arr.dtype
-
-    def test_various_dtypes(self):
-        for dtype in [np.float32, np.float64, np.int32, np.int64, np.bool_]:
-            arr = np.array([1, 0, 1], dtype=dtype)
-            result = serde.from_json(serde.to_json(arr))
-            np.testing.assert_array_equal(result, arr)
-            assert result.dtype == arr.dtype
-
-    def test_scalar_array(self):
-        arr = np.array(42, dtype=np.int32)
-        result = serde.from_json(serde.to_json(arr))
-        np.testing.assert_array_equal(result, arr)
-
-
-# =============================================================================
 # Tests: Registered Classes
 # =============================================================================
 
@@ -243,11 +209,13 @@ class TestWireFormat:
         assert result == data
 
     def test_b64_roundtrip(self):
-        data = {"array": np.array([1, 2, 3], dtype=np.float32)}
+        p = Point(10, 20)
+        data = {"point": p}
         b64_str = serde.dumps_b64(data)
         assert isinstance(b64_str, str)
         result = serde.loads_b64(b64_str)
-        np.testing.assert_array_equal(result["array"], data["array"])
+        assert isinstance(result["point"], Point)
+        assert result["point"] == p
 
 
 # =============================================================================

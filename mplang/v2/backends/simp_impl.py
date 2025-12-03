@@ -158,9 +158,15 @@ def uniform_cond_impl(
     Executes the selected branch based on the predicate value.
     Assumes the predicate is uniform across all parties.
     """
+    from mplang.v2.backends.tensor_impl import TensorValue
+
     # TODO: Implement AllReduce verification if verify_uniform is True
     if op.attrs.get("verify_uniform", True):
         pass
+
+    # Unwrap TensorValue if needed to get Python bool
+    if isinstance(pred, TensorValue):
+        pred = bool(pred.unwrap())
 
     if pred:
         return interpreter.evaluate_graph(op.regions[0], list(args))
@@ -174,6 +180,8 @@ def while_loop_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     Executes the loop body while the condition is true.
     """
+    from mplang.v2.backends.tensor_impl import TensorValue
+
     cond_graph = op.regions[0]
     body_graph = op.regions[1]
 
@@ -186,6 +194,11 @@ def while_loop_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
         # Execute condition
         cond_res = interpreter.evaluate_graph(cond_graph, region_inputs)
+
+        # Unwrap TensorValue if needed to get Python bool
+        if isinstance(cond_res, TensorValue):
+            cond_res = bool(cond_res.unwrap())
+
         if not cond_res:
             break
 

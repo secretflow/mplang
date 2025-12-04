@@ -2134,8 +2134,28 @@ def benchmark_multiparty():
         # Measure execution time
         t0 = time.perf_counter()
         host = SimpSimulator(world_size=2)
+
+        # Enable multi-threaded BFV execution
+        import concurrent.futures
+        import os
+
+        max_workers = os.cpu_count() or 4
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        async_ops = {
+            "bfv.add",
+            "bfv.mul",
+            "bfv.rotate",
+            "bfv.relinearize",
+            "bfv.encrypt",
+            "bfv.decrypt",
+        }
+        host.set_worker_executor(executor, async_ops)
+
         result = host.evaluate_graph(graph, [])
         exec_time = time.perf_counter() - t0
+
+        # Shutdown executor
+        executor.shutdown(wait=False)
 
         # Calculate accuracy
         y_pred_probs = result[0].unwrap()

@@ -141,6 +141,14 @@ class SimpSimulator(SimpHost):
             for rank in range(world_size)
         ]
 
+    def set_worker_executor(
+        self, executor: concurrent.futures.Executor, async_ops: set[str]
+    ) -> None:
+        """Configure workers to use an executor for specific ops."""
+        for worker in self.workers:
+            worker.executor = executor
+            worker.async_ops = async_ops
+
     def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         return self.ctx.executor.submit(self._run_party, rank, graph, inputs)
 

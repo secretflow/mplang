@@ -22,6 +22,7 @@ It can execute both:
 
 from __future__ import annotations
 
+import concurrent.futures
 from typing import TYPE_CHECKING, Any
 
 from mplang.v2.edsl.context import Context
@@ -32,6 +33,30 @@ from mplang.v2.edsl.typing import BaseType
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
+
+
+class AsyncHandle:
+    """Handle for an asynchronous execution result."""
+
+    def __init__(self, future: concurrent.futures.Future, index: int | None = None):
+        self._future = future
+        self._index = index
+        self._result = None
+        self._resolved = False
+
+    def resolve(self) -> Any:
+        if not self._resolved:
+            res = self._future.result()
+            if self._index is not None:
+                self._result = res[self._index]
+            else:
+                self._result = res
+            self._resolved = True
+        return self._result
+
+    def __repr__(self) -> str:
+        status = "resolved" if self._resolved else "pending"
+        return f"<AsyncHandle status={status}>"
 
 
 class InterpObject(Object):
@@ -111,7 +136,7 @@ class Interpreter(Context):
         >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, executor: concurrent.futures.Executor | None = None) -> None:
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
         # This serves two purposes:
@@ -119,6 +144,8 @@ class Interpreter(Context):
         # 2. MIMO Optimization: When one output of a multi-output op is computed,
         #    all sibling outputs are cached here to avoid re-execution.
         self._execution_cache: dict[Any, InterpObject] = {}
+        self.executor = executor
+        self.async_ops: set[str] = set()
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -328,6 +355,13 @@ class Interpreter(Context):
         Returns:
             Runtime execution results corresponding to graph.outputs
         """
+        if self.executor:
+            return self._evaluate_graph_async(graph, inputs)
+        else:
+            return self._evaluate_graph_sync(graph, inputs)
+
+    def _evaluate_graph_sync(self, graph: Graph, inputs: list[Any]) -> Any:
+        """Synchronous execution (Baseline)."""
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
         # Local environment: Value -> Runtime Object
@@ -379,6 +413,49 @@ class Interpreter(Context):
             return env[graph.outputs[0]]
         else:
             return [env[out] for out in graph.outputs]
+
+    def _evaluate_graph_async(self, graph: Graph, inputs: list[Any]) -> Any:
+        """Asynchronous execution with Executor."""
+        assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
+
+        # Local environment: Value -> Runtime Object
+        env = dict(zip(graph.inputs, inputs, strict=True))
+
+        def _resolve(x: Any) -> Any:
+            return x.resolve() if isinstance(x, AsyncHandle) else x
+
+        def _async_wrapper(h, i, o, *a):
+            return h(i, o, *[_resolve(x) for x in a])
+
+        for op in graph.operations:
+            # Resolve inputs
+            args = [env[val] for val in op.inputs]
+            handler = get_impl(op.opcode)
+            if not handler:
+                raise NotImplementedError(
+                    f"No implementation registered for opcode: {op.opcode}"
+                )
+
+            # Dispatch
+            if op.opcode in self.async_ops and self.executor:
+                future = self.executor.submit(_async_wrapper, handler, None, op, *args)
+                if len(op.outputs) == 1:
+                    env[op.outputs[0]] = AsyncHandle(future)
+                else:
+                    for i, out_val in enumerate(op.outputs):
+                        env[out_val] = AsyncHandle(future, index=i)
+            else:
+                # Synchronous execution
+                results = handler(self, op, *[_resolve(a) for a in args])
+                if len(op.outputs) == 1:
+                    env[op.outputs[0]] = results
+                else:
+                    for out_val, res in zip(op.outputs, results, strict=True):
+                        env[out_val] = res
+
+        # Return outputs
+        final_results = [_resolve(env[out]) for out in graph.outputs]
+        return final_results[0] if len(final_results) == 1 else final_results
 
 
 def interpret(graph: Graph, inputs: list[Any], interpreter: Interpreter) -> Any:

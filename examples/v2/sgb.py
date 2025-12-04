@@ -363,8 +363,6 @@ def _compute_histogram_chunk_batch(
     # ==========================================================================
     # Optimization: Pack features into fewer ciphertexts to reduce communication
     # ==========================================================================
-    # Current layout: One CT per (node, feature).
-    # Packed layout: One CT per node (containing all features), if n_features <= stride.
     #
     # Strategy:
     # 1. Mask out garbage slots (keep only b*stride).
@@ -393,7 +391,7 @@ def _compute_histogram_chunk_batch(
         for batch_start in range(0, n_features, stride):
             batch_end = min(batch_start + stride, n_features)
 
-            def pack_batch(cts, offset_start):
+            def pack_batch(cts):
                 packed = None
                 for i, ct in enumerate(cts):
                     # Relative offset in the packed CT
@@ -409,12 +407,8 @@ def _compute_histogram_chunk_batch(
                         packed = bfv.add(packed, rotated)
                 return packed
 
-            g_packed_flat.append(
-                pack_batch(node_g_cts[batch_start:batch_end], batch_start)
-            )
-            h_packed_flat.append(
-                pack_batch(node_h_cts[batch_start:batch_end], batch_start)
-            )
+            g_packed_flat.append(pack_batch(node_g_cts[batch_start:batch_end]))
+            h_packed_flat.append(pack_batch(node_h_cts[batch_start:batch_end]))
 
     return g_packed_flat, h_packed_flat
 

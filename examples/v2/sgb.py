@@ -325,90 +325,93 @@ def _compute_histogram_chunk_batch(
     )
     mask_iter = iter(all_masks_list)
 
-    g_results_flat = []
-    h_results_flat = []
-
-    for _node_idx in range(n_nodes):
-        for _feat_idx in range(n_features):
-            g_accumulated = None
-            h_accumulated = None
-
-            for chunk_idx in range(n_chunks):
-                mask = next(mask_iter)
-                mask_pt = bfv.encode(mask, encoder)
-
-                g_ct_chunk = g_cts[chunk_idx]
-                h_ct_chunk = h_cts[chunk_idx]
-
-                g_masked = bfv.relinearize(bfv.mul(g_ct_chunk, mask_pt), relin_keys)
-                h_masked = bfv.relinearize(bfv.mul(h_ct_chunk, mask_pt), relin_keys)
-
-                g_agg = aggregation.batch_bucket_aggregate(
-                    g_masked, n_buckets, max_samples_per_bucket, galois_keys, slot_count
-                )
-                h_agg = aggregation.batch_bucket_aggregate(
-                    h_masked, n_buckets, max_samples_per_bucket, galois_keys, slot_count
-                )
-
-                if g_accumulated is None:
-                    g_accumulated = g_agg
-                    h_accumulated = h_agg
-                else:
-                    g_accumulated = bfv.add(g_accumulated, g_agg)
-                    h_accumulated = bfv.add(h_accumulated, h_agg)
-
-            g_results_flat.append(g_accumulated)
-            h_results_flat.append(h_accumulated)
-
     # ==========================================================================
-    # Optimization: Pack features into fewer ciphertexts to reduce communication
+    # Optimization: Incremental Packing to reduce peak memory
     # ==========================================================================
-    #
-    # Strategy:
-    # 1. Mask out garbage slots (keep only b*stride).
-    # 2. Rotate feature f by -f so it lands at b*stride + f.
-    # 3. Sum up all features.
+    # Instead of accumulating all features and then packing, we pack incrementally.
+    # This reduces peak memory from O(n_features) to O(stride).
 
     # Create mask for valid slots (0, stride, 2*stride, ...)
-    # n_buckets and stride are static integers, so we can compute mask in Python
     m_np = np.zeros(slot_count, dtype=np.int64)
     idx_np = np.arange(n_buckets) * stride
     m_np[idx_np] = 1
     mask_arr = tensor.constant(m_np)
-    mask_pt = bfv.encode(mask_arr, encoder)
+    mask_pt_pack = bfv.encode(mask_arr, encoder)
 
     g_packed_flat = []
     h_packed_flat = []
 
-    for node_idx in range(n_nodes):
-        # Extract CTs for this node
-        start = node_idx * n_features
-        end = (node_idx + 1) * n_features
-        node_g_cts = g_results_flat[start:end]
-        node_h_cts = h_results_flat[start:end]
-
-        # Pack into batches of size `stride`
+    for _node_idx in range(n_nodes):
+        # Process features in batches of 'stride'
         for batch_start in range(0, n_features, stride):
             batch_end = min(batch_start + stride, n_features)
 
-            def pack_batch(cts):
-                packed = None
-                for i, ct in enumerate(cts):
-                    # Relative offset in the packed CT
-                    rel_offset = i
-                    # Mask valid slots
-                    masked = bfv.relinearize(bfv.mul(ct, mask_pt), relin_keys)
-                    # Rotate to position
-                    rotated = bfv.rotate(masked, -rel_offset, galois_keys)
+            g_packed_acc = None
+            h_packed_acc = None
 
-                    if packed is None:
-                        packed = rotated
+            for i, _feat_idx in enumerate(range(batch_start, batch_end)):
+                # 1. Compute Histogram for this feature (across chunks)
+                g_feat_acc = None
+                h_feat_acc = None
+
+                for chunk_idx in range(n_chunks):
+                    mask = next(mask_iter)
+                    mask_pt = bfv.encode(mask, encoder)
+
+                    g_ct_chunk = g_cts[chunk_idx]
+                    h_ct_chunk = h_cts[chunk_idx]
+
+                    g_masked = bfv.relinearize(bfv.mul(g_ct_chunk, mask_pt), relin_keys)
+                    h_masked = bfv.relinearize(bfv.mul(h_ct_chunk, mask_pt), relin_keys)
+
+                    g_agg = aggregation.batch_bucket_aggregate(
+                        g_masked,
+                        n_buckets,
+                        max_samples_per_bucket,
+                        galois_keys,
+                        slot_count,
+                    )
+                    h_agg = aggregation.batch_bucket_aggregate(
+                        h_masked,
+                        n_buckets,
+                        max_samples_per_bucket,
+                        galois_keys,
+                        slot_count,
+                    )
+
+                    if g_feat_acc is None:
+                        g_feat_acc = g_agg
+                        h_feat_acc = h_agg
                     else:
-                        packed = bfv.add(packed, rotated)
-                return packed
+                        g_feat_acc = bfv.add(g_feat_acc, g_agg)
+                        h_feat_acc = bfv.add(h_feat_acc, h_agg)
 
-            g_packed_flat.append(pack_batch(node_g_cts[batch_start:batch_end]))
-            h_packed_flat.append(pack_batch(node_h_cts[batch_start:batch_end]))
+                assert g_feat_acc is not None
+                assert h_feat_acc is not None
+
+                # 2. Pack immediately
+                # Relative offset = i
+                # Mask valid slots
+                g_masked_pack = bfv.relinearize(
+                    bfv.mul(g_feat_acc, mask_pt_pack), relin_keys
+                )
+                h_masked_pack = bfv.relinearize(
+                    bfv.mul(h_feat_acc, mask_pt_pack), relin_keys
+                )
+
+                # Rotate to position
+                g_rot = bfv.rotate(g_masked_pack, -i, galois_keys)
+                h_rot = bfv.rotate(h_masked_pack, -i, galois_keys)
+
+                if g_packed_acc is None or h_packed_acc is None:
+                    g_packed_acc = g_rot
+                    h_packed_acc = h_rot
+                else:
+                    g_packed_acc = bfv.add(g_packed_acc, g_rot)
+                    h_packed_acc = bfv.add(h_packed_acc, h_rot)
+
+            g_packed_flat.append(g_packed_acc)
+            h_packed_flat.append(h_packed_acc)
 
     return g_packed_flat, h_packed_flat
 
@@ -572,7 +575,7 @@ def fhe_histogram_optimized(
     m: int,
     n_chunks: int = 1,
     slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
-) -> tuple[list[list[Any]], list[list[Any]]]:
+) -> tuple[list[Any], list[Any]]:
     """Compute encrypted histogram sums using SIMD bucket packing.
 
     **Multi-CT Support**
@@ -2065,7 +2068,7 @@ def benchmark_multiparty():
         },
         # Test m > 4096 case (multi-CT support)
         {
-            "n_samples": 10000,
+            "n_samples": 1000000,
             "n_features_ap": 50,
             "n_features_pp": 50,
             "n_trees": 1,

@@ -56,19 +56,47 @@ Initial profiling on a large dataset (`n=10000`, `features=50+50`, `depth=3`) re
   * Modified `build_tree` to cache parent histograms.
   * Implemented `derive_right_and_combine` to perform the subtraction and interleave results.
 
+### Phase 4: Non-blocking DAG Scheduler
+
+**Goal:** Resolve thread starvation and maximize CPU utilization on high-core machines.
+
+* **Problem:**
+  * Previous interpreter used `future.result()` which blocked threads while waiting for dependencies.
+  * On deep graphs (like SGB), the thread pool would fill with blocked tasks, causing starvation and capping CPU usage (e.g., ~600% on a 96-core machine).
+* **Solution:**
+  * Rewrote `interpreter.py` to use a **Non-blocking DAG Scheduler**.
+  * Uses topological sort (in-degree counting) to track dependencies.
+  * Tasks are only submitted when inputs are ready.
+  * Uses callbacks (`add_done_callback`) to trigger dependent tasks, ensuring threads are never blocked waiting.
+* **Result:**
+  * CPU utilization unlocked (scaling to available cores).
+  * Execution time for `n=10000` dropped from ~41s to ~10s.
+
 ## 3. Final Results Comparison
 
 Benchmark Config: `n=10000`, `features=50+50`, `trees=1`, `depth=3`
 
-| Metric | Baseline (4096 slots) | Phase 2 (8192 slots + Packing) | Phase 3 (Subtraction) | Total Improvement |
-| :--- | :--- | :--- | :--- | :--- |
-| **Total Time** | ~151s | ~79s | **~41s** | **3.7x Faster** |
-| **Tracing Time** | ~55s | ~18s | **~6.6s** | **8.3x Faster** |
-| **Execution Time** | ~96s | ~61s | **~34.5s** | **2.8x Faster** |
-| **Accuracy** | ~59% | ~80.8% | **~84%** | **+25% (Usable)** |
-| **Rotate Ops** | 20,952 | 16,064 | **9,224** | **56% Reduction** |
+| Metric | Baseline (4096 slots) | Phase 2 (8192 slots + Packing) | Phase 3 (Subtraction) | Phase 4 (Async DAG) | Total Improvement |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Total Time** | ~151s | ~79s | ~41s | **~10.3s** | **14.6x Faster** |
+| **Tracing Time** | ~55s | ~18s | ~6.6s | **~2.7s** | **20.3x Faster** |
+| **Execution Time** | ~96s | ~61s | ~34.5s | **~7.6s** | **12.6x Faster** |
+| **Accuracy** | ~59% | ~80.8% | ~84% | **~84%** | **+25% (Usable)** |
+| **Rotate Ops** | 20,952 | 16,064 | 9,224 | **9,224** | **56% Reduction** |
 
-## 4. Future Work
+## 4. Operation Breakdown (Phase 4)
 
-1. **Multi-threading:** Parallelize the `(node, feature)` loops in `fhe_histogram_optimized` using `ThreadPoolExecutor` to exploit multi-core CPUs (BFV ops release GIL).
-2. **GPU Acceleration:** Use a GPU-backed BFV library (e.g., TenSEAL with CUDA) to accelerate the `Rotate` bottleneck.
+**Config:** `samples=10000`, `features=50+50`, `trees=1`, `depth=3`
+
+* **bfv.rotate:** 67s (cumulative) - 43.1% of compute time.
+* **bfv.mul:** 27.6s - 17.8%.
+* **bfv.add:** 20.3s - 13.1%.
+* **simp.pcall_static:** 16.7s - 10.7%.
+
+**Observation:**
+Even with the scheduler fix, **Rotation** remains the dominant cost (43%), but the overhead of Python/Interpreter (reflected in `simp.pcall_static`
+and general execution gaps) has been drastically reduced.
+
+## 5. Future Work
+
+1. **GPU Acceleration:** Use a GPU-backed BFV library (e.g., TenSEAL with CUDA) to accelerate the `Rotate` bottleneck.

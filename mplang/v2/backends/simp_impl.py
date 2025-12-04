@@ -77,6 +77,7 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
         # Inject parties info into interpreter for downstream ops (e.g. spu.exec)
         prev_parties = getattr(worker, "current_parties", None)
         worker.current_parties = parties  # type: ignore[attr-defined]
+
         try:
             return worker.evaluate_graph(fn_graph, list(args))
         finally:

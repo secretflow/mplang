@@ -82,7 +82,7 @@ class Value:
     name: str
     type: BaseType
     defining_op: Operation | None = None
-    uses: list[Operation] = field(default_factory=list)
+    uses: dict[Operation, None] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         return f"Value({self.name}: {self.type})"
@@ -98,13 +98,12 @@ class Value:
 
     def add_use(self, op: Operation) -> None:
         """Register an operation that uses this value."""
-        if op not in self.uses:
-            self.uses.append(op)
+        self.uses[op] = None
 
     def remove_use(self, op: Operation) -> None:
         """Unregister an operation that uses this value."""
         if op in self.uses:
-            self.uses.remove(op)
+            del self.uses[op]
 
     @property
     def num_uses(self) -> int:
@@ -148,6 +147,12 @@ class Operation:
     attrs: dict[str, Any] = field(default_factory=dict)
     regions: list[Graph] = field(default_factory=list)
     name: str = field(default="")
+
+    def __eq__(self, other: object) -> bool:
+        return self is other
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def __post_init__(self) -> None:
         """Register this operation as the definer and user of values."""

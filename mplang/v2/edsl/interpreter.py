@@ -22,7 +22,10 @@ It can execute both:
 
 from __future__ import annotations
 
+import collections
 import concurrent.futures
+import queue
+import threading
 from typing import TYPE_CHECKING, Any
 
 from mplang.v2.edsl.context import Context
@@ -415,20 +418,86 @@ class Interpreter(Context):
             return [env[out] for out in graph.outputs]
 
     def _evaluate_graph_async(self, graph: Graph, inputs: list[Any]) -> Any:
-        """Asynchronous execution with Executor."""
+        """Asynchronous execution with non-blocking DAG scheduling."""
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
-        # Local environment: Value -> Runtime Object
+        # 1. Setup State
+        # Value -> Runtime Object (initially inputs)
         env = dict(zip(graph.inputs, inputs, strict=True))
 
-        def _resolve(x: Any) -> Any:
-            return x.resolve() if isinstance(x, AsyncHandle) else x
+        # Op -> Pending Input Count
+        pending_counts = {}
+        # Value -> list[Op] (Consumers)
+        value_to_consumers = collections.defaultdict(list)
+        # Value -> Remaining Consumers Count (for GC)
+        remaining_consumers = collections.defaultdict(int)
 
-        def _async_wrapper(h, i, o, *a):
-            return h(i, o, *[_resolve(x) for x in a])
-
+        # 2. Build Dependency Graph
         for op in graph.operations:
-            # Resolve inputs
+            count = 0
+            for val in op.inputs:
+                if val not in env:  # If not already resolved (input or constant)
+                    value_to_consumers[val].append(op)
+                    remaining_consumers[val] += 1
+                    count += 1
+            pending_counts[op] = count
+
+        # Mark graph outputs as having an extra consumer (the user)
+        # so they are not GC'd before return
+        for out in graph.outputs:
+            remaining_consumers[out] += 1
+
+        # 3. Synchronization
+        lock = threading.Lock()
+        ready_queue: queue.Queue[Any] = queue.Queue()
+        remaining_ops = len(graph.operations)
+
+        # Error propagation
+        error_occurred = False
+
+        # 4. Execution Helper
+        def on_op_done(op, result, error=None):
+            nonlocal remaining_ops, error_occurred
+
+            if error:
+                with lock:
+                    if not error_occurred:
+                        error_occurred = True
+                        ready_queue.put(error)
+                return
+
+            with lock:
+                if error_occurred:
+                    return
+
+                # Store results
+                if len(op.outputs) == 1:
+                    env[op.outputs[0]] = result
+                else:
+                    for out_val, res in zip(op.outputs, result, strict=True):
+                        env[out_val] = res
+
+                # Trigger consumers
+                for out_val in op.outputs:
+                    if out_val in value_to_consumers:
+                        for consumer_op in value_to_consumers[out_val]:
+                            pending_counts[consumer_op] -= 1
+                            if pending_counts[consumer_op] == 0:
+                                ready_queue.put(consumer_op)
+
+                # GC Inputs
+                for val in op.inputs:
+                    if val in remaining_consumers:
+                        remaining_consumers[val] -= 1
+                        if remaining_consumers[val] == 0:
+                            env.pop(val, None)
+
+                remaining_ops -= 1
+                if remaining_ops == 0:
+                    ready_queue.put(None)  # Sentinel
+
+        def execute_op(op):
+            # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
             handler = get_impl(op.opcode)
             if not handler:
@@ -436,25 +505,51 @@ class Interpreter(Context):
                     f"No implementation registered for opcode: {op.opcode}"
                 )
 
-            # Dispatch
             if op.opcode in self.async_ops and self.executor:
-                future = self.executor.submit(_async_wrapper, handler, None, op, *args)
-                if len(op.outputs) == 1:
-                    env[op.outputs[0]] = AsyncHandle(future)
-                else:
-                    for i, out_val in enumerate(op.outputs):
-                        env[out_val] = AsyncHandle(future, index=i)
-            else:
-                # Synchronous execution
-                results = handler(self, op, *[_resolve(a) for a in args])
-                if len(op.outputs) == 1:
-                    env[op.outputs[0]] = results
-                else:
-                    for out_val, res in zip(op.outputs, results, strict=True):
-                        env[out_val] = res
+                # Submit to executor
+                def task():
+                    return handler(self, op, *args)
 
-        # Return outputs
-        final_results = [_resolve(env[out]) for out in graph.outputs]
+                def callback(fut):
+                    try:
+                        res = fut.result()
+                        on_op_done(op, res)
+                    except Exception as e:
+                        on_op_done(op, None, error=e)
+
+                fut = self.executor.submit(task)
+                fut.add_done_callback(callback)
+            else:
+                # Sync execution (run immediately)
+                try:
+                    res = handler(self, op, *args)
+                    on_op_done(op, res)
+                except Exception as e:
+                    on_op_done(op, None, error=e)
+
+        # 5. Initial Submission
+        # Submit all ops with 0 pending inputs
+        initial_ops = [op for op, count in pending_counts.items() if count == 0]
+        if not initial_ops and remaining_ops > 0:
+            # Cycle detected or empty graph?
+            pass
+
+        for op in initial_ops:
+            ready_queue.put(op)
+
+        # 6. Main Loop
+        while True:
+            item = ready_queue.get()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                raise item
+
+            # It's an op
+            execute_op(item)
+
+        # 7. Return outputs
+        final_results = [env[out] for out in graph.outputs]
         return final_results[0] if len(final_results) == 1 else final_results
 
 

@@ -351,8 +351,8 @@ def _compute_histogram_chunk_batch(
 
             for i, _feat_idx in enumerate(range(batch_start, batch_end)):
                 # 1. Compute Histogram for this feature (across chunks)
-                g_feat_acc = None
-                h_feat_acc = None
+                g_masked_acc = None
+                h_masked_acc = None
 
                 for chunk_idx in range(n_chunks):
                     mask = next(mask_iter)
@@ -364,27 +364,29 @@ def _compute_histogram_chunk_batch(
                     g_masked = bfv.relinearize(bfv.mul(g_ct_chunk, mask_pt), relin_keys)
                     h_masked = bfv.relinearize(bfv.mul(h_ct_chunk, mask_pt), relin_keys)
 
-                    g_agg = aggregation.batch_bucket_aggregate(
-                        g_masked,
-                        n_buckets,
-                        max_samples_per_bucket,
-                        galois_keys,
-                        slot_count,
-                    )
-                    h_agg = aggregation.batch_bucket_aggregate(
-                        h_masked,
-                        n_buckets,
-                        max_samples_per_bucket,
-                        galois_keys,
-                        slot_count,
-                    )
-
-                    if g_feat_acc is None:
-                        g_feat_acc = g_agg
-                        h_feat_acc = h_agg
+                    if g_masked_acc is None or h_masked_acc is None:
+                        g_masked_acc = g_masked
+                        h_masked_acc = h_masked
                     else:
-                        g_feat_acc = bfv.add(g_feat_acc, g_agg)
-                        h_feat_acc = bfv.add(h_feat_acc, h_agg)
+                        g_masked_acc = bfv.add(g_masked_acc, g_masked)
+                        h_masked_acc = bfv.add(h_masked_acc, h_masked)
+
+                # Lazy Aggregation: Aggregate once after summing all chunks
+                # This reduces rotations by a factor of n_chunks
+                g_feat_acc = aggregation.batch_bucket_aggregate(
+                    g_masked_acc,
+                    n_buckets,
+                    max_samples_per_bucket,
+                    galois_keys,
+                    slot_count,
+                )
+                h_feat_acc = aggregation.batch_bucket_aggregate(
+                    h_masked_acc,
+                    n_buckets,
+                    max_samples_per_bucket,
+                    galois_keys,
+                    slot_count,
+                )
 
                 assert g_feat_acc is not None
                 assert h_feat_acc is not None

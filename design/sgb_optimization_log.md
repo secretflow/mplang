@@ -72,6 +72,25 @@ Initial profiling on a large dataset (`n=10000`, `features=50+50`, `depth=3`) re
   * CPU utilization unlocked (scaling to available cores).
   * Execution time for `n=10000` dropped from ~41s to ~10s.
 
+### Phase 5: Memory & Aggregation Optimization
+
+**Goal:** Reduce peak memory usage and further minimize FHE operations.
+
+* **Incremental Packing (Memory):**
+  * **Problem:** Previous implementation accumulated unpacked ciphertexts for all features before packing them.
+    For large feature sets, this caused massive memory spikes (O(n_features)).
+  * **Solution:** Refactored to process features in small batches (size `stride`).
+    Pack immediately after computing a batch and release intermediate ciphertexts.
+  * **Result:** Peak memory usage reduced from O(n_features) to O(stride), eliminating OOM risks on large datasets.
+
+* **Lazy Aggregation (Compute):**
+  * **Problem:** `batch_bucket_aggregate` (expensive rotations) was called inside the chunk loop.
+    For $N$ chunks, we performed $N \times R$ rotations.
+  * **Solution:** Exploited the linearity of BFV. We now sum the masked ciphertexts (cheap additions) across all chunks first,
+    then perform aggregation **once** on the sum.
+  * **Result:** Reduced rotation count by a factor of `n_chunks` (e.g., 75x reduction for 300k samples),
+    significantly speeding up large-scale training.
+
 ## 3. Final Results Comparison
 
 Benchmark Config: `n=10000`, `features=50+50`, `trees=1`, `depth=3`
@@ -83,6 +102,8 @@ Benchmark Config: `n=10000`, `features=50+50`, `trees=1`, `depth=3`
 | **Execution Time** | ~96s | ~61s | ~34.5s | **~7.6s** | **12.6x Faster** |
 | **Accuracy** | ~59% | ~80.8% | ~84% | **~84%** | **+25% (Usable)** |
 | **Rotate Ops** | 20,952 | 16,064 | 9,224 | **9,224** | **56% Reduction** |
+
+*(Note: Phase 5 improvements are most visible on larger datasets where `n_chunks > 1`)*
 
 ## 4. Operation Breakdown (Phase 4)
 

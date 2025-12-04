@@ -14,9 +14,9 @@
 
 import jax.numpy as jnp
 import numpy as np
-from mplang.ops import basic
 
 import mplang.v1 as mp
+from mplang.v1.ops import basic
 
 
 @mp.function

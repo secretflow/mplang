@@ -31,7 +31,7 @@ import mplang.v1 as mp
 
 parser = argparse.ArgumentParser(description="distributed driver.")
 parser.add_argument("--model", default="network_a", type=str)
-parser.add_argument("-c", "--config", default="examples/conf/3pc.yaml", type=str)
+parser.add_argument("-c", "--config", default="examples/v1/conf/3pc.yaml", type=str)
 parser.add_argument("-e", "--epoch", default=5, type=int)
 parser.add_argument("-b", "--batch_size", default=128, type=int)
 parser.add_argument("-o", "--optimizer", default="SGD", type=str)

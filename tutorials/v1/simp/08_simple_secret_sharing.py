@@ -33,9 +33,9 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 from jax.typing import ArrayLike
-from mplang.ops import phe
 
 import mplang.v1 as mp
+from mplang.v1.ops import phe
 
 # PHE encoding bound (range encoding) as decimal string to bypass proto int64 limit.
 # Choose B large enough to contain all homomorphic intermediate magnitudes.

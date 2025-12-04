@@ -23,9 +23,8 @@ This tutorial demonstrates a three-party computation using PHE:
 6. Party 0 computes the sum and decrypts the result
 """
 
-from mplang.ops import phe
-
 import mplang.v1 as mp
+from mplang.v1.ops import phe
 
 
 @mp.function

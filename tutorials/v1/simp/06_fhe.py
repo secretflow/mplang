@@ -31,9 +31,9 @@ FHE vs PHE:
 """
 
 import numpy as np
-from mplang.ops import fhe
 
 import mplang.v1 as mp
+from mplang.v1.ops import fhe
 
 
 @mp.function

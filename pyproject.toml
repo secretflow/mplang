@@ -39,18 +39,14 @@ dependencies = [
     "coincurve>=20.0.0",
 ]
 
+[tool.uv.sources]
+tenseal = { git = "https://github.com/rivertalk/TenSEAL.git", rev = "7362dd6d3f6b2146f306196798b970b35ef93f9a" }
+
 [project.scripts]
 mplang-cli = "mplang.runtime.cli:main"
 
 [dependency-groups]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "pytest-asyncio",
-    "ruff",
-    "mypy",
-    "pre-commit",
-]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
 
 examples = [
     "scikit-learn",

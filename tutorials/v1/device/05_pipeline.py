@@ -34,10 +34,10 @@ import os
 import jax
 import jax.numpy as jnp
 import pandas as pd
-from mplang.core.dtypes import FLOAT64, INT64
-from mplang.ops import basic as basic_ops
 
 import mplang.v1 as mp
+from mplang.v1.core.dtypes import FLOAT64, INT64
+from mplang.v1.ops import basic as basic_ops
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [

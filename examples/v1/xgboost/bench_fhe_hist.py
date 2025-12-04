@@ -23,8 +23,8 @@ It provides two modes:
 - interleaved: interleave g/h into one ct, do one ct·ct mul + two ct·pt dots (even/odd)
 
 Usage examples:
-    uv run -q python examples/xgboost/bench_fhe_hist.py --world-size 2 --m 4096 --n-total 16 --n-ap 4 --k 16 --t 4 --reps 3 --mode classic
-    uv run -q python examples/xgboost/bench_fhe_hist.py --world-size 2 --m 4096 --n-total 16 --n-ap 4 --k 16 --t 4 --reps 3 --mode interleaved
+    uv run -q python examples/v1/xgboost/bench_fhe_hist.py --world-size 2 --m 4096 --n-total 16 --n-ap 4 --k 16 --t 4 --reps 3 --mode classic
+    uv run -q python examples/v1/xgboost/bench_fhe_hist.py --world-size 2 --m 4096 --n-total 16 --n-ap 4 --k 16 --t 4 --reps 3 --mode interleaved
 """
 
 from __future__ import annotations

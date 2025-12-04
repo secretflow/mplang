@@ -97,7 +97,10 @@ def cmd_main():
 
     parser = argparse.ArgumentParser(description="MPLang: Simulator vs Driver")
     parser.add_argument(
-        "-c", "--config", default="examples/conf/3pc.yaml", help="Cluster config YAML"
+        "-c",
+        "--config",
+        default="examples/v1/conf/3pc.yaml",
+        help="Cluster config YAML",
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("sim", help="Run with Simulator (local)")
@@ -128,7 +131,7 @@ if __name__ == "__main__":
 
     2. Driver (distributed):
        Step 1: Start cluster in separate terminal:
-         uv run python -m mplang.runtime.cli up -c examples/conf/3pc.yaml
+         uv run python -m mplang.runtime.cli up -c examples/v1/conf/3pc.yaml
 
        Step 2: Run computation:
          uv run tutorials/device/02_simulation_and_driver.py run

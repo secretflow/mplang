@@ -294,6 +294,7 @@ def _make_galois_keys_ae(sk: KeyType) -> KeyType:
 
 create_encoder_p = el.Primitive[el.Object]("bfv.create_encoder")
 encode_p = el.Primitive[el.Object]("bfv.encode")
+batch_encode_p = el.Primitive[el.Object]("bfv.batch_encode")
 decode_p = el.Primitive[el.Object]("bfv.decode")
 
 
@@ -326,6 +327,80 @@ def _encode_ae(tensor: elt.TensorType, encoder: EncoderType) -> PlaintextType:
     # In a real implementation, we'd check if tensor size <= poly_modulus_degree
     # For abstract eval, we assume N=4096 as default or infer from context if possible.
     return PlaintextType(elt.Vector(tensor.element_type, encoder.poly_modulus_degree))
+
+
+@batch_encode_p.def_trace
+def _batch_encode_trace(
+    tensors: list[el.Object] | tuple[el.Object],
+    encoder: el.Object,
+    key: el.Object = None,
+) -> tuple[el.Object, ...]:
+    from mplang.v2.edsl.tracer import TraceObject, Tracer
+
+    ctx = el.get_current_context()
+    if not isinstance(ctx, Tracer):
+        raise RuntimeError("batch_encode must be called within a Tracer context")
+
+    # 1. Infer types
+    tensor_types = tuple(t.type for t in tensors)
+    encoder_type = encoder.type
+    key_type = key.type if key else None
+
+    output_types = _batch_encode_ae(tensor_types, encoder_type, key_type)
+
+    # 2. Collect inputs
+    inputs = [*list(tensors), encoder]
+    if key:
+        inputs.append(key)
+
+    input_values = [obj._graph_value for obj in inputs]
+
+    # 3. Add Op
+    result_values = ctx.graph.add_op(
+        batch_encode_p.name,
+        input_values,
+        output_types,
+        attrs={},
+    )
+
+    # 4. Wrap results
+    return tuple(
+        TraceObject(val, ctx)
+        for val, typ in zip(result_values, output_types, strict=True)
+    )
+
+
+# Keep abstract eval for type inference logic reuse
+@batch_encode_p.def_abstract_eval
+def _batch_encode_ae(
+    tensors: tuple[elt.TensorType, ...], encoder: EncoderType, key: KeyType = None
+) -> tuple[PlaintextType, ...]:
+    """Pack multiple 1D Tensors of integers into BFV Plaintexts (Batched)."""
+    if not isinstance(encoder, EncoderType):
+        raise TypeError(f"Expected BFVEncoder, got {encoder}")
+
+    if not isinstance(tensors, (list, tuple)):
+        raise TypeError(f"Expected list/tuple of Tensors, got {type(tensors)}")
+
+    results = []
+    for tensor in tensors:
+        if not isinstance(tensor, elt.TensorType):
+            raise TypeError(f"Expected Tensor input, got {tensor}")
+        # Check 1D
+        if tensor.rank != 1:
+            raise ValueError(
+                f"BFV encode currently only supports 1D Tensors, got rank {tensor.rank}"
+            )
+        # Check Integer type
+        if not isinstance(tensor.element_type, elt.IntegerType):
+            raise TypeError(
+                f"BFV supports integer arithmetic only. Expected Tensor[Integer], got Tensor[{tensor.element_type}]"
+            )
+        results.append(
+            PlaintextType(elt.Vector(tensor.element_type, encoder.poly_modulus_degree))
+        )
+
+    return tuple(results)
 
 
 @decode_p.def_abstract_eval
@@ -495,6 +570,17 @@ def create_encoder(poly_modulus_degree: int = 4096) -> el.Object:
 def encode(tensor: el.Object, encoder: el.Object) -> el.Object:
     """Pack a 1D Tensor of integers into a BFV Plaintext."""
     return encode_p.bind(tensor, encoder)
+
+
+def batch_encode(
+    tensors: list[el.Object] | tuple[el.Object],
+    encoder: el.Object,
+    key: el.Object = None,
+) -> el.Object:
+    """Pack multiple 1D Tensors of integers into BFV Plaintexts (Batched)."""
+    if key is None:
+        return batch_encode_p.bind(tensors, encoder)
+    return batch_encode_p.bind(tensors, encoder, key)
 
 
 def decode(plain: el.Object, encoder: el.Object) -> el.Object:

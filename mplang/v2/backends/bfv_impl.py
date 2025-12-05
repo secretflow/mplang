@@ -271,6 +271,47 @@ def encode_impl(
     return TensorValue.wrap(np.asarray(data.unwrap()))
 
 
+@bfv.batch_encode_p.def_impl
+def batch_encode_impl(
+    interpreter: Interpreter,
+    op: Operation,
+    *args,
+) -> tuple[BFVValue | TensorValue, ...]:
+    # args will be (t1, t2, ..., tn, encoder, [key])
+    # We need to separate tensors from encoder and key
+
+    # Check if last argument is key (BFVPublicContextValue)
+    has_key = isinstance(args[-1], BFVPublicContextValue)
+
+    if has_key:
+        key = args[-1]
+        _encoder = args[-2]
+        tensors = args[:-2]
+    else:
+        key = None
+        _encoder = args[-1]
+        tensors = args[:-1]
+
+    if key is None:
+        # Fallback to lazy wrapping if no key provided
+        return tuple(TensorValue.wrap(np.asarray(t.unwrap())) for t in tensors)
+
+    # Eager encoding using key.ctx
+    # key is BFVPublicContextValue (or BFVSecretContextValue)
+    ctx = key
+
+    results = []
+    for t in tensors:
+        pt = sealapi.Plaintext()
+        arr = t.unwrap()
+        # Ensure 1D list of ints
+        vec = [int(x) for x in arr.flatten()]
+        ctx.batch_encoder.encode(vec, pt)
+        results.append(BFVValue(pt, ctx, is_cipher=False))
+
+    return tuple(results)
+
+
 @bfv.encrypt_p.def_impl
 def encrypt_impl(
     interpreter: Interpreter,
@@ -449,11 +490,27 @@ def mul_impl(
             lhs.ctx.evaluator.multiply(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif lhs.is_cipher and not rhs.is_cipher:
-            lhs.ctx.evaluator.multiply_plain(lhs.data, rhs.data, result_ct)
-            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+            try:
+                lhs.ctx.evaluator.multiply_plain(lhs.data, rhs.data, result_ct)
+                return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+            except RuntimeError as e:
+                # SEAL throws "result ciphertext is transparent" when multiplying by a zero plaintext.
+                # This is mathematically valid (Enc(x) * 0 = Enc(0)), but SEAL enforces explicit zero encryption.
+                # We catch this error and return a valid zero ciphertext to maintain operator semantics.
+                if "transparent" in str(e):
+                    lhs.ctx.encryptor.encrypt_zero(result_ct)
+                    return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+                raise e
         elif not lhs.is_cipher and rhs.is_cipher:
-            rhs.ctx.evaluator.multiply_plain(rhs.data, lhs.data, result_ct)
-            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+            try:
+                rhs.ctx.evaluator.multiply_plain(rhs.data, lhs.data, result_ct)
+                return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+            except RuntimeError as e:
+                # See comment above regarding "transparent ciphertext"
+                if "transparent" in str(e):
+                    rhs.ctx.encryptor.encrypt_zero(result_ct)
+                    return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+                raise e
         else:
             raise NotImplementedError(
                 "BFV Plaintext * Plaintext multiplication not implemented yet"
@@ -462,15 +519,27 @@ def mul_impl(
     # Case 2: One is BFVValue (Ciphertext), other is TensorValue
     if isinstance(lhs, BFVValue) and lhs.is_cipher:
         # Check for zero plaintext to avoid "transparent ciphertext" error
+        # Also check if plaintext is BFVValue(Plaintext)
         if isinstance(rhs, TensorValue) and np.all(rhs.unwrap() == 0):
             result_ct = sealapi.Ciphertext()
             lhs.ctx.encryptor.encrypt_zero(result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
 
-        pt = _ensure_plaintext(lhs.ctx, rhs)
-        result_ct = sealapi.Ciphertext()
-        lhs.ctx.evaluator.multiply_plain(lhs.data, pt, result_ct)
-        return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+        try:
+            pt = _ensure_plaintext(lhs.ctx, rhs)
+            result_ct = sealapi.Ciphertext()
+            lhs.ctx.evaluator.multiply_plain(lhs.data, pt, result_ct)
+            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+        except RuntimeError as e:
+            # SEAL throws "result ciphertext is transparent" when multiplying by a zero plaintext.
+            # This is mathematically valid (Enc(x) * 0 = Enc(0)), but SEAL enforces explicit zero encryption.
+            # We catch this error and return a valid zero ciphertext to maintain operator semantics.
+            if "transparent" in str(e):
+                # Fallback for zero plaintext
+                result_ct = sealapi.Ciphertext()
+                lhs.ctx.encryptor.encrypt_zero(result_ct)
+                return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+            raise e
 
     if isinstance(rhs, BFVValue) and rhs.is_cipher:
         # Check for zero plaintext to avoid "transparent ciphertext" error
@@ -479,10 +548,19 @@ def mul_impl(
             rhs.ctx.encryptor.encrypt_zero(result_ct)
             return BFVValue(result_ct, rhs.ctx, is_cipher=True)
 
-        pt = _ensure_plaintext(rhs.ctx, lhs)
-        result_ct = sealapi.Ciphertext()
-        rhs.ctx.evaluator.multiply_plain(rhs.data, pt, result_ct)
-        return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+        try:
+            pt = _ensure_plaintext(rhs.ctx, lhs)
+            result_ct = sealapi.Ciphertext()
+            rhs.ctx.evaluator.multiply_plain(rhs.data, pt, result_ct)
+            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+        except RuntimeError as e:
+            # See comment above regarding "transparent ciphertext"
+            if "transparent" in str(e):
+                # Fallback for zero plaintext
+                result_ct = sealapi.Ciphertext()
+                rhs.ctx.encryptor.encrypt_zero(result_ct)
+                return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+            raise e
 
     # Handle Plaintext * Plaintext (TensorValue * TensorValue)
     if isinstance(lhs, TensorValue) and isinstance(rhs, TensorValue):

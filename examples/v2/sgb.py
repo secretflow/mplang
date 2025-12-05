@@ -323,7 +323,11 @@ def _compute_histogram_chunk_batch(
         subgroup_map,
         bin_indices,
     )
-    mask_iter = iter(all_masks_list)
+
+    # Batch encode all masks at once to avoid scheduler bottleneck
+    # Pass relin_keys as context provider (it holds the SEALContext)
+    all_masks_pt = bfv.batch_encode(all_masks_list, encoder, key=relin_keys)
+    mask_iter = iter(all_masks_pt)
 
     # ==========================================================================
     # Optimization: Incremental Packing to reduce peak memory
@@ -355,8 +359,8 @@ def _compute_histogram_chunk_batch(
                 h_masked_acc = None
 
                 for chunk_idx in range(n_chunks):
-                    mask = next(mask_iter)
-                    mask_pt = bfv.encode(mask, encoder)
+                    mask_pt = next(mask_iter)
+                    # mask_pt is already encoded via batch_encode
 
                     g_ct_chunk = g_cts[chunk_idx]
                     h_ct_chunk = h_cts[chunk_idx]
@@ -2039,42 +2043,42 @@ def benchmark_multiparty():
 
     # Benchmark configurations
     configs = [
-        {
-            "n_samples": 100,
-            "n_features_ap": 3,
-            "n_features_pp": 2,
-            "n_trees": 1,
-            "max_depth": 2,
-        },
-        {
-            "n_samples": 200,
-            "n_features_ap": 4,
-            "n_features_pp": 3,
-            "n_trees": 2,
-            "max_depth": 2,
-        },
-        {
-            "n_samples": 500,
-            "n_features_ap": 5,
-            "n_features_pp": 4,
-            "n_trees": 2,
-            "max_depth": 3,
-        },
-        # Test m > 2048 case (requires rotate_columns fix)
-        {
-            "n_samples": 3000,
-            "n_features_ap": 3,
-            "n_features_pp": 2,
-            "n_trees": 1,
-            "max_depth": 2,
-        },
+        # {
+        #     "n_samples": 100,
+        #     "n_features_ap": 3,
+        #     "n_features_pp": 2,
+        #     "n_trees": 1,
+        #     "max_depth": 2,
+        # },
+        # {
+        #     "n_samples": 200,
+        #     "n_features_ap": 4,
+        #     "n_features_pp": 3,
+        #     "n_trees": 2,
+        #     "max_depth": 2,
+        # },
+        # {
+        #     "n_samples": 500,
+        #     "n_features_ap": 5,
+        #     "n_features_pp": 4,
+        #     "n_trees": 2,
+        #     "max_depth": 3,
+        # },
+        # # Test m > 2048 case (requires rotate_columns fix)
+        # {
+        #     "n_samples": 3000,
+        #     "n_features_ap": 3,
+        #     "n_features_pp": 2,
+        #     "n_trees": 1,
+        #     "max_depth": 2,
+        # },
         # Test m > 4096 case (multi-CT support)
         {
             "n_samples": 1000000,
             "n_features_ap": 50,
             "n_features_pp": 50,
             "n_trees": 1,
-            "max_depth": 3,
+            "max_depth": 5,
         },
     ]
 

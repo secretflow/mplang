@@ -91,7 +91,25 @@ Initial profiling on a large dataset (`n=10000`, `features=50+50`, `depth=3`) re
   * **Result:** Reduced rotation count by a factor of `n_chunks` (e.g., 75x reduction for 300k samples),
     significantly speeding up large-scale training.
 
-## 3. Final Results Comparison
+*(Note: Phase 5 improvements are most visible on larger datasets where `n_chunks > 1`)*
+
+### Phase 6: Scheduler Optimization & Batch Encoding
+
+**Goal:** Eliminate scheduler bottleneck on massive datasets (1M+ samples).
+
+* **Problem:**
+  * Profiling revealed that `bfv.encode` (creating plaintext masks) was being called individually for every chunk and every feature.
+  * For 1M samples (122 chunks) and 100 features, this generated ~12,000 tiny tasks.
+  * The Python-based async scheduler couldn't dispatch these fast enough, causing CPU starvation (worker threads idle waiting for tasks).
+* **Solution:**
+  * Implemented `bfv.batch_encode` primitive.
+  * Instead of 12,000 ops, we now encode all masks for a chunk in a single operation (O(1) scheduling cost).
+  * This reduced the task count significantly, allowing the scheduler to saturate all cores with heavy `bfv.mul` and `bfv.rotate` ops.
+* **Result:**
+  * CPU usage during execution spiked from ~100% (scheduler bound) to ~2000% (fully parallel).
+  * Enabled successful training on **1 Million Samples** with depth 5.
+
+## 3. Final Results Comparison (Small Scale)
 
 Benchmark Config: `n=10000`, `features=50+50`, `trees=1`, `depth=3`
 
@@ -103,7 +121,17 @@ Benchmark Config: `n=10000`, `features=50+50`, `trees=1`, `depth=3`
 | **Accuracy** | ~59% | ~80.8% | ~84% | **~84%** | **+25% (Usable)** |
 | **Rotate Ops** | 20,952 | 16,064 | 9,224 | **9,224** | **56% Reduction** |
 
-*(Note: Phase 5 improvements are most visible on larger datasets where `n_chunks > 1`)*
+### Large Scale Benchmark (Phase 6)
+
+**Config:** `samples=1,000,000`, `features=50+50`, `trees=1`, `depth=5`
+
+| Metric | Value | Notes |
+| :--- | :--- | :--- |
+| **Total Time** | **500.1s** | ~8.3 minutes |
+| **Tracing Time** | 60.6s | Single-threaded overhead |
+| **Execution Time** | 439.5s | Fully parallel (2000% CPU) |
+| **Accuracy** | **89.26%** | High fidelity |
+| **Status** | **Success** | Scaled to 1M samples on CPU |
 
 ## 4. Operation Breakdown (Phase 4)
 

@@ -2213,6 +2213,9 @@ def benchmark_multiparty():
             print(f"    {op_name:<28} {count:>5}")
 
     # Print profiling results
+    if hasattr(host, "profiler"):
+        host.profiler.stop(filename_prefix="sgb_trace")
+
     profiler = registry.get_profiler()
     profiler.print_summary()  # All ops (includes container overhead)
     profiler.print_leaf_summary()  # Leaf ops only (no double-counting)

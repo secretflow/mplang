@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.edsl.interpreter import DagProfiler, Interpreter
 
 
 class WorkerInterpreter(Interpreter):
@@ -43,8 +43,9 @@ class WorkerInterpreter(Interpreter):
         world_size: int,
         communicator: Any,
         spu_endpoints: dict[int, str] | None = None,
+        profiler: DagProfiler | None = None,
     ):
-        super().__init__()
+        super().__init__(name=f"Worker-{rank}", profiler=profiler, trace_pid=rank)
         self.rank = rank
         self.world_size = world_size
         self.communicator: Any = communicator

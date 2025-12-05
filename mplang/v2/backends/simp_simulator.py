@@ -28,6 +28,7 @@ from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
 from mplang.v2.backends.simp_host import SimpHost
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl.graph import Graph
+from mplang.v2.edsl.interpreter import DagProfiler
 
 
 class ThreadCommunicator:
@@ -135,9 +136,16 @@ class SimpSimulator(SimpHost):
         super().__init__(world_size)
         self.use_serde = use_serde
         self.ctx = get_or_create_context(world_size, use_serde=use_serde)
+
+        # Create a shared profiler for all workers
+        self.profiler = DagProfiler(enabled=True)
+        self.profiler.start()
+
         # Create persistent workers (Actors)
         self.workers = [
-            WorkerInterpreter(rank, world_size, self.ctx.comms[rank])
+            WorkerInterpreter(
+                rank, world_size, self.ctx.comms[rank], profiler=self.profiler
+            )
             for rank in range(world_size)
         ]
 

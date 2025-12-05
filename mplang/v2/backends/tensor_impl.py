@@ -20,6 +20,8 @@ Implements execution logic for Tensor primitives.
 from __future__ import annotations
 
 import base64
+import hashlib
+import os
 from typing import Any, ClassVar, cast
 
 import jax
@@ -284,7 +286,8 @@ def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[np.n
 
 
 # Global cache for compiled StableHLO executables
-_STABLEHLO_CACHE: dict[int, Any] = {}
+_STABLEHLO_CACHE: dict[str, Any] = {}
+_CACHE_DIR = os.path.expanduser("~/.cache/mplang/jax_cache")
 
 
 @tensor.run_jax_p.def_impl
@@ -302,19 +305,44 @@ def run_jax_impl(
     # Compile StableHLO
     client = jxt.backend.get_backend()
 
-    # Use hash of code as cache key
+    # Use SHA256 of code as cache key for stability across runs
     # Note: We assume compile_options are constant (num_replicas=1, num_partitions=1)
-    code_hash = hash(stablehlo_code)
+    code_hash = hashlib.sha256(stablehlo_code.encode("utf-8")).hexdigest()
 
     if code_hash in _STABLEHLO_CACHE:
         compiled = _STABLEHLO_CACHE[code_hash]
     else:
         compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
-        try:
-            compiled = client.compile(stablehlo_code, compile_options)
-            _STABLEHLO_CACHE[code_hash] = compiled
-        except Exception as e:
-            raise RuntimeError(f"StableHLO compile failed: {e}") from e
+
+        # Try disk cache
+        cache_path = os.path.join(_CACHE_DIR, f"{code_hash}.pjrt")
+        loaded_from_disk = False
+
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "rb") as f:
+                    serialized = f.read()
+                compiled = client.deserialize_executable(serialized, compile_options)
+                loaded_from_disk = True
+                # print(f"[JAX] Loaded compiled executable from {cache_path}")
+            except Exception as e:
+                print(f"[JAX] Failed to load from disk cache: {e}")
+
+        if not loaded_from_disk:
+            try:
+                compiled = client.compile(stablehlo_code, compile_options)
+                # Save to disk
+                try:
+                    os.makedirs(_CACHE_DIR, exist_ok=True)
+                    with open(cache_path, "wb") as f:
+                        f.write(client.serialize_executable(compiled))
+                    # print(f"[JAX] Saved compiled executable to {cache_path}")
+                except Exception as e:
+                    print(f"[JAX] Failed to save to disk cache: {e}")
+            except Exception as e:
+                raise RuntimeError(f"StableHLO compile failed: {e}") from e
+
+        _STABLEHLO_CACHE[code_hash] = compiled
 
     # Cast inputs to expected types (Boundary Type Guard)
     # This allows users to pass Python ints/floats to functions expecting f32/i32

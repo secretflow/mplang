@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures
+import json
+import os
 import queue
 import threading
+import time
 from typing import TYPE_CHECKING, Any
 
 from mplang.v2.edsl.context import Context
@@ -36,6 +39,140 @@ from mplang.v2.edsl.typing import BaseType
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
+
+
+class DagProfiler:
+    """Profiler for DAG execution metrics and Chrome Tracing."""
+
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+        self.start_time = 0.0
+        self.end_time = 0.0
+        self.active_tasks_samples: list[tuple[float, int]] = []
+        self.queue_size_samples: list[tuple[float, int]] = []
+        self.completed_ops = 0
+        self.total_ops = 0
+
+        # Tracing
+        self.trace_events: list[dict[str, Any]] = []
+        self.op_schedule_times: dict[
+            tuple[int, Any], float
+        ] = {}  # (id(op), namespace) -> ts (us)
+        self.pid = os.getpid()
+
+    def start(self):
+        self.start_time = time.time()
+
+    def stop(self, filename_prefix="dag_trace"):
+        self.end_time = time.time()
+        self.save_trace(filename_prefix)
+
+    def sample(self, active_tasks: int, queue_size: int):
+        now = time.time() - self.start_time
+        self.active_tasks_samples.append((now, active_tasks))
+        self.queue_size_samples.append((now, queue_size))
+
+    def log_schedule(self, op: Any, namespace: Any = None):
+        if not self.enabled:
+            return
+        key = (id(op), namespace)
+        self.op_schedule_times[key] = time.time() * 1e6
+
+    def log_start(
+        self, op: Any, pid: int | None = None, namespace: Any = None
+    ) -> float:
+        if not self.enabled:
+            return 0.0
+        start_ts = time.time() * 1e6
+        if pid is None:
+            pid = self.pid
+
+        # Record scheduling latency (Queue Time)
+        key = (id(op), namespace)
+        if key in self.op_schedule_times:
+            sched_ts = self.op_schedule_times.pop(key)
+            self.trace_events.append({
+                "name": f"Queue: {op.opcode}",
+                "cat": "scheduler",
+                "ph": "X",
+                "ts": sched_ts,
+                "dur": start_ts - sched_ts,
+                "pid": pid,
+                "tid": "SchedulerQueue",
+            })
+        return start_ts
+
+    def log_end(self, op: Any, start_ts: float, pid: int | None = None):
+        if not self.enabled:
+            return
+        end_ts = time.time() * 1e6
+        tid = threading.get_ident()
+        if pid is None:
+            pid = self.pid
+
+        self.trace_events.append({
+            "name": op.opcode,
+            "cat": "op",
+            "ph": "X",
+            "ts": start_ts,
+            "dur": end_ts - start_ts,
+            "pid": pid,
+            "tid": tid,
+            "args": {
+                "opcode": op.opcode,
+            },
+        })
+
+    def save_trace(self, filename_prefix="dag_trace"):
+        if not self.enabled or not self.trace_events:
+            return
+        try:
+            if len(self.trace_events) < 100:
+                return  # Skip small graphs
+
+            # Use unique filename to avoid overwriting
+            timestamp = int(time.time() * 1000)
+            tid = threading.get_ident()
+            filename = f"{filename_prefix}_{timestamp}_{tid}.json"
+
+            with open(filename, "w") as f:
+                json.dump({"traceEvents": self.trace_events}, f)
+            print(f"\n[DagProfiler] Trace saved to {os.path.abspath(filename)}")
+        except Exception as e:
+            print(f"[DagProfiler] Failed to save trace: {e}")
+
+    def print_summary(self):
+        duration = self.end_time - self.start_time
+        if duration <= 0:
+            return
+
+        avg_active = (
+            sum(c for _, c in self.active_tasks_samples)
+            / len(self.active_tasks_samples)
+            if self.active_tasks_samples
+            else 0
+        )
+        max_active = (
+            max(c for _, c in self.active_tasks_samples)
+            if self.active_tasks_samples
+            else 0
+        )
+        avg_queue = (
+            sum(c for _, c in self.queue_size_samples) / len(self.queue_size_samples)
+            if self.queue_size_samples
+            else 0
+        )
+
+        print("\n" + "=" * 80)
+        print("DAG EXECUTION PROFILER")
+        print("=" * 80)
+        print(f"Total Duration: {duration:.3f}s")
+        print(f"Total Ops:      {self.total_ops}")
+        print(f"Throughput:     {self.total_ops / duration:.1f} ops/s")
+        print("-" * 80)
+        print(f"Active Tasks:   Avg={avg_active:.1f}, Max={max_active}")
+        print(f"Ready Queue:    Avg={avg_queue:.1f}")
+        print("=" * 80 + "\n")
 
 
 class AsyncHandle:
@@ -139,7 +276,13 @@ class Interpreter(Context):
         >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
     """
 
-    def __init__(self, executor: concurrent.futures.Executor | None = None) -> None:
+    def __init__(
+        self,
+        executor: concurrent.futures.Executor | None = None,
+        name: str = "Interpreter",
+        profiler: DagProfiler | None = None,
+        trace_pid: int | None = None,
+    ) -> None:
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
         # This serves two purposes:
@@ -149,6 +292,9 @@ class Interpreter(Context):
         self._execution_cache: dict[Any, InterpObject] = {}
         self.executor = executor
         self.async_ops: set[str] = set()
+        self.name = name
+        self.profiler = profiler
+        self.trace_pid = trace_pid
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -421,6 +567,17 @@ class Interpreter(Context):
         """Asynchronous execution with non-blocking DAG scheduling."""
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
+        # Profiler setup
+        if self.profiler:
+            profiler = self.profiler
+            profiler.total_ops += len(graph.operations)
+        else:
+            profiler = DagProfiler()
+            profiler.total_ops = len(graph.operations)
+            profiler.start()
+
+        active_tasks = 0
+
         # 1. Setup State
         # Value -> Runtime Object (initially inputs)
         env = dict(zip(graph.inputs, inputs, strict=True))
@@ -457,7 +614,7 @@ class Interpreter(Context):
 
         # 4. Execution Helper
         def on_op_done(op, result, error=None):
-            nonlocal remaining_ops, error_occurred
+            nonlocal remaining_ops, error_occurred, active_tasks
 
             if error:
                 with lock:
@@ -467,6 +624,10 @@ class Interpreter(Context):
                 return
 
             with lock:
+                if op.opcode in self.async_ops and self.executor:
+                    active_tasks -= 1
+                    # profiler.sample(active_tasks, ready_queue.qsize())
+
                 if error_occurred:
                     return
 
@@ -483,6 +644,9 @@ class Interpreter(Context):
                         for consumer_op in value_to_consumers[out_val]:
                             pending_counts[consumer_op] -= 1
                             if pending_counts[consumer_op] == 0:
+                                profiler.log_schedule(
+                                    consumer_op, namespace=self.trace_pid
+                                )
                                 ready_queue.put(consumer_op)
 
                 # GC Inputs
@@ -497,6 +661,7 @@ class Interpreter(Context):
                     ready_queue.put(None)  # Sentinel
 
         def execute_op(op):
+            nonlocal active_tasks
             # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
             handler = get_impl(op.opcode)
@@ -506,9 +671,18 @@ class Interpreter(Context):
                 )
 
             if op.opcode in self.async_ops and self.executor:
+                with lock:
+                    active_tasks += 1
+                    # profiler.sample(active_tasks, ready_queue.qsize())
+
                 # Submit to executor
                 def task():
-                    return handler(self, op, *args)
+                    start_ts = profiler.log_start(
+                        op, pid=self.trace_pid, namespace=self.trace_pid
+                    )
+                    res = handler(self, op, *args)
+                    profiler.log_end(op, start_ts, pid=self.trace_pid)
+                    return res
 
                 def callback(fut):
                     try:
@@ -522,7 +696,11 @@ class Interpreter(Context):
             else:
                 # Sync execution (run immediately)
                 try:
+                    start_ts = profiler.log_start(
+                        op, pid=self.trace_pid, namespace=self.trace_pid
+                    )
                     res = handler(self, op, *args)
+                    profiler.log_end(op, start_ts, pid=self.trace_pid)
                     on_op_done(op, res)
                 except Exception as e:
                     on_op_done(op, None, error=e)
@@ -535,6 +713,7 @@ class Interpreter(Context):
             pass
 
         for op in initial_ops:
+            profiler.log_schedule(op, namespace=self.trace_pid)
             ready_queue.put(op)
 
         # 6. Main Loop
@@ -549,6 +728,10 @@ class Interpreter(Context):
             execute_op(item)
 
         # 7. Return outputs
+        if not self.profiler:
+            profiler.stop()
+            # profiler.print_summary()
+
         final_results = [env[out] for out in graph.outputs]
         return final_results[0] if len(final_results) == 1 else final_results
 

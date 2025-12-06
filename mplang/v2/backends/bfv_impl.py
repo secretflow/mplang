@@ -394,12 +394,35 @@ def add_impl(
         result_ct = sealapi.Ciphertext()
 
         if lhs.is_cipher and rhs.is_cipher:
+            # Optimization: Handle transparent ciphertexts (zero)
+            if lhs.data.is_transparent():
+                return rhs
+            if rhs.data.is_transparent():
+                return lhs
+
             lhs.ctx.evaluator.add(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif lhs.is_cipher and not rhs.is_cipher:
+            # Optimization: Handle transparent ciphertext
+            if lhs.data.is_transparent():
+                # 0 + Plaintext -> Encrypt(Plaintext)
+                # This is expensive, but necessary for correctness if we want to return a Ciphertext
+                # Alternatively, if we allow returning Plaintext, we could just return rhs.
+                # But BFV add usually expects to return Ciphertext if one input is Ciphertext.
+                # For now, let's encrypt it.
+                new_ct = sealapi.Ciphertext()
+                lhs.ctx.encryptor.encrypt(rhs.data, new_ct)
+                return BFVValue(new_ct, lhs.ctx, is_cipher=True)
+
             lhs.ctx.evaluator.add_plain(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif not lhs.is_cipher and rhs.is_cipher:
+            # Optimization: Handle transparent ciphertext
+            if rhs.data.is_transparent():
+                new_ct = sealapi.Ciphertext()
+                rhs.ctx.encryptor.encrypt(lhs.data, new_ct)
+                return BFVValue(new_ct, rhs.ctx, is_cipher=True)
+
             rhs.ctx.evaluator.add_plain(rhs.data, lhs.data, result_ct)
             return BFVValue(result_ct, rhs.ctx, is_cipher=True)
         else:
@@ -409,12 +432,27 @@ def add_impl(
 
     # Case 2: One is BFVValue (Ciphertext), other is Raw
     if isinstance(lhs, BFVValue) and lhs.is_cipher:
+        # Optimization: Handle transparent ciphertext
+        if lhs.data.is_transparent():
+            # 0 + Raw -> Encrypt(Raw)
+            pt = _ensure_plaintext(lhs.ctx, rhs)
+            new_ct = sealapi.Ciphertext()
+            lhs.ctx.encryptor.encrypt(pt, new_ct)
+            return BFVValue(new_ct, lhs.ctx, is_cipher=True)
+
         pt = _ensure_plaintext(lhs.ctx, rhs)
         result_ct = sealapi.Ciphertext()
         lhs.ctx.evaluator.add_plain(lhs.data, pt, result_ct)
         return BFVValue(result_ct, lhs.ctx, is_cipher=True)
 
     if isinstance(rhs, BFVValue) and rhs.is_cipher:
+        # Optimization: Handle transparent ciphertext
+        if rhs.data.is_transparent():
+            pt = _ensure_plaintext(rhs.ctx, lhs)
+            new_ct = sealapi.Ciphertext()
+            rhs.ctx.encryptor.encrypt(pt, new_ct)
+            return BFVValue(new_ct, rhs.ctx, is_cipher=True)
+
         pt = _ensure_plaintext(rhs.ctx, lhs)
         result_ct = sealapi.Ciphertext()
         rhs.ctx.evaluator.add_plain(rhs.data, pt, result_ct)
@@ -490,26 +528,31 @@ def mul_impl(
             lhs.ctx.evaluator.multiply(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif lhs.is_cipher and not rhs.is_cipher:
+            # Optimization: Check for zero plaintext to avoid expensive exception handling
+            if rhs.data.is_zero():
+                # Return transparent zero ciphertext (no noise, size 0)
+                # SEAL arithmetic ops handle transparent ciphertexts as zero.
+                # We must ensure relinearize/rotate also handle it.
+                return BFVValue(sealapi.Ciphertext(), lhs.ctx, is_cipher=True)
+
             try:
                 lhs.ctx.evaluator.multiply_plain(lhs.data, rhs.data, result_ct)
                 return BFVValue(result_ct, lhs.ctx, is_cipher=True)
             except RuntimeError as e:
-                # SEAL throws "result ciphertext is transparent" when multiplying by a zero plaintext.
-                # This is mathematically valid (Enc(x) * 0 = Enc(0)), but SEAL enforces explicit zero encryption.
-                # We catch this error and return a valid zero ciphertext to maintain operator semantics.
                 if "transparent" in str(e):
-                    lhs.ctx.encryptor.encrypt_zero(result_ct)
-                    return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+                    return BFVValue(sealapi.Ciphertext(), lhs.ctx, is_cipher=True)
                 raise e
         elif not lhs.is_cipher and rhs.is_cipher:
+            # Optimization: Check for zero plaintext
+            if lhs.data.is_zero():
+                return BFVValue(sealapi.Ciphertext(), rhs.ctx, is_cipher=True)
+
             try:
                 rhs.ctx.evaluator.multiply_plain(rhs.data, lhs.data, result_ct)
                 return BFVValue(result_ct, rhs.ctx, is_cipher=True)
             except RuntimeError as e:
-                # See comment above regarding "transparent ciphertext"
                 if "transparent" in str(e):
-                    rhs.ctx.encryptor.encrypt_zero(result_ct)
-                    return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+                    return BFVValue(sealapi.Ciphertext(), rhs.ctx, is_cipher=True)
                 raise e
         else:
             raise NotImplementedError(
@@ -577,6 +620,10 @@ def relinearize_impl(
 ) -> BFVValue:
     # rk is BFVPublicContextValue (same as ciphertext.ctx)
 
+    # Optimization: Handle transparent ciphertext (zero)
+    if ciphertext.data.is_transparent():
+        return ciphertext
+
     # Check if relinearization is needed (size > 2)
     if ciphertext.data.size() > 2:
         new_ct = sealapi.Ciphertext()
@@ -598,6 +645,10 @@ def rotate_impl(
     """Implement rotation using low-level SEAL API directly."""
     steps = op.attrs.get("steps", 0)
     if steps == 0:
+        return ciphertext
+
+    # Optimization: Handle transparent ciphertext (zero)
+    if ciphertext.data.is_transparent():
         return ciphertext
 
     # ciphertext is BFVValue

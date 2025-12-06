@@ -189,3 +189,28 @@ and general execution gaps) has been drastically reduced.
 
 * **Total Time:** **315s** (vs 500s in Phase 6)
 * **Improvement:** ~37% faster than Phase 6.
+
+### Phase 9: JAX Integration & Encoding Optimization
+
+**Goal:** Optimize JAX <-> Python/BFV data transfer and reduce Python overhead in BFV encoding.
+
+* **Device-Resident Tensor (Lazy Transfer):**
+  * **Problem:** `run_jax` was forcing synchronization (`Device -> Host`) for every output, causing massive overhead
+    (e.g., 3.5s out of 4.8s total time for some ops).
+  * **Solution:** Modified `TensorValue` to hold `jax.Array` directly. `run_jax` now accepts and returns JAX arrays without conversion.
+    Data is only transferred to Host when explicitly requested (e.g., by BFV ops).
+  * **Result:** `run_jax` time dropped from ~13.5s to ~3.6s. Consecutive JAX operations now run entirely on device.
+
+* **Fast Encoding (`tolist`):**
+  * **Problem:** `bfv.batch_encode` used Python list comprehension `[int(x) for x in arr]` to convert Numpy arrays to Python lists
+    for the C++ binding. This was slow and CPU-intensive.
+  * **Solution:** Replaced with `arr.tolist()`.
+  * **Result:** Encoding throughput increased by ~3x.
+
+**Current Status (1M samples, depth 5):**
+
+* **Tracing:** 62.07s
+* **Execution:** 261.90s
+* **Total Time:** 323.96s
+* **Note:** While total time is similar (data transfer cost moved from `run_jax` to `batch_encode`), the architecture is now optimized
+  for future JAX-native extensions.

@@ -326,7 +326,21 @@ def _compute_histogram_chunk_batch(
 
     # Batch encode all masks at once to avoid scheduler bottleneck
     # Pass relin_keys as context provider (it holds the SEALContext)
-    all_masks_pt = bfv.batch_encode(all_masks_list, encoder, key=relin_keys)
+    # Optimization: Split batch_encode into smaller chunks to enable parallel execution
+    # in the scheduler (release GIL in C++ backend).
+    # all_masks_list is a tuple of TraceObjects.
+    n_splits = 8
+    chunk_size = (len(all_masks_list) + n_splits - 1) // n_splits
+    chunk_size = max(chunk_size, 1)
+
+    all_masks_pt = []
+    for i in range(0, len(all_masks_list), chunk_size):
+        chunk = all_masks_list[i : i + chunk_size]
+        # bfv.batch_encode returns a tuple of encoded values
+        encoded_chunk = bfv.batch_encode(chunk, encoder, key=relin_keys)
+        all_masks_pt.extend(encoded_chunk)
+
+    all_masks_pt = tuple(all_masks_pt)
     mask_iter = iter(all_masks_pt)
 
     # ==========================================================================

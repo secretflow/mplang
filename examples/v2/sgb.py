@@ -345,18 +345,38 @@ def _compute_histogram_chunk_batch(
     g_packed_flat = []
     h_packed_flat = []
 
+    # Optimization 2: Tree Reduction
+    # Helper to sum a list of ciphertexts using a binary tree structure.
+    # This reduces the dependency chain depth from O(N) to O(log N),
+    # allowing the scheduler to parallelize additions.
+    def tree_sum(items):
+        if not items:
+            return None
+        if len(items) == 1:
+            return items[0]
+
+        while len(items) > 1:
+            new_items = []
+            for i in range(0, len(items), 2):
+                if i + 1 < len(items):
+                    new_items.append(bfv.add(items[i], items[i + 1]))
+                else:
+                    new_items.append(items[i])
+            items = new_items
+        return items[0]
+
     for _node_idx in range(n_nodes):
         # Process features in batches of 'stride'
         for batch_start in range(0, n_features, stride):
             batch_end = min(batch_start + stride, n_features)
 
-            g_packed_acc = None
-            h_packed_acc = None
+            g_rot_list = []
+            h_rot_list = []
 
             for i, _feat_idx in enumerate(range(batch_start, batch_end)):
                 # 1. Compute Histogram for this feature (across chunks)
-                g_masked_acc = None
-                h_masked_acc = None
+                g_masked_list = []
+                h_masked_list = []
 
                 for chunk_idx in range(n_chunks):
                     mask_pt = next(mask_iter)
@@ -368,12 +388,11 @@ def _compute_histogram_chunk_batch(
                     g_masked = bfv.relinearize(bfv.mul(g_ct_chunk, mask_pt), relin_keys)
                     h_masked = bfv.relinearize(bfv.mul(h_ct_chunk, mask_pt), relin_keys)
 
-                    if g_masked_acc is None or h_masked_acc is None:
-                        g_masked_acc = g_masked
-                        h_masked_acc = h_masked
-                    else:
-                        g_masked_acc = bfv.add(g_masked_acc, g_masked)
-                        h_masked_acc = bfv.add(h_masked_acc, h_masked)
+                    g_masked_list.append(g_masked)
+                    h_masked_list.append(h_masked)
+
+                g_masked_acc = tree_sum(g_masked_list)
+                h_masked_acc = tree_sum(h_masked_list)
 
                 # Lazy Aggregation: Aggregate once after summing all chunks
                 # This reduces rotations by a factor of n_chunks
@@ -409,12 +428,11 @@ def _compute_histogram_chunk_batch(
                 g_rot = bfv.rotate(g_masked_pack, -i, galois_keys)
                 h_rot = bfv.rotate(h_masked_pack, -i, galois_keys)
 
-                if g_packed_acc is None or h_packed_acc is None:
-                    g_packed_acc = g_rot
-                    h_packed_acc = h_rot
-                else:
-                    g_packed_acc = bfv.add(g_packed_acc, g_rot)
-                    h_packed_acc = bfv.add(h_packed_acc, h_rot)
+                g_rot_list.append(g_rot)
+                h_rot_list.append(h_rot)
+
+            g_packed_acc = tree_sum(g_rot_list)
+            h_packed_acc = tree_sum(h_rot_list)
 
             g_packed_flat.append(g_packed_acc)
             h_packed_flat.append(h_packed_acc)
@@ -819,8 +837,8 @@ def _find_splits_pps(
     level: int,
     pp_ranks: list[int],
     ap_rank: int,
-    g_cts: list[Any],
-    h_cts: list[Any],
+    g_cts_pps: dict[int, list[Any]],
+    h_cts_pps: dict[int, list[Any]],
     bt_level: Any,
     all_bin_indices: list[Any],
     n_features_per_party: list[int],
@@ -846,9 +864,11 @@ def _find_splits_pps(
     n_level = 2**level
 
     for pp_idx, pp_rank in enumerate(pp_ranks):
-        # Transfer all encrypted CT chunks and keys to PP
-        g_cts_pp = [simp.shuffle_static(g_ct, {pp_rank: ap_rank}) for g_ct in g_cts]
-        h_cts_pp = [simp.shuffle_static(h_ct, {pp_rank: ap_rank}) for h_ct in h_cts]
+        # Retrieve pre-transferred encrypted CT chunks
+        g_cts_pp = g_cts_pps[pp_rank]
+        h_cts_pp = h_cts_pps[pp_rank]
+
+        # Transfer keys and other metadata to PP
         bt_level_pp = simp.shuffle_static(bt_level, {pp_rank: ap_rank})
         encoder_pp = simp.shuffle_static(encoder, {pp_rank: ap_rank})
         rk_pp = simp.shuffle_static(relin_keys, {pp_rank: ap_rank})
@@ -1244,6 +1264,19 @@ def build_tree(
     # Index 0 is AP (unused), 1..k are PPs
     last_level_hists: list[Any] = [None] * (len(pp_ranks) + 1)
 
+    # Optimization 1: Hoist Ciphertext Transfer
+    # Transfer encrypted gradients to all PPs once, before the tree building loop.
+    g_cts_pps: dict[int, list[Any]] = {}
+    h_cts_pps: dict[int, list[Any]] = {}
+
+    for pp_rank in pp_ranks:
+        g_cts_pps[pp_rank] = [
+            simp.shuffle_static(ct, {pp_rank: ap_rank}) for ct in g_cts
+        ]
+        h_cts_pps[pp_rank] = [
+            simp.shuffle_static(ct, {pp_rank: ap_rank}) for ct in h_cts
+        ]
+
     for level in range(max_depth):
         n_level = 2**level
         level_offset = 2**level - 1
@@ -1283,8 +1316,8 @@ def build_tree(
             level,
             pp_ranks,
             ap_rank,
-            g_cts,
-            h_cts,
+            g_cts_pps,
+            h_cts_pps,
             bt_level,
             all_bin_indices,
             n_features_per_party,

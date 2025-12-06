@@ -149,3 +149,25 @@ and general execution gaps) has been drastically reduced.
 ## 5. Future Work
 
 1. **GPU Acceleration:** Use a GPU-backed BFV library (e.g., TenSEAL with CUDA) to accelerate the `Rotate` bottleneck.
+
+### Phase 7: Hoisting & Tree Reduction
+
+**Goal:** Reduce communication frequency and break dependency chains in aggregation.
+
+* **Hoisting Ciphertext Transfer:**
+  * **Problem:** Encrypted gradients (`g_cts`, `h_cts`) were being shuffled to PPs at every tree level.
+  * **Solution:** Moved the transfer outside the tree-building loop. Transferred once, used by all levels.
+  * **Result:** `simp.shuffle` calls reduced from ~1586 to ~602 (for depth 3).
+
+* **Tree Reduction (Tree Sum):**
+  * **Problem:** Aggregation of chunks and features used linear accumulation (`acc = acc + x`), creating long dependency chains that blocked the scheduler.
+  * **Solution:** Implemented `tree_sum` to perform binary tree reduction (`((a+b) + (c+d))`).
+  * **Result:**
+    * `bfv.add` time dropped from ~293s to ~181s (-38%).
+    * `bfv.mul` time dropped from ~328s to ~248s (-24%) due to better scheduling.
+    * **Total Leaf Op Time** dropped from ~730s to ~533s (-27%).
+
+**Benchmark (1M samples, depth 3):**
+
+* **Total Time:** ~94s (Wall clock) / ~533s (Leaf Ops)
+* **Accuracy:** 88.79%

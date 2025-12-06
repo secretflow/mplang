@@ -123,6 +123,34 @@ class DagProfiler:
             },
         })
 
+    def log_custom_event(
+        self,
+        name: str,
+        start_ts: float,
+        end_ts: float,
+        cat: str = "custom",
+        args: dict[str, Any] | None = None,
+    ) -> None:
+        """Log a custom event with explicit start/end timestamps (in seconds)."""
+        if not self.enabled:
+            return
+        tid = threading.get_ident()
+
+        # Convert to microseconds
+        ts_us = start_ts * 1e6
+        dur_us = (end_ts - start_ts) * 1e6
+
+        self.trace_events.append({
+            "name": name,
+            "cat": cat,
+            "ph": "X",
+            "ts": ts_us,
+            "dur": dur_us,
+            "pid": self.pid,
+            "tid": tid,
+            "args": args or {},
+        })
+
     def save_trace(self, filename_prefix="dag_trace"):
         if not self.enabled or not self.trace_events:
             return

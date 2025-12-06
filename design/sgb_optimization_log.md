@@ -171,3 +171,21 @@ and general execution gaps) has been drastically reduced.
 
 * **Total Time:** ~94s (Wall clock) / ~533s (Leaf Ops)
 * **Accuracy:** 88.79%
+
+### Phase 8: Transparent Ciphertext Optimization
+
+**Goal:** Further reduce FHE overhead by skipping operations on "zero" (transparent) ciphertexts.
+
+* **Transparent Ciphertext:**
+  * Implemented in `bfv_impl.py` (`mul`, `add`, `rotate`).
+  * If a ciphertext has size 0 (transparent zero), operations are skipped or simplified (e.g., `x + 0 = x`, `x * 0 = 0`).
+  * **Result:** Significant reduction in actual FHE operations executed, especially for sparse updates or masked-out branches.
+
+* **Negative Results (Reverted):**
+  * **Parallel `batch_encode`:** Attempted to parallelize encoding within chunks. Resulted in severe performance regression (13x slowdown for that op) due to memory bandwidth saturation and cache contention. Reverted to serial.
+  * **Fused `bfv.dot`:** Implemented a fused dot product. While promising for compute-bound tasks, it introduced complexity and was held for now in favor of the simpler `tree_sum` approach which benefits from the transparent optimization.
+
+**Benchmark (1M samples, depth 5):**
+
+* **Total Time:** **315s** (vs 500s in Phase 6)
+* **Improvement:** ~37% faster than Phase 6.

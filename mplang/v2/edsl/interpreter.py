@@ -203,30 +203,6 @@ class DagProfiler:
         print("=" * 80 + "\n")
 
 
-class AsyncHandle:
-    """Handle for an asynchronous execution result."""
-
-    def __init__(self, future: concurrent.futures.Future, index: int | None = None):
-        self._future = future
-        self._index = index
-        self._result = None
-        self._resolved = False
-
-    def resolve(self) -> Any:
-        if not self._resolved:
-            res = self._future.result()
-            if self._index is not None:
-                self._result = res[self._index]
-            else:
-                self._result = res
-            self._resolved = True
-        return self._result
-
-    def __repr__(self) -> str:
-        status = "resolved" if self._resolved else "pending"
-        return f"<AsyncHandle status={status}>"
-
-
 class InterpObject(Object):
     """Interp-time object (during eager execution).
 

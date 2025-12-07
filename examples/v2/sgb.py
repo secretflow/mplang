@@ -2256,7 +2256,6 @@ def benchmark_multiparty():
 
     profiler = registry.get_profiler()
     profiler.print_summary()  # All ops (includes container overhead)
-    profiler.print_leaf_summary()  # Leaf ops only (no double-counting)
 
 
 if __name__ == "__main__":

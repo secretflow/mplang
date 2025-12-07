@@ -59,6 +59,47 @@ def _get_seal_temp_path() -> str:
 
 
 @serde.register_class
+class BFVParamContextValue(WrapValue[ts.Context]):
+    """Wraps TenSEAL context with parameters only (no keys)."""
+
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVParamContextValue"
+
+    def __init__(self, data: Any):
+        super().__init__(data)
+        self.ts_ctx = self._data
+
+        # Extract underlying C++ objects
+        self.seal_ctx = self.ts_ctx.seal_context()
+        self.cpp_ctx = self.seal_ctx.data
+
+        self.evaluator = sealapi.Evaluator(self.cpp_ctx)
+        self.batch_encoder = sealapi.BatchEncoder(self.cpp_ctx)
+
+    def _convert(self, data: Any) -> ts.Context:
+        if isinstance(data, BFVParamContextValue):
+            return data.unwrap()
+        if isinstance(data, ts.Context):
+            return data
+        raise TypeError(f"Expected ts.Context, got {type(data)}")
+
+    def to_json(self) -> dict[str, Any]:
+        # Serialize TenSEAL context (parameters only)
+        serialized = self.ts_ctx.serialize(
+            save_public_key=False,
+            save_secret_key=False,
+            save_galois_keys=False,
+            save_relin_keys=False,
+        )
+        return {"ctx_bytes": base64.b64encode(serialized).decode("ascii")}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> BFVParamContextValue:
+        ctx_bytes = base64.b64decode(data["ctx_bytes"])
+        ts_ctx = ts.context_from(ctx_bytes)
+        return cls(ts_ctx)
+
+
+@serde.register_class
 class BFVPublicContextValue(WrapValue[ts.Context]):
     """Wraps TenSEAL context and exposes low-level SEAL objects (Public only)."""
 
@@ -161,8 +202,11 @@ class BFVValue(Value):
             if os.path.exists(fname):
                 os.unlink(fname)
 
-        # Also need to serialize the context reference
-        ctx_json = serde.to_json(self.ctx)
+        # Serialize context as parameters only (to save bandwidth)
+        # We create a temporary BFVParamContextValue wrapper
+        param_ctx = BFVParamContextValue(self.ctx.ts_ctx)
+        ctx_json = serde.to_json(param_ctx)
+
         return {
             "data_bytes": base64.b64encode(data_bytes).decode("ascii"),
             "is_cipher": self.is_cipher,
@@ -617,9 +661,7 @@ def relinearize_impl(
     # Check if relinearization is needed (size > 2)
     if ciphertext.data.size() > 2:
         new_ct = sealapi.Ciphertext()
-        ciphertext.ctx.evaluator.relinearize(
-            ciphertext.data, ciphertext.ctx.relin_keys, new_ct
-        )
+        ciphertext.ctx.evaluator.relinearize(ciphertext.data, rk.relin_keys, new_ct)
         return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)
 
     return ciphertext
@@ -645,9 +687,7 @@ def rotate_impl(
     # gk is BFVPublicContextValue
 
     new_ct = sealapi.Ciphertext()
-    ciphertext.ctx.evaluator.rotate_rows(
-        ciphertext.data, steps, ciphertext.ctx.galois_keys, new_ct
-    )
+    ciphertext.ctx.evaluator.rotate_rows(ciphertext.data, steps, gk.galois_keys, new_ct)
     return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)
 
 
@@ -660,7 +700,5 @@ def rotate_columns_impl(
 ) -> BFVValue:
     """Swap the two rows in SIMD batching (row 0 <-> row 1)."""
     new_ct = sealapi.Ciphertext()
-    ciphertext.ctx.evaluator.rotate_columns(
-        ciphertext.data, ciphertext.ctx.galois_keys, new_ct
-    )
+    ciphertext.ctx.evaluator.rotate_columns(ciphertext.data, gk.galois_keys, new_ct)
     return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)

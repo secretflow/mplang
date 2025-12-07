@@ -1857,96 +1857,14 @@ class SecureBoost:
         )
         return accuracy
 
-
-# ==============================================================================
-# Main
-# ==============================================================================
-
-
-def main():
-    """Test SecureBoost with simulated data."""
-
-    # Configuration - SIMPLIFIED: Single party only for testing
-    n_samples = 100
-    n_features_ap = 5  # All features at AP
-    n_estimators = 2
-    max_depth = 3
-
-    # Generate synthetic data
-    np.random.seed(42)
-    X_ap = np.random.randn(n_samples, n_features_ap).astype(np.float32)
-    # Binary labels based on linear combination
-    w = np.array([0.5, -0.3, 0.8, 0.2, -0.4])
-    logits = X_ap @ w
-    y = (logits > 0).astype(np.float32)
+    # ==============================================================================
+    # Main
+    # ==============================================================================
 
     print("=" * 60)
-    print("SecureBoost v2 - Simulated Training (Single Party)")
-    print("=" * 60)
-    print(f"Samples: {n_samples}")
-    print(f"Features: AP={n_features_ap}")
-    print(f"Trees: {n_estimators}, Max Depth: {max_depth}")
-    print()
-
-    # Import implementations to register them
-    import mplang.v2.backends.tensor_impl
-    import mplang.v2.edsl as el
-    from mplang.v2.backends.simp_simulator import SimpSimulator
-
-    # Ensure backend implementations are loaded
-    _ = mplang.v2.backends.tensor_impl
-
-    with el.Tracer() as tracer:
-        # Put data on single party
-        data_ap = simp.pcall_static((0,), lambda: tensor.constant(X_ap))
-        y_data = simp.pcall_static((0,), lambda: tensor.constant(y))
-
-        # Create and fit model with NO passive parties
-        model = SecureBoost(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            learning_rate=0.1,
-            max_bin=8,
-            ap_rank=0,
-            pp_ranks=[],  # No passive parties
-        )
-
-        print("Training...")
-        model.fit(
-            [data_ap],  # Only AP's data
-            y_data,
-            n_samples=n_samples,
-            n_features_per_party=[n_features_ap],  # Only AP's features
-        )
-        print("Training complete!")
-
-        # Predict
-        print("\nPredicting...")
-        y_prob = model.predict([data_ap], n_samples=n_samples)
-        print(f"Predictions type: {y_prob.type}")
-
-        tracer.finalize(y_prob)
-
-    # Execute
-    print("\nExecuting graph...")
-    graph = tracer.graph
-    host = SimpSimulator(world_size=1)  # Single party
-    result = host.evaluate_graph(graph, [])
-
-    # Calculate accuracy
-    y_pred_probs = result[0].unwrap()
-    y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
-    accuracy = np.mean(y_pred_class == y)
-    print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
-    print(f"True labels (first 10): {y[:10]}")
-    print(f"Training Accuracy: {accuracy:.4f}")
-
-    print("\n" + "=" * 60)
-    print("Test completed successfully!")
-    print("=" * 60)
 
 
-def main_multiparty():
+def run_sgb_demo(sim):
     """Test SecureBoost with 2 parties, enabling BFV FHE.
 
     AP (party 0) holds labels + some features.
@@ -1957,8 +1875,7 @@ def main_multiparty():
     2. AP receives encrypted histogram, multiplies with gradient mask
     3. PP decrypts and aggregates
     """
-    import mplang.v2.edsl as el
-    from mplang.v2.backends.simp_simulator import SimpSimulator
+    import mplang.v2 as mp
 
     print("=" * 60)
     print("Multi-Party SecureBoost Test (with BFV FHE)")
@@ -1997,11 +1914,11 @@ def main_multiparty():
     n_estimators = 2  # Small for test
     max_depth = 2
 
-    with el.Tracer() as tracer:
+    def job():
         # Put data on respective parties
-        data_ap = simp.pcall_static((0,), lambda: tensor.constant(X_ap))
-        data_pp = simp.pcall_static((1,), lambda: tensor.constant(X_pp))
-        y_data = simp.pcall_static((0,), lambda: tensor.constant(y))
+        data_ap = mp.put("P0", X_ap)
+        data_pp = mp.put("P1", X_pp)
+        y_data = mp.put("P0", y)
 
         # Create model with passive party
         model = SecureBoost(
@@ -2026,17 +1943,16 @@ def main_multiparty():
         print("\nPredicting...")
         y_prob = model.predict([data_ap, data_pp], n_samples=n_samples)
         print(f"Predictions type: {y_prob.type}")
-
-        tracer.finalize(y_prob)
+        return y_prob
 
     # Execute with 2 parties
     print("\nExecuting graph with 2 parties...")
-    graph = tracer.graph
-    host = SimpSimulator(world_size=2)
-    result = host.evaluate_graph(graph, [])
+    y_prob_obj = mp.evaluate(sim, job)
 
     # Calculate accuracy
-    y_pred_probs = result[0].unwrap()
+    y_pred_probs = mp.fetch(sim, y_prob_obj)
+    if isinstance(y_pred_probs, list):
+        y_pred_probs = y_pred_probs[0]
     y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
     accuracy = np.mean(y_pred_class == y)
     print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
@@ -2048,13 +1964,12 @@ def main_multiparty():
     print("=" * 60)
 
 
-def benchmark_multiparty():
+def run_sgb_bench(sim):
     """Benchmark SecureBoost with BFV FHE for performance analysis."""
     import time
 
-    import mplang.v2.edsl as el
+    import mplang.v2 as mp
     from mplang.v2.backends import load_backend
-    from mplang.v2.backends.simp_simulator import SimpSimulator
 
     print("=" * 70)
     print("SecureBoost v2 - Multi-Party FHE Performance Benchmark")
@@ -2076,38 +1991,9 @@ def benchmark_multiparty():
 
     # Benchmark configurations
     configs = [
-        # {
-        #     "n_samples": 100,
-        #     "n_features_ap": 3,
-        #     "n_features_pp": 2,
-        #     "n_trees": 1,
-        #     "max_depth": 2,
-        # },
-        # {
-        #     "n_samples": 200,
-        #     "n_features_ap": 4,
-        #     "n_features_pp": 3,
-        #     "n_trees": 2,
-        #     "max_depth": 2,
-        # },
-        # {
-        #     "n_samples": 500,
-        #     "n_features_ap": 5,
-        #     "n_features_pp": 4,
-        #     "n_trees": 2,
-        #     "max_depth": 3,
-        # },
-        # # Test m > 2048 case (requires rotate_columns fix)
-        # {
-        #     "n_samples": 3000,
-        #     "n_features_ap": 3,
-        #     "n_features_pp": 2,
-        #     "n_trees": 1,
-        #     "max_depth": 2,
-        # },
         # Test m > 4096 case (multi-CT support)
         {
-            "n_samples": 1000000,
+            "n_samples": 2000,
             "n_features_ap": 50,
             "n_features_pp": 50,
             "n_trees": 1,
@@ -2140,13 +2026,10 @@ def benchmark_multiparty():
         X_ap = X_all[:, :n_features_ap]
         X_pp = X_all[:, n_features_ap:]
 
-        # Measure tracing time
-        t0 = time.perf_counter()
-
-        with el.Tracer() as tracer:
-            data_ap = simp.pcall_static((0,), lambda: tensor.constant(X_ap))
-            data_pp = simp.pcall_static((1,), lambda: tensor.constant(X_pp))
-            y_data = simp.pcall_static((0,), lambda: tensor.constant(y))
+        def job():
+            data_ap = mp.put("P0", X_ap)
+            data_pp = mp.put("P1", X_pp)
+            y_data = mp.put("P0", y)
 
             model = SecureBoost(
                 n_estimators=n_trees,
@@ -2165,43 +2048,28 @@ def benchmark_multiparty():
             )
 
             y_prob = model.predict([data_ap, data_pp], n_samples=n_samples)
-            tracer.finalize(y_prob)
+            return y_prob
 
+        # Measure tracing time
+        t0 = time.perf_counter()
+        traced = mp.compile(sim, job)
         trace_time = time.perf_counter() - t0
-        graph = tracer.graph
+
+        graph = traced.graph
         n_ops = len(graph.operations)
 
         print(f"  Tracing:    {trace_time:.3f}s ({n_ops} ops)")
 
         # Measure execution time
         t0 = time.perf_counter()
-        host = SimpSimulator(world_size=2)
 
-        # Enable multi-threaded BFV execution
-        import concurrent.futures
-        import os
-
-        max_workers = os.cpu_count() or 4
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-        async_ops = {
-            "bfv.add",
-            "bfv.mul",
-            "bfv.rotate",
-            "bfv.batch_encode",
-            "bfv.relinearize",
-            "bfv.encrypt",
-            "bfv.decrypt",
-        }
-        host.set_worker_executor(executor, async_ops)
-
-        result = host.evaluate_graph(graph, [])
+        y_prob_obj = mp.evaluate(sim, traced)
         exec_time = time.perf_counter() - t0
 
-        # Shutdown executor
-        executor.shutdown(wait=False)
-
         # Calculate accuracy
-        y_pred_probs = result[0].unwrap()
+        y_pred_probs = mp.fetch(sim, y_prob_obj)
+        if isinstance(y_pred_probs, list):
+            y_pred_probs = y_pred_probs[0]
         y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
         accuracy = np.mean(y_pred_class == y)
 
@@ -2251,24 +2119,29 @@ def benchmark_multiparty():
             print(f"    {op_name:<28} {count:>5}")
 
     # Print profiling results
-    if hasattr(host, "profiler"):
-        host.profiler.stop(filename_prefix="sgb_trace")
+    if hasattr(sim, "backend") and getattr(sim.backend, "profiler", None) is not None:
+        sim.backend.profiler.stop(filename_prefix="sgb_trace")
 
     profiler = registry.get_profiler()
     profiler.print_summary()  # All ops (includes container overhead)
 
 
+__mp_main__ = run_sgb_demo
+
+
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--multiparty":
-        main_multiparty()
-    elif len(sys.argv) > 1 and sys.argv[1] == "--benchmark":
-        benchmark_multiparty()
+    import mplang.v2 as mp
+
+    run_bench = False
+    if len(sys.argv) > 1 and sys.argv[1] == "--benchmark":
+        run_bench = True
+
+    # Use high-level Simulator API
+    sim = mp.Simulator.simple(2)
+
+    if run_bench:
+        run_sgb_bench(sim)
     else:
-        print("Usage:")
-        print("  python sgb.py --multiparty   # Multi-party test with BFV FHE")
-        print("  python sgb.py --benchmark    # Performance benchmark")
-        print()
-        # Default to multiparty mode
-        main_multiparty()
+        run_sgb_demo(sim)

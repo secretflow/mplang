@@ -220,7 +220,10 @@ class Driver:
 
 
 def evaluate(
-    sim: Simulator | Driver, fn: Callable[..., Any], *args: Any, **kwargs: Any
+    sim: Simulator | Driver,
+    fn: Callable[..., Any] | TracedFunction,
+    *args: Any,
+    **kwargs: Any,
 ) -> Any:
     """Evaluate a function using the simulator or driver.
 
@@ -235,7 +238,15 @@ def evaluate(
     Returns:
         The result of the function evaluation.
     """
+    from mplang.v2.edsl.tracer import TracedFunction
+
     with sim:
+        if isinstance(fn, TracedFunction):
+            inputs = fn.prepare_inputs(*args, **kwargs)
+            interpreter = sim.backend
+            raw_result = interpret(fn.graph, inputs, interpreter)
+            return fn.reconstruct_outputs(raw_result)
+
         return fn(*args, **kwargs)
 
 

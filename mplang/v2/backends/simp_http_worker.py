@@ -76,6 +76,7 @@ class HttpCommunicator:
             max_workers=world_size, thread_name_prefix=f"comm_send_{rank}"
         )
         self._pending_sends: list[concurrent.futures.Future[None]] = []
+        self.client = httpx.Client(timeout=None)
 
     def send(self, to: int, key: str, data: Any) -> None:
         """Send data to another rank asynchronously."""
@@ -89,9 +90,7 @@ class HttpCommunicator:
         # Use secure JSON serialization
         payload = serde.dumps_b64(data)
         try:
-            resp = httpx.put(
-                url, json={"data": payload, "from_rank": self.rank}, timeout=60.0
-            )
+            resp = self.client.put(url, json={"data": payload, "from_rank": self.rank})
             resp.raise_for_status()
         except Exception as e:
             logger.error(f"Rank {self.rank} failed to send to {to}: {e}")
@@ -126,6 +125,7 @@ class HttpCommunicator:
         """Shutdown the send executor."""
         self.wait_pending_sends()
         self._send_executor.shutdown(wait=True)
+        self.client.close()
 
 
 class ExecRequest(BaseModel):

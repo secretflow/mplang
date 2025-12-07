@@ -50,3 +50,19 @@ class WorkerInterpreter(Interpreter):
         self.world_size = world_size
         self.communicator: Any = communicator
         self.spu_endpoints = spu_endpoints
+
+        # Enable multi-threaded execution for BFV ops by default
+        import concurrent.futures
+        import os
+
+        max_workers = os.cpu_count() or 4
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self.async_ops = {
+            "bfv.add",
+            "bfv.mul",
+            "bfv.rotate",
+            "bfv.batch_encode",
+            "bfv.relinearize",
+            "bfv.encrypt",
+            "bfv.decrypt",
+        }

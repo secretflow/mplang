@@ -65,6 +65,7 @@ class SimpHttpDriver(SimpHost):
         super().__init__(world_size)
         self.endpoints = endpoints
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
+        self.client = httpx.Client(timeout=None)
 
     def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         """Submit graph execution to a remote worker."""
@@ -85,10 +86,9 @@ class SimpHttpDriver(SimpHost):
         inputs_b64 = serde.dumps_b64(inputs)
 
         try:
-            resp = httpx.post(
+            resp = self.client.post(
                 url,
                 json={"graph": graph_b64, "inputs": inputs_b64},
-                timeout=None,  # Execution might take long
             )
             resp.raise_for_status()
             data = resp.json()
@@ -102,3 +102,4 @@ class SimpHttpDriver(SimpHost):
         """Shutdown the driver."""
         if self.executor:
             self.executor.shutdown()
+        self.client.close()

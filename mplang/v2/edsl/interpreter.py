@@ -151,7 +151,12 @@ class DagProfiler:
             "args": args or {},
         })
 
-    def save_trace(self, filename_prefix: str = "dag_trace") -> None:
+    def save_trace(
+        self,
+        filename_prefix: str = "dag_trace",
+        job_id: str | None = None,
+        rank: int | None = None,
+    ) -> None:
         if not self.enabled or not self.trace_events:
             return
         try:
@@ -159,9 +164,14 @@ class DagProfiler:
                 return  # Skip small graphs
 
             # Use unique filename to avoid overwriting
-            timestamp = int(time.time() * 1000)
-            tid = threading.get_ident()
-            filename = f"{filename_prefix}_{timestamp}_{tid}.json"
+            if job_id:
+                # Format: trace_<job_id>_rank_<rank>.json
+                rank_str = f"_rank_{rank}" if rank is not None else ""
+                filename = f"trace_{job_id}{rank_str}.json"
+            else:
+                timestamp = int(time.time() * 1000)
+                tid = threading.get_ident()
+                filename = f"{filename_prefix}_{timestamp}_{tid}.json"
 
             with open(filename, "w") as f:
                 json.dump({"traceEvents": self.trace_events}, f)
@@ -496,7 +506,9 @@ class Interpreter(Context):
             return obj
 
     # TODO: change output sigature to list[Any]
-    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+    def evaluate_graph(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Execute a Graph IR with runtime data.
 
         Can be overridden by subclasses to implement remote execution or compilation.
@@ -504,16 +516,19 @@ class Interpreter(Context):
         Args:
             graph: Finalized Graph IR to execute
             inputs: Runtime objects corresponding to graph.inputs (positional)
+            job_id: Optional unique ID for this execution job (for profiling/tracing).
 
         Returns:
             Runtime execution results corresponding to graph.outputs
         """
         if self.executor:
-            return self._evaluate_graph_async(graph, inputs)
+            return self._evaluate_graph_async(graph, inputs, job_id)
         else:
-            return self._evaluate_graph_sync(graph, inputs)
+            return self._evaluate_graph_sync(graph, inputs, job_id)
 
-    def _evaluate_graph_sync(self, graph: Graph, inputs: list[Any]) -> Any:
+    def _evaluate_graph_sync(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Synchronous execution (Baseline)."""
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
@@ -562,12 +577,17 @@ class Interpreter(Context):
                     env[out_val] = res
 
         # Return outputs
+        if self.profiler and job_id:
+            self.profiler.save_trace(job_id=job_id, rank=self.trace_pid)
+
         if len(graph.outputs) == 1:
             return env[graph.outputs[0]]
         else:
             return [env[out] for out in graph.outputs]
 
-    def _evaluate_graph_async(self, graph: Graph, inputs: list[Any]) -> Any:
+    def _evaluate_graph_async(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Asynchronous execution with non-blocking DAG scheduling."""
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
@@ -735,6 +755,9 @@ class Interpreter(Context):
         if not self.profiler:
             profiler.stop()
             # profiler.print_summary()
+
+        if self.profiler and job_id:
+            self.profiler.save_trace(job_id=job_id, rank=self.trace_pid)
 
         final_results = [env[out] for out in graph.outputs]
         return final_results[0] if len(final_results) == 1 else final_results

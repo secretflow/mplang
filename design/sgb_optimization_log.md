@@ -214,3 +214,37 @@ and general execution gaps) has been drastically reduced.
 * **Total Time:** 323.96s
 * **Note:** While total time is similar (data transfer cost moved from `run_jax` to `batch_encode`), the architecture is now optimized
   for future JAX-native extensions.
+
+### Phase 10: Distributed Profiling & Driver Mode
+
+**Goal:** Validate performance in a realistic distributed setting (Driver + Workers) and enable detailed profiling.
+
+* **Driver Mode Benchmark:**
+  * Ran the 1M sample benchmark using `mplang.v2.cli` to simulate a real cluster environment (Driver + 2 Workers).
+  * **Command:**
+
+    ```bash
+    # Start cluster
+    nohup uv run -m mplang.v2.cli up -w 2 > /tmp/mplang_up.log 2>&1 &
+
+    # Run benchmark
+    uv run -m mplang.v2.cli run -f examples/v2/sgb.py --entry run_sgb_bench -w 2
+    ```
+
+  * **Result:**
+    * **Tracing:** 61.39s
+    * **Execution:** 376.87s
+    * **Total:** 438.26s
+    * **Accuracy:** 89.26%
+    * **Note:** Execution is slightly slower than local simulation due to HTTP communication overhead (localhost loopback), but confirms the system scales correctly in distributed mode.
+
+* **Distributed Profiling:**
+  * Implemented `job_id` propagation to link Driver and Worker traces.
+  * Added `mplang.v2.cli trace merge` tool to combine multi-party traces into a single Perfetto view.
+  * **Command:**
+
+    ```bash
+    uv run -m mplang.v2.cli trace merge "trace_*.json" -o sgb_1m_merged.json
+    ```
+
+  * **Visualization:** The merged trace clearly shows the interaction between Party 0 and Party 1, with communication events (`comm.send`) annotated with data size.

@@ -46,8 +46,15 @@ class SimpHost(Interpreter):
         super().__init__()
         self.world_size = world_size
 
-    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+    def evaluate_graph(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Execute graph by distributing it to all parties."""
+        import uuid
+
+        if job_id is None:
+            job_id = str(uuid.uuid4())
+
         # inputs: list of runtime objects (HostVar or constant), matching graph.inputs order
 
         futures = []
@@ -60,7 +67,7 @@ class SimpHost(Interpreter):
                 else:
                     party_inputs.append(runtime_obj)
 
-            futures.append(self._submit(rank, graph, party_inputs))
+            futures.append(self._submit(rank, graph, party_inputs, job_id=job_id))
 
         results = self._collect(futures)
 
@@ -80,13 +87,16 @@ class SimpHost(Interpreter):
                 transposed.append(HostVar([res[i] for res in results]))
             return transposed
 
-    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+    def _submit(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Submit a graph execution to a specific rank.
 
         Args:
             rank: The target party rank.
             graph: The graph to execute.
             inputs: The inputs for the graph.
+            job_id: Optional unique ID for this execution job.
 
         Returns:
             A future or handle representing the asynchronous execution.

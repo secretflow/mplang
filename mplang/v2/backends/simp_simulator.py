@@ -157,8 +157,12 @@ class SimpSimulator(SimpHost):
             worker.executor = executor
             worker.async_ops = async_ops
 
-    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
-        return self.ctx.executor.submit(self._run_party, rank, graph, inputs)
+    def _submit(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
+        return self.ctx.executor.submit(
+            self._run_party, rank, graph, inputs, job_id=job_id
+        )
 
     def _collect(self, futures: list[Any]) -> list[Any]:
         # Wait for all to complete, or the first exception
@@ -181,13 +185,15 @@ class SimpSimulator(SimpHost):
         # implies ALL_COMPLETED if no exception occurs)
         return [f.result() for f in futures]
 
-    def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+    def _run_party(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         worker = self.workers[rank]
         if not isinstance(graph, Graph):
             raise TypeError(
                 f"SimpSimulator only supports executing Graph tasks, got {type(graph)!r}"
             )
-        return worker.evaluate_graph(graph, inputs)
+        return worker.evaluate_graph(graph, inputs, job_id=job_id)
 
     def shutdown(self, wait: bool = True) -> None:
         global _SIM_CONTEXT

@@ -38,6 +38,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
+import time
 from typing import Any
 
 import httpx
@@ -51,6 +52,7 @@ from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
+from mplang.v2.edsl.interpreter import DagProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +68,17 @@ class HttpCommunicator:
         endpoints: HTTP endpoints for all workers
     """
 
-    def __init__(self, rank: int, world_size: int, endpoints: list[str]):
+    def __init__(
+        self,
+        rank: int,
+        world_size: int,
+        endpoints: list[str],
+        profiler: DagProfiler | None = None,
+    ):
         self.rank = rank
         self.world_size = world_size
         self.endpoints = endpoints
+        self.profiler = profiler
         self._mailbox: dict[str, Any] = {}
         self._cond = threading.Condition()
         self._send_executor = concurrent.futures.ThreadPoolExecutor(
@@ -89,9 +98,31 @@ class HttpCommunicator:
         logger.debug(f"Rank {self.rank} sending to {to} key={key}")
         # Use secure JSON serialization
         payload = serde.dumps_b64(data)
+        size_bytes = len(payload)
+
+        # Log to profiler
+        if self.profiler:
+            self.profiler.log_custom_event(
+                name="comm.send",
+                start_ts=time.time(),
+                end_ts=time.time(),  # Instant event for size? Or measure duration?
+                cat="comm",
+                args={"to": to, "key": key, "bytes": size_bytes},
+            )
+
         try:
+            t0 = time.time()
             resp = self.client.put(url, json={"data": payload, "from_rank": self.rank})
             resp.raise_for_status()
+            duration = time.time() - t0
+            if self.profiler:
+                self.profiler.log_custom_event(
+                    name="comm.send_req",
+                    start_ts=t0,
+                    end_ts=t0 + duration,
+                    cat="comm",
+                    args={"to": to, "key": key, "bytes": size_bytes},
+                )
         except Exception as e:
             logger.error(f"Rank {self.rank} failed to send to {to}: {e}")
             raise RuntimeError(f"Failed to send to {to} ({url}): {e}") from e
@@ -133,6 +164,7 @@ class ExecRequest(BaseModel):
 
     graph: str
     inputs: str
+    job_id: str | None = None
 
 
 class CommRequest(BaseModel):
@@ -166,15 +198,20 @@ def create_worker_app(
     import asyncio
 
     app = FastAPI(title=f"SIMP Worker {rank}")
-    comm = HttpCommunicator(rank, world_size, endpoints)
-    worker = WorkerInterpreter(rank, world_size, comm, spu_endpoints)
+
+    # Enable profiling by default for now (or make it configurable)
+    profiler = DagProfiler(enabled=True)
+    profiler.start()
+
+    comm = HttpCommunicator(rank, world_size, endpoints, profiler=profiler)
+    worker = WorkerInterpreter(rank, world_size, comm, spu_endpoints, profiler=profiler)
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
     )
 
-    def _do_execute(graph: Graph, inputs: list[Any]) -> Any:
+    def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
         """Execute graph in worker thread."""
-        result = worker.evaluate_graph(graph, inputs)
+        result = worker.evaluate_graph(graph, inputs, job_id=job_id)
         comm.wait_pending_sends()
         return result
 
@@ -187,7 +224,9 @@ def create_worker_app(
             graph = serde.loads_b64(req.graph)
             inputs = serde.loads_b64(req.inputs)
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(exec_pool, _do_execute, graph, inputs)
+            result = await loop.run_in_executor(
+                exec_pool, _do_execute, graph, inputs, req.job_id
+            )
             return {"result": serde.dumps_b64(result)}
         except Exception as e:
             logger.error(f"Worker {rank} exec failed: {e}")

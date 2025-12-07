@@ -34,9 +34,12 @@ Examples:
 """
 
 import argparse
+import glob
 import importlib.util
+import json
 import multiprocessing
 import os
+import re
 import signal
 import sys
 from collections.abc import Callable
@@ -352,6 +355,68 @@ def cmd_run(args: argparse.Namespace) -> None:
             driver.shutdown()
 
 
+def cmd_trace_merge(args: argparse.Namespace) -> None:
+    """Merge multiple Chrome Trace JSON files into a single file."""
+    pattern = args.pattern
+    output_file = args.output
+
+    files = glob.glob(pattern)
+    if not files:
+        print(f"No files found matching pattern: {pattern}")
+        sys.exit(1)
+
+    print(f"Found {len(files)} trace files.")
+
+    merged_events = []
+
+    # Regex to extract rank from filename if present (e.g., trace_..._rank_0.json)
+    rank_pattern = re.compile(r"_rank_(\d+)\.json$")
+
+    for fname in files:
+        print(f"Processing {fname}...")
+        try:
+            with open(fname) as f:
+                data = json.load(f)
+                events = data.get("traceEvents", [])
+
+                # Determine rank/pid offset
+                match = rank_pattern.search(fname)
+                if match:
+                    rank = int(match.group(1))
+                    # Remap PID: rank 0 -> 1000, rank 1 -> 2000, etc.
+                    # Or just use rank as PID if it's small enough, but Perfetto likes PIDs
+                    pid_offset = (rank + 1) * 10000
+                else:
+                    pid_offset = 0
+
+                for event in events:
+                    # Remap PID
+                    if "pid" in event:
+                        # If original PID is present, we shift it to avoid collision
+                        # between different processes on different machines that might have same PID
+                        original_pid = event["pid"]
+                        # Simple remapping: new_pid = offset + (original_pid % 10000)
+                        # This preserves thread grouping within a rank
+                        event["pid"] = pid_offset + (original_pid % 10000)
+
+                    # Add rank info to args if not present
+                    if match:
+                        event_args = event.get("args", {})
+                        event_args["rank"] = rank
+                        event["args"] = event_args
+
+                    merged_events.append(event)
+
+        except Exception as e:
+            print(f"Error processing {fname}: {e}")
+
+    # Write merged file
+    with open(output_file, "w") as f:
+        json.dump({"traceEvents": merged_events}, f)
+
+    print(f"Successfully merged {len(merged_events)} events into {output_file}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="MPLang2 cluster and job CLI",
@@ -432,6 +497,21 @@ def main() -> None:
         help="Arguments passed to the entry function",
     )
 
+    # 'trace' subcommand
+    trace_parser = subparsers.add_parser("trace", help="Trace utilities")
+    trace_subparsers = trace_parser.add_subparsers(
+        dest="trace_command", help="Trace commands"
+    )
+
+    # 'trace merge'
+    merge_parser = trace_subparsers.add_parser("merge", help="Merge trace files")
+    merge_parser.add_argument(
+        "pattern", help="Glob pattern for trace files (e.g. 'trace_*.json')"
+    )
+    merge_parser.add_argument(
+        "-o", "--output", default="merged_trace.json", help="Output filename"
+    )
+
     args = parser.parse_args()
 
     if args.command == "config":
@@ -439,6 +519,11 @@ def main() -> None:
             cmd_config_gen(args)
         else:
             config_parser.print_help()
+    elif args.command == "trace":
+        if args.trace_command == "merge":
+            cmd_trace_merge(args)
+        else:
+            trace_parser.print_help()
     elif args.command == "worker":
         cmd_worker(args)
     elif args.command == "up":

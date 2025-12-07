@@ -1993,7 +1993,7 @@ def run_sgb_bench(sim):
     configs = [
         # Test m > 4096 case (multi-CT support)
         {
-            "n_samples": 2000,
+            "n_samples": 1000000,
             "n_features_ap": 50,
             "n_features_pp": 50,
             "n_trees": 1,

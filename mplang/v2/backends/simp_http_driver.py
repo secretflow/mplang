@@ -68,6 +68,7 @@ class SimpHttpDriver(SimpHost):
 
     def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
         """Submit graph execution to a remote worker."""
+        assert self.executor is not None
         return self.executor.submit(self._execute_on_worker, rank, graph, inputs)
 
     def _collect(self, futures: list[Any]) -> list[Any]:
@@ -99,4 +100,5 @@ class SimpHttpDriver(SimpHost):
 
     def shutdown(self) -> None:
         """Shutdown the driver."""
-        self.executor.shutdown()
+        if self.executor:
+            self.executor.shutdown()

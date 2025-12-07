@@ -23,7 +23,7 @@ import base64
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import numpy as np
 import tenseal as ts
@@ -275,35 +275,23 @@ def encode_impl(
 def batch_encode_impl(
     interpreter: Interpreter,
     op: Operation,
-    *args,
+    *args: Value,
 ) -> tuple[BFVValue | TensorValue, ...]:
-    # args will be (t1, t2, ..., tn, encoder, [key])
+    # args will be (t1, t2, ..., tn, encoder, key)
     # We need to separate tensors from encoder and key
 
-    # Check if last argument is key (BFVPublicContextValue)
-    has_key = isinstance(args[-1], BFVPublicContextValue)
-
-    if has_key:
-        key = args[-1]
-        _encoder = args[-2]
-        tensors = args[:-2]
-    else:
-        key = None
-        _encoder = args[-1]
-        tensors = args[:-1]
-
-    if key is None:
-        # Fallback to lazy wrapping if no key provided
-        return tuple(TensorValue.wrap(np.asarray(t.unwrap())) for t in tensors)
+    key = args[-1]
+    _encoder = args[-2]
+    tensors = args[:-2]
 
     # Eager encoding using key.ctx
     # key is BFVPublicContextValue (or BFVSecretContextValue)
-    ctx = key
+    ctx = cast(BFVPublicContextValue, key)
 
     results = []
     for t in tensors:
         pt = sealapi.Plaintext()
-        arr = t.unwrap()
+        arr = cast(TensorValue, t).unwrap()
         # Ensure 1D list of ints
         # Optimization: Use tolist() instead of list comprehension for 3x speedup
         vec = arr.flatten().tolist()

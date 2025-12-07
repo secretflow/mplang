@@ -89,7 +89,8 @@ res = bfv.decode(pt_res, encoder)  # Returns Tensor
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Literal
+from collections.abc import Sequence
+from typing import Any, ClassVar, Literal, cast
 
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
@@ -333,7 +334,7 @@ def _encode_ae(tensor: elt.TensorType, encoder: EncoderType) -> PlaintextType:
 def _batch_encode_trace(
     tensors: list[el.Object] | tuple[el.Object],
     encoder: el.Object,
-    key: el.Object = None,
+    key: el.Object,
 ) -> tuple[el.Object, ...]:
     from mplang.v2.edsl.tracer import TraceObject, Tracer
 
@@ -344,16 +345,16 @@ def _batch_encode_trace(
     # 1. Infer types
     tensor_types = tuple(t.type for t in tensors)
     encoder_type = encoder.type
-    key_type = key.type if key else None
+    key_type = key.type
 
-    output_types = _batch_encode_ae(tensor_types, encoder_type, key_type)
+    output_types = _infer_batch_encode_output_types(
+        tensor_types, encoder_type, key_type
+    )
 
     # 2. Collect inputs
-    inputs = [*list(tensors), encoder]
-    if key:
-        inputs.append(key)
+    inputs = [*list(tensors), encoder, key]
 
-    input_values = [obj._graph_value for obj in inputs]
+    input_values = [cast(TraceObject, obj)._graph_value for obj in inputs]
 
     # 3. Add Op
     result_values = ctx.graph.add_op(
@@ -370,10 +371,11 @@ def _batch_encode_trace(
     )
 
 
-# Keep abstract eval for type inference logic reuse
-@batch_encode_p.def_abstract_eval
-def _batch_encode_ae(
-    tensors: tuple[elt.TensorType, ...], encoder: EncoderType, key: KeyType = None
+# Helper for type inference logic reuse
+def _infer_batch_encode_output_types(
+    tensors: Sequence[elt.BaseType],
+    encoder: elt.BaseType,
+    key: elt.BaseType,
 ) -> tuple[PlaintextType, ...]:
     """Pack multiple 1D Tensors of integers into BFV Plaintexts (Batched)."""
     if not isinstance(encoder, EncoderType):
@@ -575,11 +577,9 @@ def encode(tensor: el.Object, encoder: el.Object) -> el.Object:
 def batch_encode(
     tensors: list[el.Object] | tuple[el.Object],
     encoder: el.Object,
-    key: el.Object = None,
+    key: el.Object,
 ) -> el.Object:
     """Pack multiple 1D Tensors of integers into BFV Plaintexts (Batched)."""
-    if key is None:
-        return batch_encode_p.bind(tensors, encoder)
     return batch_encode_p.bind(tensors, encoder, key)
 
 

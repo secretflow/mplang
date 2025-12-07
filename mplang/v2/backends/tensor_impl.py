@@ -61,7 +61,7 @@ class TensorValue(WrapValue[Any]):
     # Expose common array properties for convenience
     @property
     def shape(self) -> tuple[int, ...]:
-        return self._data.shape
+        return cast(tuple[int, ...], self._data.shape)
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -69,7 +69,7 @@ class TensorValue(WrapValue[Any]):
 
     @property
     def ndim(self) -> int:
-        return self._data.ndim
+        return cast(int, self._data.ndim)
 
     def __getitem__(self, key: Any) -> Any:
         """Allow indexing into the underlying array."""
@@ -113,6 +113,19 @@ class TensorValue(WrapValue[Any]):
         """
         if hasattr(self._data, "__jax_array__"):
             return self._data
+
+        # Handle object arrays that might contain numbers (e.g. from elementwise)
+        if isinstance(self._data, np.ndarray) and self._data.dtype == object:
+            try:
+                # Attempt to convert to numeric numpy array first
+                # This handles cases where elementwise returned object array of numbers
+                val_numeric = np.array(self._data.tolist())
+                if val_numeric.dtype != object:
+                    return jax.device_put(jnp.asarray(val_numeric))
+            except Exception:
+                # If conversion fails, proceed with original (which will likely fail in jax)
+                pass
+
         return jax.device_put(jnp.asarray(self._data))
 
     # =========== Serialization ===========
@@ -264,13 +277,29 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
                 and outer_val.type.shape != ()
             ):
                 # Tensor argument: pick element (arg is array-like at runtime)
-                scalar_inputs.append(arg[index])  # type: ignore[index]
+                # Wrap scalar in TensorValue to maintain Value-only contract
+                elem = cast(Any, arg)[index]
+                if isinstance(elem, Value):
+                    scalar_inputs.append(elem)
+                else:
+                    scalar_inputs.append(_wrap(np.array(elem)))  # type: ignore[index]
             else:
                 # Scalar/Broadcast argument: use as is
-                scalar_inputs.append(arg)
+                # Ensure it is wrapped (it should be, but double check)
+                if not isinstance(arg, Value):
+                    scalar_inputs.append(_wrap(np.array(arg)))
+                else:
+                    scalar_inputs.append(arg)
 
         # Recursive execution
         scalar_out = interpret(subgraph, scalar_inputs, interpreter)
+
+        # Unwrap result if it's a TensorValue (to store in numpy array)
+        # We store raw values in the object array for now, but will wrap the final array
+        if isinstance(scalar_out, TensorValue):
+            scalar_out = scalar_out.unwrap()
+            if scalar_out.shape == ():
+                scalar_out = scalar_out.item()
 
         if num_outputs > 1:
             for i, val in enumerate(scalar_out):
@@ -278,7 +307,11 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
         else:
             results[index] = scalar_out
 
-    return results
+    # Wrap results in TensorValue if possible
+    if num_outputs > 1:
+        return [_wrap(res) for res in results]
+    else:
+        return _wrap(results)
 
 
 # Global cache for compiled StableHLO executables

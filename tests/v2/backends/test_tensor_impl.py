@@ -64,9 +64,16 @@ def test_tensor_elementwise():
         return z
 
     result = workload()
-    # elementwise_impl returns object array of TensorValues, unwrap them
-    flat = [x.unwrap() for x in result.runtime_obj.ravel()]
-    result = np.array(flat).reshape(result.runtime_obj.shape).astype(np.float32)
+    # elementwise_impl returns TensorValue wrapping object array, unwrap it first
+    result_val = result.runtime_obj
+    if hasattr(result_val, "unwrap"):
+        result_val = result_val.unwrap()
+
+    flat = result_val.ravel()
+    if flat.size > 0 and hasattr(flat[0], "unwrap"):
+        flat = [x.unwrap() for x in flat]
+
+    result = np.array(flat).reshape(result_val.shape).astype(np.float32)
     expected = np.array([13, 24], dtype=np.float32)
     np.testing.assert_allclose(result, expected)
     np.testing.assert_allclose(result, expected)
@@ -86,9 +93,16 @@ def test_tensor_elementwise_broadcasting():
         return z
 
     result = workload()
-    # elementwise_impl returns object array of TensorValues, unwrap them
-    flat = [x.unwrap() for x in result.runtime_obj.ravel()]
-    result = np.array(flat).reshape(result.runtime_obj.shape).astype(np.float32)
+    # elementwise_impl returns TensorValue wrapping object array, unwrap it first
+    result_val = result.runtime_obj
+    if hasattr(result_val, "unwrap"):
+        result_val = result_val.unwrap()
+
+    flat = result_val.ravel()
+    if flat.size > 0 and hasattr(flat[0], "unwrap"):
+        flat = [x.unwrap() for x in flat]
+
+    result = np.array(flat).reshape(result_val.shape).astype(np.float32)
     expected = np.array([15, 25, 35], dtype=np.float32)
     np.testing.assert_allclose(result, expected)
 

@@ -60,19 +60,19 @@ class DagProfiler:
         ] = {}  # (id(op), namespace) -> ts (us)
         self.pid = os.getpid()
 
-    def start(self):
+    def start(self) -> None:
         self.start_time = time.time()
 
-    def stop(self, filename_prefix="dag_trace"):
+    def stop(self, filename_prefix: str = "dag_trace") -> None:
         self.end_time = time.time()
         self.save_trace(filename_prefix)
 
-    def sample(self, active_tasks: int, queue_size: int):
+    def sample(self, active_tasks: int, queue_size: int) -> None:
         now = time.time() - self.start_time
         self.active_tasks_samples.append((now, active_tasks))
         self.queue_size_samples.append((now, queue_size))
 
-    def log_schedule(self, op: Any, namespace: Any = None):
+    def log_schedule(self, op: Any, namespace: Any = None) -> None:
         if not self.enabled:
             return
         key = (id(op), namespace)
@@ -102,7 +102,7 @@ class DagProfiler:
             })
         return start_ts
 
-    def log_end(self, op: Any, start_ts: float, pid: int | None = None):
+    def log_end(self, op: Any, start_ts: float, pid: int | None = None) -> None:
         if not self.enabled:
             return
         end_ts = time.time() * 1e6
@@ -151,7 +151,7 @@ class DagProfiler:
             "args": args or {},
         })
 
-    def save_trace(self, filename_prefix="dag_trace"):
+    def save_trace(self, filename_prefix: str = "dag_trace") -> None:
         if not self.enabled or not self.trace_events:
             return
         try:
@@ -169,7 +169,7 @@ class DagProfiler:
         except Exception as e:
             print(f"[DagProfiler] Failed to save trace: {e}")
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         duration = self.end_time - self.start_time
         if duration <= 0:
             return
@@ -613,9 +613,9 @@ class Interpreter(Context):
         # Op -> Pending Input Count
         pending_counts = {}
         # Value -> list[Op] (Consumers)
-        value_to_consumers = collections.defaultdict(list)
+        value_to_consumers: dict[Any, list[Any]] = collections.defaultdict(list)
         # Value -> Remaining Consumers Count (for GC)
-        remaining_consumers = collections.defaultdict(int)
+        remaining_consumers: dict[Any, int] = collections.defaultdict(int)
 
         # 2. Build Dependency Graph
         for op in graph.operations:
@@ -641,7 +641,7 @@ class Interpreter(Context):
         error_occurred = False
 
         # 4. Execution Helper
-        def on_op_done(op, result, error=None):
+        def on_op_done(op: Any, result: Any, error: Exception | None = None) -> None:
             nonlocal remaining_ops, error_occurred, active_tasks
 
             if error:
@@ -688,7 +688,7 @@ class Interpreter(Context):
                 if remaining_ops == 0:
                     ready_queue.put(None)  # Sentinel
 
-        def execute_op(op):
+        def execute_op(op: Any) -> None:
             nonlocal active_tasks
             # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
@@ -704,7 +704,7 @@ class Interpreter(Context):
                     # profiler.sample(active_tasks, ready_queue.qsize())
 
                 # Submit to executor
-                def task():
+                def task() -> Any:
                     start_ts = profiler.log_start(
                         op, pid=self.trace_pid, namespace=self.trace_pid
                     )
@@ -712,7 +712,7 @@ class Interpreter(Context):
                     profiler.log_end(op, start_ts, pid=self.trace_pid)
                     return res
 
-                def callback(fut):
+                def callback(fut: Any) -> None:
                     try:
                         res = fut.result()
                         on_op_done(op, res)

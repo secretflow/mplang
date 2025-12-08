@@ -34,6 +34,7 @@ Usage:
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -355,15 +356,15 @@ def _compute_histogram_chunk_batch(
         if len(items) == 1:
             return items[0]
 
-        while len(items) > 1:
-            new_items = []
-            for i in range(0, len(items), 2):
-                if i + 1 < len(items):
-                    new_items.append(bfv.add(items[i], items[i + 1]))
-                else:
-                    new_items.append(items[i])
-            items = new_items
-        return items[0]
+        queue = deque(items)
+        while len(queue) > 1:
+            # Process in pairs
+            for _ in range(len(queue) // 2):
+                left = queue.popleft()
+                right = queue.popleft()
+                queue.append(bfv.add(left, right))
+
+        return queue[0] if queue else None
 
     for _node_idx in range(n_nodes):
         # Process features in batches of 'stride'

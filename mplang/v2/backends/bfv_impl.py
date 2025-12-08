@@ -23,7 +23,7 @@ import base64
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import numpy as np
 import tenseal as ts
@@ -56,6 +56,47 @@ def _get_seal_temp_path() -> str:
     import tempfile
 
     return os.path.join(tempfile.gettempdir(), f"seal_{uuid.uuid4().hex}.bin")
+
+
+@serde.register_class
+class BFVParamContextValue(WrapValue[ts.Context]):
+    """Wraps TenSEAL context with parameters only (no keys)."""
+
+    _serde_kind: ClassVar[str] = "bfv_impl.BFVParamContextValue"
+
+    def __init__(self, data: Any):
+        super().__init__(data)
+        self.ts_ctx = self._data
+
+        # Extract underlying C++ objects
+        self.seal_ctx = self.ts_ctx.seal_context()
+        self.cpp_ctx = self.seal_ctx.data
+
+        self.evaluator = sealapi.Evaluator(self.cpp_ctx)
+        self.batch_encoder = sealapi.BatchEncoder(self.cpp_ctx)
+
+    def _convert(self, data: Any) -> ts.Context:
+        if isinstance(data, BFVParamContextValue):
+            return data.unwrap()
+        if isinstance(data, ts.Context):
+            return data
+        raise TypeError(f"Expected ts.Context, got {type(data)}")
+
+    def to_json(self) -> dict[str, Any]:
+        # Serialize TenSEAL context (parameters only)
+        serialized = self.ts_ctx.serialize(
+            save_public_key=False,
+            save_secret_key=False,
+            save_galois_keys=False,
+            save_relin_keys=False,
+        )
+        return {"ctx_bytes": base64.b64encode(serialized).decode("ascii")}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> BFVParamContextValue:
+        ctx_bytes = base64.b64decode(data["ctx_bytes"])
+        ts_ctx = ts.context_from(ctx_bytes)
+        return cls(ts_ctx)
 
 
 @serde.register_class
@@ -161,8 +202,11 @@ class BFVValue(Value):
             if os.path.exists(fname):
                 os.unlink(fname)
 
-        # Also need to serialize the context reference
-        ctx_json = serde.to_json(self.ctx)
+        # Serialize context as parameters only (to save bandwidth)
+        # We create a temporary BFVParamContextValue wrapper
+        param_ctx = BFVParamContextValue(self.ctx.ts_ctx)
+        ctx_json = serde.to_json(param_ctx)
+
         return {
             "data_bytes": base64.b64encode(data_bytes).decode("ascii"),
             "is_cipher": self.is_cipher,
@@ -271,6 +315,37 @@ def encode_impl(
     return TensorValue.wrap(np.asarray(data.unwrap()))
 
 
+@bfv.batch_encode_p.def_impl
+def batch_encode_impl(
+    interpreter: Interpreter,
+    op: Operation,
+    *args: Value,
+) -> tuple[BFVValue | TensorValue, ...]:
+    # args will be (tensor, encoder, key)
+    key = args[-1]
+    _encoder = args[-2]
+    tensor_val = args[0]
+
+    # Eager encoding using key.ctx
+    # key is BFVPublicContextValue (or BFVSecretContextValue)
+    ctx = cast(BFVPublicContextValue, key)
+
+    results = []
+    # Optimization: Convert to numpy array first to avoid JAX dispatch overhead
+    # during iteration. This also ensures a single device-to-host transfer if on GPU.
+    arr = np.asarray(cast(TensorValue, tensor_val).unwrap())
+
+    # Iterate rows
+    for i in range(arr.shape[0]):
+        pt = sealapi.Plaintext()
+        # Use tolist() for speed
+        vec = arr[i].tolist()
+        ctx.batch_encoder.encode(vec, pt)
+        results.append(BFVValue(pt, ctx, is_cipher=False))
+
+    return tuple(results)
+
+
 @bfv.encrypt_p.def_impl
 def encrypt_impl(
     interpreter: Interpreter,
@@ -287,7 +362,8 @@ def encrypt_impl(
 
     # 2. Encode
     # We need to handle types. Assuming int64 vector.
-    vec = [int(x) for x in plaintext_arr]
+    # Optimization: Use tolist() instead of list comprehension
+    vec = plaintext_arr.tolist()
     pk.batch_encoder.encode(vec, pt)
 
     # 3. Encrypt
@@ -336,7 +412,7 @@ def _ensure_plaintext(ctx: BFVPublicContextValue, data: BFVValue | TensorValue) 
         raise TypeError(f"Expected BFVValue or TensorValue, got {type(data)}")
     pt = sealapi.Plaintext()
     arr = data.unwrap()
-    vec = [int(x) for x in arr.flatten()]
+    vec = arr.flatten().tolist()
     ctx.batch_encoder.encode(vec, pt)
     return pt
 
@@ -353,12 +429,35 @@ def add_impl(
         result_ct = sealapi.Ciphertext()
 
         if lhs.is_cipher and rhs.is_cipher:
+            # Optimization: Handle transparent ciphertexts (zero)
+            if lhs.data.is_transparent():
+                return rhs
+            if rhs.data.is_transparent():
+                return lhs
+
             lhs.ctx.evaluator.add(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif lhs.is_cipher and not rhs.is_cipher:
+            # Optimization: Handle transparent ciphertext
+            if lhs.data.is_transparent():
+                # 0 + Plaintext -> Encrypt(Plaintext)
+                # This is expensive, but necessary for correctness if we want to return a Ciphertext
+                # Alternatively, if we allow returning Plaintext, we could just return rhs.
+                # But BFV add usually expects to return Ciphertext if one input is Ciphertext.
+                # For now, let's encrypt it.
+                new_ct = sealapi.Ciphertext()
+                lhs.ctx.encryptor.encrypt(rhs.data, new_ct)
+                return BFVValue(new_ct, lhs.ctx, is_cipher=True)
+
             lhs.ctx.evaluator.add_plain(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif not lhs.is_cipher and rhs.is_cipher:
+            # Optimization: Handle transparent ciphertext
+            if rhs.data.is_transparent():
+                new_ct = sealapi.Ciphertext()
+                rhs.ctx.encryptor.encrypt(lhs.data, new_ct)
+                return BFVValue(new_ct, rhs.ctx, is_cipher=True)
+
             rhs.ctx.evaluator.add_plain(rhs.data, lhs.data, result_ct)
             return BFVValue(result_ct, rhs.ctx, is_cipher=True)
         else:
@@ -368,12 +467,27 @@ def add_impl(
 
     # Case 2: One is BFVValue (Ciphertext), other is Raw
     if isinstance(lhs, BFVValue) and lhs.is_cipher:
+        # Optimization: Handle transparent ciphertext
+        if lhs.data.is_transparent():
+            # 0 + Raw -> Encrypt(Raw)
+            pt = _ensure_plaintext(lhs.ctx, rhs)
+            new_ct = sealapi.Ciphertext()
+            lhs.ctx.encryptor.encrypt(pt, new_ct)
+            return BFVValue(new_ct, lhs.ctx, is_cipher=True)
+
         pt = _ensure_plaintext(lhs.ctx, rhs)
         result_ct = sealapi.Ciphertext()
         lhs.ctx.evaluator.add_plain(lhs.data, pt, result_ct)
         return BFVValue(result_ct, lhs.ctx, is_cipher=True)
 
     if isinstance(rhs, BFVValue) and rhs.is_cipher:
+        # Optimization: Handle transparent ciphertext
+        if rhs.data.is_transparent():
+            pt = _ensure_plaintext(rhs.ctx, lhs)
+            new_ct = sealapi.Ciphertext()
+            rhs.ctx.encryptor.encrypt(pt, new_ct)
+            return BFVValue(new_ct, rhs.ctx, is_cipher=True)
+
         pt = _ensure_plaintext(rhs.ctx, lhs)
         result_ct = sealapi.Ciphertext()
         rhs.ctx.evaluator.add_plain(rhs.data, pt, result_ct)
@@ -449,11 +563,32 @@ def mul_impl(
             lhs.ctx.evaluator.multiply(lhs.data, rhs.data, result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
         elif lhs.is_cipher and not rhs.is_cipher:
-            lhs.ctx.evaluator.multiply_plain(lhs.data, rhs.data, result_ct)
-            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+            # Optimization: Check for zero plaintext to avoid expensive exception handling
+            if rhs.data.is_zero():
+                # Return transparent zero ciphertext (no noise, size 0)
+                # SEAL arithmetic ops handle transparent ciphertexts as zero.
+                # We must ensure relinearize/rotate also handle it.
+                return BFVValue(sealapi.Ciphertext(), lhs.ctx, is_cipher=True)
+
+            try:
+                lhs.ctx.evaluator.multiply_plain(lhs.data, rhs.data, result_ct)
+                return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+            except RuntimeError as e:
+                if "transparent" in str(e):
+                    return BFVValue(sealapi.Ciphertext(), lhs.ctx, is_cipher=True)
+                raise e
         elif not lhs.is_cipher and rhs.is_cipher:
-            rhs.ctx.evaluator.multiply_plain(rhs.data, lhs.data, result_ct)
-            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+            # Optimization: Check for zero plaintext
+            if lhs.data.is_zero():
+                return BFVValue(sealapi.Ciphertext(), rhs.ctx, is_cipher=True)
+
+            try:
+                rhs.ctx.evaluator.multiply_plain(rhs.data, lhs.data, result_ct)
+                return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+            except RuntimeError as e:
+                if "transparent" in str(e):
+                    return BFVValue(sealapi.Ciphertext(), rhs.ctx, is_cipher=True)
+                raise e
         else:
             raise NotImplementedError(
                 "BFV Plaintext * Plaintext multiplication not implemented yet"
@@ -462,15 +597,27 @@ def mul_impl(
     # Case 2: One is BFVValue (Ciphertext), other is TensorValue
     if isinstance(lhs, BFVValue) and lhs.is_cipher:
         # Check for zero plaintext to avoid "transparent ciphertext" error
+        # Also check if plaintext is BFVValue(Plaintext)
         if isinstance(rhs, TensorValue) and np.all(rhs.unwrap() == 0):
             result_ct = sealapi.Ciphertext()
             lhs.ctx.encryptor.encrypt_zero(result_ct)
             return BFVValue(result_ct, lhs.ctx, is_cipher=True)
 
-        pt = _ensure_plaintext(lhs.ctx, rhs)
-        result_ct = sealapi.Ciphertext()
-        lhs.ctx.evaluator.multiply_plain(lhs.data, pt, result_ct)
-        return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+        try:
+            pt = _ensure_plaintext(lhs.ctx, rhs)
+            result_ct = sealapi.Ciphertext()
+            lhs.ctx.evaluator.multiply_plain(lhs.data, pt, result_ct)
+            return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+        except RuntimeError as e:
+            # SEAL throws "result ciphertext is transparent" when multiplying by a zero plaintext.
+            # This is mathematically valid (Enc(x) * 0 = Enc(0)), but SEAL enforces explicit zero encryption.
+            # We catch this error and return a valid zero ciphertext to maintain operator semantics.
+            if "transparent" in str(e):
+                # Fallback for zero plaintext
+                result_ct = sealapi.Ciphertext()
+                lhs.ctx.encryptor.encrypt_zero(result_ct)
+                return BFVValue(result_ct, lhs.ctx, is_cipher=True)
+            raise e
 
     if isinstance(rhs, BFVValue) and rhs.is_cipher:
         # Check for zero plaintext to avoid "transparent ciphertext" error
@@ -479,10 +626,19 @@ def mul_impl(
             rhs.ctx.encryptor.encrypt_zero(result_ct)
             return BFVValue(result_ct, rhs.ctx, is_cipher=True)
 
-        pt = _ensure_plaintext(rhs.ctx, lhs)
-        result_ct = sealapi.Ciphertext()
-        rhs.ctx.evaluator.multiply_plain(rhs.data, pt, result_ct)
-        return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+        try:
+            pt = _ensure_plaintext(rhs.ctx, lhs)
+            result_ct = sealapi.Ciphertext()
+            rhs.ctx.evaluator.multiply_plain(rhs.data, pt, result_ct)
+            return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+        except RuntimeError as e:
+            # See comment above regarding "transparent ciphertext"
+            if "transparent" in str(e):
+                # Fallback for zero plaintext
+                result_ct = sealapi.Ciphertext()
+                rhs.ctx.encryptor.encrypt_zero(result_ct)
+                return BFVValue(result_ct, rhs.ctx, is_cipher=True)
+            raise e
 
     # Handle Plaintext * Plaintext (TensorValue * TensorValue)
     if isinstance(lhs, TensorValue) and isinstance(rhs, TensorValue):
@@ -499,12 +655,14 @@ def relinearize_impl(
 ) -> BFVValue:
     # rk is BFVPublicContextValue (same as ciphertext.ctx)
 
+    # Optimization: Handle transparent ciphertext (zero)
+    if ciphertext.data.is_transparent():
+        return ciphertext
+
     # Check if relinearization is needed (size > 2)
     if ciphertext.data.size() > 2:
         new_ct = sealapi.Ciphertext()
-        ciphertext.ctx.evaluator.relinearize(
-            ciphertext.data, ciphertext.ctx.relin_keys, new_ct
-        )
+        ciphertext.ctx.evaluator.relinearize(ciphertext.data, rk.relin_keys, new_ct)
         return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)
 
     return ciphertext
@@ -522,13 +680,15 @@ def rotate_impl(
     if steps == 0:
         return ciphertext
 
+    # Optimization: Handle transparent ciphertext (zero)
+    if ciphertext.data.is_transparent():
+        return ciphertext
+
     # ciphertext is BFVValue
     # gk is BFVPublicContextValue
 
     new_ct = sealapi.Ciphertext()
-    ciphertext.ctx.evaluator.rotate_rows(
-        ciphertext.data, steps, ciphertext.ctx.galois_keys, new_ct
-    )
+    ciphertext.ctx.evaluator.rotate_rows(ciphertext.data, steps, gk.galois_keys, new_ct)
     return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)
 
 
@@ -541,7 +701,5 @@ def rotate_columns_impl(
 ) -> BFVValue:
     """Swap the two rows in SIMD batching (row 0 <-> row 1)."""
     new_ct = sealapi.Ciphertext()
-    ciphertext.ctx.evaluator.rotate_columns(
-        ciphertext.data, ciphertext.ctx.galois_keys, new_ct
-    )
+    ciphertext.ctx.evaluator.rotate_columns(ciphertext.data, gk.galois_keys, new_ct)
     return BFVValue(new_ct, ciphertext.ctx, is_cipher=True)

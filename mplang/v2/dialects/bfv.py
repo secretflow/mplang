@@ -89,7 +89,7 @@ res = bfv.decode(pt_res, encoder)  # Returns Tensor
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, cast
 
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
@@ -294,6 +294,7 @@ def _make_galois_keys_ae(sk: KeyType) -> KeyType:
 
 create_encoder_p = el.Primitive[el.Object]("bfv.create_encoder")
 encode_p = el.Primitive[el.Object]("bfv.encode")
+batch_encode_p = el.Primitive[el.Object]("bfv.batch_encode")
 decode_p = el.Primitive[el.Object]("bfv.decode")
 
 
@@ -326,6 +327,75 @@ def _encode_ae(tensor: elt.TensorType, encoder: EncoderType) -> PlaintextType:
     # In a real implementation, we'd check if tensor size <= poly_modulus_degree
     # For abstract eval, we assume N=4096 as default or infer from context if possible.
     return PlaintextType(elt.Vector(tensor.element_type, encoder.poly_modulus_degree))
+
+
+def _infer_batch_encode_output_types(
+    tensor: elt.TensorType,
+    encoder: elt.BaseType,
+    key: elt.BaseType,
+) -> tuple[PlaintextType, ...]:
+    if not isinstance(encoder, EncoderType):
+        raise TypeError(f"Expected BFVEncoder, got {encoder}")
+
+    if not isinstance(tensor, elt.TensorType):
+        raise TypeError(f"Expected Tensor input, got {tensor}")
+
+    if tensor.rank != 2:
+        raise ValueError(
+            f"BFV batch_encode input must be 2D Tensor, got rank {tensor.rank}"
+        )
+
+    N = tensor.shape[0]
+    if N is None:
+        raise ValueError(
+            "BFV batch_encode requires static first dimension for tensor input"
+        )
+
+    # Check Integer type
+    if not isinstance(tensor.element_type, elt.IntegerType):
+        raise TypeError(
+            f"BFV supports integer arithmetic only. Expected Tensor[Integer], got Tensor[{tensor.element_type}]"
+        )
+
+    return tuple(
+        PlaintextType(elt.Vector(tensor.element_type, encoder.poly_modulus_degree))
+        for _ in range(N)
+    )
+
+
+@batch_encode_p.def_trace
+def _batch_encode_trace(
+    tensor: el.Object,
+    encoder: el.Object,
+    key: el.Object,
+) -> tuple[el.Object, ...]:
+    from mplang.v2.edsl.tracer import TraceObject, Tracer
+
+    ctx = el.get_current_context()
+    if not isinstance(ctx, Tracer):
+        raise RuntimeError("batch_encode must be called within a Tracer context")
+
+    encoder_type = encoder.type
+    key_type = key.type
+
+    output_types = _infer_batch_encode_output_types(tensor.type, encoder_type, key_type)
+    inputs = [tensor, encoder, key]
+
+    input_values = [cast(TraceObject, obj)._graph_value for obj in inputs]
+
+    # 3. Add Op
+    result_values = ctx.graph.add_op(
+        batch_encode_p.name,
+        input_values,
+        output_types,
+        attrs={},
+    )
+
+    # 4. Wrap results
+    return tuple(
+        TraceObject(val, ctx)
+        for val, typ in zip(result_values, output_types, strict=True)
+    )
 
 
 @decode_p.def_abstract_eval
@@ -495,6 +565,15 @@ def create_encoder(poly_modulus_degree: int = 4096) -> el.Object:
 def encode(tensor: el.Object, encoder: el.Object) -> el.Object:
     """Pack a 1D Tensor of integers into a BFV Plaintext."""
     return encode_p.bind(tensor, encoder)
+
+
+def batch_encode(
+    tensor: el.Object,
+    encoder: el.Object,
+    key: el.Object,
+) -> el.Object:
+    """Pack a 2D Tensor of integers into BFV Plaintexts (Batched)."""
+    return batch_encode_p.bind(tensor, encoder, key)
 
 
 def decode(plain: el.Object, encoder: el.Object) -> el.Object:

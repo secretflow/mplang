@@ -65,16 +65,24 @@ class SimpHttpDriver(SimpHost):
         super().__init__(world_size)
         self.endpoints = endpoints
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
+        self.client = httpx.Client(timeout=None)
 
-    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+    def _submit(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Submit graph execution to a remote worker."""
-        return self.executor.submit(self._execute_on_worker, rank, graph, inputs)
+        assert self.executor is not None
+        return self.executor.submit(
+            self._execute_on_worker, rank, graph, inputs, job_id
+        )
 
     def _collect(self, futures: list[Any]) -> list[Any]:
         """Collect results from all futures."""
         return [f.result() for f in futures]
 
-    def _execute_on_worker(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+    def _execute_on_worker(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Execute graph on a remote worker via HTTP."""
         url = f"{self.endpoints[rank]}/exec"
         logger.debug(f"Driver submitting to rank {rank} url={url}")
@@ -83,11 +91,14 @@ class SimpHttpDriver(SimpHost):
         graph_b64 = serde.dumps_b64(graph)
         inputs_b64 = serde.dumps_b64(inputs)
 
+        payload = {"graph": graph_b64, "inputs": inputs_b64}
+        if job_id:
+            payload["job_id"] = job_id
+
         try:
-            resp = httpx.post(
+            resp = self.client.post(
                 url,
-                json={"graph": graph_b64, "inputs": inputs_b64},
-                timeout=None,  # Execution might take long
+                json=payload,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -99,4 +110,6 @@ class SimpHttpDriver(SimpHost):
 
     def shutdown(self) -> None:
         """Shutdown the driver."""
-        self.executor.shutdown()
+        if self.executor:
+            self.executor.shutdown()
+        self.client.close()

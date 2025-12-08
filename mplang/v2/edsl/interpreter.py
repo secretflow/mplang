@@ -22,6 +22,13 @@ It can execute both:
 
 from __future__ import annotations
 
+import collections
+import concurrent.futures
+import json
+import os
+import queue
+import threading
+import time
 from typing import TYPE_CHECKING, Any
 
 from mplang.v2.edsl.context import Context
@@ -32,6 +39,178 @@ from mplang.v2.edsl.typing import BaseType
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
+
+
+class DagProfiler:
+    """Profiler for DAG execution metrics and Chrome Tracing."""
+
+    def __init__(self, enabled: bool = False):
+        self.enabled = enabled
+        self.start_time = 0.0
+        self.end_time = 0.0
+        self.active_tasks_samples: list[tuple[float, int]] = []
+        self.queue_size_samples: list[tuple[float, int]] = []
+        self.completed_ops = 0
+        self.total_ops = 0
+
+        # Tracing
+        self.trace_events: list[dict[str, Any]] = []
+        self.op_schedule_times: dict[
+            tuple[int, Any], float
+        ] = {}  # (id(op), namespace) -> ts (us)
+        self.pid = os.getpid()
+
+    def start(self) -> None:
+        self.start_time = time.time()
+
+    def stop(self, filename_prefix: str = "dag_trace") -> None:
+        self.end_time = time.time()
+        self.save_trace(filename_prefix)
+
+    def sample(self, active_tasks: int, queue_size: int) -> None:
+        now = time.time() - self.start_time
+        self.active_tasks_samples.append((now, active_tasks))
+        self.queue_size_samples.append((now, queue_size))
+
+    def log_schedule(self, op: Any, namespace: Any = None) -> None:
+        if not self.enabled:
+            return
+        key = (id(op), namespace)
+        self.op_schedule_times[key] = time.time() * 1e6
+
+    def log_start(
+        self, op: Any, pid: int | None = None, namespace: Any = None
+    ) -> float:
+        if not self.enabled:
+            return 0.0
+        start_ts = time.time() * 1e6
+        if pid is None:
+            pid = self.pid
+
+        # Record scheduling latency (Queue Time)
+        key = (id(op), namespace)
+        if key in self.op_schedule_times:
+            sched_ts = self.op_schedule_times.pop(key)
+            self.trace_events.append({
+                "name": f"Queue: {op.opcode}",
+                "cat": "scheduler",
+                "ph": "X",
+                "ts": sched_ts,
+                "dur": start_ts - sched_ts,
+                "pid": pid,
+                "tid": "SchedulerQueue",
+            })
+        return start_ts
+
+    def log_end(self, op: Any, start_ts: float, pid: int | None = None) -> None:
+        if not self.enabled:
+            return
+        end_ts = time.time() * 1e6
+        tid = threading.get_ident()
+        if pid is None:
+            pid = self.pid
+
+        self.trace_events.append({
+            "name": op.opcode,
+            "cat": "op",
+            "ph": "X",
+            "ts": start_ts,
+            "dur": end_ts - start_ts,
+            "pid": pid,
+            "tid": tid,
+            "args": {
+                "opcode": op.opcode,
+            },
+        })
+
+    def log_custom_event(
+        self,
+        name: str,
+        start_ts: float,
+        end_ts: float,
+        cat: str = "custom",
+        args: dict[str, Any] | None = None,
+    ) -> None:
+        """Log a custom event with explicit start/end timestamps (in seconds)."""
+        if not self.enabled:
+            return
+        tid = threading.get_ident()
+
+        # Convert to microseconds
+        ts_us = start_ts * 1e6
+        dur_us = (end_ts - start_ts) * 1e6
+
+        self.trace_events.append({
+            "name": name,
+            "cat": cat,
+            "ph": "X",
+            "ts": ts_us,
+            "dur": dur_us,
+            "pid": self.pid,
+            "tid": tid,
+            "args": args or {},
+        })
+
+    def save_trace(
+        self,
+        filename_prefix: str = "dag_trace",
+        job_id: str | None = None,
+        rank: int | None = None,
+    ) -> None:
+        if not self.enabled or not self.trace_events:
+            return
+        try:
+            if len(self.trace_events) < 100:
+                return  # Skip small graphs
+
+            # Use unique filename to avoid overwriting
+            if job_id:
+                # Format: trace_<job_id>_rank_<rank>.json
+                rank_str = f"_rank_{rank}" if rank is not None else ""
+                filename = f"trace_{job_id}{rank_str}.json"
+            else:
+                timestamp = int(time.time() * 1000)
+                tid = threading.get_ident()
+                filename = f"{filename_prefix}_{timestamp}_{tid}.json"
+
+            with open(filename, "w") as f:
+                json.dump({"traceEvents": self.trace_events}, f)
+            print(f"\n[DagProfiler] Trace saved to {os.path.abspath(filename)}")
+        except Exception as e:
+            print(f"[DagProfiler] Failed to save trace: {e}")
+
+    def print_summary(self) -> None:
+        duration = self.end_time - self.start_time
+        if duration <= 0:
+            return
+
+        avg_active = (
+            sum(c for _, c in self.active_tasks_samples)
+            / len(self.active_tasks_samples)
+            if self.active_tasks_samples
+            else 0
+        )
+        max_active = (
+            max(c for _, c in self.active_tasks_samples)
+            if self.active_tasks_samples
+            else 0
+        )
+        avg_queue = (
+            sum(c for _, c in self.queue_size_samples) / len(self.queue_size_samples)
+            if self.queue_size_samples
+            else 0
+        )
+
+        print("\n" + "=" * 80)
+        print("DAG EXECUTION PROFILER")
+        print("=" * 80)
+        print(f"Total Duration: {duration:.3f}s")
+        print(f"Total Ops:      {self.total_ops}")
+        print(f"Throughput:     {self.total_ops / duration:.1f} ops/s")
+        print("-" * 80)
+        print(f"Active Tasks:   Avg={avg_active:.1f}, Max={max_active}")
+        print(f"Ready Queue:    Avg={avg_queue:.1f}")
+        print("=" * 80 + "\n")
 
 
 class InterpObject(Object):
@@ -111,7 +290,13 @@ class Interpreter(Context):
         >>> z = x + y  # InterpObject.__add__ → add_p.bind(x, y)
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        executor: concurrent.futures.Executor | None = None,
+        name: str = "Interpreter",
+        profiler: DagProfiler | None = None,
+        trace_pid: int | None = None,
+    ) -> None:
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
         # This serves two purposes:
@@ -119,6 +304,11 @@ class Interpreter(Context):
         # 2. MIMO Optimization: When one output of a multi-output op is computed,
         #    all sibling outputs are cached here to avoid re-execution.
         self._execution_cache: dict[Any, InterpObject] = {}
+        self.executor = executor
+        self.async_ops: set[str] = set()
+        self.name = name
+        self.profiler = profiler
+        self.trace_pid = trace_pid
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -316,7 +506,9 @@ class Interpreter(Context):
             return obj
 
     # TODO: change output sigature to list[Any]
-    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+    def evaluate_graph(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Execute a Graph IR with runtime data.
 
         Can be overridden by subclasses to implement remote execution or compilation.
@@ -324,10 +516,20 @@ class Interpreter(Context):
         Args:
             graph: Finalized Graph IR to execute
             inputs: Runtime objects corresponding to graph.inputs (positional)
+            job_id: Optional unique ID for this execution job (for profiling/tracing).
 
         Returns:
             Runtime execution results corresponding to graph.outputs
         """
+        if self.executor:
+            return self._evaluate_graph_async(graph, inputs, job_id)
+        else:
+            return self._evaluate_graph_sync(graph, inputs, job_id)
+
+    def _evaluate_graph_sync(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
+        """Synchronous execution (Baseline)."""
         assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
 
         # Local environment: Value -> Runtime Object
@@ -375,10 +577,194 @@ class Interpreter(Context):
                     env[out_val] = res
 
         # Return outputs
+        if self.profiler and job_id:
+            self.profiler.save_trace(job_id=job_id, rank=self.trace_pid)
+
         if len(graph.outputs) == 1:
             return env[graph.outputs[0]]
         else:
             return [env[out] for out in graph.outputs]
+
+    def _evaluate_graph_async(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
+        """Asynchronous execution with non-blocking DAG scheduling."""
+        assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
+
+        # Profiler setup
+        if self.profiler:
+            profiler = self.profiler
+            profiler.total_ops += len(graph.operations)
+        else:
+            profiler = DagProfiler()
+            profiler.total_ops = len(graph.operations)
+            profiler.start()
+
+        active_tasks = 0
+
+        # 1. Setup State
+        # Value -> Runtime Object (initially inputs)
+        env = dict(zip(graph.inputs, inputs, strict=True))
+
+        # Op -> Pending Input Count
+        pending_counts = {}
+        # Value -> list[Op] (Consumers)
+        value_to_consumers: dict[Any, list[Any]] = collections.defaultdict(list)
+        # Value -> Remaining Consumers Count (for GC)
+        remaining_consumers: dict[Any, int] = collections.defaultdict(int)
+
+        # 2. Build Dependency Graph
+        for op in graph.operations:
+            count = 0
+            for val in op.inputs:
+                if val not in env:  # If not already resolved (input or constant)
+                    value_to_consumers[val].append(op)
+                    remaining_consumers[val] += 1
+                    count += 1
+            pending_counts[op] = count
+
+        # Mark graph outputs as having an extra consumer (the user)
+        # so they are not GC'd before return
+        for out in graph.outputs:
+            remaining_consumers[out] += 1
+
+        # 3. Synchronization
+        lock = threading.Lock()
+        ready_queue: queue.Queue[Any] = queue.Queue()
+        remaining_ops = len(graph.operations)
+
+        # Error propagation
+        error_occurred = False
+
+        # 4. Execution Helper
+        def on_op_done(op: Any, result: Any, error: Exception | None = None) -> None:
+            nonlocal remaining_ops, error_occurred, active_tasks
+
+            if error:
+                with lock:
+                    if not error_occurred:
+                        error_occurred = True
+                        ready_queue.put(error)
+                return
+
+            with lock:
+                if op.opcode in self.async_ops and self.executor:
+                    active_tasks -= 1
+                    # profiler.sample(active_tasks, ready_queue.qsize())
+
+                if error_occurred:
+                    return
+
+                # Store results
+                if len(op.outputs) == 1:
+                    env[op.outputs[0]] = result
+                else:
+                    for out_val, res in zip(op.outputs, result, strict=True):
+                        env[out_val] = res
+
+                # Trigger consumers
+                for out_val in op.outputs:
+                    if out_val in value_to_consumers:
+                        for consumer_op in value_to_consumers[out_val]:
+                            pending_counts[consumer_op] -= 1
+                            if pending_counts[consumer_op] == 0:
+                                profiler.log_schedule(
+                                    consumer_op, namespace=self.trace_pid
+                                )
+                                ready_queue.put(consumer_op)
+
+                # GC Inputs
+                for val in op.inputs:
+                    if val in remaining_consumers:
+                        remaining_consumers[val] -= 1
+                        if remaining_consumers[val] == 0:
+                            env.pop(val, None)
+
+                remaining_ops -= 1
+                if remaining_ops == 0:
+                    ready_queue.put(None)  # Sentinel
+
+        def execute_op(op: Any) -> None:
+            nonlocal active_tasks
+            # Extract args from env (must be ready)
+            args = [env[val] for val in op.inputs]
+            handler = get_impl(op.opcode)
+            if not handler:
+                raise NotImplementedError(
+                    f"No implementation registered for opcode: {op.opcode}"
+                )
+
+            if op.opcode in self.async_ops and self.executor:
+                with lock:
+                    active_tasks += 1
+                    # profiler.sample(active_tasks, ready_queue.qsize())
+
+                # Submit to executor
+                def task() -> Any:
+                    start_ts = profiler.log_start(
+                        op, pid=self.trace_pid, namespace=self.trace_pid
+                    )
+                    res = handler(self, op, *args)
+                    profiler.log_end(op, start_ts, pid=self.trace_pid)
+                    return res
+
+                def callback(fut: Any) -> None:
+                    try:
+                        res = fut.result()
+                        on_op_done(op, res)
+                    except Exception as e:
+                        on_op_done(op, None, error=e)
+
+                fut = self.executor.submit(task)
+                fut.add_done_callback(callback)
+            else:
+                # Sync execution (run immediately)
+                try:
+                    start_ts = profiler.log_start(
+                        op, pid=self.trace_pid, namespace=self.trace_pid
+                    )
+                    res = handler(self, op, *args)
+                    profiler.log_end(op, start_ts, pid=self.trace_pid)
+                    on_op_done(op, res)
+                except Exception as e:
+                    on_op_done(op, None, error=e)
+
+        # 5. Initial Submission
+        # Submit all ops with 0 pending inputs
+        initial_ops = [op for op, count in pending_counts.items() if count == 0]
+        if not initial_ops and remaining_ops > 0:
+            # Cycle detected or empty graph?
+            pass
+
+        for op in initial_ops:
+            profiler.log_schedule(op, namespace=self.trace_pid)
+            ready_queue.put(op)
+
+        # Handle empty graph case
+        if remaining_ops == 0:
+            ready_queue.put(None)
+
+        # 6. Main Loop
+        while True:
+            item = ready_queue.get()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                raise item
+
+            # It's an op
+            execute_op(item)
+
+        # 7. Return outputs
+        if not self.profiler:
+            profiler.stop()
+            # profiler.print_summary()
+
+        if self.profiler and job_id:
+            self.profiler.save_trace(job_id=job_id, rank=self.trace_pid)
+
+        final_results = [env[out] for out in graph.outputs]
+        return final_results[0] if len(final_results) == 1 else final_results
 
 
 def interpret(graph: Graph, inputs: list[Any], interpreter: Interpreter) -> Any:

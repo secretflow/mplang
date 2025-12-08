@@ -28,6 +28,7 @@ from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
 from mplang.v2.backends.simp_host import SimpHost
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl.graph import Graph
+from mplang.v2.edsl.interpreter import DagProfiler
 
 
 class ThreadCommunicator:
@@ -131,18 +132,43 @@ class SimpSimulator(SimpHost):
             that all transmitted types are properly registered with serde.
     """
 
-    def __init__(self, world_size: int = 3, *, use_serde: bool = False):
+    def __init__(
+        self,
+        world_size: int = 3,
+        *,
+        use_serde: bool = False,
+        enable_profiler: bool = False,
+    ):
         super().__init__(world_size)
         self.use_serde = use_serde
         self.ctx = get_or_create_context(world_size, use_serde=use_serde)
+
+        # Create a shared profiler for all workers
+        self.profiler = DagProfiler(enabled=enable_profiler)
+        self.profiler.start()
+
         # Create persistent workers (Actors)
         self.workers = [
-            WorkerInterpreter(rank, world_size, self.ctx.comms[rank])
+            WorkerInterpreter(
+                rank, world_size, self.ctx.comms[rank], profiler=self.profiler
+            )
             for rank in range(world_size)
         ]
 
-    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
-        return self.ctx.executor.submit(self._run_party, rank, graph, inputs)
+    def set_worker_executor(
+        self, executor: concurrent.futures.Executor, async_ops: set[str]
+    ) -> None:
+        """Configure workers to use an executor for specific ops."""
+        for worker in self.workers:
+            worker.executor = executor
+            worker.async_ops = async_ops
+
+    def _submit(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
+        return self.ctx.executor.submit(
+            self._run_party, rank, graph, inputs, job_id=job_id
+        )
 
     def _collect(self, futures: list[Any]) -> list[Any]:
         # Wait for all to complete, or the first exception
@@ -165,13 +191,15 @@ class SimpSimulator(SimpHost):
         # implies ALL_COMPLETED if no exception occurs)
         return [f.result() for f in futures]
 
-    def _run_party(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+    def _run_party(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         worker = self.workers[rank]
         if not isinstance(graph, Graph):
             raise TypeError(
                 f"SimpSimulator only supports executing Graph tasks, got {type(graph)!r}"
             )
-        return worker.evaluate_graph(graph, inputs)
+        return worker.evaluate_graph(graph, inputs, job_id=job_id)
 
     def shutdown(self, wait: bool = True) -> None:
         global _SIM_CONTEXT

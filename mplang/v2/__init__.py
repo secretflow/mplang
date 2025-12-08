@@ -143,6 +143,10 @@ class Simulator:
         """Get the underlying SimpSimulator backend."""
         return self._sim
 
+    def fetch(self, obj: Any) -> Any:
+        """Fetch data from the simulator."""
+        return self._sim.fetch(obj)
+
     def __enter__(self) -> Self:
         """Enter context: push simulator as the default interpreter."""
         push_context(self._sim)
@@ -203,6 +207,10 @@ class Driver:
     def backend(self) -> SimpHttpDriver:
         """Get the underlying SimpHttpDriver backend."""
         return self._driver
+
+    def fetch(self, obj: Any) -> Any:
+        """Fetch data from the driver."""
+        return self._driver.fetch(obj)
 
     def __enter__(self) -> Self:
         """Enter context: push driver as the default interpreter."""
@@ -289,6 +297,12 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
         result = result.runtime_obj
 
     if isinstance(result, HostVar):
+        # If the simulator/driver supports fetch (resolving URIs), use it.
+        if hasattr(sim, "fetch"):
+            values = sim.fetch(result)
+        else:
+            values = result.values
+
         if party is not None:
             if isinstance(party, str):
                 # Look up party by name (e.g., "P0" -> rank 0)
@@ -297,9 +311,9 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
                     party = device_info.members[0].rank
                 else:
                     raise ValueError(f"Unknown party: {party}")
-            return _unwrap_value(result[party])
+            return _unwrap_value(values[party])
         # Return all parties' values as a list (unwrap each)
-        return [_unwrap_value(v) for v in result.values]
+        return [_unwrap_value(v) for v in values]
 
     # Unwrap Value types to get the underlying data
     return _unwrap_value(result)

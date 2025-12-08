@@ -36,6 +36,7 @@ from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.registry import get_impl
 from mplang.v2.edsl.typing import BaseType
+from mplang.v2.runtime.store import ObjectStore
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
@@ -309,6 +310,7 @@ class Interpreter(Context):
         self.name = name
         self.profiler = profiler
         self.trace_pid = trace_pid
+        self.store = ObjectStore()
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]

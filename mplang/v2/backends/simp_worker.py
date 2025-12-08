@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.interpreter import DagProfiler, Interpreter
 
 
@@ -66,3 +67,29 @@ class WorkerInterpreter(Interpreter):
             "bfv.encrypt",
             "bfv.decrypt",
         }
+
+    def execute_job(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
+        """Execute graph and return URIs to results."""
+        # 1. Resolve inputs (URI -> Value)
+        resolved_inputs = []
+        for inp in inputs:
+            if isinstance(inp, str) and "://" in inp:
+                resolved_inputs.append(self.store.get(inp))
+            else:
+                resolved_inputs.append(inp)
+
+        # 2. Execute
+        results = self.evaluate_graph(graph, resolved_inputs, job_id)
+
+        # 3. Store results (Value -> URI)
+        if not graph.outputs:
+            return None
+
+        if len(graph.outputs) == 1:
+            # Single result
+            return self.store.put(results)
+        else:
+            # List of results
+            return [self.store.put(res) for res in results]

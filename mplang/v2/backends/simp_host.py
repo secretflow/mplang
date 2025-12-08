@@ -16,14 +16,20 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from typing import Any
 
+from mplang.v2.backends.value import Value
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.interpreter import Interpreter
 
 
-class HostVar:
+@serde.register_class
+class HostVar(Value):
     """Runtime value for SIMP dialect holding values for all parties."""
+
+    _serde_kind = "simp.HostVar"
 
     def __init__(self, values: list[Any]):
         self.values = values
@@ -33,6 +39,13 @@ class HostVar:
 
     def __getitem__(self, rank: int) -> Any:
         return self.values[rank]
+
+    def to_json(self) -> dict[str, Any]:
+        return {"values": serde.to_json(self.values)}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> HostVar:
+        return cls(values=serde.from_json(data["values"]))
 
 
 class SimpHost(Interpreter):
@@ -113,3 +126,24 @@ class SimpHost(Interpreter):
             List of results (one per rank).
         """
         raise NotImplementedError("SimpHost subclasses must implement _collect")
+
+    def fetch(self, obj: Any) -> Any:
+        """Fetch data from workers if obj contains URIs."""
+        if isinstance(obj, HostVar):
+            # obj.values are URIs (or data)
+            futures = []
+            for rank, val in enumerate(obj.values):
+                if isinstance(val, str) and "://" in val:
+                    futures.append(self._fetch(rank, val))
+                else:
+                    # Already data
+                    f = concurrent.futures.Future()
+                    f.set_result(val)
+                    futures.append(f)
+
+            return self._collect(futures)
+        return obj
+
+    def _fetch(self, rank: int, uri: str) -> Any:
+        """Fetch data from a specific worker."""
+        raise NotImplementedError("SimpHost subclasses must implement _fetch")

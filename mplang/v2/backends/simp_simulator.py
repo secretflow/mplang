@@ -199,7 +199,10 @@ class SimpSimulator(SimpHost):
             raise TypeError(
                 f"SimpSimulator only supports executing Graph tasks, got {type(graph)!r}"
             )
-        return worker.evaluate_graph(graph, inputs, job_id=job_id)
+        return worker.execute_job(graph, inputs, job_id=job_id)
+
+    def _fetch(self, rank: int, uri: str) -> Any:
+        return self.ctx.executor.submit(lambda: self.workers[rank].store.get(uri))
 
     def shutdown(self, wait: bool = True) -> None:
         global _SIM_CONTEXT

@@ -143,7 +143,7 @@ def test_while_loop_eager():
 
 
 class FaultySimpSimulator(SimpSimulator):
-    def _run_party(self, rank, graph, inputs):
+    def _run_party(self, rank, graph, inputs, job_id=None):
         if rank == 0:
             # Fail immediately
             raise RuntimeError("Rank 0 crashed!")

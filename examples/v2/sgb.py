@@ -290,7 +290,7 @@ def compute_all_masks(
 
     all_masks = v_node(sg_chunks, bi_chunks)
     # Flatten and convert to tuple of arrays
-    return tuple(all_masks.reshape(-1, slot_count))
+    return all_masks.reshape(-1, slot_count)
 
 
 def _compute_histogram_chunk_batch(
@@ -318,7 +318,7 @@ def _compute_histogram_chunk_batch(
         slot_count=slot_count,
         n_chunks=n_chunks,
     )
-    all_masks_list = tensor.run_jax(
+    all_masks_tensor = tensor.run_jax(
         compute_all_masks_jit,
         subgroup_map,
         bin_indices,
@@ -326,7 +326,7 @@ def _compute_histogram_chunk_batch(
 
     # Batch encode all masks at once to avoid scheduler bottleneck
     # Pass relin_keys as context provider (it holds the SEALContext)
-    all_masks_pt = bfv.batch_encode(all_masks_list, encoder, key=relin_keys)
+    all_masks_pt = bfv.batch_encode(all_masks_tensor, encoder, key=relin_keys)
     mask_iter = iter(all_masks_pt)
 
     # ==========================================================================
@@ -2130,18 +2130,19 @@ __mp_main__ = run_sgb_demo
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
 
     import mplang.v2 as mp
 
-    run_bench = False
-    if len(sys.argv) > 1 and sys.argv[1] == "--benchmark":
-        run_bench = True
+    parser = argparse.ArgumentParser(description="SecureBoost v2 Example")
+    parser.add_argument("--benchmark", action="store_true", help="Run benchmark")
+    parser.add_argument("--profile", action="store_true", help="Enable profiling")
+    args = parser.parse_args()
 
     # Use high-level Simulator API
-    sim = mp.Simulator.simple(2)
+    sim = mp.Simulator.simple(2, enable_profiler=args.profile)
 
-    if run_bench:
+    if args.benchmark:
         run_sgb_bench(sim)
     else:
         run_sgb_demo(sim)

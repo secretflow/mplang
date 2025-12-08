@@ -104,10 +104,12 @@ class Simulator:
         value = fetch(sim, result)
     """
 
-    def __init__(self, cluster_spec: ClusterSpec):
+    def __init__(self, cluster_spec: ClusterSpec, enable_profiler: bool = False):
         """Create a Simulator from a ClusterSpec."""
         self._cluster = cluster_spec
-        self._sim = SimpSimulator(world_size=len(cluster_spec.nodes))
+        self._sim = SimpSimulator(
+            world_size=len(cluster_spec.nodes), enable_profiler=enable_profiler
+        )
         set_global_cluster(cluster_spec)
 
     @classmethod
@@ -117,17 +119,19 @@ class Simulator:
         Args:
             world_size: Number of parties (physical nodes).
             **kwargs: Additional arguments passed to ClusterSpec.simple().
+                      Also accepts 'enable_profiler' (bool).
 
         Returns:
             A Simulator instance.
         """
+        enable_profiler = kwargs.pop("enable_profiler", False)
         cluster = ClusterSpec.simple(
             world_size,
             enable_ppu_device=kwargs.pop("enable_ppu_device", True),
             enable_spu_device=kwargs.pop("enable_spu_device", True),
             **kwargs,
         )
-        return cls(cluster)
+        return cls(cluster, enable_profiler=enable_profiler)
 
     @property
     def cluster(self) -> ClusterSpec:

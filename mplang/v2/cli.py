@@ -44,7 +44,7 @@ import signal
 import sys
 from collections.abc import Callable
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import uvicorn
 import yaml
@@ -194,7 +194,7 @@ def cmd_config_gen(args: argparse.Namespace) -> None:
     config: dict[str, Any] = {"nodes": nodes}
 
     # Add default PPU devices
-    devices = {}
+    devices: dict[str, Any] = {}
     for i in range(world_size):
         devices[f"P{i}"] = {
             "kind": "ppu",
@@ -307,7 +307,7 @@ def resolve_entry(module: ModuleType, name: str) -> Callable[..., Any]:
     entry = getattr(module, name, None)
     if entry is None or not callable(entry):
         raise AttributeError(f"Entry function '{name}' not found or not callable")
-    return entry
+    return cast(Callable[..., Any], entry)
 
 
 def parse_spu_endpoints(
@@ -338,8 +338,10 @@ def cmd_run(args: argparse.Namespace) -> None:
         endpoints, _, world_size, _ = build_endpoints(args)
         cluster = ClusterSpec.simple(world_size, endpoints=endpoints)
 
+    driver: Any
     if args.backend == "sim":
-        driver = Simulator(cluster)
+        enable_profiler = getattr(args, "profile", False)
+        driver = Simulator(cluster, enable_profiler=enable_profiler)
     else:
         driver = Driver(cluster)
 
@@ -480,6 +482,11 @@ def main() -> None:
         default=[],
         help="Arguments passed to the entry function",
     )
+    run_parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable performance profiling (only for sim backend)",
+    )
 
     # 'sim' subcommand
     sim_parser = subparsers.add_parser("sim", help="Run a user job in local simulator")
@@ -495,6 +502,11 @@ def main() -> None:
         nargs="*",
         default=[],
         help="Arguments passed to the entry function",
+    )
+    sim_parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable performance profiling",
     )
 
     # 'trace' subcommand

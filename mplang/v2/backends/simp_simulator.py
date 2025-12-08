@@ -132,13 +132,19 @@ class SimpSimulator(SimpHost):
             that all transmitted types are properly registered with serde.
     """
 
-    def __init__(self, world_size: int = 3, *, use_serde: bool = False):
+    def __init__(
+        self,
+        world_size: int = 3,
+        *,
+        use_serde: bool = False,
+        enable_profiler: bool = False,
+    ):
         super().__init__(world_size)
         self.use_serde = use_serde
         self.ctx = get_or_create_context(world_size, use_serde=use_serde)
 
         # Create a shared profiler for all workers
-        self.profiler = DagProfiler(enabled=True)
+        self.profiler = DagProfiler(enabled=enable_profiler)
         self.profiler.start()
 
         # Create persistent workers (Actors)

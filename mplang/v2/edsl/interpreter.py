@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 class DagProfiler:
     """Profiler for DAG execution metrics and Chrome Tracing."""
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = False):
         self.enabled = enabled
         self.start_time = 0.0
         self.end_time = 0.0
@@ -739,6 +739,10 @@ class Interpreter(Context):
         for op in initial_ops:
             profiler.log_schedule(op, namespace=self.trace_pid)
             ready_queue.put(op)
+
+        # Handle empty graph case
+        if remaining_ops == 0:
+            ready_queue.put(None)
 
         # 6. Main Loop
         while True:

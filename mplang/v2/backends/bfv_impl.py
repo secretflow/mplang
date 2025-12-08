@@ -321,24 +321,25 @@ def batch_encode_impl(
     op: Operation,
     *args: Value,
 ) -> tuple[BFVValue | TensorValue, ...]:
-    # args will be (t1, t2, ..., tn, encoder, key)
-    # We need to separate tensors from encoder and key
-
+    # args will be (tensor, encoder, key)
     key = args[-1]
     _encoder = args[-2]
-    tensors = args[:-2]
+    tensor_val = args[0]
 
     # Eager encoding using key.ctx
     # key is BFVPublicContextValue (or BFVSecretContextValue)
     ctx = cast(BFVPublicContextValue, key)
 
     results = []
-    for t in tensors:
+    # Optimization: Convert to numpy array first to avoid JAX dispatch overhead
+    # during iteration. This also ensures a single device-to-host transfer if on GPU.
+    arr = np.asarray(cast(TensorValue, tensor_val).unwrap())
+
+    # Iterate rows
+    for i in range(arr.shape[0]):
         pt = sealapi.Plaintext()
-        arr = cast(TensorValue, t).unwrap()
-        # Ensure 1D list of ints
-        # Optimization: Use tolist() instead of list comprehension for 3x speedup
-        vec = arr.flatten().tolist()
+        # Use tolist() for speed
+        vec = arr[i].tolist()
         ctx.batch_encoder.encode(vec, pt)
         results.append(BFVValue(pt, ctx, is_cipher=False))
 

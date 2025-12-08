@@ -248,3 +248,25 @@ and general execution gaps) has been drastically reduced.
     ```
 
   * **Visualization:** The merged trace clearly shows the interaction between Party 0 and Party 1, with communication events (`comm.send`) annotated with data size.
+
+### Phase 11: JAX/BFV Interface Optimization
+
+**Goal:** Eliminate the massive overhead of passing 100,000+ small tensors between JAX and BFV.
+
+* **Problem:**
+  * Profiling revealed that `tensor.run_jax` was a major bottleneck, not due to computation, but due to returning a Tuple of ~100,000 small arrays
+    (one per chunk per feature).
+  * This caused massive object creation overhead and bloated the IR.
+* **Solution:**
+  * **Batch Return:** Modified `sgb.py` to return a single large 2D tensor `(N, slot_count)` from JAX instead of a tuple of 1D tensors.
+  * **Batch Encode:** Enhanced `bfv.batch_encode` to accept a single 2D tensor and perform optimized row-wise encoding in C++.
+* **Result:**
+  * **Total Time (Local Sim):** Dropped from ~438s (Distributed) / ~323s (Phase 9 Local) to **220.8s**.
+  * **`tensor.run_jax` Time:** Reduced to negligible levels (~1.4s total).
+  * **Throughput:** System is now fully compute-bound by BFV operations (`mul`, `add`, `rotate`), which is the ideal state for an FHE application.
+
+**Benchmark (1M samples, depth 5):**
+
+* **Total Time:** **220.8s** (Local Simulation)
+* **Accuracy:** 89.26%
+* **Speedup:** ~1.5x faster than Phase 9.

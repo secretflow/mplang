@@ -28,7 +28,7 @@ from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
 from mplang.v2.backends.simp_host import SimpHost
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import DagProfiler
+from mplang.v2.runtime.interpreter import DagProfiler
 
 
 class ThreadCommunicator:

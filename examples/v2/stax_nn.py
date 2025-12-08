@@ -165,7 +165,7 @@ def train(
 
     from mplang.v2.backends.simp_host import HostVar
     from mplang.v2.dialects.spu import SPUConfig
-    from mplang.v2.edsl.interpreter import InterpObject
+    from mplang.v2.runtime.interpreter import InterpObject
 
     config = SPUConfig(protocol="SEMI2K", field="FM128")
     runtime_config = config.to_runtime_config()

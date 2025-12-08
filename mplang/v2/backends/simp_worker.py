@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import DagProfiler, Interpreter
+from mplang.v2.runtime.interpreter import DagProfiler, Interpreter
 
 
 class WorkerInterpreter(Interpreter):

@@ -52,7 +52,7 @@ from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import DagProfiler
+from mplang.v2.runtime.interpreter import DagProfiler
 
 logger = logging.getLogger(__name__)
 

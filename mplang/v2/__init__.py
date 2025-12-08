@@ -282,7 +282,7 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
     from mplang.v2.backends.simp_host import HostVar
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue
-    from mplang.v2.edsl.interpreter import InterpObject
+    from mplang.v2.runtime.interpreter import InterpObject
 
     def _unwrap_value(val: Any) -> Any:
         """Unwrap Value types to get the underlying data."""

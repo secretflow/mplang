@@ -19,10 +19,10 @@ from __future__ import annotations
 import concurrent.futures
 from typing import Any
 
-from mplang.v2.backends.value import Value
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.value import Value
 
 
 @serde.register_class

@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from mplang.v2.dialects import simp
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
 
 if TYPE_CHECKING:
     from mplang.v2.backends.simp_worker import WorkerInterpreter

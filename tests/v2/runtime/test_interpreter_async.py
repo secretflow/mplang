@@ -17,8 +17,8 @@ import time
 import unittest
 
 from mplang.v2.edsl.graph import Graph, Operation
-from mplang.v2.edsl.interpreter import Interpreter
 from mplang.v2.edsl.registry import register_impl
+from mplang.v2.runtime.interpreter import Interpreter
 
 
 # Dummy operations for testing

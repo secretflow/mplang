@@ -26,7 +26,7 @@ from mplang.v2.dialects import simp
 from mplang.v2.dialects.simp import pcall_static, uniform_cond
 from mplang.v2.dialects.tensor import run_jax
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import InterpObject
+from mplang.v2.runtime.interpreter import InterpObject
 
 
 def _unwrap_values(values: list) -> list:

@@ -27,11 +27,11 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.backends.value import WrapValue
 from mplang.v2.dialects import spu
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.value import WrapValue
 
 # =============================================================================
 # SPU Share Wrapper

@@ -31,7 +31,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
-from mplang.v2.edsl.context import Context
+from mplang.v2.edsl.context import AbstractInterpreter
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.registry import get_impl
@@ -274,7 +274,7 @@ class InterpObject(Object):
         return f"InterpObject({runtime_repr}, type={self.type})"
 
 
-class Interpreter(Context):
+class Interpreter(AbstractInterpreter):
     """Execution context for eager execution.
 
     Inherits from Context and implements bind_primitive() by executing immediately.

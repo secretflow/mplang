@@ -28,7 +28,7 @@ Concise guidance for AI coding agents working in this repo. Keep answers specifi
 - Masks: `Mask` models which parties hold/execute values. `set_mask` enforces runtime execution mask; static/dynamic pmask rules are documented in its docstring.
 - Control flow: use `cond`, `while_loop`, `peval`, `ConvExpr`/`ShflExpr` via helpers in `primitive.py` instead of ad-hoc Python control flow inside traced code.
 - Devices: prefer `mplang.device` for placement and `@mplang.function` for graph capture; avoid leaking ranks into device-level code (rank-level ops live in `mplang/simp`).
-- Types/Style: Python 3.10+, type hints everywhere. Use `ruff` for lint/format and `mypy` on `mplang/` before PRs.
+- Types/Style: Python 3.11+, type hints everywhere. Use `ruff` for lint/format and `mypy` on `mplang/` before PRs.
 
 ## Dev workflow (commands)
 

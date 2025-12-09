@@ -38,7 +38,7 @@ def test_spu_e2e_simulation():
         return x + y
 
     # 3. Define workflow graph
-    with el.Tracer() as tracer:
+    def workflow():
         # Create data on party 0
         # We use pcall to create MP-typed data on party 0
         x_mp = simp.constant((0,), np.array([1.0, 2.0], dtype=np.float32))
@@ -82,14 +82,16 @@ def test_spu_e2e_simulation():
         z_mp = simp.pcall_static(
             (0,), lambda *s: spu.reconstruct(spu_config, s), *z_shares
         )
+        return z_mp
 
-        # Return result
-        tracer.finalize(z_mp)
-
-    graph = tracer.graph
+    # Trace to get graph
+    traced = el.trace(workflow)
+    graph = traced.graph
 
     try:
         # 4. Execute on all parties
+        # We use evaluate_graph directly on the backend to test backend execution
+        # Note: inputs are empty because we used constants inside the function
         futures = []
         for rank in range(world_size):
             # Type hint for _submit expects Operation, but we pass Graph.
@@ -98,9 +100,15 @@ def test_spu_e2e_simulation():
 
         results = sim._collect(futures)
 
+        # Fetch results
+        from mplang.v2.backends.simp_host import HostVar
+
+        results_var = HostVar(results)
+        values = sim.fetch(results_var)
+
         # 5. Verify
         # Result from party 0 should be the tensor (wrapped in TensorValue)
-        res_p0 = results[0]
+        res_p0 = values[0]
 
         assert res_p0 is not None
         # Unwrap TensorValue if needed
@@ -108,8 +116,8 @@ def test_spu_e2e_simulation():
             res_p0 = res_p0.unwrap()
         np.testing.assert_allclose(res_p0, [4.0, 6.0])
 
-        assert results[1] is None
-        assert results[2] is None
+        assert values[1] is None
+        assert values[2] is None
 
     finally:
         sim.shutdown(wait=False)

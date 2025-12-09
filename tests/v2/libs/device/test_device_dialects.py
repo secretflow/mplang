@@ -36,7 +36,16 @@ def extract_runtime_value(obj):
     In multi-party simulation, runtime_obj may be a HostVar containing
     values per party. This helper extracts the first non-None value.
     """
+    from mplang.v2 import get_current_context
+
+    interp = get_current_context()
+
     val = obj.runtime_obj
+
+    # Fetch if it's a HostVar or contains URIs
+    if hasattr(interp, "fetch"):
+        val = interp.fetch(val)
+
     # HostVar is used in simulation, it has .values attribute or supports indexing
     if hasattr(val, "values"):
         # HostVar case - iterate through values list

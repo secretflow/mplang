@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import Self
 
 if TYPE_CHECKING:
+    from mplang.v2.edsl.graph import Graph
     from mplang.v2.edsl.object import Object
     from mplang.v2.edsl.primitive import Primitive
 
@@ -48,20 +49,7 @@ class Context(ABC):
     A Context represents an environment where primitives are executed.
     There are two types of contexts:
     - Tracer: Records operations to Graph IR (compile-time)
-    - Interpreter: Executes operations immediately (runtime)
-
-    Each context decides how to handle primitive operations by implementing
-    the bind_primitive() method.
-
-    This abstraction provides:
-    1. Clear responsibility: Context knows how to execute primitives
-    2. Context management: enter/exit context for operation tracing/execution
-    3. Extensibility: Easy to add new context types (Profiler, Debugger, etc.)
-
-    Usage:
-        >>> tracer = Tracer()
-        >>> with tracer:  # Context manager protocol
-        ...     result = primitive.bind(x, y)
+    - Interpreter: Execution context (executes operations immediately)
     """
 
     @abstractmethod
@@ -149,3 +137,20 @@ def get_default_context() -> Context:
             )
         _default_context = _default_context_factory()
     return _default_context
+
+
+class AbstractInterpreter(Context):
+    """Abstract interface for Interpreters.
+
+    This allows EDSL components (like JIT) to depend on the Interpreter interface
+    without depending on the concrete Runtime implementation (which may depend on
+    ObjectStore, Backends, etc.).
+    """
+
+    @abstractmethod
+    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+        """Execute a Graph IR with given inputs."""
+
+    @abstractmethod
+    def lift(self, obj: Any) -> Any:
+        """Lift a python object to an interpreter object."""

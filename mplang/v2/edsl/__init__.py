@@ -27,6 +27,9 @@ graph, tracer, primitives, etc.), while the full type system lives under
 
 from __future__ import annotations
 
+# Interpreter + execution helpers
+from mplang.v2.runtime.interpreter import InterpObject, Interpreter, interpret
+
 # Re-export the typing module so callers can `import mplang.v2.edsl.typing as elt`
 from . import typing as typing
 
@@ -43,23 +46,13 @@ from .context import (
 # Graph IR
 from .graph import Graph, Operation, Value
 
-# Interpreter + execution helpers
-from .interpreter import InterpObject, Interpreter, interpret
-
 # High-level helpers
 from .jit import jit
 from .object import Object
 from .primitive import Primitive, primitive
 from .printer import GraphPrinter, format_graph
 from .tracer import TracedFunction, TraceObject, Tracer, trace
-from .typing import (
-    MPType,
-    ScalarType,
-    SSType,
-    TableType,
-    TensorType,
-    VectorType,
-)
+from .typing import MPType, ScalarType, SSType, TableType, TensorType, VectorType
 
 # Register default context factory
 register_default_context_factory(Interpreter)

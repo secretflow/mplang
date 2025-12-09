@@ -419,6 +419,37 @@ def cmd_trace_merge(args: argparse.Namespace) -> None:
     print(f"Successfully merged {len(merged_events)} events into {output_file}")
 
 
+def cmd_objects(args: argparse.Namespace) -> None:
+    """List objects on workers."""
+    endpoints, _, world_size, _ = build_endpoints(args)
+
+    print(f"Listing objects on {world_size} workers...")
+    print("-" * 80)
+    print(f"{'Rank':<6} | {'Endpoint':<25} | {'Count':<6} | {'Objects'}")
+    print("-" * 80)
+
+    import httpx
+
+    for rank in range(world_size):
+        url = f"{endpoints[rank]}/objects"
+        try:
+            resp = httpx.get(url, timeout=2.0)
+            if resp.status_code == 200:
+                objects = resp.json()["objects"]
+                count = len(objects)
+                # Truncate list if too long
+                obj_str = ", ".join(objects[:3])
+                if count > 3:
+                    obj_str += ", ..."
+                print(f"{rank:<6} | {endpoints[rank]:<25} | {count:<6} | {obj_str}")
+            else:
+                print(
+                    f"{rank:<6} | {endpoints[rank]:<25} | {'Err':<6} | Status {resp.status_code}"
+                )
+        except Exception as e:
+            print(f"{rank:<6} | {endpoints[rank]:<25} | {'Err':<6} | {e}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="MPLang2 cluster and job CLI",
@@ -509,6 +540,10 @@ def main() -> None:
         help="Enable performance profiling",
     )
 
+    # 'objects' subcommand
+    objects_parser = subparsers.add_parser("objects", help="List objects on workers")
+    add_cluster_args(objects_parser, include_ports=False)
+
     # 'trace' subcommand
     trace_parser = subparsers.add_parser("trace", help="Trace utilities")
     trace_subparsers = trace_parser.add_subparsers(
@@ -547,6 +582,8 @@ def main() -> None:
     elif args.command == "sim":
         args.backend = "sim"
         cmd_run(args)
+    elif args.command == "objects":
+        cmd_objects(args)
     else:
         parser.print_help()
 

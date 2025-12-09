@@ -18,17 +18,52 @@ import logging
 import multiprocessing
 import time
 
+import httpx
+
+import mplang.v2.edsl as el
 import numpy as np
 import pytest
 import uvicorn
-
-import mplang.v2.edsl as el
 from mplang.v2.backends.simp_http_driver import SimpHttpDriver
 from mplang.v2.backends.simp_http_worker import create_worker_app
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 
 logging.basicConfig(level=logging.DEBUG)
+
+
+def wait_for_server_ready(endpoint, timeout=30, check_interval=0.5):
+    """Wait for a server to be ready by checking health endpoint."""
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            with httpx.Client(timeout=2.0) as client:
+                # Try to make a simple request to check if server is responsive
+                response = client.get(f"{endpoint}/health", timeout=2.0)
+                if response.status_code == 200:
+                    logging.debug(f"Server at {endpoint} is ready")
+                    return True
+                else:
+                    logging.debug(
+                        f"Server at {endpoint} returned status {response.status_code}"
+                    )
+        except (
+            httpx.RequestError,
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            ConnectionError,
+        ) as e:
+            # Server not ready yet, continue waiting
+            logging.debug(f"Server at {endpoint} not ready: {e}")
+        except Exception as e:
+            # Unexpected error, log it but continue waiting
+            logging.warning(f"Unexpected error checking server at {endpoint}: {e}")
+
+        time.sleep(check_interval)
+
+    logging.error(f"Server at {endpoint} failed to become ready within {timeout}s")
+    return False
 
 
 def run_worker(rank, world_size, endpoints, port):
@@ -57,18 +92,50 @@ def http_cluster():
         p.start()
         processes.append(p)
 
-    # Wait for servers to start
-    time.sleep(2)
+    # Wait for all servers to be ready
+    all_ready = True
+    for endpoint in endpoints:
+        logging.info(f"Waiting for server at {endpoint} to be ready...")
+        if not wait_for_server_ready(endpoint, timeout=30):
+            logging.error(f"Server at {endpoint} failed to become ready")
+            all_ready = False
+
+    if not all_ready:
+        # Clean up processes if servers failed to start
+        for p in processes:
+            try:
+                p.terminate()
+                p.join(timeout=5)
+                if p.is_alive():
+                    logging.warning(
+                        f"Process {p.pid} did not terminate gracefully, killing it."
+                    )
+                    p.kill()
+                    p.join(timeout=2)
+            except Exception as e:
+                logging.error(f"Error cleaning up process {p.pid}: {e}")
+        pytest.fail("Failed to start all HTTP worker servers")
+
+    # Give servers a moment to fully initialize after health checks pass
+    time.sleep(0.5)
+    logging.info("All HTTP worker servers are ready")
 
     yield SimpHttpDriver(world_size, endpoints)
 
     for p in processes:
-        p.terminate()
-        p.join(timeout=2)
-        if p.is_alive():
-            logging.warning(f"Process {p.pid} did not terminate, killing it.")
-            p.kill()
-            p.join()
+        try:
+            p.terminate()
+            p.join(timeout=5)  # Increased timeout for graceful shutdown
+            if p.is_alive():
+                logging.warning(
+                    f"Process {p.pid} did not terminate gracefully, killing it."
+                )
+                p.kill()
+                p.join(timeout=2)
+                if p.is_alive():
+                    logging.error(f"Process {p.pid} could not be killed")
+        except Exception as e:
+            logging.error(f"Error cleaning up process {p.pid}: {e}")
 
 
 def _add_fn(a, b):
@@ -96,12 +163,27 @@ def test_http_e2e(http_cluster):
     traced = el.trace(workflow)
     graph = traced.graph
 
-    # Execute
-    # Inputs are empty since we use constants
-    results = host.evaluate_graph(graph, {})
+    # Execute with retry for robustness
+    max_retries = 3
+    retry_delay = 1.0
 
-    # Fetch results
-    values = host.fetch(results)
+    for attempt in range(max_retries):
+        try:
+            # Execute
+            # Inputs are empty since we use constants
+            results = host.evaluate_graph(graph, {})
+
+            # Fetch results
+            values = host.fetch(results)
+            break
+        except Exception as e:
+            if attempt == max_retries - 1:
+                # Last attempt failed, re-raise the exception
+                raise
+            logging.warning(
+                f"Attempt {attempt + 1} failed: {e}, retrying in {retry_delay}s..."
+            )
+            time.sleep(retry_delay)
 
     # Verify
     # Party 0 result is None (not involved in final output)

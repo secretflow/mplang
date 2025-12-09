@@ -1,0 +1,111 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Tests for Permutation Network library."""
+
+import jax.numpy as jnp
+
+import mplang.v2.backends.crypto_impl
+import mplang.v2.backends.tensor_impl  # noqa: F401
+from mplang.v2.backends.simp_simulator import SimpSimulator
+from mplang.v2.backends.tensor_impl import TensorValue
+from mplang.v2.dialects import simp, tensor
+from mplang.v2.libs.mpc import permutation
+
+
+def _unwrap(val):
+    """Unwrap TensorValue to numpy array."""
+    if isinstance(val, TensorValue):
+        return val.unwrap()
+    return val
+
+
+def test_secure_switch_straight():
+    # World size 2: Party 0 (Sender), Party 1 (Receiver)
+    interp = SimpSimulator(world_size=2)
+
+    # Sender: x0=10, x1=20
+    # Receiver: c=0 (Straight) -> y0=10, y1=20
+
+    def protocol(x0, x1, c):
+        return permutation.secure_switch(x0, x1, c, sender=0, receiver=1)
+
+    with interp:
+        x0_obj = simp.constant((0,), 10)
+        x1_obj = simp.constant((0,), 20)
+        c_obj = simp.constant((1,), 0)
+
+        y0, y1 = protocol(x0_obj, x1_obj, c_obj)
+
+    assert _unwrap(y0.runtime_obj.values[1]).item() == 10
+    assert _unwrap(y1.runtime_obj.values[1]).item() == 20
+
+
+def test_secure_switch_swap():
+    # World size 2: Party 0 (Sender), Party 1 (Receiver)
+    interp = SimpSimulator(world_size=2)
+
+    # Sender: x0=10, x1=20
+    # Receiver: c=1 (Swap) -> y0=20, y1=10
+
+    def protocol(x0, x1, c):
+        return permutation.secure_switch(x0, x1, c, sender=0, receiver=1)
+
+    with interp:
+        x0_obj = simp.constant((0,), 10)
+        x1_obj = simp.constant((0,), 20)
+        c_obj = simp.constant((1,), 1)
+
+        y0, y1 = protocol(x0_obj, x1_obj, c_obj)
+
+    assert _unwrap(y0.runtime_obj.values[1]).item() == 20
+    assert _unwrap(y1.runtime_obj.values[1]).item() == 10
+
+
+def test_apply_permutation_n2():
+    # World size 2
+    interp = SimpSimulator(world_size=2)
+
+    # Sender: data=[10, 20]
+    # Receiver: perm=[1, 0] (Swap) -> [20, 10]
+
+    def protocol(d0, d1, p0, p1):
+        data = [d0, d1]
+        # Pack permutation into a tensor/list
+        # In this test, we pass individual elements to construct the list
+        # But apply_permutation expects a list of Objects.
+        # And permutation is expected to be an Object (Tensor) or list of Objects?
+        # The implementation expects `permutation` to be an Object (Tensor) in `get_control_bit`.
+
+        # Let's construct the permutation tensor on Receiver
+
+        def make_perm(a, b):
+            return tensor.run_jax(lambda x, y: jnp.array([x, y]), a, b)
+
+        perm = simp.pcall_static((1,), make_perm, p0, p1)
+
+        return permutation.apply_permutation(data, perm, sender=0, receiver=1)
+
+    with interp:
+        d0_obj = simp.constant((0,), 10)
+        d1_obj = simp.constant((0,), 20)
+        p0_obj = simp.constant((1,), 1)
+        p1_obj = simp.constant((1,), 0)
+
+        res = protocol(d0_obj, d1_obj, p0_obj, p1_obj)
+
+    # res is a list of Objects on Receiver
+
+    assert _unwrap(res[0].runtime_obj.values[1]).item() == 20
+    assert _unwrap(res[1].runtime_obj.values[1]).item() == 10

@@ -266,11 +266,9 @@ class TestDeviceWithTableDialect:
             t = table.constant(data)
 
             # Run SQL to compute x + y
-            out_schema = elt.TableType(
-                {
-                    "sum": elt.TensorType(elt.i64, ()),
-                }
-            )
+            out_schema = elt.TableType({
+                "sum": elt.TensorType(elt.i64, ()),
+            })
             result = table.run_sql(
                 "SELECT x + y AS sum FROM t", out_type=out_schema, t=t
             )

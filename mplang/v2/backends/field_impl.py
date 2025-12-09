@@ -31,8 +31,8 @@ import numpy as np
 from mplang.v2.backends.tensor_impl import TensorValue, _unwrap, _wrap
 from mplang.v2.dialects import field
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
 from mplang.v2.kernels import py_kernels
+from mplang.v2.runtime.interpreter import Interpreter
 
 # =============================================================================
 # Kernel Loading

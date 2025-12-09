@@ -136,7 +136,7 @@ def sparse_encode_numpy(
         # Inner mixing
         magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
         mixed = mixed_key ^ (np.uint64(magic) ^ current_seed)
-        
+
         mixed = mixed * np.uint64(0xBF58476D1CE4E5B9)
         mixed = mixed ^ (mixed >> np.uint64(27))
         mixed = mixed * np.uint64(0x94D049BB133111EB)
@@ -179,10 +179,10 @@ def compute_hash_positions(
     for i in range(NUM_HASHES):
         offset = (i * 0x9E3779B97F4A7C15) & MASK64
         current_seed = seed1 + np.uint64(offset)
-        
+
         magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
         mixed = mixed_key ^ (np.uint64(magic) ^ current_seed)
-        
+
         mixed = mixed * np.uint64(0xBF58476D1CE4E5B9)
         mixed = mixed ^ (mixed >> np.uint64(27))
         mixed = mixed * np.uint64(0x94D049BB133111EB)
@@ -260,10 +260,10 @@ def sparse_encode(
             # Mask constants to 64-bit to prevent JAX coercion errors
             offset = (i * 0x9E3779B97F4A7C15) & MASK64
             current_seed = seed1 + jnp.uint64(offset)
-            
+
             magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
             mixed = mixed_key ^ (jnp.uint64(magic) ^ current_seed)
-            
+
             mixed = mixed * jnp.uint64(0xBF58476D1CE4E5B9)
             mixed = mixed ^ (mixed >> 27)
             mixed = mixed * jnp.uint64(0x94D049BB133111EB)
@@ -339,10 +339,10 @@ def compute_positions(
             # Mask constants
             offset = (i * 0x9E3779B97F4A7C15) & MASK64
             current_seed = seed1 + jnp.uint64(offset)
-            
+
             magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
             mixed = mixed_key ^ (jnp.uint64(magic) ^ current_seed)
-            
+
             mixed = mixed * jnp.uint64(0xBF58476D1CE4E5B9)
             mixed = mixed ^ (mixed >> 27)
             mixed = mixed * jnp.uint64(0x94D049BB133111EB)

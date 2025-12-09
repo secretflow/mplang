@@ -17,7 +17,7 @@ import numpy as np
 
 import mplang.v2.libs.mpc.vole.gilboa as vole
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.edsl import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
 
 
 def prove_logic():
@@ -89,7 +89,7 @@ def prove_logic():
     interp = Interpreter()
 
     import mplang.v2.edsl.typing as elt
-    from mplang.v2.edsl.interpreter import InterpObject
+    from mplang.v2.runtime.interpreter import InterpObject
 
     # Types
     # T: (128, 128) u8

@@ -55,7 +55,7 @@ def psi_unbalanced(
     """Unbalanced PSI with O(client_n) communication.
 
     This protocol is optimized for scenarios where client_n << server_n.
-    
+
     Security:
     - Uses a cryptographically random Session Seed (128-bit) generated at RUNTIME.
     - Both Key and Value derivations include the Seed.
@@ -82,89 +82,89 @@ def psi_unbalanced(
     # =========================================================================
     # 1. Server Setup: Generate Runtime Random Seed
     # =========================================================================
-    
+
     # Generate 16 bytes (128-bit) of cryptographically secure random data
     # AT RUNTIME on the Server party (not during trace!)
     def _gen_runtime_seed() -> Any:
         # crypto.random_bytes is an EDSL primitive that generates random bytes
         # at runtime on the executing party
         rand_bytes = crypto.random_bytes(16)  # 16 bytes = 128 bits
-        
+
         # Convert (16,) uint8 to (2,) uint64
         def _to_u64(b: Any) -> Any:
             return b.view(jnp.uint64)
-        
+
         return tensor.run_jax(_to_u64, rand_bytes)
-    
+
     server_seed = simp.pcall_static((server,), _gen_runtime_seed)
-    
+
     # =========================================================================
     # Hashing Helpers (Both Key and Value use Seed)
     # =========================================================================
-    
+
     def _compute_hashes(items: Any, seed: Any) -> tuple[Any, Any]:
         """Compute Derived Key K' and Validation Value V for items.
-        
+
         Both Key and Value are derived using the session Seed to prevent
         pre-computation attacks.
-        
+
         Key:   K' = AES_Expand(H_key(Item, Seed))[:64bit]
         Value: V  = AES_Expand(H_val(Item, Seed))[:128bit]
         """
-        
+
         # Domain separator for Key derivation
         KEY_DOMAIN = jnp.uint64(0xA5A5A5A5A5A5A5A5)
-        # Domain separator for Value derivation  
+        # Domain separator for Value derivation
         VAL_DOMAIN = jnp.uint64(0x5A5A5A5A5A5A5A5A)
-        
+
         def _prepare_key_seed(x: Any, s: Any) -> Any:
             # x: (N,) u64, s: (2,) u64
             # Mix with KEY domain separator
             k_lo = (x + s[0]) ^ KEY_DOMAIN
             k_hi = (x ^ s[1]) + KEY_DOMAIN
             return jnp.stack([k_lo, k_hi], axis=1)
-        
+
         def _prepare_val_seed(x: Any, s: Any) -> Any:
             # x: (N,) u64, s: (2,) u64
             # Mix with VAL domain separator (different from key)
             v_lo = (x + s[0]) ^ VAL_DOMAIN
             v_hi = (x ^ s[1]) + VAL_DOMAIN
             return jnp.stack([v_lo, v_hi], axis=1)
-        
+
         # Derive Keys
         key_seeds = tensor.run_jax(_prepare_key_seed, items, seed)
         h_keys_raw = field.aes_expand(key_seeds, 1)  # (N, 1, 2)
-        
+
         def _extract_key(h: Any) -> Any:
             return h[:, 0, 0]
-            
+
         keys = tensor.run_jax(_extract_key, h_keys_raw)
-        
+
         # Derive Values (ALSO using seed - fixes Value Oracle Attack)
         val_seeds = tensor.run_jax(_prepare_val_seed, items, seed)
         h_vals_raw = field.aes_expand(val_seeds, 1)  # (N, 1, 2)
-        
+
         def _flatten(h: Any) -> Any:
             return h.reshape(h.shape[0], 2)
-            
+
         vals = tensor.run_jax(_flatten, h_vals_raw)
-        
+
         return keys, vals
 
     # Server computes K' and V
     server_derived_keys, server_values = simp.pcall_static(
         (server,), _compute_hashes, server_items, server_seed
     )
-    
+
     # Server Solves OKVS
     expansion = get_okvs_expansion(server_n)
     M = int(server_n * expansion)
-    
+
     def _solve(k: Any, v: Any) -> Any:
         return field.solve_okvs(k, v, M)
-        
+
     okvs_table = simp.pcall_static((server,), _solve, server_derived_keys, server_values)
-    
+
     # Send to Client
     okvs_table_client = simp.shuffle_static(okvs_table, {client: server})
     client_seed = simp.shuffle_static(server_seed, {client: server})
@@ -172,16 +172,16 @@ def psi_unbalanced(
     # =========================================================================
     # 2. Client Operations
     # =========================================================================
-    
+
     # Client computes k' and expected V using the SAME hash functions
     client_derived_keys, client_expected_values = simp.pcall_static(
         (client,), _compute_hashes, client_items, client_seed
     )
-    
+
     # Client Decodes OKVS and Compares
     def _decode_and_compare(keys: Any, table: Any, expected: Any) -> Any:
         decoded = field.decode_okvs(keys, table)
-        
+
         def _compare_jax(dec: Any, exp: Any) -> Any:
             match = (dec[:, 0] == exp[:, 0]) & (dec[:, 1] == exp[:, 1])
             return match.astype(jnp.uint8)

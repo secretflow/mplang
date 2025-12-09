@@ -75,7 +75,7 @@ def hash_to_positions(
     b_base = jnp.array(
         [0x1234567890ABCDEF, 0xFEDCBA0987654321, 0xABCDEF1234567890], dtype=jnp.uint64
     )
-    
+
     # Security Fix: Seed BOTH coefficients a and b
     # This prevents structural analysis attacks on the hash family
     a = a_base ^ seed0  # Mix seed0 into multiplicative coefficient

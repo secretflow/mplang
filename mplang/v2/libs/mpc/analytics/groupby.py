@@ -266,16 +266,16 @@ def oblivious_groupby_sum_shuffle(
     # 2. Secret Share Data (Sender)
     # Security Fix: Generate mask using crypto.random_bytes at RUNTIME on Sender
     # This generates cryptographically secure random bytes that are unique per session.
-    
+
     def split_shares_fn(d):
         # Generate random bytes at runtime (EDSL primitive, NOT during trace)
         # This is secure because crypto.random_bytes executes at runtime on the party.
         n_elements = d.type.shape[0]
         bytes_per_element = 8  # int64 = 8 bytes
         total_bytes = n_elements * bytes_per_element
-        
+
         mask_bytes = crypto.random_bytes(total_bytes)
-        
+
         def _apply_mask(arr, m_bytes):
             # View random bytes as int64 (same as typical input dtype)
             # For generality, we use arr.dtype, but assume int64 for now.
@@ -283,7 +283,7 @@ def oblivious_groupby_sum_shuffle(
             d0 = arr - mask
             d1 = mask
             return d0, d1
-        
+
         return tensor.run_jax(_apply_mask, d, mask_bytes)
 
     d0, d1 = simp.pcall_static((sender,), split_shares_fn, data)

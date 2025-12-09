@@ -55,9 +55,6 @@ examples = [
     "xgboost>=2.0.0,<3.0.0", # CPU version, 3.x requires CUDA dependencies
 ]
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.hatch.metadata.hooks.custom]
 
 [tool.hatch.build.targets.wheel]

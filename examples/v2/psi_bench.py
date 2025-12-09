@@ -181,15 +181,15 @@ def benchmark_okvs_psi(n_items):
     print(f"Total Time: {total_time:.4f}s")
     print(f"Throughput: {throughput:,.0f} items/sec")
 
-    return throughput
+    return total_time, throughput
 
 
 if __name__ == "__main__":
     sizes = [1000, 10000, 100000, 1000000]  # Scale up
     results = {}
     for n in sizes:
-        t = benchmark_okvs_psi(n)
-        results[n] = t
+        total_time, throughput = benchmark_okvs_psi(n)
+        results[n] = (total_time, throughput)
 
     # Summary
     print("\n" + "=" * 70)
@@ -199,10 +199,6 @@ if __name__ == "__main__":
     print("-" * 70)
 
     for n in sizes:
-        t_throughput = results[n]
-        # We need to recalculate total time or store it.
-        # Since the original function only returned throughput, we can estimate time = n / throughput
-        # Or better, let's modify the function to return both, but to keep changes minimal matching user style:
-        t_total = n / t_throughput if t_throughput > 0 else 0
+        t_total, t_throughput = results[n]
         print(f"{n:<15} {t_total:<15.4f} {t_throughput:,.0f}")
     print("=" * 70)

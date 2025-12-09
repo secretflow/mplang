@@ -20,7 +20,7 @@ import base64
 import hashlib
 import os
 from dataclasses import dataclass
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 import coincurve
 import numpy as np
@@ -256,13 +256,30 @@ def point_to_bytes_impl(
 
 @crypto.hash_p.def_impl
 def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
+    """Hash input data using SHA-256.
+
+    Args:
+        interpreter: The interpreter context
+        op: The operation being executed
+        data: Input data (BytesValue or TensorValue expected)
+
+    Returns:
+        TensorValue containing the 32-byte hash as uint8 array
+
+    Raises:
+        TypeError: If data is not BytesValue or TensorValue
+    """
     # data can be BytesValue or TensorValue
     if isinstance(data, BytesValue):
         d = data.unwrap()
     elif isinstance(data, TensorValue):
         d = data.unwrap().tobytes()
     else:
-        d = bytes(cast(Any, data))  # best effort
+        # Provide clear error message for unexpected types
+        raise TypeError(
+            f"hash expects BytesValue or TensorValue, got {type(data).__name__}. "
+            f"If you need to hash other types, explicitly convert them to bytes first."
+        )
 
     h = hashlib.sha256(d).digest()
     # Return TensorValue (u8 array) to match Abstract Eval

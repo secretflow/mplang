@@ -15,13 +15,28 @@
 """Unbalanced PSI Protocol.
 
 This module implements unbalanced PSI for scenarios where client set size n << server set size N.
-Uses Sparse OKVS for sublinear communication.
+Uses Seeded OKVS (via derived keys) to prevent pre-computation attacks.
+
+Security Model:
+- Session-specific random seed generated at RUNTIME on the Server.
+- Both Key and Value derivations use the seed for consistent security.
+- WARNING: Online dictionary attacks by active clients remain possible without OPRF.
+
+Protocol:
+1. Server generates random Seed at runtime.
+2. Server computes K' = H(ServerItems, Seed) and V = H(ServerItems, Seed).
+3. Server solves OKVS: Table = Solve(K', V).
+4. Server sends Seed + Table to Client.
+5. Client computes k' = H(ClientItems, Seed) and v = H(ClientItems, Seed).
+6. Client decodes V' = Decode(k', Table).
+7. Client checks V' == v.
 """
 
 from typing import Any, cast
 
 import jax.numpy as jnp
 
+import mplang.v2.dialects.crypto as crypto
 import mplang.v2.dialects.field as field
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
@@ -40,13 +55,12 @@ def psi_unbalanced(
     """Unbalanced PSI with O(client_n) communication.
 
     This protocol is optimized for scenarios where client_n << server_n.
-
-    Unlike standard VOLE-masked PSI, this version:
-    1. Server encodes (key, H(key)) pairs into OKVS
-    2. Server sends OKVS to client (O(N) one-time setup)
-    3. Client decodes OKVS at their keys and compares (O(n) per query)
-
-    For repeated queries on the same server set, amortized communication is O(n).
+    
+    Security:
+    - Uses a cryptographically random Session Seed (128-bit) generated at RUNTIME.
+    - Both Key and Value derivations include the Seed.
+    - Prevents offline pre-computation (Rainbow Table) attacks.
+    - WARNING: Online dictionary attacks by active clients remain possible.
 
     Args:
         server: Rank of server (holds large set N)
@@ -65,66 +79,121 @@ def psi_unbalanced(
     if client_n <= 0 or server_n <= 0:
         raise ValueError("Set sizes must be positive.")
 
-    # 1. Compute OKVS table size using dynamic expansion factor
-    # See get_okvs_expansion() for theoretical basis
+    # =========================================================================
+    # 1. Server Setup: Generate Runtime Random Seed
+    # =========================================================================
+    
+    # Generate 16 bytes (128-bit) of cryptographically secure random data
+    # AT RUNTIME on the Server party (not during trace!)
+    def _gen_runtime_seed() -> Any:
+        # crypto.random_bytes is an EDSL primitive that generates random bytes
+        # at runtime on the executing party
+        rand_bytes = crypto.random_bytes(16)  # 16 bytes = 128 bits
+        
+        # Convert (16,) uint8 to (2,) uint64
+        def _to_u64(b: Any) -> Any:
+            return b.view(jnp.uint64)
+        
+        return tensor.run_jax(_to_u64, rand_bytes)
+    
+    server_seed = simp.pcall_static((server,), _gen_runtime_seed)
+    
+    # =========================================================================
+    # Hashing Helpers (Both Key and Value use Seed)
+    # =========================================================================
+    
+    def _compute_hashes(items: Any, seed: Any) -> tuple[Any, Any]:
+        """Compute Derived Key K' and Validation Value V for items.
+        
+        Both Key and Value are derived using the session Seed to prevent
+        pre-computation attacks.
+        
+        Key:   K' = AES_Expand(H_key(Item, Seed))[:64bit]
+        Value: V  = AES_Expand(H_val(Item, Seed))[:128bit]
+        """
+        
+        # Domain separator for Key derivation
+        KEY_DOMAIN = jnp.uint64(0xA5A5A5A5A5A5A5A5)
+        # Domain separator for Value derivation  
+        VAL_DOMAIN = jnp.uint64(0x5A5A5A5A5A5A5A5A)
+        
+        def _prepare_key_seed(x: Any, s: Any) -> Any:
+            # x: (N,) u64, s: (2,) u64
+            # Mix with KEY domain separator
+            k_lo = (x + s[0]) ^ KEY_DOMAIN
+            k_hi = (x ^ s[1]) + KEY_DOMAIN
+            return jnp.stack([k_lo, k_hi], axis=1)
+        
+        def _prepare_val_seed(x: Any, s: Any) -> Any:
+            # x: (N,) u64, s: (2,) u64
+            # Mix with VAL domain separator (different from key)
+            v_lo = (x + s[0]) ^ VAL_DOMAIN
+            v_hi = (x ^ s[1]) + VAL_DOMAIN
+            return jnp.stack([v_lo, v_hi], axis=1)
+        
+        # Derive Keys
+        key_seeds = tensor.run_jax(_prepare_key_seed, items, seed)
+        h_keys_raw = field.aes_expand(key_seeds, 1)  # (N, 1, 2)
+        
+        def _extract_key(h: Any) -> Any:
+            return h[:, 0, 0]
+            
+        keys = tensor.run_jax(_extract_key, h_keys_raw)
+        
+        # Derive Values (ALSO using seed - fixes Value Oracle Attack)
+        val_seeds = tensor.run_jax(_prepare_val_seed, items, seed)
+        h_vals_raw = field.aes_expand(val_seeds, 1)  # (N, 1, 2)
+        
+        def _flatten(h: Any) -> Any:
+            return h.reshape(h.shape[0], 2)
+            
+        vals = tensor.run_jax(_flatten, h_vals_raw)
+        
+        return keys, vals
+
+    # Server computes K' and V
+    server_derived_keys, server_values = simp.pcall_static(
+        (server,), _compute_hashes, server_items, server_seed
+    )
+    
+    # Server Solves OKVS
     expansion = get_okvs_expansion(server_n)
     M = int(server_n * expansion)
+    
+    def _solve(k: Any, v: Any) -> Any:
+        return field.solve_okvs(k, v, M)
+        
+    okvs_table = simp.pcall_static((server,), _solve, server_derived_keys, server_values)
+    
+    # Send to Client
+    okvs_table_client = simp.shuffle_static(okvs_table, {client: server})
+    client_seed = simp.shuffle_static(server_seed, {client: server})
 
-    # 2. Server builds OKVS: encode(key, H(key)) for all server items
-    def _server_build_okvs(items: Any) -> Any:
-        # Hash items to get values
-        def _hash_items(x: Any) -> Any:
-            lo = x
-            hi = jnp.zeros_like(x)
-            seeds = jnp.stack([lo, hi], axis=1)  # (N, 2)
-            return seeds
-
-        seeds = tensor.run_jax(_hash_items, items)
-        h_items = field.aes_expand(seeds, 1)  # (N, 1, 2)
-
-        def _flatten_hash(h: Any) -> Any:
-            return h.reshape(h.shape[0], 2)
-
-        h_flat = tensor.run_jax(_flatten_hash, h_items)  # (N, 2)
-
-        # Build OKVS: Encode(keys=items, values=H(items))
-        okvs_table = field.solve_okvs(items, h_flat, m=M)  # (M, 2)
-        return okvs_table
-
-    okvs_on_server = simp.pcall_static((server,), _server_build_okvs, server_items)
-
-    # 3. Transfer OKVS to client (O(M) = O(N) communication - one time cost)
-    okvs_on_client = simp.shuffle_static(okvs_on_server, {client: server})
-
-    # 4. Client decodes OKVS at each of their keys
-    def _client_decode_and_compare(items: Any, okvs_table: Any) -> Any:
-        # Get decode values from OKVS
-        decoded_values = field.decode_okvs(items, okvs_table)  # (n, 2)
-
-        # Compute expected H(items) locally
-        def _hash_items(x: Any) -> Any:
-            lo = x
-            hi = jnp.zeros_like(x)
-            seeds = jnp.stack([lo, hi], axis=1)
-            return seeds
-
-        seeds = tensor.run_jax(_hash_items, items)
-        h_items = field.aes_expand(seeds, 1)  # (n, 1, 2)
-
-        def _flatten_hash(h: Any) -> Any:
-            return h.reshape(h.shape[0], 2)
-
-        expected = tensor.run_jax(_flatten_hash, h_items)  # (n, 2)
-
-        # Compare: if decoded == expected, item is in intersection
-        def _compare(dec: Any, exp: Any) -> Any:
+    # =========================================================================
+    # 2. Client Operations
+    # =========================================================================
+    
+    # Client computes k' and expected V using the SAME hash functions
+    client_derived_keys, client_expected_values = simp.pcall_static(
+        (client,), _compute_hashes, client_items, client_seed
+    )
+    
+    # Client Decodes OKVS and Compares
+    def _decode_and_compare(keys: Any, table: Any, expected: Any) -> Any:
+        decoded = field.decode_okvs(keys, table)
+        
+        def _compare_jax(dec: Any, exp: Any) -> Any:
             match = (dec[:, 0] == exp[:, 0]) & (dec[:, 1] == exp[:, 1])
             return match.astype(jnp.uint8)
 
-        return tensor.run_jax(_compare, decoded_values, expected)
+        return tensor.run_jax(_compare_jax, decoded, expected)
 
     intersection_mask = simp.pcall_static(
-        (client,), _client_decode_and_compare, client_items, okvs_on_client
+        (client,),
+        _decode_and_compare,
+        client_derived_keys,
+        okvs_table_client,
+        client_expected_values
     )
 
     return cast(el.Object, intersection_mask)

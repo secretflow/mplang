@@ -35,17 +35,24 @@ from mplang.v2.dialects import tensor
 
 NUM_HASH_FUNCTIONS = 3  # Standard: 3 hash functions
 STASH_SIZE = 0  # Simple version: no stash (higher failure rate)
+MASK64 = 0xFFFFFFFFFFFFFFFF
 
 
-def hash_to_positions(items: Any, table_size: int) -> Any:
+def hash_to_positions(
+    items: Any, table_size: int, seed: tuple[int, int] = (0, 0)
+) -> Any:
     """Compute K candidate positions for each item.
 
-    Uses simple polynomial hash family:
+    Uses polynomial hash family with seeded coefficients:
         h_i(x) = (a_i * x + b_i) mod table_size
+
+    Security: Both coefficients a and b are seeded to prevent
+    structural analysis attacks on the hash family.
 
     Args:
         items: (N, 16) uint8 array - items to hash
         table_size: Size of Cuckoo hash table
+        seed: (2,) tuple of uint64 - random seed
 
     Returns:
         (N, K) int32 array - K candidate positions for each item
@@ -56,14 +63,23 @@ def hash_to_positions(items: Any, table_size: int) -> Any:
     # Convert items to 64-bit keys (first 8 bytes)
     keys = items[:, :8].view(jnp.uint64).reshape(N)
 
-    # Fixed hash coefficients (deterministic, same on all parties)
-    # Using prime multipliers for better distribution
-    a = jnp.array(
+    # Mix seed into keys
+    seed0 = jnp.uint64(seed[0])
+    seed1 = jnp.uint64(seed[1])
+    keys = keys ^ seed0
+
+    # Base hash coefficients (deterministic starting point)
+    a_base = jnp.array(
         [0x9E3779B97F4A7C15, 0xBF58476D1CE4E5B9, 0x94D049BB133111EB], dtype=jnp.uint64
     )
-    b = jnp.array(
+    b_base = jnp.array(
         [0x1234567890ABCDEF, 0xFEDCBA0987654321, 0xABCDEF1234567890], dtype=jnp.uint64
     )
+    
+    # Security Fix: Seed BOTH coefficients a and b
+    # This prevents structural analysis attacks on the hash family
+    a = a_base ^ seed0  # Mix seed0 into multiplicative coefficient
+    b = b_base ^ seed1  # Mix seed1 into additive coefficient
 
     # Compute hash positions: (N, K)
     positions = jnp.zeros((N, K), dtype=jnp.int32)
@@ -75,7 +91,10 @@ def hash_to_positions(items: Any, table_size: int) -> Any:
 
 
 def cuckoo_insert_batch(
-    items: Any, table_size: int, max_iters: int = 100
+    items: Any,
+    table_size: int,
+    max_iters: int = 100,
+    seed: tuple[int, int] = (0, 0),
 ) -> tuple[Any, Any, Any]:
     """Batch Cuckoo insertion using vectorized logic (JAX-compatible).
 
@@ -88,6 +107,7 @@ def cuckoo_insert_batch(
         items: (N, 16) uint8 array - items to insert
         table_size: Size of Cuckoo hash table (should be ~1.3-1.5N)
         max_iters: Ignored in this vectorized version (uses K=3 fixed passes)
+        seed: (2,) uint64 seed
 
     Returns:
         Tuple of:
@@ -98,7 +118,7 @@ def cuckoo_insert_batch(
     N = items.shape[0]
     K = NUM_HASH_FUNCTIONS
 
-    positions = hash_to_positions(items, table_size)
+    positions = hash_to_positions(items, table_size, seed)
     item_to_pos = jnp.full(N, -1, dtype=jnp.int32)
     active_mask = jnp.ones(N, dtype=jnp.bool_)
 
@@ -160,7 +180,9 @@ def cuckoo_insert_batch(
     return final_table, item_to_pos, success_total
 
 
-def cuckoo_lookup_positions(items: Any, table_size: int) -> Any:
+def cuckoo_lookup_positions(
+    items: Any, table_size: int, seed: tuple[int, int] = (0, 0)
+) -> Any:
     """Get Cuckoo lookup positions for each item.
 
     Returns the K candidate positions where each item could be located
@@ -169,11 +191,12 @@ def cuckoo_lookup_positions(items: Any, table_size: int) -> Any:
     Args:
         items: (M, 16) uint8 array - items to lookup
         table_size: Size of Cuckoo hash table
+        seed: (2,) uint64 seed
 
     Returns:
         (M, K) int32 array - K positions to check for each item
     """
-    return hash_to_positions(items, table_size)
+    return hash_to_positions(items, table_size, seed)
 
 
 # =============================================================================
@@ -181,18 +204,21 @@ def cuckoo_lookup_positions(items: Any, table_size: int) -> Any:
 # =============================================================================
 
 
-def compute_positions(items: el.Object, table_size: int) -> el.Object:
+def compute_positions(
+    items: el.Object, table_size: int, seed: el.Object  # (2,) uint64
+) -> el.Object:
     """Compute Cuckoo hash positions for items (EDSL wrapper).
 
     Args:
         items: (N, 16) byte tensor of items
         table_size: Size of Cuckoo hash table
+        seed: (2,) uint64 seed
 
     Returns:
         (N, K) int32 tensor of candidate positions
     """
 
-    def _hash(x: Any) -> Any:
-        return hash_to_positions(x, table_size)
+    def _hash(x: Any, s: Any) -> Any:
+        return hash_to_positions(x, table_size, tuple(s))
 
-    return cast(el.Object, tensor.run_jax(_hash, items))
+    return cast(el.Object, tensor.run_jax(_hash, items, seed))

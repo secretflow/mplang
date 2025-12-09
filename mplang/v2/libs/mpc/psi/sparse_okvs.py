@@ -39,6 +39,7 @@ NUM_HASHES = 3
 
 # Maximum iterations for Cuckoo insertion before failure
 MAX_CUCKOO_ITERATIONS = 500
+MASK64 = 0xFFFFFFFFFFFFFFFF
 
 
 def get_okvs_expansion(n: int) -> float:
@@ -89,6 +90,7 @@ def sparse_encode_numpy(
     keys: np.ndarray,
     values: np.ndarray,
     server_table_size: int,
+    seed: tuple[int, int] = (0, 0),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Encode keys/values into sparse hints for the server.
 
@@ -98,6 +100,7 @@ def sparse_encode_numpy(
         keys: (n,) uint64 client keys
         values: (n, 2) uint64 values (128-bit field elements)
         server_table_size: Size of server's OKVS table (M = 1.35 * N)
+        seed: (2,) uint64 seed for hash function randomization.
 
     Returns:
         positions: (n * NUM_HASHES,) uint64 - positions to query in server table
@@ -118,10 +121,22 @@ def sparse_encode_numpy(
     # Ensure keys are uint64 for bitwise operations
     keys_u64 = keys.astype(np.uint64)
 
+    # Mix seed into key
+    seed0, seed1 = np.uint64(seed[0]), np.uint64(seed[1])
+    mixed_key = keys_u64 ^ seed0
+
     for i in range(NUM_HASHES):
         # Hash: combine key with hash index
         # Using FNV-1a style mixing
-        mixed = keys_u64 ^ (np.uint64(0x14650FB0739D0383 + i * 0x27D4EB2F165667C5))
+        # Rotate seed1 for diversity across hashes
+        # Mask calculation to avoid large ints
+        offset = (i * 0x9E3779B97F4A7C15) & MASK64
+        current_seed = seed1 + np.uint64(offset)
+
+        # Inner mixing
+        magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
+        mixed = mixed_key ^ (np.uint64(magic) ^ current_seed)
+        
         mixed = mixed * np.uint64(0xBF58476D1CE4E5B9)
         mixed = mixed ^ (mixed >> np.uint64(27))
         mixed = mixed * np.uint64(0x94D049BB133111EB)
@@ -143,21 +158,31 @@ def sparse_encode_numpy(
     return positions, coefficients, client_values
 
 
-def compute_hash_positions(key: np.ndarray, table_size: int) -> np.ndarray:
+def compute_hash_positions(
+    key: np.ndarray, table_size: int, seed: tuple[int, int] = (0, 0)
+) -> np.ndarray:
     """Compute 3 hash positions for a single key.
 
     Args:
         key: scalar uint64 key
         table_size: Size of the hash table
+        seed: (2,) uint64 seed
 
     Returns:
         (3,) uint64 positions
     """
     positions = np.zeros(NUM_HASHES, dtype=np.uint64)
     key = np.uint64(key)  # Ensure uint64
+    seed0, seed1 = np.uint64(seed[0]), np.uint64(seed[1])
+    mixed_key = key ^ seed0
 
     for i in range(NUM_HASHES):
-        mixed = np.uint64(key) ^ np.uint64(0x14650FB0739D0383 + i * 0x27D4EB2F165667C5)
+        offset = (i * 0x9E3779B97F4A7C15) & MASK64
+        current_seed = seed1 + np.uint64(offset)
+        
+        magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
+        mixed = mixed_key ^ (np.uint64(magic) ^ current_seed)
+        
         mixed = mixed * np.uint64(0xBF58476D1CE4E5B9)
         mixed = mixed ^ (mixed >> np.uint64(27))
         mixed = mixed * np.uint64(0x94D049BB133111EB)
@@ -206,6 +231,7 @@ def sparse_encode(
     keys: el.Object,
     values: el.Object,
     server_table_size: int,
+    seed: el.Object,  # (2,) uint64
 ) -> tuple[el.Object, el.Object, el.Object]:
     """EDSL wrapper for sparse encoding.
 
@@ -213,18 +239,31 @@ def sparse_encode(
         keys: (n,) uint64 tensor of client keys
         values: (n, 2) uint64 tensor of values
         server_table_size: Size of server's table
+        seed: (2,) uint64 tensor (random seed)
 
     Returns:
         Tuple of (positions, coefficients, client_values)
     """
 
-    def _encode_jax(k: Any, v: Any, M: int) -> tuple[Any, Any, Any]:
+    def _encode_jax(k: Any, v: Any, s: Any, M: int) -> tuple[Any, Any, Any]:
         # Compute positions using vectorized hash
         n = k.shape[0]
+        # s: (2,) uint64
+        seed0 = s[0]
+        seed1 = s[1]
+
+        mixed_key = k ^ seed0
+
         all_positions = jnp.zeros((n, NUM_HASHES), dtype=jnp.uint64)
 
         for i in range(NUM_HASHES):
-            mixed = k ^ jnp.uint64(0x14650FB0739D0383 + i * 0x27D4EB2F165667C5)
+            # Mask constants to 64-bit to prevent JAX coercion errors
+            offset = (i * 0x9E3779B97F4A7C15) & MASK64
+            current_seed = seed1 + jnp.uint64(offset)
+            
+            magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
+            mixed = mixed_key ^ (jnp.uint64(magic) ^ current_seed)
+            
             mixed = mixed * jnp.uint64(0xBF58476D1CE4E5B9)
             mixed = mixed ^ (mixed >> 27)
             mixed = mixed * jnp.uint64(0x94D049BB133111EB)
@@ -237,7 +276,7 @@ def sparse_encode(
         return positions, coeffs, v
 
     pos, coef, vals = tensor.run_jax(
-        lambda k, v: _encode_jax(k, v, server_table_size), keys, values
+        lambda k, v, s: _encode_jax(k, v, s, server_table_size), keys, values, seed
     )
     return pos, coef, vals
 
@@ -268,3 +307,51 @@ def sparse_lookup(
         return result
 
     return cast(el.Object, tensor.run_jax(_lookup_jax, positions, table))
+
+
+def compute_positions(
+    keys: el.Object,
+    server_table_size: int,
+    seed: el.Object,
+) -> el.Object:
+    """Compute sparse OKVS positions for keys (EDSL wrapper).
+
+    Args:
+        keys: (n,) uint64 client keys
+        server_table_size: Size of server's table
+        seed: (2,) uint64 tensor (random seed)
+
+    Returns:
+        (n * NUM_HASHES,) uint64 positions
+    """
+
+    def _hash_jax(k: Any, s: Any, M: int) -> Any:
+        n = k.shape[0]
+        # s: (2,) uint64
+        seed0 = s[0]
+        seed1 = s[1]
+
+        mixed_key = k ^ seed0
+
+        all_positions = jnp.zeros((n, NUM_HASHES), dtype=jnp.uint64)
+
+        for i in range(NUM_HASHES):
+            # Mask constants
+            offset = (i * 0x9E3779B97F4A7C15) & MASK64
+            current_seed = seed1 + jnp.uint64(offset)
+            
+            magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
+            mixed = mixed_key ^ (jnp.uint64(magic) ^ current_seed)
+            
+            mixed = mixed * jnp.uint64(0xBF58476D1CE4E5B9)
+            mixed = mixed ^ (mixed >> 27)
+            mixed = mixed * jnp.uint64(0x94D049BB133111EB)
+            mixed = mixed ^ (mixed >> 31)
+            all_positions = all_positions.at[:, i].set(mixed % jnp.uint64(M))
+
+        return all_positions.flatten()
+
+    return cast(
+        el.Object,
+        tensor.run_jax(lambda k, s: _hash_jax(k, s, server_table_size), keys, seed),
+    )

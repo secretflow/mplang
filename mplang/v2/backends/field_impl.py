@@ -32,6 +32,7 @@ from mplang.v2.backends.tensor_impl import TensorValue, _unwrap, _wrap
 from mplang.v2.dialects import field
 from mplang.v2.edsl.graph import Operation
 from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.kernels import py_kernels
 
 # =============================================================================
 # Kernel Loading
@@ -99,7 +100,8 @@ def _gf128_mul_impl(a, b):
 
     lib = _get_lib()
     if lib is None:
-        return a ^ b
+        # Use pure Python fallback
+        return py_kernels.gf128_mul_batch(a, b)
 
     # Enforce contiguous C-order arrays (important for ctypes)
     # Use ascontiguousarray to avoid copy if already contiguous
@@ -124,7 +126,9 @@ def _gf128_mul_impl(a, b):
 def _okvs_solve_impl(keys, values, m):
     lib = _get_lib()
     if lib is None:
-        raise RuntimeError("Kernel library not loaded")
+        # Use pure Python fallback
+        keys_flat = keys.flatten() if keys.ndim > 1 else keys
+        return py_kernels.okvs_solve(keys_flat, values, m)
 
     n = keys.shape[0]
     keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
@@ -144,7 +148,9 @@ def _okvs_solve_impl(keys, values, m):
 def _okvs_decode_impl(keys, storage, m):
     lib = _get_lib()
     if lib is None:
-        raise RuntimeError("Kernel library not loaded")
+        # Use pure Python fallback
+        keys_flat = keys.flatten() if keys.ndim > 1 else keys
+        return py_kernels.okvs_decode(keys_flat, storage, m)
 
     n = keys.shape[0]
     keys_c = np.ascontiguousarray(keys, dtype=np.uint64)

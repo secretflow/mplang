@@ -50,7 +50,9 @@ def _stablehlo_exec(pfunc: PFunction, *args: Any) -> Any:
         client = jxt.backend.get_backend()
         compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
         try:
-            compiled = client.compile(mlir_text, compile_options)
+            compiled = client.compile_and_load(
+                mlir_text, client.devices(), compile_options
+            )
         except Exception as e:  # pragma: no cover
             raise RuntimeError(f"StableHLO compile failed: {e}") from e
         rt.set_state(key, compiled)

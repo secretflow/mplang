@@ -26,9 +26,10 @@ Reference: "Silver: Silent VOLE and Oblivious Transfer from Hardness of Decoding
            CRYPTO 2021
 """
 
+from typing import cast
+
 import numpy as np
 import scipy.sparse as sp
-from typing import Any, cast
 
 # ============================================================================
 # Constants

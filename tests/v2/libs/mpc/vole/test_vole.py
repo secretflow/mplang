@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""VOLE correctness test using mp API."""
+
 import numpy as np
 
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import tensor
-from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc.vole import gilboa as vole
 
 
 def test_vole_correctness():
     """Verify VOLE correlation: w = v + u * delta."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
     N = 100
 
     def protocol():
@@ -43,15 +44,12 @@ def test_vole_correctness():
         # v is on 0. w is on 1.
         return v_sender, w_recv
 
-    traced = trace(protocol)
-    results = sim.evaluate_graph(traced.graph, [])
+    traced = mp.compile(sim, protocol)
+    v_obj, w_obj = mp.evaluate(sim, traced)
 
-    # v_sender is result[0], w_recv is result[1]
-    # results[0] is HostVar of v_sender. Party 0 has value.
-    # results[1] is HostVar of w_recv. Party 1 has value.
-
-    v = results[0][0].unwrap()
-    w = results[1][1].unwrap()
+    # Fetch results
+    v = mp.fetch(sim, v_obj)[0]  # v on party 0
+    w = mp.fetch(sim, w_obj)[1]  # w on party 1
 
     # Reconstruct inputs for check
     u = np.ones((N, 2), dtype=np.uint64)
@@ -61,26 +59,14 @@ def test_vole_correctness():
     print(f"v shape: {v.shape}")
     print(f"w shape: {w.shape}")
 
-    print(f"v shape: {v.shape}")
-    print(f"w shape: {w.shape}")
-
     # Verify: w = v + u * delta
     # Need to do GF128 arithmetic on host to verify
-    # Re-use field kernel on host
     from mplang.v2.backends.field_impl import _gf128_mul_impl
-
-    # Broadcast delta
-    np.zeros_like(u)
-    # Naive Loop for verification
-    # Or rely on linear property:
-    # 1 * 3 = 3.
-    # v + 3 = w
-
-    mismatch_count = 0
 
     # Get bit decomposition of delta for debugging
     delta_bits = np.unpackbits(delta.view(np.uint8), bitorder="little")
 
+    mismatch_count = 0
     for i in range(N):
         prod = _gf128_mul_impl(u[i], delta)
         term = v[i] ^ prod
@@ -94,7 +80,6 @@ def test_vole_correctness():
         raise AssertionError
 
     print("VOLE Verification PASSED.")
-    sim.shutdown()
 
 
 if __name__ == "__main__":

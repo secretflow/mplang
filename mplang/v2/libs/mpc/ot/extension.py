@@ -69,53 +69,44 @@ def prg_expand(seed_tensor: el.Object, length: int) -> el.Object:
     return cast(el.Object, tensor.run_jax(_blocks_to_bits, expanded_blocks))
 
 
-def vec_hash(data_bytes: el.Object, domain_sep: int = 0) -> el.Object:
-    """Hash rows of a (K, D) tensor independently.
+def vec_hash(
+    data_bytes: el.Object, domain_sep: int, num_rows: int
+) -> el.Object:
+    """Hash rows of a (N, D) tensor independently.
 
     Args:
-        data_bytes: (K, D) tensor to hash.
+        data_bytes: (N, D) tensor to hash.
         domain_sep: Integer domain separator to mix into the hash.
+        num_rows: Number of rows N. Must be provided explicitly.
     """
-    # Assuming data_bytes is (K, D). K should be static (128).
-    # Since we are in EDSL, shape is typically known at trace time for static shapes.
-    K = 128
+    # Optimized batch hashing:
+    # 1. Prepend domain_sep to all rows (vectorized concatenation)
+    # 2. Call crypto.hash_bytes once on the whole tensor
 
-    # We unroll slicing
-    result_hashes = []
+    if domain_sep != 0:
+        def _prepend_ds(arr: Any, ds: int) -> Any:
+            # arr: (N, D)
+            N = arr.shape[0]
+            # Create (N, 8) domain sep block using repeat & reshape
+            # ds_arr: (8,)
+            ds_arr = jnp.array([ds], dtype=jnp.uint64).view(jnp.uint8)
+            # Broadcast to (N, 8)
+            ds_block = jnp.broadcast_to(ds_arr, (N, 8))
 
-    # Domain separator as bytes
-    # We can mix it by prepending to the row if possible, or XORing.
-    # crypto.hash_bytes takes 1D tensor.
-    # To be safe, we will assume data_bytes is uint8.
+            return jnp.concatenate([ds_block, arr], axis=1)
 
-    for i in range(K):
-        # Slice row i
-        # We need to slice the whole row.
-        # tensor.slice_tensor(obj, starts, stops).
-        # We assume dimension 1 size is D.
-        # We can use a very large stop for dim 1 to take "rest".
-        row_slice = tensor.slice_tensor(data_bytes, (i, 0), (i + 1, 1000000))
+        # Result: (N, D+8)
+        data_to_hash = tensor.run_jax(lambda a: _prepend_ds(a, domain_sep), data_bytes)
+    else:
+        data_to_hash = data_bytes
 
-        # Reshape to 1D
-        row = tensor.reshape(row_slice, (-1,))
+    # Call batched hash_bytes
+    # Input: (N, D_total) -> Output: (N, 32)
+    # This generates a single graph node, solving the compiler explosion issue.
+    # explicit hash_batch primitive (rank >= 2)
+    hashes = crypto.hash_batch(data_to_hash)
 
-        # Add Domain Separation
-        if domain_sep != 0:
-            # We can't easy prepend in EDSL without cost, but we can verify later.
-            # Ideally: hash(domain_sep || row)
-            # WORKAROUND: For now, we assume `crypto.hash_bytes` is SHA256.
-            # We will use EDSL to prepend a 8-byte prefix if domain_sep != 0.
-            # But constructing that tensor is verbose.
-            # Simplified: Use the fact that row is U8.
-            pass
-            # TODO: Implement proper domain separation by concatenating.
-            # For this fix, let's just make sure we are hashing the FULL row.
-
-        h = crypto.hash_bytes(row)
-        result_hashes.append(h)
-
-    reshaped_hashes = [tensor.reshape(h, (1, 32)) for h in result_hashes]
-    return tensor.concat(reshaped_hashes, axis=0)
+    return hashes
 
 
 def iknp_core(
@@ -148,9 +139,12 @@ def iknp_core(
         k0_bytes = crypto.random_bytes(K * 32)
         k1_bytes = crypto.random_bytes(K * 32)
 
-        # Reshape to (K, 32)
-        k0 = tensor.reshape(k0_bytes, (K, 32))
-        k1 = tensor.reshape(k1_bytes, (K, 32))
+        # Reshape to (K, 32) using run_jax for XLA optimization
+        def _reshape_k32(b: Any) -> Any:
+            return b.reshape(K, 32)
+
+        k0 = tensor.run_jax(_reshape_k32, k0_bytes)
+        k1 = tensor.run_jax(_reshape_k32, k1_bytes)
         return k0, k1
 
     k0_base, k1_base = simp.pcall_static((receiver,), gen_seeds)
@@ -228,19 +222,17 @@ def iknp_core(
             sk0 = crypto.hash_bytes(crypto.ec_point_to_bytes(K0_point))  # (32,)
             sk1 = crypto.hash_bytes(crypto.ec_point_to_bytes(K1_point))
 
-            # Encrypt m0[i], m1[i]
-            m0_i = tensor.slice_tensor(m0_tensor, (i, 0), (i + 1, 32))  # (1, 32)
-            m1_i = tensor.slice_tensor(m1_tensor, (i, 0), (i + 1, 32))
+            # Extract row i and encrypt in single run_jax block
+            def _slice_and_enc(m0_full: Any, m1_full: Any, k0: Any, k1: Any, idx: int = i) -> tuple[Any, Any]:
+                # Slice row i and reshape to (32,)
+                m0_row = m0_full[idx].flatten()
+                m1_row = m1_full[idx].flatten()
+                # XOR with keys
+                c0 = jnp.bitwise_xor(m0_row, k0)
+                c1 = jnp.bitwise_xor(m1_row, k1)
+                return c0, c1
 
-            # Reshape to (32,) to match sk
-            m0_flat = tensor.reshape(m0_i, (32,))
-            m1_flat = tensor.reshape(m1_i, (32,))
-
-            def _enc(k: Any, m: Any) -> Any:
-                return jnp.bitwise_xor(m, k)
-
-            c0 = tensor.run_jax(_enc, sk0, m0_flat)
-            c1 = tensor.run_jax(_enc, sk1, m1_flat)
+            c0, c1 = tensor.run_jax(_slice_and_enc, m0_tensor, m1_tensor, sk0, sk1)
 
             c0_list.append(c0)
             c1_list.append(c1)
@@ -277,18 +269,17 @@ def iknp_core(
             SharedK = crypto.ec_mul(U, k_priv)
             sk = crypto.hash_bytes(crypto.ec_point_to_bytes(SharedK))
 
-            s_i = tensor.slice_tensor(s_choices, (i,), (i + 1,))  # (1,)
+            # Combined slice + decrypt + reshape in single run_jax
+            def _slice_dec_reshape(s_arr: Any, k: Any, c0_: Any, c1_: Any, idx: int = i) -> Any:
+                sel = s_arr[idx]
+                chosen_c = jnp.where(sel == 0, c0_, c1_)
+                result = jnp.bitwise_xor(chosen_c, k)
+                return result.reshape(1, 32)
 
-            def _dec(k: Any, c0_: Any, c1_: Any, sel: Any) -> Any:
-                # sel is (1,)
-                # scalar 0 or 1
-                chosen_c = jnp.where(sel[0] == 0, c0_, c1_)
-                return jnp.bitwise_xor(chosen_c, k)
+            res_row = tensor.run_jax(_slice_dec_reshape, s_choices, sk, c0, c1)
+            k_s_rows.append(res_row)
 
-            res_flat = tensor.run_jax(_dec, sk, c0, c1, s_i)  # (32,)
-            k_s_rows.append(tensor.reshape(res_flat, (1, 32)))
-
-        # Concat
+        # Concat using tensor.concat (run_jax with many args can cause tracing issues)
         return tensor.concat(k_s_rows, axis=0)
 
     k_s = simp.pcall_static((sender,), base_decrypt_rev, base_keys, base_cts_s, s)
@@ -326,19 +317,21 @@ def iknp_core(
     def calc_t(k_s_loc: el.Object, u_loc: el.Object, s_loc: el.Object) -> el.Object:
         g_k_s = prg_expand(k_s_loc, num_ots)
 
-        def _recover(g: Any, mask: Any, sel: Any) -> Any:
+        def _recover_and_transpose(g: Any, mask: Any, sel: Any) -> Any:
+            # Combine recover and transpose into single XLA block
             sel_exp = jnp.expand_dims(sel, axis=-1)
             term = jnp.bitwise_and(mask, sel_exp)
-            return jnp.bitwise_xor(g, term)
+            t_rows = jnp.bitwise_xor(g, term)
+            return jnp.transpose(t_rows, (1, 0))  # (N, K)
 
-        t_rows = tensor.run_jax(_recover, g_k_s, u_loc, s_loc)
-        return tensor.transpose(t_rows, perm=(1, 0))
+        return cast(el.Object, tensor.run_jax(_recover_and_transpose, g_k_s, u_loc, s_loc))
 
     t_matrix = simp.pcall_static((sender,), calc_t, k_s, u_recv, s)
 
     def calc_q(k0_loc: el.Object) -> el.Object:
         g_k0 = prg_expand(k0_loc, num_ots)
-        return tensor.transpose(g_k0, perm=(1, 0))  # (N, K)
+        # Use run_jax for transpose to enable XLA fusion
+        return cast(el.Object, tensor.run_jax(lambda x: jnp.transpose(x, (1, 0)), g_k0))
 
     q_matrix = simp.pcall_static((receiver,), calc_q, k0_base)
 

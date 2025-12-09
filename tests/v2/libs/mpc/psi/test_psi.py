@@ -12,25 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""PSI Tests using psi_unbalanced for proper intersection verification."""
+"""PSI Tests using psi_unbalanced with correct mp API."""
 
 import numpy as np
 
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import simp
-from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc.psi import psi_unbalanced
-
-
-def run_protocol(sim: SimpSimulator, protocol_fn):
-    """Helper to trace and run a protocol."""
-    traced = trace(protocol_fn)
-    return sim.evaluate_graph(traced.graph, [])
 
 
 def test_psi_full_overlap():
     """Test PSI with identical sets (full overlap)."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
 
     # Both parties have the same items
     server_items = np.arange(100, dtype=np.uint64)
@@ -43,10 +36,12 @@ def test_psi_full_overlap():
         c_items = simp.constant((CLIENT,), client_items)
         return psi_unbalanced(SERVER, CLIENT, 100, 100, s_items, c_items)
 
-    result = run_protocol(sim, protocol)
+    traced = mp.compile(sim, protocol)
+    result = mp.evaluate(sim, traced)
 
     # Result is intersection mask on client
-    mask = result[CLIENT].unwrap()
+    # result is a Handle on client.
+    mask = mp.fetch(sim, result)[CLIENT]
 
     # All items should be in intersection
     assert mask.shape == (100,)
@@ -55,12 +50,10 @@ def test_psi_full_overlap():
     )
     print(f"Full overlap: {np.sum(mask)}/100 matches")
 
-    sim.shutdown()
-
 
 def test_psi_no_overlap():
     """Test PSI with disjoint sets (no overlap)."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
 
     # Disjoint sets
     server_items = np.arange(0, 100, dtype=np.uint64)
@@ -73,22 +66,20 @@ def test_psi_no_overlap():
         c_items = simp.constant((CLIENT,), client_items)
         return psi_unbalanced(SERVER, CLIENT, 100, 100, s_items, c_items)
 
-    result = run_protocol(sim, protocol)
+    traced = mp.compile(sim, protocol)
+    result = mp.evaluate(sim, traced)
 
-    # Result is intersection mask on client
-    mask = result[CLIENT].unwrap()
+    mask = mp.fetch(sim, result)[CLIENT]
 
     # No items should match
     assert mask.shape == (100,)
     assert np.sum(mask) == 0, f"Expected 0 matches for no overlap, got {np.sum(mask)}"
     print(f"No overlap: {np.sum(mask)}/100 matches")
 
-    sim.shutdown()
-
 
 def test_psi_partial_overlap():
     """Test PSI with 50% overlap."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
 
     # Server has 0-99, client has 50-149 (overlap: 50-99)
     server_items = np.arange(0, 100, dtype=np.uint64)
@@ -101,10 +92,10 @@ def test_psi_partial_overlap():
         c_items = simp.constant((CLIENT,), client_items)
         return psi_unbalanced(SERVER, CLIENT, 100, 100, s_items, c_items)
 
-    result = run_protocol(sim, protocol)
+    traced = mp.compile(sim, protocol)
+    result = mp.evaluate(sim, traced)
 
-    # Result is intersection mask on client
-    mask = result[CLIENT].unwrap()
+    mask = mp.fetch(sim, result)[CLIENT]
 
     # First 50 items of client (50-99) should be in intersection
     expected_matches = 50
@@ -119,5 +110,3 @@ def test_psi_partial_overlap():
     assert np.all(mask[50:] == 0), "Last 50 client items should NOT be in intersection"
 
     print(f"Partial overlap: {actual_matches}/100 matches")
-
-    sim.shutdown()

@@ -171,17 +171,19 @@ def silent_vole_random_u(
         # b: base (K, 2)
         # seed_val: (32,) u8
 
-        # 1. Derive K seeds from master seed
-        # View seed as u64 (2, 2) and take first row as master seed (1, 2)
-        def _view_as_u64(b: Any) -> Any:
-            return b.view(jnp.uint64).reshape(-1, 2)
+        # 1. Derive K seeds from master seed using combined run_jax block
+        def _view_slice_reshape(b: Any) -> Any:
+            # View as u64, slice first row, then reshape for AES expand
+            u64_view = b.view(jnp.uint64).reshape(-1, 2)
+            master_seed = u64_view[:1]  # (1, 2)
+            return master_seed
 
-        seeds_init = tensor.run_jax(_view_as_u64, seed_val)
-        master_seed = tensor.slice_tensor(seeds_init, (0, 0), (1, 2))
+        master_seed = tensor.run_jax(_view_slice_reshape, seed_val)
 
         # Expand to K seeds: (1, K, 2)
         row_seeds_packed = field.aes_expand(master_seed, base_k)
-        row_seeds = tensor.reshape(row_seeds_packed, (base_k, 2))
+        # Reshape using run_jax for XLA optimization
+        row_seeds = tensor.run_jax(lambda x: x.reshape(base_k, 2), row_seeds_packed)
 
         # Iterate chunks
         local_res = []
@@ -200,7 +202,14 @@ def silent_vole_random_u(
             chunk_res = tensor.run_jax(_core, b, mask_packed)
             local_res.append(chunk_res)
 
-        return tensor.concat(local_res, axis=0)  # This might explode if N=1B
+        # Use run_jax for concat to enable XLA fusion
+        if len(local_res) == 1:
+            return local_res[0]
+
+        def _concat_chunks(*chunks: Any) -> Any:
+            return jnp.concatenate(chunks, axis=0)
+
+        return cast(el.Object, tensor.run_jax(_concat_chunks, *local_res))
 
     # Execute on Sender
     v_long = simp.pcall_static((sender,), _run_expansion, v_base, seed)

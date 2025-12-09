@@ -12,25 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""OPRF Tests using clean simp.constant API."""
+"""OPRF Tests using correct mp API."""
 
 import numpy as np
 
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import simp
-from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc.psi import oprf
-
-
-def run_protocol(sim: SimpSimulator, protocol_fn):
-    """Helper to trace and run a protocol."""
-    traced = trace(protocol_fn)
-    return sim.evaluate_graph(traced.graph, [])
 
 
 def test_eval_oprf():
     """Test OPRF evaluation produces outputs."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
 
     np.random.seed(42)
     num_items = 16
@@ -43,17 +36,24 @@ def test_eval_oprf():
         receiver_inputs = simp.constant((RECEIVER,), np_inputs)
         return oprf.eval_oprf(receiver_inputs, SENDER, RECEIVER, num_items)
 
-    result = run_protocol(sim, protocol)
+    traced = mp.compile(sim, protocol)
+    result = mp.evaluate(sim, traced)
 
     # Result is a tuple (sender_key, receiver_outputs)
-    assert result is not None, "OPRF should return results"
+    # sender_key is on SENDER, receiver_outputs is on RECEIVER
+    sender_key_obj, recv_out_obj = result
 
-    sim.shutdown()
+    sender_key = mp.fetch(sim, sender_key_obj)[SENDER]
+    recv_out = mp.fetch(sim, recv_out_obj)[RECEIVER]
+
+    assert sender_key is not None
+    assert recv_out is not None
+    assert recv_out.shape == (num_items, 32)  # OPRF output is 32 bytes (SHA256)
 
 
 def test_oprf_determinism():
     """Test that OPRF runs successfully with fixed inputs."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
 
     np.random.seed(42)
     num_items = 8
@@ -66,10 +66,12 @@ def test_oprf_determinism():
         receiver_inputs = simp.constant((RECEIVER,), np_inputs)
         return oprf.eval_oprf(receiver_inputs, SENDER, RECEIVER, num_items)
 
-    result = run_protocol(sim, protocol)
+    traced = mp.compile(sim, protocol)
+    result = mp.evaluate(sim, traced)
 
-    # Note: Due to randomness in IKNP, outputs differ between runs.
-    # This test just verifies the protocol runs successfully.
-    assert result is not None
+    sender_key_obj, recv_out_obj = result
+    sender_key = mp.fetch(sim, sender_key_obj)[SENDER]
+    recv_out = mp.fetch(sim, recv_out_obj)[RECEIVER]
 
-    sim.shutdown()
+    assert sender_key is not None
+    assert recv_out is not None

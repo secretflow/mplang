@@ -256,35 +256,53 @@ def point_to_bytes_impl(
 
 @crypto.hash_p.def_impl
 def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
-    """Hash input data using SHA-256.
-
-    Args:
-        interpreter: The interpreter context
-        op: The operation being executed
-        data: Input data (BytesValue or TensorValue expected)
-
-    Returns:
-        TensorValue containing the 32-byte hash as uint8 array
-
-    Raises:
-        TypeError: If data is not BytesValue or TensorValue
-    """
+    """Hash input data using SHA-256 (strict single blob)."""
     # data can be BytesValue or TensorValue
     if isinstance(data, BytesValue):
         d = data.unwrap()
     elif isinstance(data, TensorValue):
+        # Flatten and hash as single blob
         d = data.unwrap().tobytes()
     else:
-        # Provide clear error message for unexpected types
         raise TypeError(
-            f"hash expects BytesValue or TensorValue, got {type(data).__name__}. "
-            f"If you need to hash other types, explicitly convert them to bytes first."
+            f"hash expects BytesValue or TensorValue, got {type(data).__name__}"
         )
 
     h = hashlib.sha256(d).digest()
-    # Return TensorValue (u8 array) to match Abstract Eval
     arr = np.frombuffer(h, dtype=np.uint8)
     return TensorValue(arr)
+
+
+@crypto.hash_batch_p.def_impl
+def hash_batch_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
+    """Hash data treating last dimension as bytes (explicit batching)."""
+    if not isinstance(data, TensorValue):
+        raise TypeError(f"hash_batch requires TensorValue, got {type(data)}")
+
+    arr_in = data.unwrap()
+
+    # Handle scalar / 0D / 1D case simply
+    if arr_in.ndim <= 1:
+        d = arr_in.tobytes()
+        h = hashlib.sha256(d).digest()
+        return TensorValue(np.frombuffer(h, dtype=np.uint8))
+
+    # Batch case: (B1, B2, ..., D)
+    batch_shape = arr_in.shape[:-1]
+    D = arr_in.shape[-1]
+
+    flat_in = arr_in.reshape(-1, D)
+    num_items = flat_in.shape[0]
+
+    hashes = []
+    for i in range(num_items):
+        row_bytes = flat_in[i].tobytes()
+        hashes.append(hashlib.sha256(row_bytes).digest())
+
+    flat_out = np.frombuffer(b"".join(hashes), dtype=np.uint8).reshape(num_items, 32)
+    arr_out = flat_out.reshape(*batch_shape, 32)
+
+    return TensorValue(arr_out)
 
 
 @crypto.sym_encrypt_p.def_impl

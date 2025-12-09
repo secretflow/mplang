@@ -190,6 +190,7 @@ scalar_from_int_p = el.Primitive[el.Object]("crypto.ec_scalar_from_int")
 
 # Symmetric / Hash
 hash_p = el.Primitive[el.Object]("crypto.hash")
+hash_batch_p = el.Primitive[el.Object]("crypto.hash_batch")
 sym_encrypt_p = el.Primitive[el.Object]("crypto.sym_encrypt")
 sym_decrypt_p = el.Primitive[el.Object]("crypto.sym_decrypt")
 select_p = el.Primitive[el.Object]("crypto.select")
@@ -249,7 +250,28 @@ def _scalar_from_int_ae(
 
 @hash_p.def_abstract_eval
 def _hash_ae(data: elt.BaseType) -> elt.TensorType:
+    # Strictly single output (blob hash)
     return elt.TensorType(elt.u8, (32,))
+
+
+@hash_batch_p.def_abstract_eval
+def _hash_batch_ae(data: elt.BaseType) -> elt.TensorType:
+    # Explicit batch hashing: Input (..., D) -> Output (..., 32)
+    # Hashes the last dimension D bytes.
+    if not isinstance(data, elt.TensorType):
+        raise TypeError(f"hash_batch requires TensorType, got {data}")
+
+    # data.shape is tuple[int | None, ...]
+    shape = data.shape
+    if len(shape) < 2:
+        # Fallback/Edge case: (D,) -> (32,)
+        # One could argue this should be an error for *batch* primitive,
+        # but allowing it provides consistency for (N=1, D).
+        return elt.TensorType(elt.u8, (32,))
+
+    # Batch shape is everything except last dim
+    batch_shape = shape[:-1]
+    return elt.TensorType(elt.u8, (*batch_shape, 32))
 
 
 @sym_encrypt_p.def_abstract_eval
@@ -333,6 +355,16 @@ def ec_scalar_from_int(val: el.Object, curve: str = "secp256k1") -> el.Object:
 def hash_bytes(data: el.Object) -> el.Object:
     """Hash bytes (SHA256). Returns 32-byte tensor."""
     return hash_p.bind(data)
+
+
+def hash_batch(data: el.Object) -> el.Object:
+    """Hash each row of a tensor independently.
+
+    Treats the last dimension as the data to hash.
+    Input: (N, D) -> Output: (N, 32)
+    Input: (B, N, D) -> Output: (B, N, 32)
+    """
+    return hash_batch_p.bind(data)
 
 
 def sym_encrypt(key: el.Object, plaintext: el.Object) -> el.Object:

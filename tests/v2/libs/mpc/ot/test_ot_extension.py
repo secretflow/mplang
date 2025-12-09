@@ -12,25 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""OT Extension Tests using clean simp.constant API."""
+"""OT Extension Tests using correct mp API."""
 
 import numpy as np
 
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import simp
-from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc.ot import extension as ot_extension
-
-
-def run_protocol(sim: SimpSimulator, protocol_fn):
-    """Helper to trace and run a protocol."""
-    traced = trace(protocol_fn)
-    return sim.evaluate_graph(traced.graph, [])
 
 
 def test_transfer_extension():
     """Test IKNP OT extension correctness."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(2)
 
     np.random.seed(42)
     num_ots = 128
@@ -53,13 +46,12 @@ def test_transfer_extension():
             m0, m1, choices, SENDER, RECEIVER, num_ots
         )
 
-    result = run_protocol(sim, protocol)
+    traced = mp.compile(sim, protocol)
+    result = mp.evaluate(sim, traced)
 
-    # Result is on receiver
-    res = result[RECEIVER].unwrap()
+    # Fetch result - it's on receiver
+    res = mp.fetch(sim, result)[RECEIVER]
 
     # Verify: if choice=0, res=m0. if choice=1, res=m1.
     expected = np.where(np_choices[:, None] == 0, np_m0, np_m1)
     np.testing.assert_array_equal(res, expected)
-
-    sim.shutdown()

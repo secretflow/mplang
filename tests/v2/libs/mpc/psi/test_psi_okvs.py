@@ -199,105 +199,43 @@ class TestPsiOkvs(unittest.TestCase):
 
     def test_psi_okvs_integration(self):
         """Test full End-to-End PSI OKVS Protocol via psi_okvs.py using SimpSimulator."""
-        import mplang.v2.dialects.simp as simp
-        import mplang.v2.libs.mpc.psi.okvs as psi_okvs
-        from mplang.v2.backends.simp_simulator import SimpSimulator
+        import mplang.v2 as mp
+        from mplang.v2.dialects import simp
+        from mplang.v2.libs.mpc.psi import okvs as psi_okvs
 
         N = 100
-        # Use IDENTICAL items for both parties to verify T == U* * Delta relation
-        # (This relation only holds for intersection items)
-        # Ensure UNIQUE items because OKVS Peeling solver fails if duplicate keys exist
-        # (identical keys map to same positions, preventing degree-1 reduction).
+        # Use IDENTICAL items to verify T == U* * Delta
         rng = np.random.default_rng()
         shared_items = rng.choice(1000000, size=N, replace=False).astype(np.uint64)
 
         sender_items = shared_items
         receiver_items = shared_items
 
-        # SimpSimulator
-        sim = SimpSimulator(world_size=2)
+        SENDER = 0
+        RECEIVER = 1
 
-        # Define Data Providers
+        sim = mp.Simulator.simple(2)
 
-        # Since pcall_static captures closure, and SimpSimulator executes in threads,
-        # accessing `sender_items` from outer scope works.
-
-        # Build Graph
-        # We use strict explicit placement.
-
-        def run_protocol():
+        def job():
             # 1. Place Inputs
-            s_items_Handle = simp.pcall_static((0,), lambda: sender_items)
-            r_items_Handle = simp.pcall_static((1,), lambda: receiver_items)
+            s_items_Handle = simp.constant((SENDER,), sender_items)
+            r_items_Handle = simp.constant((RECEIVER,), receiver_items)
 
             # 2. Run Protocol
             # Returns (T, U*, Delta)
             t_handle, u_star_handle, d_handle = psi_okvs.psi_intersect(
-                0, 1, N, s_items_Handle, r_items_Handle
+                SENDER, RECEIVER, N, s_items_Handle, r_items_Handle
             )
-
-            # 3. Reveal for Verification
-            # Bring everything to Party 0 (Host/Verifier in this context)
-            # shuffle T from 0->0 (no-op but makes view consistent)
-            t_host = simp.shuffle_static(t_handle, {0: 0})
-            u_star_host = simp.shuffle_static(u_star_handle, {0: 0})
-            # shuffle Delta from 1->0
-            d_host = simp.shuffle_static(d_handle, {0: 1})
-
-            return t_host, u_star_host, d_host
+            return t_handle, u_star_handle, d_handle
 
         # Execute
-        with sim:
-            t_obj, u_star_obj, d_obj = run_protocol()
+        traced = mp.compile(sim, job)
+        t_obj, u_star_obj, d_obj = mp.evaluate(sim, traced)
 
         # Verify Results
-        # SimpSimulator Run returns InterpObject for the LAST expression in with block?
-        # No, 'with sim' context just traces.
-        # We need to run it.
-        # SimpSimulator acts as Interpreter. When we do 'sim.evaluate_graph' or similar.
-        # But `with sim:` executes eager ops if they are eager primitives.
-        # `psi_intersect` uses `tensor.run_jax` which is eager in Interpreter?
-        # NO. `tensor.run_jax` is Traced into Graph in SimpSimulator.
-
-        # Wait, `SimpSimulator` inherits from `Interpreter`.
-        # `Interpreter` defaults to Eager Execution for `bind`?
-        # `Interpreter` default `run_jax` executes immediately?
-        # NO. `SimpSimulator` overrides `_evaluate_graph`?
-        # `SimpSimulator` acts as an Orchestrator.
-
-        # Let's look at `test_simp_simulator.py`.
-        # `with interp:` -> `res = ...` -> `res` is `InterpObject`.
-        # Accessing `res.runtime_obj` forces execution if not done?
-        # `SimpSimulator` is Eager-by-default Interpreter?
-        # YES. `Interpreter` base class implements Eager execution unless specific tracing/graph mode used.
-        # `pcall_static` implementation in `simp_impl` causes execution?
-
-        # Check `mplang/v2/backends/simp_impl.py`.
-        # `_pcall_static_impl` calls `interpreter.submit(...)`.
-
-        # So yes, `t_obj` will hold the result (Future/HostVar).
-
-        t_val = t_obj.runtime_obj.values[0].unwrap()  # Rank 0 value
-        u_star_val = u_star_obj.runtime_obj.values[0].unwrap()  # Rank 0 value
-        d_val = d_obj.runtime_obj.values[0].unwrap()  # Rank 0 value (received from 1)
-
-        # Verify T = U* * Delta (Logic Check)
-        # We need to compute U* * Delta + V*? No, T = U_star * Delta.
-        # Wait, logic is T = S + V + H(x).
-        # And S + V = U_star * Delta.
-        # So T - H(x) = U_star * Delta ?
-        # No, from `verify_psi_okvs_logic.py`: "Verify T == U_decoded * Delta".
-        # Let's trust that logic.
-
-        # Math verification on Host
-        # Need field multiplication.
-        # We can reuse field implementation or simple numpy logic if available.
-        # Or Just use `verify_psi_okvs_logic` style check.
-        # But we don't have field.mul available on Host easily without Interpreter context.
-
-        # Let's assume passed if no crash for now?
-        # Or assert correctness.
-        # We can use `mplang.v2.backends.field_impl._gf128_mul_impl` directly!
+        t_val = mp.fetch(sim, t_obj)[SENDER]
+        u_star_val = mp.fetch(sim, u_star_obj)[SENDER]
+        d_val = mp.fetch(sim, d_obj)[RECEIVER]  # Delta is on receiver
 
         from mplang.v2.backends.field_impl import _gf128_mul_impl
 

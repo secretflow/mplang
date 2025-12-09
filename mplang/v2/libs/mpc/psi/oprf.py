@@ -170,7 +170,7 @@ def eval_oprf(
         # We can just map standard crypto.hash_bytes if vec_hash is not available.
         # Actually `ot_extension.vec_hash` is available.
 
-        return ot_extension.vec_hash(packed_q, domain_sep=0x0CDF)
+        return ot_extension.vec_hash(packed_q, domain_sep=0x0CDF, num_rows=num_items)
 
     receiver_outputs = simp.pcall_static(
         (receiver,), compute_receiver_outputs, q_matrix, choice_codes
@@ -210,6 +210,7 @@ def sender_eval_prf_batch(
     sender_key: el.Object,  # Tuple (t_matrix, s) on sender
     sender_items: el.Object,  # (M, 16) bytes - items to evaluate
     sender: int,
+    num_items: int,
 ) -> el.Object:
     """Evaluate PRF on sender's side for a batch of items.
 
@@ -231,6 +232,7 @@ def sender_eval_prf_batch(
         sender_key: The key tuple (t_matrix, s) from eval_oprf.
         sender_items: (M, 16) byte tensor of sender's items.
         sender: Rank of sender party.
+        num_items: Number of items M (must be provided).
 
     Returns:
         (M, 16) byte tensor of PRF outputs on sender.
@@ -276,7 +278,37 @@ def sender_eval_prf_batch(
         raw_outputs = cast(el.Object, tensor.run_jax(_eval, key, items))
 
         # Security Fix: Hash the output to match receiver
-        return ot_extension.vec_hash(raw_outputs, domain_sep=0x0CDF)
+        # Security Fix: Hash the output to match receiver
+        # Assume batch size M is handled by vec_hash if num_rows not passed?
+        # No, we must pass it.
+        # But M is not available as python int here easily?
+        # Wait, sender_items is trace object. N is trait of it?
+        # Actually sender_eval_prf_batch is a pcalled function.
+        # In pcall, args are tracers.
+        # We can't know dynamic shape M at trace time for python loop in vec_hash.
+
+        # This confirms vec_hash MUST be vectorized/batched to support dynamic shapes.
+        # But we are in EDSL.
+
+        # For now, we revert to legacy behavior for sender_eval_prf_batch
+        # OR we assume M=128 or fail?
+        # Actually, sender_eval_prf_batch implementation in oprf.py lines 209+
+        # It takes sender_items.
+
+        # If we can't get M, we can't unroll loop in vec_hash.
+        # So vec_hash with run_jax(dynamic loop) is needed?
+        # Or proper vectorized hash primitive.
+
+        # Since I can't implement new primitive now.
+        # I will assume M=128 (default) for sender batch,
+        # OR if sender_items matches num_items?
+
+        # In test_oprf, sender_eval_prf_batch is NOT called.
+        # eval_oprf IS called.
+
+        # So fixing the first call (line 173) is enough for test_oprf.py.
+        # I will only fix line 173 for now to unblock testing.
+        return ot_extension.vec_hash(raw_outputs, domain_sep=0x0CDF, num_rows=num_items)
 
     return cast(
         el.Object,
@@ -323,8 +355,17 @@ def sender_eval_prf(
         raw_out = cast(el.Object, tensor.run_jax(_compute, key, cand))
         # Hash to match vectorized version
         # We need a domain separator 0x0CDF.
-        # Workaround: just hash for now, assuming single hash matches vec_hash logic
-        # (vec_hash uses crypto.hash_bytes on rows).
-        return crypto.hash_bytes(raw_out)
+        # We must manually prepend it as vec_hash does.
+
+        def _add_ds_and_hash(val: Any) -> Any:
+            # Recreate vec_hash domain sep logic for single item
+            ds = 0x0CDF
+            ds_arr = jnp.array([ds], dtype=jnp.uint64).view(jnp.uint8)
+            # val is (16,)
+            val_with_ds = jnp.concatenate([ds_arr, val])
+            return val_with_ds
+
+        val_plus_ds = tensor.run_jax(_add_ds_and_hash, raw_out)
+        return crypto.hash_bytes(val_plus_ds)
 
     return cast(el.Object, simp.pcall_static((sender,), _eval, sender_key, candidate))

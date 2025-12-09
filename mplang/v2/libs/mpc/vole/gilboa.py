@@ -69,8 +69,8 @@ def vole(
             return jnp.unpackbits(d.view(jnp.uint8), bitorder="little")
 
         bits_u8 = tensor.run_jax(_unpack, delta)  # (128,) u8
-        # Reshape to (128, 1) to satisfy IKNP's transpose expectation
-        bits_reshaped = tensor.reshape(bits_u8, (128, 1))
+        # Reshape to (128, 1) using run_jax for XLA optimization
+        bits_reshaped = tensor.run_jax(lambda x: x.reshape(128, 1), bits_u8)
         return delta, bits_reshaped
 
     delta_and_bits = simp.pcall_static((receiver,), _recv_prep)

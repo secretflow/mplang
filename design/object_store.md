@@ -176,8 +176,9 @@ If the user *needs* to see the data on the Driver (e.g., `print(z)`):
 ## 6. Open Questions / Future Work
 
 - **Garbage Collection**: How do we clean up `mem://` objects on Workers when the Driver `HostVar` goes out of scope?
-  - *Proposal*: Implement `__del__` on `HostVar` to send async `delete` commands to Workers.
-  - *Note*: `__del__` is not guaranteed to run. A more robust approach (e.g., explicit `Session` context manager or `weakref` based tracking)
-    should be considered for production.
+  - *Proposal*: Use **Explicit Session Management** (e.g., `with mplang.Session() as sess: ...`).
+  - *Rationale*: `__del__` is unreliable in Python (not guaranteed to run, issues with reference cycles). An explicit context manager ensures
+    cleanup commands are sent to workers when the session ends.
+  - *Alternative*: Use `weakref` callbacks to track object liveness, though this is complex in distributed settings.
 - **Data Transfer**: How to move data between Workers (e.g., Shuffle)?
   - *Proposal*: `ObjectStore` could support `transfer(uri, target_rank)`.

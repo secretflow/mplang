@@ -25,6 +25,7 @@ from typing import Any
 
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.runtime.interpreter import DagProfiler, Interpreter
+from mplang.v2.runtime.object_store import ObjectStore
 
 
 class WorkerInterpreter(Interpreter):
@@ -46,7 +47,17 @@ class WorkerInterpreter(Interpreter):
         spu_endpoints: dict[int, str] | None = None,
         profiler: DagProfiler | None = None,
     ):
-        super().__init__(name=f"Worker-{rank}", profiler=profiler, trace_pid=rank)
+        # Use rank-specific FS root for simulation to avoid collision
+        # when using same keys (SPMD style)
+        # Use relative path so artifacts are visible in CWD
+        fs_root = f"mplang_store/worker_{rank}"
+        store = ObjectStore(fs_root=fs_root)
+        super().__init__(
+            name=f"Worker-{rank}",
+            profiler=profiler,
+            trace_pid=rank,
+            store=store,
+        )
         self.rank = rank
         self.world_size = world_size
         self.communicator: Any = communicator

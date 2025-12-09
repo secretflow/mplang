@@ -14,7 +14,7 @@
 
 import pytest
 
-from mplang.v2.runtime.store import MemoryBackend, ObjectStore
+from mplang.v2.runtime.object_store import MemoryBackend, ObjectStore
 
 
 def test_memory_backend():

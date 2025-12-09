@@ -36,7 +36,7 @@ from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.registry import get_impl
 from mplang.v2.edsl.typing import BaseType
-from mplang.v2.runtime.store import ObjectStore
+from mplang.v2.runtime.object_store import ObjectStore
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
@@ -297,6 +297,7 @@ class Interpreter(AbstractInterpreter):
         name: str = "Interpreter",
         profiler: DagProfiler | None = None,
         trace_pid: int | None = None,
+        store: ObjectStore | None = None,
     ) -> None:
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
@@ -310,7 +311,7 @@ class Interpreter(AbstractInterpreter):
         self.name = name
         self.profiler = profiler
         self.trace_pid = trace_pid
-        self.store = ObjectStore()
+        self.store = store or ObjectStore()
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -532,8 +533,6 @@ class Interpreter(AbstractInterpreter):
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Any:
         """Synchronous execution (Baseline)."""
-        assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
-
         # Local environment: Value -> Runtime Object
         env = dict(zip(graph.inputs, inputs, strict=True))
 
@@ -591,8 +590,6 @@ class Interpreter(AbstractInterpreter):
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Any:
         """Asynchronous execution with non-blocking DAG scheduling."""
-        assert len(graph.outputs) > 0, "Graph must be finalized (outputs must be set)"
-
         # Profiler setup
         if self.profiler:
             profiler = self.profiler

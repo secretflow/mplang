@@ -110,6 +110,7 @@ class SimpHttpDriver(SimpHost):
 
     def _fetch(self, rank: int, uri: str) -> Any:
         """Fetch data from a remote worker via HTTP."""
+        assert self.executor is not None
         return self.executor.submit(self._do_fetch, rank, uri)
 
     def _do_fetch(self, rank: int, uri: str) -> Any:

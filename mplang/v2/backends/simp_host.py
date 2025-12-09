@@ -137,7 +137,7 @@ class SimpHost(Interpreter):
                     futures.append(self._fetch(rank, val))
                 else:
                     # Already data
-                    f = concurrent.futures.Future()
+                    f: concurrent.futures.Future[Any] = concurrent.futures.Future()
                     f.set_result(val)
                     futures.append(f)
 

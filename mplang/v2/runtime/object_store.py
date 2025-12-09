@@ -187,7 +187,7 @@ class ObjectStore:
 
     def list_objects(self) -> list[str]:
         """List all objects in all backends."""
-        uris = []
+        uris: list[str] = []
         for scheme, backend in self._backends.items():
             try:
                 keys = backend.list_keys()

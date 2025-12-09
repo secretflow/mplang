@@ -18,10 +18,10 @@ import numpy as np
 import pytest
 
 from mplang.v2.edsl.context import get_current_context
-from mplang.v2.edsl.interpreter import InterpObject
 from mplang.v2.edsl.primitive import Primitive
 from mplang.v2.edsl.tracer import TraceObject, Tracer
 from mplang.v2.edsl.typing import Tensor, f32
+from mplang.v2.runtime.interpreter import InterpObject
 
 
 class TestContextManager:

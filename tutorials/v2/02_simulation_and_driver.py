@@ -31,7 +31,6 @@ import random
 import httpx
 
 import mplang.v2 as mp
-from mplang.v2.backends.simp_http_driver import SimpHttpDriver
 
 
 def millionaire():
@@ -129,7 +128,8 @@ def run_with_driver():
     print("\n--- Executing on distributed workers ---")
 
     # Create driver - same interface as Simulator!
-    driver = SimpHttpDriver(world_size=2, endpoints=endpoints)
+    cluster = mp.ClusterSpec.simple(world_size=2, endpoints=endpoints)
+    driver = mp.Driver(cluster)
 
     # Define computation - same as Simulator!
     @mp.function

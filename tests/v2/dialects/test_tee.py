@@ -100,59 +100,77 @@ class TestTEETypeInference:
 
     def test_quote_gen_type_inference(self):
         """Test quote_gen returns QuoteType."""
-        with el.Tracer() as tracer:
+
+        def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
             quote = tee.quote_gen(pk)
+            return quote
 
-            graph = tracer.finalize(quote)
-            assert len(graph.operations) == 2  # kem_keygen + quote_gen
-            quote_op = graph.operations[1]
-            assert quote_op.opcode == "tee.quote_gen"
+        traced = el.trace(workflow)
+        graph = traced.graph
+        assert len(graph.operations) == 2  # kem_keygen + quote_gen
+        quote_op = graph.operations[1]
+        assert quote_op.opcode == "tee.quote_gen"
 
     def test_quote_gen_with_platform(self):
         """Test quote_gen with explicit platform."""
-        with el.Tracer() as tracer:
+
+        def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
             quote = tee.quote_gen(pk, platform="sgx")
-            graph = tracer.finalize(quote)
+            return quote
 
-            quote_op = graph.operations[1]
-            assert quote_op.attrs["platform"] == "sgx"
+        traced = el.trace(workflow)
+        graph = traced.graph
+
+        quote_op = graph.operations[1]
+        assert quote_op.attrs["platform"] == "sgx"
 
     def test_attest_in_graph(self):
         """Test attest creates correct graph operation."""
-        with el.Tracer() as tracer:
+
+        def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
             quote = tee.quote_gen(pk, platform="sgx")
             attested_pk = tee.attest(quote, expected_curve="secp256k1")
-            graph = tracer.finalize(attested_pk)
+            return attested_pk
 
-            assert len(graph.operations) == 3  # kem_keygen, quote_gen, attest
-            attest_op = graph.operations[2]
-            assert attest_op.opcode == "tee.attest"
-            assert attest_op.attrs["expected_curve"] == "secp256k1"
+        traced = el.trace(workflow)
+        graph = traced.graph
+
+        assert len(graph.operations) == 3  # kem_keygen, quote_gen, attest
+        attest_op = graph.operations[2]
+        assert attest_op.opcode == "tee.attest"
+        assert attest_op.attrs["expected_curve"] == "secp256k1"
 
     def test_get_measurement_in_graph(self):
         """Test get_measurement creates correct graph operation."""
-        with el.Tracer() as tracer:
+
+        def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
             quote = tee.quote_gen(pk, platform="sev")
             measurement = tee.get_measurement(quote)
-            graph = tracer.finalize(measurement)
+            return measurement
 
-            assert len(graph.operations) == 3
-            measure_op = graph.operations[2]
-            assert measure_op.opcode == "tee.get_measurement"
+        traced = el.trace(workflow)
+        graph = traced.graph
+
+        assert len(graph.operations) == 3
+        measure_op = graph.operations[2]
+        assert measure_op.opcode == "tee.get_measurement"
 
     def test_full_workflow_graph(self):
         """Test complete TEE workflow produces correct graph."""
-        with el.Tracer() as tracer:
+
+        def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
             quote = tee.quote_gen(pk, platform="tdx")
             attested_pk = tee.attest(quote)
             measurement = tee.get_measurement(quote)
+            return attested_pk, measurement
 
-            graph = tracer.finalize((attested_pk, measurement))
+        traced = el.trace(workflow)
+        graph = traced.graph
 
         opcodes = [op.opcode for op in graph.operations]
         assert "crypto.kem_keygen" in opcodes
@@ -164,7 +182,9 @@ class TestTEETypeInference:
         """Test quote_gen raises TypeError for non-PublicKeyType inputs."""
         import mplang.v2.dialects.tensor as tensor
 
-        with el.Tracer():
+        def workflow():
             pk = tensor.constant(np.zeros(32, dtype=np.uint8))
-            with pytest.raises(TypeError, match="expects PublicKeyType"):
-                tee.quote_gen(pk)
+            tee.quote_gen(pk)
+
+        with pytest.raises(TypeError, match="expects PublicKeyType"):
+            el.trace(workflow)

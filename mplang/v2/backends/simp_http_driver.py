@@ -108,6 +108,25 @@ class SimpHttpDriver(SimpHost):
             logger.error(f"Driver failed to execute on rank {rank}: {e}")
             raise RuntimeError(f"Failed to execute on rank {rank}: {e}") from e
 
+    def _fetch(self, rank: int, uri: str) -> Any:
+        """Fetch data from a remote worker via HTTP."""
+        assert self.executor is not None
+        return self.executor.submit(self._do_fetch, rank, uri)
+
+    def _do_fetch(self, rank: int, uri: str) -> Any:
+        url = f"{self.endpoints[rank]}/fetch"
+        logger.debug(f"Driver fetching from rank {rank} uri={uri}")
+
+        payload = {"uri": uri}
+        try:
+            resp = self.client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            return serde.loads_b64(data["result"])
+        except Exception as e:
+            logger.error(f"Driver failed to fetch from rank {rank}: {e}")
+            raise RuntimeError(f"Failed to fetch from rank {rank}: {e}") from e
+
     def shutdown(self) -> None:
         """Shutdown the driver."""
         if self.executor:

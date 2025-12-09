@@ -32,4 +32,5 @@ from __future__ import annotations
 from mplang.v2.dialects import bfv as _bfv  # noqa: F401
 from mplang.v2.dialects import crypto as _crypto  # noqa: F401
 from mplang.v2.dialects import spu as _spu  # noqa: F401
+from mplang.v2.dialects import store as _store  # noqa: F401
 from mplang.v2.dialects import tee as _tee  # noqa: F401

@@ -114,7 +114,7 @@ def load_data(path_or_id: str, sample_size: int = None):
     print("Preprocessing: handling missing values & encoding...")
     le = LabelEncoder()
     for col in X.columns:
-        if X[col].dtype == "object" or str(X[col].dtype) == "category":
+        if pd.api.types.is_object_dtype(X[col].dtype) or pd.api.types.is_categorical_dtype(X[col].dtype):
             X[col] = X[col].fillna(X[col].mode()[0])
             X[col] = X[col].astype(str)
             X[col] = le.fit_transform(X[col])

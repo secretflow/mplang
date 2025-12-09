@@ -76,10 +76,8 @@ class TestFileSystemBackend(unittest.TestCase):
 
 class TestObjectStoreWithFS(unittest.TestCase):
     def setUp(self):
-        self.store = ObjectStore()
-        # Override default fs backend with a temp dir one for testing
         self.test_dir = tempfile.mkdtemp()
-        self.store.register_backend("fs", FileSystemBackend(root_dir=self.test_dir))
+        self.store = ObjectStore(fs_root=self.test_dir)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)

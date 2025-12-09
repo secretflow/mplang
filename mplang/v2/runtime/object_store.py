@@ -79,7 +79,7 @@ class MemoryBackend(StoreBackend):
 class FileSystemBackend(StoreBackend):
     """File system storage backend using pickle."""
 
-    def __init__(self, root_dir: str = "/tmp/mplang_store") -> None:
+    def __init__(self, root_dir: str) -> None:
         self._root = os.path.abspath(root_dir)
         os.makedirs(self._root, exist_ok=True)
 
@@ -127,15 +127,12 @@ class FileSystemBackend(StoreBackend):
 class ObjectStore:
     """Distributed Object Store dispatcher."""
 
-    def __init__(self, fs_root: str | None = None) -> None:
+    def __init__(self, fs_root: str) -> None:
         self._backends: dict[str, StoreBackend] = {}
         # Register default memory backend
         self.register_backend("mem", MemoryBackend())
         # Register file system backend
-        if fs_root:
-            self.register_backend("fs", FileSystemBackend(root_dir=fs_root))
-        else:
-            self.register_backend("fs", FileSystemBackend())
+        self.register_backend("fs", FileSystemBackend(root_dir=fs_root))
 
     def register_backend(self, scheme: str, backend: StoreBackend) -> None:
         """Register a storage backend for a specific URI scheme."""

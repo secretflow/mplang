@@ -28,8 +28,8 @@ def test_memory_backend():
         backend.get("k1")
 
 
-def test_object_store():
-    store = ObjectStore()
+def test_object_store(tmp_path):
+    store = ObjectStore(fs_root=str(tmp_path))
 
     # Test default put (mem://)
     uri = store.put("value")

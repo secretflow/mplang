@@ -27,6 +27,7 @@ import concurrent.futures
 import json
 import os
 import queue
+import tempfile
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -311,7 +312,13 @@ class Interpreter(AbstractInterpreter):
         self.name = name
         self.profiler = profiler
         self.trace_pid = trace_pid
-        self.store = store or ObjectStore()
+
+        self._temp_dir: tempfile.TemporaryDirectory | None = None
+        if store is None:
+            self._temp_dir = tempfile.TemporaryDirectory(prefix="mplang_interp_")
+            self.store = ObjectStore(fs_root=self._temp_dir.name)
+        else:
+            self.store = store
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]

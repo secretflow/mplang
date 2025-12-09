@@ -21,6 +21,7 @@ are registered in simp_impl.py.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mplang.v2.edsl.graph import Graph
@@ -49,8 +50,8 @@ class WorkerInterpreter(Interpreter):
     ):
         # Use rank-specific FS root for simulation to avoid collision
         # when using same keys (SPMD style)
-        # Use relative path so artifacts are visible in CWD
-        fs_root = f"mplang_store/worker_{rank}"
+        # Use ~/.mplang/store so artifacts are persistent and centralized
+        fs_root = os.path.join(os.path.expanduser("~/.mplang/store"), f"worker_{rank}")
         store = ObjectStore(fs_root=fs_root)
         super().__init__(
             name=f"Worker-{rank}",
@@ -65,7 +66,6 @@ class WorkerInterpreter(Interpreter):
 
         # Enable multi-threaded execution for BFV ops by default
         import concurrent.futures
-        import os
 
         max_workers = os.cpu_count() or 4
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)

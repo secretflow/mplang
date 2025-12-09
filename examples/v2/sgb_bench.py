@@ -99,7 +99,9 @@ def load_data(path_or_id: str, sample_size: int | None = None):
                         data_id=int(dataset_name), as_frame=True, parser="auto"
                     )
                 else:
-                    raise ValueError(f"Could not fetch OpenML dataset: {dataset_name}") from None
+                    raise ValueError(
+                        f"Could not fetch OpenML dataset: {dataset_name}"
+                    ) from None
             X, y = bunch.data, bunch.target
 
         # Helper: Convert categorical target

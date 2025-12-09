@@ -102,43 +102,12 @@ def psi_intersect(
 
         tensor.run_jax(_prep_to_bytes, y)
 
-        # Use vec_hash from ot_extension or implement vectorized hash here?
-        # crypto.hash is single input (32 byte output).
-        # We need to hash N items.
-        # We can map crypto.hash?
-        # Or use ot.vec_hash (which we saw in ot_extension.py).
+        # Implement Davies-Meyer construction: H(x) = E_x(0) ^ x
+        # This provides a robust random oracle construction from AES-128
+        # suitable for the OKVS encoding steps.
 
-        # ot.vec_hash expects (K, D).
-        # Let's import vec_hash logic or re-use it.
-        # Actually, let's just loop locally or use map.
-        # BUT efficiency matters here.
-        # For now, let's use the explicit loop over chunks implementation similar to vec_hash
-        # to guarantee correctness.
-        # Or better: crypto.hash_bytes doesn't support vectorization yet (judging by ot_extension workaround).
-
-        # Wait, the security report said "Replace AES-as-Hash with crypto.hash".
-        # Doing that for N=1M items with a python loop is DEATH.
-        # `ot.vec_hash` unrolled for K=128. Here N=1M.
-        # We CANNOT use a python loop for N=1M.
-
-        # CRITICAL: We need a Vectorized Hash Primitive or Kernel.
-        # Since we don't have one, sticking to AES-as-Hash effectively (Davies-Meyer) is better for performance?
-        # Report says: "Use proper RO ... e.g. Davies-Meyer E_k(x) ^ x".
-        # The previous code was `AES(seeds=y, 1)`.
-        # This is `E_y(0)`.
-        # E_y(0) is okay-ish if y is random key. But y is input.
-        # Davies-Meyer: E_fixed(y) ^ y ?
-        # Or E_y(fixed) ^ y ?
-        #
-        # Better: Use `field.aes_expand` but using a FIXED key and inputs as message?
-        # `aes_expand(seeds, length)` -> PRG(seeds).
-        # i.e. E_seeds(counter).
-        # So `res = aes_expand(y, 1)` is `E_y(0)`.
-        # To make it Davies-Meyer: `E_y(0) ^ y` (if types match).
+        # 1. Expand input items to use as keys/seeds for AES
         # y is (N,) u64. res is (N, 1, 2) u64.
-
-        # Let's implement Davies-Meyer: H(x) = E_x(0) ^ x.
-        # 1. Expand
         def _reshape_seeds(items: Any) -> Any:
             # items (N,) u64.
             # We need (N, 2) seeds.

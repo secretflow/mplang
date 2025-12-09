@@ -205,7 +205,9 @@ def cuckoo_lookup_positions(
 
 
 def compute_positions(
-    items: el.Object, table_size: int, seed: el.Object  # (2,) uint64
+    items: el.Object,
+    table_size: int,
+    seed: el.Object,  # (2,) uint64
 ) -> el.Object:
     """Compute Cuckoo hash positions for items (EDSL wrapper).
 

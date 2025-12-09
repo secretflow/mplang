@@ -51,7 +51,9 @@ def _gf128_clmul64(a: int, b: int) -> tuple[int, int]:
     return result_lo, result_hi
 
 
-def _gf128_clmul128(a_lo: int, a_hi: int, b_lo: int, b_hi: int) -> tuple[int, int, int, int]:
+def _gf128_clmul128(
+    a_lo: int, a_hi: int, b_lo: int, b_hi: int
+) -> tuple[int, int, int, int]:
     """Carryless multiplication of two 128-bit values.
 
     Returns (r0, r1, r2, r3) where result = r3 * 2^192 + r2 * 2^128 + r1 * 2^64 + r0.
@@ -142,7 +144,9 @@ def gf128_mul_single(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     r0, r1, r2, r3 = _gf128_clmul128(a_lo, a_hi, b_lo, b_hi)
     res_lo, res_hi = _gf128_reduce(r0, r1, r2, r3)
 
-    return np.array([res_lo & ((1 << 64) - 1), res_hi & ((1 << 64) - 1)], dtype=np.uint64)
+    return np.array(
+        [res_lo & ((1 << 64) - 1), res_hi & ((1 << 64) - 1)], dtype=np.uint64
+    )
 
 
 def gf128_mul_batch(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -172,7 +176,9 @@ def gf128_mul_batch(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 # =============================================================================
 
 
-def _hash_key_py(key: int, m: int, seed: tuple[int, int] = (0xCAFEBABE, 0xDEADBEEF)) -> tuple[int, int, int]:
+def _hash_key_py(
+    key: int, m: int, seed: tuple[int, int] = (0xCAFEBABE, 0xDEADBEEF)
+) -> tuple[int, int, int]:
     """Hash a key to 3 distinct indices using simple polynomial hashing.
 
     This is a pure Python approximation of the AES-based hash in C++.
@@ -336,6 +342,8 @@ def aes_expand(seeds: np.ndarray, length: int) -> np.ndarray:
     for i in range(num_seeds):
         seed_val = [int(seeds[i, 0]), int(seeds[i, 1])]
         rng = np.random.default_rng(seed_val)
-        output[i] = rng.integers(0, 0xFFFFFFFFFFFFFFFF, size=(length, 2), dtype=np.uint64)
+        output[i] = rng.integers(
+            0, 0xFFFFFFFFFFFFFFFF, size=(length, 2), dtype=np.uint64
+        )
 
     return output

@@ -120,12 +120,12 @@ def decode_okvs(keys: el.Object, storage: el.Object) -> el.Object:
 def add(a: el.Object, b: el.Object) -> el.Object:
     """GF(2^128) Addition (XOR)."""
     return cast(el.Object, tensor.run_jax(jnp.bitwise_xor, a, b))
-    
-    
+
+
 def sum(x: el.Object, axis: int | None = None) -> el.Object:
     """GF(2^128) Summation (XOR Sum)."""
-    
+
     def _sum_impl(val: Any) -> Any:
         return jnp.bitwise_xor.reduce(val, axis=axis)
-        
+
     return cast(el.Object, tensor.run_jax(_sum_impl, x))

@@ -33,18 +33,9 @@ def prg_expand(seed_tensor: el.Object, length: int) -> el.Object:
 
     Uses AES-NI via field.aes_expand for cryptographic security.
     """
-    # 1. Expand using AES (returns uint64)
-    # field.aes_expand takes (K, 2) seeds and returns (K, length_u64, 2)
-    # We need (K, length_bits) output of 0/1 bits?
-    # Let's check usage.
-    # used in calc_u: g_k0 ^ g_k1 ^ r
-    # r is binary (0/1).
-    # So we need bits.
-
+    # Calculate number of 128-bit blocks needed to cover `length` bits.
     # field.aes_expand returns (K, M, 2) uint64 blocks.
-    # Total bits = M * 2 * 64 = M * 128.
-    # We need `length` BITS.
-    # So M = ceil(length / 128).
+    # Total bits = M * 128.
 
     m_blocks = (length + 127) // 128
 
@@ -101,18 +92,8 @@ def vec_hash(data_bytes: el.Object) -> el.Object:
 
     for i in range(K):
         # Slice row i
-        # data_bytes shape? assume 2D.
-        # slice (i, 0) to (i+1, end)
-        row_slice = tensor.slice_tensor(
-            data_bytes, (i, 0), (i + 1, 2**30)
-        )  # 2**30 caps at dimension end?
-        # Actually slice_tensor handles end clamping?
-        # Let's use strict slice if possible or assume dim 1 known?
-        # BaseOT sends points encoded (64 bytes usually).
-        # We can just pick a large number if `slice_tensor` logic supports it, or use -1 logic if supports
-        # slice_tensor uses integer indices.
-        # Let's inspect data_bytes.type.shape in real usage if needed.
-        # But we trace abstract types.
+        # Slice row i to the end of the dimension using a large upper bound.
+        # This handles variable-length rows if necessary, though Base OT usually uses fixed sizes.
 
         # NOTE: slice_tensor AE logic:
         # If end > dim_size, clamps.
@@ -148,9 +129,6 @@ def iknp_core(
     """
     K = 128
 
-    # 1. Base OTs
-    # 1. Base OTs
-    # 1. Base OTs
     # 1. Base OTs
     def gen_s() -> el.Object:
         # Generate random bytes at runtime via primitive
@@ -235,11 +213,9 @@ def iknp_core(
         U = crypto.ec_mul(
             crypto.ec_generator(), crypto.ec_random_scalar()
         )  # Same random r for optimization?
-        # Wait, usually we use different r for each OT OR same r for all OTs (NP optimization).
-        # Optimization: Reuse r for all 128 OTs?
-        # Ideally r distinct.
-        # But optimization exists where Sender sends ONE U=g^r and many K0_i = PK0_i^r.
-        # This is safe and standard (e.g. libOTe).
+        # Optimization: Reuse r for all base OTs.
+        # Sender sends one U = g^r, and K0_i = PK0_i^r.
+        # This allows amortizing the cost of the ephemeral key generation.
 
         r = crypto.ec_random_scalar()
         U = crypto.ec_mul(crypto.ec_generator(), r)

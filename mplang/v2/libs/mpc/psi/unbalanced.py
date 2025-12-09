@@ -163,7 +163,9 @@ def psi_unbalanced(
     def _solve(k: Any, v: Any) -> Any:
         return field.solve_okvs(k, v, M)
 
-    okvs_table = simp.pcall_static((server,), _solve, server_derived_keys, server_values)
+    okvs_table = simp.pcall_static(
+        (server,), _solve, server_derived_keys, server_values
+    )
 
     # Send to Client
     okvs_table_client = simp.shuffle_static(okvs_table, {client: server})
@@ -193,7 +195,7 @@ def psi_unbalanced(
         _decode_and_compare,
         client_derived_keys,
         okvs_table_client,
-        client_expected_values
+        client_expected_values,
     )
 
     return cast(el.Object, intersection_mask)

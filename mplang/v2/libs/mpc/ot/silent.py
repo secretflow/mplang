@@ -173,7 +173,7 @@ def silent_vole_random_u(
 
         # 1. Derive K seeds from master seed
         # View seed as u64 (2, 2) and take first row as master seed (1, 2)
-        def _view_as_u64(b):
+        def _view_as_u64(b: Any) -> Any:
             return b.view(jnp.uint64).reshape(-1, 2)
 
         seeds_init = tensor.run_jax(_view_as_u64, seed_val)

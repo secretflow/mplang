@@ -19,12 +19,12 @@ license = { file = "LICENSE" }
 authors = [
     { name = "SecretFlow Team", email = "secretflow-contact@service.alipay.com" },
 ]
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "protobuf>=5.0,<6.0",
     "typing_extensions",
     # both FE & BE
-    "spu>=0.9.4",
+    "spu>=0.10.0.dev20251208",
     "pyarrow>=14.0.0",
     # runtime only
     "lightphe>=0.0.15,<0.1.0", # for PHE backend implementation
@@ -143,7 +143,7 @@ docstring-code-format = true           # Format code in docstrings
 docstring-code-line-length = "dynamic" # Use same line length for docstring code
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

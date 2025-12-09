@@ -45,7 +45,7 @@ import numpy as np
 from jax.ops import segment_sum
 
 from mplang.v2.dialects import bfv, simp, tensor
-from mplang.v2.libs.mpc import aggregation
+from mplang.v2.libs.mpc.analytics import aggregation
 
 # ==============================================================================
 # Configuration

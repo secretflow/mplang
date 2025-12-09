@@ -28,7 +28,7 @@ import jax
 import jax.numpy as jnp
 
 from mplang.v2.dialects import bfv, simp, tensor
-from mplang.v2.libs.mpc import aggregation, permutation
+from mplang.v2.libs.mpc.analytics import aggregation, permutation
 
 
 def oblivious_groupby_sum_bfv(

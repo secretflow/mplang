@@ -24,6 +24,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import mplang.v2.backends.crypto_impl
+import mplang.v2.backends.field_impl
+import mplang.v2.backends.simp_impl
+import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.runtime.interpreter import DagProfiler, Interpreter
 from mplang.v2.runtime.object_store import ObjectStore
@@ -77,6 +81,13 @@ class WorkerInterpreter(Interpreter):
             "bfv.relinearize",
             "bfv.encrypt",
             "bfv.decrypt",
+            # Field Ops (Heavy Computation)
+            "field.solve_okvs",
+            "field.decode_okvs",
+            "field.aes_expand",
+            "field.mul",
+            # Communication Ops (I/O Overlap)
+            "simp.shuffle",
         }
 
     def execute_job(

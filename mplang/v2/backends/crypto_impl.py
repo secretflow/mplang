@@ -255,20 +255,19 @@ def point_to_bytes_impl(
 
 
 @crypto.hash_p.def_impl
-def hash_impl(
-    interpreter: Interpreter, op: Operation, data: BytesValue | TensorValue
-) -> BytesValue:
-    raw = data.unwrap()
-    # Convert to bytes based on type
-    if isinstance(raw, bytes):
-        d = raw
-    elif isinstance(raw, np.ndarray):
-        d = raw.tobytes()
+def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
+    # data can be BytesValue or TensorValue
+    if isinstance(data, BytesValue):
+        d = data.unwrap()
+    elif isinstance(data, TensorValue):
+        d = data.unwrap().tobytes()
     else:
-        raise TypeError(f"Unexpected unwrapped type for hash: {type(raw)}")
+        d = bytes(data)  # best effort
 
     h = hashlib.sha256(d).digest()
-    return BytesValue(h)
+    # Return TensorValue (u8 array) to match Abstract Eval
+    arr = np.frombuffer(h, dtype=np.uint8)
+    return TensorValue(arr)
 
 
 @crypto.sym_encrypt_p.def_impl
@@ -289,9 +288,11 @@ def sym_encrypt_impl(
         k = key.key_bytes
     elif isinstance(key, BytesValue):
         k = key.unwrap()
+    elif isinstance(key, TensorValue):
+        k = key.unwrap().tobytes()
     else:
         raise TypeError(
-            f"sym_encrypt key must be SymmetricKeyValue or BytesValue, "
+            f"sym_encrypt key must be SymmetricKeyValue, BytesValue, or TensorValue, "
             f"got {type(key).__name__}"
         )
 
@@ -327,9 +328,11 @@ def sym_decrypt_impl(
         k = key.key_bytes
     elif isinstance(key, BytesValue):
         k = key.unwrap()
+    elif isinstance(key, TensorValue):
+        k = key.unwrap().tobytes()
     else:
         raise TypeError(
-            f"sym_decrypt key must be SymmetricKeyValue or BytesValue, "
+            f"sym_decrypt key must be SymmetricKeyValue, BytesValue, or TensorValue, "
             f"got {type(key).__name__}"
         )
 
@@ -527,3 +530,17 @@ def kem_derive_impl(
         pk_bytes = public_key.key_bytes
         secret = bytes(a ^ b for a, b in zip(sk_bytes, pk_bytes, strict=True))
         return SymmetricKeyValue(suite=suite, key_bytes=secret)
+
+
+@crypto.random_bytes_p.def_impl
+def random_bytes_impl(interpreter: Interpreter, op: Operation) -> TensorValue:
+    """Generate random bytes using os.urandom."""
+    # Length is passed as attribute
+    length = op.attrs["length"]
+
+    if not isinstance(length, int):
+        raise TypeError(f"random_bytes length must be int, got {type(length)}")
+
+    b = os.urandom(length)
+    arr = np.frombuffer(b, dtype=np.uint8).copy()
+    return TensorValue(arr)

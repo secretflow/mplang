@@ -259,7 +259,6 @@ def run_jax(
     Returns:
         PyTree of TraceObjects with the same structure as fn's output.
     """
-
     return run_jax_p.bind(fn, *args, **kwargs)
 
 

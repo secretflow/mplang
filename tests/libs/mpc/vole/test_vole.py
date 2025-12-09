@@ -1,0 +1,87 @@
+import numpy as np
+
+from mplang.v2.backends.simp_simulator import SimpSimulator
+from mplang.v2.dialects import tensor
+from mplang.v2.edsl import trace
+from mplang.v2.libs.mpc.vole import gilboa as vole
+
+
+def test_vole_correctness():
+    """Verify VOLE correlation: w = v + u * delta."""
+    sim = SimpSimulator(world_size=2)
+    N = 100
+
+    def protocol():
+        # Providers
+        def u_provider():
+            u_val = np.ones((N, 2), dtype=np.uint64)
+            u_val[:, 1] = 0
+            return tensor.constant(u_val)  # On Sender
+
+        def delta_provider():
+            delta_val = np.array([3, 0], dtype=np.uint64)
+            return tensor.constant(delta_val)  # On Receiver
+
+        # Run VOLE (Sender=0, Receiver=1)
+        v_sender, w_recv = vole.vole(0, 1, N, u_provider, delta_provider)
+
+        # We need to return them to check
+        # v is on 0. w is on 1.
+        return v_sender, w_recv
+
+    traced = trace(protocol)
+    results = sim.evaluate_graph(traced.graph, [])
+
+    # v_sender is result[0], w_recv is result[1]
+    # results[0] is HostVar of v_sender. Party 0 has value.
+    # results[1] is HostVar of w_recv. Party 1 has value.
+
+    v = results[0][0].unwrap()
+    w = results[1][1].unwrap()
+
+    # Reconstruct inputs for check
+    u = np.ones((N, 2), dtype=np.uint64)
+    u[:, 1] = 0
+    delta = np.array([3, 0], dtype=np.uint64)
+
+    print(f"v shape: {v.shape}")
+    print(f"w shape: {w.shape}")
+
+    print(f"v shape: {v.shape}")
+    print(f"w shape: {w.shape}")
+
+    # Verify: w = v + u * delta
+    # Need to do GF128 arithmetic on host to verify
+    # Re-use field kernel on host
+    from mplang.v2.backends.field_impl import _gf128_mul_impl
+
+    # Broadcast delta
+    np.zeros_like(u)
+    # Naive Loop for verification
+    # Or rely on linear property:
+    # 1 * 3 = 3.
+    # v + 3 = w
+
+    mismatch_count = 0
+
+    # Get bit decomposition of delta for debugging
+    delta_bits = np.unpackbits(delta.view(np.uint8), bitorder="little")
+
+    for i in range(N):
+        prod = _gf128_mul_impl(u[i], delta)
+        term = v[i] ^ prod
+        if not np.array_equal(term, w[i]):
+            d_i = delta_bits[i] if i < 128 else 0
+            print(f"Mismatch at {i} (d={d_i}): w={w[i]}, v={v[i]}")
+            mismatch_count += 1
+
+    if mismatch_count > 0:
+        print(f"Total Mismatches: {mismatch_count}")
+        raise AssertionError
+
+    print("VOLE Verification PASSED.")
+    sim.shutdown()
+
+
+if __name__ == "__main__":
+    test_vole_correctness()

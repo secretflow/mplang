@@ -198,6 +198,9 @@ select_p = el.Primitive[el.Object]("crypto.select")
 kem_keygen_p = el.Primitive[tuple[el.Object, el.Object]]("crypto.kem_keygen")
 kem_derive_p = el.Primitive[el.Object]("crypto.kem_derive")
 
+# Randomness
+random_bytes_p = el.Primitive[el.Object]("crypto.random_bytes")
+
 
 # ==============================================================================
 # --- Abstract Evaluation (Type Inference)
@@ -280,6 +283,11 @@ def _kem_derive_ae(
 ) -> SymmetricKeyType:
     suite = getattr(private_key, "suite", "x25519")
     return SymmetricKeyType(suite)
+
+
+@random_bytes_p.def_abstract_eval
+def _random_bytes_ae(length: int) -> elt.TensorType:
+    return elt.TensorType(elt.u8, (length,))
 
 
 # ==============================================================================
@@ -367,3 +375,15 @@ def kem_derive(private_key: el.Object, public_key: el.Object) -> el.Object:
         A symmetric key suitable for use with sym_encrypt/sym_decrypt
     """
     return kem_derive_p.bind(private_key, public_key)
+
+
+def random_bytes(length: int) -> el.Object:
+    """Generate cryptographically secure random bytes at runtime.
+
+    Args:
+        length: Number of bytes to generate.
+
+    Returns:
+        (length,) uint8 Tensor.
+    """
+    return random_bytes_p.bind(length=length)

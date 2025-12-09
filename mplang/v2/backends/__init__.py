@@ -47,6 +47,7 @@ def load_builtins() -> None:
         "mplang.v2.backends.crypto_impl",
         "mplang.v2.backends.tee_impl",
         "mplang.v2.backends.bfv_impl",
+        "mplang.v2.backends.store_impl",
     ]
 
     for module_name in builtin_backends:

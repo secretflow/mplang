@@ -17,9 +17,9 @@
 import numpy as np
 import pytest
 
-from mplang.v2.edsl.interpreter import InterpObject, Interpreter
 from mplang.v2.edsl.tracer import TracedFunction, trace
 from mplang.v2.edsl.typing import TensorType, f32
+from mplang.v2.runtime.interpreter import InterpObject, Interpreter
 
 
 class TestMakeGraph:

@@ -27,11 +27,11 @@ import pandas as pd
 import pyarrow as pa
 
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.backends.value import WrapValue
 from mplang.v2.dialects import table
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.value import WrapValue
 
 # =============================================================================
 # TableValue Wrapper

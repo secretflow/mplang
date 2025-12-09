@@ -52,7 +52,7 @@ from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import DagProfiler
+from mplang.v2.runtime.interpreter import DagProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +174,12 @@ class CommRequest(BaseModel):
     from_rank: int
 
 
+class FetchRequest(BaseModel):
+    """Request model for /fetch endpoint."""
+
+    uri: str
+
+
 def create_worker_app(
     rank: int,
     world_size: int,
@@ -211,7 +217,7 @@ def create_worker_app(
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
         """Execute graph in worker thread."""
-        result = worker.evaluate_graph(graph, inputs, job_id=job_id)
+        result = worker.execute_job(graph, inputs, job_id=job_id)
         comm.wait_pending_sends()
         return result
 
@@ -243,6 +249,26 @@ def create_worker_app(
             return {"status": "ok"}
         except Exception as e:
             logger.error(f"Worker {rank} comm failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/fetch")
+    async def fetch(req: FetchRequest) -> dict[str, str]:
+        """Fetch data by URI."""
+        logger.debug(f"Worker {rank} received fetch request for {req.uri}")
+        try:
+            val = worker.store.get(req.uri)
+            return {"result": serde.dumps_b64(val)}
+        except Exception as e:
+            logger.error(f"Worker {rank} fetch failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.get("/objects")
+    async def list_objects() -> dict[str, list[str]]:
+        """List all objects in the worker's store."""
+        try:
+            return {"objects": worker.store.list_objects()}
+        except Exception as e:
+            logger.error(f"Worker {rank} list_objects failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.get("/health")

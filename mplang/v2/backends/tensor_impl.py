@@ -33,11 +33,11 @@ from jax._src import compiler
 from numpy.typing import ArrayLike
 
 import mplang.v2.edsl.typing as elt
-from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter, interpret
+from mplang.v2.runtime.interpreter import Interpreter, interpret
+from mplang.v2.runtime.value import Value, WrapValue
 
 # =============================================================================
 # TensorValue Wrapper

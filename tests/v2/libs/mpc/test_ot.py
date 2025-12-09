@@ -78,7 +78,8 @@ class TestOTScalar:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        result = _unwrap(res.runtime_obj.values[1])
+        values = self.interp.fetch(res.runtime_obj)
+        result = _unwrap(values[1])
         assert result.item() == expected
 
 
@@ -103,7 +104,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        np.testing.assert_array_equal(_unwrap(res.runtime_obj.values[1]), m0_data)
+        values = self.interp.fetch(res.runtime_obj)
+        np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
 
     def test_vector_all_ones(self):
         """Test vectorized OT with all choices=1."""
@@ -119,7 +121,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        np.testing.assert_array_equal(_unwrap(res.runtime_obj.values[1]), m1_data)
+        values = self.interp.fetch(res.runtime_obj)
+        np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
 
     def test_vector_mixed_choices(self):
         """Test vectorized OT with mixed choices (0 and 1)."""
@@ -137,4 +140,5 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        np.testing.assert_array_equal(_unwrap(res.runtime_obj.values[1]), expected)
+        values = self.interp.fetch(res.runtime_obj)
+        np.testing.assert_array_equal(_unwrap(values[1]), expected)

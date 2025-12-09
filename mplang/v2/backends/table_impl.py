@@ -141,10 +141,6 @@ def table2tensor_impl(interpreter: Interpreter, op: Operation, table_val: Any) -
     """
     from mplang.v2.backends.tensor_impl import TensorValue
 
-    # Handle RecordBatchReader from newer PyArrow versions
-    if isinstance(table_val, pa.lib.RecordBatchReader):
-        table_val = table_val.read_all()
-
     tbl = _unwrap(table_val)
     df = tbl.to_pandas()
     # Convert to numpy array

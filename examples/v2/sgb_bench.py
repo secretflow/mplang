@@ -36,13 +36,13 @@ import urllib.error
 
 import numpy as np
 import pandas as pd
+from sgb import SecureBoost
+from sklearn.datasets import fetch_openml
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import roc_auc_score
-from sklearn.datasets import fetch_openml
 
 import mplang.v2 as mp
-from sgb import SecureBoost
 
 
 def to_np(d):
@@ -64,7 +64,7 @@ def load_backend_or_exit():
         sys.exit(1)
 
 
-def load_data(path_or_id: str, sample_size: int = None):
+def load_data(path_or_id: str, sample_size: int | None = None):
     """
     Load and preprocess data from local CSV or OpenML.
 
@@ -99,7 +99,7 @@ def load_data(path_or_id: str, sample_size: int = None):
                         data_id=int(dataset_name), as_frame=True, parser="auto"
                     )
                 else:
-                    raise ValueError(f"Could not fetch OpenML dataset: {dataset_name}")
+                    raise ValueError(f"Could not fetch OpenML dataset: {dataset_name}") from None
             X, y = bunch.data, bunch.target
 
         # Helper: Convert categorical target

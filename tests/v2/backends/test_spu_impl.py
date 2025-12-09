@@ -14,12 +14,13 @@
 
 """Tests for SPU backend implementation."""
 
+import numpy as np
+
 import mplang.v2.backends.simp_simulator  # noqa: F401
 import mplang.v2.backends.simp_worker  # noqa: F401
 import mplang.v2.backends.spu_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 import mplang.v2.edsl as el
-import numpy as np
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.dialects import simp, spu
 

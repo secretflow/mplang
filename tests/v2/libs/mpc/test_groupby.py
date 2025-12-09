@@ -15,10 +15,11 @@
 """Tests for Oblivious Group-by Sum library."""
 
 # Register implementations
+import numpy as np
+
 import mplang.v2.backends.bfv_impl  # noqa: F401
 import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
-import numpy as np
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc import groupby

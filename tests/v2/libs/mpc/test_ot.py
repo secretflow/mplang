@@ -14,10 +14,11 @@
 
 """Tests for OT library."""
 
-import mplang.v2.backends.crypto_impl  # noqa: F401
-import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
 import numpy as np
 import pytest
+
+import mplang.v2.backends.crypto_impl  # noqa: F401
+import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp

@@ -14,9 +14,10 @@
 
 """Tests for Homomorphic Aggregation library."""
 
+import numpy as np
+
 import mplang.v2.backends.bfv_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
-import numpy as np
 from mplang.v2.dialects import bfv, tensor
 from mplang.v2.libs.mpc import aggregation
 

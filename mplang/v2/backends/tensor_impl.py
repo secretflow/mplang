@@ -23,7 +23,7 @@ import base64
 import hashlib
 import os
 import time
-from typing import Any, cast, ClassVar
+from typing import Any, ClassVar, cast
 
 import jax
 import jax.extend as jxt
@@ -36,7 +36,7 @@ import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.runtime.interpreter import interpret, Interpreter
+from mplang.v2.runtime.interpreter import Interpreter, interpret
 from mplang.v2.runtime.value import Value, WrapValue
 
 # =============================================================================

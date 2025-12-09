@@ -45,7 +45,7 @@ def run_worker(rank, world_size, endpoints, port):
 @pytest.fixture(scope="module")
 def http_cluster():
     world_size = 2
-    base_port = 19000
+    base_port = 19200  # Changed to avoid port conflicts
     endpoints = [f"http://127.0.0.1:{base_port + i}" for i in range(world_size)]
 
     ctx = multiprocessing.get_context("spawn")

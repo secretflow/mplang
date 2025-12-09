@@ -65,7 +65,7 @@ class TensorValue(WrapValue[Any]):
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return np.dtype(self._data.dtype)
+        return np.dtype(self._data.dtype)  # type: ignore[no-any-return]
 
     @property
     def ndim(self) -> int:
@@ -317,7 +317,6 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
 # Global cache for compiled StableHLO executables
 _STABLEHLO_CACHE: dict[str, Any] = {}
 _CACHE_DIR = os.path.expanduser("~/.cache/mplang/jax_cache")
-_PROFILE_JAX = os.environ.get("MPLANG_PROFILE_JAX", "0") == "1"
 
 
 @tensor.run_jax_p.def_impl
@@ -362,7 +361,9 @@ def run_jax_impl(
 
         if not loaded_from_disk:
             try:
-                compiled = client.compile(stablehlo_code, compile_options)
+                compiled = client.compile_and_load(
+                    stablehlo_code, client.devices(), compile_options
+                )
                 # Save to disk
                 try:
                     os.makedirs(_CACHE_DIR, exist_ok=True)

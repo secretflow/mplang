@@ -274,6 +274,7 @@ def _while_loop_trace(
     assert callable(cond_fn) and callable(body_fn)
 
     state_flat, state_treedef = tree_flatten(init)
+    assert state_treedef is not None
     if not state_flat:
         raise TypeError("while_loop init must contain at least one Object")
 

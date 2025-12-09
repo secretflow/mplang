@@ -134,7 +134,7 @@ def to_numpy(dtype: scalar_types.ScalarType) -> np.dtype:
         dtype('float32')
     """
     jax_dtype = to_jax(dtype)
-    return np.dtype(jax_dtype)
+    return np.dtype(jax_dtype)  # type: ignore[no-any-return]
 
 
 # ==============================================================================

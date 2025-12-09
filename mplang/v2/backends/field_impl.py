@@ -47,7 +47,7 @@ _LIB = None
 _LIB_LOCK = threading.Lock()
 
 
-def _get_lib():
+def _get_lib() -> ctypes.CDLL | None:
     global _LIB
     with _LIB_LOCK:
         if _LIB is None:
@@ -95,7 +95,7 @@ def _get_lib():
 # =============================================================================
 
 
-def _gf128_mul_impl(a, b):
+def _gf128_mul_impl(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     # a, b are numpy arrays (uint64) usually (N, 2)
 
     lib = _get_lib()
@@ -123,7 +123,7 @@ def _gf128_mul_impl(a, b):
     return out
 
 
-def _okvs_solve_impl(keys, values, m):
+def _okvs_solve_impl(keys: np.ndarray, values: np.ndarray, m: int) -> np.ndarray:
     lib = _get_lib()
     if lib is None:
         # Use pure Python fallback
@@ -145,7 +145,7 @@ def _okvs_solve_impl(keys, values, m):
     return output
 
 
-def _okvs_decode_impl(keys, storage, m):
+def _okvs_decode_impl(keys: np.ndarray, storage: np.ndarray, m: int) -> np.ndarray:
     lib = _get_lib()
     if lib is None:
         # Use pure Python fallback
@@ -175,7 +175,7 @@ def _okvs_decode_impl(keys, storage, m):
 @field.aes_expand_p.def_impl
 def _aes_expand_impl_prim(
     interpreter: Interpreter, op: Operation, seeds_val: TensorValue
-):
+) -> TensorValue:
     length = op.attrs["length"]
     seeds = _unwrap(seeds_val)
 
@@ -227,7 +227,7 @@ def _aes_expand_impl_prim(
 @field.mul_p.def_impl
 def _mul_impl(
     interpreter: Interpreter, op: Operation, a_val: TensorValue, b_val: TensorValue
-):
+) -> TensorValue:
     a = a_val.unwrap()
     b = b_val.unwrap()
     res = _gf128_mul_impl(a, b)
@@ -240,7 +240,7 @@ def _solve_okvs_impl(
     op: Operation,
     keys_val: TensorValue,
     values_val: TensorValue,
-):
+) -> TensorValue:
     m = op.attrs["m"]
     keys = _unwrap(keys_val)
     values = _unwrap(values_val)
@@ -254,7 +254,7 @@ def _decode_okvs_impl(
     op: Operation,
     keys_val: TensorValue,
     store_val: TensorValue,
-):
+) -> TensorValue:
     keys = _unwrap(keys_val)
     storage = _unwrap(store_val)
     m = storage.shape[0]

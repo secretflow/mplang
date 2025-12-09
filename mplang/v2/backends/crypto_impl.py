@@ -20,7 +20,7 @@ import base64
 import hashlib
 import os
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import coincurve
 import numpy as np
@@ -262,7 +262,7 @@ def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
     elif isinstance(data, TensorValue):
         d = data.unwrap().tobytes()
     else:
-        d = bytes(data)  # best effort
+        d = bytes(cast(Any, data))  # best effort
 
     h = hashlib.sha256(d).digest()
     # Return TensorValue (u8 array) to match Abstract Eval

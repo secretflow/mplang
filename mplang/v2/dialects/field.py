@@ -25,6 +25,8 @@ Implementation logic (Backends) is strictly separated into `mplang/v2/backends/f
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import jax.numpy as jnp
 
 import mplang.v2.edsl as el
@@ -117,13 +119,13 @@ def decode_okvs(keys: el.Object, storage: el.Object) -> el.Object:
 
 def add(a: el.Object, b: el.Object) -> el.Object:
     """GF(2^128) Addition (XOR)."""
-    return tensor.run_jax(jnp.bitwise_xor, a, b)
-
-
+    return cast(el.Object, tensor.run_jax(jnp.bitwise_xor, a, b))
+    
+    
 def sum(x: el.Object, axis: int | None = None) -> el.Object:
     """GF(2^128) Summation (XOR Sum)."""
-
-    def _sum_impl(val):
+    
+    def _sum_impl(val: Any) -> Any:
         return jnp.bitwise_xor.reduce(val, axis=axis)
-
-    return tensor.run_jax(_sum_impl, x)
+        
+    return cast(el.Object, tensor.run_jax(_sum_impl, x))

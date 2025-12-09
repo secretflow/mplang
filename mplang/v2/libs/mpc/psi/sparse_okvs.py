@@ -172,9 +172,9 @@ def compute_hash_positions(
         (3,) uint64 positions
     """
     positions = np.zeros(NUM_HASHES, dtype=np.uint64)
-    key = np.uint64(key)  # Ensure uint64
+    key_u64 = np.uint64(key)  # Ensure uint64
     seed0, seed1 = np.uint64(seed[0]), np.uint64(seed[1])
-    mixed_key = key ^ seed0
+    mixed_key = key_u64 ^ seed0
 
     for i in range(NUM_HASHES):
         offset = (i * 0x9E3779B97F4A7C15) & MASK64

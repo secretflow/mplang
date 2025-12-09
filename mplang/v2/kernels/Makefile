@@ -15,7 +15,7 @@
 CXX = g++
 # -march=native enables PCLMULQDQ if the host CPU supports it.
 # -mpclmul -maes are explicit flags if native doesn't pick them up, but native is safer for local dev.
-CXXFLAGS = -O3 -Wall -shared -fPIC -march=native -mpclmul -maes
+CXXFLAGS = -O3 -Wall -shared -fPIC -march=native -mpclmul -maes -fopenmp
 
 TARGET = libmplang_kernels.so
 SRCS = gf128.cpp okvs.cpp

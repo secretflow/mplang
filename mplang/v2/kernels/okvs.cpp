@@ -69,12 +69,23 @@ extern "C" {
         std::vector<Row> rows(n);
 
         // Build Graph
+        // Parallelizing this requires care with col_to_rows (concurrent writes).
+        // Strategy: Thread-local buffers or atomic locks. 
+        // Given m is large (M > N), collisions on col_to_rows are rare but possible.
+        // Simple approach: Parallel compute hashes (heavy), Serial build graph (light).
+
+        #pragma omp parallel for schedule(static)
         for(uint64_t i=0; i<n; ++i) {
             Indices idx = hash_key(keys[i], m, seed);
             rows[i] = {idx.h1, idx.h2, idx.h3};
-            col_to_rows[idx.h1].push_back(i);
-            col_to_rows[idx.h2].push_back(i);
-            col_to_rows[idx.h3].push_back(i);
+        }
+
+        // Serial Graph Build (Memory bound, hard to parallelize efficiently without locks)
+        for(uint64_t i=0; i<n; ++i) {
+            const auto& r = rows[i];
+            col_to_rows[r.h1].push_back(i);
+            col_to_rows[r.h2].push_back(i);
+            col_to_rows[r.h3].push_back(i);
         }
 
         // Compute Initial Column Degrees
@@ -207,6 +218,7 @@ extern "C" {
         __m128i* P_vec = (__m128i*)storage;
         __m128i* out_vec = (__m128i*)output;
 
+        #pragma omp parallel for schedule(static)
         for(uint64_t i=0; i<n; ++i) {
             Indices idx = hash_key(keys[i], m, seed);
             __m128i val = _mm_xor_si128(
@@ -256,6 +268,7 @@ extern "C" {
         aes_key_expand(fixed_key, round_keys);
 
         // For each seed
+        #pragma omp parallel for schedule(static)
         for(uint64_t i=0; i<num_seeds; ++i) {
              __m128i s = _mm_loadu_si128(&seeds_vec[i]);
 

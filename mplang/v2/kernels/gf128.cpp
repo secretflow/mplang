@@ -134,6 +134,7 @@ extern "C" {
 
     // Batch Multiplication
     void gf128_mul_batch(uint64_t* a, uint64_t* b, uint64_t* out, int64_t n) {
+        #pragma omp parallel for schedule(static)
         for (int64_t i = 0; i < n; ++i) {
             gf128_mul(a + 2*i, b + 2*i, out + 2*i);
         }

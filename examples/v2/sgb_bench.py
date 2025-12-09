@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
 Benchmark SecureBoost v2 on Home Credit Default Risk dataset and OpenML datasets.
 
@@ -19,7 +32,7 @@ Usage:
 
 import argparse
 import time
-import os
+import urllib.error
 
 import numpy as np
 import pandas as pd
@@ -30,6 +43,11 @@ from sklearn.datasets import fetch_openml
 
 import mplang.v2 as mp
 from sgb import SecureBoost
+
+
+def to_np(d):
+    """Convert data to numpy float32 array."""
+    return d.values.astype(np.float32) if hasattr(d, "values") else d.astype(np.float32)
 
 
 def load_backend_or_exit():
@@ -75,7 +93,7 @@ def load_data(path_or_id: str, sample_size: int = None):
             try:
                 # Try by name, then ID
                 bunch = fetch_openml(name=dataset_name, as_frame=True, parser="auto")
-            except Exception:
+            except (ValueError, urllib.error.URLError):
                 if dataset_name.isdigit():
                     bunch = fetch_openml(
                         data_id=int(dataset_name), as_frame=True, parser="auto"
@@ -114,7 +132,9 @@ def load_data(path_or_id: str, sample_size: int = None):
     print("Preprocessing: handling missing values & encoding...")
     le = LabelEncoder()
     for col in X.columns:
-        if pd.api.types.is_object_dtype(X[col].dtype) or pd.api.types.is_categorical_dtype(X[col].dtype):
+        if pd.api.types.is_object_dtype(
+            X[col].dtype
+        ) or pd.api.types.is_categorical_dtype(X[col].dtype):
             X[col] = X[col].fillna(X[col].mode()[0])
             X[col] = X[col].astype(str)
             X[col] = le.fit_transform(X[col])
@@ -168,13 +188,6 @@ def run_sgb_benchmark(
     print(f"Feature split: AP={n_ap}, PP={n_pp}")
 
     # Ensure numpy arrays (float32)
-    def to_np(d):
-        return (
-            d.values.astype(np.float32)
-            if hasattr(d, "values")
-            else d.astype(np.float32)
-        )
-
     X_train_np, X_test_np = to_np(X_train), to_np(X_test)
 
     X_ap_train, X_pp_train = X_train_np[:, :n_ap], X_train_np[:, n_ap:]
@@ -258,13 +271,6 @@ def train_eval_xgboost(X_train, X_test, y_train, y_test, params):
         return None, 0.0
 
     # Ensure numpy
-    def to_np(d):
-        return (
-            d.values.astype(np.float32)
-            if hasattr(d, "values")
-            else d.astype(np.float32)
-        )
-
     X_train_np, X_test_np = to_np(X_train), to_np(X_test)
 
     start = time.perf_counter()

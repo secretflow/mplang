@@ -317,7 +317,6 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
 # Global cache for compiled StableHLO executables
 _STABLEHLO_CACHE: dict[str, Any] = {}
 _CACHE_DIR = os.path.expanduser("~/.cache/mplang/jax_cache")
-_PROFILE_JAX = os.environ.get("MPLANG_PROFILE_JAX", "0") == "1"
 
 
 @tensor.run_jax_p.def_impl

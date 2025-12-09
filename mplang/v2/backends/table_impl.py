@@ -120,7 +120,9 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableVa
 
     # Execute query and fetch result as Arrow table
     try:
-        res = conn.execute(query).arrow()
+        arrow_result = conn.execute(query).arrow()
+        # In newer DuckDB versions, .arrow() returns RecordBatchReader
+        res = arrow_result.read_all()
         return _wrap(res)
     except Exception as e:
         raise RuntimeError(f"Failed to execute SQL query: {query}") from e

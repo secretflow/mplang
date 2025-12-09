@@ -23,7 +23,7 @@ This example demonstrates two advanced MPC/HE capabilities:
 import jax.numpy as jnp
 import numpy as np
 
-import mplang.v2.backends.bfv_impl
+import mplang.v2.backends.bfv_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 import mplang.v2.dialects.bfv as bfv
 import mplang.v2.dialects.simp as simp

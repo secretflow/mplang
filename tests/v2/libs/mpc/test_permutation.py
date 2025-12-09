@@ -16,7 +16,7 @@
 
 import jax.numpy as jnp
 
-import mplang.v2.backends.crypto_impl
+import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.backends.tensor_impl import TensorValue

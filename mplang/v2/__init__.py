@@ -26,7 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 __version__ = "0.1.0"
 

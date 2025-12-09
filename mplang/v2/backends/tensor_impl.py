@@ -65,7 +65,7 @@ class TensorValue(WrapValue[Any]):
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return np.dtype(self._data.dtype)
+        return np.dtype(self._data.dtype)  # type: ignore[no-any-return]
 
     @property
     def ndim(self) -> int:

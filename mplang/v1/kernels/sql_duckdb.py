@@ -38,5 +38,7 @@ def _duckdb_sql(pfunc: PFunction, *args: TableValue) -> TableValue:
             arrow_table = arg.to_arrow()
             conn.register(name, arrow_table)
     # Fetch result as Arrow table for consistency
+    if pfunc.fn_text is None:
+        raise ValueError("SQL function text is None")
     res_arrow = conn.execute(pfunc.fn_text).fetch_arrow_table()
     return TableValue(res_arrow)

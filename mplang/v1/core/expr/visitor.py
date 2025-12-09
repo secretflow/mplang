@@ -83,3 +83,51 @@ class ExprVisitor(ABC):
     @abstractmethod
     def visit_func_def(self, expr: FuncDefExpr) -> Any:
         pass
+
+
+class AsyncExprVisitor(ABC):
+    """Async visitor interface that supports environment passing."""
+
+    @abstractmethod
+    async def visit_eval(self, expr: EvalExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_variable(self, expr: VariableExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_tuple(self, expr: TupleExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_cond(self, expr: CondExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_call(self, expr: CallExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_while(self, expr: WhileExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_conv(self, expr: ConvExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_shfl_s(self, expr: ShflSExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_shfl(self, expr: ShflExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_access(self, expr: AccessExpr, env: dict[str, Any]) -> Any:
+        pass
+
+    @abstractmethod
+    async def visit_func_def(self, expr: FuncDefExpr, env: dict[str, Any]) -> Any:
+        pass

@@ -14,12 +14,11 @@
 
 from __future__ import annotations
 
-import concurrent.futures
-import faulthandler
+import asyncio
 import logging
-import sys
-import traceback
+import os
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, cast
 
 import spu.libspu as libspu
@@ -38,8 +37,14 @@ from mplang.v1.core import (
     PFunction,  # for spu.seed_env kernel seeding
     TensorLike,
 )
+from mplang.v1.core.async_comm import AsyncThreadCommunicator
 from mplang.v1.core.expr.ast import Expr
-from mplang.v1.core.expr.evaluator import IEvaluator, create_evaluator
+from mplang.v1.core.expr.async_evaluator import (
+    AsyncEvalSemantic,
+    AsyncRecursiveEvaluator,
+    AsyncIterativeEvaluator,
+)
+from mplang.v1.core.expr.evaluator import IEvaluator
 from mplang.v1.kernels.context import RuntimeContext
 from mplang.v1.runtime.link_comm import LinkCommunicator
 from mplang.v1.utils.spu_utils import parse_field, parse_protocol
@@ -146,6 +151,9 @@ class Simulator(InterpContext):
         self._spu_world = spu_mask.num_parties()
         self._spu_mask = spu_mask
 
+        # Executor for CPU-bound tasks
+        self._executor = ThreadPoolExecutor(max_workers=os.cpu_count())
+
         # Persistent per-rank RuntimeContext instances (reused across evaluates).
         # We no longer pre-create evaluators since each evaluate has different env bindings.
         # Build per-rank runtime contexts.
@@ -210,90 +218,110 @@ class Simulator(InterpContext):
             raise ValueError(f"Expected SimVar, got {type(obj)}")
         return [v.to_numpy() if hasattr(v, "to_numpy") else v for v in obj._values]
 
+    def _ensure_spu_init(self, rank: int) -> None:
+        """Ensure SPU environment is initialized for the given rank."""
+        runtime = self._runtimes[rank]
+        spu_meta = runtime.state.setdefault("_spu", {})
+        if not spu_meta.get("inited", False):
+            link_ctx = self._spu_link_ctxs[rank]
+            seed_fn = PFunction(
+                fn_type="spu.seed_env",
+                ins_info=(),
+                outs_info=(),
+                config=self._spu_runtime_cfg,
+                world=self._spu_world,
+                link=link_ctx,
+            )
+            runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
+            spu_meta["inited"] = True
+
     # override
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
-        # sanity check for bindings.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Case A: Inside an existing loop (e.g., Jupyter)
+            try:
+                import nest_asyncio
+
+                nest_asyncio.apply()
+                return loop.run_until_complete(self._evaluate_async(expr, bindings))
+            except ImportError as e:
+                raise RuntimeError(
+                    "Running in an active event loop (e.g. Jupyter). "
+                    "Please install 'nest_asyncio' or use 'await simulator.evaluate_async(...)'."
+                ) from e
+        else:
+            # Case B: Standard script
+            return asyncio.run(self._evaluate_async(expr, bindings))
+
+    async def _evaluate_async(
+        self, expr: Expr, bindings: dict[str, MPObject]
+    ) -> Sequence[MPObject]:
+        """Async evaluation entry point."""
+        # 1. Setup Async Communicators
+        world_size = self.world_size()
+        async_comms = [
+            AsyncThreadCommunicator(rank, world_size) for rank in range(world_size)
+        ]
+        for comm in async_comms:
+            comm.set_peers(async_comms)
+
+        # 2. Prepare Environment
+        # Validate that all variables belong to this simulator context
         for name, var in bindings.items():
+            if not isinstance(var, SimVar):
+                raise ValueError(
+                    f"Expected SimVar for variable '{name}', got {type(var)}"
+                )
             if var.ctx is not self:
-                raise ValueError(f"Variable {name} not in this context, got {var.ctx}.")
+                raise ValueError(f"Variable '{name}' not in this context")
 
         pts_env = [
             {name: cast(SimVar, var)._values[rank] for name, var in bindings.items()}
-            for rank in range(self.world_size())
+            for rank in range(world_size)
         ]
 
-        # Build per-rank evaluators with the per-party environment (runtime reused)
-        pts_evaluators: list[IEvaluator] = []
-        for rank in range(self.world_size()):
+        # 3. Create Evaluators
+        evaluators = []
+        for rank in range(world_size):
             runtime = self._runtimes[rank]
-            ev = create_evaluator(
-                rank,
-                pts_env[rank],
-                self._comms[rank],
-                runtime,
-                None,
+            # Initialize SPU if needed (same logic as sync)
+            self._ensure_spu_init(rank)
+
+            semantic = AsyncEvalSemantic(
+                rank=rank,
+                env=pts_env[rank],
+                comm=async_comms[rank],
+                runtime=runtime,
+                executor=self._executor,
             )
-            # Seed SPU once per runtime (idempotent logical requirement)
-            # Use setdefault to both retrieve and create metadata dict in one step.
-            spu_meta = runtime.state.setdefault("_spu", {})
-            if not spu_meta.get("inited", False):
-                link_ctx = self._spu_link_ctxs[rank]
-                seed_fn = PFunction(
-                    fn_type="spu.seed_env",
-                    ins_info=(),
-                    outs_info=(),
-                    config=self._spu_runtime_cfg,
-                    world=self._spu_world,
-                    link=link_ctx,
-                )
-                ev.runtime.run_kernel(seed_fn, [])  # type: ignore[arg-type]
-                spu_meta["inited"] = True
-            pts_evaluators.append(ev)
+            ev = AsyncIterativeEvaluator(semantic)
+            evaluators.append(ev)
 
-        # Collect evaluation results from all parties
-        pts_results: list[Any] = []
+        # 4. Run Evaluation concurrently
+        # We need to run all evaluators.evaluate(expr) concurrently.
+        tasks = [ev.evaluate(expr) for ev in evaluators]
+        pts_results = await asyncio.gather(*tasks)
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(self._do_evaluate, expr, evaluator)
-                for evaluator in pts_evaluators
-            ]
+        # Ensure results are lists if expr has single output
+        if expr.num_outputs == 1:
+            # If each evaluator already returns a list (as async evaluators do), don't wrap again
+            if pts_results and not isinstance(pts_results[0], list):
+                pts_results = [[res] for res in pts_results]
 
-            # Collect results with proper exception handling
-            for i, future in enumerate(futures):
-                try:
-                    result = future.result(100)  # 100 second timeout
-                    pts_results.append(result)
-                except concurrent.futures.TimeoutError:
-                    faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-                    raise
-                except Exception as e:
-                    print(
-                        f"Exception in party {i}: {type(e).__name__}: {e}",
-                        file=sys.stderr,
-                    )
-                    traceback.print_exc(file=sys.stderr)
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    raise
-
-        # Convert results to SimVar objects
-        # pts_results is a list of party results, where each party result is a list of values
-        # We need to transpose this to get (n_outputs, n_parties) structure
-        assert len(pts_results) == self.world_size()
-
-        # Ensure all parties returned the same number of outputs (matrix validation)
+        # 5. Process Results (Transpose and Wrap)
+        assert len(pts_results) == world_size
         if pts_results and not all(
             len(row) == len(pts_results[0]) for row in pts_results
         ):
             raise ValueError("Inconsistent number of outputs across parties")
 
-        # Transpose: (n_parties, n_outputs) -> (n_outputs, n_parties)
         output_values = list(zip(*pts_results, strict=False))
-
-        # Get the output types from the expression
         output_types = expr.mptypes
-
-        # Create SimVar objects for each output
         sim_vars = []
         for values, mptype in zip(output_values, output_types, strict=False):
             sim_var = SimVar(self, mptype, list(values))

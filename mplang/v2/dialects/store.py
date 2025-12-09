@@ -39,7 +39,7 @@ def save(obj: el.Object, uri_base: str) -> el.Object:
     """Save an object to persistent storage.
 
     This is an SPMD operation. Each party holding the object will save its
-    local portion to a path derived from `uri_base`.
+    local portion to the location specified by `uri_base`.
 
     Returns:
         The input object (identity), allowing for dependency chaining.

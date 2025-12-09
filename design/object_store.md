@@ -23,6 +23,7 @@ This document proposes a distributed **ObjectStore** architecture to separate th
 All runtime objects are identified by a Uniform Resource Identifier (URI). The URI scheme determines the storage backend and lifecycle policy.
 
 **Supported Schemes:**
+
 - `mem://<uuid>`: **In-Memory (Transient)**.
   - Used for intermediate calculation results.
   - Fast, low latency.
@@ -176,5 +177,7 @@ If the user *needs* to see the data on the Driver (e.g., `print(z)`):
 
 - **Garbage Collection**: How do we clean up `mem://` objects on Workers when the Driver `HostVar` goes out of scope?
   - *Proposal*: Implement `__del__` on `HostVar` to send async `delete` commands to Workers.
+  - *Note*: `__del__` is not guaranteed to run. A more robust approach (e.g., explicit `Session` context manager or `weakref` based tracking)
+    should be considered for production.
 - **Data Transfer**: How to move data between Workers (e.g., Shuffle)?
   - *Proposal*: `ObjectStore` could support `transfer(uri, target_rank)`.

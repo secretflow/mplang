@@ -23,8 +23,8 @@ from mplang.v2.edsl.graph import Operation
 from mplang.v2.runtime.interpreter import Interpreter
 
 
-def _get_shard_uri(uri_base: str, rank: int) -> str:
-    """Generate shard URI: {uri_base} (no suffix, relies on backend isolation)."""
+def _get_uri(uri_base: str) -> str:
+    """Generate URI: {uri_base}."""
     # Handle different schemes if necessary, for now assume simple path joining
     # or scheme preservation.
     if "://" in uri_base:
@@ -41,18 +41,10 @@ def save_impl(interpreter: Interpreter, op: Operation, obj_val: Any) -> Any:
     """Save implementation."""
     uri_base: str = op.attrs["uri_base"]
 
-    # In SPMD, each interpreter instance corresponds to a party/rank.
-    # We retrieve the rank from the interpreter context.
-    # TODO: Standardize rank access in Interpreter base class.
-    rank = getattr(interpreter, "rank", getattr(interpreter, "trace_pid", 0))
-
-    # All ranks write data shard
-    shard_uri = _get_shard_uri(uri_base, rank)
-
     # Use ObjectStore to put the value
     # Note: obj_val is the runtime value (e.g. TensorValue, TableValue, or raw)
     # We store it as is (pickle).
-    interpreter.store.put(obj_val, uri=shard_uri)
+    interpreter.store.put(obj_val, uri=_get_uri(uri_base))
 
     return obj_val
 
@@ -63,7 +55,4 @@ def load_impl(interpreter: Interpreter, op: Operation) -> Any:
     uri_base: str = op.attrs["uri_base"]
     # expected_type is in attrs but not needed for runtime loading (pickle handles it)
 
-    rank = getattr(interpreter, "rank", getattr(interpreter, "trace_pid", 0))
-    shard_uri = _get_shard_uri(uri_base, rank)
-
-    return interpreter.store.get(shard_uri)
+    return interpreter.store.get(_get_uri(uri_base))

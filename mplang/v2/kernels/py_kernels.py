@@ -345,5 +345,42 @@ def aes_expand(seeds: np.ndarray, length: int) -> np.ndarray:
         output[i] = rng.integers(
             0, 0xFFFFFFFFFFFFFFFF, size=(length, 2), dtype=np.uint64
         )
-
     return output
+
+
+# =============================================================================
+# LDPC Encoding (Sparse)
+# =============================================================================
+
+
+def ldpc_encode(
+    message: np.ndarray,
+    h_indices: np.ndarray,
+    h_indptr: np.ndarray,
+    m: int
+) -> np.ndarray:
+    """Compute syndrome S = H @ message using sparse CSR representation.
+
+    This is the fallback when C++ kernel is not available.
+
+    Args:
+        message: (N, 2) uint64 message vector
+        h_indices: CSR indices array for H
+        h_indptr: CSR indptr array for H (length m+1)
+        m: Number of rows in H (syndrome length)
+
+    Returns:
+        (m, 2) uint64 syndrome vector
+    """
+    syndrome = np.zeros((m, 2), dtype=np.uint64)
+
+    for i in range(m):
+        # Get column indices for row i
+        start, end = int(h_indptr[i]), int(h_indptr[i + 1])
+        cols = h_indices[start:end]
+
+        # XOR all selected message elements
+        for j in cols:
+            syndrome[i] ^= message[int(j)]
+
+    return syndrome

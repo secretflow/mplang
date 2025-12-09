@@ -85,6 +85,14 @@ def _get_lib() -> ctypes.CDLL | None:
                     ctypes.c_uint64,  # num_seeds
                     ctypes.c_uint64,  # length
                 ]
+                _LIB.ldpc_encode.argtypes = [
+                    ctypes.POINTER(ctypes.c_uint64),  # message
+                    ctypes.POINTER(ctypes.c_uint64),  # indices
+                    ctypes.POINTER(ctypes.c_uint64),  # indptr
+                    ctypes.POINTER(ctypes.c_uint64),  # output
+                    ctypes.c_uint64,  # m
+                    ctypes.c_uint64,  # n
+                ]
             except OSError:
                 print(f"WARNING: Could not load kernels from {_KERNEL_LIB_PATH}")
     return _LIB
@@ -167,9 +175,59 @@ def _okvs_decode_impl(keys: np.ndarray, storage: np.ndarray, m: int) -> np.ndarr
     return output
 
 
+def ldpc_encode_impl(
+    message: np.ndarray,
+    h_indices: np.ndarray,
+    h_indptr: np.ndarray,
+    m: int
+) -> np.ndarray:
+    lib = _get_lib()
+    if lib is None:
+        # Use pure Python fallback
+        h_idx_flat = h_indices.flatten() if h_indices.ndim > 1 else h_indices
+        h_ptr_flat = h_indptr.flatten() if h_indptr.ndim > 1 else h_indptr
+        return py_kernels.ldpc_encode(message, h_idx_flat, h_ptr_flat, m)
+
+    # Fast C++ Path
+    msg_c = np.ascontiguousarray(message, dtype=np.uint64)
+    idx_c = np.ascontiguousarray(h_indices, dtype=np.uint64)
+    ptr_c = np.ascontiguousarray(h_indptr, dtype=np.uint64)
+
+    output = np.zeros((m, 2), dtype=np.uint64)
+
+    # n is inferred from message length
+    n = message.shape[0]
+
+    lib.ldpc_encode(
+        msg_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        idx_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        ptr_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        output.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        m,
+        n,
+    )
+    return output
+
+
 # =============================================================================
 # Primitive Implementations
 # =============================================================================
+
+
+@field.ldpc_encode_p.def_impl
+def _ldpc_encode_impl_prim(
+    interpreter: Interpreter,
+    op: Operation,
+    message_val: TensorValue,
+    indices_val: TensorValue,
+    indptr_val: TensorValue,
+) -> TensorValue:
+    m = op.attrs["m"]
+    message = _unwrap(message_val)
+    indices = _unwrap(indices_val)
+    indptr = _unwrap(indptr_val)
+    res = ldpc_encode_impl(message, indices, indptr, m)
+    return _wrap(res)
 
 
 @field.aes_expand_p.def_impl

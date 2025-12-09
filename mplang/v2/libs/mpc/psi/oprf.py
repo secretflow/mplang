@@ -25,7 +25,7 @@ from typing import Any, cast
 import jax.numpy as jnp
 
 import mplang.v2.edsl as el
-from mplang.v2.dialects import simp, tensor
+from mplang.v2.dialects import crypto, simp, tensor
 from mplang.v2.libs.mpc.ot import extension as ot_extension
 
 
@@ -157,19 +157,19 @@ def eval_oprf(
             return packed
 
         packed_q = cast(el.Object, tensor.run_jax(_process, q, codes))
-        
+
         # Security Fix: Hash the OT output to implement a Random Oracle
         # OPRF = H(OT_output, input_tweaks...)
         # Here we just hash the OT output string.
-        # Ideally we should include domain separation and inputs, 
+        # Ideally we should include domain separation and inputs,
         # but hashing the raw OT string prevents linear relation leakage.
-        
+
         # We need to apply hash_bytes row-wise.
         # Use vec_hash from extension which we just fixed/improved.
         # But importing it inside function?
         # We can just map standard crypto.hash_bytes if vec_hash is not available.
         # Actually `ot_extension.vec_hash` is available.
-        
+
         return ot_extension.vec_hash(packed_q, domain_sep=0x0CDF)
 
     receiver_outputs = simp.pcall_static(
@@ -274,7 +274,7 @@ def sender_eval_prf_batch(
             return packed
 
         raw_outputs = cast(el.Object, tensor.run_jax(_eval, key, items))
-        
+
         # Security Fix: Hash the output to match receiver
         return ot_extension.vec_hash(raw_outputs, domain_sep=0x0CDF)
 

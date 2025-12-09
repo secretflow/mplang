@@ -93,8 +93,8 @@ def hash_to_positions(
 def cuckoo_insert_batch(
     items: Any,
     table_size: int,
-    max_iters: int = 100,
     seed: tuple[int, int],
+    max_iters: int = 100,
 ) -> tuple[Any, Any, Any]:
     """Batch Cuckoo insertion using vectorized logic (JAX-compatible).
 

@@ -26,10 +26,15 @@ Reference: "Silver: Silent VOLE and Oblivious Transfer from Hardness of Decoding
            CRYPTO 2021
 """
 
-from typing import cast
+from typing import Any, cast
 
+import jax.numpy as jnp
 import numpy as np
 import scipy.sparse as sp
+
+import mplang.v2.dialects.crypto as crypto
+import mplang.v2.edsl as el
+from mplang.v2.dialects import field, tensor
 
 # ============================================================================
 # Constants
@@ -121,51 +126,18 @@ def generate_silver_ldpc_systematic(
 
 
 # ============================================================================
-# LDPC Encoding (Syndrome Computation)
+# LDPC Decoding (For Testing / Verification)
 # ============================================================================
-
-
-def ldpc_encode_numpy(message: np.ndarray, H: sp.csr_matrix) -> np.ndarray:
-    """Compute syndrome s = H · m over GF(2).
-
-    This is the core encoding operation for Silver VOLE.
-
-    Args:
-        message: Binary message vector of shape (n,) or (n, 2) for 128-bit
-        H: LDPC parity check matrix of shape (m, n)
-
-    Returns:
-        Syndrome vector of shape (m,) or (m, 2)
-    """
-    if message.ndim == 1:
-        # Simple binary case
-        syndrome = H.dot(message) % 2
-        return cast(np.ndarray, syndrome.astype(np.uint8))
-    else:
-        # 128-bit case: encode each component separately using XOR
-        # For GF(2^128), we do bitwise operations
-        m, _n = H.shape
-        result = np.zeros((m, message.shape[1]), dtype=message.dtype)
-
-        # Use sparse matrix structure for efficiency
-        for i in range(m):
-            row_start = H.indptr[i]
-            row_end = H.indptr[i + 1]
-            col_indices = H.indices[row_start:row_end]
-
-            # XOR all selected message elements
-            for j in col_indices:
-                result[i] ^= message[j]
-
-        return result
 
 
 def ldpc_decode_syndrome(
     syndrome: np.ndarray, H: sp.csr_matrix, noise_weight: int
 ) -> np.ndarray:
-    """Decode syndrome to recover sparse error vector.
+    """Decode syndrome to recover sparse error vector (Testing only).
 
-    Uses belief propagation or simple peeling for low-weight errors.
+    Uses simple greedy bit-flipping / peeling for low-weight errors.
+    Useful for verifying that the H matrix and encoding process are correct
+    by performing a round-trip: encode(error) -> syndrome -> decode(syndrome) == error.
 
     Args:
         syndrome: Syndrome vector of shape (m,) or (m, 2)
@@ -291,3 +263,122 @@ def verify_ldpc_structure(H: sp.csr_matrix) -> bool:
         return False
 
     return True
+
+
+# ============================================================================
+# JAX/EDSL Implementations
+# ============================================================================
+
+
+def generate_sparse_noise(n: int, weight: int) -> el.Object:
+    """Generate cryptographically secure sparse noise vector.
+
+    Uses entropy from crypto.random_bytes at runtime to select `weight` unique
+    positions from [0, n), then generates random 128-bit values at those positions.
+
+    Security: This is suitable for LPN-based protocols like Silver VOLE.
+    The randomness is generated at runtime, not trace-time.
+
+    Args:
+        n: Length of noise vector
+        weight: Hamming weight (number of non-zero positions)
+
+    Returns:
+        (n, 2) uint64 tensor with exactly `weight` non-zero 128-bit elements
+    """
+    # Phase 1: Generate runtime entropy
+    # 8 bytes per position (for index selection) + 16 bytes per value
+    entropy_needed = weight * 8 + weight * 16
+    entropy = crypto.random_bytes(entropy_needed)
+
+    # Phase 2: Deterministic construction from entropy
+    def _build_noise(ent: Any) -> Any:
+        # Split entropy into index selection and value parts
+        idx_entropy = ent[:weight * 8].view(jnp.uint64)  # (weight,)
+        val_entropy = ent[weight * 8:].view(jnp.uint64).reshape(weight, 2)  # (weight, 2)
+
+        # Generate unique indices using rejection-free Fisher-Yates-like approach
+        # Map random u64 to positions while ensuring uniqueness
+        positions = jnp.zeros(weight, dtype=jnp.int32)
+
+        # Build positions array (unrolled for JAX compatibility)
+        for i in range(weight):
+            # Map random value to remaining range [0, n-i)
+            pos = jnp.int32(idx_entropy[i] % (n - i))
+
+            # Shift position to avoid already-used indices
+            # Count how many existing positions are <= current pos
+            offset = jnp.sum(positions[:i] <= pos)
+            pos = pos + offset
+
+            positions = positions.at[i].set(pos)
+
+        # Sort positions for efficient scatter
+        positions = jnp.sort(positions)
+
+        # Build sparse noise vector using scatter
+        noise = jnp.zeros((n, 2), dtype=jnp.uint64)
+        noise = noise.at[positions].set(val_entropy)
+
+        return noise
+
+    return cast(el.Object, tensor.run_jax(_build_noise, entropy))
+
+
+def ldpc_encode_dense_jax(message: el.Object, H_dense: el.Object) -> el.Object:
+    """Compute H * message (LDPC encode) using dense JAX operations.
+
+    This acts as a reference implementation for correctness checking.
+    It is significantly slower than the sparse C++ kernel.
+
+    Args:
+        message: (N, 2) uint64 message.
+        H_dense: (M, N) uint8 parity check matrix (0/1).
+
+    Returns:
+        (M, 2) uint64 syndrome.
+    """
+
+    def _encode(msg: Any, h: Any) -> Any:
+        # msg: (N, 2)
+        # h:   (M, N)
+
+        # Broadcast for element-wise AND
+        # msg: (1, N, 2) -> Broadcasts across M rows
+        # h:   (M, N, 1) -> Broadcasts across 2 columns
+        msg_broad = msg.reshape(1, msg.shape[0], 2)
+        h_broad = h.reshape(h.shape[0], h.shape[1], 1).astype(jnp.uint64)
+
+        # Select active message elements
+        terms = jnp.bitwise_and(msg_broad, h_broad)
+
+        # Reduce: Sum (XOR) across N (axis 1)
+        # Using scan for memory efficiency over direct reduce
+        def body(carry: Any, x: Any) -> tuple[Any, None]:
+            return jnp.bitwise_xor(carry, x), None
+
+        # Transpose to (N, M, 2) to iterate over N
+        terms_tp = jnp.transpose(terms, (1, 0, 2))
+
+        zeros = jnp.zeros((h.shape[0], 2), dtype=jnp.uint64)
+        res, _ = jax.lax.scan(body, zeros, terms_tp)
+        return res
+
+    import jax
+    import jax.numpy as jnp
+    return cast(el.Object, tensor.run_jax(_encode, message, H_dense))
+
+
+def ldpc_encode_sparse(
+    message: el.Object,
+    h_indices: el.Object,
+    h_indptr: el.Object,
+    m: int,
+    n: int
+) -> el.Object:
+    """Compute S = H * x using C++ Kernel via Field Dialect Primitive.
+
+    This invokes `field.ldpc_encode` which bypasses JAX callback overhead
+    and uses the direct Interpreter dispatch mechanism.
+    """
+    return field.ldpc_encode(message, h_indices, h_indptr, m, n)

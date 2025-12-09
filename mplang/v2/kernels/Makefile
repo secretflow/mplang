@@ -18,7 +18,7 @@ CXX = g++
 CXXFLAGS = -O3 -Wall -shared -fPIC -march=native -mpclmul -maes -fopenmp
 
 TARGET = libmplang_kernels.so
-SRCS = gf128.cpp okvs.cpp
+SRCS = gf128.cpp okvs.cpp ldpc.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 all: $(TARGET)

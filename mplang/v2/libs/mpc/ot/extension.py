@@ -79,7 +79,7 @@ def vec_hash(data_bytes: el.Object, domain_sep: int = 0) -> el.Object:
     # Assuming data_bytes is (K, D). K should be static (128).
     # Since we are in EDSL, shape is typically known at trace time for static shapes.
     K = 128
-    
+
     # We unroll slicing
     result_hashes = []
 
@@ -94,11 +94,11 @@ def vec_hash(data_bytes: el.Object, domain_sep: int = 0) -> el.Object:
         # tensor.slice_tensor(obj, starts, stops).
         # We assume dimension 1 size is D.
         # We can use a very large stop for dim 1 to take "rest".
-        row_slice = tensor.slice_tensor(data_bytes, (i, 0), (i + 1, 1000000)) 
+        row_slice = tensor.slice_tensor(data_bytes, (i, 0), (i + 1, 1000000))
 
         # Reshape to 1D
         row = tensor.reshape(row_slice, (-1,))
-        
+
         # Add Domain Separation
         if domain_sep != 0:
             # We can't easy prepend in EDSL without cost, but we can verify later.
@@ -110,7 +110,7 @@ def vec_hash(data_bytes: el.Object, domain_sep: int = 0) -> el.Object:
             pass
             # TODO: Implement proper domain separation by concatenating.
             # For this fix, let's just make sure we are hashing the FULL row.
-            
+
         h = crypto.hash_bytes(row)
         result_hashes.append(h)
 
@@ -219,7 +219,7 @@ def iknp_core(
             r = crypto.ec_random_scalar()
             U = crypto.ec_mul(crypto.ec_generator(), r)
             U_list.append(U)
-            
+
             PK0 = PK0_list[i]
             K0_point = crypto.ec_mul(PK0, r)
             PK1 = crypto.ec_sub(C, PK0)

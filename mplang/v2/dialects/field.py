@@ -41,6 +41,7 @@ aes_expand_p = el.Primitive[el.Object]("field.aes_expand")
 mul_p = el.Primitive[el.Object]("field.mul")
 solve_okvs_p = el.Primitive[el.Object]("field.solve_okvs")
 decode_okvs_p = el.Primitive[el.Object]("field.decode_okvs")
+ldpc_encode_p = el.Primitive[el.Object]("field.ldpc_encode")
 
 # =============================================================================
 # Abstract Evaluation (Type Inference)
@@ -73,6 +74,16 @@ def _decode_okvs_ae(
 ) -> elt.TensorType:
     n = key_type.shape[0]
     return elt.TensorType(store_type.element_type, (n, 2))
+
+
+@ldpc_encode_p.def_abstract_eval
+def _ldpc_encode_ae(
+    message: elt.TensorType, indices: elt.TensorType, indptr: elt.TensorType, *, m: int, n: int
+) -> elt.TensorType:
+    # message: (K, 2)
+    # output: (M, 2) (usually N, 2 in silver context where M=N)
+    # Wait, kernel computes (M, 2).
+    return elt.TensorType(message.element_type, (m, 2))
 
 
 # =============================================================================
@@ -110,6 +121,24 @@ def decode_okvs(keys: el.Object, storage: el.Object) -> el.Object:
     Returns decoded values of shape (N, 2).
     """
     return decode_okvs_p.bind(keys, storage)
+
+
+def ldpc_encode(
+    message: el.Object, h_indices: el.Object, h_indptr: el.Object, m: int, n: int
+) -> el.Object:
+    """Compute S = H * M using Sparse Matrix Multiplication kernel.
+    
+    Args:
+        message: (N, 2) or (K, 2) input vector.
+        h_indices: CSR indices.
+        h_indptr: CSR indptr.
+        m: Number of rows in H (Output size).
+        n: Number of cols in H (Input size).
+    
+    Returns:
+        (M, 2) output vector.
+    """
+    return ldpc_encode_p.bind(message, h_indices, h_indptr, m=m, n=n)
 
 
 # =============================================================================

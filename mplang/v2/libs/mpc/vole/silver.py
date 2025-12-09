@@ -30,7 +30,7 @@ Usage:
     v_sender, w_receiver = silver_vole(sender=0, receiver=1, n=1000000)
     # W = V + U * Delta (VOLE correlation)
 
-    > [!WARNING] 
+    > [!WARNING]
     > **SECURITY WARNING**: This implementation is a DEMONSTRATION of the Silver interface
     > but does NOT implement the secure LPN-based correlation generation.
     > It currently relies on AES expansion which is NOT homomorphic, meaning the
@@ -101,133 +101,113 @@ def silver_vole(
     if n <= 0:
         raise ValueError("n must be positive.")
 
-    # 1. Setup: Generate LDPC matrix (deterministic, shared)
-    code_length, syndrome_length, _noise_weight = ldpc.get_silver_params(n)
+    # =========================================================================
+    # REPAIRED SILVER IMPLEMENTATION (Primal LPN w/ Explicit Noise)
+    # =========================================================================
 
-    # Generate consistent LDPC matrix on both parties
-    # (Using fixed seed - in production, this would be agreed upon)
-    H = ldpc.generate_silver_ldpc(code_length, syndrome_length, seed=42)
-    _H_indptr, _H_indices = ldpc.matrix_to_sparse_repr(H)
+    # 1. Setup LPN Parameters
+    # We use Primal LPN: W = V + U*Delta + e
+    # Generator Matrix G is (K x N). We generate it via LDPC gen.
+    # We use the dense JAX implementation from ldpc.py for correctness.
 
-    # 2. Base OT: Generate random choice bits and run IKNP
-    # For Silver, receiver generates random choice bits (these become Delta)
-    base_k = SILVER_BASE_OT
+    # Silver parameters
+    _code_length, syndrome_length, _noise_weight = ldpc.get_silver_params(n)
 
-    # Generate random choice bits on receiver (reshaped for IKNP)
-    def _gen_choice_bits() -> el.Object:
-        rand = crypto.random_bytes(base_k)
+    # Primal LPN dimensions: Input K (Base OT), Output N.
+    # We treat the "Syndrome Length" M as the Base OT size K for Primal LPN.
+    base_k = syndrome_length
+    if base_k > 2048:
+        base_k = 2048
 
-        # Convert to bits and reshape for IKNP (expects (K, 1))
-        def _to_bits(r: Any) -> Any:
-            bits = r % 2
-            return bits.reshape(-1, 1)
+    # -------------------------------------------------------------------------
+    # Generate H' (N rows, K cols) for Transposed Matrix Multiplication
+    #
+    # We target V = v_base * G, where v_base is (1, K) and G is (K, N).
+    # This is equivalent to V^T = G^T * v_base^T.
+    # By constructing H' = G^T (N x K), we can leverage the C++ kernel which
+    # computes Output(M) = Matrix(M, N) * Input(N).
+    # Here, Output(N) = H'(N, K) * Input(K).
+    # -------------------------------------------------------------------------
 
-        return cast(el.Object, tensor.run_jax(_to_bits, rand))
+    # Note: generate_silver_ldpc(n, m) returns m x n matrix.
+    # Call with (K, N) to get N rows, K cols.
+    H_prime_sparse = ldpc.generate_silver_ldpc(base_k, n, seed=42)
 
-    choice_bits = simp.pcall_static((receiver,), _gen_choice_bits)
+    # Extract indices for kernel
+    h_prime_indices = H_prime_sparse.indices.astype(jnp.uint64)
+    h_prime_indptr = H_prime_sparse.indptr.astype(jnp.uint64)
 
-    # Use IKNP for base OT (only κ instances, very small)
-    # iknp_core(choice_bits, sender, receiver, num_ots)
-    t_matrix, q_matrix, _s_choices = ot.iknp_core(choice_bits, sender, receiver, base_k)
+    def _sparse_struct_provider() -> tuple[el.Object, el.Object]:
+        return tensor.constant(h_prime_indices), tensor.constant(h_prime_indptr)
 
-    # 3. Receiver generates Delta from choice bits (pack bits to 128-bit value)
-    def _recv_setup(bits: Any) -> el.Object:
-        def _pack_delta(b: Any) -> Any:
-            # Pack 128 bits into 2 uint64 values using pure JAX
-            b_flat = b.flatten()[:128].astype(jnp.uint64)
+    H_indices, H_indptr = simp.pcall_static((sender,), _sparse_struct_provider)
 
-            # Pack each 64-bit chunk using positional multiplication
-            powers = jnp.power(2, jnp.arange(64, dtype=jnp.uint64))
-            lo = jnp.sum(b_flat[:64] * powers)
-            hi = (
-                jnp.sum(b_flat[64:128] * powers)
-                if b_flat.shape[0] > 64
-                else jnp.uint64(0)
-            )
+    # Broadcast to receiver (assumed public/shared for semi-honest)
+    H_indices_r, H_indptr_r = simp.pcall_static((receiver,), _sparse_struct_provider)
 
-            return jnp.stack([lo, hi])
+    # 2. Base VOLE (Size K)
+    from mplang.v2.libs.mpc.vole import gilboa
 
-        return cast(el.Object, tensor.run_jax(_pack_delta, bits))
+    def _u_base_provider() -> el.Object:
+        # Generate random u_base using cryptographic randomness
+        rand_bytes = crypto.random_bytes(base_k * 16)  # base_k * 16 bytes for (base_k, 2) u64
 
-    delta_receiver = simp.pcall_static((receiver,), _recv_setup, choice_bits)
+        def _reshape(b: Any) -> Any:
+            return b.view(jnp.uint64).reshape(base_k, 2)
 
-    # 4. Sender generates U (random seed for expansion as 128-bit value)
-    def _sender_setup() -> el.Object:
-        u_bytes = crypto.random_bytes(16)  # 16 bytes = 128 bits
+        return cast(el.Object, tensor.run_jax(_reshape, rand_bytes))
 
-        # View as 2 uint64 values
-        def _to_u64_pair(b: Any) -> Any:
+    def _delta_provider() -> el.Object:
+        # Generate random delta using cryptographic randomness
+        rand_bytes = crypto.random_bytes(16)  # 16 bytes for (2,) u64
+
+        def _reshape(b: Any) -> Any:
             return b.view(jnp.uint64)
 
-        return cast(el.Object, tensor.run_jax(_to_u64_pair, u_bytes))
+        return cast(el.Object, tensor.run_jax(_reshape, rand_bytes))
 
-    u_sender = simp.pcall_static((sender,), _sender_setup)
+    v_base, w_base, u_base, delta = gilboa.vole(  # type: ignore[misc]
+        sender, receiver, base_k,
+        _u_base_provider, _delta_provider,
+        return_secrets=True
+    )
 
-    # 5. Silent Expansion using LDPC structure
-    # This is where the magic happens - expand κ base OTs to n VOLEs
+    # 3. Expansion (Encoding) using C++ Kernel
+    # V = v_base * G = H' * v_base
 
-    def _sender_expand(t_mat: Any, u_seed: Any) -> el.Object:
-        # Sender expands using their OT matrix T and U seed
-        # Generate V from AES expansion of combined seeds
+    def _encode(vec_base: el.Object, idx: el.Object, ptr: el.Object) -> el.Object:
+        # Calls C++ kernel: Output(N) = H'(N, K) * Input(K)
+        return ldpc.ldpc_encode_sparse(vec_base, idx, ptr, n, base_k)
 
-        # Expand T matrix to get PRG seeds
-        seeds = tensor.run_jax(lambda t: t.reshape(-1, 2), t_mat)
-        expanded = field.aes_expand(seeds, code_length // base_k + 1)
+    V = simp.pcall_static((sender,), _encode, v_base, H_indices, H_indptr)
+    W_clean = simp.pcall_static((receiver,), _encode, w_base, H_indices_r, H_indptr_r)
 
-        # Flatten and XOR to get V
-        def _compute_v(exp: Any, seed: Any) -> Any:
-            # Reshape expanded output
-            exp_flat = exp.reshape(-1, 2)[:code_length]
+    # 4. Add Noise (Receiver)
+    # W = W_clean + e
+    # e is sparse noise (LPN security)
 
-            # XOR with U-derived mask
-            u_expanded = jnp.tile(seed.reshape(1, 2), (code_length, 1))
-            v = exp_flat ^ u_expanded
-            return v
+    def _add_noise(w: el.Object) -> el.Object:
+        # Generate cryptographically secure sparse noise
+        e = ldpc.generate_sparse_noise(n, SILVER_NOISE_WEIGHT)
 
-        v = tensor.run_jax(_compute_v, expanded, u_seed)
-        return cast(el.Object, v)
+        def _xor(a: Any, b: Any) -> Any:
+            return jnp.bitwise_xor(a, b)
 
-    def _recv_expand(q_mat: Any, delta: Any) -> el.Object:
-        # Receiver expands using their OT matrix Q and Delta
-        # Generate W = V + U*Delta from correlated expansion
+        return cast(el.Object, tensor.run_jax(_xor, w, e))
 
-        seeds = tensor.run_jax(lambda q: q.reshape(-1, 2), q_mat)
-        expanded = field.aes_expand(seeds, code_length // base_k + 1)
+    W = simp.pcall_static((receiver,), _add_noise, W_clean)
 
-        def _compute_w(exp: Any, d: Any) -> Any:
-            exp_flat = exp.reshape(-1, 2)[:code_length]
-
-            # W includes the Delta correlation
-            d_expanded = jnp.tile(d.reshape(1, 2), (code_length, 1))
-            w = exp_flat ^ d_expanded
-            return w
-
-        w = tensor.run_jax(_compute_w, expanded, delta)
-        return cast(el.Object, w)
-
-    v_sender = simp.pcall_static((sender,), _sender_expand, t_matrix, u_sender)
-    w_receiver = simp.pcall_static((receiver,), _recv_expand, q_matrix, delta_receiver)
-
-    # 6. Truncate to requested length
-    def _truncate_to_n(vec: Any) -> el.Object:
-        return cast(el.Object, tensor.run_jax(lambda v: v[:n], vec))
-
-    v_final = simp.pcall_static((sender,), _truncate_to_n, v_sender)
-    w_final = simp.pcall_static((receiver,), _truncate_to_n, w_receiver)
+    # 5. Output
+    # We now have W = V + (U_base*G)*Delta + e
+    # This is a valid LPN sample.
+    # It is "Noisy VOLE".
 
     if return_secrets:
-        # Expand U to full vector
-        def _expand_u(seed: Any) -> Any:
-            u = jnp.tile(seed.reshape(1, 2), (n, 1))
-            return u
+        # Compute U_long for sender to verify
+        U_long = simp.pcall_static((sender,), _encode, u_base, H_indices, H_indptr)
+        return V, W, U_long, delta
 
-        u_full = simp.pcall_static(
-            (sender,), lambda s: tensor.run_jax(_expand_u, s), u_sender
-        )
-
-        return v_final, w_final, u_full, delta_receiver
-
-    return v_final, w_final
+    return V, W
 
 
 # ============================================================================

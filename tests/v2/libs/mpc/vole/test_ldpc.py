@@ -21,9 +21,35 @@ import scipy.sparse as sp
 from mplang.v2.libs.mpc.vole.ldpc import (
     generate_silver_ldpc,
     get_silver_params,
-    ldpc_encode_numpy,
     verify_ldpc_structure,
 )
+
+
+def ldpc_encode_numpy(message: np.ndarray, H: sp.csr_matrix) -> np.ndarray:
+    """Compute syndrome S = H * message using NumPy (test utility).
+    
+    Args:
+        message: Message vector of shape (n,) or (n, 2)
+        H: LDPC parity check matrix of shape (m, n)
+        
+    Returns:
+        Syndrome vector of shape (m,) or (m, 2)
+    """
+    m, n = H.shape
+    
+    if message.ndim == 1:
+        # Binary case: S = H @ message mod 2
+        syndrome = (H @ message.astype(np.int64)) % 2
+        return syndrome.astype(np.uint8)
+    else:
+        # GF(2^128) case: XOR accumulation
+        syndrome = np.zeros((m, message.shape[1]), dtype=message.dtype)
+        for i in range(m):
+            start, end = H.indptr[i], H.indptr[i + 1]
+            cols = H.indices[start:end]
+            for j in cols:
+                syndrome[i] ^= message[j]
+        return syndrome
 
 
 class TestLDPCGeneration:

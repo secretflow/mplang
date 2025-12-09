@@ -29,6 +29,14 @@ Reference: "Silver: Silent VOLE and Oblivious Transfer from Hardness of Decoding
 Usage:
     v_sender, w_receiver = silver_vole(sender=0, receiver=1, n=1000000)
     # W = V + U * Delta (VOLE correlation)
+
+    > [!WARNING] 
+    > **SECURITY WARNING**: This implementation is a DEMONSTRATION of the Silver interface
+    > but does NOT implement the secure LPN-based correlation generation.
+    > It currently relies on AES expansion which is NOT homomorphic, meaning the
+    > produced correlations are mathematically incorrect and insecure for active use.
+    > The LDPC matrix H is generated with a fixed seed and is unused in the main path.
+    > DO NOT USE IN PRODUCTION.
 """
 
 from typing import Any, cast

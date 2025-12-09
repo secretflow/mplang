@@ -61,6 +61,14 @@ def psi_unbalanced(
     - Both Key and Value derivations include the Seed.
     - Prevents offline pre-computation (Rainbow Table) attacks.
     - WARNING: Online dictionary attacks by active clients remain possible.
+    
+    > [!WARNING]
+    > **Security Notice**: This protocol sends the Session Seed to the Client to allow
+    > them to compute the OKVS lookups. A malicious Client can perform an online
+    > dictionary attack (brute-force hashing) to enumerate Server items.
+    > For strict set privacy against malicious clients, use OPRF-PSI (`oprf.py` based)
+    > instead of this unbalanced protocol.
+    """
 
     Args:
         server: Rank of server (holds large set N)

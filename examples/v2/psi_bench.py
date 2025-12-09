@@ -27,13 +27,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 import jax.numpy as jnp
 import numpy as np
-from mplang.v2.edsl.interpreter import InterpObject
+from mplang.v2.runtime.interpreter import InterpObject
 
 import mplang.v2.dialects.field as field
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.edsl import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
 
 
 def benchmark_okvs_psi(n_items):

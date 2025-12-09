@@ -39,7 +39,7 @@ MASK64 = 0xFFFFFFFFFFFFFFFF
 
 
 def hash_to_positions(
-    items: Any, table_size: int, seed: tuple[int, int] = (0, 0)
+    items: Any, table_size: int, seed: tuple[int, int]
 ) -> Any:
     """Compute K candidate positions for each item.
 
@@ -94,7 +94,7 @@ def cuckoo_insert_batch(
     items: Any,
     table_size: int,
     max_iters: int = 100,
-    seed: tuple[int, int] = (0, 0),
+    seed: tuple[int, int],
 ) -> tuple[Any, Any, Any]:
     """Batch Cuckoo insertion using vectorized logic (JAX-compatible).
 
@@ -181,7 +181,7 @@ def cuckoo_insert_batch(
 
 
 def cuckoo_lookup_positions(
-    items: Any, table_size: int, seed: tuple[int, int] = (0, 0)
+    items: Any, table_size: int, seed: tuple[int, int]
 ) -> Any:
     """Get Cuckoo lookup positions for each item.
 

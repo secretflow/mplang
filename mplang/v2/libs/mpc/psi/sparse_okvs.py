@@ -12,20 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Sparse OKVS (Oblivious Key-Value Store) Data Structure.
+"""Sparse OKVS (Oblivious Key-Value Store) Implementation.
 
-This module implements Sparse OKVS encoding/decoding for efficient PSI.
+This module provides the core data structures and algorithms for Sparse OKVS,
+which is a critical component in unbalanced Private Set Intersection (PSI).
 
-Key Properties:
-- Communication: O(n) instead of O(N) - sublinear in server set size
-- Uses 3-hash Garbled Cuckoo Table for position hints
-- Compatible with existing VOLE infrastructure
+Theory:
+    Sparse OKVS (also known as Garbled Cuckoo Table) allows a client to encode
+    a set of key-value pairs into a compact structure that can be queried by a server.
+    Unlike dense OKVS (which requires O(N) communication where N is the server's set size),
+    Sparse OKVS allows the client to send only O(n) data (where n is the client's set size).
+
+    The construction uses a 3-hash Cuckoo hashing scheme. For an input `x`, the value is
+    recovered by XORing entries at three positions:
+        Val(x) = Table[h1(x)] ⊕ Table[h2(x)] ⊕ Table[h3(x)]
+
+Key Features:
+    - **Sublinear Communication**: Communication cost depends on client set size (n), not server set size (N).
+    - **3-Hash Structure**: Uses 3 independent hash functions derived from a common seed.
+    - **JAX/EDSL Integration**: Fully compatible with MPLang's tracing and compilation system.
 """
 
 from typing import Any, cast
 
 import jax.numpy as jnp
 
+import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 
@@ -36,8 +48,6 @@ import mplang.v2.edsl as el
 # Number of hash functions for Cuckoo hashing
 NUM_HASHES = 3
 
-# Maximum iterations for Cuckoo insertion before failure
-MAX_CUCKOO_ITERATIONS = 500
 MASK64 = 0xFFFFFFFFFFFFFFFF
 
 
@@ -76,32 +86,72 @@ def get_okvs_expansion(n: int) -> float:
         return 1.25  # Very large scale: near theoretical minimum
 
 
-# Legacy constant for backwards compatibility (uses conservative value)
-CUCKOO_EXPANSION = 1.6
-
+# ============================================================================
+# EDSL Wrappers
 # ============================================================================
 
 
-def sparse_encode(
-    keys: el.Object,
-    values: el.Object,
-    server_table_size: int,
-    seed: el.Object,  # (2,) uint64
-) -> tuple[el.Object, el.Object, el.Object]:
-    """EDSL wrapper for sparse encoding.
+def decode_values(
+    indices: el.Object,
+    table: el.Object,
+) -> el.Object:
+    """Perform Sparse OKVS Lookup (Decode).
+
+    Retrieves values from the OKVS table using the pre-computed hash indices.
+    This implements the reconstruction formula:
+        Result = Table[h1] ⊕ Table[h2] ⊕ Table[h3]
 
     Args:
-        keys: (n,) uint64 tensor of client keys
-        values: (n, 2) uint64 tensor of values
-        server_table_size: Size of server's table
-        seed: (2,) uint64 tensor (random seed)
+        indices: (n * 3,) uint64 tensor containing flattened hash indices.
+                 Usually computed via `compute_indices`.
+        table: (M, D) uint64 tensor representing the server's OKVS table.
 
     Returns:
-        Tuple of (positions, coefficients, client_values)
+        (n, D) uint64 tensor containing the recovered values.
     """
 
-    def _encode_jax(k: Any, v: Any, s: Any, M: int) -> tuple[Any, Any, Any]:
-        # Compute positions using vectorized hash
+    def _lookup_jax(pos: Any, tbl: Any) -> Any:
+        n = pos.shape[0] // NUM_HASHES
+        pos_2d = pos.reshape(n, NUM_HASHES)
+
+        result = jnp.zeros((n, 2), dtype=jnp.uint64)
+        for i in range(NUM_HASHES):
+            p = pos_2d[:, i].astype(jnp.int32)
+            result = result ^ tbl[p]
+
+        return result
+
+    return cast(el.Object, tensor.run_jax(_lookup_jax, indices, table))
+
+
+def compute_indices(
+    keys: el.Object,
+    server_table_size: int,
+    seed: el.Object,
+) -> el.Object:
+    """Compute the 3 hash indices for Sparse OKVS (Encode Step 1).
+
+    This function maps client keys to indices in the server's OKVS table.
+    It is the first step of the sparse encoding process (Client side).
+    The resulting indices are typically sent to the server (in a PIR-like fashion)
+    or used locally to query a retrieved table.
+
+    Args:
+        keys: (n,) uint64 tensor of client keys.
+        server_table_size: Size of the server's OKVS table (M).
+        seed: (2,) uint64 tensor for hash seeding.
+
+    Returns:
+        (n * 3,) uint64 tensor of flattened indices.
+    """
+
+    def _compute_indices_jax(k: Any, s: Any, M: int) -> Any:
+        """Compute the 3 hash positions for each key using JAX.
+
+        Implements the hash generation logic for the Garbled Cuckoo Table.
+        Uses a linear congruential generator style mixing with the provided seed
+        to derive 3 independent indices for each key.
+        """
         n = k.shape[0]
         # s: (2,) uint64
         seed0 = s[0]
@@ -125,88 +175,65 @@ def sparse_encode(
             mixed = mixed ^ (mixed >> 31)
             all_positions = all_positions.at[:, i].set(mixed % jnp.uint64(M))
 
-        positions = all_positions.flatten()
-        coeffs = jnp.ones(n * NUM_HASHES, dtype=jnp.uint64)
-
-        return positions, coeffs, v
-
-    pos, coef, vals = tensor.run_jax(
-        lambda k, v, s: _encode_jax(k, v, s, server_table_size), keys, values, seed
-    )
-    return pos, coef, vals
-
-
-def sparse_lookup(
-    positions: el.Object,
-    table: el.Object,
-) -> el.Object:
-    """Look up values at sparse positions from table.
-
-    Args:
-        positions: (n * 3,) uint64 positions
-        table: (M, 2) uint64 server table
-
-    Returns:
-        (n, 2) uint64 - XOR of table entries at each key's positions
-    """
-
-    def _lookup_jax(pos: Any, tbl: Any) -> Any:
-        n = pos.shape[0] // NUM_HASHES
-        pos_2d = pos.reshape(n, NUM_HASHES)
-
-        result = jnp.zeros((n, 2), dtype=jnp.uint64)
-        for i in range(NUM_HASHES):
-            p = pos_2d[:, i].astype(jnp.int32)
-            result = result ^ tbl[p]
-
-        return result
-
-    return cast(el.Object, tensor.run_jax(_lookup_jax, positions, table))
-
-
-def compute_positions(
-    keys: el.Object,
-    server_table_size: int,
-    seed: el.Object,
-) -> el.Object:
-    """Compute sparse OKVS positions for keys (EDSL wrapper).
-
-    Args:
-        keys: (n,) uint64 client keys
-        server_table_size: Size of server's table
-        seed: (2,) uint64 tensor (random seed)
-
-    Returns:
-        (n * NUM_HASHES,) uint64 positions
-    """
-
-    def _hash_jax(k: Any, s: Any, M: int) -> Any:
-        n = k.shape[0]
-        # s: (2,) uint64
-        seed0 = s[0]
-        seed1 = s[1]
-
-        mixed_key = k ^ seed0
-
-        all_positions = jnp.zeros((n, NUM_HASHES), dtype=jnp.uint64)
-
-        for i in range(NUM_HASHES):
-            # Mask constants
-            offset = (i * 0x9E3779B97F4A7C15) & MASK64
-            current_seed = seed1 + jnp.uint64(offset)
-
-            magic = (0x14650FB0739D0383 + i * 0x27D4EB2F165667C5) & MASK64
-            mixed = mixed_key ^ (jnp.uint64(magic) ^ current_seed)
-
-            mixed = mixed * jnp.uint64(0xBF58476D1CE4E5B9)
-            mixed = mixed ^ (mixed >> 27)
-            mixed = mixed * jnp.uint64(0x94D049BB133111EB)
-            mixed = mixed ^ (mixed >> 31)
-            all_positions = all_positions.at[:, i].set(mixed % jnp.uint64(M))
-
         return all_positions.flatten()
 
-    return cast(
-        el.Object,
-        tensor.run_jax(lambda k, s: _hash_jax(k, s, server_table_size), keys, seed),
+    res = tensor.run_jax(
+        lambda k, s: _compute_indices_jax(k, s, server_table_size),
+        keys,
+        seed,
     )
+    return cast(el.Object, res)
+
+
+def query(
+    client: int,
+    server: int,
+    client_keys: el.Object,
+    server_table: el.Object,
+    seed: el.Object,
+    server_table_size: int,
+) -> el.Object:
+    """Execute Sparse OKVS Query Protocol (Multi-Party).
+
+    Orchestrates the sparse query process between a Client and a Server.
+
+    Protocol:
+    1. Client computes hash indices for its keys (O(n)).
+    2. Client sends indices to Server (O(n) communication).
+    3. Server retrieves values from its table using indices (O(n)).
+    4. Server sends values back to Client (implicit in return, or explicit if needed).
+
+    Args:
+        client: Rank of the Client party.
+        server: Rank of the Server party.
+        client_keys: (n,) uint64 tensor located on Client.
+        server_table: (M, D) uint64 tensor located on Server.
+        seed: (2,) uint64 tensor (public or shared).
+        server_table_size: Size of the server's table (M).
+
+    Returns:
+        (n, D) uint64 tensor located on Server (containing the retrieved values).
+        Note: The result is on the Server. If Client needs it, use simp.shuffle.
+    """
+    # 1. Client computes indices
+    indices = simp.pcall_static(
+        (client,),
+        compute_indices,
+        client_keys,
+        server_table_size,
+        seed,
+    )
+
+    # 2. Move indices to Server
+    # Explicitly shuffle data from Client to Server
+    indices_on_server = simp.shuffle_static(indices, {server: client})
+
+    # 3. Server decodes
+    response = simp.pcall_static(
+        (server,),
+        decode_values,
+        indices_on_server,
+        server_table,
+    )
+
+    return response

@@ -21,8 +21,8 @@ import mplang.v2.dialects.tensor as tensor
 from mplang.v2 import SimpSimulator, evaluate, fetch
 from mplang.v2.libs.mpc.psi.sparse_okvs import (
     NUM_HASHES,
-    compute_positions,
-    sparse_lookup,
+    compute_indices,
+    decode_values,
 )
 
 
@@ -40,7 +40,7 @@ class TestSparseOKVSEDSL:
             return vals[0]
         return vals
 
-    def test_compute_positions_deterministic(self, sim):
+    def test_compute_indices_deterministic(self, sim):
         """Verify hash positions are deterministic via EDSL."""
         n = 10
         table_size = 1000
@@ -50,7 +50,7 @@ class TestSparseOKVSEDSL:
         def _prog(k, s):
             k_t = tensor.constant(k)
             s_t = tensor.constant(s)
-            return compute_positions(k_t, table_size, s_t)
+            return compute_indices(k_t, table_size, s_t)
 
         # Run twice
         pos1_obj = evaluate(sim, _prog, keys, seed)
@@ -62,7 +62,7 @@ class TestSparseOKVSEDSL:
         np.testing.assert_array_equal(pos1, pos2)
         assert pos1.shape == (n * NUM_HASHES,)
 
-    def test_compute_positions_range(self, sim):
+    def test_compute_indices_range(self, sim):
         """Verify positions are within table bounds."""
         n = 100
         table_size = 500
@@ -72,7 +72,7 @@ class TestSparseOKVSEDSL:
         def _prog(k, s):
             k_t = tensor.constant(k)
             s_t = tensor.constant(s)
-            return compute_positions(k_t, table_size, s_t)
+            return compute_indices(k_t, table_size, s_t)
 
         positions_obj = evaluate(sim, _prog, keys, seed)
         positions = self._fetch_one(sim, positions_obj)
@@ -98,10 +98,10 @@ class TestSparseOKVSEDSL:
             tbl_t = tensor.constant(tbl)
 
             # 1. Client computes positions
-            pos = compute_positions(k_t, table_size, s_t)
+            pos = compute_indices(k_t, table_size, s_t)
 
             # 2. Server looks up values
-            res = sparse_lookup(pos, tbl_t)
+            res = decode_values(pos, tbl_t)
 
             return pos, res
 
@@ -137,8 +137,8 @@ class TestSparseOKVSEDSL:
             s1_t = tensor.constant(s1)
             s2_t = tensor.constant(s2)
 
-            p1 = compute_positions(k_t, table_size, s1_t)
-            p2 = compute_positions(k_t, table_size, s2_t)
+            p1 = compute_indices(k_t, table_size, s1_t)
+            p2 = compute_indices(k_t, table_size, s2_t)
             return p1, p2
 
         pos1_obj, pos2_obj = evaluate(sim, _prog, keys, seed1, seed2)
@@ -147,3 +147,55 @@ class TestSparseOKVSEDSL:
         pos2 = self._fetch_one(sim, pos2_obj)
 
         assert not np.array_equal(pos1, pos2)
+
+    def test_query_e2e(self, sim):
+        """Verify the full query protocol between two parties."""
+        from mplang.v2.libs.mpc.psi.sparse_okvs import query
+
+        client_rank = 0
+        server_rank = 1
+        n = 5
+        table_size = 20
+
+        # Inputs
+        keys = np.arange(n, dtype=np.uint64)
+        seed = np.array([42, 99], dtype=np.uint64)
+        # Server Table (M, 2)
+        table_np = np.random.randint(0, 2**63, size=(table_size, 2), dtype=np.uint64)
+
+        def _prog(k, s, tbl):
+            k_t = tensor.constant(k)
+            s_t = tensor.constant(s)
+            tbl_t = tensor.constant(tbl)
+
+            return query(client_rank, server_rank, k_t, tbl_t, s_t, table_size)
+
+        # Run simulation
+        result_obj = evaluate(sim, _prog, keys, seed, table_np)
+
+        # Fetch results. Since query returns a value on the server (P1),
+        # we expect the result to be available at index 1 (assuming P0, P1 order).
+        results = fetch(sim, result_obj)
+
+        # In SimpSimulator with 2 parties (default), results is [val_p0, val_p1]
+        # The result is produced on P1.
+        server_result = results[1]
+
+        # Verify manually
+        # 1. Re-run compute_indices logic locally (or via a separate sim call) to get positions
+        # We can use a separate evaluate to get the expected positions for verification
+        def _get_pos(k, s):
+            return compute_indices(tensor.constant(k), table_size, tensor.constant(s))
+
+        pos_obj = evaluate(sim, _get_pos, keys, seed)
+        positions = self._fetch_one(sim, pos_obj)
+
+        positions_2d = positions.reshape(n, NUM_HASHES)
+        expected = np.zeros((n, 2), dtype=np.uint64)
+
+        for i in range(n):
+            for j in range(NUM_HASHES):
+                idx = positions_2d[i, j]
+                expected[i] ^= table_np[idx]
+
+        np.testing.assert_array_equal(server_result, expected)

@@ -81,7 +81,7 @@ def eval_oprf(
     Returns:
         Tuple of:
         - sender_key: (T, s) tuple on sender - T is (N, K) bit matrix, s is (K,)
-        - receiver_outputs: (N, 16) byte tensor of OPRF outputs on receiver
+        - receiver_outputs: (N, 32) byte tensor of OPRF outputs on receiver (SHA256)
     """
     K = 128  # Security parameter (OT extension width)
 
@@ -160,22 +160,13 @@ def eval_oprf(
 
         # Security Fix: Hash the OT output to implement a Random Oracle
         # OPRF = H(OT_output, input_tweaks...)
-        # Here we just hash the OT output string.
-        # Ideally we should include domain separation and inputs,
-        # but hashing the raw OT string prevents linear relation leakage.
-
-        # We need to apply hash_bytes row-wise.
-        # Use vec_hash from extension which we just fixed/improved.
-        # But importing it inside function?
-        # We can just map standard crypto.hash_bytes if vec_hash is not available.
-        # Actually `ot_extension.vec_hash` is available.
-
+        # Here we use the shared vec_hash utility which handles domain separation.
         return ot_extension.vec_hash(packed_q, domain_sep=0x0CDF, num_rows=num_items)
 
     receiver_outputs = simp.pcall_static(
         (receiver,), compute_receiver_outputs, q_matrix, choice_codes
     )
-    # receiver_outputs: (N, 16) on receiver
+    # receiver_outputs: (N, 32) on receiver
 
     # ═════════════════════════════════════════════════════════════════════════
     # Step 5: Package sender's key for later PRF evaluation
@@ -214,20 +205,6 @@ def sender_eval_prf_batch(
 ) -> el.Object:
     """Evaluate PRF on sender's side for a batch of items.
 
-    KKRT Formula:
-    ─────────────────────────────────────────────────────────────────────────
-    IKNP relation: T[i] = Q[i] XOR (choice[i] · s)
-
-    For sender and receiver outputs to match when input is the same:
-    - Receiver outputs: pack(Q[i])
-    - Sender must compute: pack(T[i] XOR (encode(input)[0] · s))
-
-    Proof:
-      If input matches and encode(input)[0] = choice[i]:
-        T[i] XOR (encode · s) = Q[i] XOR (choice·s) XOR (encode·s)
-                              = Q[i] XOR (choice·s) XOR (choice·s)  [since encode[0]=choice]
-                              = Q[i]  ✓
-
     Args:
         sender_key: The key tuple (t_matrix, s) from eval_oprf.
         sender_items: (M, 16) byte tensor of sender's items.
@@ -235,7 +212,7 @@ def sender_eval_prf_batch(
         num_items: Number of items M (must be provided).
 
     Returns:
-        (M, 16) byte tensor of PRF outputs on sender.
+        (M, 32) byte tensor of PRF outputs on sender.
     """
     K = 128
 
@@ -247,8 +224,6 @@ def sender_eval_prf_batch(
             M = x.shape[0]
             N = t_matrix.shape[0]
 
-            # Encode items to get choice bits
-            # Unpack: (M, 16) -> (M, 128) bits
             # Encode items to get choice bits
             # Unpack: (M, 16) -> (M, 128) bits
             codes = jnp.unpackbits(x, axis=1)[:, :K]  # (M, K)
@@ -277,37 +252,6 @@ def sender_eval_prf_batch(
 
         raw_outputs = cast(el.Object, tensor.run_jax(_eval, key, items))
 
-        # Security Fix: Hash the output to match receiver
-        # Security Fix: Hash the output to match receiver
-        # Assume batch size M is handled by vec_hash if num_rows not passed?
-        # No, we must pass it.
-        # But M is not available as python int here easily?
-        # Wait, sender_items is trace object. N is trait of it?
-        # Actually sender_eval_prf_batch is a pcalled function.
-        # In pcall, args are tracers.
-        # We can't know dynamic shape M at trace time for python loop in vec_hash.
-
-        # This confirms vec_hash MUST be vectorized/batched to support dynamic shapes.
-        # But we are in EDSL.
-
-        # For now, we revert to legacy behavior for sender_eval_prf_batch
-        # OR we assume M=128 or fail?
-        # Actually, sender_eval_prf_batch implementation in oprf.py lines 209+
-        # It takes sender_items.
-
-        # If we can't get M, we can't unroll loop in vec_hash.
-        # So vec_hash with run_jax(dynamic loop) is needed?
-        # Or proper vectorized hash primitive.
-
-        # Since I can't implement new primitive now.
-        # I will assume M=128 (default) for sender batch,
-        # OR if sender_items matches num_items?
-
-        # In test_oprf, sender_eval_prf_batch is NOT called.
-        # eval_oprf IS called.
-
-        # So fixing the first call (line 173) is enough for test_oprf.py.
-        # I will only fix line 173 for now to unblock testing.
         return ot_extension.vec_hash(raw_outputs, domain_sep=0x0CDF, num_rows=num_items)
 
     return cast(
@@ -331,7 +275,7 @@ def sender_eval_prf(
         sender: Rank of sender party.
 
     Returns:
-        (16,) byte tensor of PRF output on sender.
+        (32,) byte tensor of PRF output on sender.
     """
     K = 128
 
@@ -350,22 +294,16 @@ def sender_eval_prf(
             # Pack to bytes
             packed = jnp.packbits(xored)  # (16,)
 
-            return packed
+            # Reshape to (1, 16) for vec_hash
+            return packed.reshape(1, 16)
 
-        raw_out = cast(el.Object, tensor.run_jax(_compute, key, cand))
-        # Hash to match vectorized version
-        # We need a domain separator 0x0CDF.
-        # We must manually prepend it as vec_hash does.
+        raw_out_batch = cast(el.Object, tensor.run_jax(_compute, key, cand))
+        
+        # Use batched hash with num_rows=1
+        hashed_batch = ot_extension.vec_hash(raw_out_batch, domain_sep=0x0CDF, num_rows=1)
 
-        def _add_ds_and_hash(val: Any) -> Any:
-            # Recreate vec_hash domain sep logic for single item
-            ds = 0x0CDF
-            ds_arr = jnp.array([ds], dtype=jnp.uint64).view(jnp.uint8)
-            # val is (16,)
-            val_with_ds = jnp.concatenate([ds_arr, val])
-            return val_with_ds
-
-        val_plus_ds = tensor.run_jax(_add_ds_and_hash, raw_out)
-        return crypto.hash_bytes(val_plus_ds)
+        # Flatten back to (32,) using slice to avoid extra run_jax node
+        return tensor.slice_tensor(hashed_batch, (0, 0), (32,))
 
     return cast(el.Object, simp.pcall_static((sender,), _eval, sender_key, candidate))
+

@@ -131,6 +131,10 @@ def silver_vole(
 
     # Note: generate_silver_ldpc(n, m) returns m x n matrix.
     # Call with (K, N) to get N rows, K cols.
+    # SECURITY WARNING: Using a fixed seed (42) means the code structure is public and static.
+    # In a real secure deployment, this seed should be generated via a coin-tossing protocol
+    # or negotiated securely between parties to ensure the code is random and private if needed.
+    # For semi-honest security where parameters are public, this is acceptable but suboptimal.
     H_prime_sparse = ldpc.generate_silver_ldpc(base_k, n, seed=42)
 
     # Extract indices for kernel

@@ -19,11 +19,9 @@ import sys
 import numpy as np
 
 # Load Library
-_KERNEL_LIB_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__), "../../mplang/v2/kernels/libmplang_kernels.so"
-    )
-)
+# Path is relative to repository root, not to this test file's location
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+_KERNEL_LIB_PATH = os.path.join(_REPO_ROOT, "mplang/v2/kernels/libmplang_kernels.so")
 
 if not os.path.exists(_KERNEL_LIB_PATH):
     print(f"Error: {_KERNEL_LIB_PATH} not found")

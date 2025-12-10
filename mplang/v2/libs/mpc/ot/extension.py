@@ -362,17 +362,43 @@ def transfer_extension(
         # t: (N, K)
         # s: (K,)
 
-        def _hash_and_enc(t: Any, s: Any, msg0: Any, msg1: Any) -> Any:
-            t_bytes = jnp.packbits(t, axis=-1)  # (N, 16)
+        # Hash keys before using them as masks to break linear correlation
+        # H(t) and H(t^s)
+        # We use domain_sep=1 for IKNP payload masking
+        h_t = vec_hash(t_loc, domain_sep=1, num_rows=num_ots)
+       
+        def _xor_s_and_hash(t: Any, s: Any) -> Any:
             t_xor_s = jnp.bitwise_xor(t, s)
-            t_xor_s_bytes = jnp.packbits(t_xor_s, axis=-1)
+            return t_xor_s
 
-            c0 = jnp.bitwise_xor(msg0, t_bytes)
-            c1 = jnp.bitwise_xor(msg1, t_xor_s_bytes)
+        # We need to compute H(t^s). We can't easily do it in one block with vec_hash 
+        # unless we compute t^s first.
+        t_xor_s_loc = cast(el.Object, tensor.run_jax(_xor_s_and_hash, t_loc, s_loc))
+        h_t_xor_s = vec_hash(t_xor_s_loc, domain_sep=1, num_rows=num_ots)
+
+        def _enc(ht: Any, hts: Any, msg0: Any, msg1: Any) -> Any:
+            # ht, hts are mapped to (N, 32) bytes usually, or whatever vec_hash returns
+            # msg0, msg1 are (N, D) bytes
+            
+            # Ensure shapes match for XOR
+            # vec_hash returns (N, 32)
+            # If messages are not 32 bytes, we might need to adjust or truncation?
+            # Standard IKNP assumes messages are block size (128 bit = 16 bytes).
+            # But vec_hash produces 32 bytes (SHA256 usually).
+            # We slice hash to message length.
+            
+            # msg0 shape: (N, 16) usually
+            d = msg0.shape[1]
+            
+            ht_sliced = ht[:, :d]
+            hts_sliced = hts[:, :d]
+
+            c0 = jnp.bitwise_xor(msg0, ht_sliced)
+            c1 = jnp.bitwise_xor(msg1, hts_sliced)
             return c0, c1
 
         return cast(
-            el.Object, tensor.run_jax(_hash_and_enc, t_loc, s_loc, m0_loc, m1_loc)
+            el.Object, tensor.run_jax(_enc, h_t, h_t_xor_s, m0_loc, m1_loc)
         )
 
     ciphertexts = simp.pcall_static((sender,), encrypt_msgs, t_matrix, s, m0, m1)
@@ -388,14 +414,20 @@ def transfer_extension(
     ) -> el.Object:
         c0, c1 = c_texts
 
-        def _dec(q: Any, r: Any, ct0: Any, ct1: Any) -> Any:
-            q_bytes = jnp.packbits(q, axis=-1)
-            m0_cand = jnp.bitwise_xor(ct0, q_bytes)
-            m1_cand = jnp.bitwise_xor(ct1, q_bytes)
+        # Hash q: H(q)
+        h_q = vec_hash(q_loc, domain_sep=1, num_rows=num_ots)
+
+        def _dec(hq: Any, r: Any, ct0: Any, ct1: Any) -> Any:
+            # hq: (N, 32)
+            d = ct0.shape[1]
+            hq_sliced = hq[:, :d]
+            
+            m0_cand = jnp.bitwise_xor(ct0, hq_sliced)
+            m1_cand = jnp.bitwise_xor(ct1, hq_sliced)
             r_exp = jnp.expand_dims(r, axis=-1)
             return jnp.where(r_exp == 1, m1_cand, m0_cand)
 
-        return cast(el.Object, tensor.run_jax(_dec, q_loc, r_loc, c0, c1))
+        return cast(el.Object, tensor.run_jax(_dec, h_q, r_loc, c0, c1))
 
     res = simp.pcall_static(
         (receiver,), decrypt_msg, q_matrix, choice_bits, ciphertexts_recv

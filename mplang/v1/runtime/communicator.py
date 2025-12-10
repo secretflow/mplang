@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 
+from mplang.v1.core.async_comm import AsyncCommunicatorBase
 from mplang.v1.core.comm import CommunicatorBase
 from mplang.v1.kernels.value import Value, decode_value, encode_value
 
@@ -103,5 +104,87 @@ class HttpCommunicator(CommunicatorBase):
 
         logging.debug(
             f"Received data: from_rank={frm}, to_rank={self._rank}, key={key}"
+        )
+        return result
+
+
+class AsyncHttpCommunicator(AsyncCommunicatorBase):
+    """Async version of HttpCommunicator."""
+
+    def __init__(
+        self,
+        session_name: str,
+        rank: int,
+        endpoints: list[str],
+        loop=None,
+    ):
+        # Validate endpoints
+        if not endpoints:
+            raise ValueError("endpoints cannot be empty")
+
+        if not all(endpoint for endpoint in endpoints):
+            raise ValueError("endpoints cannot contain empty elements")
+
+        super().__init__(rank, len(endpoints), loop)
+        self.session_name = session_name
+        # Ensure all endpoints have protocol prefix
+        self.endpoints = [
+            endpoint
+            if endpoint.startswith(("http://", "https://"))
+            else f"http://{endpoint}"
+            for endpoint in endpoints
+        ]
+        logging.info(
+            f"AsyncHttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={self.endpoints}"
+        )
+
+    async def async_send(self, to: int, key: str, data: Any) -> None:
+        """Sends data to a peer party by PUTing to its /comm/{key}/from/{from_rank} endpoint."""
+        target_endpoint = self.endpoints[to]
+        url = f"{target_endpoint}/sessions/{self.session_name}/comm/{key}/from/{self._rank}"
+        logging.debug(
+            f"Async sending data: from_rank={self._rank}, to_rank={to}, key={key}, target_url={url}"
+        )
+
+        try:
+            # Serialize data using Value envelope.
+            if not isinstance(data, Value):
+                raise TypeError(
+                    f"Communicator requires Value instance, got {type(data).__name__}. "
+                    "Wrap data in TensorValue or custom Value subclass."
+                )
+            data_bytes = encode_value(data)
+            data_b64 = base64.b64encode(data_bytes).decode("utf-8")
+
+            request_data = {
+                "data": data_b64,
+            }
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.put(url, json=request_data)
+                logging.debug(f"Async send response: status={response.status_code}")
+                if response.status_code != 200:
+                    logging.error(f"Async send failed: {response.text}")
+                response.raise_for_status()
+
+        except httpx.RequestError as e:
+            logging.error(
+                f"Async send failed with exception: from_rank={self._rank}, to_rank={to}, key={key}, error={e}"
+            )
+            raise OSError(f"Failed to send data to rank {to}") from e
+
+    async def async_recv(self, frm: int, key: str) -> Any:
+        """Wait until the key is set, returns the value."""
+        logging.debug(
+            f"Async waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
+        )
+        data_b64 = await super().async_recv(frm, key)
+
+        data_bytes = base64.b64decode(data_b64)
+        # Deserialize using Value envelope
+        result = decode_value(data_bytes)
+
+        logging.debug(
+            f"Async received data: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
         return result

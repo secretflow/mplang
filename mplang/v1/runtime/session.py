@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import Executor
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, cast
@@ -34,15 +35,17 @@ from urllib.parse import urlparse
 
 import spu.libspu as libspu
 
+from mplang.v1.core.async_comm import IAsyncCommunicator
 from mplang.v1.core.cluster import ClusterSpec
 from mplang.v1.core.comm import ICommunicator
 from mplang.v1.core.expr.ast import Expr
+from mplang.v1.core.expr.async_evaluator import AsyncIterativeEvaluator
 from mplang.v1.core.expr.evaluator import IEvaluator, create_evaluator
 from mplang.v1.core.mask import Mask
 from mplang.v1.kernels.context import RuntimeContext
 from mplang.v1.kernels.spu import PFunction  # type: ignore
 from mplang.v1.kernels.value import Value
-from mplang.v1.runtime.communicator import HttpCommunicator
+from mplang.v1.runtime.communicator import AsyncHttpCommunicator, HttpCommunicator
 from mplang.v1.runtime.exceptions import ResourceNotFound
 from mplang.v1.runtime.link_comm import LinkCommunicator
 from mplang.v1.utils.spu_utils import parse_field, parse_protocol
@@ -192,7 +195,6 @@ class Session:
             spu_addrs: list[str] = []
             for r, addr in enumerate(self.cluster_spec.endpoints):
                 if r in self.spu_mask:
-                    # TODO(oeqqwq): addr may contain other schema like grpc://
                     if not addr.startswith(("http://", "https://")):
                         addr = f"http://{addr}"
                     parsed = urlparse(addr)
@@ -281,17 +283,68 @@ class Session:
                 )
             self.add_symbol(Symbol(name=name, mptype={}, data=val))
 
+    async def async_execute(
+        self,
+        computation: Computation,
+        input_names: list[str],
+        output_names: list[str],
+        executor: Executor,
+    ) -> None:
+        if not isinstance(self.communicator, IAsyncCommunicator):
+            raise RuntimeError("Session.async_execute requires an async communicator")
+
+        env: dict[str, Any] = {}
+        for in_name in input_names:
+            sym = self.get_symbol(in_name)
+            if sym is None:
+                raise ResourceNotFound(
+                    f"Input symbol '{in_name}' not found in session '{self.name}'"
+                )
+            env[in_name] = sym.data
+        rt = self.ensure_runtime()
+        self.ensure_spu_env()
+        evaluator = AsyncIterativeEvaluator(
+            rank=self.rank,
+            env=env,
+            comm=self.communicator,
+            runtime=rt,
+            executor=executor,
+        )
+        results = await evaluator.evaluate(computation.expr, env)
+        if results and len(results) != len(output_names):
+            raise RuntimeError(
+                f"Expected {len(output_names)} results, got {len(results)}"
+            )
+        for name, val in zip(output_names, results, strict=True):
+            # In pure SIMP model, all nodes should have the same symbol table.
+            # Non-participating nodes get None values.
+            if val is not None and not isinstance(val, Value):
+                raise TypeError(
+                    "Session executions must produce kernel Value outputs; "
+                    f"got {type(val).__name__} for symbol '{name}'"
+                )
+            self.add_symbol(Symbol(name=name, mptype={}, data=val))
+
 
 # --- Convenience constructor use HttpCommunicator---
-def create_session_from_spec(name: str, rank: int, spec: ClusterSpec) -> Session:
+def create_session_from_spec(
+    name: str, rank: int, spec: ClusterSpec, async_mode: bool = False
+) -> Session:
     if len(spec.get_devices_by_kind("SPU")) == 0:
         raise RuntimeError("No SPU device found in cluster_spec")
 
     # Create HttpCommunicator for the session
-    communicator = HttpCommunicator(
-        session_name=name,
-        rank=rank,
-        endpoints=spec.endpoints,
-    )
+    if async_mode:
+        communicator: ICommunicator = AsyncHttpCommunicator(
+            session_name=name,
+            rank=rank,
+            endpoints=spec.endpoints,
+        )
+    else:
+        communicator = HttpCommunicator(
+            session_name=name,
+            rank=rank,
+            endpoints=spec.endpoints,
+        )
 
     return Session(name=name, rank=rank, cluster_spec=spec, communicator=communicator)

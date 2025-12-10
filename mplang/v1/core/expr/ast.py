@@ -34,7 +34,7 @@ from mplang.v1.core.table import TableType
 from mplang.v1.core.tensor import TensorType
 
 if TYPE_CHECKING:
-    from mplang.v1.core.expr.visitor import ExprVisitor
+    from mplang.v1.core.expr.visitor import AsyncExprVisitor, ExprVisitor
 
 
 class Expr(ABC):
@@ -83,6 +83,10 @@ class Expr(ABC):
     @abstractmethod
     def accept(self, visitor: ExprVisitor) -> Any:
         """Accept a visitor for the visitor pattern."""
+
+    @abstractmethod
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        """Accept an async visitor with environment."""
 
 
 # ============================================================================
@@ -161,6 +165,9 @@ class EvalExpr(Expr):
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_eval(self)
 
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_eval(self, env)
+
 
 class TupleExpr(Expr):
     """Expression for creating a tuple from multiple single-output expressions.
@@ -204,6 +211,9 @@ class TupleExpr(Expr):
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_tuple(self)
 
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_tuple(self, env)
+
 
 class CondExpr(Expr):
     """Expression for conditional execution.
@@ -240,6 +250,9 @@ class CondExpr(Expr):
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_cond(self)
 
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_cond(self, env)
+
 
 class WhileExpr(Expr):
     """Expression for while loop."""
@@ -265,6 +278,9 @@ class WhileExpr(Expr):
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_while(self)
+
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_while(self, env)
 
 
 class ConvExpr(Expr):
@@ -320,6 +336,9 @@ class ConvExpr(Expr):
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_conv(self)
+
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_conv(self, env)
 
 
 class ShflSExpr(Expr):
@@ -403,6 +422,9 @@ class ShflSExpr(Expr):
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_shfl_s(self)
 
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_shfl_s(self, env)
+
 
 class ShflExpr(Expr):
     """Expression for dynamic shuffle operation."""
@@ -426,6 +448,9 @@ class ShflExpr(Expr):
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_shfl(self)
+
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_shfl(self, env)
 
 
 class AccessExpr(Expr):
@@ -457,6 +482,9 @@ class AccessExpr(Expr):
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_access(self)
 
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_access(self, env)
+
 
 class VariableExpr(Expr):
     """Expression for variable reference/lookup."""
@@ -472,6 +500,9 @@ class VariableExpr(Expr):
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_variable(self)
+
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_variable(self, env)
 
 
 class FuncDefExpr(Expr):
@@ -522,6 +553,9 @@ class FuncDefExpr(Expr):
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_func_def(self)
 
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_func_def(self, env)
+
 
 class CallExpr(Expr):
     """Expression for function call."""
@@ -540,3 +574,6 @@ class CallExpr(Expr):
 
     def accept(self, visitor: ExprVisitor) -> Any:
         return visitor.visit_call(self)
+
+    async def accept_async(self, visitor: AsyncExprVisitor, env: dict[str, Any]) -> Any:
+        return await visitor.visit_call(self, env)

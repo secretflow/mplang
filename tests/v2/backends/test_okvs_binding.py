@@ -18,34 +18,41 @@ import sys
 
 import numpy as np
 
+# Fallback to pure Python implementation
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+from mplang.v2.kernels import py_kernels
+
 # Load Library
 # Path is relative to repository root, not to this test file's location
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 _KERNEL_LIB_PATH = os.path.join(_REPO_ROOT, "mplang/v2/kernels/libmplang_kernels.so")
 
-if not os.path.exists(_KERNEL_LIB_PATH):
-    print(f"Error: {_KERNEL_LIB_PATH} not found")
-    sys.exit(1)
+_LIB = None
+if os.path.exists(_KERNEL_LIB_PATH):
+    try:
+        _LIB = ctypes.CDLL(_KERNEL_LIB_PATH)
 
-_LIB = ctypes.CDLL(_KERNEL_LIB_PATH)
+        # void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m);
+        _LIB.solve_okvs.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64),  # keys
+            ctypes.POINTER(ctypes.c_uint64),  # values (actually pairs of u64, size 2*n)
+            ctypes.POINTER(ctypes.c_uint64),  # output (size 2*m)
+            ctypes.c_uint64,  # n
+            ctypes.c_uint64,  # m
+        ]
 
-# void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m);
-_LIB.solve_okvs.argtypes = [
-    ctypes.POINTER(ctypes.c_uint64),  # keys
-    ctypes.POINTER(ctypes.c_uint64),  # values (actually pairs of u64, size 2*n)
-    ctypes.POINTER(ctypes.c_uint64),  # output (size 2*m)
-    ctypes.c_uint64,  # n
-    ctypes.c_uint64,  # m
-]
-
-# Decode binding
-_LIB.decode_okvs.argtypes = [
-    ctypes.POINTER(ctypes.c_uint64),  # keys
-    ctypes.POINTER(ctypes.c_uint64),  # storage
-    ctypes.POINTER(ctypes.c_uint64),  # decoded_output
-    ctypes.c_uint64,  # n
-    ctypes.c_uint64,  # m
-]
+        # Decode binding
+        _LIB.decode_okvs.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64),  # keys
+            ctypes.POINTER(ctypes.c_uint64),  # storage
+            ctypes.POINTER(ctypes.c_uint64),  # decoded_output
+            ctypes.c_uint64,  # n
+            ctypes.c_uint64,  # m
+        ]
+    except OSError as e:
+        print(f"Warning: Failed to load {_KERNEL_LIB_PATH}: {e}")
+        print("Falling back to pure Python implementation")
+        _LIB = None
 
 
 def test_okvs_flow():
@@ -62,18 +69,25 @@ def test_okvs_flow():
 
     storage = np.zeros((m, 2), dtype=np.uint64)
 
-    keys_ptr = keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
-    vals_ptr = values.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
-    storage_ptr = storage.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+    if _LIB is not None:
+        # Use C++ implementation
+        keys_ptr = keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+        vals_ptr = values.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+        storage_ptr = storage.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
 
-    print(f"Calling solve_okvs n={n}, m={m}")
-    _LIB.solve_okvs(keys_ptr, vals_ptr, storage_ptr, n, m)
+        print(f"Calling C++ solve_okvs n={n}, m={m}")
+        _LIB.solve_okvs(keys_ptr, vals_ptr, storage_ptr, n, m)
 
-    # Verify
-    decoded = np.zeros((n, 2), dtype=np.uint64)
-    dec_ptr = decoded.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+        # Verify
+        decoded = np.zeros((n, 2), dtype=np.uint64)
+        dec_ptr = decoded.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
 
-    _LIB.decode_okvs(keys_ptr, storage_ptr, dec_ptr, n, m)
+        _LIB.decode_okvs(keys_ptr, storage_ptr, dec_ptr, n, m)
+    else:
+        # Use Python fallback
+        print(f"Using Python fallback for OKVS solve n={n}, m={m}")
+        storage = py_kernels.okvs_solve(keys, values, m)
+        decoded = py_kernels.okvs_decode(keys, storage, m)
 
     if np.array_equal(decoded, values):
         print("SUCCESS: Decoded values match inputs!")
@@ -86,7 +100,7 @@ def test_okvs_flow():
         print(
             "First failure:", keys[bad_idx[0]], values[bad_idx[0]], decoded[bad_idx[0]]
         )
-        sys.exit(1)
+        raise AssertionError("OKVS decode verification failed")
 
 
 if __name__ == "__main__":

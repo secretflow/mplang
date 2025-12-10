@@ -235,26 +235,7 @@ class Simulator(InterpContext):
 
     # override
     def evaluate(self, expr: Expr, bindings: dict[str, MPObject]) -> Sequence[MPObject]:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # Case A: Inside an existing loop (e.g., Jupyter)
-            try:
-                import nest_asyncio
-
-                nest_asyncio.apply()
-                return loop.run_until_complete(self._evaluate_async(expr, bindings))
-            except ImportError as e:
-                raise RuntimeError(
-                    "Running in an active event loop (e.g. Jupyter). "
-                    "Please install 'nest_asyncio' or use 'await simulator.evaluate_async(...)'."
-                ) from e
-        else:
-            # Case B: Standard script
-            return asyncio.run(self._evaluate_async(expr, bindings))
+        return asyncio.run(self._evaluate_async(expr, bindings))
 
     async def _evaluate_async(
         self, expr: Expr, bindings: dict[str, MPObject]

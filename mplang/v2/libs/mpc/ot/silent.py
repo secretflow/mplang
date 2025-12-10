@@ -27,6 +27,7 @@ import mplang.v2.dialects.field as field
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
+import mplang.v2.edsl.typing as elt
 import mplang.v2.libs.mpc.vole.gilboa as vole
 
 
@@ -54,17 +55,12 @@ def silent_vole_random_u(
     # We need providers for base_u and base_delta.
 
     def _base_u_provider() -> el.Object:
-        # Random U_base (base_k, 2)
-        u_bytes = crypto.random_bytes(base_k * 16)
-        return cast(
-            el.Object,
-            tensor.run_jax(lambda b: b.view(jnp.uint64).reshape(base_k, 2), u_bytes),
-        )
+        # Random U_base (base_k, 2) using new API
+        return crypto.random_tensor((base_k, 2), elt.u64)
 
     def _base_delta_provider() -> el.Object:
-        # Random Delta (2,)
-        d_bytes = crypto.random_bytes(16)
-        return cast(el.Object, tensor.run_jax(lambda b: b.view(jnp.uint64), d_bytes))
+        # Random Delta (2,) using new API
+        return crypto.random_tensor((2,), elt.u64)
 
     # v_base: (k, 2), w_base: (k, 2)
     # The return type is a Union, mypy complains about unpacking.
@@ -204,7 +200,7 @@ def silent_vole_random_u(
 
         # Use run_jax for concat to enable XLA fusion
         if len(local_res) == 1:
-            return local_res[0]
+            return cast(el.Object, local_res[0])
 
         def _concat_chunks(*chunks: Any) -> Any:
             return jnp.concatenate(chunks, axis=0)

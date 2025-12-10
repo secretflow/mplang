@@ -123,14 +123,8 @@ def iknp_core(
 
     # 1. Base OTs
     def gen_s() -> el.Object:
-        # Generate random bytes at runtime via primitive
-        rand_bytes = crypto.random_bytes(K)  # returns (K,) u8
-
-        # Use JAX for arithmetic operations
-        def _to_bits(x: Any) -> Any:
-            return x % 2
-
-        return cast(el.Object, tensor.run_jax(_to_bits, rand_bytes))
+        # Generate random bits at runtime using new API
+        return crypto.random_bits(K)
 
     s = simp.pcall_static((sender,), gen_s)
 

@@ -419,3 +419,76 @@ def random_bytes(length: int) -> el.Object:
         (length,) uint8 Tensor.
     """
     return random_bytes_p.bind(length=length)
+
+
+def random_tensor(shape: tuple[int, ...], dtype: elt.ScalarType) -> el.Object:
+    """Generate cryptographically secure random tensor at runtime.
+
+    This is a helper function that composes `random_bytes` with `tensor.run_jax`
+    to produce a tensor of the specified shape and dtype.
+
+    Args:
+        shape: Output tensor shape (e.g., (100,) or (10, 16)).
+        dtype: Element type (e.g., elt.u64, elt.i32, elt.f32).
+
+    Returns:
+        Tensor[dtype, shape] with CSPRNG values.
+
+    Example:
+        >>> # Generate 100 random uint64 values
+        >>> x = crypto.random_tensor((100,), elt.u64)
+        >>> # Generate 10x16 random int32 matrix
+        >>> y = crypto.random_tensor((10, 16), elt.i32)
+    """
+    import math
+    from typing import Any, cast
+
+    from mplang.v2.dialects import dtypes, tensor
+
+    # Get byte size from numpy dtype
+    np_dtype = dtypes.to_numpy(dtype)
+    element_bytes = np_dtype.itemsize
+    total_elements = math.prod(shape)
+    total_bytes = total_elements * element_bytes
+
+    raw = random_bytes(total_bytes)
+
+    jax_dtype = dtypes.to_jax(dtype)
+
+    def _view_reshape(b: Any) -> Any:
+        return b.view(jax_dtype).reshape(shape)
+
+    return cast(el.Object, tensor.run_jax(_view_reshape, raw))
+
+
+def random_bits(n: int) -> el.Object:
+    """Generate n cryptographically secure random bits at runtime.
+
+    Each bit is stored as a uint8 with value 0 or 1 (unpacked representation).
+
+    Args:
+        n: Number of random bits to generate.
+
+    Returns:
+        (n,) uint8 Tensor with values 0 or 1.
+
+    Example:
+        >>> # Generate 1024 random bits for OT selection
+        >>> choice_bits = crypto.random_bits(1024)
+    """
+    from typing import Any, cast
+
+    import jax.numpy as jnp
+
+    from mplang.v2.dialects import tensor
+
+    # Generate enough bytes to cover n bits
+    num_bytes = (n + 7) // 8
+    raw = random_bytes(num_bytes)
+
+    def _unpack_and_slice(b: Any, n: int = n) -> Any:
+        bits = jnp.unpackbits(b, bitorder="little")
+        return bits[:n]
+
+    return cast(el.Object, tensor.run_jax(_unpack_and_slice, raw))
+

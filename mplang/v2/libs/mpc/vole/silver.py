@@ -48,6 +48,7 @@ import mplang.v2.dialects.field as field
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
+import mplang.v2.edsl.typing as elt
 import mplang.v2.libs.mpc.ot.extension as ot
 from mplang.v2.libs.mpc.vole import ldpc
 
@@ -153,22 +154,12 @@ def silver_vole(
     from mplang.v2.libs.mpc.vole import gilboa
 
     def _u_base_provider() -> el.Object:
-        # Generate random u_base using cryptographic randomness
-        rand_bytes = crypto.random_bytes(base_k * 16)  # base_k * 16 bytes for (base_k, 2) u64
-
-        def _reshape(b: Any) -> Any:
-            return b.view(jnp.uint64).reshape(base_k, 2)
-
-        return cast(el.Object, tensor.run_jax(_reshape, rand_bytes))
+        # Generate random u_base using new API
+        return crypto.random_tensor((base_k, 2), elt.u64)
 
     def _delta_provider() -> el.Object:
-        # Generate random delta using cryptographic randomness
-        rand_bytes = crypto.random_bytes(16)  # 16 bytes for (2,) u64
-
-        def _reshape(b: Any) -> Any:
-            return b.view(jnp.uint64)
-
-        return cast(el.Object, tensor.run_jax(_reshape, rand_bytes))
+        # Generate random delta using new API
+        return crypto.random_tensor((2,), elt.u64)
 
     v_base, w_base, u_base, delta = gilboa.vole(  # type: ignore[misc]
         sender, receiver, base_k,

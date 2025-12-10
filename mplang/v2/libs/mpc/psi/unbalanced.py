@@ -41,6 +41,7 @@ import mplang.v2.dialects.field as field
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
+import mplang.v2.edsl.typing as elt
 from mplang.v2.libs.mpc.psi.sparse_okvs import get_okvs_expansion
 
 
@@ -93,15 +94,8 @@ def psi_unbalanced(
     # Generate 16 bytes (128-bit) of cryptographically secure random data
     # AT RUNTIME on the Server party (not during trace!)
     def _gen_runtime_seed() -> Any:
-        # crypto.random_bytes is an EDSL primitive that generates random bytes
-        # at runtime on the executing party
-        rand_bytes = crypto.random_bytes(16)  # 16 bytes = 128 bits
-
-        # Convert (16,) uint8 to (2,) uint64
-        def _to_u64(b: Any) -> Any:
-            return b.view(jnp.uint64)
-
-        return tensor.run_jax(_to_u64, rand_bytes)
+        # Use new API: directly generate (2,) u64 tensor
+        return crypto.random_tensor((2,), elt.u64)
 
     server_seed = simp.pcall_static((server,), _gen_runtime_seed)
 

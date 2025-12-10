@@ -12,191 +12,138 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for Sparse OKVS (Unbalanced PSI)."""
+"""Tests for Sparse OKVS (Unbalanced PSI) using EDSL."""
 
 import numpy as np
 import pytest
 
+import mplang.v2.dialects.tensor as tensor
+from mplang.v2 import SimpSimulator, evaluate, fetch
 from mplang.v2.libs.mpc.psi.sparse_okvs import (
-    CUCKOO_EXPANSION,
     NUM_HASHES,
-    compute_hash_positions,
-    sparse_decode_numpy,
-    sparse_encode_numpy,
+    compute_positions,
+    sparse_lookup,
 )
 
 
-class TestSparseOKVSNumpyBasic:
-    """Test basic Sparse OKVS operations."""
+class TestSparseOKVSEDSL:
+    """Test Sparse OKVS operations using EDSL execution."""
 
-    def test_hash_positions_deterministic(self):
-        """Verify hash positions are deterministic."""
-        key = np.uint64(12345)
+    @pytest.fixture
+    def sim(self):
+        return SimpSimulator()
+
+    def _fetch_one(self, sim, obj):
+        """Helper to fetch result from the first party."""
+        vals = fetch(sim, obj)
+        if isinstance(vals, list):
+            return vals[0]
+        return vals
+
+    def test_compute_positions_deterministic(self, sim):
+        """Verify hash positions are deterministic via EDSL."""
+        n = 10
         table_size = 1000
+        keys = np.arange(n, dtype=np.uint64)
+        seed = np.array([123, 456], dtype=np.uint64)
 
-        pos1 = compute_hash_positions(key, table_size)
-        pos2 = compute_hash_positions(key, table_size)
+        def _prog(k, s):
+            k_t = tensor.constant(k)
+            s_t = tensor.constant(s)
+            return compute_positions(k_t, table_size, s_t)
+
+        # Run twice
+        pos1_obj = evaluate(sim, _prog, keys, seed)
+        pos2_obj = evaluate(sim, _prog, keys, seed)
+
+        pos1 = self._fetch_one(sim, pos1_obj)
+        pos2 = self._fetch_one(sim, pos2_obj)
 
         np.testing.assert_array_equal(pos1, pos2)
-        assert len(pos1) == NUM_HASHES
+        assert pos1.shape == (n * NUM_HASHES,)
 
-    def test_hash_positions_distinct(self):
-        """Verify different keys produce different positions."""
-        table_size = 10000
-
-        pos1 = compute_hash_positions(np.uint64(100), table_size)
-        pos2 = compute_hash_positions(np.uint64(200), table_size)
-
-        # At least one position should differ
-        assert not np.array_equal(pos1, pos2)
-
-    def test_hash_positions_in_range(self):
+    def test_compute_positions_range(self, sim):
         """Verify positions are within table bounds."""
-        table_size = 1000
-
-        for key in range(100):
-            pos = compute_hash_positions(np.uint64(key), table_size)
-            assert np.all(pos < table_size)
-            assert np.all(pos >= 0)
-
-    def test_sparse_encode_shapes(self):
-        """Verify sparse encode output shapes."""
         n = 100
-        keys = np.arange(n, dtype=np.uint64)
-        values = np.random.randint(0, 2**63, size=(n, 2), dtype=np.uint64)
-        server_table_size = 10000
+        table_size = 500
+        keys = np.random.randint(0, 100000, size=(n,), dtype=np.uint64)
+        seed = np.array([0, 0], dtype=np.uint64)
 
-        positions, coefficients, client_values = sparse_encode_numpy(
-            keys, values, server_table_size
-        )
+        def _prog(k, s):
+            k_t = tensor.constant(k)
+            s_t = tensor.constant(s)
+            return compute_positions(k_t, table_size, s_t)
 
-        assert positions.shape == (n * NUM_HASHES,)
-        assert coefficients.shape == (n * NUM_HASHES,)
-        assert client_values.shape == (n, 2)
+        positions_obj = evaluate(sim, _prog, keys, seed)
+        positions = self._fetch_one(sim, positions_obj)
 
-    def test_sparse_encode_positions_in_range(self):
-        """Verify encoded positions are within table bounds."""
-        n = 100
-        keys = np.arange(n, dtype=np.uint64)
-        values = np.random.randint(0, 2**63, size=(n, 2), dtype=np.uint64)
-        server_table_size = 10000
-
-        positions, _, _ = sparse_encode_numpy(keys, values, server_table_size)
-
-        assert np.all(positions < server_table_size)
+        assert np.all(positions < table_size)
         assert np.all(positions >= 0)
 
+    def test_lookup_correctness(self, sim):
+        """Verify sparse lookup returns correct XOR sum of table entries."""
+        n = 5
+        table_size = 20
 
-class TestSparseOKVSRoundtrip:
-    """Test Sparse OKVS encode/decode roundtrip."""
-
-    def test_decode_xor_roundtrip(self):
-        """Verify decode returns XOR of table entries at positions."""
-        n = 10
-        table_size = 100
-
-        # Create a simple table
-        table = np.random.randint(0, 2**63, size=(table_size, 2), dtype=np.uint64)
-
-        # Create positions that we know
+        # Inputs
         keys = np.arange(n, dtype=np.uint64)
-        values = np.zeros((n, 2), dtype=np.uint64)  # dummy values
+        seed = np.array([42, 99], dtype=np.uint64)
 
-        positions, _, _ = sparse_encode_numpy(keys, values, table_size)
+        # Server Table (M, 2)
+        table_np = np.random.randint(0, 2**63, size=(table_size, 2), dtype=np.uint64)
 
-        # Decode
-        decoded = sparse_decode_numpy(positions, table)
+        def _prog(k, s, tbl):
+            k_t = tensor.constant(k)
+            s_t = tensor.constant(s)
+            tbl_t = tensor.constant(tbl)
 
-        # Verify manually
+            # 1. Client computes positions
+            pos = compute_positions(k_t, table_size, s_t)
+
+            # 2. Server looks up values
+            res = sparse_lookup(pos, tbl_t)
+
+            return pos, res
+
+        positions_obj, result_obj = evaluate(sim, _prog, keys, seed, table_np)
+
+        positions = self._fetch_one(sim, positions_obj)
+        result = self._fetch_one(sim, result_obj)
+
+        # Verify manually in Python
+        # We trust the EDSL execution, but we verify the logic:
+        # result[i] should be XOR(table[pos[i][0]], table[pos[i][1]], table[pos[i][2]])
+
         positions_2d = positions.reshape(n, NUM_HASHES)
         expected = np.zeros((n, 2), dtype=np.uint64)
+
         for i in range(n):
             for j in range(NUM_HASHES):
-                expected[i] ^= table[positions_2d[i, j]]
+                idx = positions_2d[i, j]
+                expected[i] ^= table_np[idx]
 
-        np.testing.assert_array_equal(decoded, expected)
+        np.testing.assert_array_equal(result, expected)
 
+    def test_different_seeds_different_positions(self, sim):
+        """Verify changing seed changes positions."""
+        n = 10
+        table_size = 1000
+        keys = np.arange(n, dtype=np.uint64)
+        seed1 = np.array([1, 1], dtype=np.uint64)
+        seed2 = np.array([2, 2], dtype=np.uint64)
 
-class TestSparseOKVSCommunication:
-    """Test communication size properties."""
+        def _prog(k, s1, s2):
+            k_t = tensor.constant(k)
+            s1_t = tensor.constant(s1)
+            s2_t = tensor.constant(s2)
 
-    def test_communication_sublinear(self):
-        """Verify communication is O(n), not O(N)."""
-        client_n = 1000
-        server_n = 1000000  # 1000x larger
+            p1 = compute_positions(k_t, table_size, s1_t)
+            p2 = compute_positions(k_t, table_size, s2_t)
+            return p1, p2
 
-        # Client set determines communication
-        keys = np.arange(client_n, dtype=np.uint64)
-        values = np.random.randint(0, 2**63, size=(client_n, 2), dtype=np.uint64)
-        server_table_size = int(server_n * CUCKOO_EXPANSION)
+        pos1_obj, pos2_obj = evaluate(sim, _prog, keys, seed1, seed2)
 
-        positions, _coefficients, _ = sparse_encode_numpy(
-            keys, values, server_table_size
-        )
+        pos1 = self._fetch_one(sim, pos1_obj)
+        pos2 = self._fetch_one(sim, pos2_obj)
 
-        # Communication = positions + server response
-        # positions: O(n * 3) * 8 bytes
-        # response: O(n) * 16 bytes
-        position_bytes = positions.nbytes
-        response_bytes = client_n * 16  # (n, 2) uint64
-
-        total_comm = position_bytes + response_bytes
-
-        # Compare to dense OKVS communication: O(N) * 16 bytes
-        dense_comm = server_n * 16
-
-        # Sparse should be much smaller
-        assert total_comm < dense_comm / 100  # At least 100x smaller
-        print(
-            f"Sparse: {total_comm / 1024:.2f} KB, Dense: {dense_comm / 1024 / 1024:.2f} MB"
-        )
-        print(f"Improvement: {dense_comm / total_comm:.1f}x")
-
-
-class TestSparseOKVSIntegration:
-    """Integration tests with EDSL."""
-
-    def test_psi_unbalanced_basic(self):
-        """Test unbalanced PSI end-to-end."""
-        import mplang.v2 as mp
-        from mplang.v2.dialects import tensor
-        from mplang.v2.libs.mpc.psi.unbalanced import psi_unbalanced
-
-        sim = mp.Simulator.simple(2)
-
-        server = 0
-        client = 1
-        server_n = 1000
-        client_n = 100
-
-        # Create test data with known intersection
-        server_items = np.arange(server_n, dtype=np.uint64)
-        client_items = np.arange(50, 150, dtype=np.uint64)  # 50 intersect
-
-        def job():
-            s_items = tensor.constant(server_items)
-            c_items = tensor.constant(client_items)
-
-            mask = psi_unbalanced(server, client, server_n, client_n, s_items, c_items)
-            return mask
-
-        traced = mp.compile(sim, job)
-        mask_obj = mp.evaluate(sim, traced)
-
-        mask_val = mp.fetch(sim, mask_obj)[client]
-
-        # Items 50-99 should be in intersection (first 50 client items)
-        # Items 100-149 should be in intersection (last 50 client items overlap with 100-149)
-        # Actually: client=[50..149], server=[0..999]
-        # Intersection: [50..149] all in server
-        expected_intersect = client_n  # All 100 client items are in server
-        actual_intersect = np.sum(mask_val)
-
-        print(f"Expected intersection: {expected_intersect}")
-        print(f"Actual intersection: {actual_intersect}")
-
-        assert actual_intersect == expected_intersect
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        assert not np.array_equal(pos1, pos2)

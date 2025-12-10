@@ -61,12 +61,6 @@ def psi_intersect(
     if n <= 0:
         raise ValueError(f"Input size n must be positive, got {n}.")
 
-    # Auto-lift inputs to Objects if they are raw values (for Eager execution)
-    if not isinstance(sender_items, el.Object):
-        sender_items = tensor.constant(sender_items)
-    if not isinstance(receiver_items, el.Object):
-        receiver_items = tensor.constant(receiver_items)
-
     # 1. Parameter Setup
     # OKVS Size M = expansion * N, where expansion is dynamically chosen
     # based on N (larger N allows smaller expansion, saving communication)
@@ -93,14 +87,6 @@ def psi_intersect(
         # y: (N,), w: (M, 2), delta: (2,)
         # Encode: P = Solve(y, H(y))
         # Need H(y).
-
-        # Helper: Hash items
-        def _prep_to_bytes(items: Any) -> Any:
-            # items: (N,) u64.
-            # Convert to bytes
-            return items.view(jnp.uint8)  # (N, 8) (assuming le)
-
-        tensor.run_jax(_prep_to_bytes, y)
 
         # Implement Davies-Meyer construction: H(x) = E_x(0) ^ x
         # This provides a robust random oracle construction from AES-128
@@ -161,11 +147,6 @@ def psi_intersect(
 
         # Helper: Hash items
         # Use Davies-Meyer: H(x) = E_x(0) ^ x
-        def _prep_to_bytes(items: Any) -> Any:
-            return items.view(jnp.uint8)
-
-        # items_bytes = tensor.run_jax(_prep_to_bytes, x) # Not needed for DM construction below
-
         def _reshape_seeds(items: Any) -> Any:
             lo = items
             hi = jnp.zeros_like(items)

@@ -18,15 +18,15 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from mplang.v1.core import (
+    builtin_function,
     Mask,
     MPObject,
+    peval,
     Rank,
     ScalarType,
     Shape,
     TableLike,
     TensorLike,
-    builtin_function,
-    peval,
 )
 from mplang.v1.ops import basic, jax_cc, nnx_cc, sql_cc
 from mplang.v1.ops.base import FeOperation
@@ -305,7 +305,7 @@ def run_nnx(nnx_fn: Callable, *args: Any, **kwargs: Any) -> Any:
         Argument binding semantics with respect to NNX static arguments:
 
         - If an argument (or any leaf within a PyTree argument) is an
-          :class:`~mplang.core.mpobject.MPObject`, it is captured as a runtime
+          :class:`~mplana.v1.core.mpobject.MPObject`, it is captured as a runtime
           variable (dynamic value) in the traced program and is not treated as a
           NNX static argument.
         - If an argument contains no :class:`MPObject` leaves, it is treated as a

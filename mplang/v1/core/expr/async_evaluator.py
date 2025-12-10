@@ -35,7 +35,6 @@ from mplang.v1.core.expr.ast import (
     WhileExpr,
 )
 from mplang.v1.core.expr.evaluator import EvalSemantic
-from mplang.v1.core.expr.visitor import AsyncExprVisitor
 from mplang.v1.core.expr.walk import walk_dataflow
 from mplang.v1.core.mask import Mask
 from mplang.v1.core.pfunc import PFunction
@@ -47,12 +46,14 @@ from mplang.v1.kernels.value import Value
 class AsyncEvalSemantic(EvalSemantic):
     """Async version of EvalSemantic.
 
-    Reuses pure computation logic from EvalSemantic but overrides I/O bound methods
-    to use IAsyncCommunicator.
+    Reuses pure computation logic from EvalSemantic
     """
 
-    comm: IAsyncCommunicator  # Override type hint
     executor: Executor | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.comm, IAsyncCommunicator):
+            raise TypeError("AsyncEvalSemantic requires an IAsyncCommunicator instance")
 
     async def _exec_pfunc_async(self, pfunc: PFunction, args: list[Any]) -> list[Any]:
         # Check if any args are None - if so, this rank shouldn't participate
@@ -215,100 +216,6 @@ class AsyncEvalSemantic(EvalSemantic):
                 if isinstance(arr, np.ndarray) and arr.size == 1:
                     return int(arr.item())
         return None
-
-
-class AsyncRecursiveEvaluator(AsyncExprVisitor):
-    """Original async evaluator using recursive visitor pattern.
-
-    This evaluator can cause stack overflow with deeply nested control flow.
-    Kept for reference and fallback.
-    """
-
-    def __init__(self, semantic: AsyncEvalSemantic):
-        self.semantic = semantic
-
-    def _first(self, vals: list[Any]) -> Any:
-        if not isinstance(vals, list):
-            return vals
-        if len(vals) == 0:
-            return None
-        return vals[0]
-
-    async def evaluate(self, expr: Expr, env: dict[str, Any] | None = None) -> Any:
-        evaluation_env = env if env is not None else self.semantic.env
-        return await expr.accept_async(self, evaluation_env)
-
-    async def visit_cond(self, expr: CondExpr, env: dict[str, Any]) -> Any:
-        pred_res = await expr.pred.accept_async(self, env)
-        pred = self._first(pred_res)
-
-        args_results = await self._spawn_and_gather(expr.args, env)
-        flat_args = [self._first(res) for res in args_results]
-
-        if expr.verify_uniform:
-            await self.semantic._verify_uniform_predicate_async(pred)
-
-        if isinstance(pred, Value):
-            pred_bool = pred.to_bool()
-        else:
-            pred_bool = bool(self.semantic._unwrap_value(pred))
-
-        if pred_bool:
-            new_env = {**env, **dict(zip(expr.then_fn.params, flat_args, strict=True))}
-            res = await expr.then_fn.body.accept_async(self, new_env)
-        else:
-            new_env = {**env, **dict(zip(expr.else_fn.params, flat_args, strict=True))}
-            res = await expr.else_fn.body.accept_async(self, new_env)
-        return res
-
-    async def visit_call(self, expr: CallExpr, env: dict[str, Any]) -> Any:
-        args_results = await self._spawn_and_gather(expr.args, env)
-        flat_args = [self._first(res) for res in args_results]
-        # Bind arguments
-        new_env = {**env, **dict(zip(expr.fn.params, flat_args, strict=True))}
-        res = await expr.fn.body.accept_async(self, new_env)
-        return res
-
-    async def visit_while(self, expr: WhileExpr, env: dict[str, Any]) -> Any:
-        curr_vals_results = await self._spawn_and_gather(expr.args, env)
-        curr_vals = [self._first(res) for res in curr_vals_results]
-
-        # Determine split between state and captures
-        num_state = expr.body_fn.num_outputs
-
-        # Initial state and captures
-        curr_state = curr_vals[:num_state]
-        captures = curr_vals[num_state:]
-
-        while True:
-            # Reconstruct full arguments: state + captures
-            full_args = curr_state + captures
-
-            # Check condition
-            cond_env = {**env, **dict(zip(expr.cond_fn.params, full_args, strict=True))}
-            cond_res = await expr.cond_fn.body.accept_async(self, cond_env)
-
-            # Validate condition
-            cond_val = self.semantic._check_while_predicate(cond_res)
-
-            if not cond_val:
-                break
-
-            # Execute body
-            body_env = {**env, **dict(zip(expr.body_fn.params, full_args, strict=True))}
-            body_res = await expr.body_fn.body.accept_async(self, body_env)
-
-            # Update state - body_res is already a list
-            curr_state = body_res
-
-        return curr_state
-
-    async def _spawn_and_gather(
-        self, exprs: list[Expr], env: dict[str, Any]
-    ) -> list[Any]:
-        """Spawn async tasks for multiple expressions and gather results."""
-        tasks = [expr.accept_async(self, env) for expr in exprs]
-        return await asyncio.gather(*tasks)
 
 
 class AsyncIterativeEvaluator(AsyncEvalSemantic):

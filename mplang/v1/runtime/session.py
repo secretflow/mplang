@@ -195,7 +195,6 @@ class Session:
             spu_addrs: list[str] = []
             for r, addr in enumerate(self.cluster_spec.endpoints):
                 if r in self.spu_mask:
-                    # TODO(oeqqwq): addr may contain other schema like grpc://
                     if not addr.startswith(("http://", "https://")):
                         addr = f"http://{addr}"
                     parsed = urlparse(addr)

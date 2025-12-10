@@ -40,8 +40,6 @@ from mplang.v1.core import (
 from mplang.v1.core.async_comm import AsyncThreadCommunicator
 from mplang.v1.core.expr.ast import Expr
 from mplang.v1.core.expr.async_evaluator import (
-    AsyncEvalSemantic,
-    AsyncRecursiveEvaluator,
     AsyncIterativeEvaluator,
 )
 from mplang.v1.core.expr.evaluator import IEvaluator

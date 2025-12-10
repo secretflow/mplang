@@ -42,7 +42,7 @@ import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
-from mplang.v2.libs.mpc.psi.sparse_okvs import get_okvs_expansion
+from mplang.v2.libs.mpc.psi.okvs_gct import get_okvs_expansion
 
 
 def psi_unbalanced(

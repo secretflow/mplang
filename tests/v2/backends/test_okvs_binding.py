@@ -57,7 +57,7 @@ if os.path.exists(_KERNEL_LIB_PATH):
         _LIB = None
 
 
-def test_okvs_flow():
+def test_okvs_flow() -> None:
     # Use larger N to stress Peeling
     n = 100
     m = int(n * 1.6)  # Safer for small N (expected 1.23 for large N)

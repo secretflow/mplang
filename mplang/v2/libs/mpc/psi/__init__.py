@@ -15,15 +15,16 @@
 """Private Set Intersection (PSI) protocols.
 
 Submodules:
-- okvs: VOLE-masked PSI
+- rr22: VOLE-masked PSI protocol (formerly okvs.py)
 - unbalanced: Unbalanced PSI (O(n) communication)
 - oprf: KKRT OPRF protocol
 - cuckoo: Cuckoo hashing
-- sparse_okvs: Sparse OKVS data structure
+- okvs_gct: Sparse OKVS data structure (Garbled Cuckoo Table)
+- okvs: OKVS Abstract Base Class
 """
 
-from .okvs import psi_intersect
 from .oprf import eval_oprf, sender_eval_prf, sender_eval_prf_batch
+from .rr22 import psi_intersect
 from .unbalanced import psi_unbalanced
 
 # Alias for backward compatibility

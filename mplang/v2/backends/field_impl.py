@@ -24,8 +24,8 @@ from __future__ import annotations
 import ctypes
 import os
 import threading
-# print("DEBUG: Importing field_impl.py")
 
+# print("DEBUG: Importing field_impl.py")
 import jax.numpy as jnp
 import numpy as np
 

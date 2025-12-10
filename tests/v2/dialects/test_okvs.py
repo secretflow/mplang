@@ -19,7 +19,7 @@ import mplang.v2.dialects.field as field
 from mplang.v2.dialects import tensor
 
 
-def test_okvs_edsl():
+def test_okvs_edsl() -> None:
     n = 100
     m = int(n * 1.6)
 

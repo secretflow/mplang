@@ -19,7 +19,7 @@ import pytest
 
 import mplang.v2.dialects.tensor as tensor
 from mplang.v2 import SimpSimulator, evaluate, fetch
-from mplang.v2.libs.mpc.psi.sparse_okvs import SparseOKVS, get_okvs_expansion
+from mplang.v2.libs.mpc.psi.okvs_gct import SparseOKVS, get_okvs_expansion
 
 
 class TestSparseOKVSEDSL:
@@ -54,11 +54,11 @@ class TestSparseOKVSEDSL:
             k_t = tensor.constant(k)
             v_t = tensor.constant(v)
             s_t = tensor.constant(s)
-            
+
             okvs = SparseOKVS(m)
             storage = okvs.encode(k_t, v_t, s_t)
             recovered = okvs.decode(k_t, storage, s_t)
-            
+
             return recovered
 
         recovered_obj = evaluate(sim, _prog, keys, values, seed)
@@ -72,7 +72,7 @@ class TestSparseOKVSEDSL:
         m = int(n * 1.5)
         keys = np.arange(n, dtype=np.uint64)
         values = np.random.randint(0, 2**63, size=(n, 2), dtype=np.uint64)
-        
+
         seed1 = np.array([1, 1], dtype=np.uint64)
         seed2 = np.array([2, 2], dtype=np.uint64)
 
@@ -81,17 +81,17 @@ class TestSparseOKVSEDSL:
             v_t = tensor.constant(v)
             s1_t = tensor.constant(s1)
             s2_t = tensor.constant(s2)
-            
+
             okvs = SparseOKVS(m)
-            
+
             # Encode with different seeds
             store1 = okvs.encode(k_t, v_t, s1_t)
             store2 = okvs.encode(k_t, v_t, s2_t)
-            
+
             # Decode to verify correctness
             rec1 = okvs.decode(k_t, store1, s1_t)
             rec2 = okvs.decode(k_t, store2, s2_t)
-            
+
             return store1, store2, rec1, rec2
 
         res = evaluate(sim, _prog, keys, values, seed1, seed2)
@@ -99,7 +99,7 @@ class TestSparseOKVSEDSL:
 
         # Storages should be different
         assert not np.array_equal(store1, store2)
-        
+
         # Recovered values should match original
         np.testing.assert_array_equal(rec1, values)
         np.testing.assert_array_equal(rec2, values)

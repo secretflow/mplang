@@ -69,9 +69,7 @@ def prg_expand(seed_tensor: el.Object, length: int) -> el.Object:
     return cast(el.Object, tensor.run_jax(_blocks_to_bits, expanded_blocks))
 
 
-def vec_hash(
-    data_bytes: el.Object, domain_sep: int, num_rows: int
-) -> el.Object:
+def vec_hash(data_bytes: el.Object, domain_sep: int, num_rows: int) -> el.Object:
     """Hash rows of a (N, D) tensor independently.
 
     Args:
@@ -84,6 +82,7 @@ def vec_hash(
     # 2. Call crypto.hash_bytes once on the whole tensor
 
     if domain_sep != 0:
+
         def _prepend_ds(arr: Any, ds: int) -> Any:
             # arr: (N, D)
             N = arr.shape[0]
@@ -217,7 +216,9 @@ def iknp_core(
             sk1 = crypto.hash_bytes(crypto.ec_point_to_bytes(K1_point))
 
             # Extract row i and encrypt in single run_jax block
-            def _slice_and_enc(m0_full: Any, m1_full: Any, k0: Any, k1: Any, idx: int = i) -> tuple[Any, Any]:
+            def _slice_and_enc(
+                m0_full: Any, m1_full: Any, k0: Any, k1: Any, idx: int = i
+            ) -> tuple[Any, Any]:
                 # Slice row i and reshape to (32,)
                 m0_row = m0_full[idx].flatten()
                 m1_row = m1_full[idx].flatten()
@@ -264,7 +265,9 @@ def iknp_core(
             sk = crypto.hash_bytes(crypto.ec_point_to_bytes(SharedK))
 
             # Combined slice + decrypt + reshape in single run_jax
-            def _slice_dec_reshape(s_arr: Any, k: Any, c0_: Any, c1_: Any, idx: int = i) -> Any:
+            def _slice_dec_reshape(
+                s_arr: Any, k: Any, c0_: Any, c1_: Any, idx: int = i
+            ) -> Any:
                 sel = s_arr[idx]
                 chosen_c = jnp.where(sel == 0, c0_, c1_)
                 result = jnp.bitwise_xor(chosen_c, k)
@@ -318,7 +321,9 @@ def iknp_core(
             t_rows = jnp.bitwise_xor(g, term)
             return jnp.transpose(t_rows, (1, 0))  # (N, K)
 
-        return cast(el.Object, tensor.run_jax(_recover_and_transpose, g_k_s, u_loc, s_loc))
+        return cast(
+            el.Object, tensor.run_jax(_recover_and_transpose, g_k_s, u_loc, s_loc)
+        )
 
     t_matrix = simp.pcall_static((sender,), calc_t, k_s, u_recv, s)
 
@@ -360,12 +365,12 @@ def transfer_extension(
         # H(t) and H(t^s)
         # We use domain_sep=1 for IKNP payload masking
         h_t = vec_hash(t_loc, domain_sep=1, num_rows=num_ots)
-       
+
         def _xor_s_and_hash(t: Any, s: Any) -> Any:
             t_xor_s = jnp.bitwise_xor(t, s)
             return t_xor_s
 
-        # We need to compute H(t^s). We can't easily do it in one block with vec_hash 
+        # We need to compute H(t^s). We can't easily do it in one block with vec_hash
         # unless we compute t^s first.
         t_xor_s_loc = cast(el.Object, tensor.run_jax(_xor_s_and_hash, t_loc, s_loc))
         h_t_xor_s = vec_hash(t_xor_s_loc, domain_sep=1, num_rows=num_ots)
@@ -373,17 +378,17 @@ def transfer_extension(
         def _enc(ht: Any, hts: Any, msg0: Any, msg1: Any) -> Any:
             # ht, hts are mapped to (N, 32) bytes usually, or whatever vec_hash returns
             # msg0, msg1 are (N, D) bytes
-            
+
             # Ensure shapes match for XOR
             # vec_hash returns (N, 32)
             # If messages are not 32 bytes, we might need to adjust or truncation?
             # Standard IKNP assumes messages are block size (128 bit = 16 bytes).
             # But vec_hash produces 32 bytes (SHA256 usually).
             # We slice hash to message length.
-            
+
             # msg0 shape: (N, 16) usually
             d = msg0.shape[1]
-            
+
             ht_sliced = ht[:, :d]
             hts_sliced = hts[:, :d]
 
@@ -391,9 +396,7 @@ def transfer_extension(
             c1 = jnp.bitwise_xor(msg1, hts_sliced)
             return c0, c1
 
-        return cast(
-            el.Object, tensor.run_jax(_enc, h_t, h_t_xor_s, m0_loc, m1_loc)
-        )
+        return cast(el.Object, tensor.run_jax(_enc, h_t, h_t_xor_s, m0_loc, m1_loc))
 
     ciphertexts = simp.pcall_static((sender,), encrypt_msgs, t_matrix, s, m0, m1)
 
@@ -415,7 +418,7 @@ def transfer_extension(
             # hq: (N, 32)
             d = ct0.shape[1]
             hq_sliced = hq[:, :d]
-            
+
             m0_cand = jnp.bitwise_xor(ct0, hq_sliced)
             m1_cand = jnp.bitwise_xor(ct1, hq_sliced)
             r_exp = jnp.expand_dims(r, axis=-1)

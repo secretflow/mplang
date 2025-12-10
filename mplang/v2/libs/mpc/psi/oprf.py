@@ -25,7 +25,7 @@ from typing import Any, cast
 import jax.numpy as jnp
 
 import mplang.v2.edsl as el
-from mplang.v2.dialects import crypto, simp, tensor
+from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc.ot import extension as ot_extension
 
 
@@ -298,12 +298,13 @@ def sender_eval_prf(
             return packed.reshape(1, 16)
 
         raw_out_batch = cast(el.Object, tensor.run_jax(_compute, key, cand))
-        
+
         # Use batched hash with num_rows=1
-        hashed_batch = ot_extension.vec_hash(raw_out_batch, domain_sep=0x0CDF, num_rows=1)
+        hashed_batch = ot_extension.vec_hash(
+            raw_out_batch, domain_sep=0x0CDF, num_rows=1
+        )
 
         # Flatten back to (32,) using slice to avoid extra run_jax node
         return tensor.slice_tensor(hashed_batch, (0, 0), (32,))
 
     return cast(el.Object, simp.pcall_static((sender,), _eval, sender_key, candidate))
-

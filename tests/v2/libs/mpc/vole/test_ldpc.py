@@ -27,16 +27,16 @@ from mplang.v2.libs.mpc.vole.ldpc import (
 
 def ldpc_encode_numpy(message: np.ndarray, H: sp.csr_matrix) -> np.ndarray:
     """Compute syndrome S = H * message using NumPy (test utility).
-    
+
     Args:
         message: Message vector of shape (n,) or (n, 2)
         H: LDPC parity check matrix of shape (m, n)
-        
+
     Returns:
         Syndrome vector of shape (m,) or (m, 2)
     """
-    m, n = H.shape
-    
+    m, _n = H.shape
+
     if message.ndim == 1:
         # Binary case: S = H @ message mod 2
         syndrome = (H @ message.astype(np.int64)) % 2

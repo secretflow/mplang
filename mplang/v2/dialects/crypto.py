@@ -441,7 +441,7 @@ def random_tensor(shape: tuple[int, ...], dtype: elt.ScalarType) -> el.Object:
         >>> y = crypto.random_tensor((10, 16), elt.i32)
     """
     import math
-    from typing import Any, cast
+    from typing import cast
 
     from mplang.v2.dialects import dtypes, tensor
 
@@ -476,7 +476,7 @@ def random_bits(n: int) -> el.Object:
         >>> # Generate 1024 random bits for OT selection
         >>> choice_bits = crypto.random_bits(1024)
     """
-    from typing import Any, cast
+    from typing import cast
 
     import jax.numpy as jnp
 
@@ -491,4 +491,3 @@ def random_bits(n: int) -> el.Object:
         return bits[:n]
 
     return cast(el.Object, tensor.run_jax(_unpack_and_slice, raw))
-

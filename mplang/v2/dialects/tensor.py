@@ -1103,7 +1103,7 @@ def bitcast(x: el.Object, dtype: elt.ScalarType) -> el.Object:
         >>> # Tensor[u64, (10, 2)] -> Tensor[u8, (10, 16)]
         >>> unpacked = tensor.bitcast(u64_tensor, elt.u8)
     """
-    from typing import cast, Any
+    from typing import cast
 
     jax_dtype = dtypes.to_jax(dtype)
 

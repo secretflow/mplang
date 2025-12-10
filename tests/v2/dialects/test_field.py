@@ -46,4 +46,3 @@ def test_field_mul_integration():
 
 if __name__ == "__main__":
     test_field_mul_integration()
-

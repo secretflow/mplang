@@ -78,7 +78,12 @@ def _decode_okvs_ae(
 
 @ldpc_encode_p.def_abstract_eval
 def _ldpc_encode_ae(
-    message: elt.TensorType, indices: elt.TensorType, indptr: elt.TensorType, *, m: int, n: int
+    message: elt.TensorType,
+    indices: elt.TensorType,
+    indptr: elt.TensorType,
+    *,
+    m: int,
+    n: int,
 ) -> elt.TensorType:
     # message: (K, 2)
     # output: (M, 2) (usually N, 2 in silver context where M=N)
@@ -127,14 +132,14 @@ def ldpc_encode(
     message: el.Object, h_indices: el.Object, h_indptr: el.Object, m: int, n: int
 ) -> el.Object:
     """Compute S = H * M using Sparse Matrix Multiplication kernel.
-    
+
     Args:
         message: (N, 2) or (K, 2) input vector.
         h_indices: CSR indices.
         h_indptr: CSR indptr.
         m: Number of rows in H (Output size).
         n: Number of cols in H (Input size).
-    
+
     Returns:
         (M, 2) output vector.
     """

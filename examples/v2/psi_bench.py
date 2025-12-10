@@ -131,7 +131,7 @@ def benchmark_okvs_psi(n_items):
         h_y = tensor.run_jax(_reshape, h_y_expanded)
 
         # Solve
-        p_storage = field.solve_okvs(key_obj, h_y, m=M)
+        p_storage = field.solve_okvs(key_obj, h_y, m=M, seed=seed_obj)
 
         # Mask (P ^ W) - Simulating W access
         # Create dummy W
@@ -158,8 +158,8 @@ def benchmark_okvs_psi(n_items):
     v_obj = to_obj(np.zeros((M, 2), dtype=np.uint64))  # Dummy V
 
     with interp:
-        s_dec = field.decode_okvs(key_obj, q_obj)
-        v_dec = field.decode_okvs(key_obj, v_obj)
+        s_dec = field.decode_okvs(key_obj, q_obj, seed=seed_obj)
+        v_dec = field.decode_okvs(key_obj, v_obj, seed=seed_obj)
 
         # Hash X (Same data for bench)
         seeds_x = tensor.run_jax(_prep_seeds, key_obj)

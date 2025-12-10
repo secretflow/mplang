@@ -110,7 +110,7 @@ class MockSimpHost(SimpHost):
         self.submit_calls = []
         self.collect_return = []
 
-    def _submit(self, rank, graph, inputs):
+    def _submit(self, rank, graph, inputs, job_id=None):
         self.submit_calls.append((rank, graph, inputs))
         return f"future_{rank}"
 

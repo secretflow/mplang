@@ -32,13 +32,13 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import numpy as np
 
 from mplang.v2.backends.crypto_impl import BytesValue, PublicKeyValue
-from mplang.v2.backends.value import Value
 from mplang.v2.dialects import tee
 from mplang.v2.edsl import serde
+from mplang.v2.runtime.value import Value
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.graph import Operation
-    from mplang.v2.edsl.interpreter import Interpreter
+    from mplang.v2.runtime.interpreter import Interpreter
 
 
 # ==============================================================================

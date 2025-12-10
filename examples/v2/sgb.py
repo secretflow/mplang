@@ -34,6 +34,7 @@ Usage:
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -290,7 +291,7 @@ def compute_all_masks(
 
     all_masks = v_node(sg_chunks, bi_chunks)
     # Flatten and convert to tuple of arrays
-    return tuple(all_masks.reshape(-1, slot_count))
+    return all_masks.reshape(-1, slot_count)
 
 
 def _compute_histogram_chunk_batch(
@@ -318,97 +319,124 @@ def _compute_histogram_chunk_batch(
         slot_count=slot_count,
         n_chunks=n_chunks,
     )
-    all_masks_list = tensor.run_jax(
+    all_masks_tensor = tensor.run_jax(
         compute_all_masks_jit,
         subgroup_map,
         bin_indices,
     )
-    mask_iter = iter(all_masks_list)
 
-    g_results_flat = []
-    h_results_flat = []
-
-    for _node_idx in range(n_nodes):
-        for _feat_idx in range(n_features):
-            g_accumulated = None
-            h_accumulated = None
-
-            for chunk_idx in range(n_chunks):
-                mask = next(mask_iter)
-                mask_pt = bfv.encode(mask, encoder)
-
-                g_ct_chunk = g_cts[chunk_idx]
-                h_ct_chunk = h_cts[chunk_idx]
-
-                g_masked = bfv.relinearize(bfv.mul(g_ct_chunk, mask_pt), relin_keys)
-                h_masked = bfv.relinearize(bfv.mul(h_ct_chunk, mask_pt), relin_keys)
-
-                g_agg = aggregation.batch_bucket_aggregate(
-                    g_masked, n_buckets, max_samples_per_bucket, galois_keys, slot_count
-                )
-                h_agg = aggregation.batch_bucket_aggregate(
-                    h_masked, n_buckets, max_samples_per_bucket, galois_keys, slot_count
-                )
-
-                if g_accumulated is None:
-                    g_accumulated = g_agg
-                    h_accumulated = h_agg
-                else:
-                    g_accumulated = bfv.add(g_accumulated, g_agg)
-                    h_accumulated = bfv.add(h_accumulated, h_agg)
-
-            g_results_flat.append(g_accumulated)
-            h_results_flat.append(h_accumulated)
+    # Batch encode all masks at once to avoid scheduler bottleneck
+    # Pass relin_keys as context provider (it holds the SEALContext)
+    all_masks_pt = bfv.batch_encode(all_masks_tensor, encoder, key=relin_keys)
+    mask_iter = iter(all_masks_pt)
 
     # ==========================================================================
-    # Optimization: Pack features into fewer ciphertexts to reduce communication
+    # Optimization: Incremental Packing to reduce peak memory
     # ==========================================================================
-    #
-    # Strategy:
-    # 1. Mask out garbage slots (keep only b*stride).
-    # 2. Rotate feature f by -f so it lands at b*stride + f.
-    # 3. Sum up all features.
+    # Instead of accumulating all features and then packing, we pack incrementally.
+    # This reduces peak memory from O(n_features) to O(stride).
 
     # Create mask for valid slots (0, stride, 2*stride, ...)
-    # n_buckets and stride are static integers, so we can compute mask in Python
     m_np = np.zeros(slot_count, dtype=np.int64)
     idx_np = np.arange(n_buckets) * stride
     m_np[idx_np] = 1
     mask_arr = tensor.constant(m_np)
-    mask_pt = bfv.encode(mask_arr, encoder)
+    mask_pt_pack = bfv.encode(mask_arr, encoder)
 
     g_packed_flat = []
     h_packed_flat = []
 
-    for node_idx in range(n_nodes):
-        # Extract CTs for this node
-        start = node_idx * n_features
-        end = (node_idx + 1) * n_features
-        node_g_cts = g_results_flat[start:end]
-        node_h_cts = h_results_flat[start:end]
+    # Optimization 2: Tree Reduction
+    # Helper to sum a list of ciphertexts using a binary tree structure.
+    # This reduces the dependency chain depth from O(N) to O(log N),
+    # allowing the scheduler to parallelize additions.
+    def tree_sum(items):
+        if not items:
+            return None
+        if len(items) == 1:
+            return items[0]
 
-        # Pack into batches of size `stride`
+        queue = deque(items)
+        while len(queue) > 1:
+            # Process in pairs
+            for _ in range(len(queue) // 2):
+                left = queue.popleft()
+                right = queue.popleft()
+                queue.append(bfv.add(left, right))
+
+        return queue[0] if queue else None
+
+    for _node_idx in range(n_nodes):
+        # Process features in batches of 'stride'
         for batch_start in range(0, n_features, stride):
             batch_end = min(batch_start + stride, n_features)
 
-            def pack_batch(cts):
-                packed = None
-                for i, ct in enumerate(cts):
-                    # Relative offset in the packed CT
-                    rel_offset = i
-                    # Mask valid slots
-                    masked = bfv.relinearize(bfv.mul(ct, mask_pt), relin_keys)
-                    # Rotate to position
-                    rotated = bfv.rotate(masked, -rel_offset, galois_keys)
+            g_rot_list = []
+            h_rot_list = []
 
-                    if packed is None:
-                        packed = rotated
-                    else:
-                        packed = bfv.add(packed, rotated)
-                return packed
+            for i, _feat_idx in enumerate(range(batch_start, batch_end)):
+                # 1. Compute Histogram for this feature (across chunks)
+                g_masked_list = []
+                h_masked_list = []
 
-            g_packed_flat.append(pack_batch(node_g_cts[batch_start:batch_end]))
-            h_packed_flat.append(pack_batch(node_h_cts[batch_start:batch_end]))
+                for chunk_idx in range(n_chunks):
+                    mask_pt = next(mask_iter)
+                    # mask_pt is already encoded via batch_encode
+
+                    g_ct_chunk = g_cts[chunk_idx]
+                    h_ct_chunk = h_cts[chunk_idx]
+
+                    g_masked = bfv.relinearize(bfv.mul(g_ct_chunk, mask_pt), relin_keys)
+                    h_masked = bfv.relinearize(bfv.mul(h_ct_chunk, mask_pt), relin_keys)
+
+                    g_masked_list.append(g_masked)
+                    h_masked_list.append(h_masked)
+
+                g_masked_acc = tree_sum(g_masked_list)
+                h_masked_acc = tree_sum(h_masked_list)
+
+                # Lazy Aggregation: Aggregate once after summing all chunks
+                # This reduces rotations by a factor of n_chunks
+                g_feat_acc = aggregation.batch_bucket_aggregate(
+                    g_masked_acc,
+                    n_buckets,
+                    max_samples_per_bucket,
+                    galois_keys,
+                    slot_count,
+                )
+                h_feat_acc = aggregation.batch_bucket_aggregate(
+                    h_masked_acc,
+                    n_buckets,
+                    max_samples_per_bucket,
+                    galois_keys,
+                    slot_count,
+                )
+
+                assert g_feat_acc is not None
+                assert h_feat_acc is not None
+
+                # 2. Pack immediately
+                # Relative offset = i
+                # Mask valid slots
+                g_masked_pack = bfv.relinearize(
+                    bfv.mul(g_feat_acc, mask_pt_pack), relin_keys
+                )
+                h_masked_pack = bfv.relinearize(
+                    bfv.mul(h_feat_acc, mask_pt_pack), relin_keys
+                )
+
+                # Rotate to position
+                g_rot = bfv.rotate(g_masked_pack, -i, galois_keys)
+                h_rot = bfv.rotate(h_masked_pack, -i, galois_keys)
+
+                g_rot_list.append(g_rot)
+                h_rot_list.append(h_rot)
+
+            g_packed_acc = tree_sum(g_rot_list)
+            h_packed_acc = tree_sum(h_rot_list)
+
+            g_packed_flat.append(g_packed_acc)
+            h_packed_flat.append(h_packed_acc)
 
     return g_packed_flat, h_packed_flat
 
@@ -572,7 +600,7 @@ def fhe_histogram_optimized(
     m: int,
     n_chunks: int = 1,
     slot_count: int = DEFAULT_POLY_MODULUS_DEGREE,
-) -> tuple[list[list[Any]], list[list[Any]]]:
+) -> tuple[list[Any], list[Any]]:
     """Compute encrypted histogram sums using SIMD bucket packing.
 
     **Multi-CT Support**
@@ -810,8 +838,8 @@ def _find_splits_pps(
     level: int,
     pp_ranks: list[int],
     ap_rank: int,
-    g_cts: list[Any],
-    h_cts: list[Any],
+    g_cts_pps: dict[int, list[Any]],
+    h_cts_pps: dict[int, list[Any]],
     bt_level: Any,
     all_bin_indices: list[Any],
     n_features_per_party: list[int],
@@ -837,9 +865,11 @@ def _find_splits_pps(
     n_level = 2**level
 
     for pp_idx, pp_rank in enumerate(pp_ranks):
-        # Transfer all encrypted CT chunks and keys to PP
-        g_cts_pp = [simp.shuffle_static(g_ct, {pp_rank: ap_rank}) for g_ct in g_cts]
-        h_cts_pp = [simp.shuffle_static(h_ct, {pp_rank: ap_rank}) for h_ct in h_cts]
+        # Retrieve pre-transferred encrypted CT chunks
+        g_cts_pp = g_cts_pps[pp_rank]
+        h_cts_pp = h_cts_pps[pp_rank]
+
+        # Transfer keys and other metadata to PP
         bt_level_pp = simp.shuffle_static(bt_level, {pp_rank: ap_rank})
         encoder_pp = simp.shuffle_static(encoder, {pp_rank: ap_rank})
         rk_pp = simp.shuffle_static(relin_keys, {pp_rank: ap_rank})
@@ -1235,6 +1265,19 @@ def build_tree(
     # Index 0 is AP (unused), 1..k are PPs
     last_level_hists: list[Any] = [None] * (len(pp_ranks) + 1)
 
+    # Optimization 1: Hoist Ciphertext Transfer
+    # Transfer encrypted gradients to all PPs once, before the tree building loop.
+    g_cts_pps: dict[int, list[Any]] = {}
+    h_cts_pps: dict[int, list[Any]] = {}
+
+    for pp_rank in pp_ranks:
+        g_cts_pps[pp_rank] = [
+            simp.shuffle_static(ct, {pp_rank: ap_rank}) for ct in g_cts
+        ]
+        h_cts_pps[pp_rank] = [
+            simp.shuffle_static(ct, {pp_rank: ap_rank}) for ct in h_cts
+        ]
+
     for level in range(max_depth):
         n_level = 2**level
         level_offset = 2**level - 1
@@ -1274,8 +1317,8 @@ def build_tree(
             level,
             pp_ranks,
             ap_rank,
-            g_cts,
-            h_cts,
+            g_cts_pps,
+            h_cts_pps,
             bt_level,
             all_bin_indices,
             n_features_per_party,
@@ -1815,96 +1858,14 @@ class SecureBoost:
         )
         return accuracy
 
-
-# ==============================================================================
-# Main
-# ==============================================================================
-
-
-def main():
-    """Test SecureBoost with simulated data."""
-
-    # Configuration - SIMPLIFIED: Single party only for testing
-    n_samples = 100
-    n_features_ap = 5  # All features at AP
-    n_estimators = 2
-    max_depth = 3
-
-    # Generate synthetic data
-    np.random.seed(42)
-    X_ap = np.random.randn(n_samples, n_features_ap).astype(np.float32)
-    # Binary labels based on linear combination
-    w = np.array([0.5, -0.3, 0.8, 0.2, -0.4])
-    logits = X_ap @ w
-    y = (logits > 0).astype(np.float32)
+    # ==============================================================================
+    # Main
+    # ==============================================================================
 
     print("=" * 60)
-    print("SecureBoost v2 - Simulated Training (Single Party)")
-    print("=" * 60)
-    print(f"Samples: {n_samples}")
-    print(f"Features: AP={n_features_ap}")
-    print(f"Trees: {n_estimators}, Max Depth: {max_depth}")
-    print()
-
-    # Import implementations to register them
-    import mplang.v2.backends.tensor_impl
-    import mplang.v2.edsl as el
-    from mplang.v2.backends.simp_simulator import SimpSimulator
-
-    # Ensure backend implementations are loaded
-    _ = mplang.v2.backends.tensor_impl
-
-    with el.Tracer() as tracer:
-        # Put data on single party
-        data_ap = simp.pcall_static((0,), lambda: tensor.constant(X_ap))
-        y_data = simp.pcall_static((0,), lambda: tensor.constant(y))
-
-        # Create and fit model with NO passive parties
-        model = SecureBoost(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            learning_rate=0.1,
-            max_bin=8,
-            ap_rank=0,
-            pp_ranks=[],  # No passive parties
-        )
-
-        print("Training...")
-        model.fit(
-            [data_ap],  # Only AP's data
-            y_data,
-            n_samples=n_samples,
-            n_features_per_party=[n_features_ap],  # Only AP's features
-        )
-        print("Training complete!")
-
-        # Predict
-        print("\nPredicting...")
-        y_prob = model.predict([data_ap], n_samples=n_samples)
-        print(f"Predictions type: {y_prob.type}")
-
-        tracer.finalize(y_prob)
-
-    # Execute
-    print("\nExecuting graph...")
-    graph = tracer.graph
-    host = SimpSimulator(world_size=1)  # Single party
-    result = host.evaluate_graph(graph, [])
-
-    # Calculate accuracy
-    y_pred_probs = result[0].unwrap()
-    y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
-    accuracy = np.mean(y_pred_class == y)
-    print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
-    print(f"True labels (first 10): {y[:10]}")
-    print(f"Training Accuracy: {accuracy:.4f}")
-
-    print("\n" + "=" * 60)
-    print("Test completed successfully!")
-    print("=" * 60)
 
 
-def main_multiparty():
+def run_sgb_demo(sim):
     """Test SecureBoost with 2 parties, enabling BFV FHE.
 
     AP (party 0) holds labels + some features.
@@ -1915,8 +1876,7 @@ def main_multiparty():
     2. AP receives encrypted histogram, multiplies with gradient mask
     3. PP decrypts and aggregates
     """
-    import mplang.v2.edsl as el
-    from mplang.v2.backends.simp_simulator import SimpSimulator
+    import mplang.v2 as mp
 
     print("=" * 60)
     print("Multi-Party SecureBoost Test (with BFV FHE)")
@@ -1955,11 +1915,11 @@ def main_multiparty():
     n_estimators = 2  # Small for test
     max_depth = 2
 
-    with el.Tracer() as tracer:
+    def job():
         # Put data on respective parties
-        data_ap = simp.pcall_static((0,), lambda: tensor.constant(X_ap))
-        data_pp = simp.pcall_static((1,), lambda: tensor.constant(X_pp))
-        y_data = simp.pcall_static((0,), lambda: tensor.constant(y))
+        data_ap = mp.put("P0", X_ap)
+        data_pp = mp.put("P1", X_pp)
+        y_data = mp.put("P0", y)
 
         # Create model with passive party
         model = SecureBoost(
@@ -1984,17 +1944,16 @@ def main_multiparty():
         print("\nPredicting...")
         y_prob = model.predict([data_ap, data_pp], n_samples=n_samples)
         print(f"Predictions type: {y_prob.type}")
-
-        tracer.finalize(y_prob)
+        return y_prob
 
     # Execute with 2 parties
     print("\nExecuting graph with 2 parties...")
-    graph = tracer.graph
-    host = SimpSimulator(world_size=2)
-    result = host.evaluate_graph(graph, [])
+    y_prob_obj = mp.evaluate(sim, job)
 
     # Calculate accuracy
-    y_pred_probs = result[0].unwrap()
+    y_pred_probs = mp.fetch(sim, y_prob_obj)
+    if isinstance(y_pred_probs, list):
+        y_pred_probs = y_pred_probs[0]
     y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
     accuracy = np.mean(y_pred_class == y)
     print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
@@ -2006,13 +1965,12 @@ def main_multiparty():
     print("=" * 60)
 
 
-def benchmark_multiparty():
+def run_sgb_bench(sim):
     """Benchmark SecureBoost with BFV FHE for performance analysis."""
     import time
 
-    import mplang.v2.edsl as el
+    import mplang.v2 as mp
     from mplang.v2.backends import load_backend
-    from mplang.v2.backends.simp_simulator import SimpSimulator
 
     print("=" * 70)
     print("SecureBoost v2 - Multi-Party FHE Performance Benchmark")
@@ -2034,42 +1992,13 @@ def benchmark_multiparty():
 
     # Benchmark configurations
     configs = [
-        {
-            "n_samples": 100,
-            "n_features_ap": 3,
-            "n_features_pp": 2,
-            "n_trees": 1,
-            "max_depth": 2,
-        },
-        {
-            "n_samples": 200,
-            "n_features_ap": 4,
-            "n_features_pp": 3,
-            "n_trees": 2,
-            "max_depth": 2,
-        },
-        {
-            "n_samples": 500,
-            "n_features_ap": 5,
-            "n_features_pp": 4,
-            "n_trees": 2,
-            "max_depth": 3,
-        },
-        # Test m > 2048 case (requires rotate_columns fix)
-        {
-            "n_samples": 3000,
-            "n_features_ap": 3,
-            "n_features_pp": 2,
-            "n_trees": 1,
-            "max_depth": 2,
-        },
         # Test m > 4096 case (multi-CT support)
         {
-            "n_samples": 10000,
+            "n_samples": 1000000,
             "n_features_ap": 50,
             "n_features_pp": 50,
             "n_trees": 1,
-            "max_depth": 3,
+            "max_depth": 5,
         },
     ]
 
@@ -2098,13 +2027,10 @@ def benchmark_multiparty():
         X_ap = X_all[:, :n_features_ap]
         X_pp = X_all[:, n_features_ap:]
 
-        # Measure tracing time
-        t0 = time.perf_counter()
-
-        with el.Tracer() as tracer:
-            data_ap = simp.pcall_static((0,), lambda: tensor.constant(X_ap))
-            data_pp = simp.pcall_static((1,), lambda: tensor.constant(X_pp))
-            y_data = simp.pcall_static((0,), lambda: tensor.constant(y))
+        def job():
+            data_ap = mp.put("P0", X_ap)
+            data_pp = mp.put("P1", X_pp)
+            y_data = mp.put("P0", y)
 
             model = SecureBoost(
                 n_estimators=n_trees,
@@ -2123,22 +2049,28 @@ def benchmark_multiparty():
             )
 
             y_prob = model.predict([data_ap, data_pp], n_samples=n_samples)
-            tracer.finalize(y_prob)
+            return y_prob
 
+        # Measure tracing time
+        t0 = time.perf_counter()
+        traced = mp.compile(sim, job)
         trace_time = time.perf_counter() - t0
-        graph = tracer.graph
+
+        graph = traced.graph
         n_ops = len(graph.operations)
 
         print(f"  Tracing:    {trace_time:.3f}s ({n_ops} ops)")
 
         # Measure execution time
         t0 = time.perf_counter()
-        host = SimpSimulator(world_size=2)
-        result = host.evaluate_graph(graph, [])
+
+        y_prob_obj = mp.evaluate(sim, traced)
         exec_time = time.perf_counter() - t0
 
         # Calculate accuracy
-        y_pred_probs = result[0].unwrap()
+        y_pred_probs = mp.fetch(sim, y_prob_obj)
+        if isinstance(y_pred_probs, list):
+            y_pred_probs = y_pred_probs[0]
         y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
         accuracy = np.mean(y_pred_class == y)
 
@@ -2188,22 +2120,30 @@ def benchmark_multiparty():
             print(f"    {op_name:<28} {count:>5}")
 
     # Print profiling results
+    if hasattr(sim, "backend") and getattr(sim.backend, "profiler", None) is not None:
+        sim.backend.profiler.stop(filename_prefix="sgb_trace")
+
     profiler = registry.get_profiler()
     profiler.print_summary()  # All ops (includes container overhead)
-    profiler.print_leaf_summary()  # Leaf ops only (no double-counting)
+
+
+__mp_main__ = run_sgb_demo
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--multiparty":
-        main_multiparty()
-    elif len(sys.argv) > 1 and sys.argv[1] == "--benchmark":
-        benchmark_multiparty()
+    import mplang.v2 as mp
+
+    parser = argparse.ArgumentParser(description="SecureBoost v2 Example")
+    parser.add_argument("--benchmark", action="store_true", help="Run benchmark")
+    parser.add_argument("--profile", action="store_true", help="Enable profiling")
+    args = parser.parse_args()
+
+    # Use high-level Simulator API
+    sim = mp.Simulator.simple(2, enable_profiler=args.profile)
+
+    if args.benchmark:
+        run_sgb_bench(sim)
     else:
-        print("Usage:")
-        print("  python sgb.py --multiparty   # Multi-party test with BFV FHE")
-        print("  python sgb.py --benchmark    # Performance benchmark")
-        print()
-        # Default to multiparty mode
-        main_multiparty()
+        run_sgb_demo(sim)

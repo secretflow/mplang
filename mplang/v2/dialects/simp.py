@@ -34,7 +34,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, cast
 
-from jax.tree_util import tree_flatten
+from jax.tree_util import tree_flatten, tree_unflatten
 
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
@@ -274,6 +274,7 @@ def _while_loop_trace(
     assert callable(cond_fn) and callable(body_fn)
 
     state_flat, state_treedef = tree_flatten(init)
+    assert state_treedef is not None
     if not state_flat:
         raise TypeError("while_loop init must contain at least one Object")
 
@@ -344,7 +345,7 @@ def _while_loop_trace(
     )
 
     result_trace_objs = [el.TraceObject(val, cur_ctx) for val in result_values]
-    return state_treedef.unflatten(result_trace_objs)
+    return tree_unflatten(state_treedef, result_trace_objs)
 
 
 def while_loop(

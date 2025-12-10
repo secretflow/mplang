@@ -27,11 +27,11 @@ import numpy as np
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import crypto
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.value import Value, WrapValue
 
 # =============================================================================
 # BytesValue - Wrapper for raw bytes (keys, hashes, ciphertexts)

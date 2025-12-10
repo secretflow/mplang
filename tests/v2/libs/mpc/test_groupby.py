@@ -14,11 +14,11 @@
 
 """Tests for Oblivious Group-by Sum library."""
 
+# Register implementations
 import numpy as np
 
-# Register implementations
-import mplang.v2.backends.bfv_impl
-import mplang.v2.backends.crypto_impl
+import mplang.v2.backends.bfv_impl  # noqa: F401
+import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.dialects import simp, tensor
@@ -59,7 +59,7 @@ class TestGroupbyBFV:
             res = groupby.oblivious_groupby_sum_bfv(d, b, K, sender=0, receiver=1)
 
         # Result is on Receiver (P1)
-        res_vals = res.runtime_obj.values
+        res_vals = self.interp.fetch(res.runtime_obj)
         p1_res = _unwrap(res_vals[1])
 
         expected = np.array([22, 15, 18], dtype=np.int64)
@@ -89,7 +89,8 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        p1_res = _unwrap(res.runtime_obj.values[1])
+        res_vals = self.interp.fetch(res.runtime_obj)
+        p1_res = _unwrap(res_vals[1])
         np.testing.assert_array_equal(p1_res, expected)
 
     def test_exact_chunk_multiple(self):
@@ -119,7 +120,8 @@ class TestGroupbyBFV:
                 plain_modulus=536903681,
             )
 
-        p1_res = _unwrap(res.runtime_obj.values[1])
+        res_vals = self.interp.fetch(res.runtime_obj)
+        p1_res = _unwrap(res_vals[1])
         np.testing.assert_array_equal(p1_res, expected)
 
     def test_empty_bins(self):
@@ -142,7 +144,8 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        p1_res = _unwrap(res.runtime_obj.values[1])
+        res_vals = self.interp.fetch(res.runtime_obj)
+        p1_res = _unwrap(res_vals[1])
         np.testing.assert_array_equal(p1_res, expected)
 
 
@@ -175,7 +178,7 @@ class TestGroupbyShuffle:
             )
 
         # Result is on Receiver (P1)
-        res_vals = res.runtime_obj.values
+        res_vals = self.interp.fetch(res.runtime_obj)
         p1_res = _unwrap(res_vals[1])
 
         expected = np.array([22, 15, 18], dtype=np.int64)
@@ -201,5 +204,6 @@ class TestGroupbyShuffle:
                 d, b, K, sender=0, receiver=1, helper=2
             )
 
-        p1_res = res.runtime_obj.values[1]
+        res_vals = self.interp.fetch(res.runtime_obj)
+        p1_res = res_vals[1]
         np.testing.assert_array_equal(_unwrap(p1_res), expected)

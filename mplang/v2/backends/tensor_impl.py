@@ -20,6 +20,9 @@ Implements execution logic for Tensor primitives.
 from __future__ import annotations
 
 import base64
+import hashlib
+import os
+import time
 from typing import Any, ClassVar, cast
 
 import jax
@@ -30,11 +33,11 @@ from jax._src import compiler
 from numpy.typing import ArrayLike
 
 import mplang.v2.edsl.typing as elt
-from mplang.v2.backends.value import Value, WrapValue
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter, interpret
+from mplang.v2.runtime.interpreter import Interpreter, interpret
+from mplang.v2.runtime.value import Value, WrapValue
 
 # =============================================================================
 # TensorValue Wrapper
@@ -42,8 +45,8 @@ from mplang.v2.edsl.interpreter import Interpreter, interpret
 
 
 @serde.register_class
-class TensorValue(WrapValue[np.ndarray]):
-    """Runtime value wrapping a numpy array.
+class TensorValue(WrapValue[Any]):
+    """Runtime value wrapping a numpy array or JAX array.
 
     Handles numpy arrays, JAX arrays, and other numpy-like objects via duck typing.
     Serialization uses base64-encoded raw bytes for efficiency.
@@ -58,15 +61,15 @@ class TensorValue(WrapValue[np.ndarray]):
     # Expose common array properties for convenience
     @property
     def shape(self) -> tuple[int, ...]:
-        return self._data.shape
+        return cast(tuple[int, ...], self._data.shape)
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return np.dtype(self._data.dtype)
+        return np.dtype(self._data.dtype)  # type: ignore[no-any-return]
 
     @property
     def ndim(self) -> int:
-        return self._data.ndim
+        return cast(int, self._data.ndim)
 
     def __getitem__(self, key: Any) -> Any:
         """Allow indexing into the underlying array."""
@@ -74,42 +77,77 @@ class TensorValue(WrapValue[np.ndarray]):
 
     # =========== Wrap/Unwrap ===========
 
-    def _convert(self, data: Any) -> np.ndarray:
-        """Convert input data to numpy array."""
+    def _convert(self, data: Any) -> Any:
+        """Convert input data to numpy array or JAX array."""
         if isinstance(data, TensorValue):
-            return data.unwrap()
-        # Handle JAX arrays and other numpy-like objects via np.asarray
-        if hasattr(data, "__jax_array__") or (
+            return data._data
+
+        # Allow JAX arrays to pass through
+        if hasattr(data, "__jax_array__"):
+            return data
+
+        # Handle other numpy-like objects via np.asarray
+        if (
             hasattr(data, "__module__")
             and data.__module__ is not None
             and "jax" in data.__module__
         ):
-            return np.asarray(data)
+            return data
+
         if isinstance(data, np.ndarray):
             return data
         # Try converting other array-like objects
         return np.asarray(data)
 
-    # unwrap() is inherited from WrapValue
+    def unwrap(self) -> np.ndarray:
+        """Get the underlying data as a numpy array.
 
-    # unwrap() is inherited from WrapValue
+        If the data is a JAX array, it will be transferred to host.
+        """
+        return np.asarray(self._data)
+
+    def as_jax(self) -> Any:
+        """Get the underlying data as a JAX array.
+
+        If the data is a numpy array, it will be transferred to device.
+        """
+        if hasattr(self._data, "__jax_array__"):
+            return self._data
+
+        # Handle object arrays that might contain numbers (e.g. from elementwise)
+        if isinstance(self._data, np.ndarray) and self._data.dtype == object:
+            try:
+                # Attempt to convert to numeric numpy array first
+                # This handles cases where elementwise returned object array of numbers
+                val_numeric = np.array(self._data.tolist())
+                if val_numeric.dtype != object:
+                    return jax.device_put(jnp.asarray(val_numeric))
+            except Exception:
+                # If conversion fails, proceed with original (which will likely fail in jax)
+                pass
+
+        return jax.device_put(jnp.asarray(self._data))
 
     # =========== Serialization ===========
 
     def to_json(self) -> dict[str, Any]:
+        # Ensure we have numpy data for serialization
+        # This forces synchronization if data is on device
+        data_np = np.asarray(self._data)
+
         # Handle object dtype arrays - serialize element by element
-        if self._data.dtype == np.object_:
+        if data_np.dtype == np.object_:
             return {
                 "kind": "object",
-                "shape": list(self._data.shape),
-                "items": [serde.to_json(item) for item in self._data.flat],
+                "shape": list(data_np.shape),
+                "items": [serde.to_json(item) for item in data_np.flat],
             }
         # Standard numeric arrays - use raw bytes
         return {
             "kind": "numeric",
-            "dtype": str(self._data.dtype),
-            "shape": list(self._data.shape),
-            "data": base64.b64encode(self._data.tobytes()).decode("ascii"),
+            "dtype": str(data_np.dtype),
+            "shape": list(data_np.shape),
+            "data": base64.b64encode(data_np.tobytes()).decode("ascii"),
         }
 
     @classmethod
@@ -239,13 +277,29 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
                 and outer_val.type.shape != ()
             ):
                 # Tensor argument: pick element (arg is array-like at runtime)
-                scalar_inputs.append(arg[index])  # type: ignore[index]
+                # Wrap scalar in TensorValue to maintain Value-only contract
+                elem = cast(Any, arg)[index]
+                if isinstance(elem, Value):
+                    scalar_inputs.append(elem)
+                else:
+                    scalar_inputs.append(_wrap(np.array(elem)))  # type: ignore[index]
             else:
                 # Scalar/Broadcast argument: use as is
-                scalar_inputs.append(arg)
+                # Ensure it is wrapped (it should be, but double check)
+                if not isinstance(arg, Value):
+                    scalar_inputs.append(_wrap(np.array(arg)))
+                else:
+                    scalar_inputs.append(arg)
 
         # Recursive execution
         scalar_out = interpret(subgraph, scalar_inputs, interpreter)
+
+        # Unwrap result if it's a TensorValue (to store in numpy array)
+        # We store raw values in the object array for now, but will wrap the final array
+        if isinstance(scalar_out, TensorValue):
+            scalar_out = scalar_out.unwrap()
+            if scalar_out.shape == ():
+                scalar_out = scalar_out.item()
 
         if num_outputs > 1:
             for i, val in enumerate(scalar_out):
@@ -253,38 +307,16 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
         else:
             results[index] = scalar_out
 
-    return results
-
-
-def _enforce_jax_types(args: tuple[Any, ...], op_inputs: list[Any]) -> list[np.ndarray]:
-    """Ensure runtime values match the IR types expected by JAX/StableHLO.
-
-    This handles implicit casting from Python types (int, float) to strict Numpy types
-    required by the compiled executable.
-    """
-    casted_args: list[np.ndarray] = []
-    for i, arg in enumerate(args):
-        # Unwrap TensorValue if needed
-        raw_arg = _unwrap(arg) if isinstance(arg, TensorValue) else arg
-        if i < len(op_inputs):
-            input_type = op_inputs[i].type
-            if isinstance(input_type, elt.TensorType):
-                dtype = dtypes.to_jax(cast(elt.ScalarType, input_type.element_type))
-                if dtype is not None:
-                    # Only cast if strictly necessary to avoid overhead
-                    # np.asarray handles scalar->array and dtype conversion
-                    casted_args.append(np.asarray(raw_arg, dtype=cast(Any, dtype)))
-                else:
-                    casted_args.append(np.asarray(raw_arg))
-            else:
-                casted_args.append(np.asarray(raw_arg))
-        else:
-            casted_args.append(np.asarray(raw_arg))
-    return casted_args
+    # Wrap results in TensorValue if possible
+    if num_outputs > 1:
+        return [_wrap(res) for res in results]
+    else:
+        return _wrap(results)
 
 
 # Global cache for compiled StableHLO executables
-_STABLEHLO_CACHE: dict[int, Any] = {}
+_STABLEHLO_CACHE: dict[str, Any] = {}
+_CACHE_DIR = os.path.expanduser("~/.cache/mplang/jax_cache")
 
 
 @tensor.run_jax_p.def_impl
@@ -292,6 +324,8 @@ def run_jax_impl(
     interpreter: Interpreter, op: Operation, *args: TensorValue
 ) -> TensorValue | list[TensorValue]:
     """Execute JAX function."""
+    t0 = time.time()
+
     # Execute via StableHLO
     stablehlo_code = op.attrs.get("stablehlo_code")
     if stablehlo_code is None:
@@ -302,23 +336,70 @@ def run_jax_impl(
     # Compile StableHLO
     client = jxt.backend.get_backend()
 
-    # Use hash of code as cache key
+    # Use SHA256 of code as cache key for stability across runs
     # Note: We assume compile_options are constant (num_replicas=1, num_partitions=1)
-    code_hash = hash(stablehlo_code)
+    code_hash = hashlib.sha256(stablehlo_code.encode("utf-8")).hexdigest()
 
     if code_hash in _STABLEHLO_CACHE:
         compiled = _STABLEHLO_CACHE[code_hash]
     else:
         compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
-        try:
-            compiled = client.compile(stablehlo_code, compile_options)
-            _STABLEHLO_CACHE[code_hash] = compiled
-        except Exception as e:
-            raise RuntimeError(f"StableHLO compile failed: {e}") from e
+
+        # Try disk cache
+        cache_path = os.path.join(_CACHE_DIR, f"{code_hash}.pjrt")
+        loaded_from_disk = False
+
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "rb") as f:
+                    serialized = f.read()
+                compiled = client.deserialize_executable(
+                    serialized, client.devices(), compile_options
+                )
+                loaded_from_disk = True
+                # print(f"[JAX] Loaded compiled executable from {cache_path}")
+            except Exception as e:
+                print(f"[JAX] Failed to load from disk cache: {e}")
+
+        if not loaded_from_disk:
+            try:
+                compiled = client.compile_and_load(
+                    stablehlo_code, client.devices(), compile_options
+                )
+                # Save to disk
+                try:
+                    os.makedirs(_CACHE_DIR, exist_ok=True)
+                    with open(cache_path, "wb") as f:
+                        f.write(client.serialize_executable(compiled))
+                    # print(f"[JAX] Saved compiled executable to {cache_path}")
+                except Exception as e:
+                    print(f"[JAX] Failed to save to disk cache: {e}")
+            except Exception as e:
+                raise RuntimeError(f"StableHLO compile failed: {e}") from e
+
+        _STABLEHLO_CACHE[code_hash] = compiled
 
     # Cast inputs to expected types (Boundary Type Guard)
     # This allows users to pass Python ints/floats to functions expecting f32/i32
-    jax_input_args = _enforce_jax_types(args, op.inputs)
+    t1 = time.time()
+
+    jax_input_args = []
+    for i, arg in enumerate(args):
+        # arg is TensorValue
+        if i < len(op.inputs):
+            input_type = op.inputs[i].type
+            # Check if we need casting
+            if isinstance(input_type, elt.TensorType):
+                dtype = dtypes.to_jax(cast(elt.ScalarType, input_type.element_type))
+                # Get as JAX array
+                val = arg.as_jax()
+                if dtype is not None and val.dtype != dtype:
+                    val = val.astype(dtype)
+                jax_input_args.append(val)
+            else:
+                jax_input_args.append(arg.as_jax())
+        else:
+            jax_input_args.append(arg.as_jax())
 
     # Handle JAX's unused parameter elimination via arg_keep_map
     arg_keep_map = op.attrs.get("arg_keep_map")
@@ -327,17 +408,31 @@ def run_jax_impl(
         jax_input_args = [jax_input_args[i] for i in arg_keep_map]
 
     # Convert args to JAX arrays
-    jax_args = [jax.device_put(jnp.asarray(arg)) for arg in jax_input_args]
+    t2 = time.time()
+    # jax_input_args are already JAX arrays (or will be handled by execute_sharded if not)
+    jax_args = jax_input_args
 
     try:
+        t3 = time.time()
         result = compiled.execute_sharded(jax_args)
+        t4 = time.time()
         arrays = result.disassemble_into_single_device_arrays()
         flat: list[TensorValue] = []
         for lst in arrays:
             if isinstance(lst, list) and len(lst) == 1:
-                flat.append(_wrap(np.asarray(lst[0])))
+                # Wrap JAX array directly, avoiding np.asarray
+                flat.append(_wrap(lst[0]))
             else:
-                flat.extend(_wrap(np.asarray(a)) for a in lst)
+                flat.extend(_wrap(a) for a in lst)
+        t5 = time.time()
+
+        if interpreter.profiler:
+            p = interpreter.profiler
+            p.log_custom_event("JAX Compile/Cache", t0, t1, cat="jax")
+            p.log_custom_event("JAX Prep", t1, t2, cat="jax")
+            p.log_custom_event("JAX Transfer In", t2, t3, cat="jax")
+            p.log_custom_event("JAX Exec", t3, t4, cat="jax")
+            p.log_custom_event("JAX Transfer Out", t4, t5, cat="jax")
 
         # If single output, return it directly (but run_jax usually returns list of vars)
         # The primitive expects a list of results matching outputs.

@@ -547,6 +547,62 @@ class TracedFunction:
         self.graph.inputs = leading_inputs + new_capture_inputs
         self.captured = list(capture_order)
 
+    def prepare_inputs(self, *args: Any, **kwargs: Any) -> list[Any]:
+        """Flatten arguments and map them to graph inputs.
+
+        Used by the runtime to prepare inputs for graph execution.
+
+        Args:
+            *args: Positional arguments for the function.
+            **kwargs: Keyword arguments for the function.
+
+        Returns:
+            List of runtime values corresponding to graph.inputs.
+        """
+        flat_args, _ = tree_flatten((args, kwargs))
+
+        # Map to graph inputs
+        # fn.in_var_pos contains indices in flat_args that correspond to graph inputs
+        # Note: graph.inputs = [explicit_inputs...] + [captured_inputs...]
+        explicit_inputs = [flat_args[i] for i in self.in_var_pos]
+        all_inputs = explicit_inputs + self.captured
+        return all_inputs
+
+    def reconstruct_outputs(self, execution_result: Any) -> Any:
+        """Reconstruct structured output from execution result.
+
+        Used by the runtime to format the result of graph execution.
+
+        Args:
+            execution_result: Raw result from interpreter.evaluate_graph().
+
+        Returns:
+            Structured output matching the original function's return signature.
+        """
+        # Normalize to list
+        if len(self.graph.outputs) == 1:
+            results = [execution_result]
+        elif len(self.graph.outputs) == 0:
+            results = []
+        else:
+            results = execution_result  # It's already a list/tuple
+
+        # Reconstruct
+        total_len = len(self.out_imms) + len(self.out_var_pos)
+        flat_out = [None] * total_len
+
+        var_indices = set(self.out_var_pos)
+        imm_iter = iter(self.out_imms)
+        res_iter = iter(results)
+
+        for i in range(total_len):
+            if i in var_indices:
+                flat_out[i] = next(res_iter)
+            else:
+                flat_out[i] = next(imm_iter)
+
+        return self.out_tree.unflatten(flat_out)
+
 
 def trace(
     fn: Callable[..., Any],

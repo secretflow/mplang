@@ -38,7 +38,7 @@ class TestValue:
         assert v.name == "%0"
         assert v.type == f32
         assert v.defining_op is None
-        assert v.uses == []
+        assert v.uses == {}
 
     def test_value_str_representation(self):
         """Test value string representation."""

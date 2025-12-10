@@ -22,7 +22,7 @@ This module defines:
    implements the "wrap/unwrap" pattern with automatic type conversion.
 
 Usage:
-    from mplang.v2.backends.value import Value
+    from mplang.v2.runtime.value import Value
     from mplang.v2.edsl import serde
 
     @serde.register_class
@@ -56,7 +56,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 
 class Value(ABC):

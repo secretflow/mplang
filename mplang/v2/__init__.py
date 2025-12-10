@@ -26,7 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 __version__ = "0.1.0"
 
@@ -104,10 +104,12 @@ class Simulator:
         value = fetch(sim, result)
     """
 
-    def __init__(self, cluster_spec: ClusterSpec):
+    def __init__(self, cluster_spec: ClusterSpec, enable_profiler: bool = False):
         """Create a Simulator from a ClusterSpec."""
         self._cluster = cluster_spec
-        self._sim = SimpSimulator(world_size=len(cluster_spec.nodes))
+        self._sim = SimpSimulator(
+            world_size=len(cluster_spec.nodes), enable_profiler=enable_profiler
+        )
         set_global_cluster(cluster_spec)
 
     @classmethod
@@ -117,17 +119,19 @@ class Simulator:
         Args:
             world_size: Number of parties (physical nodes).
             **kwargs: Additional arguments passed to ClusterSpec.simple().
+                      Also accepts 'enable_profiler' (bool).
 
         Returns:
             A Simulator instance.
         """
+        enable_profiler = kwargs.pop("enable_profiler", False)
         cluster = ClusterSpec.simple(
             world_size,
             enable_ppu_device=kwargs.pop("enable_ppu_device", True),
             enable_spu_device=kwargs.pop("enable_spu_device", True),
             **kwargs,
         )
-        return cls(cluster)
+        return cls(cluster, enable_profiler=enable_profiler)
 
     @property
     def cluster(self) -> ClusterSpec:
@@ -138,6 +142,10 @@ class Simulator:
     def backend(self) -> SimpSimulator:
         """Get the underlying SimpSimulator backend."""
         return self._sim
+
+    def fetch(self, obj: Any) -> Any:
+        """Fetch data from the simulator."""
+        return self._sim.fetch(obj)
 
     def __enter__(self) -> Self:
         """Enter context: push simulator as the default interpreter."""
@@ -200,6 +208,10 @@ class Driver:
         """Get the underlying SimpHttpDriver backend."""
         return self._driver
 
+    def fetch(self, obj: Any) -> Any:
+        """Fetch data from the driver."""
+        return self._driver.fetch(obj)
+
     def __enter__(self) -> Self:
         """Enter context: push driver as the default interpreter."""
         push_context(self._driver)
@@ -220,7 +232,10 @@ class Driver:
 
 
 def evaluate(
-    sim: Simulator | Driver, fn: Callable[..., Any], *args: Any, **kwargs: Any
+    sim: Simulator | Driver,
+    fn: Callable[..., Any] | TracedFunction,
+    *args: Any,
+    **kwargs: Any,
 ) -> Any:
     """Evaluate a function using the simulator or driver.
 
@@ -235,7 +250,15 @@ def evaluate(
     Returns:
         The result of the function evaluation.
     """
+    from mplang.v2.edsl.tracer import TracedFunction
+
     with sim:
+        if isinstance(fn, TracedFunction):
+            inputs = fn.prepare_inputs(*args, **kwargs)
+            interpreter = sim.backend
+            raw_result = interpret(fn.graph, inputs, interpreter)
+            return fn.reconstruct_outputs(raw_result)
+
         return fn(*args, **kwargs)
 
 
@@ -259,7 +282,7 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
     from mplang.v2.backends.simp_host import HostVar
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue
-    from mplang.v2.edsl.interpreter import InterpObject
+    from mplang.v2.runtime.interpreter import InterpObject
 
     def _unwrap_value(val: Any) -> Any:
         """Unwrap Value types to get the underlying data."""
@@ -274,6 +297,12 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
         result = result.runtime_obj
 
     if isinstance(result, HostVar):
+        # If the simulator/driver supports fetch (resolving URIs), use it.
+        if hasattr(sim, "fetch"):
+            values = sim.fetch(result)
+        else:
+            values = result.values
+
         if party is not None:
             if isinstance(party, str):
                 # Look up party by name (e.g., "P0" -> rank 0)
@@ -282,9 +311,9 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
                     party = device_info.members[0].rank
                 else:
                     raise ValueError(f"Unknown party: {party}")
-            return _unwrap_value(result[party])
+            return _unwrap_value(values[party])
         # Return all parties' values as a list (unwrap each)
-        return [_unwrap_value(v) for v in result.values]
+        return [_unwrap_value(v) for v in values]
 
     # Unwrap Value types to get the underlying data
     return _unwrap_value(result)

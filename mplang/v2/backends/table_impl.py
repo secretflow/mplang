@@ -27,11 +27,11 @@ import pandas as pd
 import pyarrow as pa
 
 from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.backends.value import WrapValue
 from mplang.v2.dialects import table
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.value import WrapValue
 
 # =============================================================================
 # TableValue Wrapper
@@ -94,7 +94,12 @@ def _unwrap(val: TableValue | pa.Table | pd.DataFrame) -> pa.Table:
         return pa.Table.from_pandas(val)
     if isinstance(val, pa.Table):
         return val
-    raise TypeError(f"Expected TableValue, pa.Table, or pd.DataFrame, got {type(val)}")
+    # Handle RecordBatchReader from newer PyArrow versions
+    if isinstance(val, pa.lib.RecordBatchReader):
+        return val.read_all()
+    raise TypeError(
+        f"Expected TableValue, pa.Table, pd.DataFrame, or RecordBatchReader, got {type(val)}"
+    )
 
 
 # =============================================================================
@@ -120,7 +125,9 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableVa
 
     # Execute query and fetch result as Arrow table
     try:
-        res = conn.execute(query).arrow()
+        arrow_result = conn.execute(query).arrow()
+        # In newer DuckDB versions, .arrow() returns RecordBatchReader
+        res = arrow_result.read_all()
         return _wrap(res)
     except Exception as e:
         raise RuntimeError(f"Failed to execute SQL query: {query}") from e

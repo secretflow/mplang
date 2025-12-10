@@ -64,7 +64,8 @@ class TestBFVWorkflow:
 
     def test_basic_simd_arithmetic(self):
         """Test encode -> encrypt -> add/mul -> decrypt -> decode."""
-        with el.Tracer() as tracer:
+
+        def workflow():
             # 1. Setup
             pk, sk = bfv.keygen(poly_modulus_degree=4096)
             rk = bfv.make_relin_keys(sk)
@@ -90,28 +91,36 @@ class TestBFVWorkflow:
             # 5. Decrypt
             pt_res = bfv.decrypt(ct_res, sk)
             res = bfv.decode(pt_res, encoder)
+            return res, ct_sum, pt_res
 
-            # Verify graph
-            graph = tracer.finalize(res)
-            opcodes = [op.opcode for op in graph.operations]
-            assert "bfv.keygen" in opcodes
-            assert "bfv.make_relin_keys" in opcodes
-            assert "bfv.encode" in opcodes
-            assert "bfv.encrypt" in opcodes
-            assert "bfv.add" in opcodes
-            assert "bfv.mul" in opcodes
-            assert "bfv.relinearize" in opcodes
-            assert "bfv.decrypt" in opcodes
-            assert "bfv.decode" in opcodes
+        # Verify graph
+        traced = el.trace(workflow)
+        graph = traced.graph
+        opcodes = [op.opcode for op in graph.operations]
+        assert "bfv.keygen" in opcodes
+        assert "bfv.make_relin_keys" in opcodes
+        assert "bfv.encode" in opcodes
+        assert "bfv.encrypt" in opcodes
+        assert "bfv.add" in opcodes
+        assert "bfv.mul" in opcodes
+        assert "bfv.relinearize" in opcodes
+        assert "bfv.decrypt" in opcodes
+        assert "bfv.decode" in opcodes
 
-            # Verify types
-            assert isinstance(ct_sum.type, bfv.CiphertextType)
-            assert isinstance(pt_res.type, bfv.PlaintextType)
-            assert isinstance(res.type, elt.TensorType)
+        # Verify types
+        # graph.outputs corresponds to flattened (res, ct_sum, pt_res)
+        res_val = graph.outputs[0]
+        ct_sum_val = graph.outputs[1]
+        pt_res_val = graph.outputs[2]
+
+        assert isinstance(ct_sum_val.type, bfv.CiphertextType)
+        assert isinstance(pt_res_val.type, bfv.PlaintextType)
+        assert isinstance(res_val.type, elt.TensorType)
 
     def test_rotation(self):
         """Test rotation workflow."""
-        with el.Tracer():
+
+        def workflow():
             pk, sk = bfv.keygen()
             gk = bfv.make_galois_keys(sk)
             encoder = bfv.create_encoder()
@@ -121,8 +130,11 @@ class TestBFVWorkflow:
             ct = bfv.encrypt(pt, pk)
 
             ct_rot = bfv.rotate(ct, 1, gk)
+            return ct_rot
 
-            assert isinstance(ct_rot.type, bfv.CiphertextType)
+        traced = el.trace(workflow)
+        ct_rot = traced.graph.outputs[0]
+        assert isinstance(ct_rot.type, bfv.CiphertextType)
 
 
 class TestBFVTypeChecking:

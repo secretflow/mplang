@@ -26,7 +26,7 @@ from mplang.v2.dialects import simp
 from mplang.v2.dialects.simp import pcall_static, uniform_cond
 from mplang.v2.dialects.tensor import run_jax
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import InterpObject
+from mplang.v2.runtime.interpreter import InterpObject
 
 
 def _unwrap_values(values: list) -> list:
@@ -80,7 +80,8 @@ def test_pcall_static():
     # Note: run_jax returns numpy arrays (or jax arrays), so we compare values
     # HostVar holds list of values.
     # 1+10=11, 2+20=22, 3+30=33
-    assert _unwrap_values(res.runtime_obj.values) == [11, 22, 33]
+    values = interp.fetch(res.runtime_obj)
+    assert _unwrap_values(values) == [11, 22, 33]
 
 
 def test_uniform_cond():
@@ -101,7 +102,8 @@ def test_uniform_cond():
         pred_true = simp.constant((0, 1), True)
         res = uniform_cond(pred_true, then_fn, else_fn, x_obj)
 
-    assert _unwrap_values(res.runtime_obj.values) == [2, 4]
+    values = interp.fetch(res.runtime_obj)
+    assert _unwrap_values(values) == [2, 4]
 
     # Test False case
     with interp:
@@ -110,7 +112,9 @@ def test_uniform_cond():
         x_obj = simp.converge(x0, x1)
         pred_obj_false = simp.constant((0, 1), False)
         res_false = uniform_cond(pred_obj_false, then_fn, else_fn, x_obj)
-    assert _unwrap_values(res_false.runtime_obj.values) == [1, 4]
+
+    values = interp.fetch(res_false.runtime_obj)
+    assert _unwrap_values(values) == [1, 4]
 
 
 def test_while_loop_eager():
@@ -139,11 +143,12 @@ def test_while_loop_eager():
         res = simp.while_loop(cond, body, start_obj)
 
     assert isinstance(res, InterpObject)
-    assert _unwrap_values(res.runtime_obj.values) == [10, 10]
+    values = interp.fetch(res.runtime_obj)
+    assert _unwrap_values(values) == [10, 10]
 
 
 class FaultySimpSimulator(SimpSimulator):
-    def _run_party(self, rank, graph, inputs):
+    def _run_party(self, rank, graph, inputs, job_id=None):
         if rank == 0:
             # Fail immediately
             raise RuntimeError("Rank 0 crashed!")
@@ -167,3 +172,6 @@ def test_simulator_fail_fast():
     duration = end_time - start_time
     # It should fail much faster than the 2s sleep
     assert duration < 1.0, f"Simulator took {duration}s to fail, expected < 1.0s"
+
+    # Cleanup to avoid affecting other tests
+    sim.shutdown()

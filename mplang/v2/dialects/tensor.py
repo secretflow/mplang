@@ -64,7 +64,7 @@ def _current_tracer() -> el.Tracer:
 
 
 def _scalar_to_numpy_dtype(scalar: elt.ScalarType) -> np.dtype[np.generic]:
-    return np.dtype(dtypes.to_jax(scalar))
+    return np.dtype(dtypes.to_jax(scalar))  # type: ignore[no-any-return]
 
 
 def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:

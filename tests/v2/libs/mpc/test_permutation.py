@@ -16,7 +16,7 @@
 
 import jax.numpy as jnp
 
-import mplang.v2.backends.crypto_impl
+import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.backends.tensor_impl import TensorValue
@@ -48,8 +48,10 @@ def test_secure_switch_straight():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    assert _unwrap(y0.runtime_obj.values[1]).item() == 10
-    assert _unwrap(y1.runtime_obj.values[1]).item() == 20
+    y0_val = interp.fetch(y0.runtime_obj)
+    y1_val = interp.fetch(y1.runtime_obj)
+    assert _unwrap(y0_val[1]).item() == 10
+    assert _unwrap(y1_val[1]).item() == 20
 
 
 def test_secure_switch_swap():
@@ -69,8 +71,10 @@ def test_secure_switch_swap():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    assert _unwrap(y0.runtime_obj.values[1]).item() == 20
-    assert _unwrap(y1.runtime_obj.values[1]).item() == 10
+    y0_val = interp.fetch(y0.runtime_obj)
+    y1_val = interp.fetch(y1.runtime_obj)
+    assert _unwrap(y0_val[1]).item() == 20
+    assert _unwrap(y1_val[1]).item() == 10
 
 
 def test_apply_permutation_n2():
@@ -107,5 +111,7 @@ def test_apply_permutation_n2():
 
     # res is a list of Objects on Receiver
 
-    assert _unwrap(res[0].runtime_obj.values[1]).item() == 20
-    assert _unwrap(res[1].runtime_obj.values[1]).item() == 10
+    res0_val = interp.fetch(res[0].runtime_obj)
+    res1_val = interp.fetch(res[1].runtime_obj)
+    assert _unwrap(res0_val[1]).item() == 20
+    assert _unwrap(res1_val[1]).item() == 10

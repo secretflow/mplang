@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from mplang.v2.dialects import simp
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
 
 if TYPE_CHECKING:
     from mplang.v2.backends.simp_worker import WorkerInterpreter
@@ -77,6 +77,7 @@ def pcall_static_impl(interpreter: Interpreter, op: Operation, *args: Any) -> An
         # Inject parties info into interpreter for downstream ops (e.g. spu.exec)
         prev_parties = getattr(worker, "current_parties", None)
         worker.current_parties = parties  # type: ignore[attr-defined]
+
         try:
             return worker.evaluate_graph(fn_graph, list(args))
         finally:

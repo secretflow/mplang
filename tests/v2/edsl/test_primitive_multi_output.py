@@ -17,10 +17,10 @@
 import numpy as np
 
 from mplang.v2.edsl.context import pop_context, push_context
-from mplang.v2.edsl.interpreter import InterpObject
 from mplang.v2.edsl.primitive import Primitive
 from mplang.v2.edsl.tracer import Tracer
 from mplang.v2.edsl.typing import Tensor, f32
+from mplang.v2.runtime.interpreter import InterpObject
 
 # Test helper primitives (for testing purposes only)
 add_p = Primitive("add")

@@ -16,14 +16,20 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from typing import Any
 
+from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.value import Value
 
 
-class HostVar:
+@serde.register_class
+class HostVar(Value):
     """Runtime value for SIMP dialect holding values for all parties."""
+
+    _serde_kind = "simp.HostVar"
 
     def __init__(self, values: list[Any]):
         self.values = values
@@ -33,6 +39,13 @@ class HostVar:
 
     def __getitem__(self, rank: int) -> Any:
         return self.values[rank]
+
+    def to_json(self) -> dict[str, Any]:
+        return {"values": serde.to_json(self.values)}
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> HostVar:
+        return cls(values=serde.from_json(data["values"]))
 
 
 class SimpHost(Interpreter):
@@ -46,8 +59,15 @@ class SimpHost(Interpreter):
         super().__init__()
         self.world_size = world_size
 
-    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+    def evaluate_graph(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Execute graph by distributing it to all parties."""
+        import uuid
+
+        if job_id is None:
+            job_id = str(uuid.uuid4())
+
         # inputs: list of runtime objects (HostVar or constant), matching graph.inputs order
 
         futures = []
@@ -60,7 +80,7 @@ class SimpHost(Interpreter):
                 else:
                     party_inputs.append(runtime_obj)
 
-            futures.append(self._submit(rank, graph, party_inputs))
+            futures.append(self._submit(rank, graph, party_inputs, job_id=job_id))
 
         results = self._collect(futures)
 
@@ -80,13 +100,16 @@ class SimpHost(Interpreter):
                 transposed.append(HostVar([res[i] for res in results]))
             return transposed
 
-    def _submit(self, rank: int, graph: Graph, inputs: list[Any]) -> Any:
+    def _submit(
+        self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
         """Submit a graph execution to a specific rank.
 
         Args:
             rank: The target party rank.
             graph: The graph to execute.
             inputs: The inputs for the graph.
+            job_id: Optional unique ID for this execution job.
 
         Returns:
             A future or handle representing the asynchronous execution.
@@ -103,3 +126,24 @@ class SimpHost(Interpreter):
             List of results (one per rank).
         """
         raise NotImplementedError("SimpHost subclasses must implement _collect")
+
+    def fetch(self, obj: Any) -> Any:
+        """Fetch data from workers if obj contains URIs."""
+        if isinstance(obj, HostVar):
+            # obj.values are URIs (or data)
+            futures = []
+            for rank, val in enumerate(obj.values):
+                if isinstance(val, str) and "://" in val:
+                    futures.append(self._fetch(rank, val))
+                else:
+                    # Already data
+                    f: concurrent.futures.Future[Any] = concurrent.futures.Future()
+                    f.set_result(val)
+                    futures.append(f)
+
+            return self._collect(futures)
+        return obj
+
+    def _fetch(self, rank: int, uri: str) -> Any:
+        """Fetch data from a specific worker."""
+        raise NotImplementedError("SimpHost subclasses must implement _fetch")

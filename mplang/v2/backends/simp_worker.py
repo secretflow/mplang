@@ -21,9 +21,12 @@ are registered in simp_impl.py.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.edsl.graph import Graph
+from mplang.v2.runtime.interpreter import DagProfiler, Interpreter
+from mplang.v2.runtime.object_store import ObjectStore
 
 
 class WorkerInterpreter(Interpreter):
@@ -43,9 +46,61 @@ class WorkerInterpreter(Interpreter):
         world_size: int,
         communicator: Any,
         spu_endpoints: dict[int, str] | None = None,
+        profiler: DagProfiler | None = None,
     ):
-        super().__init__()
+        # Use rank-specific FS root for simulation to avoid collision
+        # when using same keys (SPMD style)
+        # Use ~/.mplang/store so artifacts are persistent and centralized
+        fs_root = os.path.join(os.path.expanduser("~/.mplang/store"), f"worker_{rank}")
+        store = ObjectStore(fs_root=fs_root)
+        super().__init__(
+            name=f"Worker-{rank}",
+            profiler=profiler,
+            trace_pid=rank,
+            store=store,
+        )
         self.rank = rank
         self.world_size = world_size
         self.communicator: Any = communicator
         self.spu_endpoints = spu_endpoints
+
+        # Enable multi-threaded execution for BFV ops by default
+        import concurrent.futures
+
+        max_workers = os.cpu_count() or 4
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self.async_ops = {
+            "bfv.add",
+            "bfv.mul",
+            "bfv.rotate",
+            "bfv.batch_encode",
+            "bfv.relinearize",
+            "bfv.encrypt",
+            "bfv.decrypt",
+        }
+
+    def execute_job(
+        self, graph: Graph, inputs: list[Any], job_id: str | None = None
+    ) -> Any:
+        """Execute graph and return URIs to results."""
+        # 1. Resolve inputs (URI -> Value)
+        resolved_inputs = []
+        for inp in inputs:
+            if isinstance(inp, str) and "://" in inp:
+                resolved_inputs.append(self.store.get(inp))
+            else:
+                resolved_inputs.append(inp)
+
+        # 2. Execute
+        results = self.evaluate_graph(graph, resolved_inputs, job_id)
+
+        # 3. Store results (Value -> URI)
+        if not graph.outputs:
+            return None
+
+        if len(graph.outputs) == 1:
+            # Single result
+            return self.store.put(results)
+        else:
+            # List of results
+            return [self.store.put(res) for res in results]

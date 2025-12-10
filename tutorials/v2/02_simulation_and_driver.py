@@ -28,6 +28,8 @@ Migrated from mplang v1 to mplang2.
 
 import random
 
+import httpx
+
 import mplang.v2 as mp
 
 
@@ -84,12 +86,9 @@ def run_with_driver():
     Same API as Simulator, just different backend (HTTP instead of threads).
 
     Usage:
-        Terminal 1: python -m mplang2.backends.cli up --world-size 2 --base-port 8100
-        Terminal 2: python tutorials/mplang2/02_simulation_and_driver.py
+        Terminal 1: python -m mplang.v2.cli up --world-size 2 --base-port 8100
+        Terminal 2: python tutorials/v2/02_simulation_and_driver.py
     """
-    import httpx
-    from mplang2.backends.simp_http_driver import SimpHttpDriver
-
     endpoints = ["http://127.0.0.1:8100", "http://127.0.0.1:8101"]
 
     print("\n" + "=" * 70)
@@ -116,10 +115,10 @@ def run_with_driver():
         print("\n--- Workers not running. To start: ---")
         print("""
     # Quick start: 2 workers on localhost
-    python -m mplang2.backends.cli up --world-size 2 --base-port 8100
+    python -m mplang.v2.cli up --world-size 2 --base-port 8100
 
     # Or from config file:
-    python -m mplang2.backends.cli up -c examples/conf/3pc.yaml
+    python -m mplang.v2.cli up -c examples/conf/3pc.yaml
 
     # Then re-run this script to execute on distributed workers.
         """)
@@ -129,7 +128,8 @@ def run_with_driver():
     print("\n--- Executing on distributed workers ---")
 
     # Create driver - same interface as Simulator!
-    driver = SimpHttpDriver(world_size=2, endpoints=endpoints)
+    cluster = mp.ClusterSpec.simple(world_size=2, endpoints=endpoints)
+    driver = mp.Driver(cluster)
 
     # Define computation - same as Simulator!
     @mp.function
@@ -171,10 +171,10 @@ def main():
 if __name__ == "__main__":
     """
     Usage:
-       uv run tutorials/mplang2/02_simulation_and_driver.py
+       uv run tutorials/v2/02_simulation_and_driver.py
 
     To run distributed:
-       Terminal 1: python -m mplang2.backends.cli up --world-size 2 --base-port 8100
-       Terminal 2: uv run tutorials/mplang2/02_simulation_and_driver.py
+       Terminal 1: python -m mplang.v2.cli up --world-size 2 --base-port 8100
+       Terminal 2: uv run tutorials/v2/02_simulation_and_driver.py
     """
     main()

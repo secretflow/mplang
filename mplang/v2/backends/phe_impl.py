@@ -24,7 +24,7 @@ from lightphe.models.Ciphertext import Ciphertext
 
 from mplang.v2.dialects import phe
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.interpreter import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
 
 
 class PHEContext:

@@ -94,7 +94,12 @@ def _unwrap(val: TableValue | pa.Table | pd.DataFrame) -> pa.Table:
         return pa.Table.from_pandas(val)
     if isinstance(val, pa.Table):
         return val
-    raise TypeError(f"Expected TableValue, pa.Table, or pd.DataFrame, got {type(val)}")
+    # Handle RecordBatchReader from newer PyArrow versions
+    if isinstance(val, pa.lib.RecordBatchReader):
+        return val.read_all()
+    raise TypeError(
+        f"Expected TableValue, pa.Table, pd.DataFrame, or RecordBatchReader, got {type(val)}"
+    )
 
 
 # =============================================================================

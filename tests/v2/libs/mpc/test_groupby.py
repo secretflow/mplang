@@ -14,9 +14,9 @@
 
 """Tests for Oblivious Group-by Sum library."""
 
+# Register implementations
 import numpy as np
 
-# Register implementations
 import mplang.v2.backends.bfv_impl  # noqa: F401
 import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401

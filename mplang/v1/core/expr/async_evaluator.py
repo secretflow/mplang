@@ -188,34 +188,69 @@ class AsyncEvalSemantic(EvalSemantic):
 
         return [received_data]
 
-    def _as_optional_int(self, val: Any) -> int | None:
-        """Convert a value to int if possible, preserving None."""
-        val = EvalSemantic._unwrap_value(val)
-        if val is None:
-            return None
-        return int(val)
+    async def _simple_allgather_async(self, value: Any) -> list[Any]:
+        """Async all-gather emulation using async send/recv.
+
+        This implements an O(P^2) pairwise exchange (each rank sends its value to all
+        other ranks) and collects values in rank order. Suitable for small P (typical
+        controller / simulation sizes) and control metadata like a single bool.
+
+        Returns a list of length world_size with entries ordered by rank.
+        """
+        ws = self.comm.world_size
+        value = self._unwrap_value(value)
+        # Trivial fast-path
+        if ws == 1:
+            return [value]
+        cid = self.comm.new_id()
+        gathered: list[Any] = [None] * ws  # type: ignore
+        gathered[self.comm.rank] = value
+
+        # Create async tasks for all send and receive operations
+        tasks = []
+        # Fan-out: send to all other ranks
+        for dst in range(ws):
+            if dst != self.comm.rank:
+                tasks.append(self.comm.async_send(dst, cid, value))
+        # Fan-in: receive from all other ranks
+        for src in range(ws):
+            if src != self.comm.rank:
+                tasks.append(self.comm.async_recv(src, cid))
+
+        # Wait for all operations to complete
+        results = await asyncio.gather(*tasks)
+
+        # Process results: first half are sends (which return None), second half are receives
+        recv_results = results[len(results) // 2:]
+        for i, src in enumerate([r for r in range(ws) if r != self.comm.rank]):
+            gathered[src] = recv_results[i]
+
+        return gathered
 
     async def _verify_uniform_predicate_async(self, pred: Any) -> None:
-        # For now, just pass
-        # Would need proper async implementation for uniform verification
-        pass
+        """Async version of uniform predicate verification using async collective communication.
 
-    @staticmethod
-    def _as_optional_int(val: Any) -> int | None:
-        if isinstance(val, int):
-            return val
-        if isinstance(val, Value):
-            if hasattr(val, "value"):
-                return int(val.value)
-            # Try to convert TensorValue using to_numpy
-            to_numpy = getattr(val, "to_numpy", None)
-            if callable(to_numpy):
-                arr = to_numpy()
-                import numpy as np
+        Verifies that the predicate value is uniform across all parties by performing
+        an async all-gather operation and checking that all values are identical.
+        """
+        # Use Value.to_bool() if available, otherwise unwrap and convert
+        if isinstance(pred, Value):
+            pred_bool = pred.to_bool()
+        else:
+            pred_bool = bool(self._unwrap_value(pred))
 
-                if isinstance(arr, np.ndarray) and arr.size == 1:
-                    return int(arr.item())
-        return None
+        # Use async allgather to collect predicate values from all parties
+        vals = await self._simple_allgather_async(pred_bool)
+
+        if not vals:
+            raise ValueError("uniform_cond: empty gather for predicate")
+
+        first = vals[0]
+        for v in vals[1:]:
+            if v != first:
+                raise ValueError(
+                    "uniform_cond: predicate is not uniform across parties"
+                )
 
 
 class AsyncIterativeEvaluator(AsyncEvalSemantic):
@@ -365,7 +400,7 @@ class AsyncIterativeEvaluator(AsyncEvalSemantic):
         return new + old[len(new) :]
 
     async def _eval_conv_node_async(
-        self, expr: ConvExpr, vars_vals: list[Any]
+        self, _expr: ConvExpr, vars_vals: list[Any]
     ) -> list[Any]:
         """Async version of conv node evaluation."""
         # Implement the same logic as sync _eval_conv_node

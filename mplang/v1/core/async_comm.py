@@ -327,7 +327,7 @@ class AsyncCommunicatorBase(IAsyncCommunicator):
             "Must be implemented by subclass or mixin with peer awareness"
         )
 
-    def send(sefl, to: int, key: str, data: Any) -> None:
+    def send(self, to: int, key: str, data: Any) -> None:
         raise NotImplementedError(
             "Synchronous send not supported in AsyncCommunicatorBase"
         )

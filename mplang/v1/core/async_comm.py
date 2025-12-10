@@ -19,42 +19,20 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+from mplang.v1.core.comm import ICommunicator
 from mplang.v1.core.mask import Mask
 
 
-class IAsyncCommunicator(ABC):
+class IAsyncCommunicator(ICommunicator):
     """Base class for asynchronous communicators."""
 
-    @property
     @abstractmethod
-    def rank(self) -> int:
-        """Get the rank of this process"""
-
-    @property
-    @abstractmethod
-    def world_size(self) -> int:
-        """Get the world size of this process"""
-
-    @abstractmethod
-    def new_id(self) -> str:
-        """Must be implemented by mixing class"""
-        raise NotImplementedError
-
-    @abstractmethod
-    async def send(self, to: int, key: str, data: Any) -> None:
+    async def async_send(self, to: int, key: str, data: Any) -> None:
         """Send data to peer with the given key asynchronously"""
 
     @abstractmethod
-    async def recv(self, frm: int, key: str) -> Any:
+    async def async_recv(self, frm: int, key: str) -> Any:
         """Receive data from peer with the given key asynchronously"""
-
-    @abstractmethod
-    def onSent(self, frm: int, key: str, data: Any) -> None:
-        """Called when a key is sent to self.
-
-        This is typically called by the underlying transport layer (possibly from another thread).
-        It should be non-blocking and thread-safe.
-        """
 
 
 class IAsyncCollective(ABC):
@@ -109,10 +87,16 @@ class AsyncCollectiveMixin(IAsyncCommunicator, IAsyncCollective):
     def world_size(self) -> int:
         raise NotImplementedError
 
-    async def send(self, to: int, key: str, data: Any) -> None:
+    def send(self, to: int, key: str, data: Any) -> None:
         raise NotImplementedError
 
-    async def recv(self, frm: int, key: str) -> Any:
+    def recv(self, frm: int, key: str) -> Any:
+        raise NotImplementedError
+
+    async def async_send(self, to: int, key: str, data: Any) -> None:
+        raise NotImplementedError
+
+    async def async_recv(self, frm: int, key: str) -> Any:
         raise NotImplementedError
 
     def new_id(self) -> str:
@@ -126,11 +110,11 @@ class AsyncCollectiveMixin(IAsyncCommunicator, IAsyncCollective):
 
         send_coro = None
         if self.rank == frm:
-            send_coro = self.send(to, cid, data)
+            send_coro = self.async_send(to, cid, data)
 
         recv_coro = None
         if self.rank == to:
-            recv_coro = self.recv(frm, cid)
+            recv_coro = self.async_recv(frm, cid)
 
         if send_coro and recv_coro:
             _, res = await asyncio.gather(send_coro, recv_coro)
@@ -150,14 +134,14 @@ class AsyncCollectiveMixin(IAsyncCommunicator, IAsyncCollective):
 
         # 1. Send if we are in mask
         if self.rank in mask:
-            await self.send(root, cid, data)
+            await self.async_send(root, cid, data)
 
         # 2. Recv if we are root
         if self.rank == root:
             # Create futures for all expected receives
             futures = []
             for idx in mask:
-                futures.append(self.recv(idx, cid))
+                futures.append(self.async_recv(idx, cid))
 
             # Wait for all concurrently
             results = await asyncio.gather(*futures)
@@ -183,11 +167,11 @@ class AsyncCollectiveMixin(IAsyncCommunicator, IAsyncCollective):
             # Send to all targets concurrently
             send_futures = []
             for idx, arg in zip(mask, args, strict=True):
-                send_futures.append(self.send(idx, cid, arg))
+                send_futures.append(self.async_send(idx, cid, arg))
             await asyncio.gather(*send_futures)
 
         if self.rank in mask:
-            data = await self.recv(root, cid)
+            data = await self.async_recv(root, cid)
         else:
             data = None
 
@@ -206,13 +190,13 @@ class AsyncCollectiveMixin(IAsyncCommunicator, IAsyncCollective):
         if self.rank in mask:
             send_futures = []
             for idx in mask:
-                send_futures.append(self.send(idx, cid, arg))
+                send_futures.append(self.async_send(idx, cid, arg))
             await asyncio.gather(*send_futures)
 
             # 2. Recv from all parties in mask
             recv_futures = []
             for idx in mask:
-                recv_futures.append(self.recv(idx, cid))
+                recv_futures.append(self.async_recv(idx, cid))
 
             res = await asyncio.gather(*recv_futures)
             return res
@@ -232,11 +216,11 @@ class AsyncCollectiveMixin(IAsyncCommunicator, IAsyncCollective):
         if self.rank == root:
             send_futures = []
             for idx in mask:
-                send_futures.append(self.send(idx, cid, arg))
+                send_futures.append(self.async_send(idx, cid, arg))
             await asyncio.gather(*send_futures)
 
         if self.rank in mask:
-            return await self.recv(root, cid)
+            return await self.async_recv(root, cid)
         else:
             return None
 
@@ -282,7 +266,7 @@ class AsyncCommunicatorBase(IAsyncCommunicator):
         self._counter += 1
         return str(res)
 
-    async def recv(self, frm: int, key: str) -> Any:
+    async def async_recv(self, frm: int, key: str) -> Any:
         """Wait until the key is set, returns the value"""
         mkey = (frm, key)
 
@@ -336,11 +320,21 @@ class AsyncCommunicatorBase(IAsyncCommunicator):
         else:
             self._msgboxes[mkey] = data
 
-    async def send(self, to: int, key: str, data: Any) -> None:
+    async def async_send(self, to: int, key: str, data: Any) -> None:
         # Base implementation for local simulation: directly call peer's onSent
         # In a real distributed setting, this would put data on wire.
         raise NotImplementedError(
             "Must be implemented by subclass or mixin with peer awareness"
+        )
+
+    def send(sefl, to: int, key: str, data: Any) -> None:
+        raise NotImplementedError(
+            "Synchronous send not supported in AsyncCommunicatorBase"
+        )
+
+    def recv(self, frm: int, key: str) -> Any:
+        raise NotImplementedError(
+            "Synchronous recv not supported in AsyncCommunicatorBase"
         )
 
 
@@ -357,7 +351,7 @@ class AsyncThreadCommunicator(AsyncCommunicatorBase, AsyncCollectiveMixin):
         assert self.world_size == len(peers)
         self.peers = peers
 
-    async def send(self, to: int, key: str, data: Any) -> None:
+    async def async_send(self, to: int, key: str, data: Any) -> None:
         assert 0 <= to < self.world_size
         # In local simulation, we can directly call peer's onSent.
         # Since we are all in the same process (and likely same loop for simulation),

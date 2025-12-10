@@ -18,7 +18,9 @@ It uses FastAPI to provide a RESTful API for managing computations.
 """
 
 import base64
+from concurrent.futures import Executor, ThreadPoolExecutor
 import logging
+import os
 import re
 from typing import Any
 
@@ -55,6 +57,7 @@ app = FastAPI()
 # per-server global state
 _sessions: dict[str, Session] = {}
 _global_symbols: dict[str, Symbol] = {}
+_executor: Executor = ThreadPoolExecutor(max_workers=os.cpu_count())
 
 
 def register_session(session: Session) -> Session:  # pragma: no cover - test helper
@@ -271,7 +274,9 @@ def create_session(session_name: str, request: CreateSessionRequest) -> SessionR
         sess = _sessions[session_name]
     else:
         spec = ClusterSpec.from_dict(request.cluster_spec)
-        sess = create_session_from_spec(name=session_name, rank=request.rank, spec=spec)
+        sess = create_session_from_spec(
+            name=session_name, rank=request.rank, spec=spec, async_mode=True
+        )
         _sessions[session_name] = sess
     return SessionResponse(name=sess.name)
 
@@ -300,7 +305,7 @@ def delete_session(session_name: str) -> dict[str, str]:
     "/sessions/{session_name}/computations/{computation_id}",
     response_model=ComputationResponse,
 )
-def create_and_execute_computation(
+async def create_and_execute_computation(
     session_name: str, computation_id: str, request: CreateComputationRequest
 ) -> ComputationResponse:
     graph_proto = mpir_pb2.GraphProto()
@@ -325,12 +330,14 @@ def create_and_execute_computation(
     if not comp:
         comp = Computation(name=computation_id, expr=expr)
         sess.add_computation(comp)
-    sess.execute(comp, request.input_names, request.output_names)
+    await sess.async_execute(
+        comp, request.input_names, request.output_names, executor=_executor
+    )
     return ComputationResponse(name=computation_id)
 
 
 @app.delete("/sessions/{session_name}/computations/{computation_id}")
-def delete_computation(session_name: str, computation_id: str) -> dict[str, str]:
+async def delete_computation(session_name: str, computation_id: str) -> dict[str, str]:
     """Delete a specific computation."""
     sess = _sessions.get(session_name)
     if sess and sess.delete_computation(computation_id):

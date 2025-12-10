@@ -39,6 +39,7 @@ from mplang.v1.core.expr.visitor import AsyncExprVisitor
 from mplang.v1.core.expr.walk import walk_dataflow
 from mplang.v1.core.mask import Mask
 from mplang.v1.core.pfunc import PFunction
+from mplang.v1.kernels.context import RuntimeContext
 from mplang.v1.kernels.value import Value
 
 
@@ -91,12 +92,12 @@ class AsyncEvalSemantic(EvalSemantic):
         # Send phase
         for src, dst in zip(src_ranks, dst_ranks, strict=True):
             if self.comm.rank == src:
-                send_tasks.append(self.comm.send(dst, cid, src_value))
+                send_tasks.append(self.comm.async_send(dst, cid, src_value))
 
         # Recv phase
         for src, dst in zip(src_ranks, dst_ranks, strict=True):
             if self.comm.rank == dst:
-                recv_futures.append(self.comm.recv(src, cid))
+                recv_futures.append(self.comm.async_recv(src, cid))
 
         # Execute all operations concurrently to avoid deadlock
         all_tasks = send_tasks + recv_futures
@@ -131,13 +132,13 @@ class AsyncEvalSemantic(EvalSemantic):
         send_tasks = []
         for dst_rank in range(self.comm.world_size):
             if dst_rank != self.comm.rank:
-                send_tasks.append(self.comm.send(dst_rank, cid, idx))
+                send_tasks.append(self.comm.async_send(dst_rank, cid, idx))
 
         # Receive index from all ranks
         recv_tasks = []
         for src_rank in range(self.comm.world_size):
             if src_rank != self.comm.rank:
-                recv_tasks.append(self.comm.recv(src_rank, cid))
+                recv_tasks.append(self.comm.async_recv(src_rank, cid))
 
         # Wait for all operations
         if send_tasks:
@@ -168,13 +169,13 @@ class AsyncEvalSemantic(EvalSemantic):
         data_send_tasks = []
         for src_rank, dst_rank in send_pairs:
             if self.comm.rank == src_rank:
-                data_send_tasks.append(self.comm.send(dst_rank, cid, data))
+                data_send_tasks.append(self.comm.async_send(dst_rank, cid, data))
 
         # Receive data
         data_recv_tasks = []
         for src_rank, dst_rank in send_pairs:
             if self.comm.rank == dst_rank:
-                data_recv_tasks.append(self.comm.recv(src_rank, cid))
+                data_recv_tasks.append(self.comm.async_recv(src_rank, cid))
 
         # Wait for data operations
         if data_send_tasks:
@@ -310,7 +311,7 @@ class AsyncRecursiveEvaluator(AsyncExprVisitor):
         return await asyncio.gather(*tasks)
 
 
-class AsyncIterativeEvaluator(AsyncExprVisitor):
+class AsyncIterativeEvaluator(AsyncEvalSemantic):
     """Async evaluator using iterative traversal to avoid stack overflow.
 
     This evaluator follows the same pattern as the synchronous IterativeEvaluator:
@@ -319,12 +320,19 @@ class AsyncIterativeEvaluator(AsyncExprVisitor):
     3. Processes nodes in dependency order
     """
 
-    def __init__(self, semantic: AsyncEvalSemantic):
-        self.semantic = semantic
+    def __init__(
+        self,
+        rank: int,
+        env: dict[str, Any],
+        comm: IAsyncCommunicator,
+        runtime: RuntimeContext,
+        executor: Executor,
+    ):
+        super().__init__(rank, env, comm, runtime, executor)
 
     async def evaluate(self, expr: Expr, env: dict[str, Any] | None = None) -> Any:
         """Entry point for evaluation."""
-        evaluation_env = env if env is not None else self.semantic.env
+        evaluation_env = env if env is not None else self.env
         result = await self._iter_eval_graph(expr, evaluation_env)
         return result
 
@@ -366,13 +374,13 @@ class AsyncIterativeEvaluator(AsyncExprVisitor):
                 else:
                     # Optional uniform verification
                     if node.verify_uniform:
-                        await self.semantic._verify_uniform_predicate_async(pred_val)
+                        await self._verify_uniform_predicate_async(pred_val)
 
                     # Convert to bool
                     if isinstance(pred_val, Value):
                         pred = pred_val.to_bool()
                     else:
-                        pred = bool(self.semantic._unwrap_value(pred_val))
+                        pred = bool(self._unwrap_value(pred_val))
 
                     if pred:
                         sub_env = dict(zip(node.then_fn.params, arg_vals, strict=True))
@@ -397,7 +405,7 @@ class AsyncIterativeEvaluator(AsyncExprVisitor):
                     cond_vals = await self._iter_eval_graph(
                         node.cond_fn.body, {**env, **cond_env}
                     )
-                    cond_val = self.semantic._check_while_predicate(cond_vals)
+                    cond_val = self._check_while_predicate(cond_vals)
                     if not bool(cond_val):
                         break
 
@@ -411,9 +419,7 @@ class AsyncIterativeEvaluator(AsyncExprVisitor):
 
             elif isinstance(node, EvalExpr):
                 arg_vals = [self._first(symbols[id(a)]) for a in node.args]
-                symbols[id(node)] = await self.semantic._eval_eval_node_async(
-                    node, arg_vals
-                )
+                symbols[id(node)] = await self._eval_eval_node_async(node, arg_vals)
 
             elif isinstance(node, ConvExpr):
                 vars_vals = [self._first(symbols[id(v)]) for v in node.vars]
@@ -422,16 +428,12 @@ class AsyncIterativeEvaluator(AsyncExprVisitor):
 
             elif isinstance(node, ShflSExpr):
                 value = self._first(symbols[id(node.src_val)])
-                symbols[id(node)] = await self.semantic._eval_shfl_s_node_async(
-                    node, value
-                )
+                symbols[id(node)] = await self._eval_shfl_s_node_async(node, value)
 
             elif isinstance(node, ShflExpr):
                 data = self._first(symbols[id(node.src)])
                 index = self._first(symbols[id(node.index)])
-                symbols[id(node)] = await self.semantic._eval_shfl_node_async(
-                    node, data, index
-                )
+                symbols[id(node)] = await self._eval_shfl_node_async(node, data, index)
 
             elif isinstance(node, FuncDefExpr):
                 # FuncDefExpr should not be directly evaluated
@@ -467,48 +469,3 @@ class AsyncIterativeEvaluator(AsyncExprVisitor):
         if len(filtered) == 1:
             return [filtered[0]]
         raise ValueError(f"pconv called with multiple vars={filtered}.")
-
-    # Implement all required AsyncExprVisitor methods
-    async def visit_variable(self, expr: VariableExpr, env: dict[str, Any]) -> Any:
-        """Visit VariableExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_eval(self, expr: EvalExpr, env: dict[str, Any]) -> Any:
-        """Visit EvalExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_tuple(self, expr: TupleExpr, env: dict[str, Any]) -> Any:
-        """Visit TupleExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_cond(self, expr: CondExpr, env: dict[str, Any]) -> Any:
-        """Visit CondExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_while(self, expr: WhileExpr, env: dict[str, Any]) -> Any:
-        """Visit WhileExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_call(self, expr: CallExpr, env: dict[str, Any]) -> Any:
-        """Visit CallExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_conv(self, expr: ConvExpr, env: dict[str, Any]) -> Any:
-        """Visit ConvExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_shfl_s(self, expr: ShflSExpr, env: dict[str, Any]) -> Any:
-        """Visit ShflSExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_shfl(self, expr: ShflExpr, env: dict[str, Any]) -> Any:
-        """Visit ShflExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_access(self, expr: AccessExpr, env: dict[str, Any]) -> Any:
-        """Visit AccessExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")
-
-    async def visit_func_def(self, expr: FuncDefExpr, env: dict[str, Any]) -> Any:
-        """Visit FuncDefExpr - not used in new implementation."""
-        raise NotImplementedError("Use _iter_eval_graph instead")

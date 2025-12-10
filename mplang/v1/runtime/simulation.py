@@ -292,14 +292,13 @@ class Simulator(InterpContext):
             # Initialize SPU if needed (same logic as sync)
             self._ensure_spu_init(rank)
 
-            semantic = AsyncEvalSemantic(
+            ev = AsyncIterativeEvaluator(
                 rank=rank,
                 env=pts_env[rank],
                 comm=async_comms[rank],
                 runtime=runtime,
                 executor=self._executor,
             )
-            ev = AsyncIterativeEvaluator(semantic)
             evaluators.append(ev)
 
         # 4. Run Evaluation concurrently

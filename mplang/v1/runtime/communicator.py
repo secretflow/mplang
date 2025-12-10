@@ -138,7 +138,7 @@ class AsyncHttpCommunicator(AsyncCommunicatorBase):
             f"AsyncHttpCommunicator initialized: session={session_name}, rank={rank}, endpoints={self.endpoints}"
         )
 
-    async def send(self, to: int, key: str, data: Any) -> None:
+    async def async_send(self, to: int, key: str, data: Any) -> None:
         """Sends data to a peer party by PUTing to its /comm/{key}/from/{from_rank} endpoint."""
         target_endpoint = self.endpoints[to]
         url = f"{target_endpoint}/sessions/{self.session_name}/comm/{key}/from/{self._rank}"
@@ -173,12 +173,12 @@ class AsyncHttpCommunicator(AsyncCommunicatorBase):
             )
             raise OSError(f"Failed to send data to rank {to}") from e
 
-    async def recv(self, frm: int, key: str) -> Any:
+    async def async_recv(self, frm: int, key: str) -> Any:
         """Wait until the key is set, returns the value."""
         logging.debug(
             f"Async waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
-        data_b64 = await super().recv(frm, key)
+        data_b64 = await super().async_recv(frm, key)
 
         data_bytes = base64.b64decode(data_b64)
         # Deserialize using Value envelope

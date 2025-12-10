@@ -161,11 +161,11 @@ def psi_unbalanced(
     expansion = get_okvs_expansion(server_n)
     M = int(server_n * expansion)
 
-    def _solve(k: Any, v: Any) -> Any:
-        return field.solve_okvs(k, v, M)
+    def _solve(k: Any, v: Any, s: Any) -> Any:
+        return field.solve_okvs(k, v, M, s)
 
     okvs_table = simp.pcall_static(
-        (server,), _solve, server_derived_keys, server_values
+        (server,), _solve, server_derived_keys, server_values, server_seed
     )
 
     # Send to Client
@@ -182,8 +182,8 @@ def psi_unbalanced(
     )
 
     # Client Decodes OKVS and Compares
-    def _decode_and_compare(keys: Any, table: Any, expected: Any) -> Any:
-        decoded = field.decode_okvs(keys, table)
+    def _decode_and_compare(keys: Any, table: Any, expected: Any, s: Any) -> Any:
+        decoded = field.decode_okvs(keys, table, s)
 
         def _compare_jax(dec: Any, exp: Any) -> Any:
             match = (dec[:, 0] == exp[:, 0]) & (dec[:, 1] == exp[:, 1])
@@ -197,6 +197,7 @@ def psi_unbalanced(
         client_derived_keys,
         okvs_table_client,
         client_expected_values,
+        client_seed,
     )
 
     return cast(el.Object, intersection_mask)

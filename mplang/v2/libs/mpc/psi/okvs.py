@@ -64,9 +64,10 @@ def psi_intersect(
     # 1. Parameter Setup
     # OKVS Size M = expansion * N, where expansion is dynamically chosen
     # based on N (larger N allows smaller expansion, saving communication)
-    from mplang.v2.libs.mpc.psi.sparse_okvs import get_okvs_expansion
+    # based on N (larger N allows smaller expansion, saving communication)
+    import mplang.v2.libs.mpc.psi.sparse_okvs as sparse_okvs
 
-    expansion = get_okvs_expansion(n)
+    expansion = sparse_okvs.get_okvs_expansion(n)
     M = int(n * expansion)
     # Align to 128 for VOLE batching if needed
     if M % 128 != 0:
@@ -82,8 +83,28 @@ def psi_intersect(
     res_tuple = silent_ot.silent_vole_random_u(sender, receiver, M, base_k=1024)
     v_sender, w_receiver, u_sender, delta_receiver = res_tuple[:4]
 
+    # Generate OKVS Seed (Public/Scanning isn't issue here as it's correlated randomness phase)
+    # But for safety, let's treat it as something Receiver picks and sends to Sender?
+    # Or just use pre-agreed randomness.
+    # Actually, Sender needs to know the seed to Decode.
+    # Receiver uses seed to Encode.
+    # So Receiver generates seed and sends to Sender.
+    from mplang.v2.dialects import crypto
+
+    from mplang.v2.edsl import typing as elt
+
+    def _gen_seed() -> Any:
+        return crypto.random_tensor((2,), elt.u64)
+
+    okvs_seed = simp.pcall_static((receiver,), _gen_seed)
+    # Shuffle seed to Sender
+    okvs_seed_sender = simp.shuffle_static(okvs_seed, {sender: receiver})
+
+    # Instantiate OKVS at standard expansion
+    okvs = sparse_okvs.SparseOKVS(M)
+
     # 3. Receiver OKVS Encode & Mask
-    def _recv_ops(y: Any, w: Any, delta: Any) -> Any:
+    def _recv_ops(y: Any, w: Any, delta: Any, seed: Any) -> Any:
         # y: (N,), w: (M, 2), delta: (2,)
         # Encode: P = Solve(y, H(y))
         # Need H(y).
@@ -113,9 +134,9 @@ def psi_intersect(
 
         h_y = tensor.run_jax(_davies_meyer, res_exp, seeds)
 
-        # Solve OKVS
-        # keys=y, values=h_y
-        p_storage = field.solve_okvs(y, h_y, m=M)
+        # Solve OKVS using Standardized Class
+        # keys=y, values=h_y, seed=seed
+        p_storage = okvs.encode(y, h_y, seed)
 
         # Mask
         q_storage = field.add(p_storage, w)
@@ -124,7 +145,7 @@ def psi_intersect(
 
     # Execute on Receiver
     q_shared = simp.pcall_static(
-        (receiver,), _recv_ops, receiver_items, w_receiver, delta_receiver
+        (receiver,), _recv_ops, receiver_items, w_receiver, delta_receiver, okvs_seed
     )
 
     # Extract Q (sent to Sender)
@@ -138,12 +159,12 @@ def psi_intersect(
     q_sender_view = simp.shuffle_static(q_for_sender, {sender: receiver})
 
     # 4. Sender Decode & Check
-    def _sender_ops(x: Any, q: Any, u: Any, v: Any) -> tuple[Any, Any]:
+    def _sender_ops(x: Any, q: Any, u: Any, v: Any, seed: Any) -> tuple[Any, Any]:
         # x: (N,), q: (M, 2), u: (M, 2), v: (M, 2)
 
         # Decode Ops
-        s_decoded = field.decode_okvs(x, q)
-        v_decoded = field.decode_okvs(x, v)
+        s_decoded = okvs.decode(x, q, seed)
+        v_decoded = okvs.decode(x, v, seed)
 
         # Helper: Hash items
         # Use Davies-Meyer: H(x) = E_x(0) ^ x
@@ -164,13 +185,22 @@ def psi_intersect(
         # T = S ^ V ^ H(x)
         t_val = field.add(s_decoded, v_decoded)
         t_val = field.add(t_val, h_x)
-        s_u = field.decode_okvs(x, u)
+        # T = S ^ V ^ H(x)
+        t_val = field.add(s_decoded, v_decoded)
+        t_val = field.add(t_val, h_x)
+        s_u = field.decode_okvs(x, u, seed)
 
         return t_val, s_u
 
     # Arguments must match: sender_items(x), q_sender_view(q), u_sender(u), v_sender(v)
     t_val_sender, u_star_sender = simp.pcall_static(
-        (sender,), _sender_ops, sender_items, q_sender_view, u_sender, v_sender
+        (sender,),
+        _sender_ops,
+        sender_items,
+        q_sender_view,
+        u_sender,
+        v_sender,
+        okvs_seed_sender,
     )
 
     # 5. Shared Secret Verification (OPRF Output)

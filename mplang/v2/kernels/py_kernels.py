@@ -23,6 +23,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from mplang.v2.libs.mpc.common.constants import (
+    GOLDEN_RATIO_64,
+    SPLITMIX64_GAMMA_2,
+    SPLITMIX64_GAMMA_3,
+    SPLITMIX64_GAMMA_4,
+)
+
 # =============================================================================
 # GF(2^128) Arithmetic
 # =============================================================================
@@ -177,7 +184,7 @@ def gf128_mul_batch(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def _hash_key_py(
-    key: int, m: int, seed: tuple[int, int] = (0xCAFEBABE, 0xDEADBEEF)
+    key: int, m: int, seed: tuple[int, int]
 ) -> tuple[int, int, int]:
     """Hash a key to 3 distinct indices using simple polynomial hashing.
 
@@ -188,12 +195,12 @@ def _hash_key_py(
     s0, s1 = seed
 
     # Mix key with seed
-    h1 = ((key * 0x9E3779B97F4A7C15) ^ s0) & ((1 << 64) - 1)
-    h2 = ((key * 0xC6A4A7935BD1E995) ^ s1) & ((1 << 64) - 1)
+    h1 = ((key * GOLDEN_RATIO_64) ^ s0) & ((1 << 64) - 1)
+    h2 = ((key * SPLITMIX64_GAMMA_2) ^ s1) & ((1 << 64) - 1)
 
     # Additional mixing
-    h1 = ((h1 ^ (h1 >> 33)) * 0xFF51AFD7ED558CCD) & ((1 << 64) - 1)
-    h2 = ((h2 ^ (h2 >> 33)) * 0xC4CEB9FE1A85EC53) & ((1 << 64) - 1)
+    h1 = ((h1 ^ (h1 >> 33)) * SPLITMIX64_GAMMA_3) & ((1 << 64) - 1)
+    h2 = ((h2 ^ (h2 >> 33)) * SPLITMIX64_GAMMA_4) & ((1 << 64) - 1)
 
     idx1 = h1 % m
     idx2 = h2 % m
@@ -210,7 +217,12 @@ def _hash_key_py(
     return int(idx1), int(idx2), int(idx3)
 
 
-def okvs_solve(keys: np.ndarray, values: np.ndarray, m: int) -> np.ndarray:
+def okvs_solve(
+    keys: np.ndarray,
+    values: np.ndarray,
+    m: int,
+    seed: tuple[int, int] = (0xDEADBEEF, 0xCAFEBABE),
+) -> np.ndarray:
     """Solve the OKVS system using peeling algorithm.
 
     Args:
@@ -228,7 +240,7 @@ def okvs_solve(keys: np.ndarray, values: np.ndarray, m: int) -> np.ndarray:
     col_to_rows: dict[int, list[int]] = {j: [] for j in range(m)}
 
     for i in range(n):
-        h1, h2, h3 = _hash_key_py(int(keys[i]), m)
+        h1, h2, h3 = _hash_key_py(int(keys[i]), m, seed)
         rows.append((h1, h2, h3))
         col_to_rows[h1].append(i)
         col_to_rows[h2].append(i)
@@ -298,7 +310,12 @@ def okvs_solve(keys: np.ndarray, values: np.ndarray, m: int) -> np.ndarray:
     return output
 
 
-def okvs_decode(keys: np.ndarray, storage: np.ndarray, m: int) -> np.ndarray:
+def okvs_decode(
+    keys: np.ndarray,
+    storage: np.ndarray,
+    m: int,
+    seed: tuple[int, int] = (0xDEADBEEF, 0xCAFEBABE),
+) -> np.ndarray:
     """Decode values from OKVS storage.
 
     Args:
@@ -313,7 +330,7 @@ def okvs_decode(keys: np.ndarray, storage: np.ndarray, m: int) -> np.ndarray:
     output = np.zeros((n, 2), dtype=np.uint64)
 
     for i in range(n):
-        h1, h2, h3 = _hash_key_py(int(keys[i]), m)
+        h1, h2, h3 = _hash_key_py(int(keys[i]), m, seed)
         output[i] = storage[h1] ^ storage[h2] ^ storage[h3]
 
     return output

@@ -28,6 +28,14 @@ import jax.numpy as jnp
 
 import mplang.v2.edsl as el
 from mplang.v2.dialects import tensor
+from mplang.v2.libs.mpc.common.constants import (
+    E_FRAC_1,
+    GOLDEN_RATIO_64,
+    PI_FRAC_1,
+    PI_FRAC_2,
+    SPLITMIX64_GAMMA_1,
+    SPLITMIX64_GAMMA_2,
+)
 
 # =============================================================================
 # Cuckoo Hash Parameters
@@ -70,10 +78,10 @@ def hash_to_positions(
 
     # Base hash coefficients (deterministic starting point)
     a_base = jnp.array(
-        [0x9E3779B97F4A7C15, 0xBF58476D1CE4E5B9, 0x94D049BB133111EB], dtype=jnp.uint64
+        [GOLDEN_RATIO_64, SPLITMIX64_GAMMA_1, SPLITMIX64_GAMMA_2], dtype=jnp.uint64
     )
     b_base = jnp.array(
-        [0x1234567890ABCDEF, 0xFEDCBA0987654321, 0xABCDEF1234567890], dtype=jnp.uint64
+        [PI_FRAC_1, PI_FRAC_2, E_FRAC_1], dtype=jnp.uint64
     )
 
     # Security Fix: Seed BOTH coefficients a and b

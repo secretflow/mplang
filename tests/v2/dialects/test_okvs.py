@@ -36,11 +36,12 @@ def test_okvs_edsl():
         # Create inputs as tensor constants (field.solve_okvs expects TensorType, not MPType)
         keys = tensor.constant(keys_np)
         values = tensor.constant(values_np)
+        seed = tensor.constant(np.array([0xDEADBEEF, 0xCAFEBABE], dtype=np.uint64))
 
         # Solve OKVS
-        storage = field.solve_okvs(keys, values, m)
+        storage = field.solve_okvs(keys, values, m, seed)
         # Decode OKVS
-        decoded = field.decode_okvs(keys, storage)
+        decoded = field.decode_okvs(keys, storage, seed)
         return decoded
 
     traced = mp.compile(sim, protocol)

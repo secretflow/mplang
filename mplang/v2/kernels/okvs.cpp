@@ -58,9 +58,9 @@ extern "C" {
     }
 
     // Solve OKVS System: H * P = V
-    void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m) {
-        // Fixed seed for deterministic hashing
-        __m128i seed = _mm_set_epi64x(0xDEADBEEF, 0xCAFEBABE);
+    void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m, uint64_t* seed_ptr) {
+        // Load dynamic seed
+        __m128i seed = _mm_loadu_si128((__m128i*)seed_ptr);
 
         std::vector<std::vector<int>> col_to_rows(m);
         struct Row {
@@ -213,8 +213,8 @@ extern "C" {
         }
     }
 
-    void decode_okvs(uint64_t* keys, uint64_t* storage, uint64_t* output, uint64_t n, uint64_t m) {
-        __m128i seed = _mm_set_epi64x(0xDEADBEEF, 0xCAFEBABE);
+    void decode_okvs(uint64_t* keys, uint64_t* storage, uint64_t* output, uint64_t n, uint64_t m, uint64_t* seed_ptr) {
+        __m128i seed = _mm_loadu_si128((__m128i*)seed_ptr);
         __m128i* P_vec = (__m128i*)storage;
         __m128i* out_vec = (__m128i*)output;
 
@@ -263,7 +263,10 @@ extern "C" {
         __m128i* out_vec = (__m128i*)output;
 
         // Fixed Key (Arbitrary constant)
-        __m128i fixed_key = _mm_set_epi64x(0x1234567890ABCDEF, 0xFEDCBA0987654321);
+        // Using PI fractional part (Nothing-up-my-sleeve numbers)
+        // 0x243F6A8885A308D3 (PI_FRAC_1)
+        // 0x13198A2E03707344 (PI_FRAC_2)
+        __m128i fixed_key = _mm_set_epi64x(0x243F6A8885A308D3, 0x13198A2E03707344);
         __m128i round_keys[11];
         aes_key_expand(fixed_key, round_keys);
 

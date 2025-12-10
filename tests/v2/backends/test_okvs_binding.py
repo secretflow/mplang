@@ -32,13 +32,14 @@ if os.path.exists(_KERNEL_LIB_PATH):
     try:
         _LIB = ctypes.CDLL(_KERNEL_LIB_PATH)
 
-        # void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m);
+        # void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m, uint64_t* seed);
         _LIB.solve_okvs.argtypes = [
             ctypes.POINTER(ctypes.c_uint64),  # keys
             ctypes.POINTER(ctypes.c_uint64),  # values (actually pairs of u64, size 2*n)
             ctypes.POINTER(ctypes.c_uint64),  # output (size 2*m)
             ctypes.c_uint64,  # n
             ctypes.c_uint64,  # m
+            ctypes.POINTER(ctypes.c_uint64),  # seed
         ]
 
         # Decode binding
@@ -48,6 +49,7 @@ if os.path.exists(_KERNEL_LIB_PATH):
             ctypes.POINTER(ctypes.c_uint64),  # decoded_output
             ctypes.c_uint64,  # n
             ctypes.c_uint64,  # m
+            ctypes.POINTER(ctypes.c_uint64),  # seed
         ]
     except OSError as e:
         print(f"Warning: Failed to load {_KERNEL_LIB_PATH}: {e}")
@@ -68,26 +70,28 @@ def test_okvs_flow():
         values[i, 1] = i * 10
 
     storage = np.zeros((m, 2), dtype=np.uint64)
+    seed = np.array([0xDEADBEEF, 0xCAFEBABE], dtype=np.uint64)
 
     if _LIB is not None:
         # Use C++ implementation
         keys_ptr = keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
         vals_ptr = values.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
         storage_ptr = storage.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+        seed_ptr = seed.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
 
         print(f"Calling C++ solve_okvs n={n}, m={m}")
-        _LIB.solve_okvs(keys_ptr, vals_ptr, storage_ptr, n, m)
+        _LIB.solve_okvs(keys_ptr, vals_ptr, storage_ptr, n, m, seed_ptr)
 
         # Verify
         decoded = np.zeros((n, 2), dtype=np.uint64)
         dec_ptr = decoded.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
 
-        _LIB.decode_okvs(keys_ptr, storage_ptr, dec_ptr, n, m)
+        _LIB.decode_okvs(keys_ptr, storage_ptr, dec_ptr, n, m, seed_ptr)
     else:
         # Use Python fallback
         print(f"Using Python fallback for OKVS solve n={n}, m={m}")
-        storage = py_kernels.okvs_solve(keys, values, m)
-        decoded = py_kernels.okvs_decode(keys, storage, m)
+        storage = py_kernels.okvs_solve(keys, values, m, seed=(int(seed[0]), int(seed[1])))
+        decoded = py_kernels.okvs_decode(keys, storage, m, seed=(int(seed[0]), int(seed[1])))
 
     if np.array_equal(decoded, values):
         print("SUCCESS: Decoded values match inputs!")

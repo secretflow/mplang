@@ -58,10 +58,11 @@ class TestPsiOkvs(unittest.TestCase):
             p_obj = self._to_obj(p_val)
             w_obj = self._to_obj(w_val)
             q_obj = self._to_obj(q_val)
+            seed_obj = self._to_obj(np.array([0, 0], dtype=np.uint64))
 
-            d_p = field.decode_okvs(keys_obj, p_obj)
-            d_w = field.decode_okvs(keys_obj, w_obj)
-            d_q = field.decode_okvs(keys_obj, q_obj)
+            d_p = field.decode_okvs(keys_obj, p_obj, seed_obj)
+            d_w = field.decode_okvs(keys_obj, w_obj, seed_obj)
+            d_q = field.decode_okvs(keys_obj, q_obj, seed_obj)
 
             # 6. Verify D(Q) == D(P) ^ D(W)
             # We can use field.add (XOR) or unwrap and check in numpy
@@ -156,7 +157,8 @@ class TestPsiOkvs(unittest.TestCase):
 
             # Receiver Ops
             # Receiver Ops
-            p_storage = field.solve_okvs(keys_obj, vals_obj, m=M)
+            seed_obj = self._to_obj(np.array([0x123, 0x456], dtype=np.uint64))
+            p_storage = field.solve_okvs(keys_obj, vals_obj, M, seed_obj)
             q_storage = field.add(p_storage, w_recv_obj)  # Mask P with W
 
             # Sender Ops (receives Q_storage)
@@ -164,12 +166,12 @@ class TestPsiOkvs(unittest.TestCase):
             # S = Decode(P^W, x) = Decode(P,x) ^ Decode(W,x)
             # If x=y: S = H(x) ^ (Decode(V,x) ^ Decode(U,x)*Delta)
 
-            s_decoded = field.decode_okvs(keys_obj, q_storage)
+            s_decoded = field.decode_okvs(keys_obj, q_storage, seed_obj)
 
             # Sender unmasks V:
             # T = S ^ Decode(V,x)
             v_sender_obj = self._to_obj(v_sender)
-            v_decoded = field.decode_okvs(keys_obj, v_sender_obj)
+            v_decoded = field.decode_okvs(keys_obj, v_sender_obj, seed_obj)
 
             t_val = field.add(s_decoded, v_decoded)
 
@@ -182,7 +184,7 @@ class TestPsiOkvs(unittest.TestCase):
 
             # Reference Check: Decode(U, x) * Delta
             u_sender_obj = self._to_obj(u_sender)
-            u_decoded = field.decode_okvs(keys_obj, u_sender_obj)
+            u_decoded = field.decode_okvs(keys_obj, u_sender_obj, seed_obj)
 
             ref_prod = field.mul(u_decoded, delta_expanded)
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import ctypes
 import os
 import threading
+# print("DEBUG: Importing field_impl.py")
 
 import jax.numpy as jnp
 import numpy as np
@@ -71,6 +72,7 @@ def _get_lib() -> ctypes.CDLL | None:
                     ctypes.POINTER(ctypes.c_uint64),  # output
                     ctypes.c_uint64,  # n
                     ctypes.c_uint64,  # m
+                    ctypes.POINTER(ctypes.c_uint64),  # seed
                 ]
                 _LIB.decode_okvs.argtypes = [
                     ctypes.POINTER(ctypes.c_uint64),  # keys
@@ -78,6 +80,7 @@ def _get_lib() -> ctypes.CDLL | None:
                     ctypes.POINTER(ctypes.c_uint64),  # output
                     ctypes.c_uint64,  # n
                     ctypes.c_uint64,  # m
+                    ctypes.POINTER(ctypes.c_uint64),  # seed
                 ]
                 _LIB.aes_128_expand.argtypes = [
                     ctypes.POINTER(ctypes.c_uint64),  # seeds
@@ -131,16 +134,24 @@ def _gf128_mul_impl(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return out
 
 
-def _okvs_solve_impl(keys: np.ndarray, values: np.ndarray, m: int) -> np.ndarray:
+def _okvs_solve_impl(
+    keys: np.ndarray, values: np.ndarray, m: int, seed: np.ndarray
+) -> np.ndarray:
     lib = _get_lib()
+    # Ensure seed is flat tuple or array
+    if seed.ndim > 1:
+        seed = seed.flatten()
+    s_tuple = (int(seed[0]), int(seed[1]))
+
     if lib is None:
         # Use pure Python fallback
         keys_flat = keys.flatten() if keys.ndim > 1 else keys
-        return py_kernels.okvs_solve(keys_flat, values, m)
+        return py_kernels.okvs_solve(keys_flat, values, m, seed=s_tuple)
 
     n = keys.shape[0]
     keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
     values_c = np.ascontiguousarray(values, dtype=np.uint64)
+    seed_c = np.ascontiguousarray(seed, dtype=np.uint64)
     output = np.zeros((m, 2), dtype=np.uint64)
 
     lib.solve_okvs(
@@ -149,20 +160,29 @@ def _okvs_solve_impl(keys: np.ndarray, values: np.ndarray, m: int) -> np.ndarray
         output.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
         n,
         m,
+        seed_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
     )
     return output
 
 
-def _okvs_decode_impl(keys: np.ndarray, storage: np.ndarray, m: int) -> np.ndarray:
+def _okvs_decode_impl(
+    keys: np.ndarray, storage: np.ndarray, m: int, seed: np.ndarray
+) -> np.ndarray:
     lib = _get_lib()
+    # Ensure seed is flat tuple or array
+    if seed.ndim > 1:
+        seed = seed.flatten()
+    s_tuple = (int(seed[0]), int(seed[1]))
+
     if lib is None:
         # Use pure Python fallback
         keys_flat = keys.flatten() if keys.ndim > 1 else keys
-        return py_kernels.okvs_decode(keys_flat, storage, m)
+        return py_kernels.okvs_decode(keys_flat, storage, m, seed=s_tuple)
 
     n = keys.shape[0]
     keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
     storage_c = np.ascontiguousarray(storage, dtype=np.uint64)
+    seed_c = np.ascontiguousarray(seed, dtype=np.uint64)
     output = np.zeros((n, 2), dtype=np.uint64)
 
     lib.decode_okvs(
@@ -171,6 +191,7 @@ def _okvs_decode_impl(keys: np.ndarray, storage: np.ndarray, m: int) -> np.ndarr
         output.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
         n,
         m,
+        seed_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
     )
     return output
 
@@ -298,11 +319,13 @@ def _solve_okvs_impl(
     op: Operation,
     keys_val: TensorValue,
     values_val: TensorValue,
+    seed_val: TensorValue,
 ) -> TensorValue:
     m = op.attrs["m"]
     keys = _unwrap(keys_val)
     values = _unwrap(values_val)
-    res = _okvs_solve_impl(keys, values, m)
+    seed = _unwrap(seed_val)
+    res = _okvs_solve_impl(keys, values, m, seed)
     return _wrap(res)
 
 
@@ -312,9 +335,11 @@ def _decode_okvs_impl(
     op: Operation,
     keys_val: TensorValue,
     store_val: TensorValue,
+    seed_val: TensorValue,
 ) -> TensorValue:
     keys = _unwrap(keys_val)
     storage = _unwrap(store_val)
+    seed = _unwrap(seed_val)
     m = storage.shape[0]
-    res = _okvs_decode_impl(keys, storage, m)
+    res = _okvs_decode_impl(keys, storage, m, seed)
     return _wrap(res)

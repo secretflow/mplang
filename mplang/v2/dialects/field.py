@@ -63,14 +63,20 @@ def _mul_ae(a: elt.TensorType, b: elt.TensorType) -> elt.TensorType:
 
 @solve_okvs_p.def_abstract_eval
 def _solve_okvs_ae(
-    key_type: elt.TensorType, val_type: elt.TensorType, *, m: int
+    key_type: elt.TensorType,
+    val_type: elt.TensorType,
+    seed_type: elt.TensorType,
+    *,
+    m: int,
 ) -> elt.TensorType:
     return elt.TensorType(val_type.element_type, (m, 2))
 
 
 @decode_okvs_p.def_abstract_eval
 def _decode_okvs_ae(
-    key_type: elt.TensorType, store_type: elt.TensorType
+    key_type: elt.TensorType,
+    store_type: elt.TensorType,
+    seed_type: elt.TensorType,
 ) -> elt.TensorType:
     n = key_type.shape[0]
     return elt.TensorType(store_type.element_type, (n, 2))
@@ -114,18 +120,22 @@ def mul(a: el.Object, b: el.Object) -> el.Object:
     return mul_p.bind(a, b)
 
 
-def solve_okvs(keys: el.Object, values: el.Object, m: int) -> el.Object:
+def solve_okvs(
+    keys: el.Object, values: el.Object, m: int, seed: el.Object
+) -> el.Object:
     """Solve OKVS P for keys->values using C++ Kernel.
     Returns storage tensor of shape (m, 2).
     """
-    return solve_okvs_p.bind(keys, values, m=m)
+    return solve_okvs_p.bind(keys, values, seed, m=m)
 
 
-def decode_okvs(keys: el.Object, storage: el.Object) -> el.Object:
+def decode_okvs(
+    keys: el.Object, storage: el.Object, seed: el.Object
+) -> el.Object:
     """Decode OKVS values from storage for keys.
     Returns decoded values of shape (N, 2).
     """
-    return decode_okvs_p.bind(keys, storage)
+    return decode_okvs_p.bind(keys, storage, seed)
 
 
 def ldpc_encode(

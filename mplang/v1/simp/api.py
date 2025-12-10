@@ -18,15 +18,15 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from mplang.v1.core import (
-    builtin_function,
     Mask,
     MPObject,
-    peval,
     Rank,
     ScalarType,
     Shape,
     TableLike,
     TensorLike,
+    builtin_function,
+    peval,
 )
 from mplang.v1.ops import basic, jax_cc, nnx_cc, sql_cc
 from mplang.v1.ops.base import FeOperation

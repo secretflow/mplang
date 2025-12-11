@@ -23,6 +23,7 @@ import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
 from mplang.v2.edsl import Interpreter
+from mplang.v2.libs.mpc.psi import okvs_gct
 from mplang.v2.libs.mpc.psi import rr22 as psi_okvs
 
 
@@ -79,7 +80,7 @@ def test_vole_psi_simulation() -> None:
     """Simulate RR22-lite PSI flow using OKVS and VOLE components."""
     interp = Interpreter()
     N = 100  # Intersection size
-    M = 140  # OKVS/VOLE size (Increased for success probability)
+    M = int(N * okvs_gct.get_okvs_expansion(N))  # Use dynamic expansion
 
     # 1. Setup VOLE Secrets (Simulated for speed)
     # Sender has U, V. Recv has Delta, W = V + U*Delta

@@ -27,8 +27,8 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from mplang.v2.dialects import bfv, simp, tensor
-from mplang.v2.libs.mpc import aggregation, permutation
+from mplang.v2.dialects import bfv, crypto, simp, tensor
+from mplang.v2.libs.mpc.analytics import aggregation, permutation
 
 
 def oblivious_groupby_sum_bfv(
@@ -264,39 +264,27 @@ def oblivious_groupby_sum_shuffle(
     perm = simp.pcall_static((receiver,), compute_perm_fn, bins)
 
     # 2. Secret Share Data (Sender)
+    # Security Fix: Generate mask using crypto.random_bytes at RUNTIME on Sender
+    # This generates cryptographically secure random bytes that are unique per session.
+
     def split_shares_fn(d):
-        def _impl(arr):
-            # Use a fixed key for determinism in tests, or generate one if possible
-            # FIXME: Hardcoded seed makes the mask deterministic and insecure.
-            # Receiver can reconstruct the mask and recover the data.
-            # Must use a secure random source or negotiated session key.
-            key = jax.random.PRNGKey(42)
+        # Generate random bytes at runtime (EDSL primitive, NOT during trace)
+        # This is secure because crypto.random_bytes executes at runtime on the party.
+        n_elements = d.type.shape[0]
+        bytes_per_element = 8  # int64 = 8 bytes
+        total_bytes = n_elements * bytes_per_element
 
-            if jnp.issubdtype(arr.dtype, jnp.integer):
-                # Generate random mask.
-                # Note: For full security we need full range.
-                # Here we use a safe range for prototype.
-                info = jnp.iinfo(arr.dtype)
-                # Use python int to avoid overflow when adding 1
-                min_val = int(info.min)
-                # max_val must fit in int64 for JAX. We lose one value (MAX_INT)
-                max_val = int(info.max)
-                # FIXME: Insecure integer mask. `max_val` is exclusive in randint,
-                # so `MAX_INT` is never sampled, creating a statistical bias.
-                mask = jax.random.randint(
-                    key, arr.shape, min_val, max_val, dtype=arr.dtype
-                )
-            else:
-                # FIXME: Insecure float mask. `uniform` returns [0, 1), which only
-                # masks the fractional part and leaves the integer part/magnitude exposed.
-                # Should use fixed-point arithmetic or a proper float masking scheme.
-                mask = jax.random.uniform(key, arr.shape, dtype=arr.dtype)
+        mask_bytes = crypto.random_bytes(total_bytes)
 
+        def _apply_mask(arr, m_bytes):
+            # View random bytes as int64 (same as typical input dtype)
+            # For generality, we use arr.dtype, but assume int64 for now.
+            mask = m_bytes.view(jnp.int64).reshape(arr.shape)
             d0 = arr - mask
             d1 = mask
             return d0, d1
 
-        return tensor.run_jax(_impl, d)
+        return tensor.run_jax(_apply_mask, d, mask_bytes)
 
     d0, d1 = simp.pcall_static((sender,), split_shares_fn, data)
 

@@ -12,7 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tensor dialect: tensor ops backed by plaintext/private JAX execution."""
+"""Tensor dialect: tensor ops backed by plaintext/private JAX execution.
+
+Design Philosophy
+-----------------
+This dialect is intentionally *lightweight* — it focuses on **structural/shape
+operations** (slice, reshape, transpose, gather, scatter, concat) rather than
+full-fledged element-wise arithmetic.
+
+Why not add bitwise_and / bitwise_or / arithmetic primitives here?
+
+1. **Shape Dialect**: The primitives defined here perform *index arithmetic* on
+   tensor metadata (offsets, strides, dim sizes). They don't interpret element
+   values — that's left to the backend (JAX/XLA).
+
+2. **Delegate to run_jax**: For element-wise logic (bitwise ops, arithmetic),
+   use `tensor.run_jax(jnp.bitwise_xor, a, b)`. This leverages JAX's mature XLA
+   backend without duplicating op definitions or abstract_eval rules for every
+   possible JAX op.
+
+3. **Type Preservation**: `run_jax` infers output types from JAX's shape/dtype
+   inference, avoiding the need to re-implement type rules for hundreds of ops.
+
+For domain-specific ops (GF(2^128) mul, AES expand), use dedicated dialects
+like `field` which have optimized C++ kernel backends.
+
+Helper Functions
+----------------
+- `bitcast(x, dtype)`: Type reinterpretation (SSA-safe, same bytes).
+- For random tensor generation, see `crypto.random_tensor`.
+"""
 
 from __future__ import annotations
 
@@ -259,7 +288,6 @@ def run_jax(
     Returns:
         PyTree of TraceObjects with the same structure as fn's output.
     """
-
     return run_jax_p.bind(fn, *args, **kwargs)
 
 
@@ -1046,8 +1074,48 @@ def slice_tensor(
     return slice_p.bind(tensor, starts=starts, ends=ends, strides=strides)  # type: ignore[no-any-return]
 
 
+# ==============================================================================
+# --- Type Reinterpretation (via run_jax)
+# ==============================================================================
+
+
+def bitcast(x: el.Object, dtype: elt.ScalarType) -> el.Object:
+    """Reinterpret tensor bytes as a different dtype.
+
+    This is a zero-copy (at execution time) type reinterpretation that views
+    the same underlying bytes as a different element type. The total byte
+    count must remain the same.
+
+    This follows LLVM/MLIR `bitcast` semantics: the operation produces a new
+    SSA value with different type but same bit representation.
+
+    Args:
+        x: Input tensor.
+        dtype: Target element type (e.g., elt.u64, elt.u8, elt.i32).
+
+    Returns:
+        Tensor with same bytes reinterpreted as dtype.
+        Shape changes to preserve total bytes.
+
+    Example:
+        >>> # Tensor[u8, (8,)] -> Tensor[u64, (1,)]
+        >>> packed = tensor.bitcast(bytes_tensor, elt.u64)
+        >>> # Tensor[u64, (10, 2)] -> Tensor[u8, (10, 16)]
+        >>> unpacked = tensor.bitcast(u64_tensor, elt.u8)
+    """
+    from typing import cast
+
+    jax_dtype = dtypes.to_jax(dtype)
+
+    def _bitcast(arr: Any) -> Any:
+        return arr.view(jax_dtype)
+
+    return cast(el.Object, run_jax(_bitcast, x))
+
+
 __all__ = [
     "RunJaxCompilation",
+    "bitcast",
     "concat",
     "concat_p",
     "constant",

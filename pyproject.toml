@@ -59,6 +59,14 @@ examples = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
+# Exclude native C++ kernels by default - they are optional
+# Users can compile locally with: cd mplang/v2/kernels && make
+exclude = [
+    "*.so",
+    "*.o",
+    "mplang/v2/kernels/*.so",
+    "mplang/v2/kernels/*.o",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [

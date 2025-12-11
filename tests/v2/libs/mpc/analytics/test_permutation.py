@@ -21,7 +21,7 @@ import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
-from mplang.v2.libs.mpc import permutation
+from mplang.v2.libs.mpc.analytics import permutation
 
 
 def _unwrap(val):

@@ -22,7 +22,7 @@ import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.dialects import simp, tensor
-from mplang.v2.libs.mpc import groupby
+from mplang.v2.libs.mpc.analytics import groupby
 
 
 def _unwrap(val):

@@ -29,7 +29,7 @@ import mplang.v2.dialects.bfv as bfv
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 from mplang.v2.backends.simp_simulator import SimpSimulator
-from mplang.v2.libs.mpc import apply_permutation, rotate_and_sum
+from mplang.v2.libs.mpc.analytics import apply_permutation, rotate_and_sum
 
 
 def main():

@@ -1,0 +1,432 @@
+# Copyright 2025 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""OT Extension (IKNP).
+
+Implements IKNP OT extension protocol to perform N OTs using k Base OTs.
+Ref: https://crypto.stanford.edu/~valeria/research/2003/IKNP03.pdf
+"""
+
+from __future__ import annotations
+
+from typing import Any, cast
+
+import jax.numpy as jnp
+
+import mplang.v2.edsl as el
+from mplang.v2.dialects import crypto, field, simp, tensor
+
+
+def prg_expand(seed_tensor: el.Object, length: int) -> el.Object:
+    """Pseudo-Random Generator: Expand seed to `length` bits (as uint8 0/1).
+
+    Uses AES-NI via field.aes_expand for cryptographic security.
+    """
+    # Calculate number of 128-bit blocks needed to cover `length` bits.
+    # field.aes_expand returns (K, M, 2) uint64 blocks.
+    # Total bits = M * 128.
+
+    m_blocks = (length + 127) // 128
+
+    # Input seed_tensor is (K, 32) bytes (uint8).
+    # field.aes_expand expects (K, 2) uint64 seeds.
+
+    def _reshape_seeds(s_bytes: Any) -> Any:
+        # s_bytes: (K, 32) u8
+        # Take first 16 bytes for 128-bit key/seed
+        s_16 = s_bytes[:, :16]
+        return s_16.view(jnp.uint64).reshape(-1, 2)
+
+    seeds_u64 = tensor.run_jax(_reshape_seeds, seed_tensor)
+
+    expanded_blocks = field.aes_expand(seeds_u64, m_blocks)  # (K, M, 2) u64
+
+    # Convert blocks to bits
+    def _blocks_to_bits(blocks: Any) -> Any:
+        # blocks: (K, M, 2) u64
+        # unpackbits
+        # view as u8
+        bytes_view = blocks.view(jnp.uint8)  # (K, M, 16)
+        bits = jnp.unpackbits(bytes_view, axis=-1, bitorder="little")  # (K, M, 128)
+
+        # Flatten last two dims
+        bits_flat = bits.reshape(bits.shape[0], -1)
+
+        # Slice to exact length
+        return bits_flat[:, :length]
+
+    return cast(el.Object, tensor.run_jax(_blocks_to_bits, expanded_blocks))
+
+
+def vec_hash(data_bytes: el.Object, domain_sep: int, num_rows: int) -> el.Object:
+    """Hash rows of a (N, D) tensor independently.
+
+    Args:
+        data_bytes: (N, D) tensor to hash.
+        domain_sep: Integer domain separator to mix into the hash.
+        num_rows: Number of rows N. Must be provided explicitly.
+    """
+    # Optimized batch hashing:
+    # 1. Prepend domain_sep to all rows (vectorized concatenation)
+    # 2. Call crypto.hash_bytes once on the whole tensor
+
+    if domain_sep != 0:
+
+        def _prepend_ds(arr: Any, ds: int) -> Any:
+            # arr: (N, D)
+            N = arr.shape[0]
+            # Create (N, 8) domain sep block using repeat & reshape
+            # ds_arr: (8,)
+            ds_arr = jnp.array([ds], dtype=jnp.uint64).view(jnp.uint8)
+            # Broadcast to (N, 8)
+            ds_block = jnp.broadcast_to(ds_arr, (N, 8))
+
+            return jnp.concatenate([ds_block, arr], axis=1)
+
+        # Result: (N, D+8)
+        data_to_hash = tensor.run_jax(lambda a: _prepend_ds(a, domain_sep), data_bytes)
+    else:
+        data_to_hash = data_bytes
+
+    # Call batched hash_bytes
+    # Input: (N, D_total) -> Output: (N, 32)
+    # This generates a single graph node, solving the compiler explosion issue.
+    # explicit hash_batch primitive (rank >= 2)
+    hashes = crypto.hash_batch(data_to_hash)
+
+    return hashes
+
+
+def iknp_core(
+    choice_bits: el.Object, sender: int, receiver: int, num_ots: int
+) -> tuple[el.Object, el.Object, el.Object]:
+    """Core IKNP Matrix Generation.
+
+    Returns:
+        t_matrix: (N, K) bit matrix on Sender.
+        q_matrix: (N, K) bit matrix on Receiver.
+        s_choices: (K,) choice bits on Sender (s).
+    """
+    K = 128
+
+    # 1. Base OTs
+    def gen_s() -> el.Object:
+        # Generate random bits at runtime using new API
+        return crypto.random_bits(K)
+
+    s = simp.pcall_static((sender,), gen_s)
+
+    def gen_seeds() -> tuple[el.Object, el.Object]:
+        # Generate random bytes at runtime
+        k0_bytes = crypto.random_bytes(K * 32)
+        k1_bytes = crypto.random_bytes(K * 32)
+
+        # Reshape to (K, 32) using run_jax for XLA optimization
+        def _reshape_k32(b: Any) -> Any:
+            return b.reshape(K, 32)
+
+        k0 = tensor.run_jax(_reshape_k32, k0_bytes)
+        k1 = tensor.run_jax(_reshape_k32, k1_bytes)
+        return k0, k1
+
+    k0_base, k1_base = simp.pcall_static((receiver,), gen_seeds)
+
+    # Base OT Logic (Inlined)
+    # S (Receiver of BaseOT) inits
+    def base_receiver_init() -> el.Object:
+        C = crypto.ec_mul(crypto.ec_generator(), crypto.ec_random_scalar())
+        return C
+
+    C_point = simp.pcall_static((sender,), base_receiver_init)
+    C_recv = simp.shuffle_static(C_point, {receiver: sender})
+
+    # Duplicate initialization removed
+
+    # R (Sender of BaseOT) keygen
+    def base_sender_keygen(
+        C: el.Object, s_base_choices: el.Object
+    ) -> tuple[list[el.Object], list[el.Object]]:
+        # s_base_choices is (K,) Tensor
+        PK0_list = []
+        k_priv_list = []
+
+        for i in range(K):
+            k_priv = crypto.ec_random_scalar()
+            PK_sigma = crypto.ec_mul(crypto.ec_generator(), k_priv)
+
+            # Slice s[i]
+            s_i = tensor.slice_tensor(s_base_choices, (i,), (i + 1,))  # (1,)
+            s_scalar = crypto.ec_scalar_from_int(s_i)
+
+            diff = crypto.ec_sub(C, PK_sigma)
+            # select checks s_scalar. If 1 (true), pick diff.
+            PK0 = crypto.select(s_scalar, diff, PK_sigma)
+
+            PK0_list.append(PK0)
+            k_priv_list.append(k_priv)
+
+        return PK0_list, k_priv_list
+
+    base_keys = simp.pcall_static((sender,), base_sender_keygen, C_point, s)
+    # base_keys is tuple of Lists.
+    # When using pcall with lists, it returns lists of TraceObjects.
+
+    # Extract
+    PK0_loc = simp.pcall_static((sender,), lambda x: x[0], base_keys)
+    # Move to R
+    from jax.tree_util import tree_map
+
+    PK0_recv = tree_map(lambda x: simp.shuffle_static(x, {receiver: sender}), PK0_loc)
+
+    # R (Base Sender) Encrypts k0, k1
+    def base_encrypt_rev(
+        C: el.Object,
+        PK0_list: list[el.Object],
+        m0_tensor: el.Object,
+        m1_tensor: el.Object,
+    ) -> tuple[list[el.Object], list[el.Object], list[el.Object]]:
+        # m0, m1 are (K, 32) tensors.
+
+        U_list = []
+        c0_list = []
+        c1_list = []
+
+        for i in range(K):
+            r = crypto.ec_random_scalar()
+            U = crypto.ec_mul(crypto.ec_generator(), r)
+            U_list.append(U)
+
+            PK0 = PK0_list[i]
+            K0_point = crypto.ec_mul(PK0, r)
+            PK1 = crypto.ec_sub(C, PK0)
+            K1_point = crypto.ec_mul(PK1, r)
+
+            sk0 = crypto.hash_bytes(crypto.ec_point_to_bytes(K0_point))  # (32,)
+            sk1 = crypto.hash_bytes(crypto.ec_point_to_bytes(K1_point))
+
+            # Extract row i and encrypt in single run_jax block
+            def _slice_and_enc(
+                m0_full: Any, m1_full: Any, k0: Any, k1: Any, idx: int = i
+            ) -> tuple[Any, Any]:
+                # Slice row i and reshape to (32,)
+                m0_row = m0_full[idx].flatten()
+                m1_row = m1_full[idx].flatten()
+                # XOR with keys
+                c0 = jnp.bitwise_xor(m0_row, k0)
+                c1 = jnp.bitwise_xor(m1_row, k1)
+                return c0, c1
+
+            c0, c1 = tensor.run_jax(_slice_and_enc, m0_tensor, m1_tensor, sk0, sk1)
+
+            c0_list.append(c0)
+            c1_list.append(c1)
+
+        return U_list, c0_list, c1_list
+
+    base_cts_rev = simp.pcall_static(
+        (receiver,), base_encrypt_rev, C_recv, PK0_recv, k0_base, k1_base
+    )
+    # Shuffle tuple(list, list, list)
+    from jax.tree_util import tree_map
+
+    base_cts_s = tree_map(
+        lambda x: simp.shuffle_static(x, {sender: receiver}), base_cts_rev
+    )
+
+    def base_decrypt_rev(
+        keys: tuple[list[el.Object], list[el.Object]],
+        cts: tuple[list[el.Object], list[el.Object], list[el.Object]],
+        s_choices: el.Object,
+    ) -> el.Object:
+        _, k_priv_list = keys
+        U_list, c0_list, c1_list = cts
+
+        k_s_rows = []
+
+        for i in range(K):
+            k_priv = k_priv_list[i]
+            U = U_list[i]
+            c0 = c0_list[i]
+            c1 = c1_list[i]
+
+            # Recov K = U^k_priv
+            SharedK = crypto.ec_mul(U, k_priv)
+            sk = crypto.hash_bytes(crypto.ec_point_to_bytes(SharedK))
+
+            # Combined slice + decrypt + reshape in single run_jax
+            def _slice_dec_reshape(
+                s_arr: Any, k: Any, c0_: Any, c1_: Any, idx: int = i
+            ) -> Any:
+                sel = s_arr[idx]
+                chosen_c = jnp.where(sel == 0, c0_, c1_)
+                result = jnp.bitwise_xor(chosen_c, k)
+                return result.reshape(1, 32)
+
+            res_row = tensor.run_jax(_slice_dec_reshape, s_choices, sk, c0, c1)
+            k_s_rows.append(res_row)
+
+        # Concat using tensor.concat (run_jax with many args can cause tracing issues)
+        return tensor.concat(k_s_rows, axis=0)
+
+    k_s = simp.pcall_static((sender,), base_decrypt_rev, base_keys, base_cts_s, s)
+
+    # 2. PRG Expansion & Correction
+    def calc_u(k0_loc: el.Object, k1_loc: el.Object, r_loc: el.Object) -> el.Object:
+        g_k0 = prg_expand(k0_loc, num_ots)  # (K, num_ots)
+        g_k1 = prg_expand(k1_loc, num_ots)  # (K, num_ots)
+
+        # choice_bits can be:
+        # - (N,) 1D vector for standard IKNP
+        # - (N, K) 2D matrix for KKRT OPRF
+        #
+        # For IKNP: u^j = G(k0^j) ^ G(k1^j) ^ r, where r is broadcast to all K rows
+        # For KKRT: u^j = G(k0^j) ^ G(k1^j) ^ r^j, where r is (N, K) transposed to (K, N)
+
+        # Handle both 1D and 2D inputs
+        def _compute_u(g0: Any, g1: Any, r: Any) -> Any:
+            # g0, g1: (K, N) bit matrices
+            # r: either (N,) or (N, K)
+            if r.ndim == 1:
+                # 1D case: broadcast (N,) -> (1, N) for XOR with (K, N)
+                r_t = jnp.expand_dims(r, axis=0)  # (1, N)
+            else:
+                # 2D case: transpose (N, K) -> (K, N)
+                r_t = jnp.transpose(r, (1, 0))  # (K, N)
+            return jnp.bitwise_xor(jnp.bitwise_xor(g0, g1), r_t)
+
+        return cast(el.Object, tensor.run_jax(_compute_u, g_k0, g_k1, r_loc))
+
+    u = simp.pcall_static((receiver,), calc_u, k0_base, k1_base, choice_bits)
+    u_recv = simp.shuffle_static(u, {sender: receiver})
+
+    # 3. Matrix Recovery & Transpose
+    def calc_t(k_s_loc: el.Object, u_loc: el.Object, s_loc: el.Object) -> el.Object:
+        g_k_s = prg_expand(k_s_loc, num_ots)
+
+        def _recover_and_transpose(g: Any, mask: Any, sel: Any) -> Any:
+            # Combine recover and transpose into single XLA block
+            sel_exp = jnp.expand_dims(sel, axis=-1)
+            term = jnp.bitwise_and(mask, sel_exp)
+            t_rows = jnp.bitwise_xor(g, term)
+            return jnp.transpose(t_rows, (1, 0))  # (N, K)
+
+        return cast(
+            el.Object, tensor.run_jax(_recover_and_transpose, g_k_s, u_loc, s_loc)
+        )
+
+    t_matrix = simp.pcall_static((sender,), calc_t, k_s, u_recv, s)
+
+    def calc_q(k0_loc: el.Object) -> el.Object:
+        g_k0 = prg_expand(k0_loc, num_ots)
+        # Use run_jax for transpose to enable XLA fusion
+        return cast(el.Object, tensor.run_jax(lambda x: jnp.transpose(x, (1, 0)), g_k0))
+
+    q_matrix = simp.pcall_static((receiver,), calc_q, k0_base)
+
+    # s is on Sender. t_matrix on Sender. q_matrix on Receiver.
+    return t_matrix, q_matrix, s
+
+
+def s_choices_sender(s: el.Object) -> el.Object:
+    return s  # Already pcalled on sender
+
+
+def transfer_extension(
+    m0: el.Object,
+    m1: el.Object,
+    choice_bits: el.Object,
+    sender: int,
+    receiver: int,
+    num_ots: int,
+) -> el.Object:
+    """Perform IKNP OT Extension."""
+
+    t_matrix, q_matrix, s = iknp_core(choice_bits, sender, receiver, num_ots)
+
+    # 4. Encryption
+    def encrypt_msgs(
+        t_loc: el.Object, s_loc: el.Object, m0_loc: el.Object, m1_loc: el.Object
+    ) -> el.Object:
+        # t: (N, K)
+        # s: (K,)
+
+        # Hash keys before using them as masks to break linear correlation
+        # H(t) and H(t^s)
+        # We use domain_sep=1 for IKNP payload masking
+        h_t = vec_hash(t_loc, domain_sep=1, num_rows=num_ots)
+
+        def _xor_s_and_hash(t: Any, s: Any) -> Any:
+            t_xor_s = jnp.bitwise_xor(t, s)
+            return t_xor_s
+
+        # We need to compute H(t^s). We can't easily do it in one block with vec_hash
+        # unless we compute t^s first.
+        t_xor_s_loc = cast(el.Object, tensor.run_jax(_xor_s_and_hash, t_loc, s_loc))
+        h_t_xor_s = vec_hash(t_xor_s_loc, domain_sep=1, num_rows=num_ots)
+
+        def _enc(ht: Any, hts: Any, msg0: Any, msg1: Any) -> Any:
+            # ht, hts are mapped to (N, 32) bytes usually, or whatever vec_hash returns
+            # msg0, msg1 are (N, D) bytes
+
+            # Ensure shapes match for XOR
+            # vec_hash returns (N, 32)
+            # If messages are not 32 bytes, we might need to adjust or truncation?
+            # Standard IKNP assumes messages are block size (128 bit = 16 bytes).
+            # But vec_hash produces 32 bytes (SHA256 usually).
+            # We slice hash to message length.
+
+            # msg0 shape: (N, 16) usually
+            d = msg0.shape[1]
+
+            ht_sliced = ht[:, :d]
+            hts_sliced = hts[:, :d]
+
+            c0 = jnp.bitwise_xor(msg0, ht_sliced)
+            c1 = jnp.bitwise_xor(msg1, hts_sliced)
+            return c0, c1
+
+        return cast(el.Object, tensor.run_jax(_enc, h_t, h_t_xor_s, m0_loc, m1_loc))
+
+    ciphertexts = simp.pcall_static((sender,), encrypt_msgs, t_matrix, s, m0, m1)
+
+    from jax.tree_util import tree_map
+
+    ciphertexts_recv = tree_map(
+        lambda x: simp.shuffle_static(x, {receiver: sender}), ciphertexts
+    )
+
+    def decrypt_msg(
+        q_loc: el.Object, r_loc: el.Object, c_texts: tuple[el.Object, el.Object]
+    ) -> el.Object:
+        c0, c1 = c_texts
+
+        # Hash q: H(q)
+        h_q = vec_hash(q_loc, domain_sep=1, num_rows=num_ots)
+
+        def _dec(hq: Any, r: Any, ct0: Any, ct1: Any) -> Any:
+            # hq: (N, 32)
+            d = ct0.shape[1]
+            hq_sliced = hq[:, :d]
+
+            m0_cand = jnp.bitwise_xor(ct0, hq_sliced)
+            m1_cand = jnp.bitwise_xor(ct1, hq_sliced)
+            r_exp = jnp.expand_dims(r, axis=-1)
+            return jnp.where(r_exp == 1, m1_cand, m0_cand)
+
+        return cast(el.Object, tensor.run_jax(_dec, h_q, r_loc, c0, c1))
+
+    res = simp.pcall_static(
+        (receiver,), decrypt_msg, q_matrix, choice_bits, ciphertexts_recv
+    )
+    return cast(el.Object, res)

@@ -255,20 +255,54 @@ def point_to_bytes_impl(
 
 
 @crypto.hash_p.def_impl
-def hash_impl(
-    interpreter: Interpreter, op: Operation, data: BytesValue | TensorValue
-) -> BytesValue:
-    raw = data.unwrap()
-    # Convert to bytes based on type
-    if isinstance(raw, bytes):
-        d = raw
-    elif isinstance(raw, np.ndarray):
-        d = raw.tobytes()
+def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
+    """Hash input data using SHA-256 (strict single blob)."""
+    # data can be BytesValue or TensorValue
+    if isinstance(data, BytesValue):
+        d = data.unwrap()
+    elif isinstance(data, TensorValue):
+        # Flatten and hash as single blob
+        d = data.unwrap().tobytes()
     else:
-        raise TypeError(f"Unexpected unwrapped type for hash: {type(raw)}")
+        raise TypeError(
+            f"hash expects BytesValue or TensorValue, got {type(data).__name__}"
+        )
 
     h = hashlib.sha256(d).digest()
-    return BytesValue(h)
+    arr = np.frombuffer(h, dtype=np.uint8)
+    return TensorValue(arr)
+
+
+@crypto.hash_batch_p.def_impl
+def hash_batch_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
+    """Hash data treating last dimension as bytes (explicit batching)."""
+    if not isinstance(data, TensorValue):
+        raise TypeError(f"hash_batch requires TensorValue, got {type(data)}")
+
+    arr_in = data.unwrap()
+
+    # Handle scalar / 0D / 1D case simply
+    if arr_in.ndim <= 1:
+        d = arr_in.tobytes()
+        h = hashlib.sha256(d).digest()
+        return TensorValue(np.frombuffer(h, dtype=np.uint8))
+
+    # Batch case: (B1, B2, ..., D)
+    batch_shape = arr_in.shape[:-1]
+    D = arr_in.shape[-1]
+
+    flat_in = arr_in.reshape(-1, D)
+    num_items = flat_in.shape[0]
+
+    hashes = []
+    for i in range(num_items):
+        row_bytes = flat_in[i].tobytes()
+        hashes.append(hashlib.sha256(row_bytes).digest())
+
+    flat_out = np.frombuffer(b"".join(hashes), dtype=np.uint8).reshape(num_items, 32)
+    arr_out = flat_out.reshape(*batch_shape, 32)
+
+    return TensorValue(arr_out)
 
 
 @crypto.sym_encrypt_p.def_impl
@@ -289,9 +323,11 @@ def sym_encrypt_impl(
         k = key.key_bytes
     elif isinstance(key, BytesValue):
         k = key.unwrap()
+    elif isinstance(key, TensorValue):
+        k = key.unwrap().tobytes()
     else:
         raise TypeError(
-            f"sym_encrypt key must be SymmetricKeyValue or BytesValue, "
+            f"sym_encrypt key must be SymmetricKeyValue, BytesValue, or TensorValue, "
             f"got {type(key).__name__}"
         )
 
@@ -327,9 +363,11 @@ def sym_decrypt_impl(
         k = key.key_bytes
     elif isinstance(key, BytesValue):
         k = key.unwrap()
+    elif isinstance(key, TensorValue):
+        k = key.unwrap().tobytes()
     else:
         raise TypeError(
-            f"sym_decrypt key must be SymmetricKeyValue or BytesValue, "
+            f"sym_decrypt key must be SymmetricKeyValue, BytesValue, or TensorValue, "
             f"got {type(key).__name__}"
         )
 
@@ -527,3 +565,17 @@ def kem_derive_impl(
         pk_bytes = public_key.key_bytes
         secret = bytes(a ^ b for a, b in zip(sk_bytes, pk_bytes, strict=True))
         return SymmetricKeyValue(suite=suite, key_bytes=secret)
+
+
+@crypto.random_bytes_p.def_impl
+def random_bytes_impl(interpreter: Interpreter, op: Operation) -> TensorValue:
+    """Generate random bytes using os.urandom."""
+    # Length is passed as attribute
+    length = op.attrs["length"]
+
+    if not isinstance(length, int):
+        raise TypeError(f"random_bytes length must be int, got {type(length)}")
+
+    b = os.urandom(length)
+    arr = np.frombuffer(b, dtype=np.uint8).copy()
+    return TensorValue(arr)

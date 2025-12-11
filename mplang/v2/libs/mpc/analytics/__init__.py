@@ -12,30 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MPC (Multi-Party Computation) library for MPLang2.
+"""Privacy-preserving analytics operations.
 
-Subpackages:
-- ot: Oblivious Transfer protocols
-- vole: Vector OLE protocols
-- psi: Private Set Intersection
-- analytics: Privacy-preserving analytics
-
-Example usage:
-    from mplang.v2.libs.mpc import ot_transfer, apply_permutation
-    from mplang.v2.libs.mpc.vole import silver_vole
-    from mplang.v2.libs.mpc.psi import psi_intersect
+Submodules:
+- aggregation: BFV homomorphic aggregation
+- groupby: Oblivious Group-By operations
+- permutation: Secure permutation (Bitonic Sort)
 """
 
-from .analytics.aggregation import rotate_and_sum
-from .analytics.groupby import oblivious_groupby_sum_bfv, oblivious_groupby_sum_shuffle
-from .analytics.permutation import apply_permutation, secure_switch
-from .ot.base import transfer as ot_transfer
+from .aggregation import aggregate_sparse, batch_bucket_aggregate, rotate_and_sum
+from .groupby import oblivious_groupby_sum_bfv, oblivious_groupby_sum_shuffle
+from .permutation import apply_permutation, secure_switch
 
 __all__ = [
+    "aggregate_sparse",
     "apply_permutation",
+    "batch_bucket_aggregate",
     "oblivious_groupby_sum_bfv",
     "oblivious_groupby_sum_shuffle",
-    "ot_transfer",
     "rotate_and_sum",
     "secure_switch",
 ]

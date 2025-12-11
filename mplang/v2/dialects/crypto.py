@@ -190,6 +190,7 @@ scalar_from_int_p = el.Primitive[el.Object]("crypto.ec_scalar_from_int")
 
 # Symmetric / Hash
 hash_p = el.Primitive[el.Object]("crypto.hash")
+hash_batch_p = el.Primitive[el.Object]("crypto.hash_batch")
 sym_encrypt_p = el.Primitive[el.Object]("crypto.sym_encrypt")
 sym_decrypt_p = el.Primitive[el.Object]("crypto.sym_decrypt")
 select_p = el.Primitive[el.Object]("crypto.select")
@@ -197,6 +198,9 @@ select_p = el.Primitive[el.Object]("crypto.select")
 # KEM (Key Encapsulation Mechanism)
 kem_keygen_p = el.Primitive[tuple[el.Object, el.Object]]("crypto.kem_keygen")
 kem_derive_p = el.Primitive[el.Object]("crypto.kem_derive")
+
+# Randomness
+random_bytes_p = el.Primitive[el.Object]("crypto.random_bytes")
 
 
 # ==============================================================================
@@ -246,7 +250,28 @@ def _scalar_from_int_ae(
 
 @hash_p.def_abstract_eval
 def _hash_ae(data: elt.BaseType) -> elt.TensorType:
+    # Strictly single output (blob hash)
     return elt.TensorType(elt.u8, (32,))
+
+
+@hash_batch_p.def_abstract_eval
+def _hash_batch_ae(data: elt.BaseType) -> elt.TensorType:
+    # Explicit batch hashing: Input (..., D) -> Output (..., 32)
+    # Hashes the last dimension D bytes.
+    if not isinstance(data, elt.TensorType):
+        raise TypeError(f"hash_batch requires TensorType, got {data}")
+
+    # data.shape is tuple[int | None, ...]
+    shape = data.shape
+    if len(shape) < 2:
+        # Fallback/Edge case: (D,) -> (32,)
+        # One could argue this should be an error for *batch* primitive,
+        # but allowing it provides consistency for (N=1, D).
+        return elt.TensorType(elt.u8, (32,))
+
+    # Batch shape is everything except last dim
+    batch_shape = shape[:-1]
+    return elt.TensorType(elt.u8, (*batch_shape, 32))
 
 
 @sym_encrypt_p.def_abstract_eval
@@ -280,6 +305,11 @@ def _kem_derive_ae(
 ) -> SymmetricKeyType:
     suite = getattr(private_key, "suite", "x25519")
     return SymmetricKeyType(suite)
+
+
+@random_bytes_p.def_abstract_eval
+def _random_bytes_ae(length: int) -> elt.TensorType:
+    return elt.TensorType(elt.u8, (length,))
 
 
 # ==============================================================================
@@ -327,6 +357,16 @@ def hash_bytes(data: el.Object) -> el.Object:
     return hash_p.bind(data)
 
 
+def hash_batch(data: el.Object) -> el.Object:
+    """Hash each row of a tensor independently.
+
+    Treats the last dimension as the data to hash.
+    Input: (N, D) -> Output: (N, 32)
+    Input: (B, N, D) -> Output: (B, N, 32)
+    """
+    return hash_batch_p.bind(data)
+
+
 def sym_encrypt(key: el.Object, plaintext: el.Object) -> el.Object:
     """Symmetric encrypt (XOR stream or AES-GCM)."""
     return sym_encrypt_p.bind(key, plaintext)
@@ -367,3 +407,87 @@ def kem_derive(private_key: el.Object, public_key: el.Object) -> el.Object:
         A symmetric key suitable for use with sym_encrypt/sym_decrypt
     """
     return kem_derive_p.bind(private_key, public_key)
+
+
+def random_bytes(length: int) -> el.Object:
+    """Generate cryptographically secure random bytes at runtime.
+
+    Args:
+        length: Number of bytes to generate.
+
+    Returns:
+        (length,) uint8 Tensor.
+    """
+    return random_bytes_p.bind(length=length)
+
+
+def random_tensor(shape: tuple[int, ...], dtype: elt.ScalarType) -> el.Object:
+    """Generate cryptographically secure random tensor at runtime.
+
+    This is a helper function that composes `random_bytes` with `tensor.run_jax`
+    to produce a tensor of the specified shape and dtype.
+
+    Args:
+        shape: Output tensor shape (e.g., (100,) or (10, 16)).
+        dtype: Element type (e.g., elt.u64, elt.i32, elt.f32).
+
+    Returns:
+        Tensor[dtype, shape] with CSPRNG values.
+
+    Example:
+        >>> # Generate 100 random uint64 values
+        >>> x = crypto.random_tensor((100,), elt.u64)
+        >>> # Generate 10x16 random int32 matrix
+        >>> y = crypto.random_tensor((10, 16), elt.i32)
+    """
+    import math
+    from typing import cast
+
+    from mplang.v2.dialects import dtypes, tensor
+
+    # Get byte size from numpy dtype
+    np_dtype = dtypes.to_numpy(dtype)
+    element_bytes = np_dtype.itemsize
+    total_elements = math.prod(shape)
+    total_bytes = total_elements * element_bytes
+
+    raw = random_bytes(total_bytes)
+
+    jax_dtype = dtypes.to_jax(dtype)
+
+    def _view_reshape(b: Any) -> Any:
+        return b.view(jax_dtype).reshape(shape)
+
+    return cast(el.Object, tensor.run_jax(_view_reshape, raw))
+
+
+def random_bits(n: int) -> el.Object:
+    """Generate n cryptographically secure random bits at runtime.
+
+    Each bit is stored as a uint8 with value 0 or 1 (unpacked representation).
+
+    Args:
+        n: Number of random bits to generate.
+
+    Returns:
+        (n,) uint8 Tensor with values 0 or 1.
+
+    Example:
+        >>> # Generate 1024 random bits for OT selection
+        >>> choice_bits = crypto.random_bits(1024)
+    """
+    from typing import cast
+
+    import jax.numpy as jnp
+
+    from mplang.v2.dialects import tensor
+
+    # Generate enough bytes to cover n bits
+    num_bytes = (n + 7) // 8
+    raw = random_bytes(num_bytes)
+
+    def _unpack_and_slice(b: Any, n: int = n) -> Any:
+        bits = jnp.unpackbits(b, bitorder="little")
+        return bits[:n]
+
+    return cast(el.Object, tensor.run_jax(_unpack_and_slice, raw))

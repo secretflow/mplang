@@ -487,3 +487,11 @@ def reshape_impl(
 ) -> TensorValue:
     new_shape = op.attrs["new_shape"]
     return _wrap(_unwrap(tensor_data).reshape(new_shape))
+
+
+@tensor.transpose_p.def_impl
+def transpose_impl(
+    interpreter: Interpreter, op: Operation, tensor_data: TensorValue
+) -> TensorValue:
+    perm = op.attrs.get("perm")
+    return _wrap(np.transpose(_unwrap(tensor_data), axes=perm))

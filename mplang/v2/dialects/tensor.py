@@ -363,11 +363,21 @@ def _constant_trace(data: Any) -> el.TraceObject:
     return el.TraceObject(value, tracer)
 
 
+
+
+from weakref import WeakKeyDictionary
+
+# Constant cache: Tracer -> { (dtype, shape, bytes) -> Object }
+_CONSTANT_CACHE: WeakKeyDictionary = WeakKeyDictionary()
+
+
 def constant(data: Any) -> el.Object:
     """Create a tensor constant value.
 
     This creates a constant tensor that can be used in tensor computations.
     The constant value is embedded directly into the computation graph.
+    Duplicate constants (same data and shape) are cached per-Tracer to
+    minimize graph size.
 
     Args:
         data: Constant data. Can be:
@@ -386,7 +396,46 @@ def constant(data: Any) -> el.Object:
         >>> y = constant(np.array([1, 2, 3]))  # Array constant
         >>> z = constant([[1, 2], [3, 4]])  # Nested list constant
     """
-    return constant_p.bind(data)  # type: ignore[no-any-return]
+    # Normalize data to numpy
+    np_array = np.array(data)
+    # Ensure canonical form
+    if np_array.ndim == 0:
+        # Scalar
+        key_shape = ()
+        key_dtype = np_array.dtype
+        key_bytes = np_array.tobytes()
+    else:
+        # Tensor
+        key_shape = tuple(np_array.shape)
+        key_dtype = np_array.dtype
+        # Use simple bytes for cache key. For very large constants this might
+        # be expensive, but typically constants in MPC are small (params, masks).
+        key_bytes = np_array.tobytes()
+
+    try:
+        tracer = _current_tracer()
+    except Exception:
+        # If no tracer is active (e.g. eager execution?), skip caching logic
+        # or fall back to standard bind which will handle eager/trace check.
+        # But constant_p.bind usually expects a context.
+        return constant_p.bind(np_array)
+
+    inner_key = (str(key_dtype), key_shape, key_bytes)
+    
+    if tracer not in _CONSTANT_CACHE:
+        _CONSTANT_CACHE[tracer] = {}
+    
+    tracer_cache = _CONSTANT_CACHE[tracer]
+    if inner_key in tracer_cache:
+        return tracer_cache[inner_key]
+    
+    # Create new constant
+    obj = constant_p.bind(np_array)
+    
+    # Store in cache
+    tracer_cache[inner_key] = obj
+    return obj
+
 
 
 # ==============================================================================

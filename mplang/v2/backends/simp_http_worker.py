@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import os
+import pathlib
 import threading
 import time
 from typing import Any
@@ -52,7 +54,7 @@ from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.runtime.interpreter import DagProfiler
+from mplang.v2.runtime.interpreter import ExecutionTracer
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +75,12 @@ class HttpCommunicator:
         rank: int,
         world_size: int,
         endpoints: list[str],
-        profiler: DagProfiler | None = None,
+        tracer: ExecutionTracer | None = None,
     ):
         self.rank = rank
         self.world_size = world_size
         self.endpoints = endpoints
-        self.profiler = profiler
+        self.tracer = tracer
         self._mailbox: dict[str, Any] = {}
         self._cond = threading.Condition()
         self._send_executor = concurrent.futures.ThreadPoolExecutor(
@@ -101,8 +103,8 @@ class HttpCommunicator:
         size_bytes = len(payload)
 
         # Log to profiler
-        if self.profiler:
-            self.profiler.log_custom_event(
+        if self.tracer:
+            self.tracer.log_custom_event(
                 name="comm.send",
                 start_ts=time.time(),
                 end_ts=time.time(),  # Instant event for size? Or measure duration?
@@ -115,8 +117,8 @@ class HttpCommunicator:
             resp = self.client.put(url, json={"data": payload, "from_rank": self.rank})
             resp.raise_for_status()
             duration = time.time() - t0
-            if self.profiler:
-                self.profiler.log_custom_event(
+            if self.tracer:
+                self.tracer.log_custom_event(
                     name="comm.send_req",
                     start_ts=t0,
                     end_ts=t0 + duration,
@@ -205,12 +207,20 @@ def create_worker_app(
 
     app = FastAPI(title=f"SIMP Worker {rank}")
 
-    # Enable profiling by default for now (or make it configurable)
-    profiler = DagProfiler(enabled=True)
-    profiler.start()
+    # Persistence root: ${MPLANG_DATA_ROOT}/<cluster_id>/node<rank>/
+    data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+    cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
+    root_dir = data_root / cluster_id / f"node{rank}"
+    trace_dir = root_dir / "trace"
 
-    comm = HttpCommunicator(rank, world_size, endpoints, profiler=profiler)
-    worker = WorkerInterpreter(rank, world_size, comm, spu_endpoints, profiler=profiler)
+    # Enable tracing by default for now (or make it configurable via env)
+    tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
+    tracer.start()
+
+    comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
+    worker = WorkerInterpreter(
+        rank, world_size, comm, spu_endpoints, tracer=tracer, root_dir=root_dir
+    )
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
     )

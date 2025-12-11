@@ -107,6 +107,7 @@ class ClusterSpec:
     This object is the "first-class citizen" representing the cluster topology.
     """
 
+    cluster_id: str
     nodes: dict[str, Node]
     devices: dict[str, Device]
 
@@ -164,6 +165,7 @@ class ClusterSpec:
     def to_dict(self) -> dict[str, Any]:
         """Convert ClusterSpec to a dictionary."""
         return {
+            "cluster_id": self.cluster_id,
             "nodes": [node.to_dict() for node in self.nodes.values()],
             "devices": {
                 name: device.to_dict() for name, device in self.devices.items()
@@ -240,7 +242,9 @@ class ClusterSpec:
                 config=dev_cfg.get("config", {}),
             )
 
-        return cls(nodes=nodes_map, devices=devices_map)
+        # Get cluster_id from config or generate from filename
+        cluster_id = config.get("cluster_id", f"cluster_{len(nodes_map)}")
+        return cls(cluster_id=cluster_id, nodes=nodes_map, devices=devices_map)
 
     @classmethod
     def simple(
@@ -340,7 +344,7 @@ class ClusterSpec:
                 },
             )
 
-        return cls(nodes=nodes, devices=devices)
+        return cls(cluster_id=f"__sim_{world_size}", nodes=nodes, devices=devices)
 
 
 # ==============================================================================

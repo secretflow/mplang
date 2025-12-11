@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import pathlib
 from typing import Any
 
 import httpx
@@ -51,18 +52,33 @@ class SimpHttpDriver(SimpHost):
         executor: Thread pool for parallel HTTP requests
     """
 
-    def __init__(self, world_size: int, endpoints: list[str]):
+    def __init__(
+        self,
+        world_size: int,
+        endpoints: list[str],
+        *,
+        root_dir: pathlib.Path | None = None,
+    ):
         """Initialize the HTTP driver.
 
         Args:
             world_size: Number of workers
             endpoints: HTTP endpoints for each worker (must match world_size)
+            root_dir: Driver root directory. If None, generates default path.
         """
         if len(endpoints) != world_size:
             raise ValueError(
                 f"endpoints length ({len(endpoints)}) must match world_size ({world_size})"
             )
-        super().__init__(world_size)
+        # Generate default root_dir if not provided
+        if root_dir is None:
+            import os
+
+            data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+            root_dir = data_root / f"__http_{world_size}" / "__host__"
+
+        super().__init__(world_size, root_dir=root_dir)
+        self.cluster_root = root_dir.parent
         self.endpoints = endpoints
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=world_size)
         self.client = httpx.Client(timeout=None)

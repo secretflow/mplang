@@ -22,12 +22,13 @@ are registered in simp_impl.py.
 from __future__ import annotations
 
 import os
+import pathlib
 from typing import Any
 
 import mplang.v2.backends.field_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.runtime.interpreter import DagProfiler, Interpreter
+from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.v2.runtime.object_store import ObjectStore
 
 
@@ -48,18 +49,17 @@ class WorkerInterpreter(Interpreter):
         world_size: int,
         communicator: Any,
         spu_endpoints: dict[int, str] | None = None,
-        profiler: DagProfiler | None = None,
+        tracer: ExecutionTracer | None = None,
+        *,
+        root_dir: str | pathlib.Path,
     ):
-        # Use rank-specific FS root for simulation to avoid collision
-        # when using same keys (SPMD style)
-        # Use ~/.mplang/store so artifacts are persistent and centralized
-        fs_root = os.path.join(os.path.expanduser("~/.mplang/store"), f"worker_{rank}")
-        store = ObjectStore(fs_root=fs_root)
+        store = ObjectStore(fs_root=str(pathlib.Path(root_dir) / "store"))
         super().__init__(
             name=f"Worker-{rank}",
-            profiler=profiler,
+            tracer=tracer,
             trace_pid=rank,
             store=store,
+            root_dir=root_dir,
         )
         self.rank = rank
         self.world_size = world_size

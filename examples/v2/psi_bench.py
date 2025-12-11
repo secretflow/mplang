@@ -15,148 +15,143 @@
 """Benchmark for End-to-End RR22 PSI Protocol.
 
 Measures the full protocol throughput using SimpSimulator (2-party local simulation).
-This includes:
-1. Python Scheduler overhead (Tracing + Execution)
-2. Data Transfer overhead (Simulation)
-3. C++ Kernel Computation (OKVS, OKVS Decode, AES)
+
+Usage:
+    # Via CLI (simulator mode with profiling)
+    python -m mplang.v2.cli sim -f examples/v2/psi_bench.py --profile
+
+    # Via CLI (distributed HTTP cluster)
+    python -m mplang.v2.cli run -c cluster.yaml -f examples/v2/psi_bench.py
+
+    # Direct execution (standalone)
+    python examples/v2/psi_bench.py
 """
 
-import os
-import sys
+from __future__ import annotations
+
 import time
 from collections import Counter
-from typing import Any
-
-# Ensure imports work
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-import mplang.v2 as mp
-import mplang.v2.dialects.simp as simp
-from mplang.v2.libs.mpc.psi import rr22
+if TYPE_CHECKING:
+    from mplang.v2 import Driver, Simulator
 
 
-def benchmark_e2e_psi(n_items: int):
-    print(f"\n--- Benchmarking E2E PSI N={n_items} ---")
+# ---------------------------------------------------------------------------
+# MPLang Entry Point (for CLI: `mplang sim -f psi_bench.py`)
+# ---------------------------------------------------------------------------
 
-    # 1. Setup Simulator
-    # Enable primitive profiling globally
-    from mplang.v2.edsl import registry
 
-    registry.enable_profiling()
+def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
+    """MPLang workload entry point.
 
-    # Enable backend profiling (Perfetto)
-    sim = mp.Simulator.simple(2, enable_profiler=True)
+    Args:
+        ctx: Execution context (Simulator or Driver)
+        *args: CLI arguments (first arg is n_items, default 100000)
 
-    # --- MONKEY PATCH: Use Optimized OKVS Kernels ---
+    Returns:
+        Benchmark results dict
+    """
+    import mplang.v2 as mp
+    import mplang.v2.dialects.simp as simp
+    from mplang.v2.libs.mpc.psi import rr22
+
+    # Parse n_items from CLI args
+    n_items = int(args[0]) if args else 100000
+
+    print(f"\n--- PSI Benchmark N={n_items} ---")
+
+    # Use Optimized OKVS Kernels
     from mplang.v2.dialects import field
 
-    print("[INFO] Monkey-patching OKVS to use 'okvs_opt' (Mega-Binning)...")
-
-    # Override with Opt primitives
     field.solve_okvs = field.solve_okvs_opt
     field.decode_okvs = field.decode_okvs_opt
-    # -----------------------------------------------
 
     SENDER = 0
     RECEIVER = 1
 
-    # 2. Generate Data
-    # Use identical items to ensure correctness check passes implicitly
-    # (Though we don't strictly verify correctness in bench for speed, we could)
-    start_gen = time.time()
-    # Use 64-bit random integers
-    # Note: Generating 1M random numbers in Python/NumPy is fast enough
-    shared_items = np.arange(n_items, dtype=np.uint64)
-    np.random.shuffle(shared_items)
+    # Generate Data
+    sender_items = np.arange(n_items, dtype=np.uint64)
+    np.random.shuffle(sender_items)
+    receiver_items = sender_items.copy()
 
-    sender_items = shared_items
-    receiver_items = shared_items
-
-    time.time() - start_gen
-    # print(f"Data Gen: {gen_time:.4f}s")
-
-    # 3. Define Protocol Job
+    # Define Protocol
     def job() -> Any:
-        # PCall to place data (Simulated IO)
         s_handle = simp.constant((SENDER,), sender_items)
         r_handle = simp.constant((RECEIVER,), receiver_items)
+        return rr22.psi_intersect(SENDER, RECEIVER, n_items, s_handle, r_handle)
 
-        # Run Protocol
-        # Returns intersection_mask on Sender
-        mask = rr22.psi_intersect(SENDER, RECEIVER, n_items, s_handle, r_handle)
-        return mask
-
-    # 4. Compile (Tracing)
-    start_compile = time.time()
-    traced = mp.compile(sim, job)
-    end_compile = time.time()
-    compile_time = end_compile - start_compile
+    # Compile
+    t0 = time.time()
+    traced = mp.compile(ctx, job)
+    compile_time = time.time() - t0
     print(f"Compile Time: {compile_time:.4f}s")
 
-    # 4.1. Analyze Operator Distribution
+    # Op Distribution
     graph = traced.graph
-    n_ops = len(graph.operations)
-    print("\n" + "=" * 50)
-    print("OPERATION DISTRIBUTION")
-    print("=" * 50)
-
     op_counts = Counter(op.opcode for op in graph.operations)
-    for op_name, count in sorted(op_counts.items(), key=lambda x: -x[1])[:20]:
-        pct = count / n_ops * 100
-        bar = "█" * int(pct / 2)
-        print(f"  {op_name:<30} {count:>5}  ({pct:>5.1f}%) {bar}")
-    print("=" * 50 + "\n")
+    print(f"Total Ops: {len(graph.operations)}")
+    for op_name, count in sorted(op_counts.items(), key=lambda x: -x[1])[:5]:
+        print(f"  {op_name}: {count}")
 
-    # 5. Execution (Runtime)
-    start_exec = time.time()
-    result_obj = mp.evaluate(sim, traced)
-
-    # Force alignment/computation by fetching result
-    # In SimpSimulator, evaluate is eager for standard ops, but fetching ensures
-    # all futures are resolved.
-    _ = mp.fetch(sim, result_obj)
-
-    end_exec = time.time()
-    exec_time = end_exec - start_exec
+    # Execute
+    t1 = time.time()
+    result = mp.evaluate(ctx, traced)
+    _ = mp.fetch(ctx, result)
+    exec_time = time.time() - t1
 
     throughput = n_items / exec_time
-
-    print(f"Execution Time: {exec_time:.4f}s")
+    print(f"Exec Time: {exec_time:.4f}s")
     print(f"Throughput: {throughput:,.0f} items/sec")
 
-    # 6. Stop Profiler and Export Trace
-    if hasattr(sim, "backend") and getattr(sim.backend, "profiler", None) is not None:
-        trace_file = sim.backend.profiler.stop(filename_prefix=f"psi_trace_n{n_items}")
-        print(f"Profiler trace exported to: {trace_file}")
+    return {"n_items": n_items, "exec_time": exec_time, "throughput": throughput}
 
-    print("\nBENCHMARK PROFILING SUMMARY:")
-    registry.get_profiler().print_summary()
 
-    return exec_time, throughput
-
+# ---------------------------------------------------------------------------
+# Standalone Execution (for direct `python psi_bench.py`)
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Warmup JAX/Simulator
-    print("Warming up...")
-    benchmark_e2e_psi(1000)
+    import mplang.v2 as mp
+    from mplang.v2.edsl import registry
 
-    sizes = [10000, 100000, 1000000]
-    results = {}
+    # Enable primitive profiling
+    registry.enable_profiling()
 
-    for n in sizes:
-        t_exec, t_ops = benchmark_e2e_psi(n)
-        results[n] = (t_exec, t_ops)
+    # Create simulator (2-party, tracing enabled)
+    sim = mp.Simulator.simple(2, enable_tracing=True)
 
-    # Summary
-    print("\n" + "=" * 70)
-    print("PSI END-TO-END BENCHMARK SUMMARY")
-    print("=" * 70)
-    print(f"{'N Items':<15} {'Exec Time (s)':<15} {'Throughput (ops/s)':<20}")
-    print("-" * 70)
+    try:
+        # Warmup
+        print("Warming up...")
+        __mp_main__(sim, "1000")
 
-    for n in sizes:
-        t_exec, t_ops = results[n]
-        print(f"{n:<15} {t_exec:<15.4f} {t_ops:,.0f}")
-    print("=" * 70)
+        # Benchmark
+        sizes = ["10000", "100000", "1000000"]
+        results = {}
+
+        for n in sizes:
+            res = __mp_main__(sim, n)
+            results[int(n)] = res
+
+        # Summary
+        print("\n" + "=" * 60)
+        print("PSI BENCHMARK SUMMARY")
+        print("=" * 60)
+        print(f"{'N Items':<15} {'Exec (s)':<12} {'Throughput':<20}")
+        print("-" * 60)
+        for n, res in results.items():
+            print(f"{n:<15} {res['exec_time']:<12.4f} {res['throughput']:,.0f}")
+        print("=" * 60)
+
+        # Profiler Summary
+        registry.get_profiler().print_summary()
+
+    finally:
+        # Stop tracer and save
+        backend = sim.backend
+        if hasattr(backend, "tracer") and backend.tracer:
+            backend.tracer.stop(filename_prefix="psi_bench")
+        backend.shutdown()

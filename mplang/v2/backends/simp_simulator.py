@@ -21,6 +21,8 @@ This is useful for development and testing without network deployment.
 from __future__ import annotations
 
 import concurrent.futures
+import os
+import pathlib
 import threading
 from typing import Any
 
@@ -28,7 +30,7 @@ from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
 from mplang.v2.backends.simp_host import SimpHost
 from mplang.v2.backends.simp_worker import WorkerInterpreter
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.runtime.interpreter import DagProfiler
+from mplang.v2.runtime.interpreter import ExecutionTracer
 
 
 class ThreadCommunicator:
@@ -136,21 +138,44 @@ class SimpSimulator(SimpHost):
         self,
         world_size: int = 3,
         *,
+        root_dir: pathlib.Path | None = None,
         use_serde: bool = False,
-        enable_profiler: bool = False,
+        enable_tracing: bool = False,
     ):
-        super().__init__(world_size)
+        """Initialize SimpSimulator.
+
+        Args:
+            world_size: Number of parties.
+            root_dir: Host root directory. If None, generates default path.
+            use_serde: Enable serialization for communication.
+            enable_tracing: Enable execution tracing.
+        """
+        # Generate default root_dir if not provided
+        if root_dir is None:
+            data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+            root_dir = data_root / f"__sim_{world_size}" / "__host__"
+
+        super().__init__(world_size, root_dir=root_dir)
         self.use_serde = use_serde
         self.ctx = get_or_create_context(world_size, use_serde=use_serde)
 
-        # Create a shared profiler for all workers
-        self.profiler = DagProfiler(enabled=enable_profiler)
-        self.profiler.start()
+        # Derive cluster_root from root_dir (root_dir is <cluster>/__host__)
+        self.cluster_root = root_dir.parent
 
-        # Create persistent workers (Actors)
+        # Tracer for host-side execution events
+        self.tracer = ExecutionTracer(
+            enabled=enable_tracing, trace_dir=self.root_dir / "trace"
+        )
+        self.tracer.start()
+
+        # Workers with isolated sandboxes
         self.workers = [
             WorkerInterpreter(
-                rank, world_size, self.ctx.comms[rank], profiler=self.profiler
+                rank,
+                world_size,
+                self.ctx.comms[rank],
+                tracer=self.tracer,
+                root_dir=self.cluster_root / f"node{rank}",
             )
             for rank in range(world_size)
         ]

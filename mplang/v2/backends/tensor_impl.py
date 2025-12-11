@@ -316,7 +316,6 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
 
 # Global cache for compiled StableHLO executables
 _STABLEHLO_CACHE: dict[str, Any] = {}
-_CACHE_DIR = os.path.expanduser("~/.cache/mplang/jax_cache")
 
 
 @tensor.run_jax_p.def_impl
@@ -346,7 +345,9 @@ def run_jax_impl(
         compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
 
         # Try disk cache
-        cache_path = os.path.join(_CACHE_DIR, f"{code_hash}.pjrt")
+        cache_dir = interpreter.root_dir / "cache" / "jax"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = str(cache_dir / f"{code_hash}.pjrt")
         loaded_from_disk = False
 
         if os.path.exists(cache_path):
@@ -368,7 +369,7 @@ def run_jax_impl(
                 )
                 # Save to disk
                 try:
-                    os.makedirs(_CACHE_DIR, exist_ok=True)
+                    # Directory creation handled above
                     with open(cache_path, "wb") as f:
                         f.write(client.serialize_executable(compiled))
                     # print(f"[JAX] Saved compiled executable to {cache_path}")
@@ -426,8 +427,8 @@ def run_jax_impl(
                 flat.extend(_wrap(a) for a in lst)
         t5 = time.time()
 
-        if interpreter.profiler:
-            p = interpreter.profiler
+        if interpreter.tracer:
+            p = interpreter.tracer
             p.log_custom_event("JAX Compile/Cache", t0, t1, cat="jax")
             p.log_custom_event("JAX Prep", t1, t2, cat="jax")
             p.log_custom_event("JAX Transfer In", t2, t3, cat="jax")

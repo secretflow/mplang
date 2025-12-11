@@ -208,6 +208,7 @@ __marimo__/
 
 # mplang
 app.log
+.mpl/
 
 # Ignore pylint config files (we use ruff instead)
 .pylintrc

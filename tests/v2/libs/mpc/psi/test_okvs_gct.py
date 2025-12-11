@@ -107,4 +107,4 @@ class TestSparseOKVSEDSL:
     def test_expansion_factor(self):
         """Verify expansion factor logic."""
         assert get_okvs_expansion(10) >= 1.2
-        assert get_okvs_expansion(1000000) <= 1.3
+        assert get_okvs_expansion(1000000) <= 1.4

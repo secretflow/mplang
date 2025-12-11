@@ -185,31 +185,28 @@ def test_rr22_integration() -> None:
         s_items_Handle = simp.constant((SENDER,), sender_items)
         r_items_Handle = simp.constant((RECEIVER,), receiver_items)
 
-        # 2. Run Protocol
-        # Returns (T, U*, Delta)
-        t_handle, u_star_handle, d_handle = psi_okvs.psi_intersect(
+    # 2. Run Protocol
+        # Returns intersection_mask (on Sender)
+        mask_handle = psi_okvs.psi_intersect(
             SENDER, RECEIVER, N, s_items_Handle, r_items_Handle
         )
-        return t_handle, u_star_handle, d_handle
+        return mask_handle
 
     # Execute
     traced = mp.compile(sim, job)
-    t_obj, u_star_obj, d_obj = mp.evaluate(sim, traced)
+    mask_obj = mp.evaluate(sim, traced)
 
     # Verify Results
-    t_val = mp.fetch(sim, t_obj)[SENDER]
-    u_star_val = mp.fetch(sim, u_star_obj)[SENDER]
-    d_val = mp.fetch(sim, d_obj)[RECEIVER]  # Delta is on receiver
+    # Mask is on Sender. Should be all 1s (because items are identical).
+    mask_val = mp.fetch(sim, mask_obj)[SENDER]
 
-    from mplang.v2.backends.field_impl import _gf128_mul_impl
-
-    # Expand Delta to (N, 2)
-    d_exp = np.tile(d_val, (N, 1))
-
-    # Calc product
-    expected_t = _gf128_mul_impl(u_star_val, d_exp)
+    # Verify All Matched
+    # mask_val is (N,) uint8
+    expected_mask = np.ones((N,), dtype=np.uint8)
 
     np.testing.assert_array_equal(
-        t_val, expected_t, err_msg="PSI OKVS Logic Verification Failed"
+        mask_val,
+        expected_mask,
+        err_msg="PSI Integration Failed: Not all items matched!",
     )
-    print("Integration Test Passed: T = U* * Delta")
+    print("Integration Test Passed: Sender received correct Intersection Mask.")

@@ -41,10 +41,11 @@ def get_okvs_expansion(n: int) -> float:
     - For finite N: Larger ε needed due to variance in random hash collisions
 
     Empirical safe thresholds (failure probability < 0.1%):
-    - N < 1,000:    ε = 0.6  (M = 1.6N)  - small sets need wide margin
+    - N < 1,000:    ε = 3.0  (M = 4.0N)  - very small sets need extra wide margin
+                                           to handle worst-case hash collisions
     - N < 10,000:   ε = 0.4  (M = 1.4N)
     - N < 100,000:  ε = 0.3  (M = 1.3N)
-    - N ≥ 100,000:  ε = 0.25 (M = 1.25N) - large sets converge to theory
+    - N ≥ 100,000:  ε = 0.35 (M = 1.35N) - large sets converge near theory
 
     Args:
         n: Number of key-value pairs to encode

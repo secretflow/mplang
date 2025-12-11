@@ -43,6 +43,10 @@ solve_okvs_p = el.Primitive[el.Object]("field.solve_okvs")
 decode_okvs_p = el.Primitive[el.Object]("field.decode_okvs")
 ldpc_encode_p = el.Primitive[el.Object]("field.ldpc_encode")
 
+# Optimized Mega-Binning Primitives
+solve_okvs_opt_p = el.Primitive[el.Object]("field.solve_okvs_opt")
+decode_okvs_opt_p = el.Primitive[el.Object]("field.decode_okvs_opt")
+
 # =============================================================================
 # Abstract Evaluation (Type Inference)
 # =============================================================================
@@ -80,6 +84,28 @@ def _decode_okvs_ae(
 ) -> elt.TensorType:
     n = key_type.shape[0]
     return elt.TensorType(store_type.element_type, (n, 2))
+
+
+@solve_okvs_opt_p.def_abstract_eval
+def _solve_okvs_opt_ae(
+    key_type: elt.TensorType,
+    val_type: elt.TensorType,
+    seed_type: elt.TensorType,
+    *,
+    m: int,
+) -> elt.TensorType:
+    return elt.TensorType(val_type.element_type, (m, 2))
+
+
+@decode_okvs_opt_p.def_abstract_eval
+def _decode_okvs_opt_ae(
+    key_type: elt.TensorType,
+    store_type: elt.TensorType,
+    seed_type: elt.TensorType,
+) -> elt.TensorType:
+    n = key_type.shape[0]
+    return elt.TensorType(store_type.element_type, (n, 2))
+
 
 
 @ldpc_encode_p.def_abstract_eval
@@ -136,6 +162,21 @@ def decode_okvs(
     Returns decoded values of shape (N, 2).
     """
     return decode_okvs_p.bind(keys, storage, seed)
+
+
+def solve_okvs_opt(
+    keys: el.Object, values: el.Object, m: int, seed: el.Object
+) -> el.Object:
+    """Solve OKVS using Optimized Mega-Binning Kernel."""
+    return solve_okvs_opt_p.bind(keys, values, seed, m=m)
+
+
+def decode_okvs_opt(
+    keys: el.Object, storage: el.Object, seed: el.Object
+) -> el.Object:
+    """Decode OKVS using Optimized Mega-Binning Kernel."""
+    return decode_okvs_opt_p.bind(keys, storage, seed)
+
 
 
 def ldpc_encode(

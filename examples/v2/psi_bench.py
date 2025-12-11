@@ -12,15 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Benchmark for OKVS-PSI (Single Threaded).
+"""Benchmark for End-to-End RR22 PSI Protocol.
 
-Measures the computational throughput of the OKVS-based PSI protocol.
-bypasses SimpSimulator threading overhead to focus on Kernel performance.
+Measures the full protocol throughput using SimpSimulator (2-party local simulation).
+This includes:
+1. Python Scheduler overhead (Tracing + Execution)
+2. Data Transfer overhead (Simulation)
+3. C++ Kernel Computation (OKVS, OKVS Decode, AES)
 """
 
+
+from collections import Counter
 import os
+
+
 import sys
 import time
+from typing import Any
 
 # Ensure imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -28,176 +36,134 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 import jax.numpy as jnp
 import numpy as np
 
-import mplang.v2.dialects.field as field
-import mplang.v2.dialects.tensor as tensor
-import mplang.v2.edsl.typing as elt
-from mplang.v2.backends.tensor_impl import TensorValue
-from mplang.v2.runtime.interpreter import InterpObject, Interpreter
+import mplang.v2 as mp
+import mplang.v2.dialects.simp as simp
+from mplang.v2.libs.mpc.psi import rr22
 
 
-def benchmark_okvs_psi(n_items):
-    print(f"\n--- Benchmarking N={n_items} ---")
-    interp = Interpreter()
+def benchmark_e2e_psi(n_items: int):
+    print(f"\n--- Benchmarking E2E PSI N={n_items} ---")
 
-    # helper
-    def to_obj(arr):
-        return InterpObject(
-            TensorValue(jnp.array(arr)), elt.Tensor[elt.u64, arr.shape], interp
-        )
+    # 1. Setup Simulator
+    # Enable primitive profiling globally
+    from mplang.v2.edsl import registry
+    registry.enable_profiling()
+    
+    
+    # Enable backend profiling (Perfetto)
+    sim = mp.Simulator.simple(2, enable_profiler=True)
 
-    # 1. Data Gen (Unique Keys)
-    start_time = time.time()
-    # Use full 64-bit range to avoid collisions and simulate real hashes
-    keys = np.arange(n_items, dtype=np.uint64)
-    # randomize
-    np.random.shuffle(keys)
+    # --- MONKEY PATCH: Use Optimized OKVS Kernels ---
+    from mplang.v2.dialects import field
+    print("[INFO] Monkey-patching OKVS to use 'okvs_opt' (Mega-Binning)...")
+    original_solve = field.solve_okvs
+    original_decode = field.decode_okvs
+    
+    # Override with Opt primitives
+    field.solve_okvs = field.solve_okvs_opt
+    field.decode_okvs = field.decode_okvs_opt
+    # -----------------------------------------------
 
-    key_obj = to_obj(keys)
-    time.time() - start_time
+    SENDER = 0
+    RECEIVER = 1
 
-    # 0. Legacy Baseline (DH-PSI Simulation)
-    # Measure 2048-bit modular exponentiation throughput on 1 core.
-    # We sample a small batch to estimate.
-    if n_items <= 100000:
-        base_batch = 100
-        # Random 2048-bit integers
-        import secrets
+    # 2. Generate Data
+    # Use identical items to ensure correctness check passes implicitly
+    # (Though we don't strictly verify correctness in bench for speed, we could)
+    start_gen = time.time()
+    # Use 64-bit random integers
+    # Note: Generating 1M random numbers in Python/NumPy is fast enough
+    shared_items = np.arange(n_items, dtype=np.uint64)
+    np.random.shuffle(shared_items)
+    
+    sender_items = shared_items
+    receiver_items = shared_items
+    
+    gen_time = time.time() - start_gen
+    # print(f"Data Gen: {gen_time:.4f}s")
 
-        modulus = secrets.randbits(2048)
-        exponent = secrets.randbits(256)
-        inputs = [secrets.randbits(2048) for _ in range(base_batch)]
+    # 3. Define Protocol Job
+    def job() -> Any:
+        # PCall to place data (Simulated IO)
+        s_handle = simp.constant((SENDER,), sender_items)
+        r_handle = simp.constant((RECEIVER,), receiver_items)
+        
+        # Run Protocol
+        # Returns intersection_mask on Sender
+        mask = rr22.psi_intersect(SENDER, RECEIVER, n_items, s_handle, r_handle)
+        return mask
 
-        start_dh = time.time()
-        for x in inputs:
-            pow(x, exponent, modulus)
-        end_dh = time.time()
+    # 4. Compile (Tracing)
+    start_compile = time.time()
+    traced = mp.compile(sim, job)
+    end_compile = time.time()
+    compile_time = end_compile - start_compile
+    print(f"Compile Time: {compile_time:.4f}s")
 
-        dh_time_per_item = (end_dh - start_dh) / base_batch
-        dh_throughput = 1.0 / dh_time_per_item
-        print(
-            f"Legacy DH-PSI (Baseline): ~{dh_throughput:,.0f} items/sec (Est. from {base_batch} ops)"
-        )
-    else:
-        print("Legacy DH-PSI (Baseline): Skipped (Too slow for large N)")
+    # 4.1. Analyze Operator Distribution
+    graph = traced.graph
+    n_ops = len(graph.operations)
+    print("\n" + "=" * 50)
+    print("OPERATION DISTRIBUTION")
+    print("=" * 50)
+    
+    op_counts = Counter(op.opcode for op in graph.operations)
+    for op_name, count in sorted(op_counts.items(), key=lambda x: -x[1])[:20]:
+        pct = count / n_ops * 100
+        bar = "█" * int(pct / 2)
+        print(f"  {op_name:<30} {count:>5}  ({pct:>5.1f}%) {bar}")
+    print("=" * 50 + "\n")
 
-    # 2. VOLE Simulation (Random generation cost)
-    # M = 1.35 * N
-    M = int(n_items * 1.35)
-    if M % 128 != 0:
-        M = ((M // 128) + 1) * 128
 
-    start_vole = time.time()
-    # Simulate VOLE generation (Offline Phase cost)
-    # Sender: U, V. Recv: W, Delta.
-    # In practice, this uses AES-NI PRG (fast).
-
-    with interp:
-        # Generate U, V, Delta
-        # We simulate cost by generating Approx amount of random data via AES expand
-
-        # Seed
-        seed = jnp.array([[123, 456]], dtype=jnp.uint64)  # (1, 2)
-        seed_obj = to_obj(seed)
-
-        # Expand to M*2 (for V) + M*2 (for U) + M*2 (for W)
-        # AES Expand is the core cost.
-
-        # Warmup / Run
-        _ = field.aes_expand(seed_obj, M)  # U
-        _ = field.aes_expand(seed_obj, M)  # V
-        _ = field.aes_expand(seed_obj, M)  # W (Receiver side)
-
-    end_vole = time.time()
-    vole_time = end_vole - start_vole
-    print(f"VOLE (Simulated): {vole_time:.4f}s")
-
-    # 3. OKVS Encode (Receiver)
-    # Step 1: Hash Input to Value (Target)
-    # Step 2: Solve System
-    start_okvs = time.time()
-    with interp:
-        # Hash
-        def _prep_seeds(items):
-            lo = items
-            hi = jnp.zeros_like(items)
-            return jnp.stack([lo, hi], axis=1)
-
-        seeds = tensor.run_jax(_prep_seeds, key_obj)
-        h_y_expanded = field.aes_expand(seeds, 1)
-
-        def _reshape(exp):
-            return exp.reshape(exp.shape[0], 2)
-
-        h_y = tensor.run_jax(_reshape, h_y_expanded)
-
-        # Solve
-        p_storage = field.solve_okvs(key_obj, h_y, m=M, seed=seed_obj)
-
-        # Mask (P ^ W) - Simulating W access
-        # Create dummy W
-        w_obj = to_obj(np.zeros((M, 2), dtype=np.uint64))
-        q = field.add(p_storage, w_obj)
-
-        # Force execution
-        _ = p_storage.runtime_obj.unwrap()
-        _ = q.runtime_obj.unwrap()
-
-    end_okvs = time.time()
-    okvs_time = end_okvs - start_okvs
-    print(f"Receiver (Hash+Encode): {okvs_time:.4f}s")
-
-    # 4. Sender Decode
-    # Step 1: Decode Q -> S
-    # Step 2: Decode V -> V_dec
-    # Step 3: Hash X -> H_x
-    # Step 4: T = S ^ V_dec ^ H_x
-
-    # 4. Sender Decode
-    start_decode = time.time()
-    q_obj = to_obj(np.zeros((M, 2), dtype=np.uint64))  # Dummy Q
-    v_obj = to_obj(np.zeros((M, 2), dtype=np.uint64))  # Dummy V
-
-    with interp:
-        s_dec = field.decode_okvs(key_obj, q_obj, seed=seed_obj)
-        v_dec = field.decode_okvs(key_obj, v_obj, seed=seed_obj)
-
-        # Hash X (Same data for bench)
-        seeds_x = tensor.run_jax(_prep_seeds, key_obj)
-        h_x_exp = field.aes_expand(seeds_x, 1)
-        h_x = tensor.run_jax(_reshape, h_x_exp)
-
-        t = field.add(s_dec, v_dec)
-        t = field.add(t, h_x)
-
-        _ = t.runtime_obj.unwrap()
-
-    end_decode = time.time()
-    decode_time = end_decode - start_decode
-    print(f"Sender (Decode+Calc): {decode_time:.4f}s")
-
-    total_time = vole_time + okvs_time + decode_time
-    throughput = n_items / total_time
-    print(f"Total Time: {total_time:.4f}s")
+    # 5. Execution (Runtime)
+    start_exec = time.time()
+    result_obj = mp.evaluate(sim, traced)
+    
+    # Force alignment/computation by fetching result
+    # In SimpSimulator, evaluate is eager for standard ops, but fetching ensures 
+    # all futures are resolved.
+    _ = mp.fetch(sim, result_obj)
+    
+    end_exec = time.time()
+    exec_time = end_exec - start_exec
+    
+    throughput = n_items / exec_time
+    
+    print(f"Execution Time: {exec_time:.4f}s")
     print(f"Throughput: {throughput:,.0f} items/sec")
+    
+    
+    # 6. Stop Profiler and Export Trace
+    if hasattr(sim, "backend") and getattr(sim.backend, "profiler", None) is not None:
+        trace_file = sim.backend.profiler.stop(filename_prefix=f"psi_trace_n{n_items}")
+        print(f"Profiler trace exported to: {trace_file}")
 
-    return total_time, throughput
+    print("\nBENCHMARK PROFILING SUMMARY:")
+    registry.get_profiler().print_summary()
+    
+    return exec_time, throughput
 
 
 if __name__ == "__main__":
-    sizes = [1000, 10000, 100000, 1000000]  # Scale up
+    # Warmup JAX/Simulator
+    print("Warming up...")
+    benchmark_e2e_psi(1000)
+    
+    sizes = [10000, 100000, 1000000]
     results = {}
+    
     for n in sizes:
-        total_time, throughput = benchmark_okvs_psi(n)
-        results[n] = (total_time, throughput)
+        t_exec, t_ops = benchmark_e2e_psi(n)
+        results[n] = (t_exec, t_ops)
 
     # Summary
     print("\n" + "=" * 70)
-    print("PSI BENCHMARK SUMMARY")
+    print("PSI END-TO-END BENCHMARK SUMMARY")
     print("=" * 70)
-    print(f"{'N Items':<15} {'Total Time (s)':<15} {'Throughput (ops/s)':<20}")
+    print(f"{'N Items':<15} {'Exec Time (s)':<15} {'Throughput (ops/s)':<20}")
     print("-" * 70)
 
     for n in sizes:
-        t_total, t_throughput = results[n]
-        print(f"{n:<15} {t_total:<15.4f} {t_throughput:,.0f}")
+        t_exec, t_ops = results[n]
+        print(f"{n:<15} {t_exec:<15.4f} {t_ops:,.0f}")
     print("=" * 70)

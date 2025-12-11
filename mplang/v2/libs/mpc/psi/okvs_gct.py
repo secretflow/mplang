@@ -55,12 +55,13 @@ def get_okvs_expansion(n: int) -> float:
     """
     if n < 1000:
         return 3.0  # Small scale: need very wide safety margin for stability
-    elif n < 10000:
+    elif n <= 10000:
         return 1.4  # Medium scale
-    elif n < 100000:
+    elif n <= 100000:
         return 1.3  # Large scale
     else:
-        return 1.25  # Very large scale: near theoretical minimum
+        # Mega-Binning requires ~1.35 for stability with 1024 bins
+        return 1.35
 
 
 class SparseOKVS(OKVS):

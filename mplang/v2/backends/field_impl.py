@@ -82,6 +82,10 @@ def _get_lib() -> ctypes.CDLL | None:
                     ctypes.c_uint64,  # m
                     ctypes.POINTER(ctypes.c_uint64),  # seed
                 ]
+                # Optimized Mega-Binning Versions
+                _LIB.solve_okvs_opt.argtypes = _LIB.solve_okvs.argtypes
+                _LIB.decode_okvs_opt.argtypes = _LIB.decode_okvs.argtypes
+
                 _LIB.aes_128_expand.argtypes = [
                     ctypes.POINTER(ctypes.c_uint64),  # seeds
                     ctypes.POINTER(ctypes.c_uint64),  # output
@@ -132,6 +136,82 @@ def _gf128_mul_impl(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     lib.gf128_mul_batch(a_ptr, b_ptr, out_ptr, n_elements)
 
     return out
+
+
+
+def _okvs_solve_opt_impl(
+    keys: np.ndarray, values: np.ndarray, m: int, seed: np.ndarray
+) -> np.ndarray:
+    lib = _get_lib()
+    if seed.ndim > 1:
+        seed = seed.flatten()
+        
+    if lib is None:
+        # Fallback to standard (no python impl for opt)
+        return _okvs_solve_impl(keys, values, m, seed)
+
+    n = keys.shape[0]
+    
+    # Heuristic: Mega-Binning is unstable < 200k.
+    if n < 200_000:
+        return _okvs_solve_impl(keys, values, m, seed)
+        
+    # Heuristic: Mega-Binning requires higher expansion (epsilon ~ 1.35)
+    # If m/n is too tight, fallback to Naive (which works with 1.25)
+    if m / n < 1.32:
+        return _okvs_solve_impl(keys, values, m, seed)
+    
+    keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
+    values_c = np.ascontiguousarray(values, dtype=np.uint64)
+    seed_c = np.ascontiguousarray(seed, dtype=np.uint64)
+    output = np.zeros((m, 2), dtype=np.uint64)
+
+    lib.solve_okvs_opt(
+        keys_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        values_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        output.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        n,
+        m,
+        seed_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+    )
+    return output
+
+
+def _okvs_decode_opt_impl(
+    keys: np.ndarray, storage: np.ndarray, m: int, seed: np.ndarray
+) -> np.ndarray:
+    lib = _get_lib()
+    if seed.ndim > 1:
+        seed = seed.flatten()
+
+    if lib is None:
+        return _okvs_decode_impl(keys, storage, m, seed)
+
+    n = keys.shape[0]
+    
+    # Heuristic: Mega-Binning (1024 Bins) is unstable for small N due to variance.
+    # It requires ~1000 items/bin to be efficient and stable with epsilon=1.3.
+    # Threshold: 200,000 (approx 200 items/bin). Below this, Naive is fast enough (<50ms).
+    if n < 200_000:
+        return _okvs_decode_impl(keys, storage, m, seed)
+
+    if m / n < 1.32:
+        return _okvs_decode_impl(keys, storage, m, seed)
+    
+    keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
+    storage_c = np.ascontiguousarray(storage, dtype=np.uint64)
+    seed_c = np.ascontiguousarray(seed, dtype=np.uint64)
+    output = np.zeros((n, 2), dtype=np.uint64)
+
+    lib.decode_okvs_opt(
+        keys_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        storage_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        output.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+        n,
+        m,
+        seed_c.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+    )
+    return output
 
 
 def _okvs_solve_impl(
@@ -342,4 +422,37 @@ def _decode_okvs_impl(
     seed = _unwrap(seed_val)
     m = storage.shape[0]
     res = _okvs_decode_impl(keys, storage, m, seed)
+    return _wrap(res)
+    return _wrap(res)
+
+
+@field.solve_okvs_opt_p.def_impl
+def _solve_okvs_opt_impl_prim(
+    interpreter: Interpreter,
+    op: Operation,
+    keys_val: TensorValue,
+    values_val: TensorValue,
+    seed_val: TensorValue,
+) -> TensorValue:
+    m = op.attrs["m"]
+    keys = _unwrap(keys_val)
+    values = _unwrap(values_val)
+    seed = _unwrap(seed_val)
+    res = _okvs_solve_opt_impl(keys, values, m, seed)
+    return _wrap(res)
+
+
+@field.decode_okvs_opt_p.def_impl
+def _decode_okvs_opt_impl_prim(
+    interpreter: Interpreter,
+    op: Operation,
+    keys_val: TensorValue,
+    store_val: TensorValue,
+    seed_val: TensorValue,
+) -> TensorValue:
+    keys = _unwrap(keys_val)
+    storage = _unwrap(store_val)
+    seed = _unwrap(seed_val)
+    m = storage.shape[0]
+    res = _okvs_decode_opt_impl(keys, storage, m, seed)
     return _wrap(res)

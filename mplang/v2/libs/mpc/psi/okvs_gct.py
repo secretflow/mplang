@@ -53,7 +53,7 @@ def get_okvs_expansion(n: int) -> float:
         Expansion factor ε such that M = (1+ε)*N is safe for peeling
     """
     if n < 1000:
-        return 3.0  # Small scale: need very wide safety margin for stability
+        return 4.0  # Small scale: need very wide safety margin for stability
     elif n <= 10000:
         return 1.4  # Medium scale
     elif n <= 100000:

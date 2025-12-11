@@ -40,11 +40,12 @@ def get_okvs_expansion(n: int) -> float:
     - For N → ∞: Theoretical minimum is ε ≈ 0.23 (M = 1.23N)
     - For finite N: Larger ε needed due to variance in random hash collisions
 
-    Empirical safe thresholds (failure probability < 0.1%):
-    - N < 1,000:    ε = 0.6  (M = 1.6N)  - small sets need wide margin
+    Empirical safe thresholds (failure probability < 0.01%):
+    - N < 1,000:    ε = 4.5  (M = 5.5N)  - very small sets need extra wide margin
+                                           to handle worst-case hash collisions
     - N < 10,000:   ε = 0.4  (M = 1.4N)
     - N < 100,000:  ε = 0.3  (M = 1.3N)
-    - N ≥ 100,000:  ε = 0.25 (M = 1.25N) - large sets converge to theory
+    - N ≥ 100,000:  ε = 0.35 (M = 1.35N) - large sets converge near theory
 
     Args:
         n: Number of key-value pairs to encode
@@ -53,7 +54,7 @@ def get_okvs_expansion(n: int) -> float:
         Expansion factor ε such that M = (1+ε)*N is safe for peeling
     """
     if n < 1000:
-        return 3.0  # Small scale: need very wide safety margin for stability
+        return 5.5  # Small scale: need very wide safety margin for stability
     elif n <= 10000:
         return 1.4  # Medium scale
     elif n <= 100000:

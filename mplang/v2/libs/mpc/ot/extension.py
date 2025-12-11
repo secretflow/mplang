@@ -179,15 +179,15 @@ def iknp_core(
             PK0 = crypto.select(s_scalar, diff, PK_sigma)
 
             # Convert to bytes (65 bytes uncompressed)
-            # K is 128, so overhead is small. 
+            # K is 128, so overhead is small.
             # Stacking points for shuffle.
             pk0_b = crypto.ec_point_to_bytes(PK0)
             # Reshape for stack: (65,) -> (1, 65)
             pk0_b_r = tensor.reshape(pk0_b, (1, 65))
-            
+
             PK0_bytes_list.append(pk0_b_r)
             k_priv_list.append(k_priv)
-        
+
         # Stack into (K, 65)
         PK0_stacked = tensor.concat(PK0_bytes_list, axis=0)
 
@@ -196,15 +196,11 @@ def iknp_core(
     # base_keys -> (PK0_stacked, k_priv_list (TraceObject list))
     # Pass C_for_sender (received from receiver) to sender
     base_keys_tuple = simp.pcall_static((sender,), base_sender_keygen, C_for_sender, s)
-    
+
     # Extract
     PK0_loc = simp.pcall_static((sender,), lambda x: x[0], base_keys_tuple)
-    k_priv_loc = simp.pcall_static((sender,), lambda x: x[1], base_keys_tuple) 
-    # note: k_priv_loc is a list of trace objects on sender, handled by pcall opaque return.
-    
-    # Move to R (Single Shuffle!)
+    # Note: k_priv (x[1]) stays on sender, used later in base_decrypt_rev via base_keys_tuple
     PK0_recv = simp.shuffle_static(PK0_loc, {receiver: sender})
-
 
     # R (Base Sender) Encrypts k0, k1
     def base_encrypt_rev(
@@ -231,7 +227,7 @@ def iknp_core(
 
             r = crypto.ec_random_scalar()
             U = crypto.ec_mul(crypto.ec_generator(), r)
-            
+
             # Stack U as bytes
             u_b = crypto.ec_point_to_bytes(U)
             u_b_r = tensor.reshape(u_b, (1, 65))
@@ -262,16 +258,16 @@ def iknp_core(
             c1_list.append(c1)
 
         # Stack outputs
-        U_stacked = tensor.concat(U_bytes_list, axis=0) # (K, 65)
-        c0_stacked = tensor.concat(c0_list, axis=0)     # (K, 32) (assuming 32 byte msgs)
-        c1_stacked = tensor.concat(c1_list, axis=0)     # (K, 32)
+        U_stacked = tensor.concat(U_bytes_list, axis=0)  # (K, 65)
+        c0_stacked = tensor.concat(c0_list, axis=0)  # (K, 32) (assuming 32 byte msgs)
+        c1_stacked = tensor.concat(c1_list, axis=0)  # (K, 32)
 
         return U_stacked, c0_stacked, c1_stacked
 
     base_cts_rev = simp.pcall_static(
         (receiver,), base_encrypt_rev, C_point, PK0_recv, k0_base, k1_base
     )
-    
+
     # Shuffle tuple(Tensor, Tensor, Tensor) - Efficient!
     # tree_map handles tuple
     from jax.tree_util import tree_map
@@ -279,7 +275,6 @@ def iknp_core(
     base_cts_s = tree_map(
         lambda x: simp.shuffle_static(x, {sender: receiver}), base_cts_rev
     )
-
 
     def base_decrypt_rev(
         keys: tuple[el.Object, list[el.Object]],
@@ -295,12 +290,12 @@ def iknp_core(
 
         for i in range(K):
             k_priv = k_priv_list[i]
-            
+
             # Unstack U
             u_b = tensor.slice_tensor(U_packed, (i, 0), (i + 1, 65))
             u_b_flat = tensor.reshape(u_b, (65,))
             U = crypto.ec_bytes_to_point(u_b_flat)
-            
+
             # Unstack c0, c1
             c0 = tensor.slice_tensor(c0_packed, (i, 0), (i + 1, 32))
             c1 = tensor.slice_tensor(c1_packed, (i, 0), (i + 1, 32))
@@ -329,7 +324,6 @@ def iknp_core(
 
         # Concat using tensor.concat (run_jax with many args can cause tracing issues)
         return tensor.concat(k_s_rows, axis=0)
-
 
     k_s = simp.pcall_static((sender,), base_decrypt_rev, base_keys_tuple, base_cts_s, s)
 

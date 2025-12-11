@@ -51,6 +51,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import count
 from typing import Any, cast
+from weakref import WeakKeyDictionary
 
 import jax
 import numpy as np
@@ -363,10 +364,6 @@ def _constant_trace(data: Any) -> el.TraceObject:
     return el.TraceObject(value, tracer)
 
 
-
-
-from weakref import WeakKeyDictionary
-
 # Constant cache: Tracer -> { (dtype, shape, bytes) -> Object }
 _CONSTANT_CACHE: WeakKeyDictionary = WeakKeyDictionary()
 
@@ -398,44 +395,35 @@ def constant(data: Any) -> el.Object:
     """
     # Normalize data to numpy
     np_array = np.array(data)
-    # Ensure canonical form
-    if np_array.ndim == 0:
-        # Scalar
-        key_shape = ()
-        key_dtype = np_array.dtype
-        key_bytes = np_array.tobytes()
-    else:
-        # Tensor
-        key_shape = tuple(np_array.shape)
-        key_dtype = np_array.dtype
-        # Use simple bytes for cache key. For very large constants this might
-        # be expensive, but typically constants in MPC are small (params, masks).
-        key_bytes = np_array.tobytes()
+
+    # Ensure canonical form for cache key
+    key_shape = tuple(np_array.shape)
+    key_dtype = np_array.dtype
+    # Use simple bytes for cache key. For very large constants this might
+    # be expensive, but typically constants in MPC are small (params, masks).
+    key_bytes = np_array.tobytes()
 
     try:
         tracer = _current_tracer()
-    except Exception:
-        # If no tracer is active (e.g. eager execution?), skip caching logic
-        # or fall back to standard bind which will handle eager/trace check.
-        # But constant_p.bind usually expects a context.
-        return constant_p.bind(np_array)
+    except TypeError:
+        # If no tracer is active (e.g. eager execution), skip caching logic
+        # and fall back to standard bind which will handle eager/trace check.
+        return cast(el.Object, constant_p.bind(np_array))
 
     inner_key = (str(key_dtype), key_shape, key_bytes)
-    
-    if tracer not in _CONSTANT_CACHE:
-        _CONSTANT_CACHE[tracer] = {}
-    
-    tracer_cache = _CONSTANT_CACHE[tracer]
+
+    tracer_cache: dict[tuple[str, tuple[int, ...], bytes], el.Object] = (
+        _CONSTANT_CACHE.setdefault(tracer, {})
+    )
     if inner_key in tracer_cache:
         return tracer_cache[inner_key]
-    
+
     # Create new constant
-    obj = constant_p.bind(np_array)
-    
+    obj = cast(el.Object, constant_p.bind(np_array))
+
     # Store in cache
     tracer_cache[inner_key] = obj
     return obj
-
 
 
 # ==============================================================================

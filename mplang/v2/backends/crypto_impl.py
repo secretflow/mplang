@@ -262,8 +262,10 @@ def bytes_to_point_impl(
     elif isinstance(b, BytesValue):
         raw = b.unwrap()
     else:
-        raise TypeError(f"bytes_to_point expects TensorValue or BytesValue, got {type(b)}")
-        
+        raise TypeError(
+            f"bytes_to_point expects TensorValue or BytesValue, got {type(b)}"
+        )
+
     return ECPointValue(raw)
 
 

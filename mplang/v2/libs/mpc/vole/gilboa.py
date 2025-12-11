@@ -246,19 +246,19 @@ def _sender_round(
         # u: (N, 2)
         # p: (128, 2)
         n_ = u_val.shape[0]
-        
+
         # Tile U: (128, N, 2)
         u_broad = jnp.tile(u_val[None, :, :], (128, 1, 1))
-        
+
         # Tile P: (128, N, 2)
         p_broad = jnp.tile(p_val[:, None, :], (1, n_, 1))
-        
+
         return u_broad, p_broad
 
     u_vec, p_vec = tensor.run_jax(_broadcast_inputs, u_loc, powers_const)
 
     # Single Batched Mul
-    term_val = field.mul(u_vec, p_vec) # (128, N, 2)
+    term_val = field.mul(u_vec, p_vec)  # (128, N, 2)
 
     # 3. Compute Corrections
     def _sender_calc(v0: Any, v1: Any, term: Any) -> tuple[Any, Any]:

@@ -21,6 +21,7 @@ This is useful for development and testing without network deployment.
 from __future__ import annotations
 
 import concurrent.futures
+import os
 import pathlib
 import threading
 from typing import Any
@@ -135,9 +136,9 @@ class SimpSimulator(SimpHost):
 
     def __init__(
         self,
-        world_size: int,
+        world_size: int = 3,
         *,
-        root_dir: pathlib.Path,
+        root_dir: pathlib.Path | None = None,
         use_serde: bool = False,
         enable_tracing: bool = False,
     ):
@@ -145,10 +146,15 @@ class SimpSimulator(SimpHost):
 
         Args:
             world_size: Number of parties.
-            root_dir: Host root directory (e.g., .mpl/__sim_2/__host__/).
+            root_dir: Host root directory. If None, generates default path.
             use_serde: Enable serialization for communication.
             enable_tracing: Enable execution tracing.
         """
+        # Generate default root_dir if not provided
+        if root_dir is None:
+            data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+            root_dir = data_root / f"__sim_{world_size}" / "__host__"
+
         super().__init__(world_size, root_dir=root_dir)
         self.use_serde = use_serde
         self.ctx = get_or_create_context(world_size, use_serde=use_serde)

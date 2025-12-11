@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 import concurrent.futures
+import os
 import pathlib
+import uuid
 from typing import Any
 
 from mplang.v2.edsl import serde
@@ -64,9 +66,6 @@ class SimpHost(Interpreter):
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Any:
         """Execute graph by distributing it to all parties."""
-        import os
-        import uuid
-
         if job_id is None:
             job_id = str(uuid.uuid4())
 

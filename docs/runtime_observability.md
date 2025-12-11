@@ -42,7 +42,7 @@ ${MPLANG_DATA_ROOT}/
 | Backend | Cluster ID |
 |---------|-----------|
 | `SimpSimulator(world_size=3)` | `__sim_3` |
-| `SimpHttpDriver` | (uses `__host__` directly) |
+| `SimpHttpDriver(world_size=3)` | `__http_3` (via `MPLANG_CLUSTER_ID` env var) |
 
 ---
 

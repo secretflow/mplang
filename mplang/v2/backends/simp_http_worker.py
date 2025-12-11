@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import os
+import pathlib
 import threading
 import time
 from typing import Any
@@ -205,11 +207,10 @@ def create_worker_app(
 
     app = FastAPI(title=f"SIMP Worker {rank}")
 
-    # TODO: trace_dir needs to be provided from environment or config
-    import os
-    import pathlib
+    # Persistence root: ${MPLANG_DATA_ROOT}/<cluster_id>/node<rank>/
     data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
-    root_dir = data_root / f"node{rank}"
+    cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
+    root_dir = data_root / cluster_id / f"node{rank}"
     trace_dir = root_dir / "trace"
 
     # Enable tracing by default for now (or make it configurable via env)
@@ -217,7 +218,9 @@ def create_worker_app(
     tracer.start()
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
-    worker = WorkerInterpreter(rank, world_size, comm, spu_endpoints, tracer=tracer, root_dir=root_dir)
+    worker = WorkerInterpreter(
+        rank, world_size, comm, spu_endpoints, tracer=tracer, root_dir=root_dir
+    )
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
     )

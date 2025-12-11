@@ -22,6 +22,8 @@ Public API is designed to be compatible with mplang v1 where possible.
 
 from __future__ import annotations
 
+import os
+import pathlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -106,15 +108,11 @@ class Simulator:
 
     def __init__(self, cluster_spec: ClusterSpec, enable_tracing: bool = False):
         """Create a Simulator from a ClusterSpec."""
-        import os
-        import pathlib
-
         self._cluster = cluster_spec
 
-        # Construct root_dir from cluster info
+        # Construct root_dir from cluster_id
         data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
-        cluster_id = f"__sim_{len(cluster_spec.nodes)}"
-        host_root = data_root / cluster_id / "__host__"
+        host_root = data_root / cluster_spec.cluster_id / "__host__"
 
         self._sim = SimpSimulator(
             world_size=len(cluster_spec.nodes),
@@ -195,15 +193,11 @@ class Driver:
         Args:
             cluster_spec: The cluster specification with node endpoints.
         """
-        import os
-        import pathlib
-
         self._cluster = cluster_spec
 
-        # Construct root_dir from cluster info
+        # Construct root_dir from cluster_id
         data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
-        cluster_id = f"__http_{len(cluster_spec.nodes)}"
-        host_root = data_root / cluster_id / "__host__"
+        host_root = data_root / cluster_spec.cluster_id / "__host__"
 
         # Ensure endpoints have http:// prefix
         endpoints = []

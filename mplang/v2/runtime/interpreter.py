@@ -47,9 +47,7 @@ if TYPE_CHECKING:
 class ExecutionTracer:
     """Tracer for DAG execution events (Chrome Tracing format)."""
 
-    def __init__(
-        self, enabled: bool = False, *, trace_dir: str | pathlib.Path
-    ):
+    def __init__(self, enabled: bool = False, *, trace_dir: str | pathlib.Path):
         self.enabled = enabled
         self.start_time = 0.0
         self.end_time = 0.0

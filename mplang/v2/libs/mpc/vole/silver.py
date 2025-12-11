@@ -162,9 +162,7 @@ def silver_vole(
         return crypto.random_tensor((2,), elt.u64)
 
     v_base, w_base, u_base, delta = gilboa.vole(  # type: ignore[misc]
-        sender, receiver, base_k,
-        _u_base_provider, _delta_provider,
-        return_secrets=True
+        sender, receiver, base_k, _u_base_provider, _delta_provider, return_secrets=True
     )
 
     # 3. Expansion (Encoding) using C++ Kernel

@@ -83,12 +83,8 @@ def test_vole_psi_simulation() -> None:
 
     # 1. Setup VOLE Secrets (Simulated for speed)
     # Sender has U, V. Recv has Delta, W = V + U*Delta
-    u_sender = np.random.randint(
-        0, 0xFFFFFFFFFFFFFFFF, size=(M, 2), dtype=np.uint64
-    )
-    v_sender = np.random.randint(
-        0, 0xFFFFFFFFFFFFFFFF, size=(M, 2), dtype=np.uint64
-    )
+    u_sender = np.random.randint(0, 0xFFFFFFFFFFFFFFFF, size=(M, 2), dtype=np.uint64)
+    v_sender = np.random.randint(0, 0xFFFFFFFFFFFFFFFF, size=(M, 2), dtype=np.uint64)
 
     delta_val = np.array([3, 0], dtype=np.uint64)  # Delta = 3
 
@@ -185,7 +181,7 @@ def test_rr22_integration() -> None:
         s_items_Handle = simp.constant((SENDER,), sender_items)
         r_items_Handle = simp.constant((RECEIVER,), receiver_items)
 
-    # 2. Run Protocol
+        # 2. Run Protocol
         # Returns intersection_mask (on Sender)
         mask_handle = psi_okvs.psi_intersect(
             SENDER, RECEIVER, N, s_items_Handle, r_items_Handle

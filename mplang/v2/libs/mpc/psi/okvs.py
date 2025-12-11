@@ -23,9 +23,7 @@ class OKVS(ABC):
     """Abstract interface for Oblivious Key-Value Store."""
 
     @abstractmethod
-    def encode(
-        self, keys: el.Object, values: el.Object, seed: el.Object
-    ) -> el.Object:
+    def encode(self, keys: el.Object, values: el.Object, seed: el.Object) -> el.Object:
         """Encode items into OKVS storage.
 
         Args:
@@ -38,9 +36,7 @@ class OKVS(ABC):
         """
 
     @abstractmethod
-    def decode(
-        self, keys: el.Object, storage: el.Object, seed: el.Object
-    ) -> el.Object:
+    def decode(self, keys: el.Object, storage: el.Object, seed: el.Object) -> el.Object:
         """Decode items from OKVS storage.
 
         Args:

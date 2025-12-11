@@ -107,7 +107,6 @@ def _decode_okvs_opt_ae(
     return elt.TensorType(store_type.element_type, (n, 2))
 
 
-
 @ldpc_encode_p.def_abstract_eval
 def _ldpc_encode_ae(
     message: elt.TensorType,
@@ -155,9 +154,7 @@ def solve_okvs(
     return solve_okvs_p.bind(keys, values, seed, m=m)
 
 
-def decode_okvs(
-    keys: el.Object, storage: el.Object, seed: el.Object
-) -> el.Object:
+def decode_okvs(keys: el.Object, storage: el.Object, seed: el.Object) -> el.Object:
     """Decode OKVS values from storage for keys.
     Returns decoded values of shape (N, 2).
     """
@@ -171,12 +168,9 @@ def solve_okvs_opt(
     return solve_okvs_opt_p.bind(keys, values, seed, m=m)
 
 
-def decode_okvs_opt(
-    keys: el.Object, storage: el.Object, seed: el.Object
-) -> el.Object:
+def decode_okvs_opt(keys: el.Object, storage: el.Object, seed: el.Object) -> el.Object:
     """Decode OKVS using Optimized Mega-Binning Kernel."""
     return decode_okvs_opt_p.bind(keys, storage, seed)
-
 
 
 def ldpc_encode(

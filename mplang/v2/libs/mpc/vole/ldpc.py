@@ -294,8 +294,10 @@ def generate_sparse_noise(n: int, weight: int) -> el.Object:
     # Phase 2: Deterministic construction from entropy
     def _build_noise(ent: Any) -> Any:
         # Split entropy into index selection and value parts
-        idx_entropy = ent[:weight * 8].view(jnp.uint64)  # (weight,)
-        val_entropy = ent[weight * 8:].view(jnp.uint64).reshape(weight, 2)  # (weight, 2)
+        idx_entropy = ent[: weight * 8].view(jnp.uint64)  # (weight,)
+        val_entropy = (
+            ent[weight * 8 :].view(jnp.uint64).reshape(weight, 2)
+        )  # (weight, 2)
 
         # Generate unique indices using rejection-free Fisher-Yates-like approach
         # Map random u64 to positions while ensuring uniqueness
@@ -366,15 +368,12 @@ def ldpc_encode_dense_jax(message: el.Object, H_dense: el.Object) -> el.Object:
 
     import jax
     import jax.numpy as jnp
+
     return cast(el.Object, tensor.run_jax(_encode, message, H_dense))
 
 
 def ldpc_encode_sparse(
-    message: el.Object,
-    h_indices: el.Object,
-    h_indptr: el.Object,
-    m: int,
-    n: int
+    message: el.Object, h_indices: el.Object, h_indptr: el.Object, m: int, n: int
 ) -> el.Object:
     """Compute S = H * x using C++ Kernel via Field Dialect Primitive.
 

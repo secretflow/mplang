@@ -25,7 +25,7 @@ such that the mask can only be removed (and the polynomial verified) if the part
 the same element.
 
 Phases:
-1.  **Correlated Randomness (VOLE)**: 
+1.  **Correlated Randomness (VOLE)**:
     Sender and Receiver establish a shared correlation:
     W = V + U * Delta
     - Sender holds U, V.
@@ -46,7 +46,7 @@ Phases:
     Sender attempts to decode Q for each of their items x in X.
     Since OKVS is linear:
     Decode(Q, x) = Decode(P, x) ^ Decode(W, x)
-    
+
     Sender reconstructs the potential "Target" value T:
     T = Decode(Q, x) ^ Decode(V, x) ^ H(x)
 
@@ -112,7 +112,7 @@ def psi_intersect(
 
     expansion = okvs_gct.get_okvs_expansion(n)
     M = int(n * expansion)
-    
+
     # Align M to 128 boundary for efficient batch processing in Silent VOLE (LPN)
     if M % 128 != 0:
         M = ((M // 128) + 1) * 128
@@ -126,7 +126,7 @@ def psi_intersect(
     # Correlation: W = V + U * Delta
     #
     # Note: U is uniformly random. It acts as a "One-Time Pad" key for the protocol.
-    
+
     # silent_vole_random_u returns (v, w, u, delta)
     res_tuple = silent_ot.silent_vole_random_u(sender, receiver, M, base_k=1024)
     v_sender, w_receiver, u_sender, delta_receiver = res_tuple[:4]
@@ -140,7 +140,7 @@ def psi_intersect(
     # Then, Receiver masks P with the VOLE output W to get Q:
     # Q = P ^ W
     # This Q is sent to the Sender.
-    
+
     # 3.1 Generate OKVS Seed (Public/Session Randomness)
     # Used for OKVS hashing distribution. Can be public, but generated at runtime for safety.
     from mplang.v2.dialects import crypto
@@ -158,7 +158,7 @@ def psi_intersect(
     def _recv_ops(y: Any, w: Any, delta: Any, seed: Any) -> Any:
         # y: (N,) Inputs
         # w: (M, 2) VOLE share
-        
+
         # 3.2 Compute H(y) - The Random Oracle Target
         # We use Davies-Meyer construction: H(x) = E_x(0) ^ x
         # This is a standard, efficient, and robust way to instantiate a RO from AES.
@@ -220,7 +220,7 @@ def psi_intersect(
     def _sender_ops(x: Any, q: Any, u: Any, v: Any, seed: Any) -> tuple[Any, Any]:
         # x: (N,) Sender Items
         # q: (M, 2) Received OKVS
-        
+
         # 4.1 Decode Q and V at x
         # OKVS Decode is a linear combination of storage positions.
         s_decoded = okvs.decode(x, q, seed)
@@ -246,7 +246,7 @@ def psi_intersect(
         # Note: s_decoded is (S^V^U*Delta) effectively
         t_val = field.add(s_decoded, v_decoded)
         t_val = field.add(t_val, h_x)
-        
+
         # 4.4 Compute U* = Decode(U, x)
         # This is the sender's share of the randomness for item x.
         s_u = field.decode_okvs(x, u, seed)
@@ -293,13 +293,13 @@ def psi_intersect(
     # 5.2 Receiver: Compute Expected Target (U* * Delta)
     def _recv_verify_ops(u_s: Any, delta: Any) -> Any:
         # u_s: (N, 2), delta: (2,)
-        
+
         # Use tensor.run_jax to isolate JAX operations (tile is not an EDSL primitive)
         def _tile(d: Any) -> Any:
-             return jnp.tile(d, (n, 1))
-        
+            return jnp.tile(d, (n, 1))
+
         delta_expanded = tensor.run_jax(_tile, delta)
-        
+
         # Compute U* * Delta in GF(2^128)
         target = field.mul(u_s, delta_expanded)
         return target
@@ -317,10 +317,14 @@ def psi_intersect(
         return ot_extension.vec_hash(share, domain_sep=0xFEED, num_rows=n)
 
     # Hash(Target) on Receiver
-    h_target_recv = simp.pcall_static((receiver,), lambda x: _hash_shares(x, receiver), target_val)
+    h_target_recv = simp.pcall_static(
+        (receiver,), lambda x: _hash_shares(x, receiver), target_val
+    )
 
     # Hash(T) on Sender
-    h_t_sender = simp.pcall_static((sender,), lambda x: _hash_shares(x, sender), t_val_sender)
+    h_t_sender = simp.pcall_static(
+        (sender,), lambda x: _hash_shares(x, sender), t_val_sender
+    )
 
     # Send Hash to Sender for comparison
     h_target_at_sender = simp.shuffle_static(h_target_recv, {sender: receiver})
@@ -328,11 +332,11 @@ def psi_intersect(
     # 5.4 Final Comparison on Sender
     def _compare(h_t: Any, h_target: Any) -> Any:
         # Compare 32-byte hashes (N, 32) row-by-row
-        
+
         def _core(a: Any, b: Any) -> Any:
             eq = jnp.all(a == b, axis=1)
             return eq.astype(jnp.uint8)  # (N,) 0 or 1
-            
+
         return tensor.run_jax(_core, h_t, h_target)
 
     intersection_mask = simp.pcall_static(

@@ -18,7 +18,6 @@ This module provides the core data structures and algorithms for Sparse OKVS,
 which is a critical component in unbalanced Private Set Intersection (PSI).
 """
 
-
 import mplang.v2.dialects.field as field
 import mplang.v2.edsl as el
 from mplang.v2.libs.mpc.psi.okvs import OKVS
@@ -70,14 +69,10 @@ class SparseOKVS(OKVS):
     def __init__(self, m: int):
         self.m = m
 
-    def encode(
-        self, keys: el.Object, values: el.Object, seed: el.Object
-    ) -> el.Object:
+    def encode(self, keys: el.Object, values: el.Object, seed: el.Object) -> el.Object:
         """Encode items into OKVS storage using C++ Kernel."""
         return field.solve_okvs(keys, values, self.m, seed)
 
-    def decode(
-        self, keys: el.Object, storage: el.Object, seed: el.Object
-    ) -> el.Object:
+    def decode(self, keys: el.Object, storage: el.Object, seed: el.Object) -> el.Object:
         """Decode items from OKVS storage using C++ Kernel."""
         return field.decode_okvs(keys, storage, seed)

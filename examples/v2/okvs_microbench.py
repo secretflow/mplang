@@ -13,17 +13,19 @@
 # limitations under the License.
 
 import time
+
 import numpy as np
+
 import mplang.v2.backends.field_impl as field_impl
+
 
 def benchmark_okvs_direct(n=1_000_000):
     print(f"--- Benchmarking OKVS Optimization (Direct Kernel Call, N={n}) ---")
-    
-    
+
     # Production Check: M=1.4N (Matches GCT logic for N=1000 bins).
     # Increased to 1.5N to clear edge cases in microbench.
     m = int(n * 1.5)
-    
+
     print(f"Generating data (N={n}, M={m})...")
     keys = np.random.randint(0, 2**64 - 1, size=(n,), dtype=np.uint64)
     values = np.random.randint(0, 2**64 - 1, size=(n, 2), dtype=np.uint64)
@@ -33,20 +35,21 @@ def benchmark_okvs_direct(n=1_000_000):
     print("Running Naive...")
     start = time.time()
     for _ in range(5):
-            _ = field_impl._okvs_solve_impl(keys, values, m, seed)
+        _ = field_impl._okvs_solve_impl(keys, values, m, seed)
     t_naive = (time.time() - start) / 5.0
-    
+
     # 2. Measure Optimized
     print("Running Optimized...")
     start = time.time()
     for _ in range(5):
-            _ = field_impl._okvs_solve_opt_impl(keys, values, m, seed)
+        _ = field_impl._okvs_solve_opt_impl(keys, values, m, seed)
     t_opt = (time.time() - start) / 5.0
-    
-    print(f"\nResults:")
-    print(f"Naive Time: {t_naive*1000:.2f} ms")
-    print(f"Opt Time:   {t_opt*1000:.2f} ms")
+
+    print("\nResults:")
+    print(f"Naive Time: {t_naive * 1000:.2f} ms")
+    print(f"Opt Time:   {t_opt * 1000:.2f} ms")
     print(f"Speedup:    {t_naive / t_opt:.2f}x")
+
 
 if __name__ == "__main__":
     benchmark_okvs_direct()

@@ -183,9 +183,7 @@ def gf128_mul_batch(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 # =============================================================================
 
 
-def _hash_key_py(
-    key: int, m: int, seed: tuple[int, int]
-) -> tuple[int, int, int]:
+def _hash_key_py(key: int, m: int, seed: tuple[int, int]) -> tuple[int, int, int]:
     """Hash a key to 3 distinct indices using simple polynomial hashing.
 
     This is a pure Python approximation of the AES-based hash in C++.
@@ -371,10 +369,7 @@ def aes_expand(seeds: np.ndarray, length: int) -> np.ndarray:
 
 
 def ldpc_encode(
-    message: np.ndarray,
-    h_indices: np.ndarray,
-    h_indptr: np.ndarray,
-    m: int
+    message: np.ndarray, h_indices: np.ndarray, h_indptr: np.ndarray, m: int
 ) -> np.ndarray:
     """Compute syndrome S = H @ message using sparse CSR representation.
 

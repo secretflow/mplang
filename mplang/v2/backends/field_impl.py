@@ -138,29 +138,28 @@ def _gf128_mul_impl(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return out
 
 
-
 def _okvs_solve_opt_impl(
     keys: np.ndarray, values: np.ndarray, m: int, seed: np.ndarray
 ) -> np.ndarray:
     lib = _get_lib()
     if seed.ndim > 1:
         seed = seed.flatten()
-        
+
     if lib is None:
         # Fallback to standard (no python impl for opt)
         return _okvs_solve_impl(keys, values, m, seed)
 
     n = keys.shape[0]
-    
+
     # Heuristic: Mega-Binning is unstable < 200k.
     if n < 200_000:
         return _okvs_solve_impl(keys, values, m, seed)
-        
+
     # Heuristic: Mega-Binning requires higher expansion (epsilon ~ 1.35)
     # If m/n is too tight, fallback to Naive (which works with 1.25)
     if m / n < 1.32:
         return _okvs_solve_impl(keys, values, m, seed)
-    
+
     keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
     values_c = np.ascontiguousarray(values, dtype=np.uint64)
     seed_c = np.ascontiguousarray(seed, dtype=np.uint64)
@@ -188,7 +187,7 @@ def _okvs_decode_opt_impl(
         return _okvs_decode_impl(keys, storage, m, seed)
 
     n = keys.shape[0]
-    
+
     # Heuristic: Mega-Binning (1024 Bins) is unstable for small N due to variance.
     # It requires ~1000 items/bin to be efficient and stable with epsilon=1.3.
     # Threshold: 200,000 (approx 200 items/bin). Below this, Naive is fast enough (<50ms).
@@ -197,7 +196,7 @@ def _okvs_decode_opt_impl(
 
     if m / n < 1.32:
         return _okvs_decode_impl(keys, storage, m, seed)
-    
+
     keys_c = np.ascontiguousarray(keys, dtype=np.uint64)
     storage_c = np.ascontiguousarray(storage, dtype=np.uint64)
     seed_c = np.ascontiguousarray(seed, dtype=np.uint64)
@@ -277,10 +276,7 @@ def _okvs_decode_impl(
 
 
 def ldpc_encode_impl(
-    message: np.ndarray,
-    h_indices: np.ndarray,
-    h_indptr: np.ndarray,
-    m: int
+    message: np.ndarray, h_indices: np.ndarray, h_indptr: np.ndarray, m: int
 ) -> np.ndarray:
     lib = _get_lib()
     if lib is None:

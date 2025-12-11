@@ -46,9 +46,7 @@ STASH_SIZE = 0  # Simple version: no stash (higher failure rate)
 MASK64 = 0xFFFFFFFFFFFFFFFF
 
 
-def hash_to_positions(
-    items: Any, table_size: int, seed: tuple[int, int]
-) -> Any:
+def hash_to_positions(items: Any, table_size: int, seed: tuple[int, int]) -> Any:
     """Compute K candidate positions for each item.
 
     Uses polynomial hash family with seeded coefficients:
@@ -80,9 +78,7 @@ def hash_to_positions(
     a_base = jnp.array(
         [GOLDEN_RATIO_64, SPLITMIX64_GAMMA_1, SPLITMIX64_GAMMA_2], dtype=jnp.uint64
     )
-    b_base = jnp.array(
-        [PI_FRAC_1, PI_FRAC_2, E_FRAC_1], dtype=jnp.uint64
-    )
+    b_base = jnp.array([PI_FRAC_1, PI_FRAC_2, E_FRAC_1], dtype=jnp.uint64)
 
     # Security Fix: Seed BOTH coefficients a and b
     # This prevents structural analysis attacks on the hash family
@@ -188,9 +184,7 @@ def cuckoo_insert_batch(
     return final_table, item_to_pos, success_total
 
 
-def cuckoo_lookup_positions(
-    items: Any, table_size: int, seed: tuple[int, int]
-) -> Any:
+def cuckoo_lookup_positions(items: Any, table_size: int, seed: tuple[int, int]) -> Any:
     """Get Cuckoo lookup positions for each item.
 
     Returns the K candidate positions where each item could be located

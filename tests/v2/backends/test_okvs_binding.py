@@ -90,8 +90,12 @@ def test_okvs_flow() -> None:
     else:
         # Use Python fallback
         print(f"Using Python fallback for OKVS solve n={n}, m={m}")
-        storage = py_kernels.okvs_solve(keys, values, m, seed=(int(seed[0]), int(seed[1])))
-        decoded = py_kernels.okvs_decode(keys, storage, m, seed=(int(seed[0]), int(seed[1])))
+        storage = py_kernels.okvs_solve(
+            keys, values, m, seed=(int(seed[0]), int(seed[1]))
+        )
+        decoded = py_kernels.okvs_decode(
+            keys, storage, m, seed=(int(seed[0]), int(seed[1]))
+        )
 
     if np.array_equal(decoded, values):
         print("SUCCESS: Decoded values match inputs!")

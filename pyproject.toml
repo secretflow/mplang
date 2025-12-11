@@ -3,8 +3,8 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [[tool.uv.index]]
-name = "aliyun"
-url = "https://mirrors.aliyun.com/pypi/simple/"
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
 [tool.uv]
@@ -24,7 +24,7 @@ dependencies = [
     "protobuf>=5.0,<6.0",
     "typing_extensions",
     # both FE & BE
-    "spu>=0.10.0.dev20251208",
+    "spu>=0.10.0.dev20251211",
     "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
     "jax[cpu]==0.8.0",         # Align with SPU JAX version
     "flax>=0.12.0",            # NNX is part of Flax 0.12+
@@ -61,12 +61,7 @@ examples = [
 packages = ["mplang"]
 # Exclude native C++ kernels by default - they are optional
 # Users can compile locally with: cd mplang/v2/kernels && make
-exclude = [
-    "*.so",
-    "*.o",
-    "mplang/v2/kernels/*.so",
-    "mplang/v2/kernels/*.o",
-]
+exclude = ["*.so", "*.o", "mplang/v2/kernels/*.so", "mplang/v2/kernels/*.o"]
 
 [tool.hatch.build.targets.sdist]
 include = [

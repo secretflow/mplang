@@ -161,51 +161,26 @@ def test_vole_psi_simulation() -> None:
         print("PSI Logic Verified: Sender successfully derived U*Delta share.")
 
 
-def test_rr22_integration() -> None:
-    """Test full End-to-End PSI OKVS Protocol via rr22.py using SimpSimulator."""
+def test_rr22_full_intersection() -> None:
+    """Test PSI with full intersection (100% overlap - identical sets)."""
     N = 100
-    # Use IDENTICAL items to verify T == U* * Delta
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(789)
     shared_items = rng.choice(1000000, size=N, replace=False).astype(np.uint64)
 
     sender_items = shared_items
     receiver_items = shared_items
 
-    SENDER = 0
-    RECEIVER = 1
+    mask_val = _run_psi_simulation(sender_items, receiver_items)
 
-    sim = mp.Simulator.simple(2)
-
-    def job() -> Any:
-        # 1. Place Inputs
-        s_items_Handle = simp.constant((SENDER,), sender_items)
-        r_items_Handle = simp.constant((RECEIVER,), receiver_items)
-
-        # 2. Run Protocol
-        # Returns intersection_mask (on Sender)
-        mask_handle = psi_okvs.psi_intersect(
-            SENDER, RECEIVER, N, s_items_Handle, r_items_Handle
-        )
-        return mask_handle
-
-    # Execute
-    traced = mp.compile(sim, job)
-    mask_obj = mp.evaluate(sim, traced)
-
-    # Verify Results
-    # Mask is on Sender. Should be all 1s (because items are identical).
-    mask_val = mp.fetch(sim, mask_obj)[SENDER]
-
-    # Verify All Matched
-    # mask_val is (N,) uint8
+    # All ones expected (complete intersection)
     expected_mask = np.ones((N,), dtype=np.uint8)
 
     np.testing.assert_array_equal(
         mask_val,
         expected_mask,
-        err_msg="PSI Integration Failed: Not all items matched!",
+        err_msg="Full Intersection Failed: Not all items matched!",
     )
-    print("Integration Test Passed: Sender received correct Intersection Mask.")
+    print("Full Intersection Test Passed: All items correctly matched.")
 
 
 def _run_psi_simulation(

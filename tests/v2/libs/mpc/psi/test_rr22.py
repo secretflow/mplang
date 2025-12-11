@@ -206,3 +206,121 @@ def test_rr22_integration() -> None:
         err_msg="PSI Integration Failed: Not all items matched!",
     )
     print("Integration Test Passed: Sender received correct Intersection Mask.")
+
+
+def test_rr22_partial_intersection() -> None:
+    """Test PSI with partial intersection (50% overlap)."""
+    N = 100
+    rng = np.random.default_rng(42)
+
+    # Generate unique items for sender and receiver with 50% overlap
+    all_items = rng.choice(1000000, size=N * 2, replace=False).astype(np.uint64)
+    common_items = all_items[:N // 2]  # 50 common items
+    sender_unique = all_items[N // 2 : N]  # 50 sender-only items
+    receiver_unique = all_items[N : N + N // 2]  # 50 receiver-only items
+
+    sender_items = np.concatenate([common_items, sender_unique])
+    receiver_items = np.concatenate([common_items, receiver_unique])
+
+    # Shuffle to avoid position correlation
+    rng.shuffle(sender_items)
+    rng.shuffle(receiver_items)
+
+    SENDER = 0
+    RECEIVER = 1
+
+    sim = mp.Simulator.simple(2)
+
+    def job() -> Any:
+        s_handle = simp.constant((SENDER,), sender_items)
+        r_handle = simp.constant((RECEIVER,), receiver_items)
+        return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
+
+    traced = mp.compile(sim, job)
+    mask_obj = mp.evaluate(sim, traced)
+    mask_val = mp.fetch(sim, mask_obj)[SENDER]
+
+    # Compute expected mask: 1 if sender_item is in common_items, else 0
+    expected_mask = np.isin(sender_items, common_items).astype(np.uint8)
+
+    np.testing.assert_array_equal(
+        mask_val,
+        expected_mask,
+        err_msg="Partial Intersection Failed: Mask mismatch!",
+    )
+    print(f"Partial Intersection Test Passed: {np.sum(mask_val)}/{N} items matched.")
+
+
+def test_rr22_no_intersection() -> None:
+    """Test PSI with no intersection (disjoint sets)."""
+    N = 100
+    rng = np.random.default_rng(123)
+
+    # Generate completely disjoint item sets
+    all_items = rng.choice(1000000, size=N * 2, replace=False).astype(np.uint64)
+    sender_items = all_items[:N]
+    receiver_items = all_items[N:]
+
+    SENDER = 0
+    RECEIVER = 1
+
+    sim = mp.Simulator.simple(2)
+
+    def job() -> Any:
+        s_handle = simp.constant((SENDER,), sender_items)
+        r_handle = simp.constant((RECEIVER,), receiver_items)
+        return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
+
+    traced = mp.compile(sim, job)
+    mask_obj = mp.evaluate(sim, traced)
+    mask_val = mp.fetch(sim, mask_obj)[SENDER]
+
+    # All zeros expected (no intersection)
+    expected_mask = np.zeros((N,), dtype=np.uint8)
+
+    np.testing.assert_array_equal(
+        mask_val,
+        expected_mask,
+        err_msg="No Intersection Test Failed: Expected all zeros!",
+    )
+    print("No Intersection Test Passed: All items correctly unmatched.")
+
+
+def test_rr22_single_element_intersection() -> None:
+    """Test PSI with only one common element."""
+    N = 100
+    rng = np.random.default_rng(456)
+
+    # Generate items with exactly ONE common element
+    all_items = rng.choice(1000000, size=N * 2, replace=False).astype(np.uint64)
+    common_item = all_items[0]
+    sender_items = np.concatenate([[common_item], all_items[1:N]])
+    receiver_items = np.concatenate([[common_item], all_items[N : N * 2 - 1]])
+
+    rng.shuffle(sender_items)
+    rng.shuffle(receiver_items)
+
+    SENDER = 0
+    RECEIVER = 1
+
+    sim = mp.Simulator.simple(2)
+
+    def job() -> Any:
+        s_handle = simp.constant((SENDER,), sender_items)
+        r_handle = simp.constant((RECEIVER,), receiver_items)
+        return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
+
+    traced = mp.compile(sim, job)
+    mask_obj = mp.evaluate(sim, traced)
+    mask_val = mp.fetch(sim, mask_obj)[SENDER]
+
+    # Exactly one element should match
+    expected_mask = (sender_items == common_item).astype(np.uint8)
+
+    np.testing.assert_array_equal(
+        mask_val,
+        expected_mask,
+        err_msg="Single Element Intersection Failed!",
+    )
+    print(f"Single Element Test Passed: Found common item at index {np.where(mask_val == 1)[0][0]}.")
+

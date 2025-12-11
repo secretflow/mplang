@@ -104,11 +104,22 @@ class Simulator:
         value = fetch(sim, result)
     """
 
-    def __init__(self, cluster_spec: ClusterSpec, enable_profiler: bool = False):
+    def __init__(self, cluster_spec: ClusterSpec, enable_tracing: bool = False):
         """Create a Simulator from a ClusterSpec."""
+        import os
+        import pathlib
+
         self._cluster = cluster_spec
+
+        # Construct root_dir from cluster info
+        data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+        cluster_id = f"__sim_{len(cluster_spec.nodes)}"
+        host_root = data_root / cluster_id / "__host__"
+
         self._sim = SimpSimulator(
-            world_size=len(cluster_spec.nodes), enable_profiler=enable_profiler
+            world_size=len(cluster_spec.nodes),
+            root_dir=host_root,
+            enable_tracing=enable_tracing,
         )
         set_global_cluster(cluster_spec)
 
@@ -119,19 +130,19 @@ class Simulator:
         Args:
             world_size: Number of parties (physical nodes).
             **kwargs: Additional arguments passed to ClusterSpec.simple().
-                      Also accepts 'enable_profiler' (bool).
+                      Also accepts 'enable_tracing' (bool).
 
         Returns:
             A Simulator instance.
         """
-        enable_profiler = kwargs.pop("enable_profiler", False)
+        enable_tracing = kwargs.pop("enable_tracing", False)
         cluster = ClusterSpec.simple(
             world_size,
             enable_ppu_device=kwargs.pop("enable_ppu_device", True),
             enable_spu_device=kwargs.pop("enable_spu_device", True),
             **kwargs,
         )
-        return cls(cluster, enable_profiler=enable_profiler)
+        return cls(cluster, enable_tracing=enable_tracing)
 
     @property
     def cluster(self) -> ClusterSpec:
@@ -184,7 +195,16 @@ class Driver:
         Args:
             cluster_spec: The cluster specification with node endpoints.
         """
+        import os
+        import pathlib
+
         self._cluster = cluster_spec
+
+        # Construct root_dir from cluster info
+        data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+        cluster_id = f"__http_{len(cluster_spec.nodes)}"
+        host_root = data_root / cluster_id / "__host__"
+
         # Ensure endpoints have http:// prefix
         endpoints = []
         for node in cluster_spec.nodes.values():
@@ -195,6 +215,7 @@ class Driver:
         self._driver = SimpHttpDriver(
             world_size=len(cluster_spec.nodes),
             endpoints=endpoints,
+            root_dir=host_root,
         )
         set_global_cluster(cluster_spec)
 

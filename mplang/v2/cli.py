@@ -340,8 +340,8 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     driver: Any
     if args.backend == "sim":
-        enable_profiler = getattr(args, "profile", False)
-        driver = Simulator(cluster, enable_profiler=enable_profiler)
+        enable_tracing = getattr(args, "profile", False)
+        driver = Simulator(cluster, enable_tracing=enable_tracing)
     else:
         driver = Driver(cluster)
 

@@ -26,6 +26,7 @@ import collections
 import concurrent.futures
 import json
 import os
+import pathlib
 import queue
 import tempfile
 import threading
@@ -43,10 +44,12 @@ if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
 
 
-class DagProfiler:
-    """Profiler for DAG execution metrics and Chrome Tracing."""
+class ExecutionTracer:
+    """Tracer for DAG execution events (Chrome Tracing format)."""
 
-    def __init__(self, enabled: bool = False):
+    def __init__(
+        self, enabled: bool = False, *, trace_dir: str | pathlib.Path
+    ):
         self.enabled = enabled
         self.start_time = 0.0
         self.end_time = 0.0
@@ -54,6 +57,7 @@ class DagProfiler:
         self.queue_size_samples: list[tuple[float, int]] = []
         self.completed_ops = 0
         self.total_ops = 0
+        self.trace_dir = pathlib.Path(trace_dir)
 
         # Tracing
         self.trace_events: list[dict[str, Any]] = []
@@ -175,11 +179,15 @@ class DagProfiler:
                 tid = threading.get_ident()
                 filename = f"{filename_prefix}_{timestamp}_{tid}.json"
 
-            with open(filename, "w") as f:
+            # Save trace to trace_dir
+            self.trace_dir.mkdir(parents=True, exist_ok=True)
+            filepath = self.trace_dir / filename
+
+            with open(filepath, "w") as f:
                 json.dump({"traceEvents": self.trace_events}, f)
-            print(f"\n[DagProfiler] Trace saved to {os.path.abspath(filename)}")
+            print(f"\n[Tracer] Trace saved to {filepath.absolute()}")
         except Exception as e:
-            print(f"[DagProfiler] Failed to save trace: {e}")
+            print(f"[Tracer] Failed to save trace: {e}")
 
     def print_summary(self) -> None:
         duration = self.end_time - self.start_time
@@ -213,6 +221,30 @@ class DagProfiler:
         print(f"Active Tasks:   Avg={avg_active:.1f}, Max={max_active}")
         print(f"Ready Queue:    Avg={avg_queue:.1f}")
         print("=" * 80 + "\n")
+
+
+class _NullTracer:
+    """No-op tracer stub for when tracing is disabled."""
+
+    enabled = False
+    total_ops = 0
+
+    def log_schedule(self, op: Any, namespace: Any = None) -> None:
+        pass
+
+    def log_start(
+        self, op: Any, pid: int | None = None, namespace: Any = None
+    ) -> float:
+        return 0.0
+
+    def log_end(self, op: Any, start_ts: float, pid: int | None = None) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def save_trace(self, **kwargs: Any) -> None:
+        pass
 
 
 class InterpObject(Object):
@@ -296,10 +328,18 @@ class Interpreter(AbstractInterpreter):
         self,
         executor: concurrent.futures.Executor | None = None,
         name: str = "Interpreter",
-        profiler: DagProfiler | None = None,
+        tracer: ExecutionTracer | None = None,
         trace_pid: int | None = None,
         store: ObjectStore | None = None,
+        root_dir: str | pathlib.Path | None = None,
     ) -> None:
+        # Persistence Root
+        self.root_dir = (
+            pathlib.Path(root_dir)
+            if root_dir
+            else pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+        )
+
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
         # This serves two purposes:
@@ -310,7 +350,8 @@ class Interpreter(AbstractInterpreter):
         self.executor = executor
         self.async_ops: set[str] = set()
         self.name = name
-        self.profiler = profiler
+        self.tracer = tracer
+
         self.trace_pid = trace_pid
 
         self._temp_dir: tempfile.TemporaryDirectory | None = None
@@ -585,8 +626,8 @@ class Interpreter(AbstractInterpreter):
                     env[out_val] = res
 
         # Return outputs
-        if self.profiler and job_id:
-            self.profiler.save_trace(job_id=job_id, rank=self.trace_pid)
+        if self.tracer and job_id:
+            self.tracer.save_trace(job_id=job_id, rank=self.trace_pid)
 
         if len(graph.outputs) == 1:
             return env[graph.outputs[0]]
@@ -597,14 +638,14 @@ class Interpreter(AbstractInterpreter):
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Any:
         """Asynchronous execution with non-blocking DAG scheduling."""
-        # Profiler setup
-        if self.profiler:
-            profiler = self.profiler
-            profiler.total_ops += len(graph.operations)
+        # Tracer setup (if not provided, use a disabled stub)
+        tracer: ExecutionTracer | _NullTracer
+        if self.tracer:
+            tracer = self.tracer
+            tracer.total_ops += len(graph.operations)
         else:
-            profiler = DagProfiler()
-            profiler.total_ops = len(graph.operations)
-            profiler.start()
+            # No tracer provided - use minimal stub (no trace_dir needed)
+            tracer = _NullTracer()
 
         active_tasks = 0
 
@@ -674,7 +715,7 @@ class Interpreter(AbstractInterpreter):
                         for consumer_op in value_to_consumers[out_val]:
                             pending_counts[consumer_op] -= 1
                             if pending_counts[consumer_op] == 0:
-                                profiler.log_schedule(
+                                tracer.log_schedule(
                                     consumer_op, namespace=self.trace_pid
                                 )
                                 ready_queue.put(consumer_op)
@@ -707,11 +748,11 @@ class Interpreter(AbstractInterpreter):
 
                 # Submit to executor
                 def task() -> Any:
-                    start_ts = profiler.log_start(
+                    start_ts = tracer.log_start(
                         op, pid=self.trace_pid, namespace=self.trace_pid
                     )
                     res = handler(self, op, *args)
-                    profiler.log_end(op, start_ts, pid=self.trace_pid)
+                    tracer.log_end(op, start_ts, pid=self.trace_pid)
                     return res
 
                 def callback(fut: Any) -> None:
@@ -726,11 +767,11 @@ class Interpreter(AbstractInterpreter):
             else:
                 # Sync execution (run immediately)
                 try:
-                    start_ts = profiler.log_start(
+                    start_ts = tracer.log_start(
                         op, pid=self.trace_pid, namespace=self.trace_pid
                     )
                     res = handler(self, op, *args)
-                    profiler.log_end(op, start_ts, pid=self.trace_pid)
+                    tracer.log_end(op, start_ts, pid=self.trace_pid)
                     on_op_done(op, res)
                 except Exception as e:
                     on_op_done(op, None, error=e)
@@ -743,7 +784,7 @@ class Interpreter(AbstractInterpreter):
             pass
 
         for op in initial_ops:
-            profiler.log_schedule(op, namespace=self.trace_pid)
+            tracer.log_schedule(op, namespace=self.trace_pid)
             ready_queue.put(op)
 
         # Handle empty graph case
@@ -762,12 +803,11 @@ class Interpreter(AbstractInterpreter):
             execute_op(item)
 
         # 7. Return outputs
-        if not self.profiler:
-            profiler.stop()
-            # profiler.print_summary()
+        if not self.tracer:
+            tracer.stop()
 
-        if self.profiler and job_id:
-            self.profiler.save_trace(job_id=job_id, rank=self.trace_pid)
+        if self.tracer and job_id:
+            self.tracer.save_trace(job_id=job_id, rank=self.trace_pid)
 
         final_results = [env[out] for out in graph.outputs]
         return final_results[0] if len(final_results) == 1 else final_results

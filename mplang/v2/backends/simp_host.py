@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import pathlib
 from typing import Any
 
 from mplang.v2.edsl import serde
@@ -55,18 +56,30 @@ class SimpHost(Interpreter):
     SPMD operations to workers.
     """
 
-    def __init__(self, world_size: int):
-        super().__init__()
+    def __init__(self, world_size: int, root_dir: pathlib.Path | None = None):
+        super().__init__(root_dir=root_dir)
         self.world_size = world_size
 
     def evaluate_graph(
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Any:
         """Execute graph by distributing it to all parties."""
+        import os
         import uuid
 
         if job_id is None:
             job_id = str(uuid.uuid4())
+
+        # Optionally save graph to file for debugging
+        if os.environ.get("MPLANG_PRINT_GRAPH", "").lower() in ("1", "true", "yes"):
+            if self.root_dir is not None:
+                from mplang.v2.edsl.printer import format_graph
+
+                graphs_dir = self.root_dir / "graphs"
+                graphs_dir.mkdir(parents=True, exist_ok=True)
+                graph_file = graphs_dir / f"graph_{job_id}.txt"
+                graph_file.write_text(format_graph(graph))
+                print(f"[Graph] Saved to {graph_file}")
 
         # inputs: list of runtime objects (HostVar or constant), matching graph.inputs order
 

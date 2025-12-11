@@ -47,7 +47,15 @@ dependencies = [
 mplang-cli = "mplang.runtime.cli:main"
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+    "pre-commit",
+    "pytest-repeat>=0.9.4",
+]
 
 examples = [
     "scikit-learn",

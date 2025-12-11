@@ -231,9 +231,9 @@ def _sub_ae(p1: PointType, p2: PointType) -> PointType:
 @point_to_bytes_p.def_abstract_eval
 def _pt_to_bytes_ae(point: elt.BaseType) -> elt.TensorType:
     if isinstance(point, elt.TensorType):
-        # Vectorized behavior: Tensor[Point, shape] -> Tensor[u8, shape + (64,)]
-        return elt.TensorType(elt.u8, (*point.shape, 64))
-    return elt.TensorType(elt.u8, (64,))
+        # Vectorized behavior: Tensor[Point, shape] -> Tensor[u8, shape + (65,)]
+        return elt.TensorType(elt.u8, (*point.shape, 65))
+    return elt.TensorType(elt.u8, (65,))
 
 
 @random_scalar_p.def_abstract_eval
@@ -491,3 +491,18 @@ def random_bits(n: int) -> el.Object:
         return bits[:n]
 
     return cast(el.Object, tensor.run_jax(_unpack_and_slice, raw))
+
+
+# --- Bytes <-> Point Conversions ---
+
+bytes_to_point_p = el.Primitive[el.Object]("crypto.ec_bytes_to_point")
+
+
+@bytes_to_point_p.def_abstract_eval
+def _bytes_to_point_ae(b: elt.TensorType) -> PointType:
+    return PointType("secp256k1")
+
+
+def ec_bytes_to_point(b: el.Object) -> el.Object:
+    """Deserialize bytes to a point."""
+    return bytes_to_point_p.bind(b)

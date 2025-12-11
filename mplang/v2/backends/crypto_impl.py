@@ -241,14 +241,30 @@ def scalar_from_int_impl(
 @crypto.point_to_bytes_p.def_impl
 def point_to_bytes_impl(
     interpreter: Interpreter, op: Operation, point: ECPointValue | None
-) -> BytesValue:
+) -> TensorValue:
     if point is None:
         # Infinity / Identity -> Zeros (65 bytes to match uncompressed format)
-        return BytesValue(bytes(65))
+        arr = np.zeros(65, dtype=np.uint8)
+        return TensorValue(arr)
 
     # Returns 65 bytes (uncompressed)
     b = point.coincurve_key.format(compressed=False)
-    return BytesValue(b)
+    arr = np.frombuffer(b, dtype=np.uint8).copy()
+    return TensorValue(arr)
+
+
+@crypto.bytes_to_point_p.def_impl
+def bytes_to_point_impl(
+    interpreter: Interpreter, op: Operation, b: TensorValue | BytesValue
+) -> ECPointValue:
+    if isinstance(b, TensorValue):
+        raw = b.unwrap().tobytes()
+    elif isinstance(b, BytesValue):
+        raw = b.unwrap()
+    else:
+        raise TypeError(f"bytes_to_point expects TensorValue or BytesValue, got {type(b)}")
+        
+    return ECPointValue(raw)
 
 
 # --- Sym / Hash Impl ---

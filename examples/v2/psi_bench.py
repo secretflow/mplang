@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from mplang.v2 import Simulator, Driver
+    from mplang.v2 import Driver, Simulator
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def __mp_main__(ctx: "Simulator | Driver", *args: str) -> dict[str, Any]:
+def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
     """MPLang workload entry point.
 
     Args:

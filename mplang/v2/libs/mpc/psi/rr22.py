@@ -61,7 +61,7 @@ Phases:
     This check is performed securely using hashes to prevent leakage.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import jax.numpy as jnp
 
@@ -343,4 +343,4 @@ def psi_intersect(
         (sender,), _compare, h_t_sender, h_target_at_sender
     )
 
-    return intersection_mask
+    return cast(el.Object, intersection_mask)

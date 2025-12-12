@@ -231,9 +231,9 @@ def _sub_ae(p1: PointType, p2: PointType) -> PointType:
 @point_to_bytes_p.def_abstract_eval
 def _pt_to_bytes_ae(point: elt.BaseType) -> elt.TensorType:
     if isinstance(point, elt.TensorType):
-        # Vectorized behavior: Tensor[Point, shape] -> Tensor[u8, shape + (64,)]
-        return elt.TensorType(elt.u8, (*point.shape, 64))
-    return elt.TensorType(elt.u8, (64,))
+        # Vectorized behavior: Tensor[Point, shape] -> Tensor[u8, shape + (65,)]
+        return elt.TensorType(elt.u8, (*point.shape, 65))
+    return elt.TensorType(elt.u8, (65,))
 
 
 @random_scalar_p.def_abstract_eval
@@ -491,3 +491,35 @@ def random_bits(n: int) -> el.Object:
         return bits[:n]
 
     return cast(el.Object, tensor.run_jax(_unpack_and_slice, raw))
+
+
+# --- Bytes <-> Point Conversions ---
+
+bytes_to_point_p = el.Primitive[el.Object]("crypto.ec_bytes_to_point")
+
+
+@bytes_to_point_p.def_abstract_eval
+def _bytes_to_point_ae(b: elt.TensorType) -> PointType:
+    return PointType("secp256k1")
+
+
+def ec_bytes_to_point(b: el.Object) -> el.Object:
+    """
+    Deserialize bytes to an ECC point.
+
+    Args:
+        b: A (65,) uint8 Tensor representing an uncompressed point in SEC1 format.
+           The first byte must be 0x04, followed by 32 bytes for X and 32 bytes for Y.
+
+    Returns:
+        An ECC point object corresponding to the input bytes.
+
+    Raises:
+        ValueError: If the input is not a valid 65-byte uncompressed point representation.
+
+    Example:
+        >>> # Example: Deserialize a point from bytes
+        >>> point_bytes = jnp.array([0x04] + [0x01] * 32 + [0x02] * 32, dtype=jnp.uint8)
+        >>> point = crypto.ec_bytes_to_point(point_bytes)
+    """
+    return bytes_to_point_p.bind(b)

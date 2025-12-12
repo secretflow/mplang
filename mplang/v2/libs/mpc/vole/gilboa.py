@@ -220,19 +220,13 @@ def _sender_round(
     v1_expanded = field.aes_expand(t_s_seeds, n)
 
     # 2. Compute term = u * powers using Field Arithmetic
-    # We lift this calculation to EDSL level using field.mul
+    # Vectorized Version:
+    # u_loc: (N, 2)
+    # powers: (128, 2)
+    # term: (128, N, 2) = u_loc * p_broad
 
-    def _prep_mul_inputs(u_val: Any) -> Any:
-        # u_val: (N, 2)
-        # We need (128, N, 2)
-        return jnp.tile(u_val[None, :, :], (128, 1, 1))
-
-    def _broadcast_power(p_val: Any, reference_u: Any) -> Any:
-        n_ = reference_u.shape[0]
-        # Broadcast power to (N, 2) to match u_loc shape
-        return jnp.tile(p_val[None, :], (n_, 1))  # (N, 2)
-
-    # Generate powers in Python to assume constant
+    # Generate Powers of X (128, 2) CONSTANT
+    # 1, x, x^2 ...
     powers_list = []
     for i in range(128):
         lo, hi = 0, 0
@@ -240,22 +234,31 @@ def _sender_round(
             lo = 1 << i
         else:
             hi = 1 << (i - 64)
-        powers_list.append(np.array([lo, hi], dtype=np.uint64))
+        powers_list.append([lo, hi])
+    powers_arr = np.array(powers_list, dtype=np.uint64)
+    powers_const = tensor.constant(powers_arr)
 
-    term_list = []
-    for i in range(128):
-        # Using Python list indexing is safe
-        p_val = powers_list[i]
-        p_i = tensor.constant(p_val)
+    # Broadcast for Vectorized Mul
+    # u_loc: (N, 2) -> (1, N, 2) -> (128, N, 2)
+    # powers: (128, 2) -> (128, 1, 2) -> (128, N, 2)
 
-        p_broad = cast(el.Object, tensor.run_jax(_broadcast_power, p_i, u_loc))
-        t_i = field.mul(u_loc, p_broad)
-        term_list.append(t_i)
+    def _broadcast_inputs(u_val: Any, p_val: Any) -> tuple[Any, Any]:
+        # u: (N, 2)
+        # p: (128, 2)
+        n_ = u_val.shape[0]
 
-    def _stack(*args: Any) -> Any:
-        return jnp.stack(args)
+        # Tile U: (128, N, 2)
+        u_broad = jnp.tile(u_val[None, :, :], (128, 1, 1))
 
-    term_val = cast(el.Object, tensor.run_jax(_stack, *term_list))  # (128, N, 2)
+        # Tile P: (128, N, 2)
+        p_broad = jnp.tile(p_val[:, None, :], (1, n_, 1))
+
+        return u_broad, p_broad
+
+    u_vec, p_vec = tensor.run_jax(_broadcast_inputs, u_loc, powers_const)
+
+    # Single Batched Mul
+    term_val = field.mul(u_vec, p_vec)  # (128, N, 2)
 
     # 3. Compute Corrections
     def _sender_calc(v0: Any, v1: Any, term: Any) -> tuple[Any, Any]:

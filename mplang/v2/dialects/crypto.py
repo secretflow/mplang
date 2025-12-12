@@ -504,5 +504,22 @@ def _bytes_to_point_ae(b: elt.TensorType) -> PointType:
 
 
 def ec_bytes_to_point(b: el.Object) -> el.Object:
-    """Deserialize bytes to a point."""
+    """
+    Deserialize bytes to an ECC point.
+
+    Args:
+        b: A (65,) uint8 Tensor representing an uncompressed point in SEC1 format.
+           The first byte must be 0x04, followed by 32 bytes for X and 32 bytes for Y.
+
+    Returns:
+        An ECC point object corresponding to the input bytes.
+
+    Raises:
+        ValueError: If the input is not a valid 65-byte uncompressed point representation.
+
+    Example:
+        >>> # Example: Deserialize a point from bytes
+        >>> point_bytes = jnp.array([0x04] + [0x01]*32 + [0x02]*32, dtype=jnp.uint8)
+        >>> point = crypto.ec_bytes_to_point(point_bytes)
+    """
     return bytes_to_point_p.bind(b)

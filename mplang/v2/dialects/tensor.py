@@ -365,7 +365,9 @@ def _constant_trace(data: Any) -> el.TraceObject:
 
 
 # Constant cache: Tracer -> { (dtype, shape, bytes) -> Object }
-_CONSTANT_CACHE: WeakKeyDictionary = WeakKeyDictionary()
+_CONSTANT_CACHE: WeakKeyDictionary[
+    el.Tracer, dict[tuple[str, tuple[int, ...], bytes], el.Object]
+] = WeakKeyDictionary()
 
 
 def constant(data: Any) -> el.Object:

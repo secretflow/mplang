@@ -169,8 +169,7 @@ def iknp_core(
             PK_sigma = crypto.ec_mul(crypto.ec_generator(), k_priv)
 
             # Slice s[i]
-            # Optimization: slice_tensor generates graph nodes.
-            # But run_jax might be better? No, s_base_choices is small.
+            # Using slice_tensor here is efficient since s_base_choices is small; the overhead of run_jax is unnecessary.
             s_i = tensor.slice_tensor(s_base_choices, (i,), (i + 1,))
             s_scalar = crypto.ec_scalar_from_int(s_i)
 

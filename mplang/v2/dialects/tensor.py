@@ -244,9 +244,12 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     for var in variables:
         if not isinstance(var, el.TraceObject):
             raise TypeError(f"Expected TraceObject, got {type(var)}")
-        if not isinstance(var.type, (elt.TensorType, elt.ScalarType)):
-            raise TypeError(f"run_jax only supports Tensors/Scalars, got {var.type}")
-        placeholders.append(_tensor_type_to_placeholder(var.type))
+
+        v_type = var.type
+
+        if not isinstance(v_type, (elt.TensorType, elt.ScalarType)):
+            raise TypeError(f"run_jax only supports Tensors/Scalars (or MP wrappings), got {var.type}")
+        placeholders.append(_tensor_type_to_placeholder(v_type))
 
     # Compile to StableHLO
     compilation, text_ref = _compile_run_jax(fn, normalized_fn, placeholders)

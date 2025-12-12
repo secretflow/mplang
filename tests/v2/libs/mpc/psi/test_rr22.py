@@ -22,7 +22,7 @@ import mplang.v2.dialects.field as field
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
-from mplang.v2.edsl import Interpreter
+from mplang.v2.runtime.interpreter import Interpreter
 from mplang.v2.libs.mpc.psi import okvs_gct
 from mplang.v2.libs.mpc.psi import rr22 as psi_okvs
 

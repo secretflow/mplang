@@ -16,21 +16,24 @@
 
 import numpy as np
 
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc import _utils as utils
 
 
-def run_protocol(sim: SimpSimulator, protocol_fn):
+
+def run_protocol(sim, protocol_fn):
     """Helper to trace and run a protocol."""
     traced = trace(protocol_fn)
-    return sim.evaluate_graph(traced.graph, [])
+    # Simulator doesn't have evaluate_graph directly on it in v2 API wrapper, 
+    # but backend (Interpreter) does. However we should use public API.
+    return mp.evaluate(sim, traced)
 
 
 def test_bits_conversion():
     """Test bytes_to_bits and bits_to_bytes type inference."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(world_size=2)
 
     # 1 byte: 0b10101010 = 170
     data = np.array([170], dtype=np.uint8)
@@ -57,7 +60,7 @@ def test_bits_conversion():
 
 def test_cuckoo_hash():
     """Test CuckooHash class type inference."""
-    sim = SimpSimulator(world_size=2)
+    sim = mp.Simulator.simple(world_size=2)
 
     items = np.array([1, 2, 3], dtype=np.int64)
 

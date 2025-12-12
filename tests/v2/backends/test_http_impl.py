@@ -24,7 +24,8 @@ import pytest
 import uvicorn
 
 import mplang.v2.edsl as el
-from mplang.v2.backends.simp_http_driver import SimpHttpDriver
+import mplang.v2 as mp
+from mplang.v2.edsl.context import pop_context, push_context
 from mplang.v2.backends.simp_http_worker import create_worker_app
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
@@ -80,7 +81,7 @@ def run_worker(rank, world_size, endpoints, port):
 @pytest.fixture(scope="module")
 def http_cluster():
     world_size = 2
-    base_port = 19200  # Changed to avoid port conflicts
+    base_port = 19300  # Changed to avoid port conflicts
     endpoints = [f"http://127.0.0.1:{base_port + i}" for i in range(world_size)]
 
     ctx = multiprocessing.get_context("spawn")
@@ -120,7 +121,17 @@ def http_cluster():
     time.sleep(0.5)
     logging.info("All HTTP worker servers are ready")
 
-    yield SimpHttpDriver(world_size, endpoints)
+    # Create driver
+    # Note: mp.Driver.simple returns an Interpreter configured with HttpClient.
+    # To mimic original test which might expect specific driver behavior or just execution context.
+    # If the test instantiates SimpHttpDriver pointing to nodes, mp.Driver.simple does exactly that.
+
+    driver = mp.Driver.simple(endpoints)
+
+    push_context(driver)
+    yield driver
+    pop_context()
+    driver.shutdown()
 
     for p in processes:
         try:
@@ -171,10 +182,10 @@ def test_http_e2e(http_cluster):
         try:
             # Execute
             # Inputs are empty since we use constants
-            results = host.evaluate_graph(graph, {})
+            results = host.backend.evaluate_graph(graph, {})
 
             # Fetch results
-            values = host.fetch(results)
+            values = mp.fetch(host, results)
             break
         except Exception as e:
             if attempt == max_retries - 1:

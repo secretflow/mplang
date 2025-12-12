@@ -16,12 +16,14 @@
 
 import numpy as np
 
-import mplang.v2.backends.simp_simulator  # noqa: F401
+import mplang.v2 as mp
+
+
 import mplang.v2.backends.simp_worker  # noqa: F401
 import mplang.v2.backends.spu_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
 import mplang.v2.edsl as el
-from mplang.v2.backends.simp_simulator import SimpSimulator
+
 from mplang.v2.dialects import simp, spu
 
 
@@ -29,7 +31,7 @@ def test_spu_e2e_simulation():
     """Test SPU end-to-end flow using SimpSimulator."""
     # 1. Setup
     world_size = 3
-    sim = SimpSimulator(world_size=world_size)
+    sim = mp.Simulator.simple(world_size=world_size)
     spu_parties = (0, 1, 2)
     spu_config = spu.SPUConfig()
 
@@ -92,19 +94,14 @@ def test_spu_e2e_simulation():
         # 4. Execute on all parties
         # We use evaluate_graph directly on the backend to test backend execution
         # Note: inputs are empty because we used constants inside the function
-        futures = []
-        for rank in range(world_size):
-            # Type hint for _submit expects Operation, but we pass Graph.
-            # This works at runtime because WorkerInterpreter accepts Graph.
-            futures.append(sim._submit(rank, graph, {}))  # type: ignore
-
-        results = sim._collect(futures)
+        
+        # NOTE: Simulator no longer has _submit/_collect private methods exposed directly
+        # We should use evaluate_graph which handles dispatch
+        
+        results_var = sim.backend.evaluate_graph(graph, [])
 
         # Fetch results
-        from mplang.v2.backends.simp_host import HostVar
-
-        results_var = HostVar(results)
-        values = sim.fetch(results_var)
+        values = mp.fetch(sim, results_var)
 
         # 5. Verify
         # Result from party 0 should be the tensor (wrapped in TensorValue)
@@ -120,4 +117,4 @@ def test_spu_e2e_simulation():
         assert values[2] is None
 
     finally:
-        sim.shutdown(wait=False)
+        sim.shutdown()

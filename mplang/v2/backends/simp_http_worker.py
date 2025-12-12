@@ -51,10 +51,11 @@ from pydantic import BaseModel
 from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
 from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
 from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
-from mplang.v2.backends.simp_worker import WorkerInterpreter
+from mplang.v2.backends.simp_worker import SimpWorkerContext
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
-from mplang.v2.runtime.interpreter import ExecutionTracer
+from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter
+from mplang.v2.runtime.object_store import ObjectStore
 
 logger = logging.getLogger(__name__)
 
@@ -218,16 +219,31 @@ def create_worker_app(
     tracer.start()
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
-    worker = WorkerInterpreter(
-        rank, world_size, comm, spu_endpoints, tracer=tracer, root_dir=root_dir
+    store = ObjectStore(fs_root=str(root_dir))
+    ctx = SimpWorkerContext(rank, world_size, comm, store, spu_endpoints)
+
+    # Register handlers
+    from mplang.v2.backends.simp_impl import WORKER_HANDLERS
+    # func_impl is already imported at module level for side-effects
+    handlers = {**WORKER_HANDLERS}
+
+    # Interpreter acts as the worker execution engine
+    worker = Interpreter(
+        context=ctx,
+        tracer=tracer,
+        root_dir=root_dir,
+        handlers=handlers
     )
+
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
     )
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
         """Execute graph in worker thread."""
-        result = worker.execute_job(graph, inputs, job_id=job_id)
+        # Note: we ignore job_id for now as generic Interpreter doesn't take it.
+        # But we could set it in thread local if needed.
+        result = worker.evaluate_graph(graph, inputs)
         comm.wait_pending_sends()
         return result
 
@@ -266,7 +282,7 @@ def create_worker_app(
         """Fetch data by URI."""
         logger.debug(f"Worker {rank} received fetch request for {req.uri}")
         try:
-            val = worker.store.get(req.uri)
+            val = worker.context.store.get(req.uri)
             return {"result": serde.dumps_b64(val)}
         except Exception as e:
             logger.error(f"Worker {rank} fetch failed: {e}")
@@ -276,7 +292,7 @@ def create_worker_app(
     async def list_objects() -> dict[str, list[str]]:
         """List all objects in the worker's store."""
         try:
-            return {"objects": worker.store.list_objects()}
+            return {"objects": worker.context.store.list_objects()}
         except Exception as e:
             logger.error(f"Worker {rank} list_objects failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e

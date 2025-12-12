@@ -17,6 +17,7 @@
 import numpy as np
 
 import mplang.v2.edsl as el
+from mplang.v2.runtime.interpreter import InterpObject
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.tensor import elementwise, reshape, run_jax, transpose
 
@@ -26,7 +27,7 @@ def _add_fn(x):
 
 
 def test_tensor_run_jax_op_emitted():
-    value = el.InterpObject(np.array(1.0), elt.TensorType(elt.f32, ()))
+    value = InterpObject(np.array(1.0), elt.TensorType(elt.f32, ()))
 
     def wrapper(x):
         return run_jax(_add_fn, x)
@@ -41,7 +42,7 @@ def test_tensor_run_jax_op_emitted():
 
 def test_tensor_transpose_op():
     """Test transpose operation with ranked tensors."""
-    x = el.InterpObject(
+    x = InterpObject(
         np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32),
         elt.TensorType(elt.f32, (2, 3)),
     )
@@ -69,7 +70,7 @@ def test_tensor_transpose_op():
 
 def test_tensor_reshape_op():
     """Test reshape operation with ranked tensors."""
-    x = el.InterpObject(
+    x = InterpObject(
         np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32),
         elt.TensorType(elt.f32, (2, 3)),
     )
@@ -97,7 +98,7 @@ def test_tensor_reshape_op():
 
 def test_tensor_transpose_with_dynamic_dims():
     """Test transpose works with dynamic dimensions."""
-    x_dyn = el.InterpObject(None, elt.TensorType(elt.f32, (-1, 3)))
+    x_dyn = InterpObject(None, elt.TensorType(elt.f32, (-1, 3)))
 
     def wrapper(tensor):
         return transpose(tensor, (1, 0))
@@ -116,7 +117,7 @@ def test_tensor_transpose_with_dynamic_dims():
 
 def test_tensor_reshape_infers_minus_one():
     """Test reshape infers -1 dimension when input is fully static."""
-    x = el.InterpObject(
+    x = InterpObject(
         np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32),
         elt.TensorType(elt.f32, (2, 3)),
     )
@@ -143,7 +144,7 @@ def test_tensor_reshape_infers_minus_one():
 
 def test_tensor_reshape_keeps_minus_one_with_dynamic_input():
     """Test reshape preserves -1 when input has dynamic dims."""
-    x_dyn = el.InterpObject(None, elt.TensorType(elt.f32, (-1, 3)))
+    x_dyn = InterpObject(None, elt.TensorType(elt.f32, (-1, 3)))
 
     def wrapper(tensor):
         return reshape(tensor, (2, -1))
@@ -161,10 +162,10 @@ def test_tensor_reshape_keeps_minus_one_with_dynamic_input():
 
 
 def test_tensor_elementwise_supports_kwargs_arguments():
-    tensor = el.InterpObject(
+    tensor = InterpObject(
         np.array([1.0, 2.0], dtype=np.float32), elt.TensorType(elt.f32, (2,))
     )
-    scalar = el.InterpObject(np.array(0.5, dtype=np.float32), elt.f32)
+    scalar = InterpObject(np.array(0.5, dtype=np.float32), elt.f32)
 
     def wrapper(x, bias):
         return elementwise(lambda elem, *, offset: elem + offset, x, offset=bias)
@@ -179,7 +180,7 @@ def test_tensor_elementwise_supports_kwargs_arguments():
 
 
 def test_tensor_elementwise_emits_pytree_outputs():
-    tensor = el.InterpObject(
+    tensor = InterpObject(
         np.array([3.0, 4.0], dtype=np.float32), elt.TensorType(elt.f32, (2,))
     )
 

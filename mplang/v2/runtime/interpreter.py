@@ -31,6 +31,7 @@ import queue
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from mplang.v2.edsl.context import AbstractInterpreter
@@ -330,6 +331,8 @@ class Interpreter(AbstractInterpreter):
         trace_pid: int | None = None,
         store: ObjectStore | None = None,
         root_dir: str | pathlib.Path | None = None,
+        handlers: dict[str, Callable[..., Any]] | None = None,
+        context: Any = None,
     ) -> None:
         # Persistence Root
         self.root_dir = (
@@ -337,6 +340,13 @@ class Interpreter(AbstractInterpreter):
             if root_dir
             else pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
         )
+
+        # Instance-level handler registry (overrides global registry)
+        self.handlers: dict[str, Callable] = handlers or {}
+        self.tracer = tracer
+
+        # Opaque context object (e.g. Runtime/Driver/Simulator) providing capabilities
+        self.context = context
 
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
@@ -348,7 +358,6 @@ class Interpreter(AbstractInterpreter):
         self.executor = executor
         self.async_ops: set[str] = set()
         self.name = name
-        self.tracer = tracer
 
         self.trace_pid = trace_pid
 
@@ -600,7 +609,12 @@ class Interpreter(AbstractInterpreter):
                 ) from e
 
             # Dispatch
-            handler = get_impl(op.opcode)
+            # 1. Check instance-level handlers
+            handler = self.handlers.get(op.opcode)
+            # 2. Check global registry
+            if not handler:
+                handler = get_impl(op.opcode)
+
             if handler:
                 # Pass interpreter to support recursive execution (HOFs)
                 # Pass op to access attributes and regions
@@ -612,8 +626,11 @@ class Interpreter(AbstractInterpreter):
                 )
 
             # Update environment with outputs
+            # Update environment with outputs
             # Handler should return a single value or a tuple/list of values
-            if len(op.outputs) == 1:
+            if len(op.outputs) == 0:
+                pass  # Void operation
+            elif len(op.outputs) == 1:
                 env[op.outputs[0]] = results
             else:
                 if len(results) != len(op.outputs):
@@ -733,7 +750,11 @@ class Interpreter(AbstractInterpreter):
             nonlocal active_tasks
             # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
-            handler = get_impl(op.opcode)
+
+            handler = self.handlers.get(op.opcode)
+            if not handler:
+                handler = get_impl(op.opcode)
+
             if not handler:
                 raise NotImplementedError(
                     f"No implementation registered for opcode: {op.opcode}"

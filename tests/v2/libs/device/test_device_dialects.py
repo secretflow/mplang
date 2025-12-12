@@ -45,6 +45,17 @@ def extract_runtime_value(obj):
     # Fetch if it's a HostVar or contains URIs
     if hasattr(interp, "fetch"):
         val = interp.fetch(val)
+    elif hasattr(interp, "context") and hasattr(interp.context, "fetch"):
+         # Simulate fetch logic for HostInterpreter which uses SimpClient
+         from mplang.v2.backends.simp_structs import HostVar
+         if isinstance(val, HostVar):
+             resolved = []
+             for r, v in enumerate(val.values):
+                 if isinstance(v, str) and "://" in v:
+                     resolved.append(interp.context.fetch(r, v).result())
+                 else:
+                     resolved.append(v)
+             val = HostVar(resolved)
 
     # HostVar is used in simulation, it has .values attribute or supports indexing
     if hasattr(val, "values"):

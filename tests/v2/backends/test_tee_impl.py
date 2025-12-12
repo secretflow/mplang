@@ -23,6 +23,7 @@ import mplang.v2.dialects.crypto as crypto
 import mplang.v2.dialects.tee as tee
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
+from mplang.v2.runtime.interpreter import InterpObject, Interpreter
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.tee_impl import MockQuoteValue
 
@@ -48,7 +49,7 @@ class TestMockTEEExecution:
 
     def test_quote_gen_execution(self):
         """Test quote_gen primitive execution produces correct type."""
-        with el.Interpreter():
+        with Interpreter():
             _sk, pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
@@ -64,7 +65,7 @@ class TestMockTEEExecution:
         Note: After simplification, attest returns a PublicKeyValue (at runtime)
         with PublicKeyType (at type level), not AttestedKeyType.
         """
-        with el.Interpreter():
+        with Interpreter():
             _sk, pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
@@ -81,7 +82,7 @@ class TestMockTEEExecution:
 
     def test_full_attestation_workflow(self):
         """Test complete attestation workflow: keygen -> quote_gen -> attest."""
-        with el.Interpreter():
+        with Interpreter():
             _sk, pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
@@ -100,7 +101,7 @@ class TestTEEWithCryptoIntegration:
 
     def test_attestation_then_key_exchange(self):
         """Test TEE attestation followed by symmetric key derivation."""
-        with el.Interpreter():
+        with Interpreter():
             # TEE side: generate keypair and quote
             tee_sk, tee_pk = crypto.kem_keygen("x25519")
 
@@ -122,7 +123,7 @@ class TestTEEWithCryptoIntegration:
 
     def test_encrypt_decrypt_after_attestation(self):
         """Test symmetric encryption/decryption after attestation workflow."""
-        with el.Interpreter():
+        with Interpreter():
             # Setup: both parties generate keypairs
             tee_sk, tee_pk = crypto.kem_keygen("x25519")
             verifier_sk, verifier_pk = crypto.kem_keygen("x25519")

@@ -18,7 +18,8 @@ import numpy as np
 import pytest
 
 import mplang.v2.dialects.tensor as tensor
-from mplang.v2 import SimpSimulator, evaluate, fetch
+import mplang.v2 as mp
+from mplang.v2 import evaluate, fetch
 from mplang.v2.libs.mpc.psi.okvs_gct import SparseOKVS, get_okvs_expansion
 
 
@@ -27,7 +28,7 @@ class TestSparseOKVSEDSL:
 
     @pytest.fixture
     def sim(self):
-        return SimpSimulator()
+        return mp.Simulator.simple(world_size=3)
 
     def _fetch_one(self, sim, obj):
         """Helper to fetch result from the first party."""

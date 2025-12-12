@@ -24,6 +24,7 @@ import mplang.v2.backends.crypto_impl  # noqa: F401 - Register implementations
 import mplang.v2.dialects.crypto as crypto
 import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
+from mplang.v2.runtime.interpreter import InterpObject, Interpreter
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.crypto_impl import (
     BytesValue,
@@ -46,7 +47,7 @@ class TestKEMExecution:
 
     def test_kem_keygen_execution(self):
         """Test kem_keygen generates valid key pair."""
-        with el.Interpreter():
+        with Interpreter():
             sk, pk = crypto.kem_keygen("x25519")
 
             # Check types
@@ -63,7 +64,7 @@ class TestKEMExecution:
 
     def test_kem_keygen_different_keys(self):
         """Test kem_keygen generates different keys each time."""
-        with el.Interpreter():
+        with Interpreter():
             sk1, pk1 = crypto.kem_keygen("x25519")
             sk2, pk2 = crypto.kem_keygen("x25519")
 
@@ -73,7 +74,7 @@ class TestKEMExecution:
 
     def test_kem_derive_execution(self):
         """Test kem_derive produces symmetric key."""
-        with el.Interpreter():
+        with Interpreter():
             sk, pk = crypto.kem_keygen("x25519")
             symmetric_key = crypto.kem_derive(sk, pk)
 
@@ -86,7 +87,7 @@ class TestKEMExecution:
 
     def test_kem_derive_ecdh_property(self):
         """Test ECDH key exchange: both parties derive same key."""
-        with el.Interpreter():
+        with Interpreter():
             # Alice and Bob generate key pairs
             alice_sk, alice_pk = crypto.kem_keygen("x25519")
             bob_sk, bob_pk = crypto.kem_keygen("x25519")
@@ -104,7 +105,7 @@ class TestSymmetricEncryption:
 
     def test_encrypt_decrypt_basic(self):
         """Test basic encrypt/decrypt roundtrip."""
-        with el.Interpreter():
+        with Interpreter():
             sk, pk = crypto.kem_keygen("x25519")
             key = crypto.kem_derive(sk, pk)
 
@@ -126,7 +127,7 @@ class TestSymmetricEncryption:
 
     def test_encrypt_decrypt_string_message(self):
         """Test encrypt/decrypt with string-like message."""
-        with el.Interpreter():
+        with Interpreter():
             sk, pk = crypto.kem_keygen("x25519")
             key = crypto.kem_derive(sk, pk)
 
@@ -143,7 +144,7 @@ class TestSymmetricEncryption:
 
     def test_encrypt_decrypt_different_keys_fail(self):
         """Test decryption with wrong key fails."""
-        with el.Interpreter():
+        with Interpreter():
             # Generate two different key pairs
             sk1, pk1 = crypto.kem_keygen("x25519")
             sk2, pk2 = crypto.kem_keygen("x25519")
@@ -162,7 +163,7 @@ class TestSymmetricEncryption:
 
     def test_encrypt_produces_different_ciphertext(self):
         """Test encryption with same key produces different ciphertext (due to nonce)."""
-        with el.Interpreter():
+        with Interpreter():
             sk, pk = crypto.kem_keygen("x25519")
             key = crypto.kem_derive(sk, pk)
 
@@ -181,7 +182,7 @@ class TestDigitalEnvelope:
 
     def test_digital_envelope_alice_to_bob(self):
         """Test digital envelope: Alice sends encrypted message to Bob."""
-        with el.Interpreter():
+        with Interpreter():
             # Setup: Both parties generate key pairs
             alice_sk, alice_pk = crypto.kem_keygen("x25519")
             bob_sk, bob_pk = crypto.kem_keygen("x25519")
@@ -215,7 +216,7 @@ class TestDigitalEnvelope:
 
     def test_bidirectional_communication(self):
         """Test bidirectional encrypted communication."""
-        with el.Interpreter():
+        with Interpreter():
             # Both parties generate key pairs
             alice_sk, alice_pk = crypto.kem_keygen("x25519")
             bob_sk, bob_pk = crypto.kem_keygen("x25519")

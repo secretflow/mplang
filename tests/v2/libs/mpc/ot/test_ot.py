@@ -19,7 +19,7 @@ import pytest
 
 import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.ot import base as ot
@@ -37,7 +37,7 @@ class TestOTScalar:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        self.interp = SimpSimulator(world_size=2)
+        self.interp = mp.Simulator.simple(world_size=2)
 
     @pytest.mark.parametrize(
         "m0_val, m1_val, choice_val, expected",
@@ -78,7 +78,7 @@ class TestOTScalar:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
+        values = mp.fetch(self.interp, res)
         result = _unwrap(values[1])
         assert result.item() == expected
 
@@ -88,7 +88,7 @@ class TestOTVector:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        self.interp = SimpSimulator(world_size=2)
+        self.interp = mp.Simulator.simple(world_size=2)
 
     def test_vector_all_zeros(self):
         """Test vectorized OT with all choices=0."""
@@ -104,7 +104,7 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
+        values = mp.fetch(self.interp, res)
         np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
 
     def test_vector_all_ones(self):
@@ -121,7 +121,7 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
+        values = mp.fetch(self.interp, res)
         np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
 
     def test_vector_mixed_choices(self):
@@ -140,7 +140,7 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
+        values = mp.fetch(self.interp, res)
         np.testing.assert_array_equal(_unwrap(values[1]), expected)
 
 

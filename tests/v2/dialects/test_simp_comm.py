@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 import mplang.v2.edsl as el
+from mplang.v2.runtime.interpreter import InterpObject
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.simp import converge, shuffle_dynamic, shuffle_static
 
@@ -29,10 +30,10 @@ class TestPshfl:
 
     def test_pshfl_creates_dynamic_mask(self):
         """Test that shuffle_dynamic output has dynamic mask (parties=None)."""
-        src = el.InterpObject(
+        src = InterpObject(
             np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
         )
-        index = el.InterpObject(
+        index = InterpObject(
             np.array(0), elt.MPType[elt.Tensor[elt.i32, ()], (0, 1)]
         )
 
@@ -46,24 +47,24 @@ class TestPshfl:
 
     def test_pshfl_requires_mp_typed_src(self):
         """Test that pshfl raises TypeError for non-MP src."""
-        src = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-        index = el.InterpObject(np.array(0), elt.MPType[elt.Tensor[elt.i32, ()], (0,)])
+        src = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+        index = InterpObject(np.array(0), elt.MPType[elt.Tensor[elt.i32, ()], (0,)])
 
         with pytest.raises(TypeError, match="shuffle_dynamic requires MP-typed src"):
             el.trace(lambda s, i: shuffle_dynamic(s, i), src, index)
 
     def test_pshfl_requires_mp_typed_index(self):
         """Test that pshfl raises TypeError for non-MP index."""
-        src = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
-        index = el.InterpObject(np.array(0), elt.Tensor[elt.i32, ()])
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
+        index = InterpObject(np.array(0), elt.Tensor[elt.i32, ()])
 
         with pytest.raises(TypeError, match="shuffle_dynamic requires MP-typed index"):
             el.trace(lambda s, i: shuffle_dynamic(s, i), src, index)
 
     def test_pshfl_requires_scalar_index(self):
         """Test that pshfl raises TypeError for non-scalar index."""
-        src = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
-        index = el.InterpObject(
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
+        index = InterpObject(
             np.array([0, 1]), elt.MPType[elt.Tensor[elt.i32, (2,)], (0,)]
         )
 
@@ -76,7 +77,7 @@ class TestPshflS:
 
     def test_pshfl_s_creates_static_mask(self):
         """Test that shuffle_static output has static mask."""
-        src = el.InterpObject(
+        src = InterpObject(
             np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
         )
 
@@ -90,14 +91,14 @@ class TestPshflS:
 
     def test_pshfl_s_requires_mp_typed_src(self):
         """Test that shuffle_static raises TypeError for non-MP src."""
-        src = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+        src = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
 
         with pytest.raises(TypeError, match="shuffle_static requires MP-typed src"):
             el.trace(lambda s: shuffle_static(s, routing={0: 1}), src)
 
     def test_pshfl_s_requires_nonempty_routing(self):
         """Test that shuffle_static raises ValueError for empty routing."""
-        src = el.InterpObject(
+        src = InterpObject(
             np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
         )
 
@@ -108,7 +109,7 @@ class TestPshflS:
 
     def test_pshfl_s_requires_dict_routing(self):
         """Test that shuffle_static raises TypeError for non-dict routing."""
-        src = el.InterpObject(
+        src = InterpObject(
             np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
         )
 
@@ -117,7 +118,7 @@ class TestPshflS:
 
     def test_pshfl_s_validates_src_ranks_in_src_parties(self):
         """Test that shuffle_static raises ValueError when source not in src.parties."""
-        src = el.InterpObject(
+        src = InterpObject(
             np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
         )
 
@@ -126,7 +127,7 @@ class TestPshflS:
 
     def test_pshfl_s_allows_src_ranks_when_src_parties_none(self):
         """Test that shuffle_static allows any source when src.parties is None."""
-        src = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], None])
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], None])
 
         # Should not raise even though source=2 is not in src.parties (None)
         traced = el.trace(lambda s: shuffle_static(s, routing={0: 2}), src)
@@ -138,8 +139,8 @@ class TestPconv:
 
     def test_pconv_unions_static_parties(self):
         """Test that pconv unions disjoint static parties."""
-        x = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
-        y = el.InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1,)])
+        x = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
+        y = InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1,)])
 
         traced = el.trace(lambda a, b: converge(a, b), x, y)
 
@@ -151,8 +152,8 @@ class TestPconv:
 
     def test_pconv_propagates_dynamic_mask(self):
         """Test that pconv propagates dynamic mask when any input has None parties."""
-        x = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
-        y = el.InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], None])
+        x = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
+        y = InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], None])
 
         traced = el.trace(lambda a, b: converge(a, b), x, y)
 
@@ -162,24 +163,24 @@ class TestPconv:
 
     def test_pconv_rejects_overlapping_parties(self):
         """Test that pconv raises ValueError for overlapping parties."""
-        x = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
-        y = el.InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1, 2)])
+        x = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
+        y = InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1, 2)])
 
         with pytest.raises(ValueError, match="converge requires disjoint parties"):
             el.trace(lambda a, b: converge(a, b), x, y)
 
     def test_pconv_requires_mp_typed_inputs(self):
         """Test that pconv raises TypeError for non-MP inputs."""
-        x = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-        y = el.InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1,)])
+        x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+        y = InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1,)])
 
         with pytest.raises(TypeError, match="converge input 0 must be MP-typed"):
             el.trace(lambda a, b: converge(a, b), x, y)
 
     def test_pconv_requires_consistent_value_types(self):
         """Test that pconv raises TypeError for inconsistent value types."""
-        x = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
-        y = el.InterpObject(np.array(2), elt.MPType[elt.Tensor[elt.i32, ()], (1,)])
+        x = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
+        y = InterpObject(np.array(2), elt.MPType[elt.Tensor[elt.i32, ()], (1,)])
 
         with pytest.raises(TypeError, match="converge value type mismatch"):
             el.trace(lambda a, b: converge(a, b), x, y)
@@ -191,9 +192,9 @@ class TestPconv:
 
     def test_pconv_handles_three_disjoint_inputs(self):
         """Test that pconv correctly unions three disjoint parties."""
-        x = el.InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
-        y = el.InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1,)])
-        z = el.InterpObject(np.array(3.0), elt.MPType[elt.Tensor[elt.f32, ()], (2,)])
+        x = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0,)])
+        y = InterpObject(np.array(2.0), elt.MPType[elt.Tensor[elt.f32, ()], (1,)])
+        z = InterpObject(np.array(3.0), elt.MPType[elt.Tensor[elt.f32, ()], (2,)])
 
         traced = el.trace(lambda a, b, c: converge(a, b, c), x, y, z)
 

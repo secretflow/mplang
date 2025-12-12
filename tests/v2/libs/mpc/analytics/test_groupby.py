@@ -20,7 +20,7 @@ import numpy as np
 import mplang.v2.backends.bfv_impl  # noqa: F401
 import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc.analytics import groupby
 
@@ -34,7 +34,7 @@ def _unwrap(val):
 
 class TestGroupbyBFV:
     def setup_method(self):
-        self.interp = SimpSimulator(world_size=2)
+        self.interp = mp.Simulator.simple(world_size=2)
 
     def test_small_k(self):
         # N=10, K=3
@@ -59,7 +59,7 @@ class TestGroupbyBFV:
             res = groupby.oblivious_groupby_sum_bfv(d, b, K, sender=0, receiver=1)
 
         # Result is on Receiver (P1)
-        res_vals = self.interp.fetch(res.runtime_obj)
+        res_vals = mp.fetch(self.interp, res)
         p1_res = _unwrap(res_vals[1])
 
         expected = np.array([22, 15, 18], dtype=np.int64)
@@ -89,7 +89,7 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        res_vals = self.interp.fetch(res.runtime_obj)
+        res_vals = mp.fetch(self.interp, res)
         p1_res = _unwrap(res_vals[1])
         np.testing.assert_array_equal(p1_res, expected)
 
@@ -120,7 +120,7 @@ class TestGroupbyBFV:
                 plain_modulus=536903681,
             )
 
-        res_vals = self.interp.fetch(res.runtime_obj)
+        res_vals = mp.fetch(self.interp, res)
         p1_res = _unwrap(res_vals[1])
         np.testing.assert_array_equal(p1_res, expected)
 
@@ -144,14 +144,14 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        res_vals = self.interp.fetch(res.runtime_obj)
+        res_vals = mp.fetch(self.interp, res)
         p1_res = _unwrap(res_vals[1])
         np.testing.assert_array_equal(p1_res, expected)
 
 
 class TestGroupbyShuffle:
     def setup_method(self):
-        self.interp = SimpSimulator(world_size=3)
+        self.interp = mp.Simulator.simple(world_size=3)
 
     def test_small_k(self):
         # N=10, K=3
@@ -178,7 +178,7 @@ class TestGroupbyShuffle:
             )
 
         # Result is on Receiver (P1)
-        res_vals = self.interp.fetch(res.runtime_obj)
+        res_vals = mp.fetch(self.interp, res)
         p1_res = _unwrap(res_vals[1])
 
         expected = np.array([22, 15, 18], dtype=np.int64)
@@ -204,6 +204,6 @@ class TestGroupbyShuffle:
                 d, b, K, sender=0, receiver=1, helper=2
             )
 
-        res_vals = self.interp.fetch(res.runtime_obj)
+        res_vals = mp.fetch(self.interp, res)
         p1_res = res_vals[1]
         np.testing.assert_array_equal(_unwrap(p1_res), expected)

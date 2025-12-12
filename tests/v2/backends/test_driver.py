@@ -51,7 +51,14 @@ def driver_cluster():
         processes.append(p)
 
     # Wait for servers to start
-    time.sleep(1.0)
+    time.sleep(3.0)
+
+    # Check if processes are alive
+    dead_procs = [p for p in processes if not p.is_alive()]
+    if dead_procs:
+        for p in processes:
+            p.terminate()
+        raise RuntimeError(f"Failed to start workers. Dead processes: {len(dead_procs)}")
 
     # Create cluster spec
     cluster_spec = mp.ClusterSpec.from_dict({

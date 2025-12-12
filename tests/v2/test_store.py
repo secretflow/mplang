@@ -46,7 +46,7 @@ def test_save_load_tensor(simp_simulator_default, temp_dir):
 
     # 5. Verify content
     # y is likely a HostVar in SimpSimulator containing URIs
-    from mplang.v2.backends.simp_host import HostVar
+    from mplang.v2.backends.simp_structs import HostVar
     from mplang.v2.edsl import get_default_context
 
     sim = get_default_context()
@@ -57,8 +57,8 @@ def test_save_load_tensor(simp_simulator_default, temp_dir):
 
         # Resolve URI using the worker's store
         # We assume party 0 corresponds to worker 0
-        if hasattr(sim, "workers"):
-            worker = sim.workers[0]
+        if hasattr(sim, "context") and hasattr(sim.context, "workers"):
+            worker = sim.context.workers[0]
             val = worker.store.get(uri)
             np.testing.assert_allclose(val.unwrap(), data)
         else:
@@ -72,8 +72,8 @@ def test_save_load_tensor(simp_simulator_default, temp_dir):
             runtime_obj = y.runtime_obj
             if isinstance(runtime_obj, HostVar):
                 uri = runtime_obj[0]
-                if hasattr(sim, "workers"):
-                    worker = sim.workers[0]
+                if hasattr(sim, "context") and hasattr(sim.context, "workers"):
+                    worker = sim.context.workers[0]
                     val = worker.store.get(uri)
                     np.testing.assert_allclose(val.unwrap(), data)
                 else:

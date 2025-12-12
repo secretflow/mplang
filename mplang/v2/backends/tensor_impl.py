@@ -187,6 +187,9 @@ def _unwrap(val: TensorValue | np.ndarray | ArrayLike) -> np.ndarray:
     return np.asarray(val)
 
 
+# _ensure_tensor_value removed - callers should unwrap InterpObject before calling impls
+
+
 # =============================================================================
 # Tensor Primitive Implementations
 # =============================================================================
@@ -393,14 +396,24 @@ def run_jax_impl(
             if isinstance(input_type, elt.TensorType):
                 dtype = dtypes.to_jax(cast(elt.ScalarType, input_type.element_type))
                 # Get as JAX array
-                val = arg.as_jax()
-                if dtype is not None and val.dtype != dtype:
+                if isinstance(arg, TensorValue):
+                    val = arg.as_jax()
+                else:
+                    val = jnp.asarray(arg)
+
+                if dtype is not None and isinstance(val, (jnp.ndarray, np.ndarray)) and val.dtype != dtype:
                     val = val.astype(dtype)
                 jax_input_args.append(val)
             else:
-                jax_input_args.append(arg.as_jax())
+                if isinstance(arg, TensorValue):
+                    jax_input_args.append(arg.as_jax())
+                else:
+                    jax_input_args.append(jnp.asarray(arg))
         else:
-            jax_input_args.append(arg.as_jax())
+            if isinstance(arg, TensorValue):
+                jax_input_args.append(arg.as_jax())
+            else:
+                jax_input_args.append(jnp.asarray(arg))
 
     # Handle JAX's unused parameter elimination via arg_keep_map
     arg_keep_map = op.attrs.get("arg_keep_map")

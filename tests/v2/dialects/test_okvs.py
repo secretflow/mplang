@@ -46,7 +46,7 @@ def test_okvs_edsl() -> None:
 
     traced = mp.compile(sim, protocol)
     result = mp.evaluate(sim, traced)
-    decoded_res = mp.fetch(sim, result)[0]
+    decoded_res = mp.fetch(sim, result)
 
     assert np.array_equal(decoded_res, values_np), "Decoded values do not match!"
     print("OKVS EDSL Test Passed!")

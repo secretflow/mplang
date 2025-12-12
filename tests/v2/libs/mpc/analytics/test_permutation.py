@@ -18,7 +18,7 @@ import jax.numpy as jnp
 
 import mplang.v2.backends.crypto_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc.analytics import permutation
@@ -33,7 +33,7 @@ def _unwrap(val):
 
 def test_secure_switch_straight():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
-    interp = SimpSimulator(world_size=2)
+    interp = mp.Simulator.simple(world_size=2)
 
     # Sender: x0=10, x1=20
     # Receiver: c=0 (Straight) -> y0=10, y1=20
@@ -48,15 +48,17 @@ def test_secure_switch_straight():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    y0_val = interp.fetch(y0.runtime_obj)
-    y1_val = interp.fetch(y1.runtime_obj)
+    y0_val = mp.fetch(interp, y0)
+    y1_val = mp.fetch(interp, y1)
     assert _unwrap(y0_val[1]).item() == 10
     assert _unwrap(y1_val[1]).item() == 20
 
 
 def test_secure_switch_swap():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
-    interp = SimpSimulator(world_size=2)
+    interp = mp.Simulator.simple(world_size=2)
+    print(f"DEBUG: Handlers: {list(interp.backend.handlers.keys())}")
+    print(f"DEBUG: simp.pcall_static present? {'simp.pcall_static' in interp.backend.handlers}")
 
     # Sender: x0=10, x1=20
     # Receiver: c=1 (Swap) -> y0=20, y1=10
@@ -71,15 +73,15 @@ def test_secure_switch_swap():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    y0_val = interp.fetch(y0.runtime_obj)
-    y1_val = interp.fetch(y1.runtime_obj)
+    y0_val = mp.fetch(interp, y0)
+    y1_val = mp.fetch(interp, y1)
     assert _unwrap(y0_val[1]).item() == 20
     assert _unwrap(y1_val[1]).item() == 10
 
 
 def test_apply_permutation_n2():
     # World size 2
-    interp = SimpSimulator(world_size=2)
+    interp = mp.Simulator.simple(world_size=2)
 
     # Sender: data=[10, 20]
     # Receiver: perm=[1, 0] (Swap) -> [20, 10]
@@ -111,7 +113,7 @@ def test_apply_permutation_n2():
 
     # res is a list of Objects on Receiver
 
-    res0_val = interp.fetch(res[0].runtime_obj)
-    res1_val = interp.fetch(res[1].runtime_obj)
+    res0_val = mp.fetch(interp, res[0])
+    res1_val = mp.fetch(interp, res[1])
     assert _unwrap(res0_val[1]).item() == 20
     assert _unwrap(res1_val[1]).item() == 10

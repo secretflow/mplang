@@ -35,7 +35,7 @@ def test_field_mul_integration():
 
     traced = mp.compile(sim, protocol)
     result = mp.evaluate(sim, traced)
-    val = mp.fetch(sim, result)[0]
+    val = mp.fetch(sim, result)
 
     print("Result:", val)
 

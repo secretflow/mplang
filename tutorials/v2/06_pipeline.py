@@ -42,10 +42,9 @@ import os
 import jax
 import jax.numpy as jnp
 import pandas as pd
-from mplang2.dialects import table
-from mplang2.edsl.typing import TableType, f64, i64
-
 import mplang.v2 as mp
+from mplang.v2.dialects import table
+from mplang.v2.edsl.typing import TableType, f64, i64
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
@@ -226,7 +225,8 @@ def main():
     print("Hybrid JAX + Table I/O Pipeline (MPLang2)")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_global_cluster(cluster_spec)
 
     # Stage 1: Prepare inputs
     print("\n--- Stage 1: Prepare inputs (write CSV files) ---")

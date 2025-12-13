@@ -70,7 +70,8 @@ def main():
     print("Device: IR Dump and Graph Inspection")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_global_cluster(cluster_spec)
 
     # Pattern 1: Compile without executing to get IR
     print("\n--- Pattern 1: Compile to IR ---")

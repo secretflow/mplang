@@ -146,7 +146,8 @@ def main():
     print("Device Basics: Placement, Masks, and Auto Device (MPLang2)")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_global_cluster(cluster_spec)
 
     # Pattern 1: Explicit placement
     print("\n--- Pattern 1: Explicit Device Placement (Millionaire) ---")

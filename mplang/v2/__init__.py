@@ -42,6 +42,7 @@ from mplang.v2.backends.simp_driver.ops import HOST_HANDLERS
 from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.simp_worker.mem import LocalMesh
 from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
+from mplang.v2.dialects.simp import make_driver, make_simulator
 from mplang.v2.edsl import (
     Graph,
     GraphPrinter,
@@ -257,6 +258,8 @@ __all__ = [  # noqa: RUF022
     "LocalMesh",
     "SimpWorker",
     "WORKER_HANDLERS",
+    "make_driver",
+    "make_simulator",
     # Dialects
     "dialects", "register_default_context_factory",
 ]

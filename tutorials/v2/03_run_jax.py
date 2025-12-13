@@ -101,7 +101,8 @@ def main():
     print("Device: Running JAX Functions Across Devices")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_global_cluster(cluster_spec)
 
     # Pattern 1: PPU
     print("\n--- Pattern 1: JAX on PPU ---")

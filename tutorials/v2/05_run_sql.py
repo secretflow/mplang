@@ -36,10 +36,9 @@ Migration notes (mplang -> mplang2):
 - Use table.constant() instead of mp.put() for creating tables in trace
 """
 
-from mplang2.dialects import table
-from mplang2.edsl.typing import TableType, i64
-
 import mplang.v2 as mp
+from mplang.v2.dialects import table
+from mplang.v2.edsl.typing import TableType, i64
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
@@ -142,7 +141,8 @@ def main():
     print("SQL on PPU and TEE (MPLang2)")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_global_cluster(cluster_spec)
 
     # Pattern 1: PPU
     print("\n--- Pattern 1: SQL on PPU ---")
@@ -166,7 +166,8 @@ def main():
     }
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)
-    sim_tee = mp.Simulator(cluster_spec)
+    sim_tee = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_global_cluster(cluster_spec)
 
     r2 = mp.evaluate(sim_tee, sql_on_tee)
     result2 = mp.fetch(sim_tee, r2)

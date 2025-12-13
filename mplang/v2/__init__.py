@@ -204,49 +204,6 @@ def compile(
 
 
 # =============================================================================
-# Simulator and Driver API (high-level wrappers)
-# =============================================================================
-class Simulator:
-    """High-level API for local SIMP simulation."""
-
-    def __init__(self, cluster_spec: ClusterSpec | None = None, enable_tracing: bool = False):
-        from mplang.v2.dialects import simp
-
-        # Use 2 as default world size if no spec provided
-        world_size = cluster_spec.world_size if cluster_spec is not None else 2
-        self.backend = simp.make_simulator(world_size, cluster_spec=cluster_spec, enable_tracing=enable_tracing)
-        self._simp_cluster = getattr(self.backend, "_simp_cluster", None)
-
-    @classmethod
-    def simple(cls, world_size: int) -> Simulator:
-        cluster_spec = ClusterSpec.simple(world_size)
-        return cls(cluster_spec)
-
-    def shutdown(self) -> None:
-        if self._simp_cluster:
-            self._simp_cluster.shutdown()
-
-
-class Driver:
-    """High-level API for remote SIMP execution via HTTP."""
-
-    def __init__(self, endpoints: list[str], *, cluster_spec: ClusterSpec | None = None):
-        from mplang.v2.dialects import simp
-
-        self.backend = simp.make_driver(endpoints, cluster_spec=cluster_spec)
-
-    @classmethod
-    def simple(cls, endpoints: list[str]) -> Driver:
-        cluster_spec = ClusterSpec.simple(world_size=len(endpoints), endpoints=endpoints)
-        return cls(endpoints, cluster_spec=cluster_spec)
-
-    def shutdown(self) -> None:
-        state = self.backend.get_dialect_state("simp")
-        if hasattr(state, "shutdown"):
-            state.shutdown()
-
-
-# =============================================================================
 # Public API
 # =============================================================================
 __all__ = [  # noqa: RUF022

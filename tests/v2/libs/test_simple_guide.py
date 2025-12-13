@@ -25,7 +25,7 @@ def test_func_call_recursion():
     
     # 1. Define a helper function (pure python)
     def add_one(x):
-        return x + 1
+        return tensor.run_jax(lambda a: a + 1, x)
 
     # 2. Define main function
     def main(x):
@@ -37,6 +37,7 @@ def test_func_call_recursion():
 
     # 3. Setup Simulator
     sim = simp.make_simulator(2)
+    mp.set_global_cluster(getattr(sim, "_simp_cluster", None))
     
     # 4. Execute
     x_val = 10

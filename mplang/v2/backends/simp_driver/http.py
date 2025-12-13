@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from mplang.v2.backends.simp_driver.base import SimpDriver
+from mplang.v2.backends.simp_driver.state import SimpDriver
 from mplang.v2.edsl import serde
 from mplang.v2.runtime.interpreter import Interpreter
 

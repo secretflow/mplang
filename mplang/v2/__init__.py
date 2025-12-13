@@ -213,7 +213,7 @@ def fetch(
     """
     from typing import cast
 
-    from mplang.v2.backends.simp_driver.base import SimpDriver
+    from mplang.v2.backends.simp_driver.state import SimpDriver
     from mplang.v2.backends.simp_driver.values import DriverVar
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue

@@ -22,7 +22,7 @@ import pathlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
-from mplang.v2.backends.simp_driver.base import SimpDriver
+from mplang.v2.backends.simp_driver.state import SimpDriver
 from mplang.v2.backends.simp_worker import WORKER_HANDLERS, SimpWorker
 from mplang.v2.backends.simp_worker.mem import LocalMesh
 from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter

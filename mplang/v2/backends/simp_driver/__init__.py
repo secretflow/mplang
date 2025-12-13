@@ -17,7 +17,6 @@
 Provides Driver-side state, values, and ops for the simp dialect.
 """
 
-from mplang.v2.backends.simp_driver.base import SimpDriver
 from mplang.v2.backends.simp_driver.http import SimpHttpDriver, make_driver
 from mplang.v2.backends.simp_driver.mem import (
     LocalCluster,
@@ -26,6 +25,7 @@ from mplang.v2.backends.simp_driver.mem import (
     make_simulator,
 )
 from mplang.v2.backends.simp_driver.ops import DRIVER_HANDLERS
+from mplang.v2.backends.simp_driver.state import SimpDriver
 from mplang.v2.backends.simp_driver.values import DriverVar
 
 __all__ = [

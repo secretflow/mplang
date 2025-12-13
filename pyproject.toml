@@ -55,6 +55,7 @@ dev = [
     "mypy",
     "pre-commit",
     "pytest-repeat>=0.9.4",
+    "taskipy",
 ]
 
 examples = [
@@ -180,3 +181,15 @@ filterwarnings = [
     "ignore:Insecure mock TEE kernel 'mock_tee.quote_gen' in use.*:UserWarning",
     "ignore:Insecure mock TEE kernel 'mock_tee.attest' in use.*:UserWarning",
 ]
+
+# Taskipy configuration for task management (mirrors .github/workflows checks)
+[tool.taskipy.tasks]
+# Linting and formatting (matches .github/workflows/lint.yml)
+lint = "ruff check . && ruff format --check ."
+format = "ruff check --fix . && ruff format ."
+# Type checking (matches .github/workflows/mypy.yml)
+type = "mypy mplang/"
+# License check (matches .github/workflows/license-check.yml)
+license = "license-eye -v info -c .licenserc.yaml header check"
+# All checks (run all CI checks locally)
+check-all = "task lint && task type && task license"

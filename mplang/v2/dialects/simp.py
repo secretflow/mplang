@@ -860,6 +860,7 @@ def peval(
 # Factory functions for creating configured Interpreters
 # =============================================================================
 
+
 def make_simulator(
     world_size: int,
     *,
@@ -888,10 +889,14 @@ def make_simulator(
     """
     if enable_profiling:
         from mplang.v2.edsl import registry
+
         registry.enable_profiling()
 
     from mplang.v2.backends.simp_driver.mem import make_simulator as _make_sim
-    return _make_sim(world_size, cluster_spec=cluster_spec, enable_tracing=enable_tracing)
+
+    return _make_sim(
+        world_size, cluster_spec=cluster_spec, enable_tracing=enable_tracing
+    )
 
 
 def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Any:
@@ -913,6 +918,7 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Any:
         ...     result = my_func()
     """
     from mplang.v2.backends.simp_driver.http import make_driver as _make_drv
+
     return _make_drv(endpoints, cluster_spec=cluster_spec)
 
 

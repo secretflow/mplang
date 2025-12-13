@@ -73,7 +73,9 @@ class SimpHttpDriver(SimpDriver):
 
         # HTTP client and executor
         self._client = httpx.Client(timeout=None)
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self._world_size)
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self._world_size
+        )
 
     @property
     def world_size(self) -> int:
@@ -143,11 +145,15 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Interprete
 
     if cluster_spec is None:
         from mplang.v2.libs.device import ClusterSpec
-        cluster_spec = ClusterSpec.simple(world_size=len(endpoints), endpoints=endpoints)
+
+        cluster_spec = ClusterSpec.simple(
+            world_size=len(endpoints), endpoints=endpoints
+        )
 
     state = SimpHttpDriver(endpoints, cluster_spec=cluster_spec)
 
     from collections.abc import Callable
+
     handlers: dict[str, Callable[..., Any]] = {**DRIVER_HANDLERS}  # type: ignore[dict-item]
     interp = Interpreter(
         name="DriverInterpreter",

@@ -42,8 +42,6 @@ __all__ = [
     "Node",
     "device",
     "get_dev_attr",
-
-
     "is_device_obj",
     "jax_fn",
     "put",

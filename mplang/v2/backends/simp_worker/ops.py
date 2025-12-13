@@ -31,13 +31,13 @@ def _ensure_worker_context(interpreter: Any, op_name: str) -> Any:
     """Validate that interpreter has a Worker context."""
     state = interpreter.get_dialect_state("simp")
     if state is None or not hasattr(state, "communicator"):
-        raise RuntimeError(
-            f"{op_name} requires simp Worker state (with communicator)"
-        )
+        raise RuntimeError(f"{op_name} requires simp Worker state (with communicator)")
     return state
 
 
-def _pcall_static_worker_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+def _pcall_static_worker_impl(
+    interpreter: Interpreter, op: Operation, *args: Any
+) -> Any:
     """Worker implementation of pcall_static."""
     worker = _ensure_worker_context(interpreter, "pcall_static_impl")
 
@@ -64,13 +64,17 @@ def _pcall_static_worker_impl(interpreter: Interpreter, op: Operation, *args: An
             return [None] * len(op.outputs)
 
 
-def _pcall_dynamic_worker_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+def _pcall_dynamic_worker_impl(
+    interpreter: Interpreter, op: Operation, *args: Any
+) -> Any:
     """Worker implementation of pcall_dynamic."""
     fn_graph = op.regions[0]
     return interpreter.evaluate_graph(fn_graph, list(args))
 
 
-def _shuffle_static_worker_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
+def _shuffle_static_worker_impl(
+    interpreter: Interpreter, op: Operation, *args: Any
+) -> Any:
     """Worker implementation of shuffle_static."""
     worker = _ensure_worker_context(interpreter, "shuffle_static_impl")
 

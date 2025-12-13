@@ -125,7 +125,6 @@ def set_root_context(context: Interpreter, force: bool = False) -> None:
 
 
 def _get_context(context: Interpreter | None) -> Interpreter:
-
     """Get context from parameter or context stack."""
     if context is not None:
         return context
@@ -319,12 +318,10 @@ __all__ = [  # noqa: RUF022
     "Node",
     "device",
     "get_dev_attr",
-
     "is_device_obj",
     "jax_fn",
     "put",
     "set_dev_attr",
-
     # Core EDSL
     "Graph",
     "GraphPrinter",
@@ -346,9 +343,7 @@ __all__ = [  # noqa: RUF022
     "pop_context",
     "primitive",
     "push_context",
-
     "set_root_context",
-
     "trace",
     # Type system
     "MPType",
@@ -366,7 +361,10 @@ __all__ = [  # noqa: RUF022
     "make_driver",
     "make_simulator",
     # Dialects
-    "dialects", "register_default_context_factory", "get_root_context", "get_profiler",
+    "dialects",
+    "register_default_context_factory",
+    "get_root_context",
+    "get_profiler",
 ]
 
 # Register Interpreter as default context factory

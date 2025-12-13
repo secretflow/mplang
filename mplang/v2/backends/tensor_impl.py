@@ -401,7 +401,11 @@ def run_jax_impl(
                 else:
                     val = jnp.asarray(arg)
 
-                if dtype is not None and isinstance(val, (jnp.ndarray, np.ndarray)) and val.dtype != dtype:
+                if (
+                    dtype is not None
+                    and isinstance(val, (jnp.ndarray, np.ndarray))
+                    and val.dtype != dtype
+                ):
                     val = val.astype(dtype)
                 jax_input_args.append(val)
             else:

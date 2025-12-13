@@ -87,7 +87,9 @@ def _func_def_impl(interpreter: Any, op: Operation, *args: Any) -> FunctionValue
 
 
 @call_p.def_impl
-def _call_impl(interpreter: Any, op: Operation, fn_obj: FunctionValue, *args: Any) -> Any:
+def _call_impl(
+    interpreter: Any, op: Operation, fn_obj: FunctionValue, *args: Any
+) -> Any:
     """Implementation of func.call: execute the function graph.
 
     Args:

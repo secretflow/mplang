@@ -260,9 +260,7 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         # If not SimpWorker, we can't run spu.exec?
         # But maybe integration tests run differently?
         # Let's trust user: "ensure simp_context is there"
-        raise RuntimeError(
-            f"spu.exec requires SimpWorker, got {type(context)}"
-        )
+        raise RuntimeError(f"spu.exec requires SimpWorker, got {type(context)}")
 
     if global_rank not in parties:
         raise RuntimeError(

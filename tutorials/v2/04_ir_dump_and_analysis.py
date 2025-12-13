@@ -100,8 +100,7 @@ def main():
     print("\n--- Pattern 4: Execute and verify ---")
     x, y, z, r = mp.evaluate(millionaire)
     print(
-        f"Results: x={mp.fetch(x)}, y={mp.fetch(y)}, "
-        f"z={mp.fetch(z)}, r={mp.fetch(r)}"
+        f"Results: x={mp.fetch(x)}, y={mp.fetch(y)}, z={mp.fetch(z)}, r={mp.fetch(r)}"
     )
 
     print("\n" + "=" * 70)

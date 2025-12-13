@@ -195,6 +195,7 @@ def _run_psi_simulation(
     sim = simp.make_simulator(2)
 
     with sim:
+
         def job() -> Any:
             s_handle = simp.constant((SENDER,), sender_items)
             r_handle = simp.constant((RECEIVER,), receiver_items)

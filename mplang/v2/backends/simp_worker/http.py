@@ -228,14 +228,11 @@ def create_worker_app(
     from typing import cast
 
     from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
+
     # func_impl is already imported at module level for side-effects
     handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
 
-    worker = Interpreter(
-        tracer=tracer,
-        root_dir=root_dir,
-        handlers=handlers
-    )
+    worker = Interpreter(tracer=tracer, root_dir=root_dir, handlers=handlers)
     # Register SimpWorker context as 'simp' dialect state
     worker.set_dialect_state("simp", ctx)
 

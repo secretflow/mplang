@@ -80,7 +80,9 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
     tracer = _current_tracer()
 
     if not isinstance(fn_handle, el.TraceObject):
-        raise TypeError(f"func.call expects TraceObject as function handle, got {type(fn_handle)}")
+        raise TypeError(
+            f"func.call expects TraceObject as function handle, got {type(fn_handle)}"
+        )
     if not all(isinstance(arg, el.TraceObject) for arg in args):
         raise TypeError("func.call arguments must be TraceObjects")
 
@@ -107,7 +109,10 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
             return out_tree.unflatten(traced_results)
         except ValueError as e:
             import warnings
-            warnings.warn(f"Failed to unflatten PyTree for func.call: {e}", stacklevel=2)
+
+            warnings.warn(
+                f"Failed to unflatten PyTree for func.call: {e}", stacklevel=2
+            )
 
     # Single result: return directly
     if len(result_values) == 1:
@@ -115,7 +120,9 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
     return traced_results
 
 
-def func(fn: Callable[..., Any], *args: el.TraceObject, **kwargs: Any) -> el.TraceObject:
+def func(
+    fn: Callable[..., Any], *args: el.TraceObject, **kwargs: Any
+) -> el.TraceObject:
     """Define a function and return its handle."""
     return func_def_p.bind(fn, *args, **kwargs)
 

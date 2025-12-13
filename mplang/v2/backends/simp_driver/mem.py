@@ -99,9 +99,17 @@ class MemCluster:
             w_interp.set_dialect_state("simp", worker_state)
 
             w_interp.async_ops = {
-                "bfv.add", "bfv.mul", "bfv.rotate", "bfv.batch_encode",
-                "bfv.relinearize", "bfv.encrypt", "bfv.decrypt",
-                "field.solve_okvs", "field.decode_okvs", "field.aes_expand", "field.mul",
+                "bfv.add",
+                "bfv.mul",
+                "bfv.rotate",
+                "bfv.batch_encode",
+                "bfv.relinearize",
+                "bfv.encrypt",
+                "bfv.decrypt",
+                "field.solve_okvs",
+                "field.decode_okvs",
+                "field.aes_expand",
+                "field.mul",
                 "simp.shuffle",
             }
             self._workers.append(w_interp)
@@ -244,6 +252,7 @@ def make_simulator(
 
     if cluster_spec is None:
         from mplang.v2.libs.device import ClusterSpec
+
         cluster_spec = ClusterSpec.simple(world_size)
 
     cluster = MemCluster(

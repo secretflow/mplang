@@ -30,7 +30,7 @@ from .api import (
     put,
     set_dev_attr,
 )
-from .cluster import ClusterSpec, Device, Node, get_global_cluster, set_global_cluster
+from .cluster import ClusterSpec, Device, Node
 
 __all__ = [
     "ClusterSpec",
@@ -42,10 +42,10 @@ __all__ = [
     "Node",
     "device",
     "get_dev_attr",
-    "get_global_cluster",
+
+
     "is_device_obj",
     "jax_fn",
     "put",
     "set_dev_attr",
-    "set_global_cluster",
 ]

@@ -147,8 +147,8 @@ def main():
     print("=" * 70)
 
     sim = mp.make_simulator(3, cluster_spec=cluster_spec)
-    mp.set_context(sim)  # Set global context (JAX-like pattern)
-    mp.set_global_cluster(cluster_spec)
+    mp.set_root_context(sim)  # Set global context (JAX-like pattern)
+    mp.set_root_context(cluster_spec)
 
     # Pattern 1: Explicit placement
     print("\n--- Pattern 1: Explicit Device Placement (Millionaire) ---")

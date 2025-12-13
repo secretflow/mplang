@@ -55,6 +55,7 @@ from mplang.v2.edsl import (
     format_graph,
     get_current_context,
     get_default_context,
+    get_root_context,
     jit,
     pop_context,
     primitive,
@@ -82,40 +83,49 @@ from mplang.v2.libs.device import (
     Node,
     device,
     get_dev_attr,
-    get_global_cluster,
     is_device_obj,
     jax_fn,
     put,
     set_dev_attr,
-    set_global_cluster,
 )
 from mplang.v2.runtime.interpreter import Interpreter
-
 
 # =============================================================================
 # Context Management API (JAX-like pattern)
 # =============================================================================
 
 
-def set_context(context: Interpreter) -> None:
+def set_root_context(context: Interpreter, force: bool = False) -> None:
     """Set the global/root execution context.
 
-    The context will be used by compile/evaluate/fetch when no explicit
-    context is provided. This simplifies API usage by avoiding the need
-    to pass the context object to every function call.
+    This explicitly sets the provided interpreter as the Root Context.
+    All subsequent operations (compile, evaluate, device resolution) will
+    use this context as the default environment.
 
     Args:
-        context: Interpreter to use as the default context.
-
-    Example:
-        >>> sim = mp.make_simulator(3)
-        >>> mp.set_context(sim)
-        >>> traced = mp.compile(job)  # uses sim automatically
+        context: Interpreter to use as the root context.
+        force: If True, clears the existing context stack before setting.
+               If False (default), pushes onto the stack.
     """
+    from mplang.v2.edsl.context import _context_stack, get_current_context
+
+    if force:
+        _context_stack.clear()
+        _context_stack.append(context)
+        return
+
+    if get_current_context() is not None:
+        raise RuntimeError(
+            "Cannot set root context: Context stack is not empty. "
+            "Use force=True to overwrite the existing root context."
+        )
+
     push_context(context)
 
 
+
 def _get_context(context: Interpreter | None) -> Interpreter:
+
     """Get context from parameter or context stack."""
     if context is not None:
         return context
@@ -286,10 +296,15 @@ def compile(
         >>> with mp.make_simulator(3) as sim:
         ...     traced = mp.compile(job)  # uses sim from context
     """
-    interp = _get_context(context)
-    cluster_spec = getattr(interp, "_cluster_spec", None)
-    if cluster_spec is not None:
-        set_global_cluster(cluster_spec)
+    # If a context is explicitly provided, push it before tracing
+    # so that _resolve_cluster() can find it.
+    if context is not None:
+        with context:
+            return trace(fn, *args, **kwargs)
+
+
+    # Otherwise, rely on the caller having pushed an interpreter context.
+    # _resolve_cluster() will traverse the stack to find the interpreter.
     return trace(fn, *args, **kwargs)
 
 
@@ -305,12 +320,12 @@ __all__ = [  # noqa: RUF022
     "Node",
     "device",
     "get_dev_attr",
-    "get_global_cluster",
+
     "is_device_obj",
     "jax_fn",
     "put",
     "set_dev_attr",
-    "set_global_cluster",
+
     # Core EDSL
     "Graph",
     "GraphPrinter",
@@ -332,7 +347,9 @@ __all__ = [  # noqa: RUF022
     "pop_context",
     "primitive",
     "push_context",
-    "set_context",
+
+    "set_root_context",
+
     "trace",
     # Type system
     "MPType",
@@ -350,7 +367,7 @@ __all__ = [  # noqa: RUF022
     "make_driver",
     "make_simulator",
     # Dialects
-    "dialects", "register_default_context_factory",
+    "dialects", "register_default_context_factory", "get_root_context",
 ]
 
 # Register Interpreter as default context factory

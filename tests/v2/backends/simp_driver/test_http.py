@@ -22,7 +22,8 @@ import pytest
 import mplang.v2 as mp
 from mplang.v2.dialects import simp
 from mplang.v2.edsl.context import pop_context, push_context
-from mplang.v2.libs.device import set_global_cluster
+
+
 
 
 def run_worker(rank: int, world_size: int, port: int, endpoints: list[str]) -> None:
@@ -83,7 +84,7 @@ def driver_cluster():
     })
 
     # Set global cluster for device API
-    set_global_cluster(cluster_spec)
+    # REMOVED: set_global_cluster(cluster_spec)
 
     # Create driver using factory function
     driver = simp.make_driver(endpoints, cluster_spec=cluster_spec)
@@ -100,6 +101,8 @@ def driver_cluster():
         p.terminate()
     for p in processes:
         p.join(timeout=2)
+
+
 
 
 class TestDriverBasic:

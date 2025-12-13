@@ -104,7 +104,16 @@ def get_current_context() -> Context | None:
 
     Returns None if no context is active (will use default context).
     """
+
     return _context_stack[-1] if _context_stack else None
+
+
+def get_root_context() -> Context | None:
+    """Get the root context (bottom of the stack).
+
+    This context typically holds the global environment state (e.g. ClusterSpec).
+    """
+    return _context_stack[0] if _context_stack else None
 
 
 def push_context(context: Context) -> None:
@@ -116,6 +125,9 @@ def pop_context() -> None:
     """Pop a context from the stack (exit context)."""
     if _context_stack:
         _context_stack.pop()
+
+
+
 
 
 def register_default_context_factory(factory: Callable[[], Context]) -> None:

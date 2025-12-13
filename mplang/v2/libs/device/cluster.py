@@ -350,29 +350,3 @@ class ClusterSpec:
             )
 
         return cls(cluster_id=f"__sim_{world_size}", nodes=nodes, devices=devices)
-
-
-# ==============================================================================
-# Global Cluster State
-# ==============================================================================
-
-_GLOBAL_CLUSTER: ClusterSpec | None = None
-
-
-def set_global_cluster(cluster: ClusterSpec) -> None:
-    """Set the global cluster specification."""
-    global _GLOBAL_CLUSTER
-    _GLOBAL_CLUSTER = cluster
-
-
-def get_global_cluster() -> ClusterSpec:
-    """Get the global cluster specification.
-
-    Raises:
-        RuntimeError: If the global cluster has not been set.
-    """
-    if _GLOBAL_CLUSTER is None:
-        raise RuntimeError(
-            "Global cluster not set. Please call set_global_cluster() first."
-        )
-    return _GLOBAL_CLUSTER

@@ -71,8 +71,8 @@ def main():
     print("=" * 70)
 
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
-    mp.set_context(sim)
-    mp.set_global_cluster(cluster_spec)
+    mp.set_root_context(sim)
+    mp.set_root_context(cluster_spec)
 
     # Pattern 1: Compile without executing to get IR
     print("\n--- Pattern 1: Compile to IR ---")

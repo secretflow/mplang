@@ -24,7 +24,7 @@ from mplang.v2.libs.mpc.psi import oprf
 def test_eval_oprf():
     """Test OPRF evaluation produces outputs."""
     sim = simp.make_simulator(2)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     np.random.seed(42)
     num_items = 16
@@ -55,7 +55,7 @@ def test_eval_oprf():
 def test_oprf_determinism():
     """Test that OPRF runs successfully with fixed inputs."""
     sim = simp.make_simulator(2)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     np.random.seed(42)
     num_items = 8

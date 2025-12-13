@@ -24,7 +24,7 @@ from mplang.v2.libs.mpc.psi import psi_unbalanced
 def test_psi_full_overlap():
     """Test PSI with identical sets (full overlap)."""
     sim = simp.make_simulator(2)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     # Both parties have the same items
     server_items = np.arange(100, dtype=np.uint64)
@@ -55,7 +55,7 @@ def test_psi_full_overlap():
 def test_psi_no_overlap():
     """Test PSI with disjoint sets (no overlap)."""
     sim = simp.make_simulator(2)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     # Disjoint sets
     server_items = np.arange(0, 100, dtype=np.uint64)
@@ -82,7 +82,7 @@ def test_psi_no_overlap():
 def test_psi_partial_overlap():
     """Test PSI with 50% overlap."""
     sim = simp.make_simulator(2)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     # Server has 0-99, client has 50-149 (overlap: 50-99)
     server_items = np.arange(0, 100, dtype=np.uint64)

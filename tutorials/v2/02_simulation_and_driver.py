@@ -60,8 +60,8 @@ def run_with_simulator():
 
     cluster_spec = mp.ClusterSpec.simple(2)
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
-    mp.set_context(sim)
-    mp.set_global_cluster(cluster_spec)
+    mp.set_root_context(sim)
+    mp.set_root_context(cluster_spec)
 
     print("\n--- Millionaire problem (device API) ---")
     x, y, result = mp.evaluate(millionaire)

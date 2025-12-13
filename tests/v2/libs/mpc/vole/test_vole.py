@@ -24,7 +24,7 @@ from mplang.v2.libs.mpc.vole import gilboa as vole
 def test_vole_correctness():
     """Verify VOLE correlation: w = v + u * delta."""
     sim = simp.make_simulator(2)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
     N = 100
 
     def protocol():

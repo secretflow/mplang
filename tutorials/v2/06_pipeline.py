@@ -227,8 +227,8 @@ def main():
     print("=" * 70)
 
     sim = mp.make_simulator(3, cluster_spec=cluster_spec)
-    mp.set_context(sim)
-    mp.set_global_cluster(cluster_spec)
+    mp.set_root_context(sim)
+    mp.set_root_context(cluster_spec)
 
     # Stage 1: Prepare inputs
     print("\n--- Stage 1: Prepare inputs (write CSV files) ---")

@@ -30,7 +30,7 @@ class TestSilverVOLEBasic:
     def test_silver_vole_runs(self):
         """Verify Silver VOLE executes without errors."""
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
 
         sender = 0
         receiver = 1
@@ -53,7 +53,7 @@ class TestSilverVOLEBasic:
     def test_silver_vole_with_secrets(self):
         """Test Silver VOLE returns secrets when requested."""
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
 
         sender = 0
         receiver = 1
@@ -87,7 +87,7 @@ class TestSilverVOLECorrelation:
         proper GF(2^128) multiplication.
         """
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
 
         sender = 0
         receiver = 1
@@ -159,7 +159,7 @@ class TestSilverVOLEEdgeCases:
     def test_same_party_error(self):
         """Verify error when sender == receiver."""
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
 
         def job():
             return silver_vole(0, 0, 100)
@@ -170,7 +170,7 @@ class TestSilverVOLEEdgeCases:
     def test_zero_n_error(self):
         """Verify error when n <= 0."""
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
 
         def job():
             return silver_vole(0, 1, 0)

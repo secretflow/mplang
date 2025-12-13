@@ -31,7 +31,7 @@ def test_okvs_edsl() -> None:
         values_np[i, 1] = i * 10
 
     sim = simp.make_simulator(1)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     def protocol():
         # Create inputs as tensor constants (field.solve_okvs expects TensorType, not MPType)

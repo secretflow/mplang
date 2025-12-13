@@ -24,7 +24,7 @@ class TestSilentOT:
         """Verify Silent Random VOLE correlation: W = V + U * Delta."""
 
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
 
         N = 10000
         sender = 0
@@ -80,7 +80,7 @@ class TestSilentOT:
     def test_silent_vole_randomness(self):
         """Verify that outputs are distinguishable from zero (basic randomness check)."""
         sim = simp.make_simulator(2)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
         N = 1000
 
         def job():

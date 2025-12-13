@@ -21,7 +21,7 @@ from mplang.v2.dialects import field, simp, tensor
 def test_field_mul_integration():
     """Verify field.mul invokes C++ kernel correctly."""
     sim = simp.make_simulator(1)
-    mp.set_context(sim)
+    mp.set_root_context(sim)
 
     def protocol():
         # Create Inputs (uint64 pairs representing GF128 elements)

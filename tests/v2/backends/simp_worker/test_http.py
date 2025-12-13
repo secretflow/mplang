@@ -80,7 +80,8 @@ def run_worker(rank, world_size, endpoints, port):
 
 @pytest.fixture(scope="module")
 def http_cluster():
-    from mplang.v2.libs.device import set_global_cluster
+
+
 
     world_size = 2
     base_port = 19300  # Changed to avoid port conflicts
@@ -133,13 +134,14 @@ def http_cluster():
             "P1": {"kind": "PPU", "members": ["node_1"]},
         },
     })
-    set_global_cluster(cluster_spec)
+    # REMOVED: set_global_cluster(cluster_spec)
 
     # Create driver using factory function
     driver = simp.make_driver(endpoints, cluster_spec=cluster_spec)
-
     push_context(driver)
+
     yield driver
+    
     pop_context()
 
     # Shutdown driver
@@ -148,6 +150,8 @@ def http_cluster():
         state.shutdown()
 
     for p in processes:
+
+
         try:
             p.terminate()
             p.join(timeout=5)  # Increased timeout for graceful shutdown

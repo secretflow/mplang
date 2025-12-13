@@ -29,7 +29,7 @@ class TestSparseOKVSEDSL:
     @pytest.fixture(autouse=True)
     def setup_sim(self):
         sim = simp.make_simulator(world_size=3)
-        mp.set_context(sim)
+        mp.set_root_context(sim)
         yield
 
     def _fetch_one(self, obj):

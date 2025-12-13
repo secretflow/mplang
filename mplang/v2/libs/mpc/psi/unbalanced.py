@@ -36,12 +36,9 @@ from typing import Any, cast
 
 import jax.numpy as jnp
 
-import mplang.v2.dialects.crypto as crypto
-import mplang.v2.dialects.field as field
-import mplang.v2.dialects.simp as simp
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
+from mplang.v2.dialects import crypto, field, simp, tensor
 from mplang.v2.libs.mpc.psi.okvs_gct import get_okvs_expansion
 
 

@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from mplang.v2 import Driver, Simulator
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -44,18 +44,17 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
+def __mp_main__(*args: str) -> dict[str, Any]:
     """MPLang workload entry point.
 
     Args:
-        ctx: Execution context (Simulator or Driver)
         *args: CLI arguments (first arg is n_items, default 100000)
 
     Returns:
         Benchmark results dict
     """
     import mplang.v2 as mp
-    import mplang.v2.dialects.simp as simp
+    from mplang.v2.dialects import simp
     from mplang.v2.libs.mpc.psi import rr22
 
     # Parse n_items from CLI args
@@ -85,7 +84,8 @@ def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
 
     # Compile
     t0 = time.time()
-    traced = mp.compile(ctx, job)
+    # Uses implicit context from CLI or caller
+    traced = mp.compile(job)
     compile_time = time.time() - t0
     print(f"Compile Time: {compile_time:.4f}s")
 
@@ -98,8 +98,8 @@ def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
 
     # Execute
     t1 = time.time()
-    result = mp.evaluate(ctx, traced)
-    _ = mp.fetch(ctx, result)
+    result = mp.evaluate(traced)
+    _ = mp.fetch(result)
     exec_time = time.time() - t1
 
     throughput = n_items / exec_time
@@ -115,26 +115,24 @@ def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
 
 if __name__ == "__main__":
     import mplang.v2 as mp
-    from mplang.v2.edsl import registry
 
-    # Enable primitive profiling
-    registry.enable_profiling()
-
-    # Create simulator (2-party, tracing enabled)
-    sim = mp.Simulator.simple(2, enable_tracing=True)
+    # Create simulator (2-party, with profiling enabled)
+    sim = mp.make_simulator(2, enable_profiling=True)
 
     try:
-        # Warmup
-        print("Warming up...")
-        __mp_main__(sim, "1000")
+        # Use 'with sim:' to set implicit context for standalone run
+        with sim:
+            # Warmup
+            print("Warming up...")
+            __mp_main__("1000")
 
-        # Benchmark
-        sizes = ["10000", "100000", "1000000"]
-        results = {}
+            # Benchmark
+            sizes = ["10000", "100000", "1000000"]
+            results = {}
 
-        for n in sizes:
-            res = __mp_main__(sim, n)
-            results[int(n)] = res
+            for n in sizes:
+                res = __mp_main__(n)
+                results[int(n)] = res
 
         # Summary
         print("\n" + "=" * 60)
@@ -147,7 +145,7 @@ if __name__ == "__main__":
         print("=" * 60)
 
         # Profiler Summary
-        registry.get_profiler().print_summary()
+        mp.get_profiler().print_summary()
 
     finally:
         # Stop tracer and save

@@ -83,20 +83,21 @@ def heavy_computation():
 
 
 def main():
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_root_context(sim)
 
     print("=" * 70)
     print("Function Decorator: Compilation, Auditability, and Performance")
     print("=" * 70)
 
     print("\n--- Pattern 1: Compiled Workflow Execution ---")
-    result0 = mp.evaluate(sim, millionaire)
+    result0 = mp.evaluate(millionaire)
     millionaire_jitted = mp.function(millionaire)
-    result1 = mp.evaluate(sim, millionaire_jitted)
+    result1 = mp.evaluate(millionaire_jitted)
 
     # assert results are the same
-    fetched0 = mp.fetch(sim, result0)
-    fetched1 = mp.fetch(sim, result1)
+    fetched0 = mp.fetch(result0)
+    fetched1 = mp.fetch(result1)
     print(f"Direct execution result: {fetched0}")
     print(f"JIT execution result: {fetched1}")
     # Note: fetch returns list of per-party values; compare structure
@@ -105,13 +106,13 @@ def main():
     print("\n--- Pattern 2: Performance---")
     # perform heavy computation without compilation
     start = time.time()
-    _ = mp.evaluate(sim, heavy_computation)
+    _ = mp.evaluate(heavy_computation)
     elapsed = time.time() - start
     print(f"Computed without @mp.function in {elapsed:.4f}s")
 
     heavy_computation_jitted = mp.function(heavy_computation)
     start = time.time()
-    _ = mp.evaluate(sim, heavy_computation_jitted)
+    _ = mp.evaluate(heavy_computation_jitted)
     elapsed = time.time() - start
     print(f"Computed with @mp.function in {elapsed:.4f}s")
     # Note: on simulator, the driver call overhead is trivial compared to real network latency.
@@ -119,7 +120,7 @@ def main():
 
     print("\n--- Pattern 3: Auditability - Inspect IR ---")
     # Compile to TracedFunction (does not execute yet)
-    traced = mp.compile(sim, millionaire)
+    traced = mp.compile(millionaire)
 
     # IR can be inspected programmatically
     print("Compiled Graph IR (first 15 lines):")

@@ -23,7 +23,8 @@ from mplang.v2.libs.mpc.psi import oprf
 
 def test_eval_oprf():
     """Test OPRF evaluation produces outputs."""
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
+    mp.set_root_context(sim)
 
     np.random.seed(42)
     num_items = 16
@@ -36,15 +37,15 @@ def test_eval_oprf():
         receiver_inputs = simp.constant((RECEIVER,), np_inputs)
         return oprf.eval_oprf(receiver_inputs, SENDER, RECEIVER, num_items)
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
 
     # Result is a tuple (sender_key, receiver_outputs)
     # sender_key is on SENDER, receiver_outputs is on RECEIVER
     sender_key_obj, recv_out_obj = result
 
-    sender_key = mp.fetch(sim, sender_key_obj)[SENDER]
-    recv_out = mp.fetch(sim, recv_out_obj)[RECEIVER]
+    sender_key = mp.fetch(sender_key_obj)[SENDER]
+    recv_out = mp.fetch(recv_out_obj)[RECEIVER]
 
     assert sender_key is not None
     assert recv_out is not None
@@ -53,7 +54,8 @@ def test_eval_oprf():
 
 def test_oprf_determinism():
     """Test that OPRF runs successfully with fixed inputs."""
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
+    mp.set_root_context(sim)
 
     np.random.seed(42)
     num_items = 8
@@ -66,12 +68,12 @@ def test_oprf_determinism():
         receiver_inputs = simp.constant((RECEIVER,), np_inputs)
         return oprf.eval_oprf(receiver_inputs, SENDER, RECEIVER, num_items)
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
 
     sender_key_obj, recv_out_obj = result
-    sender_key = mp.fetch(sim, sender_key_obj)[SENDER]
-    recv_out = mp.fetch(sim, recv_out_obj)[RECEIVER]
+    sender_key = mp.fetch(sender_key_obj)[SENDER]
+    recv_out = mp.fetch(recv_out_obj)[RECEIVER]
 
     assert sender_key is not None
     assert recv_out is not None

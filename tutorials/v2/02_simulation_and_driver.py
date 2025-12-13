@@ -58,16 +58,17 @@ def run_with_simulator():
     print("Running with Simulator (local, multi-threaded)")
     print("=" * 70)
 
-    # Create simulator with simple 2-party setup
-    sim = mp.Simulator.simple(2)
+    cluster_spec = mp.ClusterSpec.simple(2)
+    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_root_context(sim)
 
     print("\n--- Millionaire problem (device API) ---")
-    x, y, result = mp.evaluate(sim, millionaire)
+    x, y, result = mp.evaluate(millionaire)
 
     # Fetch results from all parties
-    x_vals = mp.fetch(sim, x)
-    y_vals = mp.fetch(sim, y)
-    result_vals = mp.fetch(sim, result)
+    x_vals = mp.fetch(x)
+    y_vals = mp.fetch(y)
+    result_vals = mp.fetch(result)
 
     # Values are HostVar holding per-party results
     print(f"P0 value: {x_vals}")
@@ -129,7 +130,7 @@ def run_with_driver():
 
     # Create driver - same interface as Simulator!
     cluster = mp.ClusterSpec.simple(world_size=2, endpoints=endpoints)
-    driver = mp.Driver(cluster)
+    driver = mp.make_driver(endpoints, cluster_spec=cluster)
 
     # Define computation - same as Simulator!
     @mp.function

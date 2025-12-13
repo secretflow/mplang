@@ -222,18 +222,6 @@ class Primitive(Generic[T_Ret]):
             >>> result = run_jax_p.bind(fn, obj1, 42, obj2, k=3.14)
             >>> # Mixing Objects (obj1, obj2) and constants (42, 3.14)
         """
-
-        # Validate kwargs for def_abstract_eval: must not contain Objects
-        # (def_trace allows Objects in kwargs)
-        if self._trace is None:
-            for key, value in kwargs.items():
-                if isinstance(value, Object):
-                    raise TypeError(
-                        f"Keyword argument '{key}' cannot be an Object when using def_abstract_eval. "
-                        f"Only positional arguments can be Objects. "
-                        f"Use def_trace() if you need Objects in kwargs."
-                    )
-
         # Get current context
         ctx = get_current_context()
         if ctx is None:

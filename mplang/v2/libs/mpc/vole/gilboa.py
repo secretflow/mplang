@@ -24,11 +24,9 @@ from typing import Any, cast
 import jax.numpy as jnp
 import numpy as np
 
-import mplang.v2.dialects.field as field
-import mplang.v2.dialects.simp as simp
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.libs.mpc.ot.extension as ot
+from mplang.v2.dialects import field, simp, tensor
 
 
 def vole(

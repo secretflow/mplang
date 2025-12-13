@@ -25,6 +25,7 @@ import pytest
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.simp import peval, uniform_cond, while_loop
+from mplang.v2.runtime.interpreter import InterpObject
 
 pytestmark = pytest.mark.usefixtures("simp_simulator_default")
 
@@ -37,8 +38,8 @@ class TestUniformCond:
 
         Graph structure independent of pred value.
         """
-        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x):
             return x  # Simple identity
@@ -62,8 +63,8 @@ class TestUniformCond:
 
         Both branches traced regardless of pred.
         """
-        pred_val = el.InterpObject(np.array(False), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(False), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x):
             return x
@@ -83,9 +84,9 @@ class TestUniformCond:
 
     def test_with_multiple_outputs(self):
         """Test uniform_cond with branches returning multiple values."""
-        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
-        y_val = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+        y_val = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x, y):
             return (x, y)
@@ -120,8 +121,8 @@ class TestUniformCond:
         def _ret2_ae(x_type):
             return [x_type, x_type]
 
-        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -138,9 +139,9 @@ class TestUniformCond:
 
     def test_with_multiple_args(self):
         """Test uniform_cond with multiple arguments."""
-        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(10.0), elt.Tensor[elt.f32, ()])
-        y_val = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(10.0), elt.Tensor[elt.f32, ()])
+        y_val = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x, y):
             return x
@@ -165,10 +166,10 @@ class TestUniformCond:
 
     def test_branch_captures_are_aligned(self):
         """Captured variables from both branches become explicit cond inputs."""
-        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-        outer_a = el.InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
-        outer_b = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+        outer_a = InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
+        outer_b = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
         def then_fn(x):
             return outer_a
@@ -197,8 +198,8 @@ class TestUniformCond:
         """Test that verify_uniform flag uses global config."""
         from mplang.v2.dialects import simp
 
-        pred_val = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
         # Test with default (True)
         def test_fn(pred, x):
@@ -233,8 +234,8 @@ class TestUniformCondTracing:
         """Test tracing uniform_cond with simple branches."""
 
         # Create test inputs
-        pred_val = el.InterpObject(True, elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(5.0, elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(True, elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(5.0, elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -271,8 +272,8 @@ class TestUniformCondTracing:
         def _negate_ae(x_type):
             return x_type
 
-        pred_val = el.InterpObject(True, elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(5.0, elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(True, elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(5.0, elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -305,8 +306,8 @@ class TestUniformCondTracing:
     def test_trace_cond_type_mismatch(self):
         """Test that branches with mismatched output types raise TypeError."""
 
-        pred_val = el.InterpObject(True, elt.Tensor[elt.f32, ()])
-        x_val = el.InterpObject(5.0, elt.Tensor[elt.f32, ()])
+        pred_val = InterpObject(True, elt.Tensor[elt.f32, ()])
+        x_val = InterpObject(5.0, elt.Tensor[elt.f32, ()])
 
         def test_fn(pred, x):
             def then_fn(x):
@@ -331,8 +332,8 @@ class TestWhileLoop:
 
     def test_traces_basic_loop(self):
         """while_loop should emit a loop op with cond/body regions."""
-        flag = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        value = el.InterpObject(np.array(0.0), elt.Tensor[elt.f32, ()])
+        flag = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        value = InterpObject(np.array(0.0), elt.Tensor[elt.f32, ()])
 
         def cond_fn(state):
             loop_flag, _ = state
@@ -363,7 +364,7 @@ class TestWhileLoop:
 
     def test_cond_must_return_scalar(self):
         """cond_fn returning multiple outputs should raise."""
-        flag = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        flag = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
 
         def cond_fn(state):
             return (state, state)
@@ -379,8 +380,8 @@ class TestWhileLoop:
 
     def test_body_must_match_state_arity(self):
         """body_fn returning mismatched state size should error."""
-        flag = el.InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
-        extra = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+        flag = InterpObject(np.array(True), elt.Tensor[elt.f32, ()])
+        extra = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
 
         def cond_fn(state):
             loop_flag, _ = state
@@ -404,8 +405,8 @@ class TestPeval:
 
     def test_local_region_unwraps_mp_types(self):
         mp_tensor = elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
-        x = el.InterpObject(np.array(1.0, dtype=np.float32), mp_tensor)
-        bias = el.InterpObject(np.array(2.0, dtype=np.float32), mp_tensor)
+        x = InterpObject(np.array(1.0, dtype=np.float32), mp_tensor)
+        bias = InterpObject(np.array(2.0, dtype=np.float32), mp_tensor)
 
         def wrapper(val, captured):
             def local_fn(inner):
@@ -454,7 +455,7 @@ class TestPcallWithTensorDialect:
         def square(x):
             return jnp.square(x)
 
-        x_val = el.InterpObject(
+        x_val = InterpObject(
             np.array([1.0, 2.0, 3.0]),
             elt.MPType(elt.TensorType(elt.f32, (3,)), (0,)),
         )
@@ -485,11 +486,11 @@ class TestPcallWithTensorDialect:
         def add(x, y):
             return jnp.add(x, y)
 
-        x_val = el.InterpObject(
+        x_val = InterpObject(
             np.array([1.0, 2.0]),
             elt.MPType(elt.TensorType(elt.f32, (2,)), (0,)),
         )
-        y_val = el.InterpObject(
+        y_val = InterpObject(
             np.array([3.0, 4.0]),
             elt.MPType(elt.TensorType(elt.f32, (2,)), (0,)),
         )
@@ -534,7 +535,7 @@ class TestPcallWithTensorDialect:
         def square(x):
             return jnp.square(x)
 
-        x_val = el.InterpObject(
+        x_val = InterpObject(
             np.array([1.0, 2.0]),
             elt.MPType(elt.TensorType(elt.f32, (2,)), (0,)),
         )

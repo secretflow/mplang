@@ -17,8 +17,8 @@
 NOTE: Backend execution tests are in tests/mplang.v2/backends/test_crypto_impl.py
 """
 
-import mplang.v2.dialects.crypto as crypto
 import mplang.v2.edsl as el
+from mplang.v2.dialects import crypto
 
 
 class TestKEMTypes:

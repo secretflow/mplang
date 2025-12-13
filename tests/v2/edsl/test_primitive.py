@@ -124,26 +124,6 @@ class TestPrimitiveTraceMode:
         finally:
             pop_context()
 
-    def test_bind_rejects_object_in_kwargs(self):
-        """Test that primitive.bind() rejects Object in kwargs."""
-        my_op_p = Primitive("my_op")
-
-        @my_op_p.def_abstract_eval
-        def my_op_abstract(x_type):
-            return x_type
-
-        tracer = Tracer()
-        x = InterpObject(np.array([1.0]), Tensor[f32, (1,)])
-        y = InterpObject(np.array([2.0]), Tensor[f32, (1,)])
-
-        push_context(tracer)
-        try:
-            # Try to pass Object as kwarg (should fail)
-            with pytest.raises(TypeError, match="cannot be an Object"):
-                my_op_p.bind(x, other=y)  # y is Object, not allowed in kwargs
-        finally:
-            pop_context()
-
     def test_bind_without_abstract_eval_fails(self):
         """Test that bind() fails in trace mode without abstract_eval or trace."""
         p = Primitive("no_abstract")

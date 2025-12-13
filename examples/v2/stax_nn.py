@@ -162,8 +162,8 @@ def train(
     import spu.api as spu_api
     import spu.libspu as libspu
     from jax.tree_util import tree_map
-
     from mplang.v2.backends.simp_host import HostVar
+
     from mplang.v2.dialects.spu import SPUConfig
     from mplang.v2.runtime.interpreter import InterpObject
 

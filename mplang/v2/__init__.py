@@ -22,13 +22,8 @@ Public API is designed to be compatible with mplang v1 where possible.
 
 from __future__ import annotations
 
-import os
-import pathlib
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from typing import Self
+from typing import Any
 
 __version__ = "0.1.0"
 
@@ -38,17 +33,19 @@ __version__ = "0.1.0"
 # =============================================================================
 # Dialects
 # =============================================================================
-from mplang.v2 import dialects
-
 # =============================================================================
 # Backend / Runtime
 # =============================================================================
-from mplang.v2.backends.simp_http_driver import SimpHttpDriver
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2.backends.func_impl  # Register func handlers
+from mplang.v2 import dialects
+from mplang.v2.backends.simp_driver.ops import DRIVER_HANDLERS
+from mplang.v2.backends.simp_worker import SimpWorker
+from mplang.v2.backends.simp_worker.mem import LocalMesh
+from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
+from mplang.v2.dialects.simp import make_driver, make_simulator
 from mplang.v2.edsl import (
     Graph,
     GraphPrinter,
-    Interpreter,
     Object,
     Operation,
     Primitive,
@@ -58,13 +55,15 @@ from mplang.v2.edsl import (
     format_graph,
     get_current_context,
     get_default_context,
-    interpret,
+    get_root_context,
     jit,
     pop_context,
     primitive,
     push_context,
+    register_default_context_factory,
     trace,
 )
+from mplang.v2.edsl.registry import get_profiler
 
 # Type system
 from mplang.v2.edsl.typing import (
@@ -85,219 +84,142 @@ from mplang.v2.libs.device import (
     Node,
     device,
     get_dev_attr,
-    get_global_cluster,
     is_device_obj,
     jax_fn,
     put,
     set_dev_attr,
-    set_global_cluster,
 )
+from mplang.v2.runtime.interpreter import Interpreter
+
+# =============================================================================
+# Context Management API (JAX-like pattern)
+# =============================================================================
+
+
+def set_root_context(context: Interpreter, force: bool = False) -> None:
+    """Set the global/root execution context.
+
+    This explicitly sets the provided interpreter as the Root Context.
+    All subsequent operations (compile, evaluate, device resolution) will
+    use this context as the default environment.
+
+    Args:
+        context: Interpreter to use as the root context.
+        force: If True, clears the existing context stack before setting.
+               If False (default), pushes onto the stack.
+    """
+    from mplang.v2.edsl.context import _context_stack, get_current_context
+
+    if force:
+        _context_stack.clear()
+        _context_stack.append(context)
+        return
+
+    if get_current_context() is not None:
+        raise RuntimeError(
+            "Cannot set root context: Context stack is not empty. "
+            "Use force=True to overwrite the existing root context."
+        )
+
+    push_context(context)
+
+
+def _get_context(context: Interpreter | None) -> Interpreter:
+    """Get context from parameter or context stack."""
+    if context is not None:
+        return context
+    ctx = get_current_context()
+    if ctx is None:
+        raise RuntimeError(
+            "No context available. Either pass context explicitly or use "
+            "set_context()/push_context() to set a default context."
+        )
+    if not isinstance(ctx, Interpreter):
+        raise RuntimeError(
+            f"Current context is not an Interpreter: {type(ctx).__name__}. "
+            "Use mp.set_context(interpreter) to set the execution context."
+        )
+    return ctx
 
 
 # =============================================================================
-# Compatibility layer: Simulator class (wraps SimpSimulator with mplang v1 API)
+# Meta-APIs (compile, evaluate, fetch)
 # =============================================================================
-class Simulator:
-    """Simulator compatible with mplang v1 API.
-
-    Usage:
-        sim = Simulator.simple(2)  # 2-party simulation
-        result = evaluate(sim, my_function)
-        value = fetch(sim, result)
-    """
-
-    def __init__(self, cluster_spec: ClusterSpec, enable_tracing: bool = False):
-        """Create a Simulator from a ClusterSpec."""
-        self._cluster = cluster_spec
-
-        # Construct root_dir from cluster_id
-        data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
-        host_root = data_root / cluster_spec.cluster_id / "__host__"
-
-        self._sim = SimpSimulator(
-            world_size=len(cluster_spec.nodes),
-            root_dir=host_root,
-            enable_tracing=enable_tracing,
-        )
-        set_global_cluster(cluster_spec)
-
-    @classmethod
-    def simple(cls, world_size: int, **kwargs: Any) -> Simulator:
-        """Create a simple simulator with the given number of parties.
-
-        Args:
-            world_size: Number of parties (physical nodes).
-            **kwargs: Additional arguments passed to ClusterSpec.simple().
-                      Also accepts 'enable_tracing' (bool).
-
-        Returns:
-            A Simulator instance.
-        """
-        enable_tracing = kwargs.pop("enable_tracing", False)
-        cluster = ClusterSpec.simple(
-            world_size,
-            enable_ppu_device=kwargs.pop("enable_ppu_device", True),
-            enable_spu_device=kwargs.pop("enable_spu_device", True),
-            **kwargs,
-        )
-        return cls(cluster, enable_tracing=enable_tracing)
-
-    @property
-    def cluster(self) -> ClusterSpec:
-        """Get the cluster specification."""
-        return self._cluster
-
-    @property
-    def backend(self) -> SimpSimulator:
-        """Get the underlying SimpSimulator backend."""
-        return self._sim
-
-    def fetch(self, obj: Any) -> Any:
-        """Fetch data from the simulator."""
-        return self._sim.fetch(obj)
-
-    def __enter__(self) -> Self:
-        """Enter context: push simulator as the default interpreter."""
-        push_context(self._sim)
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object,
-    ) -> None:
-        """Exit context: pop the simulator."""
-        pop_context()
-
-
-class Driver:
-    """Driver for distributed execution compatible with mplang v1 API.
-
-    Connects to a running cluster of workers via HTTP and executes
-    multi-party computations in a distributed manner.
-
-    Usage:
-        driver = Driver(cluster_spec)
-        result = evaluate(driver, my_function)
-        value = fetch(driver, result)
-
-    Note:
-        Before using Driver, you must start the worker servers.
-        See mplang.v2.backends.simp_http for worker implementation.
-    """
-
-    def __init__(self, cluster_spec: ClusterSpec):
-        """Create a Driver from a ClusterSpec.
-
-        Args:
-            cluster_spec: The cluster specification with node endpoints.
-        """
-        self._cluster = cluster_spec
-
-        # Construct root_dir from cluster_id
-        data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
-        host_root = data_root / cluster_spec.cluster_id / "__host__"
-
-        # Ensure endpoints have http:// prefix
-        endpoints = []
-        for node in cluster_spec.nodes.values():
-            ep = node.endpoint
-            if not ep.startswith("http://") and not ep.startswith("https://"):
-                ep = f"http://{ep}"
-            endpoints.append(ep)
-        self._driver = SimpHttpDriver(
-            world_size=len(cluster_spec.nodes),
-            endpoints=endpoints,
-            root_dir=host_root,
-        )
-        set_global_cluster(cluster_spec)
-
-    @property
-    def cluster(self) -> ClusterSpec:
-        """Get the cluster specification."""
-        return self._cluster
-
-    @property
-    def backend(self) -> SimpHttpDriver:
-        """Get the underlying SimpHttpDriver backend."""
-        return self._driver
-
-    def fetch(self, obj: Any) -> Any:
-        """Fetch data from the driver."""
-        return self._driver.fetch(obj)
-
-    def __enter__(self) -> Self:
-        """Enter context: push driver as the default interpreter."""
-        push_context(self._driver)
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object,
-    ) -> None:
-        """Exit context: pop the driver."""
-        pop_context()
-
-    def shutdown(self) -> None:
-        """Shutdown the driver and release resources."""
-        self._driver.shutdown()
 
 
 def evaluate(
-    sim: Simulator | Driver,
     fn: Callable[..., Any] | TracedFunction,
     *args: Any,
+    context: Interpreter | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Evaluate a function using the simulator or driver.
-
-    Compatible with mplang v1 API: mp.evaluate(sim, fn)
+    """Evaluate a function or traced function.
 
     Args:
-        sim: The Simulator or Driver instance.
-        fn: The function to evaluate.
+        fn: The function or TracedFunction to evaluate.
         *args: Positional arguments to pass to the function.
+        context: Optional interpreter context. If None, uses current context.
         **kwargs: Keyword arguments to pass to the function.
 
     Returns:
         The result of the function evaluation.
+
+    Example:
+        >>> with mp.make_simulator(3) as sim:
+        ...     result = mp.evaluate(traced)  # uses sim from context
+        >>> # Or explicitly:
+        >>> result = mp.evaluate(traced, context=sim)
     """
     from mplang.v2.edsl.tracer import TracedFunction
+    from mplang.v2.runtime.interpreter import InterpObject
 
-    with sim:
+    interp = _get_context(context)
+
+    def unwrap_if_interp(val: Any) -> Any:
+        """Unwrap InterpObject to runtime value at execution boundary."""
+        if isinstance(val, InterpObject):
+            return val.runtime_obj
+        return val
+
+    with interp:
         if isinstance(fn, TracedFunction):
             inputs = fn.prepare_inputs(*args, **kwargs)
-            interpreter = sim.backend
-            raw_result = interpret(fn.graph, inputs, interpreter)
+            inputs = [unwrap_if_interp(v) for v in inputs]
+            raw_result = interp.evaluate_graph(fn.graph, inputs)
             return fn.reconstruct_outputs(raw_result)
 
         return fn(*args, **kwargs)
 
 
-def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) -> Any:
-    """Fetch the result from the simulator or driver.
-
-    Compatible with mplang v1 API: mp.fetch(sim, result)
-
-    For mplang.v2, since we use eager execution in simulation mode,
-    results are typically already available as concrete values.
+def fetch(
+    result: Any,
+    party: int | str | None = None,
+    *,
+    context: Interpreter | None = None,
+) -> Any:
+    """Fetch the result, optionally for a specific party.
 
     Args:
-        sim: The Simulator instance.
-        result: The result object to fetch.
-        party: Optional party index or name to fetch from (for HostVar).
-               If None, returns values from all parties as a list.
+        result: The result to fetch (DriverVar or other value).
+        party: Optional party index or device name (e.g., "P0").
+        context: Optional interpreter context. If None, uses current context.
 
     Returns:
-        The concrete Python value, or list of values from all parties if party is None.
+        The fetched data (unwrapped from Value wrappers).
+
+    Example:
+        >>> with mp.make_simulator(3) as sim:
+        ...     data = mp.fetch(result, "P0")  # uses sim from context
     """
-    from mplang.v2.backends.simp_host import HostVar
+    from typing import cast
+
+    from mplang.v2.backends.simp_driver.state import SimpDriver
+    from mplang.v2.backends.simp_driver.values import DriverVar
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue
     from mplang.v2.runtime.interpreter import InterpObject
+
+    interp = _get_context(context)
 
     def _unwrap_value(val: Any) -> Any:
         """Unwrap Value types to get the underlying data."""
@@ -311,24 +233,38 @@ def fetch(sim: Simulator | Driver, result: Any, party: int | str | None = None) 
     if isinstance(result, InterpObject):
         result = result.runtime_obj
 
-    if isinstance(result, HostVar):
-        # If the simulator/driver supports fetch (resolving URIs), use it.
-        if hasattr(sim, "fetch"):
-            values = sim.fetch(result)
-        else:
-            values = result.values
+    # Get simp state for fetching
+    simp_state = cast(SimpDriver | None, interp.get_dialect_state("simp"))
+    cluster_spec = getattr(interp, "_cluster_spec", None)
 
+    # Fetch from DriverVar
+    if isinstance(result, DriverVar):
+        resolved_values = []
+        for rank, val in enumerate(result.values):
+            if isinstance(val, str) and "://" in val:
+                if simp_state is not None:
+                    fut = simp_state.fetch(rank, val)
+                    resolved_values.append(fut.result())
+                else:
+                    resolved_values.append(val)
+            else:
+                resolved_values.append(val)
+
+        # Select party if needed
         if party is not None:
-            if isinstance(party, str):
-                # Look up party by name (e.g., "P0" -> rank 0)
-                device_info = sim.cluster.devices.get(party)
+            if isinstance(party, str) and cluster_spec is not None:
+                device_info = cluster_spec.devices.get(party)
                 if device_info and device_info.members:
                     party = device_info.members[0].rank
                 else:
                     raise ValueError(f"Unknown party: {party}")
-            return _unwrap_value(values[party])
-        # Return all parties' values as a list (unwrap each)
-        return [_unwrap_value(v) for v in values]
+            else:
+                # Default logic for int
+                pass
+
+            p_idx = cast(int, party)
+            return _unwrap_value(resolved_values[p_idx])  # type: ignore[no-any-return]
+        return [_unwrap_value(v) for v in resolved_values]
 
     # Unwrap Value types to get the underlying data
     return _unwrap_value(result)
@@ -339,83 +275,97 @@ function = jit  # @mp.function -> @mp2.function (JIT compilation)
 
 
 def compile(
-    sim: Simulator | Driver, fn: Callable[..., Any], *args: Any, **kwargs: Any
+    fn: Callable[..., Any],
+    *args: Any,
+    context: Interpreter | None = None,
+    **kwargs: Any,
 ) -> TracedFunction:
     """Compile a function to get its IR without executing it.
 
-    Compatible with mplang v1 API: mp.compile(sim, fn)
-
     Args:
-        sim: The Simulator or Driver instance (provides cluster context).
         fn: The function to compile.
-        *args: Arguments to pass during tracing.
-        **kwargs: Keyword arguments to pass during tracing.
+        *args: Example arguments for tracing.
+        context: Optional interpreter context. If None, uses current context.
+        **kwargs: Example keyword arguments for tracing.
 
     Returns:
-        TracedFunction: The traced function with inspectable IR.
+        TracedFunction with the compiled graph.
 
     Example:
-        traced = compile(sim, my_fn)
-        print(traced.compiler_ir())
+        >>> with mp.make_simulator(3) as sim:
+        ...     traced = mp.compile(job)  # uses sim from context
     """
-    # Set up cluster context, then trace
-    set_global_cluster(sim.cluster)
+    # If a context is explicitly provided, push it before tracing
+    # so that _resolve_cluster() can find it.
+    if context is not None:
+        with context:
+            return trace(fn, *args, **kwargs)
+
+    # Otherwise, rely on the caller having pushed an interpreter context.
+    # _resolve_cluster() will traverse the stack to find the interpreter.
     return trace(fn, *args, **kwargs)
 
 
 # =============================================================================
 # Public API
 # =============================================================================
-__all__ = [
+__all__ = [  # noqa: RUF022
+    # Version
+    "__version__",
     # Device API
     "ClusterSpec",
     "Device",
-    "Driver",
+    "Node",
+    "device",
+    "get_dev_attr",
+    "is_device_obj",
+    "jax_fn",
+    "put",
+    "set_dev_attr",
     # Core EDSL
     "Graph",
     "GraphPrinter",
-    "Interpreter",
-    # Type system
-    "MPType",
-    "Node",
     "Object",
     "Operation",
     "Primitive",
-    "SSType",
-    "ScalarType",
-    # Runtime
-    "SimpHttpDriver",
-    "SimpSimulator",
-    "Simulator",
-    "TableType",
-    "TensorType",
     "TracedFunction",
     "Tracer",
     "Value",
-    "VectorType",
-    # Version
-    "__version__",
     "compile",
-    "device",
-    # Dialects
-    "dialects",
     "evaluate",
     "fetch",
     "format_graph",
     "function",
     "get_current_context",
     "get_default_context",
-    "get_dev_attr",
-    "get_global_cluster",
-    "interpret",
-    "is_device_obj",
-    "jax_fn",
     "jit",
+    "mplang",
     "pop_context",
     "primitive",
     "push_context",
-    "put",
-    "set_dev_attr",
-    "set_global_cluster",
+    "set_root_context",
     "trace",
+    # Type system
+    "MPType",
+    "ScalarType",
+    "SSType",
+    "TableType",
+    "TensorType",
+    "VectorType",
+    # Backend / Runtime
+    "DRIVER_HANDLERS",
+    "Interpreter",
+    "LocalMesh",
+    "SimpWorker",
+    "WORKER_HANDLERS",
+    "make_driver",
+    "make_simulator",
+    # Dialects
+    "dialects",
+    "register_default_context_factory",
+    "get_root_context",
+    "get_profiler",
 ]
+
+# Register Interpreter as default context factory
+register_default_context_factory(Interpreter)

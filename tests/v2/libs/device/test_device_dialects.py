@@ -33,27 +33,15 @@ from mplang.v2.libs.device import device, get_dev_attr, put
 def extract_runtime_value(obj):
     """Extract runtime value from Object.
 
-    In multi-party simulation, runtime_obj may be a HostVar containing
+    In multi-party simulation, runtime_obj may be a DriverVar containing
     values per party. This helper extracts the first non-None value.
     """
-    from mplang.v2 import get_current_context
+    from mplang.v2 import fetch
 
-    interp = get_current_context()
+    val = fetch(obj)
 
-    val = obj.runtime_obj
-
-    # Fetch if it's a HostVar or contains URIs
-    if hasattr(interp, "fetch"):
-        val = interp.fetch(val)
-
-    # HostVar is used in simulation, it has .values attribute or supports indexing
-    if hasattr(val, "values"):
-        # HostVar case - iterate through values list
-        for v in val.values:
-            if v is not None:
-                return v
-    elif isinstance(val, (list, tuple)):
-        # Raw list case
+    # If result is a list (one per party), return first non-None
+    if isinstance(val, list):
         for v in val:
             if v is not None:
                 return v

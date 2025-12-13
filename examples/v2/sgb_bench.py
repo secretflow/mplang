@@ -36,13 +36,14 @@ import urllib.error
 
 import numpy as np
 import pandas as pd
-from sgb import SecureBoost
 from sklearn.datasets import fetch_openml
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 import mplang.v2 as mp
+
+from .sgb import SecureBoost
 
 
 def to_np(d):
@@ -230,7 +231,7 @@ def run_sgb_benchmark(
 
     # --- 1. Compile (Trace) ---
     start_time = time.perf_counter()
-    traced = mp.compile(sim, job)
+    traced = mp.compile(job, context=sim)
     trace_time = time.perf_counter() - start_time
     print(
         f"Graph tracing finished in {trace_time:.2f}s ({len(traced.graph.operations)} ops)"
@@ -239,12 +240,12 @@ def run_sgb_benchmark(
     # --- 2. Execute Graph ---
     print("\nExecuting graph (Simulating 2 parties)...")
     exec_start = time.perf_counter()
-    y_prob_obj = mp.evaluate(sim, traced)
+    y_prob_obj = mp.evaluate(traced, context=sim)
     exec_time = time.perf_counter() - exec_start
     print(f"Execution finished in {exec_time:.2f}s")
 
     # --- 3. Fetch and Evaluate ---
-    y_pred = mp.fetch(sim, y_prob_obj)
+    y_pred = mp.fetch(y_prob_obj)
     if isinstance(y_pred, list):
         y_pred = y_pred[0]
 
@@ -360,7 +361,7 @@ def main():
     load_backend_or_exit()
 
     # Create simulator
-    sim = mp.Simulator.simple(2, enable_profiler=args.profile)
+    sim = mp.make_simulator(2)
 
     if args.dataset is None:
         # Run demo with synthetic data

@@ -15,12 +15,13 @@
 import numpy as np
 
 import mplang.v2 as mp
-from mplang.v2.dialects import field, tensor
+from mplang.v2.dialects import field, simp, tensor
 
 
 def test_field_mul_integration():
     """Verify field.mul invokes C++ kernel correctly."""
-    sim = mp.Simulator.simple(1)
+    sim = simp.make_simulator(1)
+    mp.set_root_context(sim)
 
     def protocol():
         # Create Inputs (uint64 pairs representing GF128 elements)
@@ -33,9 +34,9 @@ def test_field_mul_integration():
         res = field.mul(a, b)
         return res
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
-    val = mp.fetch(sim, result)[0]
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
+    val = mp.fetch(result)
 
     print("Result:", val)
 

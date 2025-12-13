@@ -27,7 +27,6 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 from jax.tree_util import PyTreeDef, tree_flatten, tree_map
@@ -303,10 +302,15 @@ class Tracer(Context):
         in_imms, in_var_pos, in_vars = _separate_vars_and_imms(in_flat)
 
         with self:
+            # Helper to lift params, allowing BaseType as placeholders
+            def lift_param(obj: Any) -> Any:
+                if isinstance(obj, Object):
+                    return self.lift(obj, is_param=True)
+                return obj
+
             # Lift parameters with is_param=True (each position gets independent input)
-            args_traced, kwargs_traced = tree_map(
-                partial(self.lift, is_param=True), (args, kwargs)
-            )
+            args_traced, kwargs_traced = tree_map(lift_param, (args, kwargs))
+
             result = fn(*args_traced, **kwargs_traced)
             # Lift any Objects in result (captures use default is_param=False)
             result = tree_map(self.lift, result)
@@ -557,7 +561,8 @@ class TracedFunction:
             **kwargs: Keyword arguments for the function.
 
         Returns:
-            List of runtime values corresponding to graph.inputs.
+            List of values corresponding to graph.inputs (may include InterpObject).
+            The caller is responsible for unwrapping InterpObject at execution boundary.
         """
         flat_args, _ = tree_flatten((args, kwargs))
 
@@ -565,7 +570,7 @@ class TracedFunction:
         # fn.in_var_pos contains indices in flat_args that correspond to graph inputs
         # Note: graph.inputs = [explicit_inputs...] + [captured_inputs...]
         explicit_inputs = [flat_args[i] for i in self.in_var_pos]
-        all_inputs = explicit_inputs + self.captured
+        all_inputs = explicit_inputs + list(self.captured)
         return all_inputs
 
     def reconstruct_outputs(self, execution_result: Any) -> Any:

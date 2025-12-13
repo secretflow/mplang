@@ -18,17 +18,9 @@ import time
 import jax.numpy as jnp
 import numpy as np
 
-# Import implementations to register them
-import mplang.v2.backends.bfv_impl
-import mplang.v2.backends.tensor_impl
-import mplang.v2.dialects.bfv as bfv
-import mplang.v2.dialects.simp as simp
-import mplang.v2.dialects.tensor as tensor
+import mplang.v2 as mp
 import mplang.v2.edsl as el
-from mplang.v2.backends.simp_simulator import SimpSimulator
-
-# Ensure backend implementations are loaded (prevents unused import warnings)
-_ = mplang.v2.backends.bfv_impl, mplang.v2.backends.tensor_impl
+from mplang.v2.dialects import bfv, simp, tensor
 
 # Configure logging
 logging.basicConfig(
@@ -186,7 +178,7 @@ def run_benchmark(N=1000, K=10):
     logger.info(f"Graph construction took {compile_time - start_time:.4f}s")
 
     # Execute
-    host = SimpSimulator(world_size=2)
+    host = mp.make_simulator(2)
 
     exec_start = time.time()
     result = host.evaluate_graph(graph, {})

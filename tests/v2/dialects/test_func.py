@@ -21,6 +21,7 @@ import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.func import call, func
 from mplang.v2.dialects.tensor import run_jax
+from mplang.v2.runtime.interpreter import InterpObject
 
 
 def _scale_add(x, y):
@@ -35,8 +36,8 @@ def _complex_body(a, b):
 
 
 def test_func_call_emits_region():
-    x = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-    y = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+    x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+    y = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(a, b):
         fn = func(_scale_add, a, b)
@@ -47,12 +48,13 @@ def test_func_call_emits_region():
     func_ops = [op for op in graph.operations if op.opcode == "func.func"]
     call_ops = [op for op in graph.operations if op.opcode == "func.call"]
     assert func_ops and call_ops
-    assert call_ops[0].attrs["callee"] == func_ops[0].attrs["sym_name"]
+    # func.call now uses function handle as first input, not callee attr
+    assert len(call_ops[0].inputs) >= 1  # function handle + args
 
 
 def test_func_define_returns_traceobject():
-    x = el.InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-    y = el.InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+    x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
+    y = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(a, b):
         return func(_scale_add, a, b)
@@ -64,8 +66,8 @@ def test_func_define_returns_traceobject():
 
 
 def test_func_call_handles_complex_pytree_output():
-    x = el.InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
-    y = el.InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+    x = InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
+    y = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
 
     def wrapper(a, b):
         nested_fn = func(_complex_body, a, b)
@@ -114,7 +116,7 @@ def test_func_call_handles_complex_pytree_output():
                   return %2, %arg1, %1
                 }
               }
-              [%1, %2, %3] = func.call(%0, %arg0, %arg1) {callee='_complex_body'} : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
+              [%1, %2, %3] = func.call(%0, %arg0, %arg1) : (Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()])
               return %1, %2, %3
             }"""
     )  # Normalize stablehlo_code to <ID> for comparison

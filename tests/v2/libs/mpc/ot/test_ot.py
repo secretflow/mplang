@@ -17,9 +17,8 @@
 import numpy as np
 import pytest
 
-import mplang.v2.backends.crypto_impl  # noqa: F401
+import mplang.v2 as mp
 import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
-from mplang.v2.backends.simp_simulator import SimpSimulator
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.ot import base as ot
@@ -37,7 +36,7 @@ class TestOTScalar:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        self.interp = SimpSimulator(world_size=2)
+        self.interp = simp.make_simulator(world_size=2)
 
     @pytest.mark.parametrize(
         "m0_val, m1_val, choice_val, expected",
@@ -78,9 +77,9 @@ class TestOTScalar:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
-        result = _unwrap(values[1])
-        assert result.item() == expected
+            values = mp.fetch(res)
+            result = _unwrap(values[1])
+            assert result.item() == expected
 
 
 class TestOTVector:
@@ -88,7 +87,7 @@ class TestOTVector:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        self.interp = SimpSimulator(world_size=2)
+        self.interp = simp.make_simulator(world_size=2)
 
     def test_vector_all_zeros(self):
         """Test vectorized OT with all choices=0."""
@@ -104,8 +103,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
-        np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
+            values = mp.fetch(res)
+            np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
 
     def test_vector_all_ones(self):
         """Test vectorized OT with all choices=1."""
@@ -121,8 +120,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
-        np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
+            values = mp.fetch(res)
+            np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
 
     def test_vector_mixed_choices(self):
         """Test vectorized OT with mixed choices (0 and 1)."""
@@ -140,8 +139,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = self.interp.fetch(res.runtime_obj)
-        np.testing.assert_array_equal(_unwrap(values[1]), expected)
+            values = mp.fetch(res)
+            np.testing.assert_array_equal(_unwrap(values[1]), expected)
 
 
 class TestIKNPCore:
@@ -149,9 +148,7 @@ class TestIKNPCore:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        import mplang.v2 as mp
-
-        self.sim = mp.Simulator.simple(2)
+        self.sim = simp.make_simulator(2)
 
     def test_iknp_seeds_relationship(self):
         """Verify IKNP output: Q[i] = T[i] when d[i]=0, Q[i] = T[i]^S when d[i]=1."""
@@ -187,13 +184,14 @@ class TestIKNPCore:
             )
             return t_matrix, q_matrix, s_choices, delta_bits
 
-        traced = mp.compile(self.sim, job)
-        t_obj, q_obj, s_obj, d_obj = mp.evaluate(self.sim, traced)
+        with self.sim:
+            traced = mp.compile(job)
+            t_obj, q_obj, s_obj, d_obj = mp.evaluate(traced)
 
-        t_val = mp.fetch(self.sim, t_obj)[sender]  # (128, 128)
-        q_val = mp.fetch(self.sim, q_obj)[receiver]  # (128, 128)
-        s_val = mp.fetch(self.sim, s_obj)[sender]  # (128,)
-        d_val = mp.fetch(self.sim, d_obj)[receiver]  # (128, 1)
+            t_val = mp.fetch(t_obj)[sender]  # (128, 128)
+            q_val = mp.fetch(q_obj)[receiver]  # (128, 128)
+            s_val = mp.fetch(s_obj)[sender]  # (128,)
+            d_val = mp.fetch(d_obj)[receiver]  # (128, 1)
 
         # Verify: Q[i] = T[i] ^ (d[i] * S)
         d_flat = d_val.reshape(-1)

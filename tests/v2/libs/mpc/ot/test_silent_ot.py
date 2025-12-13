@@ -15,6 +15,7 @@
 import numpy as np
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.ot import silent as silent_ot
 
 
@@ -22,7 +23,8 @@ class TestSilentOT:
     def test_silent_vole_correlation(self):
         """Verify Silent Random VOLE correlation: W = V + U * Delta."""
 
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
+        mp.set_root_context(sim)
 
         N = 10000
         sender = 0
@@ -36,20 +38,20 @@ class TestSilentOT:
             res = silent_ot.silent_vole_random_u(sender, receiver, N, base_k=128)
             return res
 
-        traced = mp.compile(sim, job)
-        v_obj, w_obj, u_obj, delta_obj = mp.evaluate(sim, traced)
+        traced = mp.compile(job)
+        v_obj, w_obj, u_obj, delta_obj = mp.evaluate(traced)
 
         # Fetch results
         # These are distributed objects.
         # v, u are on Sender (P0). w, delta are on Receiver (P1).
 
-        v = mp.fetch(sim, v_obj)
+        v = mp.fetch(v_obj)
         v_val = v[sender]
-        w = mp.fetch(sim, w_obj)
+        w = mp.fetch(w_obj)
         w_val = w[receiver]
-        u = mp.fetch(sim, u_obj)
+        u = mp.fetch(u_obj)
         u_val = u[sender]
-        delta = mp.fetch(sim, delta_obj)
+        delta = mp.fetch(delta_obj)
         delta_val = delta[receiver]
 
         from mplang.v2.backends.field_impl import _gf128_mul_impl
@@ -77,14 +79,15 @@ class TestSilentOT:
 
     def test_silent_vole_randomness(self):
         """Verify that outputs are distinguishable from zero (basic randomness check)."""
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
+        mp.set_root_context(sim)
         N = 1000
 
         def job():
             return silent_ot.silent_vole_random_u(0, 1, N, base_k=128)
 
-        res_objs = mp.evaluate(sim, mp.compile(sim, job))
-        res = mp.fetch(sim, res_objs)
+        res_objs = mp.evaluate(mp.compile(job))
+        res = mp.fetch(res_objs)
 
         # Sender: v, u
         v_val = res[0][0]

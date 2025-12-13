@@ -17,9 +17,8 @@
 import numpy as np
 import pytest
 
-import mplang.v2.dialects.crypto as crypto
-import mplang.v2.dialects.tee as tee
 import mplang.v2.edsl as el
+from mplang.v2.dialects import crypto, tee
 
 
 class TestTEETypes:
@@ -180,7 +179,7 @@ class TestTEETypeInference:
 
     def test_quote_gen_rejects_tensor_type(self):
         """Test quote_gen raises TypeError for non-PublicKeyType inputs."""
-        import mplang.v2.dialects.tensor as tensor
+        from mplang.v2.dialects import tensor
 
         def workflow():
             pk = tensor.constant(np.zeros(32, dtype=np.uint8))

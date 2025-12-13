@@ -17,10 +17,9 @@
 import numpy as np
 import pytest
 
-import mplang.v2.dialects.phe as phe
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
+from mplang.v2.dialects import phe, tensor
 
 
 class TestPHEKeyManagement:

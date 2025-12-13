@@ -146,33 +146,34 @@ def main():
     print("Device Basics: Placement, Masks, and Auto Device (MPLang2)")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_root_context(sim)  # Set global context (JAX-like pattern)
 
     # Pattern 1: Explicit placement
     print("\n--- Pattern 1: Explicit Device Placement (Millionaire) ---")
-    x, y, result = mp.evaluate(sim, millionaire)
+    x, y, result = mp.evaluate(millionaire)
     # fetch with party name to get specific party's value
-    print(f"P0 value: {mp.fetch(sim, x, party='P0')}")
-    print(f"P1 value: {mp.fetch(sim, y, party='P1')}")
+    print(f"P0 value: {mp.fetch(x, party='P0')}")
+    print(f"P1 value: {mp.fetch(y, party='P1')}")
     # SPU result is secret-shared; to reveal, move it to a PPU first
-    result_revealed = mp.evaluate(sim, lambda: mp.put("P0", result))
-    print(f"x < y (revealed to P0): {mp.fetch(sim, result_revealed, party='P0')}")
+    result_revealed = mp.evaluate(lambda: mp.put("P0", result))
+    print(f"x < y (revealed to P0): {mp.fetch(result_revealed, party='P0')}")
 
     # Pattern 2: Auto device inference
     print("\n--- Pattern 2: Auto Device Inference ---")
-    product = mp.evaluate(sim, auto_device)
+    product = mp.evaluate(auto_device)
     # SPU result needs to be revealed
-    product_revealed = mp.evaluate(sim, lambda: mp.put("P0", product))
-    print(f"Result (revealed to P0): {mp.fetch(sim, product_revealed, party='P0')}")
+    product_revealed = mp.evaluate(lambda: mp.put("P0", product))
+    print(f"Result (revealed to P0): {mp.fetch(product_revealed, party='P0')}")
 
     # Pattern 3: Device movement
     print("\n--- Pattern 3: Device Movement with mp.put ---")
-    moved = mp.evaluate(sim, device_movement)
-    print(f"Final result on P0: {mp.fetch(sim, moved, party='P0')}")
+    moved = mp.evaluate(device_movement)
+    print(f"Final result on P0: {mp.fetch(moved, party='P0')}")
 
     # Show device attributes
     print("\n--- Device Attributes ---")
-    x_ref = mp.evaluate(sim, lambda: mp.put("P0", jnp.array(10)))
+    x_ref = mp.evaluate(lambda: mp.put("P0", jnp.array(10)))
     print(f"Device of x_ref: {mp.get_dev_attr(x_ref)}")
 
     print("\n" + "=" * 70)

@@ -330,7 +330,6 @@ class DeviceContext:
             return False
         return bool(cluster.devices[self.dev_id].kind.upper() == "SPU")
 
-
     @property
     def jax(self) -> Callable[[Callable], Callable]:
         """Return a decorator that wraps JAX functions for this device.

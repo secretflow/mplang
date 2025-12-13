@@ -85,7 +85,6 @@ def heavy_computation():
 def main():
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
     mp.set_root_context(sim)
-    mp.set_root_context(cluster_spec)
 
     print("=" * 70)
     print("Function Decorator: Compilation, Auditability, and Performance")

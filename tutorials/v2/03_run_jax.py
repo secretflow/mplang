@@ -103,7 +103,6 @@ def main():
 
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
     mp.set_root_context(sim)
-    mp.set_root_context(cluster_spec)
 
     # Pattern 1: PPU
     print("\n--- Pattern 1: JAX on PPU ---")

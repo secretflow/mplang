@@ -127,9 +127,6 @@ def pop_context() -> None:
         _context_stack.pop()
 
 
-
-
-
 def register_default_context_factory(factory: Callable[[], Context]) -> None:
     """Register a factory function to create the default context."""
     global _default_context_factory

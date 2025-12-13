@@ -123,7 +123,6 @@ def set_root_context(context: Interpreter, force: bool = False) -> None:
     push_context(context)
 
 
-
 def _get_context(context: Interpreter | None) -> Interpreter:
 
     """Get context from parameter or context stack."""
@@ -301,7 +300,6 @@ def compile(
     if context is not None:
         with context:
             return trace(fn, *args, **kwargs)
-
 
     # Otherwise, rely on the caller having pushed an interpreter context.
     # _resolve_cluster() will traverse the stack to find the interpreter.

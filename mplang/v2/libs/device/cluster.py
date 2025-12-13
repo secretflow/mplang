@@ -111,6 +111,11 @@ class ClusterSpec:
     nodes: dict[str, Node]
     devices: dict[str, Device]
 
+    @property
+    def world_size(self) -> int:
+        """Total number of physical nodes (parties)."""
+        return len(self.nodes)
+
     def __post_init__(self) -> None:
         for key, node in self.nodes.items():
             if key != node.name:

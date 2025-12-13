@@ -21,6 +21,7 @@ fixtures used across device-related test files.
 import pytest
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 from mplang.v2.edsl.context import pop_context, push_context
 from mplang.v2.libs.device import ClusterSpec, set_global_cluster
 
@@ -154,42 +155,53 @@ def cluster_ppu_only():
 @pytest.fixture
 def ctx_3pc(cluster_3pc_aby3):
     """Set up 3-party cluster with simulator context."""
-    # Note: Simulator constructor sets global cluster to the passed spec
-    sim = mp.Simulator(cluster_3pc_aby3)
-    push_context(sim.backend)
+    set_global_cluster(cluster_3pc_aby3)
+    interp = simp.make_simulator(len(cluster_3pc_aby3.nodes), cluster_spec=cluster_3pc_aby3)
+    push_context(interp)
     yield cluster_3pc_aby3
     pop_context()
-    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
+    cluster = getattr(interp, "_simp_cluster", None)
+    if cluster:
+        cluster.shutdown()
 
 
 @pytest.fixture
 def ctx_2pc(cluster_2pc_semi2k):
     """Set up 2-party cluster with simulator context."""
-    sim = mp.Simulator(cluster_2pc_semi2k)
-    push_context(sim.backend)
+    set_global_cluster(cluster_2pc_semi2k)
+    interp = simp.make_simulator(len(cluster_2pc_semi2k.nodes), cluster_spec=cluster_2pc_semi2k)
+    push_context(interp)
     yield cluster_2pc_semi2k
     pop_context()
-    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
+    cluster = getattr(interp, "_simp_cluster", None)
+    if cluster:
+        cluster.shutdown()
 
 
 @pytest.fixture
 def ctx_4pc(cluster_4pc_multi_spu):
     """Set up 4-party multi-SPU cluster with simulator context."""
-    sim = mp.Simulator(cluster_4pc_multi_spu)
-    push_context(sim.backend)
+    set_global_cluster(cluster_4pc_multi_spu)
+    interp = simp.make_simulator(len(cluster_4pc_multi_spu.nodes), cluster_spec=cluster_4pc_multi_spu)
+    push_context(interp)
     yield cluster_4pc_multi_spu
     pop_context()
-    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
+    cluster = getattr(interp, "_simp_cluster", None)
+    if cluster:
+        cluster.shutdown()
 
 
 @pytest.fixture
 def ctx_ppu_only(cluster_ppu_only):
     """Set up PPU-only cluster with simulator context."""
-    sim = mp.Simulator(cluster_ppu_only)
-    push_context(sim.backend)
+    set_global_cluster(cluster_ppu_only)
+    interp = simp.make_simulator(len(cluster_ppu_only.nodes), cluster_spec=cluster_ppu_only)
+    push_context(interp)
     yield cluster_ppu_only
     pop_context()
-    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
+    cluster = getattr(interp, "_simp_cluster", None)
+    if cluster:
+        cluster.shutdown()
 
 
 @pytest.fixture
@@ -219,8 +231,11 @@ def cluster_multi_tee():
 @pytest.fixture
 def ctx_multi_tee(cluster_multi_tee):
     """Set up cluster with multiple TEEs and simulator context."""
-    sim = mp.Simulator(cluster_multi_tee)
-    push_context(sim.backend)
+    set_global_cluster(cluster_multi_tee)
+    interp = simp.make_simulator(len(cluster_multi_tee.nodes), cluster_spec=cluster_multi_tee)
+    push_context(interp)
     yield cluster_multi_tee
     pop_context()
-    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
+    cluster = getattr(interp, "_simp_cluster", None)
+    if cluster:
+        cluster.shutdown()

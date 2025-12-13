@@ -341,9 +341,11 @@ def cmd_run(args: argparse.Namespace) -> None:
     driver: Any
     if args.backend == "sim":
         enable_tracing = getattr(args, "profile", False)
-        driver = Simulator(cluster, enable_tracing=enable_tracing)
+        # make_simulator(world_size, cluster_spec=..., enable_tracing=...)
+        driver = Simulator(cluster_spec=cluster, enable_tracing=enable_tracing)
     else:
-        driver = Driver(cluster)
+        # make_driver(endpoints, cluster_spec=...)
+        driver = Driver(cluster.endpoints, cluster_spec=cluster)
 
     module = load_user_module(args.file)
     entry = resolve_entry(module, args.entry)

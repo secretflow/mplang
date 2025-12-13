@@ -47,11 +47,12 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# Register operation implementations (side-effect imports)
-from mplang.v2.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
 from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_worker import SimpWorker
+
+# Register operation implementations (side-effect imports)
+from mplang.v2.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter
@@ -223,17 +224,20 @@ def create_worker_app(
     ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
 
     # Register handlers
+    from collections.abc import Callable
+    from typing import cast
+
     from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
     # func_impl is already imported at module level for side-effects
-    handlers = {**WORKER_HANDLERS}
+    handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
 
-    # Interpreter acts as the worker execution engine
     worker = Interpreter(
-        context=ctx,
         tracer=tracer,
         root_dir=root_dir,
         handlers=handlers
     )
+    # Register SimpWorker context as 'simp' dialect state
+    worker.set_dialect_state("simp", ctx)
 
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
@@ -282,7 +286,8 @@ def create_worker_app(
         """Fetch data by URI."""
         logger.debug(f"Worker {rank} received fetch request for {req.uri}")
         try:
-            val = worker.context.store.get(req.uri)
+            state = cast(SimpWorker, worker.get_dialect_state("simp"))
+            val = state.store.get(req.uri)
             return {"result": serde.dumps_b64(val)}
         except Exception as e:
             logger.error(f"Worker {rank} fetch failed: {e}")
@@ -292,7 +297,8 @@ def create_worker_app(
     async def list_objects() -> dict[str, list[str]]:
         """List all objects in the worker's store."""
         try:
-            return {"objects": worker.context.store.list_objects()}
+            state = cast(SimpWorker, worker.get_dialect_state("simp"))
+            return {"objects": state.store.list_objects()}
         except Exception as e:
             logger.error(f"Worker {rank} list_objects failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e

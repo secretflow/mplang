@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for Driver (HTTP-based distributed execution)."""
+"""Tests for simp_driver/http.py (SimpHttpDriver)."""
 
 import multiprocessing
 import time
@@ -20,6 +20,9 @@ import time
 import pytest
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
+from mplang.v2.edsl.context import push_context, pop_context
+from mplang.v2.libs.device import set_global_cluster
 
 
 def run_worker(rank: int, world_size: int, port: int, endpoints: list[str]) -> None:
@@ -34,7 +37,7 @@ def run_worker(rank: int, world_size: int, port: int, endpoints: list[str]) -> N
 
 @pytest.fixture(scope="module")
 def driver_cluster():
-    """Start worker servers and return a Driver instance."""
+    """Start worker servers and return a driver Interpreter."""
     world_size = 2
     base_port = 18200  # Use high port to avoid conflicts
     ports = [base_port + i for i in range(world_size)]
@@ -77,33 +80,43 @@ def driver_cluster():
         },
     })
 
-    driver = mp.Driver(cluster_spec)
+    # Set global cluster for device API
+    set_global_cluster(cluster_spec)
+
+    # Create driver using factory function
+    driver = simp.make_driver(endpoints, cluster_spec=cluster_spec)
+    push_context(driver)
 
     yield driver
 
     # Cleanup
-    driver.shutdown()
+    pop_context()
+    state = driver.get_dialect_state("simp")
+    if hasattr(state, "shutdown"):
+        state.shutdown()
     for p in processes:
         p.terminate()
     for p in processes:
         p.join(timeout=2)
 
 
+
 class TestDriverBasic:
-    """Basic Driver tests."""
+    """Basic SimpHttpDriver tests."""
 
     def test_driver_creation(self, driver_cluster):
-        """Test Driver can be created."""
+        """Test driver Interpreter can be created."""
         assert driver_cluster is not None
-        assert isinstance(driver_cluster, mp.Driver)
+        assert isinstance(driver_cluster, mp.Interpreter)
 
-    def test_driver_has_cluster(self, driver_cluster):
-        """Test Driver exposes cluster spec."""
-        assert driver_cluster.cluster is not None
-        assert len(driver_cluster.cluster.nodes) == 2
+    def test_driver_has_simp_state(self, driver_cluster):
+        """Test driver has simp dialect state."""
+        state = driver_cluster.get_dialect_state("simp")
+        assert state is not None
+        assert hasattr(state, "world_size")
 
     def test_driver_context_manager(self, driver_cluster):
-        """Test Driver can be used as context manager."""
+        """Test Interpreter can be used as context manager."""
         with driver_cluster:
             pass  # Just verify it doesn't raise
 

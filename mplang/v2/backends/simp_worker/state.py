@@ -20,10 +20,11 @@ from typing import Any
 
 import mplang.v2.backends.field_impl  # noqa: F401
 import mplang.v2.backends.tensor_impl  # noqa: F401
+from mplang.v2.runtime.dialect_state import DialectState
 from mplang.v2.runtime.object_store import ObjectStore
 
 
-class SimpWorker:
+class SimpWorker(DialectState):
     """Worker state for SIMP execution.
 
     This state provides capabilities (Store, Communicator) to the Interpreter.

@@ -47,7 +47,6 @@ def _pcall_static_host_impl(
     interpreter: Any, op: Operation, *args: Any
 ) -> Any:
     """Driver implementation of pcall_static (SPMD dispatch)."""
-    from mplang.v2.edsl.typing import CustomType
 
     parties = op.attrs["parties"]
     fn_graph = op.regions[0]
@@ -68,7 +67,6 @@ def _pcall_static_host_impl(
         wrapper_inputs = []
         for original_in in fn_graph.inputs:
             new_in = Value(name=original_in.name, type=original_in.type)
-            new_in.provenance = None
             wrapper_graph.inputs.append(new_in)
             wrapper_inputs.append(new_in)
             wrapper_graph.values[new_in.name] = new_in
@@ -164,7 +162,6 @@ def _shuffle_static_host_impl(
     g = Graph()
     any_type = CustomType("Any")
     in_val = Value(name="shuffle_in", type=any_type)
-    in_val.provenance = None
     g.inputs.append(in_val)
 
     types = [any_type]
@@ -257,8 +254,10 @@ def _uniform_cond_host_impl(
                 future = state.fetch(val_idx, val)
                 val = future.result()
 
-        if isinstance(val, (TensorValue, InterpObject)):
-            val = val.data
+        if isinstance(val, TensorValue):
+            val = val.unwrap()
+        elif isinstance(val, InterpObject):
+            val = val.runtime_obj
 
         if isinstance(val, (jnp.ndarray, np.ndarray, np.generic)):
             val = val.item()
@@ -267,7 +266,7 @@ def _uniform_cond_host_impl(
 
     if val:
         if not hasattr(op, "regions") or len(op.regions) != 2:
-            raise ValueError(f"uniform_cond op expects 2 regions")
+            raise ValueError("uniform_cond op expects 2 regions")
         region = op.regions[0]
         return ctx.evaluate_graph(region, branch_inputs)
     else:

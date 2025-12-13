@@ -56,7 +56,7 @@ def _pcall_static_worker_impl(interpreter: Interpreter, op: Operation, *args: An
             if prev_parties is None:
                 del interpreter.current_parties  # type: ignore[attr-defined]
             else:
-                interpreter.current_parties = prev_parties
+                interpreter.current_parties = prev_parties  # type: ignore[attr-defined]
     else:
         if len(op.outputs) == 1:
             return None

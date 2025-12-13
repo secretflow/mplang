@@ -12,18 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Simp Worker package.
-
-Provides Worker-side state and ops for the simp dialect.
-"""
-
-from mplang.v2.backends.simp_worker.mem import LocalMesh, ThreadCommunicator
-from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
-from mplang.v2.backends.simp_worker.state import SimpWorker
-
-__all__ = [
-    "WORKER_HANDLERS",
-    "LocalMesh",
-    "SimpWorker",
-    "ThreadCommunicator",
-]
+"""Tests for simp_driver/ module."""

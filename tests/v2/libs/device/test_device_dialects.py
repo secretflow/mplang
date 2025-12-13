@@ -36,35 +36,13 @@ def extract_runtime_value(obj):
     In multi-party simulation, runtime_obj may be a HostVar containing
     values per party. This helper extracts the first non-None value.
     """
-    from mplang.v2 import get_current_context
+    from mplang.v2 import fetch, get_current_context
 
     interp = get_current_context()
+    val = fetch(interp, obj)
 
-    val = obj.runtime_obj
-
-    # Fetch if it's a HostVar or contains URIs
-    if hasattr(interp, "fetch"):
-        val = interp.fetch(val)
-    elif hasattr(interp, "context") and hasattr(interp.context, "fetch"):
-         # Simulate fetch logic for HostInterpreter which uses SimpClient
-         from mplang.v2.backends.simp_driver import HostVar
-         if isinstance(val, HostVar):
-             resolved = []
-             for r, v in enumerate(val.values):
-                 if isinstance(v, str) and "://" in v:
-                     resolved.append(interp.context.fetch(r, v).result())
-                 else:
-                     resolved.append(v)
-             val = HostVar(resolved)
-
-    # HostVar is used in simulation, it has .values attribute or supports indexing
-    if hasattr(val, "values"):
-        # HostVar case - iterate through values list
-        for v in val.values:
-            if v is not None:
-                return v
-    elif isinstance(val, (list, tuple)):
-        # Raw list case
+    # If result is a list (one per party), return first non-None
+    if isinstance(val, list):
         for v in val:
             if v is not None:
                 return v

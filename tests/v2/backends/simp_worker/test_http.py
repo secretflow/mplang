@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for HTTP backend implementation."""
+"""Tests for simp_worker/http.py and simp_driver/http.py (HTTP IPC)."""
 
 import logging
 import multiprocessing
@@ -80,6 +80,8 @@ def run_worker(rank, world_size, endpoints, port):
 
 @pytest.fixture(scope="module")
 def http_cluster():
+    from mplang.v2.libs.device import set_global_cluster
+
     world_size = 2
     base_port = 19300  # Changed to avoid port conflicts
     endpoints = [f"http://127.0.0.1:{base_port + i}" for i in range(world_size)]
@@ -121,17 +123,30 @@ def http_cluster():
     time.sleep(0.5)
     logging.info("All HTTP worker servers are ready")
 
-    # Create driver
-    # Note: mp.Driver.simple returns an Interpreter configured with HttpClient.
-    # To mimic original test which might expect specific driver behavior or just execution context.
-    # If the test instantiates SimpHttpDriver pointing to nodes, mp.Driver.simple does exactly that.
+    # Create cluster spec for device API
+    cluster_spec = mp.ClusterSpec.from_dict({
+        "nodes": [
+            {"name": f"node_{i}", "endpoint": endpoints[i]}
+            for i in range(world_size)
+        ],
+        "devices": {
+            "P0": {"kind": "PPU", "members": ["node_0"]},
+            "P1": {"kind": "PPU", "members": ["node_1"]},
+        },
+    })
+    set_global_cluster(cluster_spec)
 
-    driver = mp.Driver.simple(endpoints)
+    # Create driver using factory function
+    driver = simp.make_driver(endpoints, cluster_spec=cluster_spec)
 
     push_context(driver)
     yield driver
     pop_context()
-    driver.shutdown()
+
+    # Shutdown driver
+    state = driver.get_dialect_state("simp")
+    if hasattr(state, "shutdown"):
+        state.shutdown()
 
     for p in processes:
         try:
@@ -158,7 +173,7 @@ def _add_one(val):
 
 
 def test_http_e2e(http_cluster):
-    host = http_cluster
+    driver = http_cluster
 
     # Define computation
     def workflow():
@@ -182,10 +197,10 @@ def test_http_e2e(http_cluster):
         try:
             # Execute
             # Inputs are empty since we use constants
-            results = host.backend.evaluate_graph(graph, {})
+            results = driver.evaluate_graph(graph, {})
 
             # Fetch results
-            values = mp.fetch(host, results)
+            values = mp.fetch(driver, results)
             break
         except Exception as e:
             if attempt == max_retries - 1:

@@ -19,10 +19,13 @@ from __future__ import annotations
 import concurrent.futures
 import os
 import pathlib
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 from mplang.v2.backends.simp_driver.base import SimpDriver
-from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.backends.simp_worker import WORKER_HANDLERS, SimpWorker
+from mplang.v2.backends.simp_worker.mem import LocalMesh
+from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.v2.runtime.object_store import ObjectStore
 
 if TYPE_CHECKING:
@@ -53,10 +56,6 @@ class MemCluster:
             cluster_spec: Optional cluster specification for metadata.
             enable_tracing: If True, enable execution tracing.
         """
-        from mplang.v2.backends.simp_worker import WORKER_HANDLERS, SimpWorker
-        from mplang.v2.backends.simp_worker.mem import LocalMesh
-        from mplang.v2.runtime.interpreter import ExecutionTracer
-
         self._world_size = world_size
         self._cluster_spec = cluster_spec
 
@@ -88,13 +87,14 @@ class MemCluster:
                 store=store,
             )
 
+            w_handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
             w_interp = Interpreter(
                 name=f"Worker-{rank}",
                 tracer=self.tracer,
                 trace_pid=rank,
                 store=store,
                 root_dir=worker_root,
-                handlers={**WORKER_HANDLERS},
+                handlers=w_handlers,
             )
             w_interp.set_dialect_state("simp", worker_state)
 
@@ -159,8 +159,11 @@ class SimpMemDriver(SimpDriver):
         self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Future[Any]:
         """Submit execution to local worker thread."""
-        return self._mesh.executor.submit(
-            self._run_worker, rank, graph, inputs, job_id=job_id
+        return cast(
+            "Future[Any]",
+            self._mesh.executor.submit(
+                self._run_worker, rank, graph, inputs, job_id=job_id
+            ),
         )
 
     def collect(self, futures: list[Future[Any]]) -> list[Any]:
@@ -180,15 +183,15 @@ class SimpMemDriver(SimpDriver):
     def fetch(self, rank: int, uri: str) -> Future[Any]:
         """Fetch directly from worker store."""
         worker = self._workers[rank]
-        worker_ctx = worker.get_dialect_state("simp")
-        return self._mesh.executor.submit(lambda: worker_ctx.store.get(uri))
+        worker_ctx = cast(SimpWorker, worker.get_dialect_state("simp"))
+        return self._mesh.executor.submit(lambda: worker_ctx.store.get(uri))  # type: ignore[no-any-return]
 
     def _run_worker(
         self, rank: int, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> Any:
         """Execute on worker interpreter."""
         worker_interp = self._workers[rank]
-        worker_ctx = worker_interp.get_dialect_state("simp")
+        worker_ctx = cast(SimpWorker, worker_interp.get_dialect_state("simp"))
 
         # Resolve URI inputs
         resolved_inputs = []
@@ -250,10 +253,11 @@ def make_simulator(
     )
     state = cluster.create_state()
 
+    handlers: dict[str, Callable[..., Any]] = {**HOST_HANDLERS}  # type: ignore[dict-item]
     interp = Interpreter(
         name="HostInterpreter",
         root_dir=cluster.host_root,
-        handlers={**HOST_HANDLERS},
+        handlers=handlers,
         tracer=cluster.tracer,
     )
     interp.set_dialect_state("simp", state)

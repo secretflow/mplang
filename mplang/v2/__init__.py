@@ -22,13 +22,8 @@ Public API is designed to be compatible with mplang v1 where possible.
 
 from __future__ import annotations
 
-import os
-import pathlib
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from typing import Self
+from typing import Any
 
 __version__ = "0.1.0"
 
@@ -44,9 +39,9 @@ __version__ = "0.1.0"
 import mplang.v2.backends.func_impl  # Register func handlers
 from mplang.v2 import dialects
 from mplang.v2.backends.simp_driver.ops import HOST_HANDLERS
-from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
-from mplang.v2.backends.simp_worker.mem import LocalMesh
 from mplang.v2.backends.simp_worker import SimpWorker
+from mplang.v2.backends.simp_worker.mem import LocalMesh
+from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
 from mplang.v2.edsl import (
     Graph,
     GraphPrinter,
@@ -66,10 +61,6 @@ from mplang.v2.edsl import (
     register_default_context_factory,
     trace,
 )
-from mplang.v2.runtime.interpreter import Interpreter, interpret
-
-# Register Interpreter as default context factory
-register_default_context_factory(Interpreter)
 
 # Type system
 from mplang.v2.edsl.typing import (
@@ -97,6 +88,7 @@ from mplang.v2.libs.device import (
     set_dev_attr,
     set_global_cluster,
 )
+from mplang.v2.runtime.interpreter import Interpreter, interpret
 
 
 def evaluate(
@@ -140,6 +132,9 @@ def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> A
 
     This version handles fetching specific parties from HostVars.
     """
+    from typing import cast
+
+    from mplang.v2.backends.simp_driver.base import SimpDriver
     from mplang.v2.backends.simp_driver.values import HostVar
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue
@@ -158,7 +153,7 @@ def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> A
         result = result.runtime_obj
 
     # Get simp state for fetching
-    simp_state = interp.get_dialect_state("simp")
+    simp_state = cast(SimpDriver | None, interp.get_dialect_state("simp"))
     cluster_spec = getattr(interp, "_cluster_spec", None)
 
     # Fetch from HostVar
@@ -182,7 +177,12 @@ def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> A
                     party = device_info.members[0].rank
                 else:
                     raise ValueError(f"Unknown party: {party}")
-            return _unwrap_value(resolved_values[party])
+            else:
+                # Default logic for int
+                pass
+
+            p_idx = cast(int, party)
+            return _unwrap_value(resolved_values[p_idx])  # type: ignore[no-any-return]
         return [_unwrap_value(v) for v in resolved_values]
 
     # Unwrap Value types to get the underlying data
@@ -204,55 +204,105 @@ def compile(
 
 
 # =============================================================================
+# Simulator and Driver API (high-level wrappers)
+# =============================================================================
+class Simulator:
+    """High-level API for local SIMP simulation."""
+
+    def __init__(self, cluster_spec: ClusterSpec | None = None, enable_tracing: bool = False):
+        from mplang.v2.dialects import simp
+
+        # Use 2 as default world size if no spec provided
+        world_size = cluster_spec.world_size if cluster_spec is not None else 2
+        self.backend = simp.make_simulator(world_size, cluster_spec=cluster_spec, enable_tracing=enable_tracing)
+        self._simp_cluster = getattr(self.backend, "_simp_cluster", None)
+
+    @classmethod
+    def simple(cls, world_size: int) -> Simulator:
+        cluster_spec = ClusterSpec.simple(world_size)
+        return cls(cluster_spec)
+
+    def shutdown(self) -> None:
+        if self._simp_cluster:
+            self._simp_cluster.shutdown()
+
+
+class Driver:
+    """High-level API for remote SIMP execution via HTTP."""
+
+    def __init__(self, endpoints: list[str], *, cluster_spec: ClusterSpec | None = None):
+        from mplang.v2.dialects import simp
+
+        self.backend = simp.make_driver(endpoints, cluster_spec=cluster_spec)
+
+    @classmethod
+    def simple(cls, endpoints: list[str]) -> Driver:
+        cluster_spec = ClusterSpec.simple(world_size=len(endpoints), endpoints=endpoints)
+        return cls(endpoints, cluster_spec=cluster_spec)
+
+    def shutdown(self) -> None:
+        state = self.backend.get_dialect_state("simp")
+        if hasattr(state, "shutdown"):
+            state.shutdown()
+
+
+# =============================================================================
 # Public API
 # =============================================================================
-__all__ = [
+__all__ = [  # noqa: RUF022
+    # Version
+    "__version__",
     # Device API
     "ClusterSpec",
     "Device",
+    "Node",
+    "device",
+    "get_dev_attr",
+    "get_global_cluster",
+    "is_device_obj",
+    "jax_fn",
+    "put",
+    "set_dev_attr",
+    "set_global_cluster",
     # Core EDSL
     "Graph",
     "GraphPrinter",
-    "Interpreter",
-    # Type system
-    "MPType",
-    "Node",
     "Object",
     "Operation",
     "Primitive",
-    "SSType",
-    "ScalarType",
-    # Runtime
-    "TableType",
-    "TensorType",
     "TracedFunction",
     "Tracer",
     "Value",
-    "VectorType",
-    # Version
-    "__version__",
     "compile",
-    "device",
-    # Dialects
-    "dialects",
     "evaluate",
     "fetch",
     "format_graph",
     "function",
     "get_current_context",
     "get_default_context",
-    "get_dev_attr",
-    "get_global_cluster",
     "interpret",
-    "is_device_obj",
-    "jax_fn",
     "jit",
     "mplang",
     "pop_context",
     "primitive",
     "push_context",
-    "put",
-    "set_dev_attr",
-    "set_global_cluster",
     "trace",
+    # Type system
+    "MPType",
+    "ScalarType",
+    "SSType",
+    "TableType",
+    "TensorType",
+    "VectorType",
+    # Backend / Runtime
+    "HOST_HANDLERS",
+    "Interpreter",
+    "LocalMesh",
+    "SimpWorker",
+    "WORKER_HANDLERS",
+    # Dialects
+    "dialects", "register_default_context_factory",
 ]
+
+# Register Interpreter as default context factory
+register_default_context_factory(Interpreter)

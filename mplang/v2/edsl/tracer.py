@@ -303,7 +303,7 @@ class Tracer(Context):
 
         with self:
             # Helper to lift params, allowing BaseType as placeholders
-            def lift_param(obj):
+            def lift_param(obj: Any) -> Any:
                 if isinstance(obj, Object):
                     return self.lift(obj, is_param=True)
                 return obj

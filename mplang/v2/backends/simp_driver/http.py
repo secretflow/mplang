@@ -147,10 +147,12 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Interprete
 
     state = SimpHttpDriver(endpoints, cluster_spec=cluster_spec)
 
+    from collections.abc import Callable
+    handlers: dict[str, Callable[..., Any]] = {**HOST_HANDLERS}  # type: ignore[dict-item]
     interp = Interpreter(
         name="DriverInterpreter",
         root_dir=state.driver_root,
-        handlers={**HOST_HANDLERS},
+        handlers=handlers,
     )
     interp.set_dialect_state("simp", state)
     interp._cluster_spec = cluster_spec  # type: ignore[attr-defined]

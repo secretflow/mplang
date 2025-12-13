@@ -39,6 +39,7 @@ from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.registry import get_impl
 from mplang.v2.edsl.typing import BaseType
+from mplang.v2.runtime.dialect_state import DialectState
 from mplang.v2.runtime.object_store import ObjectStore
 
 if TYPE_CHECKING:
@@ -332,7 +333,6 @@ class Interpreter(AbstractInterpreter):
         store: ObjectStore | None = None,
         root_dir: str | pathlib.Path | None = None,
         handlers: dict[str, Callable[..., Any]] | None = None,
-        context: Any = None,
     ) -> None:
         # Persistence Root
         self.root_dir = (
@@ -345,12 +345,8 @@ class Interpreter(AbstractInterpreter):
         self.handlers: dict[str, Callable] = handlers or {}
         self.tracer = tracer
 
-        # Opaque context object (e.g. Runtime/Driver/Simulator) providing capabilities
-        # DEPRECATED: Use get_dialect_state() instead for typed access
-        self.context = context
-
         # Dialect states (typed runtime state for stateful dialects)
-        self._dialect_states: dict[str, Any] = {}
+        self._dialect_states: dict[str, DialectState] = {}
 
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
@@ -375,7 +371,7 @@ class Interpreter(AbstractInterpreter):
     # =========================================================================
     # Dialect State Management
     # =========================================================================
-    def get_dialect_state(self, dialect: str) -> Any:
+    def get_dialect_state(self, dialect: str) -> DialectState | None:
         """Get the state object for a specific dialect.
 
         Args:
@@ -391,7 +387,7 @@ class Interpreter(AbstractInterpreter):
         """
         return self._dialect_states.get(dialect)
 
-    def set_dialect_state(self, dialect: str, state: Any) -> None:
+    def set_dialect_state(self, dialect: str, state: DialectState) -> None:
         """Set the state object for a specific dialect.
 
         Args:
@@ -402,9 +398,6 @@ class Interpreter(AbstractInterpreter):
             interpreter.set_dialect_state("simp", cluster.connect())
         """
         self._dialect_states[dialect] = state
-        # Also set as context for backward compatibility
-        if self.context is None:
-            self.context = state
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]

@@ -20,7 +20,7 @@ runtime state that is attached to an Interpreter instance.
 Usage:
     # Attach state to interpreter
     interpreter.set_dialect_state("simp", simp_state)
-    
+
     # Retrieve in kernel
     state = interpreter.get_dialect_state("simp")
 """

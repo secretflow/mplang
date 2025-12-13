@@ -251,7 +251,7 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
     # Get global rank from interpreter or its context
     # Use SimpWorker if available
-    context = getattr(interpreter, "context", None)
+    context = interpreter.get_dialect_state("simp")
     if isinstance(context, SimpWorker):
         global_rank = context.rank
     else:
@@ -279,7 +279,7 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         interpreter, "spu_endpoints", None
     )
     if spu_endpoints_map is None:
-        context = getattr(interpreter, "context", None)
+        context = interpreter.get_dialect_state("simp")
         if context is not None:
             spu_endpoints_map = getattr(context, "spu_endpoints", None)
 

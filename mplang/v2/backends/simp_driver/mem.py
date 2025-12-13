@@ -240,7 +240,7 @@ def make_simulator(
         >>> with interp:
         ...     result = my_func()
     """
-    from mplang.v2.backends.simp_driver.ops import HOST_HANDLERS
+    from mplang.v2.backends.simp_driver.ops import DRIVER_HANDLERS
 
     if cluster_spec is None:
         from mplang.v2.libs.device import ClusterSpec
@@ -253,7 +253,7 @@ def make_simulator(
     )
     state = cluster.create_state()
 
-    handlers: dict[str, Callable[..., Any]] = {**HOST_HANDLERS}  # type: ignore[dict-item]
+    handlers: dict[str, Callable[..., Any]] = {**DRIVER_HANDLERS}  # type: ignore[dict-item]
     interp = Interpreter(
         name="HostInterpreter",
         root_dir=cluster.host_root,

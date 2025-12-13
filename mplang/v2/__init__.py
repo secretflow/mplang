@@ -38,7 +38,7 @@ __version__ = "0.1.0"
 # =============================================================================
 import mplang.v2.backends.func_impl  # Register func handlers
 from mplang.v2 import dialects
-from mplang.v2.backends.simp_driver.ops import HOST_HANDLERS
+from mplang.v2.backends.simp_driver.ops import DRIVER_HANDLERS
 from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.simp_worker.mem import LocalMesh
 from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
@@ -131,12 +131,12 @@ def evaluate(
 def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> Any:
     """Fetch the result from the interpreter.
 
-    This version handles fetching specific parties from HostVars.
+    This version handles fetching specific parties from DriverVars.
     """
     from typing import cast
 
     from mplang.v2.backends.simp_driver.base import SimpDriver
-    from mplang.v2.backends.simp_driver.values import HostVar
+    from mplang.v2.backends.simp_driver.values import DriverVar
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue
     from mplang.v2.runtime.interpreter import InterpObject
@@ -157,8 +157,8 @@ def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> A
     simp_state = cast(SimpDriver | None, interp.get_dialect_state("simp"))
     cluster_spec = getattr(interp, "_cluster_spec", None)
 
-    # Fetch from HostVar
-    if isinstance(result, HostVar):
+    # Fetch from DriverVar
+    if isinstance(result, DriverVar):
         resolved_values = []
         for rank, val in enumerate(result.values):
             if isinstance(val, str) and "://" in val:
@@ -253,7 +253,7 @@ __all__ = [  # noqa: RUF022
     "TensorType",
     "VectorType",
     # Backend / Runtime
-    "HOST_HANDLERS",
+    "DRIVER_HANDLERS",
     "Interpreter",
     "LocalMesh",
     "SimpWorker",

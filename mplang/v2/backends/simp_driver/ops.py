@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Simp Driver ops (HOST_HANDLERS).
+"""Simp Driver ops (DRIVER_HANDLERS).
 
 Unified SPMD dispatch pattern for all SIMP operations.
-All ops: wrap → dispatch to ALL workers → collect HostVar(s).
+All ops: wrap → dispatch to ALL workers → collect DriverVar(s).
 Op-specific logic lives in Worker handlers (simp_worker/ops.py).
 """
 
@@ -23,13 +23,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from mplang.v2.backends.simp_driver.values import HostVar
+from mplang.v2.backends.simp_driver.values import DriverVar
 from mplang.v2.dialects import simp
 from mplang.v2.edsl.graph import Graph, Operation
 from mplang.v2.edsl.typing import CustomType
 
 
-def _get_host_context(interpreter: Any) -> Any:
+def _get_driver_context(interpreter: Any) -> Any:
     """Get the simp driver state from interpreter."""
     state = interpreter.get_dialect_state("simp")
     if state is None:
@@ -65,7 +65,7 @@ def _wrap_op_as_graph(op: Operation) -> Graph:
 
 
 def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) -> Any:
-    """Collect worker results into HostVar(s).
+    """Collect worker results into DriverVar(s).
     
     Args:
         results: List of results from each worker (length = world_size)
@@ -73,18 +73,18 @@ def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) 
         world_size: Total number of workers
     
     Returns:
-        Single HostVar if num_outputs == 1, else list of HostVars
+        Single DriverVar if num_outputs == 1, else list of DriverVars
     """
     if num_outputs == 0:
         return None
     
     if num_outputs == 1:
-        return HostVar(results)
+        return DriverVar(results)
     
     # Multiple outputs: transpose [worker][output] -> [output][worker]
     transposed = []
     for i in range(num_outputs):
-        transposed.append(HostVar([
+        transposed.append(DriverVar([
             res[i] if res is not None else None
             for res in results
         ]))
@@ -92,13 +92,13 @@ def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) 
 
 
 def _generic_simp_dispatch(interpreter: Any, op: Operation, *args: Any) -> Any:
-    """Unified SIMP dispatch: wrap op, SPMD submit, collect HostVar(s).
+    """Unified SIMP dispatch: wrap op, SPMD submit, collect DriverVar(s).
     
-    This is the ONLY host handler needed for all SIMP ops.
+    This is the ONLY driver handler needed for all SIMP ops.
     Worker handlers implement the actual op-specific logic.
     """
-    host = _get_host_context(interpreter)
-    world_size = host.world_size
+    driver = _get_driver_context(interpreter)
+    world_size = driver.world_size
     
     # 1. Wrap operation into a Graph
     wrapper_graph = _wrap_op_as_graph(op)
@@ -106,17 +106,17 @@ def _generic_simp_dispatch(interpreter: Any, op: Operation, *args: Any) -> Any:
     # 2. SPMD dispatch to ALL workers
     futures = []
     for rank in range(world_size):
-        # Extract per-party inputs from HostVars
+        # Extract per-party inputs from DriverVars
         party_inputs = [
-            arg[rank] if isinstance(arg, HostVar) else arg
+            arg[rank] if isinstance(arg, DriverVar) else arg
             for arg in args
         ]
-        futures.append(host.submit(rank, wrapper_graph, party_inputs))
+        futures.append(driver.submit(rank, wrapper_graph, party_inputs))
     
     # 3. Collect results
-    results = host.collect(futures)
+    results = driver.collect(futures)
     
-    # 4. Assemble into HostVar(s)
+    # 4. Assemble into DriverVar(s)
     num_outputs = len(op.outputs) if op.outputs else 1
     return _collect_to_hostvars(results, num_outputs, world_size)
 
@@ -125,7 +125,7 @@ def _generic_simp_dispatch(interpreter: Any, op: Operation, *args: Any) -> Any:
 # All SIMP ops use unified dispatch
 # =============================================================================
 
-HOST_HANDLERS = {
+DRIVER_HANDLERS = {
     simp.pcall_static_p.name: _generic_simp_dispatch,
     simp.pcall_dynamic_p.name: _generic_simp_dispatch,
     simp.shuffle_static_p.name: _generic_simp_dispatch,

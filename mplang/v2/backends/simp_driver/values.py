@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Simp Host values (HostVar)."""
+"""Simp Driver values (DriverVar)."""
 
 from __future__ import annotations
 
@@ -23,13 +23,13 @@ from mplang.v2.runtime.value import Value
 
 
 @serde.register_class
-class HostVar(Value):
-    """A value replicated (or sharded) on the Host.
+class DriverVar(Value):
+    """A value replicated (or sharded) on the Driver.
 
-    A HostVar holds a list of values, one for each party in the computation.
+    A DriverVar holds a list of values, one for each party in the computation.
     """
 
-    _serde_kind: ClassVar[str] = "simp.HostVar"
+    _serde_kind: ClassVar[str] = "simp.DriverVar"
 
     def __init__(self, values: list[Any]):
         self.values = values
@@ -39,7 +39,7 @@ class HostVar(Value):
         return len(self.values)
 
     def __repr__(self) -> str:
-        return f"HostVar({self.values})"
+        return f"DriverVar({self.values})"
 
     def __getitem__(self, idx: int) -> Any:
         return self.values[idx]

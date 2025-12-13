@@ -33,7 +33,7 @@ from mplang.v2.libs.device import device, get_dev_attr, put
 def extract_runtime_value(obj):
     """Extract runtime value from Object.
 
-    In multi-party simulation, runtime_obj may be a HostVar containing
+    In multi-party simulation, runtime_obj may be a DriverVar containing
     values per party. This helper extracts the first non-None value.
     """
     from mplang.v2 import fetch, get_current_context

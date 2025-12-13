@@ -14,7 +14,7 @@
 
 import mplang.v2 as mp
 from mplang.v2.dialects import simp
-from mplang.v2.backends.simp_driver import HostVar
+from mplang.v2.backends.simp_driver import DriverVar
 
 
 def test_object_store_put_get():
@@ -46,14 +46,14 @@ def test_object_store_put_get():
 
 
 def test_object_store_host_var_storage(tmp_path):
-    """Test storing HostVar."""
+    """Test storing DriverVar."""
     from mplang.v2.runtime.object_store import ObjectStore
     store = ObjectStore(fs_root=tmp_path)
-    hv = HostVar([1, 2, 3])
+    hv = DriverVar([1, 2, 3])
     uri = store.put(hv)
     
     hv_out = store.get(uri)
-    assert isinstance(hv_out, HostVar)
+    assert isinstance(hv_out, DriverVar)
     assert hv_out.values == hv.values
 
 
@@ -72,8 +72,8 @@ def test_simulator_object_store_flow():
     assert isinstance(uri_x0, str) and "://" in uri_x0
     assert isinstance(uri_x1, str) and "://" in uri_x1
     
-    # 3. Create HostVar
-    x_var = HostVar([uri_x0, uri_x1])
+    # 3. Create DriverVar
+    x_var = DriverVar([uri_x0, uri_x1])
     assert len(x_var.values) == 2
     
     # 4. Verify data can be retrieved via store.get

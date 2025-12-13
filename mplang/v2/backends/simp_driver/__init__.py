@@ -25,12 +25,12 @@ from mplang.v2.backends.simp_driver.mem import (
     SimpMemDriver,
     make_simulator,
 )
-from mplang.v2.backends.simp_driver.ops import HOST_HANDLERS
-from mplang.v2.backends.simp_driver.values import HostVar
+from mplang.v2.backends.simp_driver.ops import DRIVER_HANDLERS
+from mplang.v2.backends.simp_driver.values import DriverVar
 
 __all__ = [
-    "HOST_HANDLERS",
-    "HostVar",
+    "DRIVER_HANDLERS",
+    "DriverVar",
     "LocalCluster",
     "MemCluster",
     "SimpDriver",

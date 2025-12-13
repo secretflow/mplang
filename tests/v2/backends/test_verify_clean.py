@@ -1,7 +1,7 @@
 
 import pytest
 import mplang.v2 as mp
-from mplang.v2.backends.simp_driver import HostVar
+from mplang.v2.backends.simp_driver import DriverVar
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.dialects import simp, tensor
 import mplang.v2.edsl.typing as elt
@@ -22,10 +22,10 @@ def test_object_store_put_get():
     hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 def test_object_store_host_var_storage(tmp_path):
-    """Test storing HostVar."""
+    """Test storing DriverVar."""
     from mplang.v2.runtime.object_store import ObjectStore
     store = ObjectStore(fs_root=tmp_path)
-    hv = HostVar([1, 2, 3])
+    hv = DriverVar([1, 2, 3])
     # Let it generate URI
     uri = store.put(hv)
     val = store.get(uri)
@@ -39,7 +39,7 @@ def test_simulator_object_store_flow():
 
     uri_x0 = workers[0].store.put(10)
     uri_x1 = workers[1].store.put(20)
-    x_var = HostVar([uri_x0, uri_x1])
+    x_var = DriverVar([uri_x0, uri_x1])
 
     # Wrap in InterpObject for tracing
     from mplang.v2.runtime.interpreter import InterpObject
@@ -58,7 +58,7 @@ def test_simulator_object_store_flow():
     graph = mp.trace(fn, x_interp).graph
     y_var = sim.evaluate_graph(graph, [x_var])
 
-    assert isinstance(y_var, HostVar)
+    assert isinstance(y_var, DriverVar)
     assert len(y_var.values) == 2
     assert isinstance(y_var.values[0], str) and "://" in y_var.values[0]
     
@@ -73,7 +73,7 @@ def test_uniform_cond_clean():
     sim = simp.make_simulator(world_size=2)
     
     with sim:
-        # Check if pcall_static handling returns HostVar
+        # Check if pcall_static handling returns DriverVar
         # Manually invoke pcall_static first
         res_pcall = simp.pcall_static((0, 1), lambda: tensor.constant(True))
 

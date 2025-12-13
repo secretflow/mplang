@@ -22,7 +22,7 @@ import pytest
 # Register runtimes
 import mplang.v2.backends.tensor_impl  # noqa: F401
 import mplang.v2 as mp
-from mplang.v2.backends.simp_driver import HostVar
+from mplang.v2.backends.simp_driver import DriverVar
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.dialects.simp import pcall_static, uniform_cond
@@ -65,7 +65,7 @@ def test_pcall_static():
     # Create interpreter
     sim = simp.make_simulator(world_size=3)
 
-    # Create inputs (HostVars)
+    # Create inputs (DriverVars)
     # World size 3
 
     # Call pcall_static
@@ -83,9 +83,9 @@ def test_pcall_static():
         res = pcall_static((0, 1, 2), my_func, x_obj, y_obj)
 
     assert isinstance(res, InterpObject)
-    assert isinstance(res.runtime_obj, HostVar)
+    assert isinstance(res.runtime_obj, DriverVar)
     # Note: run_jax returns numpy arrays (or jax arrays), so we compare values
-    # HostVar holds list of values.
+    # DriverVar holds list of values.
     # 1+10=11, 2+20=22, 3+30=33
     values = mp.fetch(sim, res)
     assert _unwrap_values(values) == [11, 22, 33]

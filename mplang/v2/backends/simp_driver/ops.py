@@ -41,13 +41,13 @@ def _wrap_op_as_graph(op: Operation) -> Graph:
     """Wrap an Operation into a single-op Graph for worker submission."""
     g = Graph()
     any_type = CustomType("Any")
-    
+
     # Create graph inputs
     graph_inputs = [g.add_input(f"in_{i}", any_type) for i in range(len(op.inputs))]
-    
+
     # Determine output types
     output_types = [out.type for out in op.outputs] if op.outputs else [any_type]
-    
+
     # Add the operation (this handles outputs and value registration)
     g.add_op(
         opcode=op.opcode,
@@ -56,66 +56,64 @@ def _wrap_op_as_graph(op: Operation) -> Graph:
         attrs=op.attrs.copy(),
         regions=op.regions,
     )
-    
+
     # Mark outputs
     for v in g.operations[-1].outputs:
         g.add_output(v)
-    
+
     return g
 
 
 def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) -> Any:
     """Collect worker results into DriverVar(s).
-    
+
     Args:
         results: List of results from each worker (length = world_size)
         num_outputs: Number of outputs per worker
         world_size: Total number of workers
-    
+
     Returns:
         Single DriverVar if num_outputs == 1, else list of DriverVars
     """
     if num_outputs == 0:
         return None
-    
+
     if num_outputs == 1:
         return DriverVar(results)
-    
+
     # Multiple outputs: transpose [worker][output] -> [output][worker]
     transposed = []
     for i in range(num_outputs):
-        transposed.append(DriverVar([
-            res[i] if res is not None else None
-            for res in results
-        ]))
+        transposed.append(
+            DriverVar([res[i] if res is not None else None for res in results])
+        )
     return transposed
 
 
 def _generic_simp_dispatch(interpreter: Any, op: Operation, *args: Any) -> Any:
     """Unified SIMP dispatch: wrap op, SPMD submit, collect DriverVar(s).
-    
+
     This is the ONLY driver handler needed for all SIMP ops.
     Worker handlers implement the actual op-specific logic.
     """
     driver = _get_driver_context(interpreter)
     world_size = driver.world_size
-    
+
     # 1. Wrap operation into a Graph
     wrapper_graph = _wrap_op_as_graph(op)
-    
+
     # 2. SPMD dispatch to ALL workers
     futures = []
     for rank in range(world_size):
         # Extract per-party inputs from DriverVars
         party_inputs = [
-            arg[rank] if isinstance(arg, DriverVar) else arg
-            for arg in args
+            arg[rank] if isinstance(arg, DriverVar) else arg for arg in args
         ]
         futures.append(driver.submit(rank, wrapper_graph, party_inputs))
-    
+
     # 3. Collect results
     results = driver.collect(futures)
-    
+
     # 4. Assemble into DriverVar(s)
     num_outputs = len(op.outputs) if op.outputs else 1
     return _collect_to_hostvars(results, num_outputs, world_size)

@@ -18,9 +18,9 @@ import numpy as np
 import pytest
 
 import mplang.v2.edsl as el
-from mplang.v2.runtime.interpreter import InterpObject
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.simp import converge, shuffle_dynamic, shuffle_static
+from mplang.v2.runtime.interpreter import InterpObject
 
 pytestmark = pytest.mark.usefixtures("simp_simulator_default")
 
@@ -30,12 +30,8 @@ class TestPshfl:
 
     def test_pshfl_creates_dynamic_mask(self):
         """Test that shuffle_dynamic output has dynamic mask (parties=None)."""
-        src = InterpObject(
-            np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
-        )
-        index = InterpObject(
-            np.array(0), elt.MPType[elt.Tensor[elt.i32, ()], (0, 1)]
-        )
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
+        index = InterpObject(np.array(0), elt.MPType[elt.Tensor[elt.i32, ()], (0, 1)])
 
         traced = el.trace(lambda s, i: shuffle_dynamic(s, i), src, index)
 
@@ -77,9 +73,7 @@ class TestPshflS:
 
     def test_pshfl_s_creates_static_mask(self):
         """Test that shuffle_static output has static mask."""
-        src = InterpObject(
-            np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
-        )
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
 
         traced = el.trace(lambda s: shuffle_static(s, routing={0: 1}), src)
 
@@ -98,9 +92,7 @@ class TestPshflS:
 
     def test_pshfl_s_requires_nonempty_routing(self):
         """Test that shuffle_static raises ValueError for empty routing."""
-        src = InterpObject(
-            np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
-        )
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
 
         with pytest.raises(
             ValueError, match="shuffle_static requires non-empty routing dict"
@@ -109,18 +101,14 @@ class TestPshflS:
 
     def test_pshfl_s_requires_dict_routing(self):
         """Test that shuffle_static raises TypeError for non-dict routing."""
-        src = InterpObject(
-            np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
-        )
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
 
         with pytest.raises(TypeError, match="shuffle_static requires routing dict"):
             el.trace(lambda s: shuffle_static(s, routing=[1]), src)
 
     def test_pshfl_s_validates_src_ranks_in_src_parties(self):
         """Test that shuffle_static raises ValueError when source not in src.parties."""
-        src = InterpObject(
-            np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)]
-        )
+        src = InterpObject(np.array(1.0), elt.MPType[elt.Tensor[elt.f32, ()], (0, 1)])
 
         with pytest.raises(ValueError, match=r"routing\[0\]=2 not in src\.parties"):
             el.trace(lambda s: shuffle_static(s, routing={0: 2}), src)

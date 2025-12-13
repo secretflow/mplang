@@ -15,8 +15,7 @@
 import numpy as np
 
 import mplang.v2 as mp
-from mplang.v2.dialects import simp
-from mplang.v2.dialects import field, tensor
+from mplang.v2.dialects import field, simp, tensor
 
 
 def test_field_mul_integration():

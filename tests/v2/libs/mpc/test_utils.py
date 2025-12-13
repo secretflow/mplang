@@ -22,11 +22,10 @@ from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc import _utils as utils
 
 
-
 def run_protocol(sim, protocol_fn):
     """Helper to trace and run a protocol."""
     traced = trace(protocol_fn)
-    # Simulator doesn't have evaluate_graph directly on it in v2 API wrapper, 
+    # Simulator doesn't have evaluate_graph directly on it in v2 API wrapper,
     # but backend (Interpreter) does. However we should use public API.
     return mp.evaluate(sim, traced)
 

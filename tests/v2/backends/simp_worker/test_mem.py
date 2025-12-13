@@ -16,13 +16,11 @@
 
 import threading
 import time
-from unittest.mock import MagicMock
 
 import pytest
 
 from mplang.v2.backends.simp_driver import DriverVar
 from mplang.v2.backends.simp_worker.mem import ThreadCommunicator
-from mplang.v2.edsl.graph import Operation
 
 
 def test_thread_communicator_send_recv():
@@ -102,6 +100,3 @@ def test_host_var():
     assert hv[1] == 20
     assert hv[2] == 30
     assert repr(hv) == f"DriverVar({values})"
-
-
-

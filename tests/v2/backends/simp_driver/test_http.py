@@ -21,7 +21,7 @@ import pytest
 
 import mplang.v2 as mp
 from mplang.v2.dialects import simp
-from mplang.v2.edsl.context import push_context, pop_context
+from mplang.v2.edsl.context import pop_context, push_context
 from mplang.v2.libs.device import set_global_cluster
 
 
@@ -61,7 +61,9 @@ def driver_cluster():
     if dead_procs:
         for p in processes:
             p.terminate()
-        raise RuntimeError(f"Failed to start workers. Dead processes: {len(dead_procs)}")
+        raise RuntimeError(
+            f"Failed to start workers. Dead processes: {len(dead_procs)}"
+        )
 
     # Create cluster spec
     cluster_spec = mp.ClusterSpec.from_dict({
@@ -98,7 +100,6 @@ def driver_cluster():
         p.terminate()
     for p in processes:
         p.join(timeout=2)
-
 
 
 class TestDriverBasic:

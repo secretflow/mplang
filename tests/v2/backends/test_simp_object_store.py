@@ -12,30 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import mplang.v2 as mp
-from mplang.v2.dialects import simp
 from mplang.v2.backends.simp_driver import DriverVar
+from mplang.v2.dialects import simp
 
 
 def test_object_store_put_get():
     """Test ObjectStore put and get."""
     sim = simp.make_simulator(world_size=2)
-    
+
     # Access workers via exposed client_ctx
     workers = sim._simp_cluster.workers
     worker0 = workers[0]
     store0 = worker0.store
-    
+
     key = "test_key"
     data = "test_data"
-    
+
     # Fixed put usage
     uri_0 = f"mem://{key}"
     store0.put(data, uri_0)
-    
+
     val = store0.get(uri_0)
     assert val == data
-    
+
     # Store with generated URI
     uri_gen = store0.put("some_data")
     assert "mem://" in uri_gen
@@ -48,10 +47,11 @@ def test_object_store_put_get():
 def test_object_store_host_var_storage(tmp_path):
     """Test storing DriverVar."""
     from mplang.v2.runtime.object_store import ObjectStore
+
     store = ObjectStore(fs_root=tmp_path)
     hv = DriverVar([1, 2, 3])
     uri = store.put(hv)
-    
+
     hv_out = store.get(uri)
     assert isinstance(hv_out, DriverVar)
     assert hv_out.values == hv.values
@@ -67,19 +67,19 @@ def test_simulator_object_store_flow():
     data_0, data_1 = 10, 20
     uri_x0 = workers[0].store.put(data_0)
     uri_x1 = workers[1].store.put(data_1)
-    
+
     # 2. Verify URIs are valid format
     assert isinstance(uri_x0, str) and "://" in uri_x0
     assert isinstance(uri_x1, str) and "://" in uri_x1
-    
+
     # 3. Create DriverVar
     x_var = DriverVar([uri_x0, uri_x1])
     assert len(x_var.values) == 2
-    
+
     # 4. Verify data can be retrieved via store.get
     assert workers[0].store.get(uri_x0) == data_0
     assert workers[1].store.get(uri_x1) == data_1
-    
+
     # 5. Verify fetch via simp state
     fetched_0 = simp_state.fetch(0, uri_x0).result()
     fetched_1 = simp_state.fetch(1, uri_x1).result()

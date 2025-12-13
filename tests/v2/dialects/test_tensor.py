@@ -17,9 +17,9 @@
 import numpy as np
 
 import mplang.v2.edsl as el
-from mplang.v2.runtime.interpreter import InterpObject
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.tensor import elementwise, reshape, run_jax, transpose
+from mplang.v2.runtime.interpreter import InterpObject
 
 
 def _add_fn(x):

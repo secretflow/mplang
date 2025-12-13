@@ -42,6 +42,7 @@ import os
 import jax
 import jax.numpy as jnp
 import pandas as pd
+
 import mplang.v2 as mp
 from mplang.v2.dialects import table
 from mplang.v2.edsl.typing import TableType, f64, i64

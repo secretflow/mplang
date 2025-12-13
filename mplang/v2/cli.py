@@ -323,7 +323,7 @@ def parse_spu_endpoints(
 
 def cmd_run(args: argparse.Namespace) -> None:
     """Run a user job via HTTP cluster or local simulator."""
-    from mplang.v2 import Driver, Simulator
+    from mplang.v2 import make_driver, make_simulator
     from mplang.v2.libs.device import ClusterSpec
 
     cluster: ClusterSpec
@@ -342,10 +342,14 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.backend == "sim":
         enable_tracing = getattr(args, "profile", False)
         # make_simulator(world_size, cluster_spec=..., enable_tracing=...)
-        driver = Simulator(cluster_spec=cluster, enable_tracing=enable_tracing)
+        driver = make_simulator(
+            cluster.world_size,
+            cluster_spec=cluster,
+            enable_tracing=enable_tracing,
+        )
     else:
         # make_driver(endpoints, cluster_spec=...)
-        driver = Driver(cluster.endpoints, cluster_spec=cluster)
+        driver = make_driver(cluster.endpoints, cluster_spec=cluster)
 
     module = load_user_module(args.file)
     entry = resolve_entry(module, args.entry)

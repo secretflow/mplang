@@ -15,14 +15,14 @@
 """Simple verification test for func.call support."""
 
 import mplang.v2 as mp
-from mplang.v2.dialects import simp
 import mplang.v2.dialects.func as func
 import mplang.v2.dialects.tensor as tensor
+from mplang.v2.dialects import simp
 
 
 def test_func_call_recursion():
     """Verify that func.call executes the target function recursively."""
-    
+
     # 1. Define a helper function (pure python)
     def add_one(x):
         return tensor.run_jax(lambda a: a + 1, x)
@@ -31,29 +31,30 @@ def test_func_call_recursion():
     def main(x):
         # Use func.func to define 'add_one' in the graph, returns function handle
         fn_handle = func.func(add_one, x)
-        
+
         # Call the function via handle
         return func.call(fn_handle, x)
 
     # 3. Setup Simulator
     sim = simp.make_simulator(2)
     mp.set_global_cluster(getattr(sim, "_simp_cluster", None))
-    
+
     # 4. Execute
     x_val = 10
     x_obj = tensor.constant(x_val)
-    
+
     # Compile main
     traced_main = mp.compile(sim, main, x_obj)
-    
+
     # Evaluate
     result_obj = mp.evaluate(sim, traced_main, x_obj)
-    
+
     # Fetch
     result = mp.fetch(sim, result_obj)
-    
+
     assert result == 11
     print(f"Func Call Verified: {x_val} + 1 = {result}")
+
 
 if __name__ == "__main__":
     test_func_call_recursion()

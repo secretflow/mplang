@@ -15,9 +15,8 @@
 import numpy as np
 
 import mplang.v2 as mp
-from mplang.v2.dialects import simp
 import mplang.v2.dialects.field as field
-from mplang.v2.dialects import tensor
+from mplang.v2.dialects import simp, tensor
 
 
 def test_okvs_edsl() -> None:

@@ -23,9 +23,9 @@ import numpy as np
 import pytest
 
 import mplang.v2.edsl as el
-from mplang.v2.runtime.interpreter import InterpObject
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.simp import peval, uniform_cond, while_loop
+from mplang.v2.runtime.interpreter import InterpObject
 
 pytestmark = pytest.mark.usefixtures("simp_simulator_default")
 

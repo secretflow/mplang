@@ -18,10 +18,10 @@ from textwrap import dedent
 import numpy as np
 
 import mplang.v2.edsl as el
-from mplang.v2.runtime.interpreter import InterpObject
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.func import call, func
 from mplang.v2.dialects.tensor import run_jax
+from mplang.v2.runtime.interpreter import InterpObject
 
 
 def _scale_add(x, y):

@@ -17,9 +17,9 @@
 import numpy as np
 import pytest
 
-import mplang.v2.backends.crypto_impl  # noqa: F401
-import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
 import mplang.v2 as mp
+import mplang.v2.backends.crypto_impl
+import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.ot import base as ot
@@ -149,7 +149,6 @@ class TestIKNPCore:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        import mplang.v2 as mp
 
         self.sim = simp.make_simulator(2)
 

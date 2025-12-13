@@ -18,9 +18,8 @@ import numpy as np
 import pytest
 
 import mplang.v2.dialects.tensor as tensor
-import mplang.v2 as mp
-from mplang.v2.dialects import simp
 from mplang.v2 import evaluate, fetch
+from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.psi.okvs_gct import SparseOKVS, get_okvs_expansion
 
 
@@ -97,7 +96,7 @@ class TestSparseOKVSEDSL:
             return store1, store2, rec1, rec2
 
         res = evaluate(sim, _prog, keys, values, seed1, seed2)
-        store1, store2, rec1, rec2 = [self._fetch_one(sim, r) for r in res]
+        store1, store2, rec1, rec2 = (self._fetch_one(sim, r) for r in res)
 
         # Storages should be different
         assert not np.array_equal(store1, store2)

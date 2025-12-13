@@ -12,22 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 
 import jax.numpy as jnp
 import numpy as np
-import pytest
+
+import mplang.v2 as mp
 
 # Register runtimes
 # Register runtimes
 import mplang.v2.backends.tensor_impl  # noqa: F401
-import mplang.v2 as mp
 from mplang.v2.backends.simp_driver import DriverVar
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.dialects.simp import pcall_static, uniform_cond
 from mplang.v2.dialects.tensor import run_jax
-from mplang.v2.edsl.graph import Graph
 from mplang.v2.runtime.interpreter import InterpObject
 
 
@@ -39,11 +37,11 @@ def _unwrap_values(values: list) -> list:
             # Convert to scalar if possible
             arr = v.data
             if isinstance(arr, (jnp.ndarray, np.ndarray, np.generic)):
-                 result.append(arr.item())
+                result.append(arr.item())
             else:
-                 result.append(arr)
+                result.append(arr)
         elif isinstance(v, (jnp.ndarray, np.ndarray, np.generic)):
-             result.append(v.item())
+            result.append(v.item())
         else:
             result.append(v)
     return result
@@ -147,22 +145,18 @@ def test_while_loop_eager():
         # But they are Worker-side ops (control flow inside a party).
         # We need to wrap them in pcall_static to run them on workers?
         # OR we need to register Host-side implementations for them?
-        # Originally, SimpHost had handlers for these? 
+        # Originally, SimpHost had handlers for these?
         # Checking simp_impl.py, HOST_HANDLERS only has pcall/shuffle/converge.
         # So we CANNOT run while_loop on the Host.
         # We must run it ON the worker via pcall.
-        
+
         def run_loop(start_val):
-             return simp.while_loop(cond, body, start_val)
-             
+            return simp.while_loop(cond, body, start_val)
+
         res = simp.pcall_static((0, 1), run_loop, start_obj)
 
     assert isinstance(res, InterpObject)
-    # mp.fetch can fetch the result directly from the wrapper if needed, 
+    # mp.fetch can fetch the result directly from the wrapper if needed,
     # but here res is InterpObject. fetch needs (sim, obj).
     values = mp.fetch(sim, res)
     assert _unwrap_values(values) == [10, 10]
-
-
-
-

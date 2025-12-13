@@ -17,8 +17,7 @@
 import numpy as np
 
 import mplang.v2 as mp
-from mplang.v2.dialects import simp
-from mplang.v2.dialects import tensor
+from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc.vole import gilboa as vole
 
 

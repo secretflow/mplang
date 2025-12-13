@@ -23,12 +23,12 @@ import numpy as np
 import pytest
 import uvicorn
 
-import mplang.v2.edsl as el
 import mplang.v2 as mp
-from mplang.v2.edsl.context import pop_context, push_context
+import mplang.v2.edsl as el
 from mplang.v2.backends.simp_worker.http import create_worker_app
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
+from mplang.v2.edsl.context import pop_context, push_context
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -126,8 +126,7 @@ def http_cluster():
     # Create cluster spec for device API
     cluster_spec = mp.ClusterSpec.from_dict({
         "nodes": [
-            {"name": f"node_{i}", "endpoint": endpoints[i]}
-            for i in range(world_size)
+            {"name": f"node_{i}", "endpoint": endpoints[i]} for i in range(world_size)
         ],
         "devices": {
             "P0": {"kind": "PPU", "members": ["node_0"]},

@@ -865,6 +865,7 @@ def make_simulator(
     *,
     cluster_spec: Any = None,
     enable_tracing: bool = False,
+    enable_profiling: bool = False,
 ) -> Any:
     """Create an Interpreter configured for local SIMP simulation.
 
@@ -875,6 +876,7 @@ def make_simulator(
         world_size: Number of simulated parties.
         cluster_spec: Optional ClusterSpec for metadata.
         enable_tracing: If True, enable execution tracing.
+        enable_profiling: If True, enable primitive profiling for benchmarking.
 
     Returns:
         Configured Interpreter with simp state attached.
@@ -884,6 +886,10 @@ def make_simulator(
         >>> with interp:
         ...     result = my_func()
     """
+    if enable_profiling:
+        from mplang.v2.edsl import registry
+        registry.enable_profiling()
+
     from mplang.v2.backends.simp_driver.mem import make_simulator as _make_sim
     return _make_sim(world_size, cluster_spec=cluster_spec, enable_tracing=enable_tracing)
 

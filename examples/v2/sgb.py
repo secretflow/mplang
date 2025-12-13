@@ -1984,10 +1984,7 @@ def run_sgb_bench(sim):
         print(f"✗ Failed to load BFV backend: {e}")
         return
 
-    # Enable primitive operation profiling (auto-wraps all def_impl functions)
-    from mplang.v2.edsl import registry
-
-    registry.enable_profiling()
+    # Note: Profiling is enabled via mp.make_simulator(enable_profiling=True) in main()
     print("✓ Primitive operation profiling enabled")
 
     # Benchmark configurations
@@ -2123,7 +2120,7 @@ def run_sgb_bench(sim):
     if hasattr(sim, "backend") and getattr(sim.backend, "profiler", None) is not None:
         sim.backend.profiler.stop(filename_prefix="sgb_trace")
 
-    profiler = registry.get_profiler()
+    profiler = mp.get_profiler()
     profiler.print_summary()  # All ops (includes container overhead)
 
 
@@ -2140,8 +2137,8 @@ if __name__ == "__main__":
     parser.add_argument("--profile", action="store_true", help="Enable profiling")
     args = parser.parse_args()
 
-    # Use high-level Simulator API
-    sim = mp.make_simulator(2)
+    # Use high-level Simulator API with profiling if requested
+    sim = mp.make_simulator(2, enable_profiling=args.profile)
 
     if args.benchmark:
         run_sgb_bench(sim)

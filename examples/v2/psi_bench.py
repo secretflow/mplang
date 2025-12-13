@@ -115,13 +115,9 @@ def __mp_main__(ctx: Simulator | Driver, *args: str) -> dict[str, Any]:
 
 if __name__ == "__main__":
     import mplang.v2 as mp
-    from mplang.v2.edsl import registry
 
-    # Enable primitive profiling
-    registry.enable_profiling()
-
-    # Create simulator (2-party, tracing enabled)
-    sim = mp.make_simulator(2)
+    # Create simulator (2-party, with profiling enabled)
+    sim = mp.make_simulator(2, enable_profiling=True)
 
     try:
         # Warmup
@@ -147,7 +143,7 @@ if __name__ == "__main__":
         print("=" * 60)
 
         # Profiler Summary
-        registry.get_profiler().print_summary()
+        mp.get_profiler().print_summary()
 
     finally:
         # Stop tracer and save

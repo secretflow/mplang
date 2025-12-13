@@ -63,6 +63,7 @@ from mplang.v2.edsl import (
     register_default_context_factory,
     trace,
 )
+from mplang.v2.edsl.registry import get_profiler
 
 # Type system
 from mplang.v2.edsl.typing import (
@@ -365,7 +366,7 @@ __all__ = [  # noqa: RUF022
     "make_driver",
     "make_simulator",
     # Dialects
-    "dialects", "register_default_context_factory", "get_root_context",
+    "dialects", "register_default_context_factory", "get_root_context", "get_profiler",
 ]
 
 # Register Interpreter as default context factory

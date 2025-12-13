@@ -17,8 +17,8 @@
 import numpy as np
 import pytest
 
+import mplang.v2 as mp
 import mplang.v2.dialects.tensor as tensor
-from mplang.v2 import evaluate, fetch
 from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.psi.okvs_gct import SparseOKVS, get_okvs_expansion
 
@@ -26,18 +26,20 @@ from mplang.v2.libs.mpc.psi.okvs_gct import SparseOKVS, get_okvs_expansion
 class TestSparseOKVSEDSL:
     """Test Sparse OKVS operations using EDSL execution."""
 
-    @pytest.fixture
-    def sim(self):
-        return simp.make_simulator(world_size=3)
+    @pytest.fixture(autouse=True)
+    def setup_sim(self):
+        sim = simp.make_simulator(world_size=3)
+        mp.set_context(sim)
+        yield
 
-    def _fetch_one(self, sim, obj):
+    def _fetch_one(self, obj):
         """Helper to fetch result from the first party."""
-        vals = fetch(sim, obj)
+        vals = mp.fetch(obj)
         if isinstance(vals, list):
             return vals[0]
         return vals
 
-    def test_encode_decode_correctness(self, sim):
+    def test_encode_decode_correctness(self):
         """Verify OKVS Encode/Decode roundtrip."""
         n = 100
         expansion = get_okvs_expansion(n)
@@ -62,12 +64,12 @@ class TestSparseOKVSEDSL:
 
             return recovered
 
-        recovered_obj = evaluate(sim, _prog, keys, values, seed)
-        recovered = self._fetch_one(sim, recovered_obj)
+        recovered_obj = mp.evaluate(_prog, keys, values, seed)
+        recovered = self._fetch_one(recovered_obj)
 
         np.testing.assert_array_equal(recovered, values)
 
-    def test_seed_diversity(self, sim):
+    def test_seed_diversity(self):
         """Verify different seeds produce different storage but correct values."""
         n = 50
         m = int(n * 1.5)
@@ -95,8 +97,8 @@ class TestSparseOKVSEDSL:
 
             return store1, store2, rec1, rec2
 
-        res = evaluate(sim, _prog, keys, values, seed1, seed2)
-        store1, store2, rec1, rec2 = (self._fetch_one(sim, r) for r in res)
+        res = mp.evaluate(_prog, keys, values, seed1, seed2)
+        store1, store2, rec1, rec2 = (self._fetch_one(r) for r in res)
 
         # Storages should be different
         assert not np.array_equal(store1, store2)
@@ -109,3 +111,4 @@ class TestSparseOKVSEDSL:
         """Verify expansion factor logic."""
         assert get_okvs_expansion(10) >= 1.2
         assert get_okvs_expansion(1000000) <= 1.4
+

@@ -60,15 +60,16 @@ def run_with_simulator():
 
     cluster_spec = mp.ClusterSpec.simple(2)
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_context(sim)
     mp.set_global_cluster(cluster_spec)
 
     print("\n--- Millionaire problem (device API) ---")
-    x, y, result = mp.evaluate(sim, millionaire)
+    x, y, result = mp.evaluate(millionaire)
 
     # Fetch results from all parties
-    x_vals = mp.fetch(sim, x)
-    y_vals = mp.fetch(sim, y)
-    result_vals = mp.fetch(sim, result)
+    x_vals = mp.fetch(x)
+    y_vals = mp.fetch(y)
+    result_vals = mp.fetch(result)
 
     # Values are HostVar holding per-party results
     print(f"P0 value: {x_vals}")

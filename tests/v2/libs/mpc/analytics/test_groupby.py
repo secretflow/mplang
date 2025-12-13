@@ -58,12 +58,12 @@ class TestGroupbyBFV:
             # Run protocol
             res = groupby.oblivious_groupby_sum_bfv(d, b, K, sender=0, receiver=1)
 
-        # Result is on Receiver (P1)
-        res_vals = mp.fetch(self.interp, res)
-        p1_res = _unwrap(res_vals[1])
+            # Result is on Receiver (P1)
+            res_vals = mp.fetch(res)
+            p1_res = _unwrap(res_vals[1])
 
-        expected = np.array([22, 15, 18], dtype=np.int64)
-        np.testing.assert_array_equal(p1_res, expected)
+            expected = np.array([22, 15, 18], dtype=np.int64)
+            np.testing.assert_array_equal(p1_res, expected)
 
     def test_chunking(self):
         # N=5000, degree=4096.
@@ -89,9 +89,9 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        res_vals = mp.fetch(self.interp, res)
-        p1_res = _unwrap(res_vals[1])
-        np.testing.assert_array_equal(p1_res, expected)
+            res_vals = mp.fetch(res)
+            p1_res = _unwrap(res_vals[1])
+            np.testing.assert_array_equal(p1_res, expected)
 
     def test_exact_chunk_multiple(self):
         # N=8192, degree=8192. Exactly 2 chunks (B=4096).
@@ -120,9 +120,9 @@ class TestGroupbyBFV:
                 plain_modulus=536903681,
             )
 
-        res_vals = mp.fetch(self.interp, res)
-        p1_res = _unwrap(res_vals[1])
-        np.testing.assert_array_equal(p1_res, expected)
+            res_vals = mp.fetch(res)
+            p1_res = _unwrap(res_vals[1])
+            np.testing.assert_array_equal(p1_res, expected)
 
     def test_empty_bins(self):
         # K=5, but only bin 0 and 4 have data.
@@ -144,9 +144,9 @@ class TestGroupbyBFV:
                 d, b, K, sender=0, receiver=1, poly_modulus_degree=degree
             )
 
-        res_vals = mp.fetch(self.interp, res)
-        p1_res = _unwrap(res_vals[1])
-        np.testing.assert_array_equal(p1_res, expected)
+            res_vals = mp.fetch(res)
+            p1_res = _unwrap(res_vals[1])
+            np.testing.assert_array_equal(p1_res, expected)
 
 
 class TestGroupbyShuffle:
@@ -177,12 +177,12 @@ class TestGroupbyShuffle:
                 d, b, K, sender=0, receiver=1, helper=2
             )
 
-        # Result is on Receiver (P1)
-        res_vals = mp.fetch(self.interp, res)
-        p1_res = _unwrap(res_vals[1])
+            # Result is on Receiver (P1)
+            res_vals = mp.fetch(res)
+            p1_res = _unwrap(res_vals[1])
 
-        expected = np.array([22, 15, 18], dtype=np.int64)
-        np.testing.assert_array_equal(p1_res, expected)
+            expected = np.array([22, 15, 18], dtype=np.int64)
+            np.testing.assert_array_equal(p1_res, expected)
 
     def test_random(self):
         N = 100
@@ -204,6 +204,6 @@ class TestGroupbyShuffle:
                 d, b, K, sender=0, receiver=1, helper=2
             )
 
-        res_vals = mp.fetch(self.interp, res)
-        p1_res = res_vals[1]
-        np.testing.assert_array_equal(_unwrap(p1_res), expected)
+            res_vals = mp.fetch(res)
+            p1_res = res_vals[1]
+            np.testing.assert_array_equal(_unwrap(p1_res), expected)

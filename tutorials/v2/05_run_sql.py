@@ -142,12 +142,13 @@ def main():
     print("=" * 70)
 
     sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_context(sim)
     mp.set_global_cluster(cluster_spec)
 
     # Pattern 1: PPU
     print("\n--- Pattern 1: SQL on PPU ---")
-    r1 = mp.evaluate(sim, sql_on_ppu)
-    result1 = mp.fetch(sim, r1)
+    r1 = mp.evaluate(sql_on_ppu)
+    result1 = mp.fetch(r1)
     # fetch returns a list when function has single output
     if isinstance(result1, list):
         result1 = result1[0]
@@ -169,8 +170,8 @@ def main():
     sim_tee = mp.make_simulator(3, cluster_spec=cluster_spec)
     mp.set_global_cluster(cluster_spec)
 
-    r2 = mp.evaluate(sim_tee, sql_on_tee)
-    result2 = mp.fetch(sim_tee, r2)
+    r2 = mp.evaluate(sql_on_tee)
+    result2 = mp.fetch(r2)
     if isinstance(result2, list):
         result2 = result2[0]
     print("TEE UNION result (combined rows from P0 and P1):")

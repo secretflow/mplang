@@ -80,13 +80,13 @@ def test_pcall_static():
 
         res = pcall_static((0, 1, 2), my_func, x_obj, y_obj)
 
-    assert isinstance(res, InterpObject)
-    assert isinstance(res.runtime_obj, DriverVar)
-    # Note: run_jax returns numpy arrays (or jax arrays), so we compare values
-    # DriverVar holds list of values.
-    # 1+10=11, 2+20=22, 3+30=33
-    values = mp.fetch(sim, res)
-    assert _unwrap_values(values) == [11, 22, 33]
+        assert isinstance(res, InterpObject)
+        assert isinstance(res.runtime_obj, DriverVar)
+        # Note: run_jax returns numpy arrays (or jax arrays), so we compare values
+        # DriverVar holds list of values.
+        # 1+10=11, 2+20=22, 3+30=33
+        values = mp.fetch(res)
+        assert _unwrap_values(values) == [11, 22, 33]
 
 
 def test_uniform_cond():
@@ -107,8 +107,8 @@ def test_uniform_cond():
         pred_true = simp.constant((0, 1), True)
         res = uniform_cond(pred_true, then_fn, else_fn, x_obj)
 
-    values = mp.fetch(sim, res)
-    assert _unwrap_values(values) == [2, 4]
+        values = mp.fetch(res)
+        assert _unwrap_values(values) == [2, 4]
 
     # Test False case
     with sim:
@@ -118,8 +118,8 @@ def test_uniform_cond():
         pred_obj_false = simp.constant((0, 1), False)
         res_false = uniform_cond(pred_obj_false, then_fn, else_fn, x_obj)
 
-    values = mp.fetch(sim, res_false)
-    assert _unwrap_values(values) == [1, 4]
+        values = mp.fetch(res_false)
+        assert _unwrap_values(values) == [1, 4]
 
 
 def test_while_loop_eager():
@@ -155,8 +155,9 @@ def test_while_loop_eager():
 
         res = simp.pcall_static((0, 1), run_loop, start_obj)
 
-    assert isinstance(res, InterpObject)
-    # mp.fetch can fetch the result directly from the wrapper if needed,
-    # but here res is InterpObject. fetch needs (sim, obj).
-    values = mp.fetch(sim, res)
-    assert _unwrap_values(values) == [10, 10]
+        assert isinstance(res, InterpObject)
+        # mp.fetch can fetch the result directly from the wrapper if needed,
+        # but here res is InterpObject. fetch needs (sim, obj).
+        values = mp.fetch(res)
+        assert _unwrap_values(values) == [10, 10]
+

@@ -31,6 +31,7 @@ def test_okvs_edsl() -> None:
         values_np[i, 1] = i * 10
 
     sim = simp.make_simulator(1)
+    mp.set_context(sim)
 
     def protocol():
         # Create inputs as tensor constants (field.solve_okvs expects TensorType, not MPType)
@@ -44,9 +45,9 @@ def test_okvs_edsl() -> None:
         decoded = field.decode_okvs(keys, storage, seed)
         return decoded
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
-    decoded_res = mp.fetch(sim, result)
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
+    decoded_res = mp.fetch(result)
 
     assert np.array_equal(decoded_res, values_np), "Decoded values do not match!"
     print("OKVS EDSL Test Passed!")

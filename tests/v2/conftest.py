@@ -36,5 +36,11 @@ patch_object_operators()
 
 @pytest.fixture(autouse=True)
 def reset_default_context(monkeypatch):
-    """Reset the default context before and after each test."""
+    """Reset the default context and context stack before and after each test."""
+    # Clear context stack for test isolation
+    mplang.v2.edsl.context._context_stack.clear()
     monkeypatch.setattr(mplang.v2.edsl.context, "_default_context", None)
+    yield
+    # Clear again after test
+    mplang.v2.edsl.context._context_stack.clear()
+

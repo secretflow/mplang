@@ -36,10 +36,9 @@ def extract_runtime_value(obj):
     In multi-party simulation, runtime_obj may be a DriverVar containing
     values per party. This helper extracts the first non-None value.
     """
-    from mplang.v2 import fetch, get_current_context
+    from mplang.v2 import fetch
 
-    interp = get_current_context()
-    val = fetch(interp, obj)
+    val = fetch(obj)
 
     # If result is a list (one per party), return first non-None
     if isinstance(val, list):

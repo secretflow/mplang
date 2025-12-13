@@ -194,14 +194,15 @@ def _run_psi_simulation(
 
     sim = simp.make_simulator(2)
 
-    def job() -> Any:
-        s_handle = simp.constant((SENDER,), sender_items)
-        r_handle = simp.constant((RECEIVER,), receiver_items)
-        return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
+    with sim:
+        def job() -> Any:
+            s_handle = simp.constant((SENDER,), sender_items)
+            r_handle = simp.constant((RECEIVER,), receiver_items)
+            return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
 
-    traced = mp.compile(sim, job)
-    mask_obj = mp.evaluate(sim, traced)
-    mask_val = mp.fetch(sim, mask_obj)[SENDER]
+        traced = mp.compile(job)
+        mask_obj = mp.evaluate(traced)
+        mask_val = mp.fetch(mask_obj)[SENDER]
     return mask_val
 
 

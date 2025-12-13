@@ -29,6 +29,7 @@ def test_spu_e2e_simulation():
     # 1. Setup
     world_size = 3
     sim = simp.make_simulator(world_size=world_size)
+    mp.set_context(sim)
     spu_parties = (0, 1, 2)
     spu_config = spu.SPUConfig()
 
@@ -93,7 +94,7 @@ def test_spu_e2e_simulation():
         results_var = sim.evaluate_graph(graph, [])
 
         # Fetch results
-        values = mp.fetch(sim, results_var)
+        values = mp.fetch(results_var)
 
         # 5. Verify
         # Result from party 0 should be the tensor (wrapped in TensorValue)

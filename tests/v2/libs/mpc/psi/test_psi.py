@@ -24,6 +24,7 @@ from mplang.v2.libs.mpc.psi import psi_unbalanced
 def test_psi_full_overlap():
     """Test PSI with identical sets (full overlap)."""
     sim = simp.make_simulator(2)
+    mp.set_context(sim)
 
     # Both parties have the same items
     server_items = np.arange(100, dtype=np.uint64)
@@ -36,12 +37,12 @@ def test_psi_full_overlap():
         c_items = simp.constant((CLIENT,), client_items)
         return psi_unbalanced(SERVER, CLIENT, 100, 100, s_items, c_items)
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
 
     # Result is intersection mask on client
     # result is a Handle on client.
-    mask = mp.fetch(sim, result)[CLIENT]
+    mask = mp.fetch(result)[CLIENT]
 
     # All items should be in intersection
     assert mask.shape == (100,)
@@ -54,6 +55,7 @@ def test_psi_full_overlap():
 def test_psi_no_overlap():
     """Test PSI with disjoint sets (no overlap)."""
     sim = simp.make_simulator(2)
+    mp.set_context(sim)
 
     # Disjoint sets
     server_items = np.arange(0, 100, dtype=np.uint64)
@@ -66,10 +68,10 @@ def test_psi_no_overlap():
         c_items = simp.constant((CLIENT,), client_items)
         return psi_unbalanced(SERVER, CLIENT, 100, 100, s_items, c_items)
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
 
-    mask = mp.fetch(sim, result)[CLIENT]
+    mask = mp.fetch(result)[CLIENT]
 
     # No items should match
     assert mask.shape == (100,)
@@ -80,6 +82,7 @@ def test_psi_no_overlap():
 def test_psi_partial_overlap():
     """Test PSI with 50% overlap."""
     sim = simp.make_simulator(2)
+    mp.set_context(sim)
 
     # Server has 0-99, client has 50-149 (overlap: 50-99)
     server_items = np.arange(0, 100, dtype=np.uint64)
@@ -92,10 +95,10 @@ def test_psi_partial_overlap():
         c_items = simp.constant((CLIENT,), client_items)
         return psi_unbalanced(SERVER, CLIENT, 100, 100, s_items, c_items)
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
 
-    mask = mp.fetch(sim, result)[CLIENT]
+    mask = mp.fetch(result)[CLIENT]
 
     # First 50 items of client (50-99) should be in intersection
     expected_matches = 50

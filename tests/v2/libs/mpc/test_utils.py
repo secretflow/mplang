@@ -27,12 +27,13 @@ def run_protocol(sim, protocol_fn):
     traced = trace(protocol_fn)
     # Simulator doesn't have evaluate_graph directly on it in v2 API wrapper,
     # but backend (Interpreter) does. However we should use public API.
-    return mp.evaluate(sim, traced)
+    return mp.evaluate(traced)
 
 
 def test_bits_conversion():
     """Test bytes_to_bits and bits_to_bytes type inference."""
     sim = simp.make_simulator(world_size=2)
+    mp.set_context(sim)
 
     # 1 byte: 0b10101010 = 170
     data = np.array([170], dtype=np.uint8)
@@ -60,6 +61,7 @@ def test_bits_conversion():
 def test_cuckoo_hash():
     """Test CuckooHash class type inference."""
     sim = simp.make_simulator(world_size=2)
+    mp.set_context(sim)
 
     items = np.array([1, 2, 3], dtype=np.int64)
 

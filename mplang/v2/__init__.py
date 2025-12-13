@@ -92,25 +92,79 @@ from mplang.v2.libs.device import (
 from mplang.v2.runtime.interpreter import Interpreter
 
 
-def evaluate(
-    interp: Interpreter,
-    fn: Callable[..., Any] | TracedFunction,
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
-    """Evaluate a function using the interpreter.
+# =============================================================================
+# Context Management API (JAX-like pattern)
+# =============================================================================
+
+
+def set_context(context: Interpreter) -> None:
+    """Set the global/root execution context.
+
+    The context will be used by compile/evaluate/fetch when no explicit
+    context is provided. This simplifies API usage by avoiding the need
+    to pass the context object to every function call.
 
     Args:
-        interp: The Interpreter instance.
-        fn: The function to evaluate.
+        context: Interpreter to use as the default context.
+
+    Example:
+        >>> sim = mp.make_simulator(3)
+        >>> mp.set_context(sim)
+        >>> traced = mp.compile(job)  # uses sim automatically
+    """
+    push_context(context)
+
+
+def _get_context(context: Interpreter | None) -> Interpreter:
+    """Get context from parameter or context stack."""
+    if context is not None:
+        return context
+    ctx = get_current_context()
+    if ctx is None:
+        raise RuntimeError(
+            "No context available. Either pass context explicitly or use "
+            "set_context()/push_context() to set a default context."
+        )
+    if not isinstance(ctx, Interpreter):
+        raise RuntimeError(
+            f"Current context is not an Interpreter: {type(ctx).__name__}. "
+            "Use mp.set_context(interpreter) to set the execution context."
+        )
+    return ctx
+
+
+# =============================================================================
+# Meta-APIs (compile, evaluate, fetch)
+# =============================================================================
+
+
+def evaluate(
+    fn: Callable[..., Any] | TracedFunction,
+    *args: Any,
+    context: Interpreter | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Evaluate a function or traced function.
+
+    Args:
+        fn: The function or TracedFunction to evaluate.
         *args: Positional arguments to pass to the function.
+        context: Optional interpreter context. If None, uses current context.
         **kwargs: Keyword arguments to pass to the function.
 
     Returns:
         The result of the function evaluation.
+
+    Example:
+        >>> with mp.make_simulator(3) as sim:
+        ...     result = mp.evaluate(traced)  # uses sim from context
+        >>> # Or explicitly:
+        >>> result = mp.evaluate(traced, context=sim)
     """
     from mplang.v2.edsl.tracer import TracedFunction
     from mplang.v2.runtime.interpreter import InterpObject
+
+    interp = _get_context(context)
 
     def unwrap_if_interp(val: Any) -> Any:
         """Unwrap InterpObject to runtime value at execution boundary."""
@@ -128,10 +182,25 @@ def evaluate(
         return fn(*args, **kwargs)
 
 
-def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> Any:
-    """Fetch the result from the interpreter.
+def fetch(
+    result: Any,
+    party: int | str | None = None,
+    *,
+    context: Interpreter | None = None,
+) -> Any:
+    """Fetch the result, optionally for a specific party.
 
-    This version handles fetching specific parties from DriverVars.
+    Args:
+        result: The result to fetch (DriverVar or other value).
+        party: Optional party index or device name (e.g., "P0").
+        context: Optional interpreter context. If None, uses current context.
+
+    Returns:
+        The fetched data (unwrapped from Value wrappers).
+
+    Example:
+        >>> with mp.make_simulator(3) as sim:
+        ...     data = mp.fetch(result, "P0")  # uses sim from context
     """
     from typing import cast
 
@@ -140,6 +209,8 @@ def fetch(interp: Interpreter, result: Any, party: int | str | None = None) -> A
     from mplang.v2.backends.table_impl import TableValue
     from mplang.v2.backends.tensor_impl import TensorValue
     from mplang.v2.runtime.interpreter import InterpObject
+
+    interp = _get_context(context)
 
     def _unwrap_value(val: Any) -> Any:
         """Unwrap Value types to get the underlying data."""
@@ -195,9 +266,27 @@ function = jit  # @mp.function -> @mp2.function (JIT compilation)
 
 
 def compile(
-    interp: Interpreter, fn: Callable[..., Any], *args: Any, **kwargs: Any
+    fn: Callable[..., Any],
+    *args: Any,
+    context: Interpreter | None = None,
+    **kwargs: Any,
 ) -> TracedFunction:
-    """Compile a function to get its IR without executing it."""
+    """Compile a function to get its IR without executing it.
+
+    Args:
+        fn: The function to compile.
+        *args: Example arguments for tracing.
+        context: Optional interpreter context. If None, uses current context.
+        **kwargs: Example keyword arguments for tracing.
+
+    Returns:
+        TracedFunction with the compiled graph.
+
+    Example:
+        >>> with mp.make_simulator(3) as sim:
+        ...     traced = mp.compile(job)  # uses sim from context
+    """
+    interp = _get_context(context)
     cluster_spec = getattr(interp, "_cluster_spec", None)
     if cluster_spec is not None:
         set_global_cluster(cluster_spec)
@@ -243,6 +332,7 @@ __all__ = [  # noqa: RUF022
     "pop_context",
     "primitive",
     "push_context",
+    "set_context",
     "trace",
     # Type system
     "MPType",

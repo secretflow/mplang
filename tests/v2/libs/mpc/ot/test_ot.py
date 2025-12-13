@@ -78,9 +78,9 @@ class TestOTScalar:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = mp.fetch(self.interp, res)
-        result = _unwrap(values[1])
-        assert result.item() == expected
+            values = mp.fetch(res)
+            result = _unwrap(values[1])
+            assert result.item() == expected
 
 
 class TestOTVector:
@@ -104,8 +104,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = mp.fetch(self.interp, res)
-        np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
+            values = mp.fetch(res)
+            np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
 
     def test_vector_all_ones(self):
         """Test vectorized OT with all choices=1."""
@@ -121,8 +121,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = mp.fetch(self.interp, res)
-        np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
+            values = mp.fetch(res)
+            np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
 
     def test_vector_mixed_choices(self):
         """Test vectorized OT with mixed choices (0 and 1)."""
@@ -140,8 +140,8 @@ class TestOTVector:
 
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
-        values = mp.fetch(self.interp, res)
-        np.testing.assert_array_equal(_unwrap(values[1]), expected)
+            values = mp.fetch(res)
+            np.testing.assert_array_equal(_unwrap(values[1]), expected)
 
 
 class TestIKNPCore:
@@ -149,7 +149,6 @@ class TestIKNPCore:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-
         self.sim = simp.make_simulator(2)
 
     def test_iknp_seeds_relationship(self):
@@ -186,13 +185,14 @@ class TestIKNPCore:
             )
             return t_matrix, q_matrix, s_choices, delta_bits
 
-        traced = mp.compile(self.sim, job)
-        t_obj, q_obj, s_obj, d_obj = mp.evaluate(self.sim, traced)
+        with self.sim:
+            traced = mp.compile(job)
+            t_obj, q_obj, s_obj, d_obj = mp.evaluate(traced)
 
-        t_val = mp.fetch(self.sim, t_obj)[sender]  # (128, 128)
-        q_val = mp.fetch(self.sim, q_obj)[receiver]  # (128, 128)
-        s_val = mp.fetch(self.sim, s_obj)[sender]  # (128,)
-        d_val = mp.fetch(self.sim, d_obj)[receiver]  # (128, 1)
+            t_val = mp.fetch(t_obj)[sender]  # (128, 128)
+            q_val = mp.fetch(q_obj)[receiver]  # (128, 128)
+            s_val = mp.fetch(s_obj)[sender]  # (128,)
+            d_val = mp.fetch(d_obj)[receiver]  # (128, 1)
 
         # Verify: Q[i] = T[i] ^ (d[i] * S)
         d_flat = d_val.reshape(-1)

@@ -30,6 +30,7 @@ class TestSilverVOLEBasic:
     def test_silver_vole_runs(self):
         """Verify Silver VOLE executes without errors."""
         sim = simp.make_simulator(2)
+        mp.set_context(sim)
 
         sender = 0
         receiver = 1
@@ -39,11 +40,11 @@ class TestSilverVOLEBasic:
             v, w = silver_vole(sender, receiver, n)
             return v, w
 
-        traced = mp.compile(sim, job)
-        v_obj, w_obj = mp.evaluate(sim, traced)
+        traced = mp.compile(job)
+        v_obj, w_obj = mp.evaluate(traced)
 
-        v_val = mp.fetch(sim, v_obj)[sender]
-        w_val = mp.fetch(sim, w_obj)[receiver]
+        v_val = mp.fetch(v_obj)[sender]
+        w_val = mp.fetch(w_obj)[receiver]
 
         assert v_val.shape == (n, 2)
         assert w_val.shape == (n, 2)
@@ -52,6 +53,7 @@ class TestSilverVOLEBasic:
     def test_silver_vole_with_secrets(self):
         """Test Silver VOLE returns secrets when requested."""
         sim = simp.make_simulator(2)
+        mp.set_context(sim)
 
         sender = 0
         receiver = 1
@@ -60,15 +62,15 @@ class TestSilverVOLEBasic:
         def job():
             return silver_vole(sender, receiver, n, return_secrets=True)
 
-        traced = mp.compile(sim, job)
-        result = mp.evaluate(sim, traced)
+        traced = mp.compile(job)
+        result = mp.evaluate(traced)
 
         assert len(result) == 4  # v, w, u, delta
 
-        v_val = mp.fetch(sim, result[0])[sender]
-        w_val = mp.fetch(sim, result[1])[receiver]
-        u_val = mp.fetch(sim, result[2])[sender]
-        mp.fetch(sim, result[3])[receiver]
+        v_val = mp.fetch(result[0])[sender]
+        w_val = mp.fetch(result[1])[receiver]
+        u_val = mp.fetch(result[2])[sender]
+        mp.fetch(result[3])[receiver]
 
         assert v_val.shape == (n, 2)
         assert w_val.shape == (n, 2)
@@ -85,6 +87,7 @@ class TestSilverVOLECorrelation:
         proper GF(2^128) multiplication.
         """
         sim = simp.make_simulator(2)
+        mp.set_context(sim)
 
         sender = 0
         receiver = 1
@@ -97,11 +100,11 @@ class TestSilverVOLECorrelation:
             # For testing, we'll just verify shapes
             return v, w, u, delta
 
-        traced = mp.compile(sim, job)
-        result = mp.evaluate(sim, traced)
+        traced = mp.compile(job)
+        result = mp.evaluate(traced)
 
-        v_val = mp.fetch(sim, result[0])[sender]
-        w_val = mp.fetch(sim, result[1])[receiver]
+        v_val = mp.fetch(result[0])[sender]
+        w_val = mp.fetch(result[1])[receiver]
 
         # Basic sanity checks
         assert v_val.shape == w_val.shape
@@ -156,22 +159,24 @@ class TestSilverVOLEEdgeCases:
     def test_same_party_error(self):
         """Verify error when sender == receiver."""
         sim = simp.make_simulator(2)
+        mp.set_context(sim)
 
         def job():
             return silver_vole(0, 0, 100)
 
         with pytest.raises(ValueError):
-            mp.compile(sim, job)
+            mp.compile(job)
 
     def test_zero_n_error(self):
         """Verify error when n <= 0."""
         sim = simp.make_simulator(2)
+        mp.set_context(sim)
 
         def job():
             return silver_vole(0, 1, 0)
 
         with pytest.raises(ValueError):
-            mp.compile(sim, job)
+            mp.compile(job)
 
 
 if __name__ == "__main__":

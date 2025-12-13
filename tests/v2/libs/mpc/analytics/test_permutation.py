@@ -48,10 +48,10 @@ def test_secure_switch_straight():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    y0_val = mp.fetch(interp, y0)
-    y1_val = mp.fetch(interp, y1)
-    assert _unwrap(y0_val[1]).item() == 10
-    assert _unwrap(y1_val[1]).item() == 20
+        y0_val = mp.fetch(y0)
+        y1_val = mp.fetch(y1)
+        assert _unwrap(y0_val[1]).item() == 10
+        assert _unwrap(y1_val[1]).item() == 20
 
 
 def test_secure_switch_swap():
@@ -73,10 +73,10 @@ def test_secure_switch_swap():
 
         y0, y1 = protocol(x0_obj, x1_obj, c_obj)
 
-    y0_val = mp.fetch(interp, y0)
-    y1_val = mp.fetch(interp, y1)
-    assert _unwrap(y0_val[1]).item() == 20
-    assert _unwrap(y1_val[1]).item() == 10
+        y0_val = mp.fetch(y0)
+        y1_val = mp.fetch(y1)
+        assert _unwrap(y0_val[1]).item() == 20
+        assert _unwrap(y1_val[1]).item() == 10
 
 
 def test_apply_permutation_n2():
@@ -111,9 +111,9 @@ def test_apply_permutation_n2():
 
         res = protocol(d0_obj, d1_obj, p0_obj, p1_obj)
 
-    # res is a list of Objects on Receiver
+        # res is a list of Objects on Receiver
+        res0_val = mp.fetch(res[0])
+        res1_val = mp.fetch(res[1])
+        assert _unwrap(res0_val[1]).item() == 20
+        assert _unwrap(res1_val[1]).item() == 10
 
-    res0_val = mp.fetch(interp, res[0])
-    res1_val = mp.fetch(interp, res[1])
-    assert _unwrap(res0_val[1]).item() == 20
-    assert _unwrap(res1_val[1]).item() == 10

@@ -37,6 +37,7 @@ def test_func_call_recursion():
 
     # 3. Setup Simulator
     sim = simp.make_simulator(2)
+    mp.set_context(sim)
     mp.set_global_cluster(getattr(sim, "_simp_cluster", None))
 
     # 4. Execute
@@ -44,13 +45,13 @@ def test_func_call_recursion():
     x_obj = tensor.constant(x_val)
 
     # Compile main
-    traced_main = mp.compile(sim, main, x_obj)
+    traced_main = mp.compile(main, x_obj)
 
     # Evaluate
-    result_obj = mp.evaluate(sim, traced_main, x_obj)
+    result_obj = mp.evaluate(traced_main, x_obj)
 
     # Fetch
-    result = mp.fetch(sim, result_obj)
+    result = mp.fetch(result_obj)
 
     assert result == 11
     print(f"Func Call Verified: {x_val} + 1 = {result}")

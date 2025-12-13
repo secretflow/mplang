@@ -102,22 +102,23 @@ def main():
     print("=" * 70)
 
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_context(sim)
     mp.set_global_cluster(cluster_spec)
 
     # Pattern 1: PPU
     print("\n--- Pattern 1: JAX on PPU ---")
-    r1 = mp.evaluate(sim, jax_on_ppu)
-    print(f"Sum of squares [1,2,3]: {mp.fetch(sim, r1)}")
+    r1 = mp.evaluate(jax_on_ppu)
+    print(f"Sum of squares [1,2,3]: {mp.fetch(r1)}")
 
     # Pattern 2: SPU
     print("\n--- Pattern 2: JAX on SPU ---")
-    r2 = mp.evaluate(sim, jax_on_spu)
-    print(f"Secure dot product [1,2]·[3,4] = {mp.fetch(sim, r2)}")
+    r2 = mp.evaluate(jax_on_spu)
+    print(f"Secure dot product [1,2]·[3,4] = {mp.fetch(r2)}")
 
     # Pattern 3: Cross-device pipeline
     print("\n--- Pattern 3: Cross-Device Pipeline ---")
-    r3 = mp.evaluate(sim, cross_device_pipeline)
-    print(f"Pipeline result (sum of [10,20,30]*2): {mp.fetch(sim, r3)}")
+    r3 = mp.evaluate(cross_device_pipeline)
+    print(f"Pipeline result (sum of [10,20,30]*2): {mp.fetch(r3)}")
 
     print("\n" + "=" * 70)
     print("Key takeaways:")

@@ -192,39 +192,41 @@ def test_http_e2e(http_cluster):
     max_retries = 3
     retry_delay = 1.0
 
-    for attempt in range(max_retries):
-        try:
-            # Execute
-            # Inputs are empty since we use constants
-            results = driver.evaluate_graph(graph, {})
+    with driver:
+        for attempt in range(max_retries):
+            try:
+                # Execute
+                # Inputs are empty since we use constants
+                results = driver.evaluate_graph(graph, {})
 
-            # Fetch results
-            values = mp.fetch(driver, results)
-            break
-        except Exception as e:
-            if attempt == max_retries - 1:
-                # Last attempt failed, re-raise the exception
-                raise
-            logging.warning(
-                f"Attempt {attempt + 1} failed: {e}, retrying in {retry_delay}s..."
-            )
-            time.sleep(retry_delay)
+                # Fetch results
+                values = mp.fetch(results)
+                break
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    # Last attempt failed, re-raise the exception
+                    raise
+                logging.warning(
+                    f"Attempt {attempt + 1} failed: {e}, retrying in {retry_delay}s..."
+                )
+                time.sleep(retry_delay)
 
-    # Verify
-    # Party 0 result is None (not involved in final output)
-    # Party 1 result should be [2.0, 3.0]
+        # Verify
+        # Party 0 result is None (not involved in final output)
+        # Party 1 result should be [2.0, 3.0]
 
-    # Note: evaluate_graph returns a list of results (one per output).
-    # Since graph has 1 output, each party returns a list of 1 element.
-    # However, for Party 0 (which returns None), it seems to be unwrapped or handled differently.
-    if isinstance(values[0], list):
-        assert values[0] == [None]
-    else:
-        assert values[0] is None
+        # Note: evaluate_graph returns a list of results (one per output).
+        # Since graph has 1 output, each party returns a list of 1 element.
+        # However, for Party 0 (which returns None), it seems to be unwrapped or handled differently.
+        if isinstance(values[0], list):
+            assert values[0] == [None]
+        else:
+            assert values[0] is None
 
-    val1 = values[1]
-    if isinstance(val1, list):
-        val1 = val1[0]
+        val1 = values[1]
+        if isinstance(val1, list):
+            val1 = val1[0]
 
-    result_1 = val1.data if isinstance(val1, TensorValue) else val1
-    np.testing.assert_allclose(result_1, [2.0, 3.0])
+        result_1 = val1.data if isinstance(val1, TensorValue) else val1
+        np.testing.assert_allclose(result_1, [2.0, 3.0])
+

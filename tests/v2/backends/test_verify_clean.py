@@ -67,7 +67,7 @@ def test_simulator_object_store_flow():
     assert len(y_var.values) == 2
     assert isinstance(y_var.values[0], str) and "://" in y_var.values[0]
 
-    results = mp.fetch(sim, y_var)
+    results = mp.fetch(y_var)
     # Cast to int
     results = [int(r) for r in results]
     assert results == [11, 21]
@@ -101,7 +101,7 @@ def test_uniform_cond_clean():
         # uniform_cond
         res = simp.uniform_cond(pred_true, then_fn, else_fn, x_obj)
 
-    values = mp.fetch(sim, res)
-    values = [int(v) if not hasattr(v, "shape") or v.shape == () else v for v in values]
-    assert values == [2, 4]
+        values = mp.fetch(res)
+        values = [int(v) if not hasattr(v, "shape") or v.shape == () else v for v in values]
+        assert values == [2, 4]
     hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()

@@ -127,40 +127,41 @@ class TestDriverExecution:
 
     def test_simple_ppu_computation(self, driver_cluster):
         """Test simple computation on PPU device."""
+        with driver_cluster:
+            def add_one():
+                x = mp.device("P0")(lambda: 42)()
+                return x
 
-        def add_one():
-            x = mp.device("P0")(lambda: 42)()
-            return x
-
-        result = mp.evaluate(driver_cluster, add_one)
-        value = mp.fetch(driver_cluster, result)
-        assert value == 42
+            result = mp.evaluate(add_one)
+            value = mp.fetch(result)
+            assert value == 42
 
     def test_ppu_computation_with_jax(self, driver_cluster):
         """Test JAX computation on PPU device."""
         import jax.numpy as jnp
 
-        def jax_sum():
-            arr = mp.device("P0")(lambda: jnp.array([1, 2, 3]))()
-            result = mp.device("P0")(lambda x: jnp.sum(x))(arr)
-            return result
+        with driver_cluster:
+            def jax_sum():
+                arr = mp.device("P0")(lambda: jnp.array([1, 2, 3]))()
+                result = mp.device("P0")(lambda x: jnp.sum(x))(arr)
+                return result
 
-        result = mp.evaluate(driver_cluster, jax_sum)
-        value = mp.fetch(driver_cluster, result)
-        assert value == 6
+            result = mp.evaluate(jax_sum)
+            value = mp.fetch(result)
+            assert value == 6
 
     def test_cross_party_transfer(self, driver_cluster):
         """Test data transfer between parties."""
+        with driver_cluster:
+            def transfer():
+                x = mp.device("P0")(lambda: 100)()
+                y = mp.put("P1", x)
+                return y
 
-        def transfer():
-            x = mp.device("P0")(lambda: 100)()
-            y = mp.put("P1", x)
-            return y
-
-        result = mp.evaluate(driver_cluster, transfer)
-        # y is on P1, so fetch from P1
-        value = mp.fetch(driver_cluster, result, party="P1")
-        assert value == 100
+            result = mp.evaluate(transfer)
+            # y is on P1, so fetch from P1
+            value = mp.fetch(result, party="P1")
+            assert value == 100
 
     @pytest.mark.skip(
         reason="SPU requires BRPC link setup in HTTP worker, not yet implemented"
@@ -174,8 +175,8 @@ class TestDriverExecution:
             z = mp.device("SP0")(lambda a, b: a + b)(x, y)
             return mp.put("P0", z)
 
-        result = mp.evaluate(driver_cluster, secure_add)
-        value = mp.fetch(driver_cluster, result)
+        result = mp.evaluate(secure_add)
+        value = mp.fetch(result)
         assert value == 30
 
 
@@ -184,26 +185,26 @@ class TestDriverFetch:
 
     def test_fetch_by_party_name(self, driver_cluster):
         """Test fetching result by party name."""
+        with driver_cluster:
+            def create_on_p0():
+                return mp.device("P0")(lambda: 999)()
 
-        def create_on_p0():
-            return mp.device("P0")(lambda: 999)()
-
-        result = mp.evaluate(driver_cluster, create_on_p0)
-        value = mp.fetch(driver_cluster, result, party="P0")
-        assert value == 999
+            result = mp.evaluate(create_on_p0)
+            value = mp.fetch(result, party="P0")
+            assert value == 999
 
     def test_fetch_all_parties(self, driver_cluster):
         """Test fetching from all parties returns list."""
+        with driver_cluster:
+            def create_on_p0():
+                return mp.device("P0")(lambda: 123)()
 
-        def create_on_p0():
-            return mp.device("P0")(lambda: 123)()
-
-        result = mp.evaluate(driver_cluster, create_on_p0)
-        # When no party specified, returns all parties' values as list
-        # But for SPMD replicated execution, each party gets the same result
-        values = mp.fetch(driver_cluster, result)
-        # Result should contain 123 (either as scalar or in list)
-        if isinstance(values, list):
-            assert 123 in values
-        else:
-            assert values == 123
+            result = mp.evaluate(create_on_p0)
+            # When no party specified, returns all parties' values as list
+            # But for SPMD replicated execution, each party gets the same result
+            values = mp.fetch(result)
+            # Result should contain 123 (either as scalar or in list)
+            if isinstance(values, list):
+                assert 123 in values
+            else:
+                assert values == 123

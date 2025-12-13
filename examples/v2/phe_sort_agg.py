@@ -19,18 +19,10 @@ from typing import TypeVar
 import jax.numpy as jnp
 import numpy as np
 
-# Import implementations to register them
-import mplang.v2.backends.phe_impl
-import mplang.v2.backends.tensor_impl
-import mplang.v2.dialects.phe as phe
-import mplang.v2.dialects.simp as simp
-import mplang.v2.dialects.tensor as tensor
+import mplang.v2 as mp
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
-from mplang.v2.backends.simp_simulator import SimpSimulator
-
-# Ensure backend implementations are loaded (prevents unused import warnings)
-_ = mplang.v2.backends.phe_impl, mplang.v2.backends.tensor_impl
+from mplang.v2.dialects import phe, simp, tensor
 
 # Configure logging
 logging.basicConfig(
@@ -155,7 +147,7 @@ def run_benchmark():
         graph = tracer.finalize(final_result)
 
     # Execute
-    sim = SimpSimulator(world_size=2)
+    sim = mp.make_simulator(2)
     try:
         logger.info("Executing graph...")
         result = sim.evaluate_graph(graph, {})

@@ -121,7 +121,7 @@ if __name__ == "__main__":
     registry.enable_profiling()
 
     # Create simulator (2-party, tracing enabled)
-    sim = mp.Simulator.simple(2, enable_tracing=True)
+    sim = mp.make_simulator(2)
 
     try:
         # Warmup

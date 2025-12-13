@@ -2141,7 +2141,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Use high-level Simulator API
-    sim = mp.Simulator.simple(2, enable_profiler=args.profile)
+    sim = mp.make_simulator(2)
 
     if args.benchmark:
         run_sgb_bench(sim)

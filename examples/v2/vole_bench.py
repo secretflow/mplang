@@ -18,11 +18,11 @@
 import time
 
 import numpy as np
-from mplang.v2.libs.mpc.silver_vole import estimate_silver_communication, silver_vole
 
 import mplang.v2 as mp
 from mplang.v2.dialects import crypto, tensor
 from mplang.v2.libs.mpc.vole import vole as gilboa_vole
+from mplang.v2.libs.mpc.vole.silver import estimate_silver_communication, silver_vole
 
 
 def benchmark_silver(sim, n: int, runs: int = 3):
@@ -33,14 +33,14 @@ def benchmark_silver(sim, n: int, runs: int = 3):
         return silver_vole(sender, receiver, n)
 
     # Warmup
-    traced = mp.compile(sim, job)
-    mp.evaluate(sim, traced)
+    traced = mp.compile(job, context=sim)
+    mp.evaluate(traced, context=sim)
 
     # Timed runs
     times = []
     for _ in range(runs):
         start = time.perf_counter()
-        mp.evaluate(sim, traced)
+        mp.evaluate(traced, context=sim)
         times.append(time.perf_counter() - start)
 
     return np.mean(times), np.std(times)
@@ -71,14 +71,14 @@ def benchmark_gilboa(sim, n: int, runs: int = 3):
         return gilboa_vole(sender, receiver, n, u_provider, delta_provider)
 
     # Warmup
-    traced = mp.compile(sim, job)
-    mp.evaluate(sim, traced)
+    traced = mp.compile(job, context=sim)
+    mp.evaluate(traced, context=sim)
 
     # Timed runs
     times = []
     for _ in range(runs):
         start = time.perf_counter()
-        mp.evaluate(sim, traced)
+        mp.evaluate(traced, context=sim)
         times.append(time.perf_counter() - start)
 
     return np.mean(times), np.std(times)
@@ -89,7 +89,7 @@ def main():
     print("Silver VOLE vs Gilboa VOLE Benchmark")
     print("=" * 60)
 
-    sim = mp.Simulator.simple(2)
+    sim = mp.make_simulator(2)
 
     test_sizes = [1000, 10000, 100000]
 

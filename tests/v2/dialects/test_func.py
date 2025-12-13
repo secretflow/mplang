@@ -127,9 +127,4 @@ def test_func_call_handles_complex_pytree_output():
         flags=re.MULTILINE,
     )
 
-    print("-" * 20)
-    print("ACTUAL IR:")
-    print(normalized)
-    print("-" * 20)
-
     assert normalized == expected_ir

@@ -56,10 +56,9 @@ def test_secure_switch_straight():
 def test_secure_switch_swap():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
     interp = simp.make_simulator(world_size=2)
-    print(f"DEBUG: Handlers: {list(interp.handlers.keys())}")
-    print(f"DEBUG: simp.pcall_static present? {'simp.pcall_static' in interp.handlers}")
 
     # Sender: x0=10, x1=20
+
     # Receiver: c=1 (Swap) -> y0=20, y1=10
 
     def protocol(x0, x1, c):

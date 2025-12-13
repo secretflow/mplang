@@ -408,7 +408,7 @@ class Interpreter(AbstractInterpreter):
         1. All InterpObject arguments already registered via lift()
         2. Create a Tracer and push it as context
         3. Call primitive.bind() to build Graph IR (uses obj id in value names)
-        4. Execute the graph via interpret() (resolves inputs via registry)
+        4. Execute the graph via evaluate_graph() (resolves inputs via registry)
 
         Args:
             primitive: The primitive to execute
@@ -483,7 +483,7 @@ class Interpreter(AbstractInterpreter):
 
         2. **TraceObject → InterpObject** (evaluate traced computation):
            - Extract the graph from the TraceObject's context (Tracer)
-           - Execute the graph via interpret() to get runtime result
+           - Execute the graph via evaluate_graph() to get runtime result
            - Wrap result as InterpObject and register it
 
         3. **Constants**: Pass through unchanged
@@ -861,28 +861,3 @@ class Interpreter(AbstractInterpreter):
 
         final_results = [env[out] for out in graph.outputs]
         return final_results[0] if len(final_results) == 1 else final_results
-
-
-def interpret(graph: Graph, inputs: list[Any], interpreter: Interpreter) -> Any:
-    """Execute a Graph IR with runtime data from Interpreter.
-
-    This is a functional helper that delegates to interpreter.evaluate_graph().
-    The graph must be finalized (graph.outputs must be set) before interpretation.
-    This function executes all operations in the graph and returns the values
-    corresponding to graph.outputs.
-
-    Args:
-        graph: Finalized Graph IR to execute
-        inputs: Runtime objects corresponding to graph.inputs (positional)
-        interpreter: Interpreter context (for recursive execution)
-
-    Returns:
-        Runtime execution results corresponding to graph.outputs:
-        - Single value if graph.outputs has 1 element
-        - Tuple of values if graph.outputs has multiple elements
-
-    Raises:
-        AssertionError: If graph.outputs is empty (graph not finalized)
-        NotImplementedError: If opcode has no registered implementation
-    """
-    return interpreter.evaluate_graph(graph, inputs)

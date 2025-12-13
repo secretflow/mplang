@@ -324,7 +324,8 @@ def parse_spu_endpoints(
 def cmd_run(args: argparse.Namespace) -> None:
     """Run a user job via HTTP cluster or local simulator."""
     from mplang.v2 import make_driver, make_simulator
-    from mplang.v2.libs.device import ClusterSpec
+    from mplang.v2.edsl.context import pop_context, push_context
+    from mplang.v2.libs.device import ClusterSpec, set_global_cluster
 
     cluster: ClusterSpec
 
@@ -341,24 +342,28 @@ def cmd_run(args: argparse.Namespace) -> None:
     driver: Any
     if args.backend == "sim":
         enable_tracing = getattr(args, "profile", False)
-        # make_simulator(world_size, cluster_spec=..., enable_tracing=...)
         driver = make_simulator(
             cluster.world_size,
             cluster_spec=cluster,
             enable_tracing=enable_tracing,
         )
     else:
-        # make_driver(endpoints, cluster_spec=...)
         driver = make_driver(cluster.endpoints, cluster_spec=cluster)
+
+    # Set up context: push driver and set global cluster
+    push_context(driver)
+    set_global_cluster(cluster)
 
     module = load_user_module(args.file)
     entry = resolve_entry(module, args.entry)
 
     try:
-        result = entry(driver, *args.args)
+        # Entry function doesn't need driver parameter - it uses context
+        result = entry(*args.args)
         if result is not None:
             print(result)
     finally:
+        pop_context()
         if hasattr(driver, "shutdown"):
             driver.shutdown()
 

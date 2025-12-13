@@ -36,7 +36,7 @@ import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.runtime.interpreter import Interpreter, interpret
+from mplang.v2.runtime.interpreter import Interpreter
 from mplang.v2.runtime.value import Value, WrapValue
 
 # =============================================================================
@@ -267,7 +267,7 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
 
     if shape == ():
         # Scalar case
-        return interpret(subgraph, list(args), interpreter)
+        return interpreter.evaluate_graph(subgraph, list(args))
 
     for index in np.ndindex(shape):
         # Prepare inputs for this element (list ordered by subgraph.inputs)
@@ -295,7 +295,7 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
                     scalar_inputs.append(arg)
 
         # Recursive execution
-        scalar_out = interpret(subgraph, scalar_inputs, interpreter)
+        scalar_out = interpreter.evaluate_graph(subgraph, scalar_inputs)
 
         # Unwrap result if it's a TensorValue (to store in numpy array)
         # We store raw values in the object array for now, but will wrap the final array

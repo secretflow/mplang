@@ -89,7 +89,7 @@ from mplang.v2.libs.device import (
     set_dev_attr,
     set_global_cluster,
 )
-from mplang.v2.runtime.interpreter import Interpreter, interpret
+from mplang.v2.runtime.interpreter import Interpreter
 
 
 def evaluate(
@@ -238,7 +238,6 @@ __all__ = [  # noqa: RUF022
     "function",
     "get_current_context",
     "get_default_context",
-    "interpret",
     "jit",
     "mplang",
     "pop_context",

@@ -17,8 +17,6 @@
 import numpy as np
 
 import mplang.v2 as mp
-import mplang.v2.backends.simp_worker
-import mplang.v2.backends.spu_impl
 import mplang.v2.backends.tensor_impl  # noqa: F401
 import mplang.v2.edsl as el
 from mplang.v2.dialects import simp, spu

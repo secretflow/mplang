@@ -37,9 +37,9 @@ def test_func_call_recursion():
 
     # 3. Setup Simulator
     sim = simp.make_simulator(2)
-    from mplang.v2.edsl.context import push_context, pop_context
-    push_context(sim)
+    from mplang.v2.edsl.context import push_context
 
+    push_context(sim)
 
     # 4. Execute
     x_val = 10

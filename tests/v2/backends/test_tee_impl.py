@@ -17,7 +17,6 @@
 import numpy as np
 import pytest
 
-import mplang.v2.backends.crypto_impl
 import mplang.v2.backends.tee_impl  # noqa: F401 - Register implementations
 import mplang.v2.dialects.crypto as crypto
 import mplang.v2.dialects.tee as tee

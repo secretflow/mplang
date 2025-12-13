@@ -80,9 +80,6 @@ def run_worker(rank, world_size, endpoints, port):
 
 @pytest.fixture(scope="module")
 def http_cluster():
-
-
-
     world_size = 2
     base_port = 19300  # Changed to avoid port conflicts
     endpoints = [f"http://127.0.0.1:{base_port + i}" for i in range(world_size)]
@@ -141,7 +138,7 @@ def http_cluster():
     push_context(driver)
 
     yield driver
-    
+
     pop_context()
 
     # Shutdown driver
@@ -150,8 +147,6 @@ def http_cluster():
         state.shutdown()
 
     for p in processes:
-
-
         try:
             p.terminate()
             p.join(timeout=5)  # Increased timeout for graceful shutdown
@@ -233,4 +228,3 @@ def test_http_e2e(http_cluster):
 
         result_1 = val1.data if isinstance(val1, TensorValue) else val1
         np.testing.assert_allclose(result_1, [2.0, 3.0])
-

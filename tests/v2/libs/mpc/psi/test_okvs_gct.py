@@ -111,4 +111,3 @@ class TestSparseOKVSEDSL:
         """Verify expansion factor logic."""
         assert get_okvs_expansion(10) >= 1.2
         assert get_okvs_expansion(1000000) <= 1.4
-

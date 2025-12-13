@@ -160,4 +160,3 @@ def test_while_loop_eager():
         # but here res is InterpObject. fetch needs (sim, obj).
         values = mp.fetch(res)
         assert _unwrap_values(values) == [10, 10]
-

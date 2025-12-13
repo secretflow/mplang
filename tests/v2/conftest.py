@@ -22,6 +22,7 @@ from tests.v2.utils.tensor_patch import patch_object_operators
 def simp_simulator_default(monkeypatch):
     """Temporarily register SimpSimulator as the default interpreter."""
     from mplang.v2.dialects import simp
+
     monkeypatch.setattr(
         mplang.v2.edsl.context,
         "_default_context_factory",
@@ -43,4 +44,3 @@ def reset_default_context(monkeypatch):
     yield
     # Clear again after test
     mplang.v2.edsl.context._context_stack.clear()
-

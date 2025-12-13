@@ -24,8 +24,6 @@ from mplang.v2.dialects import simp
 from mplang.v2.edsl.context import pop_context, push_context
 
 
-
-
 def run_worker(rank: int, world_size: int, port: int, endpoints: list[str]) -> None:
     """Run a single worker server."""
     import uvicorn
@@ -55,7 +53,7 @@ def driver_cluster():
         processes.append(p)
 
     # Wait for servers to start
-    time.sleep(3.0)
+    time.sleep(1.0)
 
     # Check if processes are alive
     dead_procs = [p for p in processes if not p.is_alive()]
@@ -103,8 +101,6 @@ def driver_cluster():
         p.join(timeout=2)
 
 
-
-
 class TestDriverBasic:
     """Basic SimpHttpDriver tests."""
 
@@ -131,6 +127,7 @@ class TestDriverExecution:
     def test_simple_ppu_computation(self, driver_cluster):
         """Test simple computation on PPU device."""
         with driver_cluster:
+
             def add_one():
                 x = mp.device("P0")(lambda: 42)()
                 return x
@@ -144,6 +141,7 @@ class TestDriverExecution:
         import jax.numpy as jnp
 
         with driver_cluster:
+
             def jax_sum():
                 arr = mp.device("P0")(lambda: jnp.array([1, 2, 3]))()
                 result = mp.device("P0")(lambda x: jnp.sum(x))(arr)
@@ -156,6 +154,7 @@ class TestDriverExecution:
     def test_cross_party_transfer(self, driver_cluster):
         """Test data transfer between parties."""
         with driver_cluster:
+
             def transfer():
                 x = mp.device("P0")(lambda: 100)()
                 y = mp.put("P1", x)
@@ -189,6 +188,7 @@ class TestDriverFetch:
     def test_fetch_by_party_name(self, driver_cluster):
         """Test fetching result by party name."""
         with driver_cluster:
+
             def create_on_p0():
                 return mp.device("P0")(lambda: 999)()
 
@@ -199,6 +199,7 @@ class TestDriverFetch:
     def test_fetch_all_parties(self, driver_cluster):
         """Test fetching from all parties returns list."""
         with driver_cluster:
+
             def create_on_p0():
                 return mp.device("P0")(lambda: 123)()
 

@@ -13,22 +13,13 @@
 # limitations under the License.
 
 import unittest
-import sys
-print("DEBUG: sys.path:", sys.path)
-try:
-    import numpy
-    print("DEBUG: numpy version:", numpy.__version__)
-    print("DEBUG: numpy file:", numpy.__file__)
-except ImportError as e:
-    print("DEBUG: numpy failed to import:", e)
 
 import mplang.v2 as mp
-from mplang.v2.dialects.simp import make_simulator
-from mplang.v2.edsl.context import get_root_context, pop_context
 import mplang.v2.edsl.context as ctx_mod
-
-
 from mplang.v2.dialects import simp
+from mplang.v2.dialects.simp import make_simulator
+from mplang.v2.edsl.context import get_root_context
+
 
 class TestContextRoot(unittest.TestCase):
     def setUp(self):
@@ -38,65 +29,64 @@ class TestContextRoot(unittest.TestCase):
 
     def tearDown(self):
         ctx_mod._context_stack.clear()
-    
+
     def test_tracer_interaction(self):
         """Verify that Tracers sit on top of Root, keeping Root valid."""
         sim = make_simulator(3)
         with sim:
             # stack=[sim] (Root)
             self.assertIs(get_root_context(), sim)
-            
+
             @mp.compile
             def job():
                 # Inside job: stack=[sim, Tracer]
                 # Root should still be sim
                 root = get_root_context()
                 curr = mp.get_current_context()
-                
+
                 assert root is sim
-                assert curr is not sim # It is a Tracer
-                
+                assert curr is not sim  # It is a Tracer
+
                 mp.device("P0")
                 return simp.constant((0,), 1)
-            
+
             # Note: @mp.compile executes tracing immediately.
 
-            
     def test_compile_auto_context(self):
         """Test mp.compile uses the context provided in args or set_root_context."""
         sim = make_simulator(3)
-        
+
         # Case 1: set_root_context
         mp.set_root_context(sim, force=True)
-        
+
         captured_root = None
+
         @mp.compile
         def job1():
             nonlocal captured_root
             captured_root = get_root_context()
             return simp.constant((0,), 1)
-        
+
         # check side effect immediately
         self.assertIs(captured_root, sim)
-        
-        # Case 2: context arg to compile 
+
+        # Case 2: context arg to compile
         sim2 = make_simulator(3)
         captured_cluster = None
-        
+
         def func():
             nonlocal captured_cluster
             # With the simplified design, the context stack is traversed
             # to find the interpreter with _cluster_spec.
             # sim2 is pushed to the stack by compile(context=sim2).
             from mplang.v2.libs.device.api import _resolve_cluster
+
             captured_cluster = _resolve_cluster()
             return simp.constant((0,), 1)
-            
-        traced = mp.compile(func, context=sim2)
+
+        mp.compile(func, context=sim2)
         # compile() executes trace(). sim2's cluster should be resolved.
         self.assertIs(captured_cluster, sim2._cluster_spec)
-
-
 
 
 if __name__ == "__main__":

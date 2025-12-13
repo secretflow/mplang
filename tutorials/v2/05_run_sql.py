@@ -166,7 +166,7 @@ def main():
     }
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)
-    sim_tee = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.make_simulator(3, cluster_spec=cluster_spec)
 
     r2 = mp.evaluate(sql_on_tee)
     result2 = mp.fetch(r2)

@@ -165,8 +165,6 @@ def ctx_3pc(cluster_3pc_aby3):
         cluster.shutdown()
 
 
-
-
 @pytest.fixture
 def ctx_2pc(cluster_2pc_semi2k):
     """Set up 2-party cluster with simulator context."""

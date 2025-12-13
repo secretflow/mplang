@@ -17,7 +17,6 @@
 import jax.numpy as jnp
 
 import mplang.v2 as mp
-import mplang.v2.backends.crypto_impl
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
@@ -116,4 +115,3 @@ def test_apply_permutation_n2():
         res1_val = mp.fetch(res[1])
         assert _unwrap(res0_val[1]).item() == 20
         assert _unwrap(res1_val[1]).item() == 10
-

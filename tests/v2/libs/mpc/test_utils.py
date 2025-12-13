@@ -33,7 +33,7 @@ def run_protocol(sim, protocol_fn):
 
 def test_bits_conversion():
     """Test bytes_to_bits and bits_to_bytes type inference."""
-    sim = mp.Simulator.simple(world_size=2)
+    sim = simp.make_simulator(world_size=2)
 
     # 1 byte: 0b10101010 = 170
     data = np.array([170], dtype=np.uint8)
@@ -55,12 +55,12 @@ def test_bits_conversion():
     assert traced.graph.outputs[0].type.value_type.shape == (8,)
     assert traced.graph.outputs[1].type.value_type.shape == (1,)
 
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
 def test_cuckoo_hash():
     """Test CuckooHash class type inference."""
-    sim = mp.Simulator.simple(world_size=2)
+    sim = simp.make_simulator(world_size=2)
 
     items = np.array([1, 2, 3], dtype=np.int64)
 
@@ -78,4 +78,4 @@ def test_cuckoo_hash():
     # Shape should be (3,) wrapped in MPType
     assert traced.graph.outputs[0].type.value_type.shape == (3,)
 
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()

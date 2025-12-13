@@ -23,7 +23,7 @@ from mplang.v2.libs.mpc.ot import extension as ot_extension
 
 def test_transfer_extension():
     """Test IKNP OT extension correctness."""
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
 
     np.random.seed(42)
     num_ots = 128

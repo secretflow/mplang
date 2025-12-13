@@ -47,7 +47,7 @@ def extract_runtime_value(obj):
         val = interp.fetch(val)
     elif hasattr(interp, "context") and hasattr(interp.context, "fetch"):
          # Simulate fetch logic for HostInterpreter which uses SimpClient
-         from mplang.v2.backends.simp_structs import HostVar
+         from mplang.v2.backends.simp_driver import HostVar
          if isinstance(val, HostVar):
              resolved = []
              for r, v in enumerate(val.values):

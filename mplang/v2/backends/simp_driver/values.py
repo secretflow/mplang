@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SIMP data structures."""
+"""Simp Host values (HostVar)."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ class HostVar(Value):
 
     A HostVar holds a list of values, one for each party in the computation.
     """
+
     _serde_kind: ClassVar[str] = "simp.HostVar"
 
     def __init__(self, values: list[Any]):

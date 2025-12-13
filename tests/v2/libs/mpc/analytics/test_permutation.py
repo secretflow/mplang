@@ -33,7 +33,7 @@ def _unwrap(val):
 
 def test_secure_switch_straight():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
-    interp = mp.Simulator.simple(world_size=2)
+    interp = simp.make_simulator(world_size=2)
 
     # Sender: x0=10, x1=20
     # Receiver: c=0 (Straight) -> y0=10, y1=20
@@ -56,9 +56,9 @@ def test_secure_switch_straight():
 
 def test_secure_switch_swap():
     # World size 2: Party 0 (Sender), Party 1 (Receiver)
-    interp = mp.Simulator.simple(world_size=2)
-    print(f"DEBUG: Handlers: {list(interp.backend.handlers.keys())}")
-    print(f"DEBUG: simp.pcall_static present? {'simp.pcall_static' in interp.backend.handlers}")
+    interp = simp.make_simulator(world_size=2)
+    print(f"DEBUG: Handlers: {list(interp.handlers.keys())}")
+    print(f"DEBUG: simp.pcall_static present? {'simp.pcall_static' in interp.handlers}")
 
     # Sender: x0=10, x1=20
     # Receiver: c=1 (Swap) -> y0=20, y1=10
@@ -81,7 +81,7 @@ def test_secure_switch_swap():
 
 def test_apply_permutation_n2():
     # World size 2
-    interp = mp.Simulator.simple(world_size=2)
+    interp = simp.make_simulator(world_size=2)
 
     # Sender: data=[10, 20]
     # Receiver: perm=[1, 0] (Swap) -> [20, 10]

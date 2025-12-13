@@ -15,6 +15,7 @@
 import numpy as np
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 import mplang.v2.dialects.field as field
 from mplang.v2.dialects import tensor
 
@@ -30,7 +31,7 @@ def test_okvs_edsl() -> None:
         values_np[i, 0] = i
         values_np[i, 1] = i * 10
 
-    sim = mp.Simulator.simple(1)
+    sim = simp.make_simulator(1)
 
     def protocol():
         # Create inputs as tensor constants (field.solve_okvs expects TensorType, not MPType)

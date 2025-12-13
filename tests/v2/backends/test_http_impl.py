@@ -26,7 +26,7 @@ import uvicorn
 import mplang.v2.edsl as el
 import mplang.v2 as mp
 from mplang.v2.edsl.context import pop_context, push_context
-from mplang.v2.backends.simp_http_worker import create_worker_app
+from mplang.v2.backends.simp_worker.http import create_worker_app
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 

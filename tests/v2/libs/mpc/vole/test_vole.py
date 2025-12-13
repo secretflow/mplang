@@ -17,13 +17,14 @@
 import numpy as np
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 from mplang.v2.dialects import tensor
 from mplang.v2.libs.mpc.vole import gilboa as vole
 
 
 def test_vole_correctness():
     """Verify VOLE correlation: w = v + u * delta."""
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
     N = 100
 
     def protocol():

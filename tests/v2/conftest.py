@@ -21,11 +21,11 @@ from tests.v2.utils.tensor_patch import patch_object_operators
 @pytest.fixture
 def simp_simulator_default(monkeypatch):
     """Temporarily register SimpSimulator as the default interpreter."""
-    import mplang.v2 as mp
+    from mplang.v2.dialects import simp
     monkeypatch.setattr(
         mplang.v2.edsl.context,
         "_default_context_factory",
-        lambda: mp.Simulator.simple(world_size=3).backend,
+        lambda: simp.make_simulator(world_size=3),
     )
     monkeypatch.setattr(mplang.v2.edsl.context, "_default_context", None)
 

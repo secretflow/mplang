@@ -31,7 +31,7 @@ def test_spu_e2e_simulation():
     """Test SPU end-to-end flow using SimpSimulator."""
     # 1. Setup
     world_size = 3
-    sim = mp.Simulator.simple(world_size=world_size)
+    sim = simp.make_simulator(world_size=world_size)
     spu_parties = (0, 1, 2)
     spu_config = spu.SPUConfig()
 
@@ -92,13 +92,8 @@ def test_spu_e2e_simulation():
 
     try:
         # 4. Execute on all parties
-        # We use evaluate_graph directly on the backend to test backend execution
-        # Note: inputs are empty because we used constants inside the function
-        
-        # NOTE: Simulator no longer has _submit/_collect private methods exposed directly
-        # We should use evaluate_graph which handles dispatch
-        
-        results_var = sim.backend.evaluate_graph(graph, [])
+        # sim is now an Interpreter directly (from simp.make_simulator)
+        results_var = sim.evaluate_graph(graph, [])
 
         # Fetch results
         values = mp.fetch(sim, results_var)
@@ -117,4 +112,6 @@ def test_spu_e2e_simulation():
         assert values[2] is None
 
     finally:
-        sim.shutdown()
+        # Shutdown the cluster via the interpreter's reference
+        if hasattr(sim, "_simp_cluster"):
+            sim._simp_cluster.shutdown()

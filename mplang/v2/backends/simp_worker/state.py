@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""SIMP worker module.
-
-Provides Context and Store for executing Graph IR on a single party.
-This module only defines the context/store - operation implementations
-are registered in simp_impl.py.
-"""
+"""Simp Worker state (SimpWorker)."""
 
 from __future__ import annotations
 
@@ -28,12 +23,14 @@ import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.runtime.object_store import ObjectStore
 
 
-class SimpWorkerContext:
-    """Worker Context for SIMP execution.
+class SimpWorker:
+    """Worker state for SIMP execution.
 
-    This context provides capabilities (Store, Communicator) to the Interpreter.
-    It does NOT inherit from Interpreter or wrap logic.
+    This state provides capabilities (Store, Communicator) to the Interpreter.
+    Attached to Worker Interpreters.
     """
+
+    dialect_name: str = "simp"
 
     def __init__(
         self,

@@ -46,7 +46,7 @@ def test_save_load_tensor(simp_simulator_default, temp_dir):
 
     # 5. Verify content
     # y is likely a HostVar in SimpSimulator containing URIs
-    from mplang.v2.backends.simp_structs import HostVar
+    from mplang.v2.backends.simp_driver import HostVar
     from mplang.v2.edsl import get_default_context
 
     sim = get_default_context()

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Local communication utilities for in-memory simulation."""
+"""Simp Worker memory IPC runtime (LocalMesh, ThreadCommunicator)."""
 
 from __future__ import annotations
 
@@ -27,8 +27,7 @@ class ThreadCommunicator:
     Args:
         rank: This communicator's rank.
         world_size: Total number of parties.
-        use_serde: If True, serialize/deserialize data through serde on send,
-            simulating real HTTP communication behavior.
+        use_serde: If True, serialize/deserialize data through serde on send.
     """
 
     def __init__(self, rank: int, world_size: int, *, use_serde: bool = False):
@@ -52,7 +51,6 @@ class ThreadCommunicator:
 
     def send(self, to: int, key: str, data: Any) -> None:
         assert 0 <= to < self.world_size
-        # Optionally round-trip through serde to simulate HTTP communication
         if self.use_serde:
             from mplang.v2.edsl import serde
 
@@ -78,7 +76,11 @@ class ThreadCommunicator:
 
 
 class LocalMesh:
-    """Orchestrator context for SIMP simulation (replaces old Context)."""
+    """Communication mesh for local SIMP simulation.
+
+    Creates a set of ThreadCommunicators and a ThreadPoolExecutor for
+    worker-side execution.
+    """
 
     def __init__(self, world_size: int, *, use_serde: bool = False):
         self.world_size = world_size

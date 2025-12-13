@@ -18,8 +18,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mplang.v2.backends.simp_structs import HostVar
-from mplang.v2.backends.simp_local_comm import ThreadCommunicator
+from mplang.v2.backends.simp_driver import HostVar
+from mplang.v2.backends.simp_worker.mem import ThreadCommunicator
 from mplang.v2.edsl.graph import Operation
 
 

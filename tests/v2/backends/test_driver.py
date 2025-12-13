@@ -26,7 +26,7 @@ def run_worker(rank: int, world_size: int, port: int, endpoints: list[str]) -> N
     """Run a single worker server."""
     import uvicorn
 
-    from mplang.v2.backends.simp_http_worker import create_worker_app
+    from mplang.v2.backends.simp_worker.http import create_worker_app
 
     app = create_worker_app(rank, world_size, endpoints)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="error")

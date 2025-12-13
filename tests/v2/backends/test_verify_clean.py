@@ -1,15 +1,15 @@
 
 import pytest
 import mplang.v2 as mp
-from mplang.v2.backends.simp_structs import HostVar
+from mplang.v2.backends.simp_driver import HostVar
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.dialects import simp, tensor
 import mplang.v2.edsl.typing as elt
 
 def test_object_store_put_get():
     """Test ObjectStore put and get (Clean ver)."""
-    sim = mp.Simulator.simple(world_size=2)
-    workers = sim.client_ctx.workers
+    sim = simp.make_simulator(world_size=2)
+    workers = sim._simp_cluster.workers
     worker0 = workers[0]
     store0 = worker0.store
     
@@ -19,7 +19,7 @@ def test_object_store_put_get():
     # Store with explicit URI
     store0.put(data, uri=key)
     assert store0.get(key) == data
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 def test_object_store_host_var_storage(tmp_path):
     """Test storing HostVar."""
@@ -34,8 +34,8 @@ def test_object_store_host_var_storage(tmp_path):
 @pytest.mark.skip(reason="Logic expects host to compute on remote specific URIs automatically")
 def test_simulator_object_store_flow():
     """Test Simulator URI flow."""
-    sim = mp.Simulator.simple(world_size=2)
-    workers = sim.client_ctx.workers
+    sim = simp.make_simulator(world_size=2)
+    workers = sim._simp_cluster.workers
 
     uri_x0 = workers[0].store.put(10)
     uri_x1 = workers[1].store.put(20)
@@ -48,15 +48,15 @@ def test_simulator_object_store_flow():
     # Define type for x_var: MP[Tensor[i32], {0, 1}]
     # elt.i32 is instance of IntegerType
     x_type = MPType(TensorType(elt.i32, ()), (0, 1))
-    # InterpObject(value, type, context)
-    x_interp = InterpObject(x_var, x_type, sim.interpreter)
+    # InterpObject(value, type, context) - sim is now an Interpreter directly
+    x_interp = InterpObject(x_var, x_type, sim)
 
     # Graph: y = x + 1
     def fn(x):
         return tensor.run_jax(lambda a: a + 1, x)
 
     graph = mp.trace(fn, x_interp).graph
-    y_var = sim.backend.evaluate_graph(graph, [x_var])
+    y_var = sim.evaluate_graph(graph, [x_var])
 
     assert isinstance(y_var, HostVar)
     assert len(y_var.values) == 2
@@ -66,22 +66,16 @@ def test_simulator_object_store_flow():
     # Cast to int
     results = [int(r) for r in results]
     assert results == [11, 21]
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 def test_uniform_cond_clean():
     """Test uniform_cond (Clean ver)."""
-    sim = mp.Simulator.simple(world_size=2)
-    print(f"DEBUG TEST: sim.interpreter ID: {id(sim.interpreter)}")
-    print("DEBUG HANDLERS keys:", list(sim.interpreter.handlers.keys()))
+    sim = simp.make_simulator(world_size=2)
     
     with sim:
         # Check if pcall_static handling returns HostVar
         # Manually invoke pcall_static first
         res_pcall = simp.pcall_static((0, 1), lambda: tensor.constant(True))
-        print(f"DEBUG PCALL RES TYPE: {type(res_pcall)}")
-        
-        if hasattr(res_pcall, "runtime_obj"):
-             print(f"DEBUG PCALL RUNTIME OBJ: {type(res_pcall.runtime_obj)}")
 
         x0 = simp.constant((0,), 1)
         x1 = simp.constant((1,), 2)
@@ -94,11 +88,10 @@ def test_uniform_cond_clean():
              return simp.pcall_static((0, 1), lambda a: tensor.run_jax(lambda v: v * v, a), x)
 
         pred_true = simp.constant((0, 1), True)
-        print(f"DEBUG PRED TYPE: {type(pred_true)}")
         # uniform_cond
         res = simp.uniform_cond(pred_true, then_fn, else_fn, x_obj)
 
     values = mp.fetch(sim, res)
     values = [int(v) if not hasattr(v, "shape") or v.shape==() else v for v in values]
     assert values == [2, 4]
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()

@@ -17,6 +17,7 @@
 import pytest
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.vole.silver import (
     estimate_silver_communication,
     silver_vole,
@@ -28,7 +29,7 @@ class TestSilverVOLEBasic:
 
     def test_silver_vole_runs(self):
         """Verify Silver VOLE executes without errors."""
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
 
         sender = 0
         receiver = 1
@@ -50,7 +51,7 @@ class TestSilverVOLEBasic:
 
     def test_silver_vole_with_secrets(self):
         """Test Silver VOLE returns secrets when requested."""
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
 
         sender = 0
         receiver = 1
@@ -83,7 +84,7 @@ class TestSilverVOLECorrelation:
         Note: This is a simplified test. Full verification requires
         proper GF(2^128) multiplication.
         """
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
 
         sender = 0
         receiver = 1
@@ -154,7 +155,7 @@ class TestSilverVOLEEdgeCases:
 
     def test_same_party_error(self):
         """Verify error when sender == receiver."""
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
 
         def job():
             return silver_vole(0, 0, 100)
@@ -164,7 +165,7 @@ class TestSilverVOLEEdgeCases:
 
     def test_zero_n_error(self):
         """Verify error when n <= 0."""
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
 
         def job():
             return silver_vole(0, 1, 0)

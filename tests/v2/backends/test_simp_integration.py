@@ -22,7 +22,7 @@ import pytest
 # Register runtimes
 import mplang.v2.backends.tensor_impl  # noqa: F401
 import mplang.v2 as mp
-from mplang.v2.backends.simp_structs import HostVar
+from mplang.v2.backends.simp_driver import HostVar
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.dialects.simp import pcall_static, uniform_cond
@@ -63,7 +63,7 @@ def test_pcall_static():
         return add(x, y)
 
     # Create interpreter
-    sim = mp.Simulator.simple(world_size=3)
+    sim = simp.make_simulator(world_size=3)
 
     # Create inputs (HostVars)
     # World size 3
@@ -92,7 +92,7 @@ def test_pcall_static():
 
 
 def test_uniform_cond():
-    sim = mp.Simulator.simple(world_size=2)
+    sim = simp.make_simulator(world_size=2)
 
     def then_fn(x):
         return pcall_static((0, 1), lambda a: add(a, a), x)
@@ -137,7 +137,7 @@ def test_while_loop_eager():
 
     # Setup runtime
     # Reset global context to ensure world_size=2
-    sim = mp.Simulator.simple(world_size=2)
+    sim = simp.make_simulator(world_size=2)
 
     # Eager call
     with sim:

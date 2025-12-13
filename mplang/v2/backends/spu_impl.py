@@ -26,7 +26,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.v2.backends.simp_worker import SimpWorkerContext
+from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import spu
 from mplang.v2.edsl import serde
@@ -250,18 +250,18 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         )
 
     # Get global rank from interpreter or its context
-    # Use SimpWorkerContext if available
+    # Use SimpWorker if available
     context = getattr(interpreter, "context", None)
-    if isinstance(context, SimpWorkerContext):
+    if isinstance(context, SimpWorker):
         global_rank = context.rank
     else:
         # Fallback for other contexts or direct interpreter usage?
         # User said: "directly ensure simp_context is there"
-        # If not SimpWorkerContext, we can't run spu.exec?
+        # If not SimpWorker, we can't run spu.exec?
         # But maybe integration tests run differently?
         # Let's trust user: "ensure simp_context is there"
         raise RuntimeError(
-            f"spu.exec requires SimpWorkerContext, got {type(context)}"
+            f"spu.exec requires SimpWorker, got {type(context)}"
         )
 
     if global_rank not in parties:

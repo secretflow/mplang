@@ -48,10 +48,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # Register operation implementations (side-effect imports)
-from mplang.v2.backends import simp_impl as _simp_impl  # noqa: F401
+from mplang.v2.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
 from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
-from mplang.v2.backends.simp_worker import SimpWorkerContext
+from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
 from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter
@@ -220,10 +220,10 @@ def create_worker_app(
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
     store = ObjectStore(fs_root=str(root_dir))
-    ctx = SimpWorkerContext(rank, world_size, comm, store, spu_endpoints)
+    ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
 
     # Register handlers
-    from mplang.v2.backends.simp_impl import WORKER_HANDLERS
+    from mplang.v2.backends.simp_worker.ops import WORKER_HANDLERS
     # func_impl is already imported at module level for side-effects
     handlers = {**WORKER_HANDLERS}
 

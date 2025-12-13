@@ -34,7 +34,7 @@ def _unwrap(val):
 
 class TestGroupbyBFV:
     def setup_method(self):
-        self.interp = mp.Simulator.simple(world_size=2)
+        self.interp = simp.make_simulator(world_size=2)
 
     def test_small_k(self):
         # N=10, K=3
@@ -151,7 +151,7 @@ class TestGroupbyBFV:
 
 class TestGroupbyShuffle:
     def setup_method(self):
-        self.interp = mp.Simulator.simple(world_size=3)
+        self.interp = simp.make_simulator(world_size=3)
 
     def test_small_k(self):
         # N=10, K=3

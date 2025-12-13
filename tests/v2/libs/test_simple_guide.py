@@ -15,6 +15,7 @@
 """Simple verification test for func.call support."""
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 import mplang.v2.dialects.func as func
 import mplang.v2.dialects.tensor as tensor
 
@@ -35,7 +36,7 @@ def test_func_call_recursion():
         return func.call(fn_handle, x)
 
     # 3. Setup Simulator
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
     
     # 4. Execute
     x_val = 10

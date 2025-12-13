@@ -18,6 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 import mplang.v2.dialects.field as field
 import mplang.v2.dialects.simp as simp
 import mplang.v2.dialects.tensor as tensor
@@ -192,7 +193,7 @@ def _run_psi_simulation(
     SENDER = 0
     RECEIVER = 1
 
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
 
     def job() -> Any:
         s_handle = simp.constant((SENDER,), sender_items)

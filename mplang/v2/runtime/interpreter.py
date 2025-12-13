@@ -346,7 +346,11 @@ class Interpreter(AbstractInterpreter):
         self.tracer = tracer
 
         # Opaque context object (e.g. Runtime/Driver/Simulator) providing capabilities
+        # DEPRECATED: Use get_dialect_state() instead for typed access
         self.context = context
+
+        # Dialect states (typed runtime state for stateful dialects)
+        self._dialect_states: dict[str, Any] = {}
 
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
@@ -367,6 +371,40 @@ class Interpreter(AbstractInterpreter):
             self.store = ObjectStore(fs_root=self._temp_dir.name)
         else:
             self.store = store
+
+    # =========================================================================
+    # Dialect State Management
+    # =========================================================================
+    def get_dialect_state(self, dialect: str) -> Any:
+        """Get the state object for a specific dialect.
+
+        Args:
+            dialect: Name of the dialect (e.g., "simp", "bfv", "spu")
+
+        Returns:
+            The dialect state object, or None if not set.
+
+        Example:
+            simp_state = interpreter.get_dialect_state("simp")
+            if simp_state is not None:
+                simp_state.submit(rank, graph, inputs)
+        """
+        return self._dialect_states.get(dialect)
+
+    def set_dialect_state(self, dialect: str, state: Any) -> None:
+        """Set the state object for a specific dialect.
+
+        Args:
+            dialect: Name of the dialect (e.g., "simp", "bfv", "spu")
+            state: The dialect state object (should implement DialectState protocol)
+
+        Example:
+            interpreter.set_dialect_state("simp", cluster.connect())
+        """
+        self._dialect_states[dialect] = state
+        # Also set as context for backward compatibility
+        if self.context is None:
+            self.context = state
 
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]

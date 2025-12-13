@@ -159,7 +159,7 @@ def ctx_3pc(cluster_3pc_aby3):
     push_context(sim.backend)
     yield cluster_3pc_aby3
     pop_context()
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
 @pytest.fixture
@@ -169,7 +169,7 @@ def ctx_2pc(cluster_2pc_semi2k):
     push_context(sim.backend)
     yield cluster_2pc_semi2k
     pop_context()
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
 @pytest.fixture
@@ -179,7 +179,7 @@ def ctx_4pc(cluster_4pc_multi_spu):
     push_context(sim.backend)
     yield cluster_4pc_multi_spu
     pop_context()
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
 @pytest.fixture
@@ -189,7 +189,7 @@ def ctx_ppu_only(cluster_ppu_only):
     push_context(sim.backend)
     yield cluster_ppu_only
     pop_context()
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
 @pytest.fixture
@@ -223,4 +223,4 @@ def ctx_multi_tee(cluster_multi_tee):
     push_context(sim.backend)
     yield cluster_multi_tee
     pop_context()
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()

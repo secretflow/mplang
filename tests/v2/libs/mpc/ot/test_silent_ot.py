@@ -15,6 +15,7 @@
 import numpy as np
 
 import mplang.v2 as mp
+from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.ot import silent as silent_ot
 
 
@@ -22,7 +23,7 @@ class TestSilentOT:
     def test_silent_vole_correlation(self):
         """Verify Silent Random VOLE correlation: W = V + U * Delta."""
 
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
 
         N = 10000
         sender = 0
@@ -77,7 +78,7 @@ class TestSilentOT:
 
     def test_silent_vole_randomness(self):
         """Verify that outputs are distinguishable from zero (basic randomness check)."""
-        sim = mp.Simulator.simple(2)
+        sim = simp.make_simulator(2)
         N = 1000
 
         def job():

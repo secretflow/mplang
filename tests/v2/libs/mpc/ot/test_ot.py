@@ -37,7 +37,7 @@ class TestOTScalar:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        self.interp = mp.Simulator.simple(world_size=2)
+        self.interp = simp.make_simulator(world_size=2)
 
     @pytest.mark.parametrize(
         "m0_val, m1_val, choice_val, expected",
@@ -88,7 +88,7 @@ class TestOTVector:
 
     def setup_method(self):
         """Initialize simulator for each test."""
-        self.interp = mp.Simulator.simple(world_size=2)
+        self.interp = simp.make_simulator(world_size=2)
 
     def test_vector_all_zeros(self):
         """Test vectorized OT with all choices=0."""
@@ -151,7 +151,7 @@ class TestIKNPCore:
         """Initialize simulator for each test."""
         import mplang.v2 as mp
 
-        self.sim = mp.Simulator.simple(2)
+        self.sim = simp.make_simulator(2)
 
     def test_iknp_seeds_relationship(self):
         """Verify IKNP output: Q[i] = T[i] when d[i]=0, Q[i] = T[i]^S when d[i]=1."""

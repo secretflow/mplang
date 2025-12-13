@@ -18,10 +18,8 @@ import jax.numpy as jnp
 import numpy as np
 
 import mplang.v2 as mp
-import mplang.v2.dialects.field as field
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
-from mplang.v2.dialects import simp
+from mplang.v2.dialects import field, simp, tensor
 from mplang.v2.libs.mpc.psi import okvs_gct
 from mplang.v2.libs.mpc.psi import rr22 as psi_okvs
 from mplang.v2.runtime.interpreter import Interpreter

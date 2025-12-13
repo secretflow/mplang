@@ -18,8 +18,8 @@ This module provides the core data structures and algorithms for Sparse OKVS,
 which is a critical component in unbalanced Private Set Intersection (PSI).
 """
 
-import mplang.v2.dialects.field as field
 import mplang.v2.edsl as el
+from mplang.v2.dialects import field
 from mplang.v2.libs.mpc.psi.okvs import OKVS
 
 # ============================================================================

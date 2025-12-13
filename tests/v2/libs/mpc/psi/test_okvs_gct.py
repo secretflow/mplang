@@ -18,8 +18,7 @@ import numpy as np
 import pytest
 
 import mplang.v2 as mp
-import mplang.v2.dialects.tensor as tensor
-from mplang.v2.dialects import simp
+from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc.psi.okvs_gct import SparseOKVS, get_okvs_expansion
 
 

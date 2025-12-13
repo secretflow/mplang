@@ -18,11 +18,9 @@ import numpy as np
 import pytest
 
 import mplang.v2.backends.tee_impl  # noqa: F401 - Register implementations
-import mplang.v2.dialects.crypto as crypto
-import mplang.v2.dialects.tee as tee
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.tee_impl import MockQuoteValue
+from mplang.v2.dialects import crypto, tee, tensor
 from mplang.v2.runtime.interpreter import Interpreter
 
 

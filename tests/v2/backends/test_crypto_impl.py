@@ -21,8 +21,6 @@ import numpy as np
 import pytest
 
 import mplang.v2.backends.crypto_impl  # noqa: F401 - Register implementations
-import mplang.v2.dialects.crypto as crypto
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.crypto_impl import (
     BytesValue,
@@ -31,6 +29,7 @@ from mplang.v2.backends.crypto_impl import (
     SymmetricKeyValue,
 )
 from mplang.v2.backends.tensor_impl import TensorValue
+from mplang.v2.dialects import crypto, tensor
 from mplang.v2.runtime.interpreter import Interpreter
 
 

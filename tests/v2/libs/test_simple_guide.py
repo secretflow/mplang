@@ -15,9 +15,7 @@
 """Simple verification test for func.call support."""
 
 import mplang.v2 as mp
-import mplang.v2.dialects.func as func
-import mplang.v2.dialects.tensor as tensor
-from mplang.v2.dialects import simp
+from mplang.v2.dialects import func, simp, tensor
 
 
 def test_func_call_recursion():

@@ -46,7 +46,7 @@ Create a Python script (e.g., `my_job.py`) that defines the computation you want
 
 ```python
 # my_job.py
-import mplang.v2.dialects.simp as simp
+from mplang.v2.dialects import simp
 import numpy as np
 
 def main():

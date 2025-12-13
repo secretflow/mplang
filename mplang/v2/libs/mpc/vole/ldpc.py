@@ -32,9 +32,8 @@ import jax.numpy as jnp
 import numpy as np
 import scipy.sparse as sp
 
-import mplang.v2.dialects.crypto as crypto
 import mplang.v2.edsl as el
-from mplang.v2.dialects import field, tensor
+from mplang.v2.dialects import crypto, field, tensor
 
 # ============================================================================
 # Constants

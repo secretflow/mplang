@@ -1669,8 +1669,17 @@ def fit_tree_ensemble(
         )
         trees.append(tree)
 
-        # TODO: Predict tree and update y_pred
-        # y_pred = y_pred + learning_rate * predict_tree(tree, all_datas)
+        # Predict tree and update y_pred
+        n_nodes = 2 ** (max_depth + 1) - 1
+        tree_pred = predict_tree(tree, all_datas, ap_rank, pp_ranks, n_nodes)
+
+        def update_pred_fn(curr_y, t_pred, lr=learning_rate):
+            return curr_y + lr * t_pred
+
+        y_pred = simp.pcall_static(
+            (ap_rank,),
+            lambda: tensor.run_jax(update_pred_fn, y_pred, tree_pred),
+        )
 
     return TreeEnsemble(
         max_depth=max_depth,
@@ -1972,19 +1981,6 @@ def run_sgb_bench(sim):
     print("=" * 70)
     print("SecureBoost v2 - Multi-Party FHE Performance Benchmark")
     print("=" * 70)
-
-    # Load BFV backend
-    from mplang.v2.backends import load_backend
-    try:
-        load_backend("mplang.v2.backends.bfv_impl")
-        print("✓ BFV backend loaded")
-    except ImportError as e:
-        print(f"✗ Failed to load BFV backend: {e}")
-        return
-
-    # Note: Profiling is enabled via mp.make_simulator(enable_profiling=True) in main()
-    print("✓ Primitive operation profiling enabled")
-
     # Benchmark configurations
     configs = [
         # Test m > 4096 case (multi-CT support)
@@ -1992,8 +1988,8 @@ def run_sgb_bench(sim):
             "n_samples": 1000,
             "n_features_ap": 50,
             "n_features_pp": 50,
-            "n_trees": 1,
-            "max_depth": 5,
+            "n_trees": 2,
+            "max_depth": 3,
         },
     ]
 

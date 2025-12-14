@@ -43,12 +43,11 @@ def _resolve_cluster() -> Any:
     Interpreter with a _cluster_spec attribute. This allows nested contexts
     to override the cluster if needed.
     """
-    from mplang.v2.edsl.context import _context_stack
+    from mplang.v2.edsl.context import find_context
 
-    # Traverse from top (most recent) to find nearest context with _cluster_spec
-    for ctx in reversed(_context_stack):
-        if hasattr(ctx, "_cluster_spec") and ctx._cluster_spec is not None:
-            return ctx._cluster_spec
+    ctx = find_context(lambda c: getattr(c, "_cluster_spec", None) is not None)
+    if ctx is not None:
+        return ctx._cluster_spec  # type: ignore[attr-defined]
 
     raise RuntimeError(
         "No active device context found. Please use 'with simulator:' "

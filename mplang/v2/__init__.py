@@ -271,7 +271,55 @@ def fetch(
 
 
 # Alias for compatibility
-function = jit  # @mp.function -> @mp2.function (JIT compilation)
+def function(fn: Callable[..., Any] | None = None) -> Callable[..., Any]:
+    """Decorator defining a Multi-Party Function (MP Program).
+
+    This decorator "lifts" a local function into a distributed program by
+    automatically wrapping it in a `simp.pcall_static` that targets ALL available
+    parties in the current context.
+
+    Semantics: f(args) -> pcall(ALL, f, args)
+
+    Args:
+        fn: The function to decorate.
+
+    Returns:
+        A wrapper function that, when called, executes the original function
+        on all workers.
+    """
+    import functools
+
+    from mplang.v2.dialects import simp
+
+    if fn is None:
+        return function
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from mplang.v2.edsl.context import find_context
+
+        # Find context with simp dialect state
+        def has_simp_state(ctx: Any) -> bool:
+            if hasattr(ctx, "get_dialect_state"):
+                state = ctx.get_dialect_state("simp")
+                return state is not None and hasattr(state, "world_size")
+            return False
+
+        ctx = find_context(has_simp_state)
+        if ctx is None:
+            raise RuntimeError(
+                "mp.function requires a context with world_size information "
+                "(e.g. SimpSimulator or Driver initialized)."
+            )
+
+        # ctx found by predicate so we know it has get_dialect_state
+        simp_state = ctx.get_dialect_state("simp")  # type: ignore[attr-defined]
+        world_size = simp_state.world_size  # type: ignore
+
+        all_parties = tuple(range(world_size))
+        return simp.pcall_static(all_parties, fn, *args, **kwargs)
+
+    return wrapper
 
 
 def compile(

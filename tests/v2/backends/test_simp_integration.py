@@ -160,3 +160,60 @@ def test_while_loop_eager():
         # but here res is InterpObject. fetch needs (sim, obj).
         values = mp.fetch(res)
         assert _unwrap_values(values) == [10, 10]
+
+
+def test_nested_pcall():
+    """Test nested pcall: pcall_static(M, pcall_static(M, ...))."""
+    sim = simp.make_simulator(world_size=2)
+
+    def inner_logic(x):
+        # Layer 2: Inner pcall on same parties (0, 1)
+        # Effectively executing locally on workers 0 and 1
+        return pcall_static((0, 1), lambda a: add(a, a), x)
+
+    def outer_logic(x):
+        # Layer 1: Outer pcall on parties (0, 1)
+        return pcall_static((0, 1), inner_logic, x)
+
+    with sim:
+        x0 = simp.constant((0,), 10)
+        x1 = simp.constant((1,), 20)
+        x_obj = simp.converge(x0, x1)
+
+        # Execute nested pcall
+        res = outer_logic(x_obj)
+
+        values = mp.fetch(res)
+        # Expected:
+        # P0: (10 + 10) = 20
+        # P1: (20 + 20) = 40
+        assert _unwrap_values(values) == [20, 40]
+
+
+def test_mp_function_decorator():
+    """Test @mp.function decorator which implies pcall_static(ALL, ...)."""
+    sim = simp.make_simulator(world_size=3)
+
+    @mp.function
+    def my_mp_program(x):
+        # This code runs on ALL workers
+        # x is a local value on each worker
+        return add(x, x)
+
+    with sim:
+        # P0=1, P1=2, P2=3
+        x0 = simp.constant((0,), 1)
+        x1 = simp.constant((1,), 2)
+        x2 = simp.constant((2,), 3)
+        x_obj = simp.converge(x0, x1, x2)
+
+        # Call the MP program
+        # This should automatically trigger pcall_static((0, 1, 2), ...)
+        res = my_mp_program(x_obj)
+
+        values = mp.fetch(res)
+        # Expected:
+        # P0: 1+1=2
+        # P1: 2+2=4
+        # P2: 3+3=6
+        assert _unwrap_values(values) == [2, 4, 6]

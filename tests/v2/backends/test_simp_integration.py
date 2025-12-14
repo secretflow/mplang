@@ -14,37 +14,14 @@
 
 
 import jax.numpy as jnp
-import numpy as np
 
 import mplang.v2 as mp
-
-# Register runtimes
-# Register runtimes
 import mplang.v2.backends.tensor_impl  # noqa: F401
 from mplang.v2.backends.simp_driver import DriverVar
-from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.dialects.simp import pcall_static, uniform_cond
 from mplang.v2.dialects.tensor import run_jax
 from mplang.v2.runtime.interpreter import InterpObject
-
-
-def _unwrap_values(values: list) -> list:
-    """Unwrap TensorValue objects in a list."""
-    result = []
-    for v in values:
-        if isinstance(v, (TensorValue, InterpObject)):
-            # Convert to scalar if possible
-            arr = v.data
-            if isinstance(arr, (jnp.ndarray, np.ndarray, np.generic)):
-                result.append(arr.item())
-            else:
-                result.append(arr)
-        elif isinstance(v, (jnp.ndarray, np.ndarray, np.generic)):
-            result.append(v.item())
-        else:
-            result.append(v)
-    return result
 
 
 def add(x, y):
@@ -86,7 +63,7 @@ def test_pcall_static():
         # DriverVar holds list of values.
         # 1+10=11, 2+20=22, 3+30=33
         values = mp.fetch(res)
-        assert _unwrap_values(values) == [11, 22, 33]
+        assert values == [11, 22, 33]
 
 
 def test_uniform_cond():
@@ -108,7 +85,7 @@ def test_uniform_cond():
         res = uniform_cond(pred_true, then_fn, else_fn, x_obj)
 
         values = mp.fetch(res)
-        assert _unwrap_values(values) == [2, 4]
+        assert values == [2, 4]
 
     # Test False case
     with sim:
@@ -119,7 +96,7 @@ def test_uniform_cond():
         res_false = uniform_cond(pred_obj_false, then_fn, else_fn, x_obj)
 
         values = mp.fetch(res_false)
-        assert _unwrap_values(values) == [1, 4]
+        assert values == [1, 4]
 
 
 def test_while_loop_eager():
@@ -159,4 +136,61 @@ def test_while_loop_eager():
         # mp.fetch can fetch the result directly from the wrapper if needed,
         # but here res is InterpObject. fetch needs (sim, obj).
         values = mp.fetch(res)
-        assert _unwrap_values(values) == [10, 10]
+        assert values == [10, 10]
+
+
+def test_nested_pcall():
+    """Test nested pcall: pcall_static(M, pcall_static(M, ...))."""
+    sim = simp.make_simulator(world_size=2)
+
+    def inner_logic(x):
+        # Layer 2: Inner pcall on same parties (0, 1)
+        # Effectively executing locally on workers 0 and 1
+        return pcall_static((0, 1), lambda a: add(a, a), x)
+
+    def outer_logic(x):
+        # Layer 1: Outer pcall on parties (0, 1)
+        return pcall_static((0, 1), inner_logic, x)
+
+    with sim:
+        x0 = simp.constant((0,), 10)
+        x1 = simp.constant((1,), 20)
+        x_obj = simp.converge(x0, x1)
+
+        # Execute nested pcall
+        res = outer_logic(x_obj)
+
+        values = mp.fetch(res)
+        # Expected:
+        # P0: (10 + 10) = 20
+        # P1: (20 + 20) = 40
+        assert values == [20, 40]
+
+
+def test_mp_function_decorator():
+    """Test @mp.function decorator which implies pcall_static(ALL, ...)."""
+    sim = simp.make_simulator(world_size=3)
+
+    @mp.function
+    def my_mp_program(x):
+        # This code runs on ALL workers
+        # x is a local value on each worker
+        return add(x, x)
+
+    with sim:
+        # P0=1, P1=2, P2=3
+        x0 = simp.constant((0,), 1)
+        x1 = simp.constant((1,), 2)
+        x2 = simp.constant((2,), 3)
+        x_obj = simp.converge(x0, x1, x2)
+
+        # Call the MP program
+        # This should automatically trigger pcall_static((0, 1, 2), ...)
+        res = my_mp_program(x_obj)
+
+        values = mp.fetch(res)
+        # Expected:
+        # P0: 1+1=2
+        # P1: 2+2=4
+        # P2: 3+3=6
+        assert values == [2, 4, 6]

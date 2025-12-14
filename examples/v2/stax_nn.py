@@ -43,7 +43,8 @@ from sklearn.metrics import accuracy_score
 
 import mplang.v2 as mp
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "stax_nn"))
+# Add examples/v1/stax_nn to sys.path to import shared model definitions
+sys.path.insert(0, str(Path(__file__).parent.parent / "v1" / "stax_nn"))
 import models
 
 parser = argparse.ArgumentParser(description="stax_nn with mplang.v2")
@@ -123,9 +124,11 @@ def train(
 
     itercount = itertools.count()
 
-    print("Start training...")
-
     # Training loop with mplang.v2
+    from jax.tree_util import tree_map
+
+    # comment out 'mp.function' to run tracking loop eagerly on driver
+
     @mp.function
     def do_train(opt_state):
         for i in range(1, epochs + 1):
@@ -149,49 +152,23 @@ def train(
 
                 # Compute gradient update on SPU (secure multi-party)
                 # SPU always uses JAX semantics natively
-                opt_state = mp.device("SP0")(update_model)(
+                # Use .jax() to automatically handle secret sharing of inputs
+                opt_state = mp.device("SP0").jax(update_model)(
                     opt_state, p0_images, p1_labels, it
                 )
 
-        return opt_state
+        # Move results to P0 leaf-by-leaf to trigger implicit reconstruction/reveal.
+        # This is done inside the function so do_train returns values already on P0.
+        return tree_map(lambda x: mp.device("P0").jax(lambda y: y)(x), opt_state)
 
-    opt_state_spu = do_train(opt_state)
+    opt_state_p0_final = do_train(opt_state)
 
-    # Reconstruct SPU shares to plaintext
-    # In simulation mode, we can use SPU's Io.reconstruct
-    import spu.api as spu_api
-    import spu.libspu as libspu
-    from jax.tree_util import tree_map
-    from mplang.v2.backends.simp_host import HostVar
+    # Fetch results to driver
+    print("Fetching results...")
+    opt_state_final = tree_map(lambda x: mp.fetch(x, party="P0"), opt_state_p0_final)
 
-    from mplang.v2.dialects.spu import SPUConfig
-    from mplang.v2.runtime.interpreter import InterpObject
-
-    config = SPUConfig(protocol="SEMI2K", field="FM128")
-    runtime_config = config.to_runtime_config()
-    io = spu_api.Io(2, runtime_config)  # 2 parties
-
-    def unwrap_and_reconstruct(x):
-        """Unwrap InterpObject/HostVar and reconstruct SPU shares."""
-        # Unwrap InterpObject to get HostVar
-        if isinstance(x, InterpObject):
-            return unwrap_and_reconstruct(x.runtime_obj)
-
-        # HostVar contains shares from all parties - reconstruct them together!
-        if isinstance(x, HostVar):
-            shares = x.values
-            # Check if all values are SPU shares
-            if shares and all(isinstance(s, libspu.Share) for s in shares):
-                # Reconstruct with ALL shares from all parties
-                return io.reconstruct(shares)
-            else:
-                # Not SPU shares, just take first value (e.g., PPU result)
-                return shares[0] if shares else x
-
-        return x
-
-    opt_state_plain = tree_map(unwrap_and_reconstruct, opt_state_spu)
-    params = get_params(opt_state_plain)
+    # Extract params
+    params = get_params(opt_state_final)
     return params
 
 
@@ -244,6 +221,7 @@ def train_mnist(model):
 
     # Evaluate
     test_x, test_y = test_ds["image"], test_ds["label"]
+    # Run prediction
     predict_y = predict_fun(params, test_x)
     score = accuracy_score(np.argmax(predict_y, axis=1), test_y)
     print(f"accuracy(spu): {score}")
@@ -277,12 +255,12 @@ def main():
         # Driver mode: connect to running workers
         print("Using Driver mode - ensure workers are running!")
         print("Start workers with: python -m mplang.v2.backends.cli up --world-size 2")
-        driver = mp.Driver(cluster_spec)
+        driver = mp.make_driver(cluster_spec.endpoints, cluster_spec=cluster_spec)
         ctx = driver
     else:
         # Simulation mode: run locally with threads
         print("Using Simulation mode")
-        sim = mp.Simulator(cluster_spec)
+        sim = mp.make_simulator(2, cluster_spec=cluster_spec)
         ctx = sim
 
     # Set context and run

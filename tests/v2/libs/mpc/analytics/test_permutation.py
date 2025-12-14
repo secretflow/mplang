@@ -18,16 +18,8 @@ import jax.numpy as jnp
 
 import mplang.v2 as mp
 import mplang.v2.backends.tensor_impl  # noqa: F401
-from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.libs.mpc.analytics import permutation
-
-
-def _unwrap(val):
-    """Unwrap TensorValue to numpy array."""
-    if isinstance(val, TensorValue):
-        return val.unwrap()
-    return val
 
 
 def test_secure_switch_straight():
@@ -49,8 +41,8 @@ def test_secure_switch_straight():
 
         y0_val = mp.fetch(y0)
         y1_val = mp.fetch(y1)
-        assert _unwrap(y0_val[1]).item() == 10
-        assert _unwrap(y1_val[1]).item() == 20
+        assert y0_val[1] == 10
+        assert y1_val[1] == 20
 
 
 def test_secure_switch_swap():
@@ -73,8 +65,8 @@ def test_secure_switch_swap():
 
         y0_val = mp.fetch(y0)
         y1_val = mp.fetch(y1)
-        assert _unwrap(y0_val[1]).item() == 20
-        assert _unwrap(y1_val[1]).item() == 10
+        assert y0_val[1] == 20
+        assert y1_val[1] == 10
 
 
 def test_apply_permutation_n2():
@@ -112,5 +104,5 @@ def test_apply_permutation_n2():
         # res is a list of Objects on Receiver
         res0_val = mp.fetch(res[0])
         res1_val = mp.fetch(res[1])
-        assert _unwrap(res0_val[1]).item() == 20
-        assert _unwrap(res1_val[1]).item() == 10
+        assert res0_val[1] == 20
+        assert res1_val[1] == 10

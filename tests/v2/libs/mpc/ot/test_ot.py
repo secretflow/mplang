@@ -19,16 +19,8 @@ import pytest
 
 import mplang.v2 as mp
 import mplang.v2.backends.tensor_impl  # noqa: F401 (registers tensor primitives)
-from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.libs.mpc.ot import base as ot
-
-
-def _unwrap(val):
-    """Unwrap TensorValue to numpy array."""
-    if isinstance(val, TensorValue):
-        return val.unwrap()
-    return val
 
 
 class TestOTScalar:
@@ -78,8 +70,8 @@ class TestOTScalar:
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
             values = mp.fetch(res)
-            result = _unwrap(values[1])
-            assert result.item() == expected
+            result = values[1]
+            assert result == expected
 
 
 class TestOTVector:
@@ -104,7 +96,7 @@ class TestOTVector:
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
             values = mp.fetch(res)
-            np.testing.assert_array_equal(_unwrap(values[1]), m0_data)
+            np.testing.assert_array_equal(values[1], m0_data)
 
     def test_vector_all_ones(self):
         """Test vectorized OT with all choices=1."""
@@ -121,7 +113,7 @@ class TestOTVector:
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
             values = mp.fetch(res)
-            np.testing.assert_array_equal(_unwrap(values[1]), m1_data)
+            np.testing.assert_array_equal(values[1], m1_data)
 
     def test_vector_mixed_choices(self):
         """Test vectorized OT with mixed choices (0 and 1)."""
@@ -140,7 +132,7 @@ class TestOTVector:
             res = ot.transfer(m0, m1, choice, sender=0, receiver=1)
 
             values = mp.fetch(res)
-            np.testing.assert_array_equal(_unwrap(values[1]), expected)
+            np.testing.assert_array_equal(values[1], expected)
 
 
 class TestIKNPCore:

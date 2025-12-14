@@ -116,6 +116,37 @@ def get_root_context() -> Context | None:
     return _context_stack[0] if _context_stack else None
 
 
+def find_context(predicate: Callable[[Context], bool]) -> Context | None:
+    """Find a context in the stack that satisfies the predicate.
+
+    Traverses from top (most recent) to bottom of the context stack,
+    returning the first context for which predicate(ctx) returns True.
+
+    This is a general-purpose utility for finding contexts with specific
+    attributes or capabilities without hardcoding business logic here.
+
+    Args:
+        predicate: A callable that takes a Context and returns True if it matches.
+
+    Returns:
+        The first matching Context, or None if no match found.
+
+    Example:
+        >>> # Find context with simp dialect state
+        >>> ctx = find_context(
+        ...     lambda c: hasattr(c, "get_dialect_state")
+        ...     and c.get_dialect_state("simp") is not None
+        ... )
+        >>>
+        >>> # Find context with cluster spec
+        >>> ctx = find_context(lambda c: getattr(c, "_cluster_spec", None) is not None)
+    """
+    for ctx in reversed(_context_stack):
+        if predicate(ctx):
+            return ctx
+    return None
+
+
 def push_context(context: Context) -> None:
     """Push a context onto the stack (enter context)."""
     _context_stack.append(context)

@@ -42,11 +42,18 @@ def jit(fn: Callable) -> Callable:
     """
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        # If we are already inside a Tracer (e.g. pcall_static), just inline
+        # the function to trace it into the current graph.
+        cur_ctx = get_current_context()
+        if isinstance(cur_ctx, Tracer):
+            return fn(*args, **kwargs)
+
+        # otherwise trace for JIT compilation
         with Tracer():
             result = fn(*args, **kwargs)
 
         # Use current context if available (e.g., SimpSimulator), otherwise use default
-        cur_ctx = get_current_context() or get_default_context()
+        cur_ctx = cur_ctx or get_default_context()
         assert isinstance(cur_ctx, AbstractInterpreter), (
             "JIT execution requires Interpreter context"
         )

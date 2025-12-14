@@ -126,7 +126,7 @@ def train(
 
     # Training loop with mplang.v2
     from jax.tree_util import tree_map
-    
+
     # comment out 'mp.function' to run tracking loop eagerly on driver
 
     @mp.function
@@ -166,7 +166,7 @@ def train(
     # Fetch results to driver
     print("Fetching results...")
     opt_state_final = tree_map(lambda x: mp.fetch(x, party="P0"), opt_state_p0_final)
-    
+
     # Extract params
     params = get_params(opt_state_final)
     return params
@@ -262,7 +262,6 @@ def main():
         print("Using Simulation mode")
         sim = mp.make_simulator(2, cluster_spec=cluster_spec)
         ctx = sim
-
 
     # Set context and run
     with ctx:

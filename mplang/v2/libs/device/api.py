@@ -31,10 +31,30 @@ from jax.tree_util import tree_flatten, tree_map
 from mplang.v2.backends import load_builtins
 from mplang.v2.dialects import crypto, simp, spu, tee
 from mplang.v2.edsl.object import Object
-from mplang.v2.libs.device.cluster import Device, get_global_cluster
+from mplang.v2.libs.device.cluster import Device
 
-# Load built-in backends (SPU, Tensor, etc.)
 load_builtins()
+
+
+def _resolve_cluster() -> Any:
+    """Resolve the active ClusterSpec by traversing the context stack.
+
+    Traverses from the top of the stack (most recent) to find the nearest
+    Interpreter with a _cluster_spec attribute. This allows nested contexts
+    to override the cluster if needed.
+    """
+    from mplang.v2.edsl.context import _context_stack
+
+    # Traverse from top (most recent) to find nearest context with _cluster_spec
+    for ctx in reversed(_context_stack):
+        if hasattr(ctx, "_cluster_spec") and ctx._cluster_spec is not None:
+            return ctx._cluster_spec
+
+    raise RuntimeError(
+        "No active device context found. Please use 'with simulator:' "
+        "or 'push_context(sim)' to set the execution environment."
+    )
+
 
 # Magic attribute name to mark an Object as a device object
 DEVICE_ATTR_NAME = "__device__"
@@ -124,7 +144,7 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
             f"Please enable auto-transfer or put all data on same device first."
         )
 
-    cluster = get_global_cluster()
+    cluster = _resolve_cluster()
     device_kinds = {dev_id: cluster.devices[dev_id].kind.upper() for dev_id in devices}
 
     # Count devices by type
@@ -232,7 +252,7 @@ def _device_run(
     **kwargs: Any,
 ) -> Any:
     """Execute function on the specified device."""
-    cluster = get_global_cluster()
+    cluster = _resolve_cluster()
     if dev_id not in cluster.devices:
         available = list(cluster.devices.keys())
         raise DeviceNotFoundError(
@@ -305,10 +325,10 @@ class DeviceContext:
         """Check if this device context targets an SPU device."""
         if self.dev_id is None:
             return False
-        cluster = get_global_cluster()
+        cluster = _resolve_cluster()
         if self.dev_id not in cluster.devices:
             return False
-        return cluster.devices[self.dev_id].kind.upper() == "SPU"
+        return bool(cluster.devices[self.dev_id].kind.upper() == "SPU")
 
     @property
     def jax(self) -> Callable[[Callable], Callable]:
@@ -463,7 +483,7 @@ def _d2d(to_dev_id: str, obj: Object) -> Object:
     if frm_dev_id == to_dev_id:
         return obj
 
-    cluster = get_global_cluster()
+    cluster = _resolve_cluster()
     frm_dev = cluster.devices[frm_dev_id]
     to_dev = cluster.devices[to_dev_id]
     frm_to_pair = (frm_dev.kind.upper(), to_dev.kind.upper())
@@ -660,7 +680,7 @@ def put(to_dev_id: str, obj: Any) -> Object:
     If obj is already a device object, it moves it to the target device.
     If obj is a host object (e.g. numpy array), it uploads it to the target device.
     """
-    cluster = get_global_cluster()
+    cluster = _resolve_cluster()
     if to_dev_id not in cluster.devices:
         available = list(cluster.devices.keys())
         raise DeviceNotFoundError(

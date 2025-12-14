@@ -31,6 +31,7 @@ import queue
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from mplang.v2.edsl.context import AbstractInterpreter
@@ -38,6 +39,7 @@ from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.registry import get_impl
 from mplang.v2.edsl.typing import BaseType
+from mplang.v2.runtime.dialect_state import DialectState
 from mplang.v2.runtime.object_store import ObjectStore
 
 if TYPE_CHECKING:
@@ -330,6 +332,7 @@ class Interpreter(AbstractInterpreter):
         trace_pid: int | None = None,
         store: ObjectStore | None = None,
         root_dir: str | pathlib.Path | None = None,
+        handlers: dict[str, Callable[..., Any]] | None = None,
     ) -> None:
         # Persistence Root
         self.root_dir = (
@@ -337,6 +340,13 @@ class Interpreter(AbstractInterpreter):
             if root_dir
             else pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
         )
+
+        # Instance-level handler registry (overrides global registry)
+        self.handlers: dict[str, Callable] = handlers or {}
+        self.tracer = tracer
+
+        # Dialect states (typed runtime state for stateful dialects)
+        self._dialect_states: dict[str, DialectState] = {}
 
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
@@ -348,7 +358,6 @@ class Interpreter(AbstractInterpreter):
         self.executor = executor
         self.async_ops: set[str] = set()
         self.name = name
-        self.tracer = tracer
 
         self.trace_pid = trace_pid
 
@@ -359,6 +368,37 @@ class Interpreter(AbstractInterpreter):
         else:
             self.store = store
 
+    # =========================================================================
+    # Dialect State Management
+    # =========================================================================
+    def get_dialect_state(self, dialect: str) -> DialectState | None:
+        """Get the state object for a specific dialect.
+
+        Args:
+            dialect: Name of the dialect (e.g., "simp", "bfv", "spu")
+
+        Returns:
+            The dialect state object, or None if not set.
+
+        Example:
+            simp_state = interpreter.get_dialect_state("simp")
+            if simp_state is not None:
+                simp_state.submit(rank, graph, inputs)
+        """
+        return self._dialect_states.get(dialect)
+
+    def set_dialect_state(self, dialect: str, state: DialectState) -> None:
+        """Set the state object for a specific dialect.
+
+        Args:
+            dialect: Name of the dialect (e.g., "simp", "bfv", "spu")
+            state: The dialect state object (should implement DialectState protocol)
+
+        Example:
+            interpreter.set_dialect_state("simp", cluster.connect())
+        """
+        self._dialect_states[dialect] = state
+
     def bind_primitive(
         self, primitive: Primitive, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> InterpObject | list[InterpObject] | Any:
@@ -368,7 +408,7 @@ class Interpreter(AbstractInterpreter):
         1. All InterpObject arguments already registered via lift()
         2. Create a Tracer and push it as context
         3. Call primitive.bind() to build Graph IR (uses obj id in value names)
-        4. Execute the graph via interpret() (resolves inputs via registry)
+        4. Execute the graph via evaluate_graph() (resolves inputs via registry)
 
         Args:
             primitive: The primitive to execute
@@ -443,7 +483,7 @@ class Interpreter(AbstractInterpreter):
 
         2. **TraceObject → InterpObject** (evaluate traced computation):
            - Extract the graph from the TraceObject's context (Tracer)
-           - Execute the graph via interpret() to get runtime result
+           - Execute the graph via evaluate_graph() to get runtime result
            - Wrap result as InterpObject and register it
 
         3. **Constants**: Pass through unchanged
@@ -600,7 +640,12 @@ class Interpreter(AbstractInterpreter):
                 ) from e
 
             # Dispatch
-            handler = get_impl(op.opcode)
+            # 1. Check instance-level handlers
+            handler = self.handlers.get(op.opcode)
+            # 2. Check global registry
+            if not handler:
+                handler = get_impl(op.opcode)
+
             if handler:
                 # Pass interpreter to support recursive execution (HOFs)
                 # Pass op to access attributes and regions
@@ -612,8 +657,11 @@ class Interpreter(AbstractInterpreter):
                 )
 
             # Update environment with outputs
+            # Update environment with outputs
             # Handler should return a single value or a tuple/list of values
-            if len(op.outputs) == 1:
+            if len(op.outputs) == 0:
+                pass  # Void operation
+            elif len(op.outputs) == 1:
                 env[op.outputs[0]] = results
             else:
                 if len(results) != len(op.outputs):
@@ -733,7 +781,11 @@ class Interpreter(AbstractInterpreter):
             nonlocal active_tasks
             # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
-            handler = get_impl(op.opcode)
+
+            handler = self.handlers.get(op.opcode)
+            if not handler:
+                handler = get_impl(op.opcode)
+
             if not handler:
                 raise NotImplementedError(
                     f"No implementation registered for opcode: {op.opcode}"
@@ -809,28 +861,3 @@ class Interpreter(AbstractInterpreter):
 
         final_results = [env[out] for out in graph.outputs]
         return final_results[0] if len(final_results) == 1 else final_results
-
-
-def interpret(graph: Graph, inputs: list[Any], interpreter: Interpreter) -> Any:
-    """Execute a Graph IR with runtime data from Interpreter.
-
-    This is a functional helper that delegates to interpreter.evaluate_graph().
-    The graph must be finalized (graph.outputs must be set) before interpretation.
-    This function executes all operations in the graph and returns the values
-    corresponding to graph.outputs.
-
-    Args:
-        graph: Finalized Graph IR to execute
-        inputs: Runtime objects corresponding to graph.inputs (positional)
-        interpreter: Interpreter context (for recursive execution)
-
-    Returns:
-        Runtime execution results corresponding to graph.outputs:
-        - Single value if graph.outputs has 1 element
-        - Tuple of values if graph.outputs has multiple elements
-
-    Raises:
-        AssertionError: If graph.outputs is empty (graph not finalized)
-        NotImplementedError: If opcode has no registered implementation
-    """
-    return interpreter.evaluate_graph(graph, inputs)

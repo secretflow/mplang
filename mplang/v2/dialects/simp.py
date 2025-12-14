@@ -856,10 +856,78 @@ def peval(
         return pcall_static(parties, local_fn, *call_args, **call_kwargs)
 
 
+# =============================================================================
+# Factory functions for creating configured Interpreters
+# =============================================================================
+
+
+def make_simulator(
+    world_size: int,
+    *,
+    cluster_spec: Any = None,
+    enable_tracing: bool = False,
+    enable_profiling: bool = False,
+) -> Any:
+    """Create an Interpreter configured for local SIMP simulation.
+
+    This factory creates a LocalCluster with workers and returns an
+    Interpreter with the simp dialect state attached.
+
+    Args:
+        world_size: Number of simulated parties.
+        cluster_spec: Optional ClusterSpec for metadata.
+        enable_tracing: If True, enable execution tracing.
+        enable_profiling: If True, enable primitive profiling for benchmarking.
+
+    Returns:
+        Configured Interpreter with simp state attached.
+
+    Example:
+        >>> interp = simp.make_simulator(2)
+        >>> with interp:
+        ...     result = my_func()
+    """
+    if enable_profiling:
+        from mplang.v2.edsl import registry
+
+        registry.enable_profiling()
+
+    from mplang.v2.backends.simp_driver.mem import make_simulator as _make_sim
+
+    return _make_sim(
+        world_size, cluster_spec=cluster_spec, enable_tracing=enable_tracing
+    )
+
+
+def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Any:
+    """Create an Interpreter configured for remote SIMP execution.
+
+    This factory creates a RemoteSimpState and returns an Interpreter
+    with the simp dialect state attached.
+
+    Args:
+        endpoints: List of HTTP endpoints for workers.
+        cluster_spec: Optional ClusterSpec for metadata.
+
+    Returns:
+        Configured Interpreter with simp state attached.
+
+    Example:
+        >>> interp = simp.make_driver(["http://worker1:8000", "http://worker2:8000"])
+        >>> with interp:
+        ...     result = my_func()
+    """
+    from mplang.v2.backends.simp_driver.http import make_driver as _make_drv
+
+    return _make_drv(endpoints, cluster_spec=cluster_spec)
+
+
 __all__ = [
     "constant",
     "converge",
     "converge_p",
+    "make_driver",
+    "make_simulator",
     "pcall_dynamic",
     "pcall_dynamic_p",
     "pcall_static",

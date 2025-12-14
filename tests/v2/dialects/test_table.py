@@ -17,12 +17,13 @@ import numpy as np
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects.table import run_sql, table2tensor, tensor2table
+from mplang.v2.runtime.interpreter import InterpObject
 
 
-def _sample_table() -> el.InterpObject:
+def _sample_table() -> InterpObject:
     ttype = elt.Table[{"value": elt.Tensor[elt.f32, ()]}]
     data = np.array([(1.0,)], dtype=[("value", np.float64)])
-    return el.InterpObject(data, ttype)
+    return InterpObject(data, ttype)
 
 
 def test_table_run_sql_op_emitted():

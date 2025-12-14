@@ -26,6 +26,7 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
+from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import spu
 from mplang.v2.edsl import serde
@@ -248,12 +249,18 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
             "Ensure it is called within a pcall_static block."
         )
 
-    # Get global rank from interpreter
-    global_rank = getattr(interpreter, "rank", None)
-    if global_rank is None:
-        raise RuntimeError(
-            "spu.exec requires an interpreter with 'rank' attribute (e.g. WorkerInterpreter)."
-        )
+    # Get global rank from interpreter or its context
+    # Use SimpWorker if available
+    context = interpreter.get_dialect_state("simp")
+    if isinstance(context, SimpWorker):
+        global_rank = context.rank
+    else:
+        # Fallback for other contexts or direct interpreter usage?
+        # User said: "directly ensure simp_context is there"
+        # If not SimpWorker, we can't run spu.exec?
+        # But maybe integration tests run differently?
+        # Let's trust user: "ensure simp_context is there"
+        raise RuntimeError(f"spu.exec requires SimpWorker, got {type(context)}")
 
     if global_rank not in parties:
         raise RuntimeError(
@@ -269,6 +276,10 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     spu_endpoints_map: dict[int, str] | None = getattr(
         interpreter, "spu_endpoints", None
     )
+    if spu_endpoints_map is None:
+        context = interpreter.get_dialect_state("simp")
+        if context is not None:
+            spu_endpoints_map = getattr(context, "spu_endpoints", None)
 
     # Build ordered list of endpoints for SPU parties
     spu_endpoints: list[str] | None = None

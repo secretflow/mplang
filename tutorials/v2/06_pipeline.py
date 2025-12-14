@@ -42,10 +42,10 @@ import os
 import jax
 import jax.numpy as jnp
 import pandas as pd
-from mplang2.dialects import table
-from mplang2.edsl.typing import TableType, f64, i64
 
 import mplang.v2 as mp
+from mplang.v2.dialects import table
+from mplang.v2.edsl.typing import TableType, f64, i64
 
 cluster_spec = mp.ClusterSpec.from_dict({
     "nodes": [
@@ -226,7 +226,8 @@ def main():
     print("Hybrid JAX + Table I/O Pipeline (MPLang2)")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_root_context(sim)
 
     # Stage 1: Prepare inputs
     print("\n--- Stage 1: Prepare inputs (write CSV files) ---")
@@ -234,8 +235,8 @@ def main():
 
     # Stage 2: Simple pipeline
     print("\n--- Stage 2: Simple pipeline: read -> tensor -> SPU JAX -> result ---")
-    r = mp.evaluate(sim, simple_pipeline)
-    out = mp.fetch(sim, r)
+    r = mp.evaluate(simple_pipeline)
+    out = mp.fetch(r)
     if isinstance(out, list):
         out = out[0]
     print(f"SPU JAX scalar sum: {out}")
@@ -251,10 +252,10 @@ def main():
         with open(alice_csv) as f:
             n_rows = sum(1 for _ in csv.reader(f)) - 1
 
-        r_w, r_b, r_acc = mp.evaluate(sim, ml_pipeline, alice_csv, bob_csv, n_rows)
-        w_np = mp.fetch(sim, r_w)
-        b_np = mp.fetch(sim, r_b)
-        acc_np = mp.fetch(sim, r_acc)
+        r_w, r_b, r_acc = mp.evaluate(ml_pipeline, alice_csv, bob_csv, n_rows)
+        w_np = mp.fetch(r_w)
+        b_np = mp.fetch(r_b)
+        acc_np = mp.fetch(r_acc)
 
         print("\nLogistic regression on SPU (from tutorials/data/*.csv):")
         print("weights (w):", w_np)

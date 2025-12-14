@@ -70,11 +70,12 @@ def main():
     print("Device: IR Dump and Graph Inspection")
     print("=" * 70)
 
-    sim = mp.Simulator(cluster_spec)
+    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    mp.set_root_context(sim)
 
     # Pattern 1: Compile without executing to get IR
     print("\n--- Pattern 1: Compile to IR ---")
-    traced = mp.compile(sim, millionaire)
+    traced = mp.compile(millionaire)
     print("Traced function name:", traced.name)
     print("Number of graph inputs:", len(traced.graph.inputs))
     print("Number of graph outputs:", len(traced.graph.outputs))
@@ -97,10 +98,9 @@ def main():
 
     # Pattern 4: Execute and compare
     print("\n--- Pattern 4: Execute and verify ---")
-    x, y, z, r = mp.evaluate(sim, millionaire)
+    x, y, z, r = mp.evaluate(millionaire)
     print(
-        f"Results: x={mp.fetch(sim, x)}, y={mp.fetch(sim, y)}, "
-        f"z={mp.fetch(sim, z)}, r={mp.fetch(sim, r)}"
+        f"Results: x={mp.fetch(x)}, y={mp.fetch(y)}, z={mp.fetch(z)}, r={mp.fetch(r)}"
     )
 
     print("\n" + "=" * 70)

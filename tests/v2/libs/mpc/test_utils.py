@@ -16,21 +16,24 @@
 
 import numpy as np
 
-from mplang.v2.backends.simp_simulator import SimpSimulator
+import mplang.v2 as mp
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.edsl import trace
 from mplang.v2.libs.mpc import _utils as utils
 
 
-def run_protocol(sim: SimpSimulator, protocol_fn):
+def run_protocol(sim, protocol_fn):
     """Helper to trace and run a protocol."""
     traced = trace(protocol_fn)
-    return sim.evaluate_graph(traced.graph, [])
+    # Simulator doesn't have evaluate_graph directly on it in v2 API wrapper,
+    # but backend (Interpreter) does. However we should use public API.
+    return mp.evaluate(traced)
 
 
 def test_bits_conversion():
     """Test bytes_to_bits and bits_to_bytes type inference."""
-    sim = SimpSimulator(world_size=2)
+    sim = simp.make_simulator(world_size=2)
+    mp.set_root_context(sim)
 
     # 1 byte: 0b10101010 = 170
     data = np.array([170], dtype=np.uint8)
@@ -52,12 +55,13 @@ def test_bits_conversion():
     assert traced.graph.outputs[0].type.value_type.shape == (8,)
     assert traced.graph.outputs[1].type.value_type.shape == (1,)
 
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
 def test_cuckoo_hash():
     """Test CuckooHash class type inference."""
-    sim = SimpSimulator(world_size=2)
+    sim = simp.make_simulator(world_size=2)
+    mp.set_root_context(sim)
 
     items = np.array([1, 2, 3], dtype=np.int64)
 
@@ -75,4 +79,4 @@ def test_cuckoo_hash():
     # Shape should be (3,) wrapped in MPType
     assert traced.graph.outputs[0].type.value_type.shape == (3,)
 
-    sim.shutdown()
+    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()

@@ -18,13 +18,11 @@ import jax.numpy as jnp
 import numpy as np
 
 import mplang.v2 as mp
-import mplang.v2.dialects.field as field
-import mplang.v2.dialects.simp as simp
-import mplang.v2.dialects.tensor as tensor
 import mplang.v2.edsl.typing as elt
-from mplang.v2.edsl import Interpreter
+from mplang.v2.dialects import field, simp, tensor
 from mplang.v2.libs.mpc.psi import okvs_gct
 from mplang.v2.libs.mpc.psi import rr22 as psi_okvs
+from mplang.v2.runtime.interpreter import Interpreter
 
 
 def _to_obj(np_arr: Any, dtype: Any = None) -> Any:
@@ -192,16 +190,18 @@ def _run_psi_simulation(
     SENDER = 0
     RECEIVER = 1
 
-    sim = mp.Simulator.simple(2)
+    sim = simp.make_simulator(2)
 
-    def job() -> Any:
-        s_handle = simp.constant((SENDER,), sender_items)
-        r_handle = simp.constant((RECEIVER,), receiver_items)
-        return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
+    with sim:
 
-    traced = mp.compile(sim, job)
-    mask_obj = mp.evaluate(sim, traced)
-    mask_val = mp.fetch(sim, mask_obj)[SENDER]
+        def job() -> Any:
+            s_handle = simp.constant((SENDER,), sender_items)
+            r_handle = simp.constant((RECEIVER,), receiver_items)
+            return psi_okvs.psi_intersect(SENDER, RECEIVER, N, s_handle, r_handle)
+
+        traced = mp.compile(job)
+        mask_obj = mp.evaluate(traced)
+        mask_val = mp.fetch(mask_obj)[SENDER]
     return mask_val
 
 

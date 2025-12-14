@@ -15,8 +15,7 @@
 import numpy as np
 
 import mplang.v2 as mp
-import mplang.v2.dialects.field as field
-from mplang.v2.dialects import tensor
+from mplang.v2.dialects import field, simp, tensor
 
 
 def test_okvs_edsl() -> None:
@@ -30,7 +29,8 @@ def test_okvs_edsl() -> None:
         values_np[i, 0] = i
         values_np[i, 1] = i * 10
 
-    sim = mp.Simulator.simple(1)
+    sim = simp.make_simulator(1)
+    mp.set_root_context(sim)
 
     def protocol():
         # Create inputs as tensor constants (field.solve_okvs expects TensorType, not MPType)
@@ -44,9 +44,9 @@ def test_okvs_edsl() -> None:
         decoded = field.decode_okvs(keys, storage, seed)
         return decoded
 
-    traced = mp.compile(sim, protocol)
-    result = mp.evaluate(sim, traced)
-    decoded_res = mp.fetch(sim, result)[0]
+    traced = mp.compile(protocol)
+    result = mp.evaluate(traced)
+    decoded_res = mp.fetch(result)
 
     assert np.array_equal(decoded_res, values_np), "Decoded values do not match!"
     print("OKVS EDSL Test Passed!")

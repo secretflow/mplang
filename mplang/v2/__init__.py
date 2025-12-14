@@ -294,17 +294,17 @@ def function(fn: Callable[..., Any] | None = None) -> Callable[..., Any]:
     if fn is None:
         return function
 
+    def has_simp_state(ctx: Any) -> bool:
+        if hasattr(ctx, "get_dialect_state"):
+            state = ctx.get_dialect_state("simp")
+            return state is not None and hasattr(state, "world_size")
+        return False
+
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         from mplang.v2.edsl.context import find_context
 
         # Find context with simp dialect state
-        def has_simp_state(ctx: Any) -> bool:
-            if hasattr(ctx, "get_dialect_state"):
-                state = ctx.get_dialect_state("simp")
-                return state is not None and hasattr(state, "world_size")
-            return False
-
         ctx = find_context(has_simp_state)
         if ctx is None:
             raise RuntimeError(

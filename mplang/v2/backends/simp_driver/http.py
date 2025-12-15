@@ -26,6 +26,7 @@ import httpx
 from mplang.v2.backends.simp_driver.state import SimpDriver
 from mplang.v2.edsl import serde
 from mplang.v2.runtime.interpreter import Interpreter
+from mplang.v2.runtime.object_store import ObjectStore
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -159,6 +160,7 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Interprete
         name="DriverInterpreter",
         root_dir=state.driver_root,
         handlers=handlers,
+        store=ObjectStore(fs_root=str(state.driver_root)),
     )
     interp.set_dialect_state("simp", state)
     interp._cluster_spec = cluster_spec  # type: ignore[attr-defined]

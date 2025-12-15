@@ -28,7 +28,6 @@ import json
 import os
 import pathlib
 import queue
-import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -358,15 +357,8 @@ class Interpreter(AbstractInterpreter):
         self.executor = executor
         self.async_ops: set[str] = set()
         self.name = name
-
         self.trace_pid = trace_pid
-
-        self._temp_dir: tempfile.TemporaryDirectory | None = None
-        if store is None:
-            self._temp_dir = tempfile.TemporaryDirectory(prefix="mplang_interp_")
-            self.store = ObjectStore(fs_root=self._temp_dir.name)
-        else:
-            self.store = store
+        self.store: ObjectStore | None = store
 
     # =========================================================================
     # Dialect State Management

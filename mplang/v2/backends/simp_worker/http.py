@@ -49,9 +49,9 @@ from pydantic import BaseModel
 
 from mplang.v2.backends import spu_impl as _spu_impl  # noqa: F401
 from mplang.v2.backends import tensor_impl as _tensor_impl  # noqa: F401
-from mplang.v2.backends.simp_worker import SimpWorker
 
 # Register operation implementations (side-effect imports)
+from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
@@ -232,7 +232,9 @@ def create_worker_app(
     # func_impl is already imported at module level for side-effects
     handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
 
-    worker = Interpreter(tracer=tracer, root_dir=root_dir, handlers=handlers)
+    worker = Interpreter(
+        tracer=tracer, root_dir=root_dir, handlers=handlers, store=store
+    )
     # Register SimpWorker context as 'simp' dialect state
     worker.set_dialect_state("simp", ctx)
 

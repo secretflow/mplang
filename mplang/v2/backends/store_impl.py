@@ -44,6 +44,8 @@ def save_impl(interpreter: Interpreter, op: Operation, obj_val: Any) -> Any:
     # Use ObjectStore to put the value
     # Note: obj_val is the runtime value (e.g. TensorValue, TableValue, or raw)
     # We store it as is (pickle).
+    if interpreter.store is None:
+        raise RuntimeError("Interpreter has no ObjectStore configured. Cannot save.")
     interpreter.store.put(obj_val, uri=_get_uri(uri_base))
 
     return obj_val
@@ -55,4 +57,6 @@ def load_impl(interpreter: Interpreter, op: Operation) -> Any:
     uri_base: str = op.attrs["uri_base"]
     # expected_type is in attrs but not needed for runtime loading (pickle handles it)
 
+    if interpreter.store is None:
+        raise RuntimeError("Interpreter has no ObjectStore configured. Cannot load.")
     return interpreter.store.get(_get_uri(uri_base))

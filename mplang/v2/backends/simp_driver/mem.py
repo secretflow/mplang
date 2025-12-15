@@ -268,6 +268,7 @@ def make_simulator(
         root_dir=cluster.host_root,
         handlers=handlers,
         tracer=cluster.tracer,
+        store=ObjectStore(fs_root=str(cluster.host_root)),
     )
     interp.set_dialect_state("simp", state)
 

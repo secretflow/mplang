@@ -51,17 +51,17 @@ def _pcall_static_worker_impl(
         interpreter.current_parties = parties  # type: ignore[attr-defined]
 
         try:
-            return interpreter.evaluate_graph(fn_graph, list(args))
+            result = interpreter.evaluate_graph(fn_graph, list(args))
+            # Return single value for single output (interpreter expects this)
+            return result[0] if len(op.outputs) == 1 else result
         finally:
             if prev_parties is None:
                 del interpreter.current_parties  # type: ignore[attr-defined]
             else:
                 interpreter.current_parties = prev_parties  # type: ignore[attr-defined]
     else:
-        if len(op.outputs) == 1:
-            return None
-        else:
-            return [None] * len(op.outputs)
+        # No data for this rank
+        return None if len(op.outputs) == 1 else [None] * len(op.outputs)
 
 
 def _pcall_dynamic_worker_impl(
@@ -69,7 +69,8 @@ def _pcall_dynamic_worker_impl(
 ) -> Any:
     """Worker implementation of pcall_dynamic."""
     fn_graph = op.regions[0]
-    return interpreter.evaluate_graph(fn_graph, list(args))
+    result = interpreter.evaluate_graph(fn_graph, list(args))
+    return result[0] if len(op.outputs) == 1 else result
 
 
 def _shuffle_static_worker_impl(
@@ -122,9 +123,10 @@ def _uniform_cond_worker_impl(
         pred = bool(pred.unwrap())
 
     if pred:
-        return interpreter.evaluate_graph(op.regions[0], list(args))
+        result = interpreter.evaluate_graph(op.regions[0], list(args))
     else:
-        return interpreter.evaluate_graph(op.regions[1], list(args))
+        result = interpreter.evaluate_graph(op.regions[1], list(args))
+    return result[0] if len(op.outputs) == 1 else result
 
 
 def _while_loop_worker_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
@@ -142,22 +144,20 @@ def _while_loop_worker_impl(interpreter: Interpreter, op: Operation, *args: Any)
         region_inputs = current_state + captures
 
         cond_res = interpreter.evaluate_graph(cond_graph, region_inputs)
+        # cond_res is a list, extract the single boolean
+        cond_val = cond_res[0] if cond_res else False
 
-        if isinstance(cond_res, TensorValue):
-            cond_res = bool(cond_res.unwrap())
+        if isinstance(cond_val, TensorValue):
+            cond_val = bool(cond_val.unwrap())
 
-        if not cond_res:
+        if not cond_val:
             break
 
         body_res = interpreter.evaluate_graph(body_graph, region_inputs)
-        if isinstance(body_res, list):
-            current_state = body_res
-        else:
-            current_state = [body_res]
+        current_state = body_res  # body_res is always a list now
 
-    if len(current_state) == 1:
-        return current_state[0]
-    return current_state
+    # Return single value for single output
+    return current_state[0] if len(current_state) == 1 else current_state
 
 
 WORKER_HANDLERS = {

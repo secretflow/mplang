@@ -161,8 +161,8 @@ class TestDriverExecution:
                 return y
 
             result = mp.evaluate(transfer)
-            # y is on P1, so fetch from P1
-            value = mp.fetch(result, party="P1")
+            # y is on P1, so fetch will use device attribute to get from P1
+            value = mp.fetch(result)
             assert value == 100
 
     @pytest.mark.skip(
@@ -193,7 +193,8 @@ class TestDriverFetch:
                 return mp.device("P0")(lambda: 999)()
 
             result = mp.evaluate(create_on_p0)
-            value = mp.fetch(result, party="P0")
+            # fetch uses device attribute to get from P0
+            value = mp.fetch(result)
             assert value == 999
 
     def test_fetch_all_parties(self, driver_cluster):

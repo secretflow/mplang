@@ -68,7 +68,8 @@ def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) 
     """Collect worker results into DriverVar(s).
 
     Args:
-        results: List of results from each worker (length = world_size)
+        results: List of results from each worker (length = world_size).
+                 Each result is a list of URIs (one per output).
         num_outputs: Number of outputs per worker
         world_size: Total number of workers
 
@@ -78,15 +79,16 @@ def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) 
     if num_outputs == 0:
         return None
 
-    if num_outputs == 1:
-        return DriverVar(results)
-
-    # Multiple outputs: transpose [worker][output] -> [output][worker]
+    # Transpose [worker][output] -> [output][worker]
+    # results[worker_idx] is a list of URIs for that worker's outputs
     transposed = []
-    for i in range(num_outputs):
+    for out_idx in range(num_outputs):
         transposed.append(
-            DriverVar([res[i] if res is not None else None for res in results])
+            DriverVar([res[out_idx] if res is not None else None for res in results])
         )
+
+    if num_outputs == 1:
+        return transposed[0]
     return transposed
 
 

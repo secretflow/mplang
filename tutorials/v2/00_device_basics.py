@@ -152,24 +152,24 @@ def main():
     # Pattern 1: Explicit placement
     print("\n--- Pattern 1: Explicit Device Placement (Millionaire) ---")
     x, y, result = mp.evaluate(millionaire)
-    # fetch with party name to get specific party's value
-    print(f"P0 value: {mp.fetch(x, party='P0')}")
-    print(f"P1 value: {mp.fetch(y, party='P1')}")
+    # fetch uses device attribute to get value from correct rank
+    print(f"P0 value: {mp.fetch(x)}")
+    print(f"P1 value: {mp.fetch(y)}")
     # SPU result is secret-shared; to reveal, move it to a PPU first
     result_revealed = mp.evaluate(lambda: mp.put("P0", result))
-    print(f"x < y (revealed to P0): {mp.fetch(result_revealed, party='P0')}")
+    print(f"x < y (revealed to P0): {mp.fetch(result_revealed)}")
 
     # Pattern 2: Auto device inference
     print("\n--- Pattern 2: Auto Device Inference ---")
     product = mp.evaluate(auto_device)
     # SPU result needs to be revealed
     product_revealed = mp.evaluate(lambda: mp.put("P0", product))
-    print(f"Result (revealed to P0): {mp.fetch(product_revealed, party='P0')}")
+    print(f"Result (revealed to P0): {mp.fetch(product_revealed)}")
 
     # Pattern 3: Device movement
     print("\n--- Pattern 3: Device Movement with mp.put ---")
     moved = mp.evaluate(device_movement)
-    print(f"Final result on P0: {mp.fetch(moved, party='P0')}")
+    print(f"Final result on P0: {mp.fetch(moved)}")
 
     # Show device attributes
     print("\n--- Device Attributes ---")

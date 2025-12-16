@@ -715,3 +715,74 @@ def put(to_dev_id: str, obj: Any) -> Object:
 
     else:
         raise DeviceError(f"Cannot put to device kind '{dev_info.kind}'")
+
+
+def fetch(obj: Object) -> Any:
+    """Fetch data from device to host based on device attribute.
+
+    This function fetches data from the device the object resides on.
+    For PPU/TEE: fetches from the single member rank.
+    For SPU: fetches from all parties (returns reconstructed value).
+
+    Args:
+        obj: Object with device attribute to fetch.
+
+    Returns:
+        Python value (numpy array, scalar, etc.)
+    """
+    from mplang.v2.backends.simp_driver.state import SimpDriver
+    from mplang.v2.backends.simp_driver.values import DriverVar
+    from mplang.v2.backends.table_impl import TableValue
+    from mplang.v2.backends.tensor_impl import TensorValue
+    from mplang.v2.edsl.context import get_current_context
+    from mplang.v2.runtime.interpreter import InterpObject, Interpreter
+
+    def _unwrap_value(val: Any) -> Any:
+        """Unwrap Value types to get the underlying data."""
+        if isinstance(val, TensorValue):
+            return val.data
+        elif isinstance(val, TableValue):
+            return val.data
+        return val
+
+    # Get device info
+    if not is_device_obj(obj):
+        raise DeviceError(
+            "Object does not have device attribute. Use mp.fetch() directly."
+        )
+
+    dev_id = get_dev_attr(obj)
+    cluster = _resolve_cluster()
+    dev_info = cluster.devices[dev_id]
+
+    # Get interpreter context
+    ctx = get_current_context()
+    if not isinstance(ctx, Interpreter):
+        raise RuntimeError("No interpreter context available for fetch")
+
+    simp_state = cast(SimpDriver | None, ctx.get_dialect_state("simp"))
+
+    # Unwrap InterpObject
+    assert isinstance(obj, InterpObject), f"Expected InterpObject, got {type(obj)}"
+    runtime_obj = obj.runtime_obj
+
+    def _fetch_from_rank(rank: int) -> Any:
+        """Fetch value from a rank (DriverVar values are always URIs)."""
+        uri = runtime_obj.values[rank]
+        assert isinstance(uri, str) and "://" in uri, f"Expected URI, got {uri}"
+        assert simp_state is not None, "No simp state for fetch"
+        return _unwrap_value(simp_state.fetch(rank, uri).result())
+
+    # Handle DriverVar
+    if isinstance(runtime_obj, DriverVar):
+        # For PPU/TEE: single member
+        if dev_info.kind.upper() in ("PPU", "TEE"):
+            assert len(dev_info.members) == 1
+            return _fetch_from_rank(dev_info.members[0].rank)
+
+        # For SPU: fetch from first member (should be revealed first)
+        elif dev_info.kind.upper() == "SPU":
+            return _fetch_from_rank(dev_info.members[0].rank)
+
+    # Direct value
+    return _unwrap_value(runtime_obj)

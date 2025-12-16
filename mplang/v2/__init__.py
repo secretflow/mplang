@@ -89,6 +89,7 @@ from mplang.v2.libs.device import (
     put,
     set_dev_attr,
 )
+from mplang.v2.libs.device import fetch as device_fetch
 from mplang.v2.runtime.interpreter import Interpreter
 
 # =============================================================================
@@ -186,88 +187,80 @@ def evaluate(
             inputs = fn.prepare_inputs(*args, **kwargs)
             inputs = [unwrap_if_interp(v) for v in inputs]
             raw_result = interp.evaluate_graph(fn.graph, inputs)
-            return fn.reconstruct_outputs(raw_result)
+            wrapped = [
+                InterpObject(v, fn.graph.outputs[i].type, interp)
+                for i, v in enumerate(raw_result)
+            ]
+            return fn.reconstruct_outputs(wrapped)
 
         return fn(*args, **kwargs)
 
 
 def fetch(
     result: Any,
-    party: int | str | None = None,
     *,
+    follow_device: bool = True,
     context: Interpreter | None = None,
 ) -> Any:
-    """Fetch the result, optionally for a specific party.
+    """Fetch results from interpreter context to Python.
 
     Args:
-        result: The result to fetch (DriverVar or other value).
-        party: Optional party index or device name (e.g., "P0").
-        context: Optional interpreter context. If None, uses current context.
+        result: Object(s) to fetch. Can be a single InterpObject, DriverVar,
+            or nested structure containing them.
+        follow_device: If True and object has device attribute, dispatch to
+            device.fetch which fetches from the correct rank based on device.
+            If False, fetch from all parties.
+        context: Interpreter context. If None, uses current context.
 
     Returns:
-        The fetched data (unwrapped from Value wrappers).
-
-    Example:
-        >>> with mp.make_simulator(3) as sim:
-        ...     data = mp.fetch(result, "P0")  # uses sim from context
+        Fetched Python values. For device objects with follow_device=True,
+        returns single value from the device's rank(s). Otherwise returns
+        list of values (one per party) or single value for world_size=1.
     """
-    from typing import cast
 
-    from mplang.v2.backends.simp_driver.state import SimpDriver
+    from jax.tree_util import tree_map
+
     from mplang.v2.backends.simp_driver.values import DriverVar
-    from mplang.v2.backends.table_impl import TableValue
-    from mplang.v2.backends.tensor_impl import TensorValue
     from mplang.v2.runtime.interpreter import InterpObject
+    from mplang.v2.runtime.value import WrapValue
 
     interp = _get_context(context)
 
-    def _unwrap_value(val: Any) -> Any:
-        """Unwrap Value types to get the underlying data."""
-        if isinstance(val, TensorValue):
-            return val.data
-        elif isinstance(val, TableValue):
-            return val.data
-        return val
+    def _fetch_single(var: Any) -> Any:
+        """Fetch a single value from InterpObject."""
+        # InterpObject (from mp.evaluate) - extract runtime_obj
+        if isinstance(var, InterpObject):
+            if follow_device and is_device_obj(var):
+                return device_fetch(var)
+            var = var.runtime_obj  # extract and continue processing
 
-    # Unwrap InterpObject to get the runtime value
-    if isinstance(result, InterpObject):
-        result = result.runtime_obj
+        # DriverVar (simp dialect) - remote fetch from workers
+        if isinstance(var, DriverVar):
+            from mplang.v2.backends.simp_driver.state import SimpDriver
 
-    # Get simp state for fetching
-    simp_state = cast(SimpDriver | None, interp.get_dialect_state("simp"))
-    cluster_spec = getattr(interp, "_cluster_spec", None)
+            simp_state = interp.get_dialect_state("simp")
+            assert isinstance(simp_state, SimpDriver), "DriverVar requires simp state"
 
-    # Fetch from DriverVar
-    if isinstance(result, DriverVar):
-        resolved_values = []
-        for rank, val in enumerate(result.values):
-            if isinstance(val, str) and "://" in val:
-                if simp_state is not None:
-                    fut = simp_state.fetch(rank, val)
-                    resolved_values.append(fut.result())
+            resolved: list[Any] = []
+            for rank, uri in enumerate(var.values):
+                if uri is None:
+                    resolved.append(None)
                 else:
-                    resolved_values.append(val)
-            else:
-                resolved_values.append(val)
+                    fetched = simp_state.fetch(rank, uri).result()
+                    if isinstance(fetched, WrapValue):
+                        fetched = fetched.data
+                    resolved.append(fetched)
 
-        # Select party if needed
-        if party is not None:
-            if isinstance(party, str) and cluster_spec is not None:
-                device_info = cluster_spec.devices.get(party)
-                if device_info and device_info.members:
-                    party = device_info.members[0].rank
-                else:
-                    raise ValueError(f"Unknown party: {party}")
-            else:
-                # Default logic for int
-                pass
+            return resolved[0] if len(resolved) == 1 else resolved
 
-            p_idx = cast(int, party)
-            return _unwrap_value(resolved_values[p_idx])  # type: ignore[no-any-return]
-        return [_unwrap_value(v) for v in resolved_values]
+        # WrapValue (TensorValue, TableValue, etc.) - unwrap
+        if isinstance(var, WrapValue):
+            return var.data
 
-    # Unwrap Value types to get the underlying data
-    return _unwrap_value(result)
+        # Plain values pass through
+        return var
+
+    return tree_map(_fetch_single, result)
 
 
 # Alias for compatibility

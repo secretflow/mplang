@@ -147,10 +147,7 @@ def main():
     # Pattern 1: PPU
     print("\n--- Pattern 1: SQL on PPU ---")
     r1 = mp.evaluate(sql_on_ppu)
-    result1 = mp.fetch(r1)
-    # fetch returns a list when function has single output
-    if isinstance(result1, list):
-        result1 = result1[0]
+    result1 = mp.fetch(r1, "P0")
     print("Result (doubled values):")
     print(result1.to_pandas())
 
@@ -166,12 +163,12 @@ def main():
     }
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)
-    mp.make_simulator(3, cluster_spec=cluster_spec)
+    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
+    mp.set_root_context(sim, force=True)
 
     r2 = mp.evaluate(sql_on_tee)
-    result2 = mp.fetch(r2)
-    if isinstance(result2, list):
-        result2 = result2[0]
+    # Fetch result specifically from TEE0 (since only TEE0 executed the query)
+    result2 = mp.fetch(r2, "TEE0")
     print("TEE UNION result (combined rows from P0 and P1):")
     if result2 is not None:
         print(result2.to_pandas())

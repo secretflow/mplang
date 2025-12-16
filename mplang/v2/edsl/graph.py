@@ -343,11 +343,10 @@ class Graph:
 
                 type_str = f" : {op.outputs[0].type}" if verbose and op.outputs else ""
 
-                # Attrs
                 if op.attrs:
                     attrs_str = ", ".join(f"{k}={v}" for k, v in op.attrs.items())
                     lines.append(
-                        f"{lhs} = {op.opcode}({inputs_str}, {attrs_str}){type_str}"
+                        f"{lhs} = {op.opcode}({inputs_str}) {{{attrs_str}}}{type_str}"
                     )
                 else:
                     lines.append(f"{lhs} = {op.opcode}({inputs_str}){type_str}")

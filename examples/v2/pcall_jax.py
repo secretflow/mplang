@@ -22,9 +22,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import mplang.v2.edsl as el
-import mplang.v2.edsl.typing as elt
-from mplang.v2.dialects.simp import pcall_static
-from mplang.v2.dialects.tensor import jax_fn
+from mplang.v2.dialects import simp, tensor
 
 
 def main():
@@ -37,27 +35,21 @@ def main():
     def add(x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
         return jnp.add(x, y)
 
-    # Prepare input data (MP types)
-    x = el.InterpObject(
-        np.array([1.0, 2.0, 3.0]),
-        elt.MPType(elt.TensorType(elt.f32, (3,)), (0,)),  # P0 holds
-    )
-
-    y = el.InterpObject(
-        np.array([4.0, 5.0, 6.0]),
-        elt.MPType(elt.TensorType(elt.f32, (3,)), (0,)),  # P0 holds
-    )
-
     # Define computation using pcall + jax_fn
-    def compute(x, y):
+    # Use simp.constant to create data at parties
+    def compute():
+        # P0 holds x and y as constants
+        x = simp.constant((0,), np.array([1.0, 2.0, 3.0], dtype=np.float32))
+        y = simp.constant((0,), np.array([4.0, 5.0, 6.0], dtype=np.float32))
+
         # P0 executes JAX square computation
-        squared = pcall_static((0,), jax_fn(square), x)
+        squared = simp.pcall_static((0,), tensor.jax_fn(square), x)
         # P0 executes JAX add computation
-        result = pcall_static((0,), jax_fn(add), squared, y)
+        result = simp.pcall_static((0,), tensor.jax_fn(add), squared, y)
         return result
 
     # Trace to generate graph
-    traced = el.trace(compute, x, y)
+    traced = el.trace(compute)
 
     # Print computation graph using EDSL printer
     print("=" * 70)

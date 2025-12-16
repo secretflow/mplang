@@ -211,20 +211,15 @@ def test_http_e2e(http_cluster):
                 time.sleep(retry_delay)
 
         # Verify
+        # evaluate_graph returns list of outputs; for single output, extract it
+        output_values = values[0]
+
         # Party 0 result is None (not involved in final output)
         # Party 1 result should be [2.0, 3.0]
+        assert output_values[0] is None, (
+            f"Party 0 should be None, got {output_values[0]}"
+        )
 
-        # Note: evaluate_graph returns a list of results (one per output).
-        # Since graph has 1 output, each party returns a list of 1 element.
-        # However, for Party 0 (which returns None), it seems to be unwrapped or handled differently.
-        if isinstance(values[0], list):
-            assert values[0] == [None]
-        else:
-            assert values[0] is None
-
-        val1 = values[1]
-        if isinstance(val1, list):
-            val1 = val1[0]
-
+        val1 = output_values[1]
         result_1 = val1.data if isinstance(val1, TensorValue) else val1
         np.testing.assert_allclose(result_1, [2.0, 3.0])

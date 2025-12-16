@@ -50,7 +50,7 @@ class TestInterpreterAsync(unittest.TestCase):
 
         interp = Interpreter()
         result = interp.evaluate_graph(self.graph, [1, 2])
-        self.assertEqual(result, 3)
+        self.assertEqual(result[0], 3)
 
     def test_parallel_execution(self):
         # Setup graph:
@@ -71,7 +71,7 @@ class TestInterpreterAsync(unittest.TestCase):
             end_time = time.time()
 
             # Should take ~0.1s if parallel, ~0.2s if serial
-            self.assertEqual(result, 6)
+            self.assertEqual(result[0], 6)
             self.assertLess(end_time - start_time, 0.18)
 
     def test_async_dependency(self):
@@ -88,7 +88,7 @@ class TestInterpreterAsync(unittest.TestCase):
 
             # Should block when executing 'test.add' because it needs 'a'
             result = interp.evaluate_graph(self.graph, [1, 2])
-            self.assertEqual(result, 5)  # (1+2) + 2 = 5
+            self.assertEqual(result[0], 5)  # (1+2) + 2 = 5
 
     def test_mixed_async_sync(self):
         # Setup graph:
@@ -106,7 +106,7 @@ class TestInterpreterAsync(unittest.TestCase):
 
             result = interp.evaluate_graph(self.graph, [10, 20])
             # a = 30 (async), b = 30 (sync), c = 60
-            self.assertEqual(result, 60)
+            self.assertEqual(result[0], 60)
 
 
 if __name__ == "__main__":

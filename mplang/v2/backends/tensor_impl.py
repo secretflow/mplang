@@ -266,8 +266,9 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
     subgraph = op.regions[0]
 
     if shape == ():
-        # Scalar case
-        return interpreter.evaluate_graph(subgraph, list(args))
+        # Scalar case - return first element from result list
+        result = interpreter.evaluate_graph(subgraph, list(args))
+        return result[0] if len(result) == 1 else result
 
     for index in np.ndindex(shape):
         # Prepare inputs for this element (list ordered by subgraph.inputs)
@@ -295,7 +296,10 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
                     scalar_inputs.append(arg)
 
         # Recursive execution
-        scalar_out = interpreter.evaluate_graph(subgraph, scalar_inputs)
+        scalar_out_list = interpreter.evaluate_graph(subgraph, scalar_inputs)
+        scalar_out = (
+            scalar_out_list[0] if len(scalar_out_list) == 1 else scalar_out_list
+        )
 
         # Unwrap result if it's a TensorValue (to store in numpy array)
         # We store raw values in the object array for now, but will wrap the final array

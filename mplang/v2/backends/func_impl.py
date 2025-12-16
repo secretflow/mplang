@@ -102,4 +102,6 @@ def _call_impl(
         raise TypeError(f"func.call expects FunctionValue, got {type(fn_obj)}")
 
     call_args = list(args)
-    return interpreter.evaluate_graph(fn_obj.graph, call_args)
+    result = interpreter.evaluate_graph(fn_obj.graph, call_args)
+    # Return single value or list based on graph outputs
+    return result[0] if len(fn_obj.graph.outputs) == 1 else result

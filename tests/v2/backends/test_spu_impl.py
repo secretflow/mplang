@@ -89,7 +89,9 @@ def test_spu_e2e_simulation():
     try:
         # 4. Execute on all parties
         # sim is now an Interpreter directly (from simp.make_simulator)
-        results_var = sim.evaluate_graph(graph, [])
+        results_list = sim.evaluate_graph(graph, [])
+        # evaluate_graph returns list; extract single output
+        results_var = results_list[0]
 
         # Fetch results
         values = mp.fetch(results_var)

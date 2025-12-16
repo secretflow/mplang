@@ -201,27 +201,20 @@ class SimpMemDriver(SimpDriver):
         worker_interp = self._workers[rank]
         worker_ctx = cast(SimpWorker, worker_interp.get_dialect_state("simp"))
 
-        # Resolve URI inputs
-        resolved_inputs = []
-        for inp in inputs:
-            if isinstance(inp, str) and "://" in inp:
-                resolved_inputs.append(worker_ctx.store.get(inp))
-            else:
-                resolved_inputs.append(inp)
+        # Resolve URI inputs (None means rank has no data)
+        resolved_inputs = [
+            worker_ctx.store.get(inp) if inp is not None else None for inp in inputs
+        ]
 
         # Execute
         results = worker_interp.evaluate_graph(graph, resolved_inputs, job_id)
 
-        # Store results
+        # Store results (results is always a list)
         if not graph.outputs:
             return None
-        if len(graph.outputs) == 1:
-            val = results
-            if val is None:
-                return None
-            return worker_ctx.store.put(val)
-        else:
-            return [worker_ctx.store.put(res) for res in results]
+        return [
+            worker_ctx.store.put(res) if res is not None else None for res in results
+        ]
 
 
 def make_simulator(

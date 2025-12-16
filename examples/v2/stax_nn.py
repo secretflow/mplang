@@ -163,9 +163,9 @@ def train(
 
     opt_state_p0_final = do_train(opt_state)
 
-    # Fetch results to driver
+    # Fetch results to driver (data is already on P0 with device attribute)
     print("Fetching results...")
-    opt_state_final = tree_map(lambda x: mp.fetch(x, party="P0"), opt_state_p0_final)
+    opt_state_final = tree_map(lambda x: mp.fetch(x), opt_state_p0_final)
 
     # Extract params
     params = get_params(opt_state_final)

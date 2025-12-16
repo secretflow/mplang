@@ -573,24 +573,19 @@ class TracedFunction:
         all_inputs = explicit_inputs + list(self.captured)
         return all_inputs
 
-    def reconstruct_outputs(self, execution_result: Any) -> Any:
+    def reconstruct_outputs(self, execution_result: list[Any]) -> Any:
         """Reconstruct structured output from execution result.
 
         Used by the runtime to format the result of graph execution.
 
         Args:
-            execution_result: Raw result from interpreter.evaluate_graph().
+            execution_result: List of results from interpreter.evaluate_graph().
 
         Returns:
             Structured output matching the original function's return signature.
         """
-        # Normalize to list
-        if len(self.graph.outputs) == 1:
-            results = [execution_result]
-        elif len(self.graph.outputs) == 0:
-            results = []
-        else:
-            results = execution_result  # It's already a list/tuple
+        # execution_result is always a list (now that evaluate_graph returns list)
+        results = execution_result
 
         # Reconstruct
         total_len = len(self.out_imms) + len(self.out_var_pos)

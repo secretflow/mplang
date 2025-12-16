@@ -442,13 +442,7 @@ class Interpreter(AbstractInterpreter):
 
         # Execute graph (may have 0 outputs if all were immediates)
         if graph.outputs:
-            result_runtime = self.evaluate_graph(graph, inputs_list)
-
-            # Normalize runtime result to list for structural matching
-            if len(graph.outputs) == 1:
-                result_runtime_list = [result_runtime]
-            else:
-                result_runtime_list = list(result_runtime)
+            result_runtime_list = self.evaluate_graph(graph, inputs_list)
         else:
             result_runtime_list = []
 
@@ -557,10 +551,6 @@ class Interpreter(AbstractInterpreter):
                 # Execute graph
                 results_runtime = self.evaluate_graph(graph, inputs_list)
 
-                # If single output, wrap in list for uniform handling
-                if len(target_outputs) == 1:
-                    results_runtime = [results_runtime]
-
                 # Cache all results
                 for val, res in zip(target_outputs, results_runtime, strict=True):
                     # Wrap as InterpObject and cache
@@ -586,10 +576,9 @@ class Interpreter(AbstractInterpreter):
             # Constants: pass through unchanged
             return obj
 
-    # TODO: change output sigature to list[Any]
     def evaluate_graph(
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
-    ) -> Any:
+    ) -> list[Any]:
         """Execute a Graph IR with runtime data.
 
         Can be overridden by subclasses to implement remote execution or compilation.
@@ -600,7 +589,7 @@ class Interpreter(AbstractInterpreter):
             job_id: Optional unique ID for this execution job (for profiling/tracing).
 
         Returns:
-            Runtime execution results corresponding to graph.outputs
+            List of runtime execution results corresponding to graph.outputs.
         """
         if self.executor:
             return self._evaluate_graph_async(graph, inputs, job_id)
@@ -609,7 +598,7 @@ class Interpreter(AbstractInterpreter):
 
     def _evaluate_graph_sync(
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
-    ) -> Any:
+    ) -> list[Any]:
         """Synchronous execution (Baseline)."""
         # Local environment: Value -> Runtime Object
         env = dict(zip(graph.inputs, inputs, strict=True))
@@ -649,7 +638,6 @@ class Interpreter(AbstractInterpreter):
                 )
 
             # Update environment with outputs
-            # Update environment with outputs
             # Handler should return a single value or a tuple/list of values
             if len(op.outputs) == 0:
                 pass  # Void operation
@@ -667,14 +655,11 @@ class Interpreter(AbstractInterpreter):
         if self.tracer and job_id:
             self.tracer.save_trace(job_id=job_id, rank=self.trace_pid)
 
-        if len(graph.outputs) == 1:
-            return env[graph.outputs[0]]
-        else:
-            return [env[out] for out in graph.outputs]
+        return [env[out] for out in graph.outputs]
 
     def _evaluate_graph_async(
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
-    ) -> Any:
+    ) -> list[Any]:
         """Asynchronous execution with non-blocking DAG scheduling."""
         # Tracer setup (if not provided, use a disabled stub)
         tracer: ExecutionTracer | _NullTracer
@@ -851,5 +836,4 @@ class Interpreter(AbstractInterpreter):
         if self.tracer and job_id:
             self.tracer.save_trace(job_id=job_id, rank=self.trace_pid)
 
-        final_results = [env[out] for out in graph.outputs]
-        return final_results[0] if len(final_results) == 1 else final_results
+        return [env[out] for out in graph.outputs]

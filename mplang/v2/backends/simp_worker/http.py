@@ -244,11 +244,18 @@ def create_worker_app(
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
         """Execute graph in worker thread."""
-        # Note: we ignore job_id for now as generic Interpreter doesn't take it.
-        # But we could set it in thread local if needed.
-        result = worker.evaluate_graph(graph, inputs)
+        # Resolve URI inputs (None means rank has no data)
+        resolved_inputs = [
+            store.get(inp) if inp is not None else None for inp in inputs
+        ]
+
+        result = worker.evaluate_graph(graph, resolved_inputs)
         comm.wait_pending_sends()
-        return result
+
+        # Store results and return URIs (result is always a list)
+        if not graph.outputs:
+            return None
+        return [store.put(res) if res is not None else None for res in result]
 
     @app.post("/exec")
     async def execute(req: ExecRequest) -> dict[str, str]:

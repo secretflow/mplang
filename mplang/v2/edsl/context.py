@@ -27,6 +27,16 @@ Contexts can be used directly with Python's 'with' statement:
     with tracer:
         # Operations run under tracer context
         result = primitive.bind(x, y)
+
+State Management:
+    Contexts can carry arbitrary named state via set_state/get_state.
+    This allows different layers (device, ml, analytics) to attach their
+    own state without the EDSL layer knowing about specific state types.
+
+    State key conventions:
+    - "dialect.{name}": Dialect runtime state (e.g., "dialect.simp")
+    - "device.cluster": Device/cluster configuration
+    - "ml.{component}": ML pipeline components
 """
 
 from __future__ import annotations
@@ -42,13 +52,64 @@ if TYPE_CHECKING:
 
 
 class Context(ABC):
-    """Base class for EDSL execution contexts.
+    """Base class for EDSL execution contexts with extensible state slots.
 
     A Context represents an environment where primitives are executed.
     There are two types of contexts:
     - Tracer: Records operations to Graph IR (compile-time)
     - Interpreter: Execution context (executes operations immediately)
+
+    State Management:
+        Contexts can carry arbitrary named state. Different layers can attach
+        their own state without the EDSL layer knowing specifics:
+
+        >>> ctx.set_state("device.cluster", cluster_spec)
+        >>> ctx.set_state("dialect.simp", simp_driver)
+        >>> cluster = ctx.get_state("device.cluster")
     """
+
+    def __init__(self) -> None:
+        self._state: dict[str, Any] = {}
+
+    # =========================================================================
+    # State Management
+    # =========================================================================
+
+    def set_state(self, key: str, value: Any) -> None:
+        """Attach state to this context.
+
+        Args:
+            key: State key (e.g., "dialect.simp", "device.cluster")
+            value: State value
+        """
+        self._state[key] = value
+
+    def get_state(self, key: str, default: Any = None) -> Any:
+        """Get attached state by key.
+
+        Args:
+            key: State key
+            default: Default value if key not found
+
+        Returns:
+            State value or default
+        """
+        return self._state.get(key, default)
+
+    def has_state(self, key: str) -> bool:
+        """Check if state exists.
+
+        Args:
+            key: State key
+
+        Returns:
+            True if state exists
+        """
+        return key in self._state
+
+    # =========================================================================
+    # Abstract Methods
+    # =========================================================================
 
     @abstractmethod
     def bind_primitive(
@@ -80,6 +141,10 @@ class Context(ABC):
             Object in the context's native type (TraceObject or InterpObject)
         """
 
+    # =========================================================================
+    # Context Manager
+    # =========================================================================
+
     def __enter__(self) -> Self:
         """Enter context manager (push context onto stack)."""
         push_context(self)
@@ -90,9 +155,31 @@ class Context(ABC):
         pop_context()
 
 
-# ============================================================================
+# =============================================================================
+# Abstract Interpreter Interface
+# =============================================================================
+
+
+class AbstractInterpreter(Context):
+    """Abstract interface for Interpreters.
+
+    This allows EDSL components (like JIT) to depend on the Interpreter interface
+    without depending on the concrete Runtime implementation (which may depend on
+    ObjectStore, Backends, etc.).
+    """
+
+    @abstractmethod
+    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+        """Execute a Graph IR with given inputs."""
+
+    @abstractmethod
+    def lift(self, obj: Any) -> Any:
+        """Lift a python object to an interpreter object."""
+
+
+# =============================================================================
 # Global Context Stack Management
-# ============================================================================
+# =============================================================================
 
 _context_stack: list[Context] = []
 _default_context: Context | None = None
@@ -100,20 +187,25 @@ _default_context_factory: Callable[[], Context] | None = None
 
 
 def get_current_context() -> Context | None:
-    """Get the current active context.
+    """Get the current active context (top of stack).
 
-    Returns None if no context is active (will use default context).
+    Returns None if no context is active.
     """
-
     return _context_stack[-1] if _context_stack else None
 
 
-def get_root_context() -> Context | None:
-    """Get the root context (bottom of the stack).
+def push_context(context: Context) -> None:
+    """Push a context onto the stack (enter context)."""
+    _context_stack.append(context)
 
-    This context typically holds the global environment state (e.g. ClusterSpec).
+
+def pop_context() -> Context | None:
+    """Pop a context from the stack (exit context).
+
+    Returns:
+        The popped context, or None if stack was empty.
     """
-    return _context_stack[0] if _context_stack else None
+    return _context_stack.pop() if _context_stack else None
 
 
 def find_context(predicate: Callable[[Context], bool]) -> Context | None:
@@ -121,9 +213,6 @@ def find_context(predicate: Callable[[Context], bool]) -> Context | None:
 
     Traverses from top (most recent) to bottom of the context stack,
     returning the first context for which predicate(ctx) returns True.
-
-    This is a general-purpose utility for finding contexts with specific
-    attributes or capabilities without hardcoding business logic here.
 
     Args:
         predicate: A callable that takes a Context and returns True if it matches.
@@ -133,13 +222,7 @@ def find_context(predicate: Callable[[Context], bool]) -> Context | None:
 
     Example:
         >>> # Find context with simp dialect state
-        >>> ctx = find_context(
-        ...     lambda c: hasattr(c, "get_dialect_state")
-        ...     and c.get_dialect_state("simp") is not None
-        ... )
-        >>>
-        >>> # Find context with cluster spec
-        >>> ctx = find_context(lambda c: getattr(c, "_cluster_spec", None) is not None)
+        >>> ctx = find_context(lambda c: c.has_state("dialect.simp"))
     """
     for ctx in reversed(_context_stack):
         if predicate(ctx):
@@ -147,15 +230,41 @@ def find_context(predicate: Callable[[Context], bool]) -> Context | None:
     return None
 
 
-def push_context(context: Context) -> None:
-    """Push a context onto the stack (enter context)."""
-    _context_stack.append(context)
+def find_context_with_state(key: str) -> Context | None:
+    """Find first context that has the specified state.
+
+    Args:
+        key: State key to look for
+
+    Returns:
+        First context with the state, or None
+    """
+    return find_context(lambda c: c.has_state(key))
 
 
-def pop_context() -> None:
-    """Pop a context from the stack (exit context)."""
-    if _context_stack:
-        _context_stack.pop()
+def find_interpreter() -> Context | None:
+    """Find first Interpreter in the context stack.
+
+    Returns:
+        First Interpreter context, or None if not found.
+    """
+    return find_context(lambda c: isinstance(c, AbstractInterpreter))
+
+
+def is_tracing() -> bool:
+    """Check if current context is a Tracer.
+
+    Returns:
+        True if the top of the context stack is a Tracer.
+    """
+    from mplang.v2.edsl.tracer import Tracer
+
+    return isinstance(get_current_context(), Tracer)
+
+
+# =============================================================================
+# Default Context Management
+# =============================================================================
 
 
 def register_default_context_factory(factory: Callable[[], Context]) -> None:
@@ -177,18 +286,26 @@ def get_default_context() -> Context:
     return _default_context
 
 
-class AbstractInterpreter(Context):
-    """Abstract interface for Interpreters.
+def set_root_context(context: Context, force: bool = False) -> None:
+    """Set the root/default execution context.
 
-    This allows EDSL components (like JIT) to depend on the Interpreter interface
-    without depending on the concrete Runtime implementation (which may depend on
-    ObjectStore, Backends, etc.).
+    This sets the provided context as the base of the context stack.
+    All subsequent operations will use this context as the default environment.
+
+    Args:
+        context: Context to set as root.
+        force: If True, clears the existing context stack before setting.
+               If False (default), raises error if stack is not empty.
     """
+    if force:
+        _context_stack.clear()
+        _context_stack.append(context)
+        return
 
-    @abstractmethod
-    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
-        """Execute a Graph IR with given inputs."""
+    if get_current_context() is not None:
+        raise RuntimeError(
+            "Cannot set root context: Context stack is not empty. "
+            "Use force=True to overwrite the existing context."
+        )
 
-    @abstractmethod
-    def lift(self, obj: Any) -> Any:
-        """Lift a python object to an interpreter object."""
+    push_context(context)

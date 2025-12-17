@@ -268,7 +268,8 @@ def fetch(
         # Plain values pass through
         return var
 
-    return tree_map(_fetch_single, result)
+    with interp:
+        return tree_map(_fetch_single, result)
 
 
 # Alias for compatibility

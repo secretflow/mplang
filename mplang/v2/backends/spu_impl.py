@@ -27,6 +27,7 @@ import spu.api as spu_api
 import spu.libspu as libspu
 
 from mplang.v2.backends.simp_worker import SimpWorker
+from mplang.v2.backends.spu_state import SPUState
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import spu
 from mplang.v2.edsl import serde
@@ -105,84 +106,6 @@ def to_runtime_config(config: spu.SPUConfig) -> libspu.RuntimeConfig:
     runtime_config.field = getattr(libspu.FieldType, config.field)
     runtime_config.fxp_fraction_bits = config.fxp_fraction_bits
     return runtime_config
-
-
-# Global cache for SPU runtimes per (local_rank, world_size) pair
-# Key: (local_rank, spu_world_size, protocol, field, link_mode), Value: (Runtime, Io)
-_SPU_RUNTIMES: dict[
-    tuple[int, int, str, str, str], tuple[spu_api.Runtime, spu_api.Io]
-] = {}
-
-
-def _create_mem_link(local_rank: int, spu_world_size: int) -> libspu.link.Context:
-    """Create in-memory link for simulation."""
-    desc = libspu.link.Desc()  # type: ignore
-    desc.recv_timeout_ms = 30 * 1000
-    for i in range(spu_world_size):
-        desc.add_party(f"P{i}", f"mem:{i}")
-    return libspu.link.create_mem(desc, local_rank)
-
-
-def _create_brpc_link(local_rank: int, spu_endpoints: list[str]) -> libspu.link.Context:
-    """Create BRPC link for distributed execution.
-
-    Args:
-        local_rank: The local rank within the SPU device (0-indexed).
-        spu_endpoints: List of BRPC endpoints for all SPU parties.
-
-    Returns:
-        A libspu.link.Context for BRPC communication.
-    """
-    desc = libspu.link.Desc()  # type: ignore
-    desc.recv_timeout_ms = 100 * 1000  # 100 seconds
-    desc.http_max_payload_size = 32 * 1024 * 1024  # 32MB
-
-    for i, endpoint in enumerate(spu_endpoints):
-        desc.add_party(f"P{i}", endpoint)
-
-    return libspu.link.create_brpc(desc, local_rank)
-
-
-def _get_spu_ctx(
-    local_rank: int,
-    spu_world_size: int,
-    config: spu.SPUConfig,
-    spu_endpoints: list[str] | None = None,
-) -> tuple[spu_api.Runtime, spu_api.Io]:
-    """Get or create SPU runtime and IO for the given local rank within SPU.
-
-    Args:
-        local_rank: The local rank within the SPU device (0-indexed).
-        spu_world_size: The number of parties in the SPU device.
-        config: SPU configuration including protocol settings.
-        spu_endpoints: Optional list of BRPC endpoints. If None, use mem link.
-
-    Returns:
-        A tuple of (Runtime, Io) for this party.
-    """
-    # Determine link mode
-    link_mode = "brpc" if spu_endpoints else "mem"
-
-    # Include protocol, field, and link_mode in cache key
-    cache_key = (local_rank, spu_world_size, config.protocol, config.field, link_mode)
-    if cache_key in _SPU_RUNTIMES:
-        return _SPU_RUNTIMES[cache_key]
-
-    # Create Link
-    if spu_endpoints:
-        link = _create_brpc_link(local_rank, spu_endpoints)
-    else:
-        link = _create_mem_link(local_rank, spu_world_size)
-
-    # Use config from SPUConfig
-    runtime_config = to_runtime_config(config)
-
-    # Create Runtime and Io
-    runtime = spu_api.Runtime(link, runtime_config)
-    io = spu_api.Io(spu_world_size, runtime_config)
-
-    _SPU_RUNTIMES[cache_key] = (runtime, io)
-    return runtime, io
 
 
 @spu.makeshares_p.def_impl
@@ -293,7 +216,15 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
                 )
             spu_endpoints.append(spu_endpoints_map[party_rank])
 
-    runtime, io = _get_spu_ctx(local_rank, spu_world_size, config, spu_endpoints)
+    # Get or create SPUState for caching Runtime/Io
+    spu_state = interpreter.get_dialect_state("spu")
+    if not isinstance(spu_state, SPUState):
+        spu_state = SPUState()
+        interpreter.set_dialect_state("spu", spu_state)
+
+    runtime, io = spu_state.get_or_create(
+        local_rank, spu_world_size, config, spu_endpoints
+    )
 
     executable_code = op.attrs["executable"]
     input_names = op.attrs["input_names"]

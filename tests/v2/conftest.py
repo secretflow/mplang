@@ -13,6 +13,15 @@
 # limitations under the License.
 
 import pytest
+import warnings
+
+# Disable JAX persistent compilation cache to avoid warnings in tests
+# (cache fails when jax_compilation_cache_dir is not configured)
+import jax
+jax.config.update("jax_enable_compilation_cache", False)
+
+# Suppress known TEE mock warnings in tests (expected for local testing)
+warnings.filterwarnings("ignore", message=".*Insecure mock TEE.*")
 
 import mplang.v2.edsl.context
 from tests.v2.utils.tensor_patch import patch_object_operators

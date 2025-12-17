@@ -182,9 +182,8 @@ markers = [
     "benchmark: performance benchmark tests (deselected by default)",
 ]
 filterwarnings = [
-    # Suppress insecure mock TEE warnings in tests
-    "ignore:Insecure mock TEE kernel 'mock_tee.quote_gen' in use.*:UserWarning",
-    "ignore:Insecure mock TEE kernel 'mock_tee.attest' in use.*:UserWarning",
+    # Suppress insecure mock TEE warnings in tests (expected for local testing)
+    "ignore:Insecure mock TEE operation.*:UserWarning",
 ]
 
 # Taskipy configuration for task management (mirrors .github/workflows checks)

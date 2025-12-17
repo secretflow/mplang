@@ -164,26 +164,19 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     # Get SPU config from attrs (passed through from run_jax)
     config: spu.SPUConfig = op.attrs["config"]
 
-    # Get parties from interpreter context (injected by pcall_static_impl)
-    parties = getattr(interpreter, "current_parties", None)
+    # Get parties from SimpWorker state (injected by pcall_static_impl)
+    context = interpreter.get_dialect_state("simp")
+    if not isinstance(context, SimpWorker):
+        raise RuntimeError(f"spu.exec requires SimpWorker, got {type(context)}")
+
+    parties = context.current_parties
     if parties is None:
         raise RuntimeError(
-            "spu.exec requires 'current_parties' in interpreter context. "
+            "spu.exec requires 'current_parties' in SimpWorker state. "
             "Ensure it is called within a pcall_static block."
         )
 
-    # Get global rank from interpreter or its context
-    # Use SimpWorker if available
-    context = interpreter.get_dialect_state("simp")
-    if isinstance(context, SimpWorker):
-        global_rank = context.rank
-    else:
-        # Fallback for other contexts or direct interpreter usage?
-        # User said: "directly ensure simp_context is there"
-        # If not SimpWorker, we can't run spu.exec?
-        # But maybe integration tests run differently?
-        # Let's trust user: "ensure simp_context is there"
-        raise RuntimeError(f"spu.exec requires SimpWorker, got {type(context)}")
+    global_rank = context.rank
 
     if global_rank not in parties:
         raise RuntimeError(

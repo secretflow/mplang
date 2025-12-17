@@ -47,18 +47,15 @@ def _pcall_static_worker_impl(
 
     if worker.rank in parties:
         fn_graph = op.regions[0]
-        prev_parties = getattr(interpreter, "current_parties", None)
-        interpreter.current_parties = parties  # type: ignore[attr-defined]
+        prev_parties = worker.current_parties
+        worker.current_parties = parties
 
         try:
             result = interpreter.evaluate_graph(fn_graph, list(args))
             # Return single value for single output (interpreter expects this)
             return result[0] if len(op.outputs) == 1 else result
         finally:
-            if prev_parties is None:
-                del interpreter.current_parties  # type: ignore[attr-defined]
-            else:
-                interpreter.current_parties = prev_parties  # type: ignore[attr-defined]
+            worker.current_parties = prev_parties
     else:
         # No data for this rank
         return None if len(op.outputs) == 1 else [None] * len(op.outputs)

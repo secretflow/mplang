@@ -42,8 +42,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 import mplang.v2 as mp
-
-from .sgb import SecureBoost
+from mplang.v2.libs.ml.sgb import SecureBoost
 
 
 def to_np(d):

@@ -300,12 +300,13 @@ def generate_sparse_noise(n: int, weight: int) -> el.Object:
 
         # Generate unique indices using rejection-free Fisher-Yates-like approach
         # Map random u64 to positions while ensuring uniqueness
-        positions = jnp.zeros(weight, dtype=jnp.int32)
+        # Use int64 to avoid dtype mismatch warning in scatter operations
+        positions = jnp.zeros(weight, dtype=jnp.int64)
 
         # Build positions array (unrolled for JAX compatibility)
         for i in range(weight):
             # Map random value to remaining range [0, n-i)
-            pos = jnp.int32(idx_entropy[i] % (n - i))
+            pos = jnp.int64(idx_entropy[i] % (n - i))
 
             # Shift position to avoid already-used indices
             # Count how many existing positions are <= current pos

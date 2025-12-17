@@ -154,6 +154,10 @@ class SimpMemDriver(SimpDriver):
         self._workers = workers
         self._mesh = mesh
 
+    def shutdown(self) -> None:
+        """Shutdown the local memory driver and its mesh."""
+        self._mesh.shutdown()
+
     @property
     def world_size(self) -> int:
         return self._world_size

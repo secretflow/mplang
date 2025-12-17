@@ -49,6 +49,7 @@ mplang-cli = "mplang.runtime.cli:main"
 [dependency-groups]
 dev = [
     "pytest",
+    "pytest-benchmark",
     "pytest-cov",
     "pytest-asyncio",
     "ruff",
@@ -174,12 +175,15 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--strict-markers --strict-config"
-markers = ["integration: cross-module or multi-party integration tests"]
+# Skip benchmark files by default (to run: pytest --ignore-glob='' or pytest tests/*_bench.py)
+addopts = "--strict-markers --strict-config --ignore-glob=*_bench.py"
+markers = [
+    "integration: cross-module or multi-party integration tests",
+    "benchmark: performance benchmark tests (deselected by default)",
+]
 filterwarnings = [
-    # Suppress insecure mock TEE warnings in tests
-    "ignore:Insecure mock TEE kernel 'mock_tee.quote_gen' in use.*:UserWarning",
-    "ignore:Insecure mock TEE kernel 'mock_tee.attest' in use.*:UserWarning",
+    # Suppress insecure mock TEE warnings in tests (expected for local testing)
+    "ignore:Insecure mock TEE operation.*:UserWarning",
 ]
 
 # Taskipy configuration for task management (mirrors .github/workflows checks)

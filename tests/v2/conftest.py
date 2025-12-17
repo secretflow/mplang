@@ -12,35 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
+import jax
 import pytest
 
-import mplang.v2.edsl.context
-from tests.v2.utils.tensor_patch import patch_object_operators
+# Disable JAX persistent compilation cache to avoid warnings in tests
+# (cache fails when jax_compilation_cache_dir is not configured)
+jax.config.update("jax_enable_compilation_cache", False)
 
+# Suppress known TEE mock warnings in tests (expected for local testing)
+warnings.filterwarnings("ignore", message=".*Insecure mock TEE.*")
 
-@pytest.fixture
-def simp_simulator_default(monkeypatch):
-    """Temporarily register SimpSimulator as the default interpreter."""
-    from mplang.v2.dialects import simp
-
-    monkeypatch.setattr(
-        mplang.v2.edsl.context,
-        "_default_context_factory",
-        lambda: simp.make_simulator(world_size=3),
-    )
-    monkeypatch.setattr(mplang.v2.edsl.context, "_default_context", None)
-
+import mplang.v2.edsl.context  # noqa: E402
+from mplang.v2.dialects import simp  # noqa: E402
+from tests.v2.utils.tensor_patch import patch_object_operators  # noqa: E402
 
 # Apply tensor operator overloading patch for tests
 patch_object_operators()
 
 
+@pytest.fixture
+def simp_simulator_default():
+    """Provide a SIMP simulator context for tests that need it.
+
+    Usage: Add @pytest.mark.usefixtures("simp_simulator_default") to test classes
+    or use simp_simulator_default fixture parameter in test functions.
+    """
+    sim = simp.make_simulator(world_size=3)
+    with sim:
+        yield sim
+
+
 @pytest.fixture(autouse=True)
-def reset_default_context(monkeypatch):
-    """Reset the default context and context stack before and after each test."""
+def reset_context_stack():
+    """Reset the context stack before and after each test."""
     # Clear context stack for test isolation
     mplang.v2.edsl.context._context_stack.clear()
-    monkeypatch.setattr(mplang.v2.edsl.context, "_default_context", None)
     yield
     # Clear again after test
     mplang.v2.edsl.context._context_stack.clear()

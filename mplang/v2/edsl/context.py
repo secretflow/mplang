@@ -69,7 +69,7 @@ class Context(ABC):
     """
 
     def __init__(self) -> None:
-        self._state: dict[str, Any] = {}
+        self._states: dict[str, Any] = {}
 
     # =========================================================================
     # State Management
@@ -82,7 +82,7 @@ class Context(ABC):
             key: State key (e.g., "dialect.simp", "device.cluster")
             value: State value
         """
-        self._state[key] = value
+        self._states[key] = value
 
     def get_state(self, key: str, default: Any = None) -> Any:
         """Get attached state by key.
@@ -94,7 +94,7 @@ class Context(ABC):
         Returns:
             State value or default
         """
-        return self._state.get(key, default)
+        return self._states.get(key, default)
 
     def has_state(self, key: str) -> bool:
         """Check if state exists.
@@ -105,7 +105,7 @@ class Context(ABC):
         Returns:
             True if state exists
         """
-        return key in self._state
+        return key in self._states
 
     # =========================================================================
     # Abstract Methods

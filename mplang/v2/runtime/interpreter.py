@@ -360,6 +360,32 @@ class Interpreter(AbstractInterpreter):
         self.trace_pid = trace_pid
         self.store: ObjectStore | None = store
 
+    def shutdown(self) -> None:
+        """Shutdown the interpreter and release resources.
+
+        This method is idempotent and safe to call multiple times.
+        It performs the following cleanup:
+        1. Shuts down the internal executor (if any).
+        2. Stops the execution tracer (if any).
+        3. Shuts down any attached dialect states (e.g., stopping drivers).
+        """
+        # 1. Shutdown Executor
+        if self.executor:
+            self.executor.shutdown(wait=True)
+            self.executor = None
+
+        # 2. Stop Tracer
+        if self.tracer:
+            self.tracer.stop()
+            # Don't clear self.tracer, as we might want to read stats later
+
+        # 3. Shutdown Dialect States
+        # Iterate over all attached states (e.g., drivers, cluster managers)
+        # and shut them down if they support it.
+        for state in self._states.values():
+            if hasattr(state, "shutdown") and callable(state.shutdown):
+                state.shutdown()
+
     # =========================================================================
     # Dialect State Management
     # =========================================================================

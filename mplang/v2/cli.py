@@ -62,7 +62,7 @@ def run_worker(
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
-    from mplang.v2.backends.simp_http_worker import create_worker_app
+    from mplang.v2.backends.simp_worker.http import create_worker_app
 
     app = create_worker_app(rank, world_size, endpoints, spu_endpoints)
 

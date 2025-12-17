@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# mypy: disable-error-code="no-untyped-def,no-any-return,var-annotated"
+
 """SecureBoost v2: Optimized implementation using mplang.v2 low-level BFV APIs.
 
 This implementation improves upon v1 by leveraging BFV SIMD slots and the
@@ -879,7 +881,7 @@ def _find_splits_pps(
         subgroup_map_fn = make_get_subgroup_map(n_level)
         subgroup_map = simp.pcall_static(
             (pp_rank,),
-            lambda fn=subgroup_map_fn: tensor.run_jax(fn, bt_level_pp),
+            lambda fn=subgroup_map_fn, bt_lv=bt_level_pp: tensor.run_jax(fn, bt_lv),
         )
 
         n_pp_features = n_features_per_party[pp_idx + 1]
@@ -978,8 +980,8 @@ def _find_splits_pps(
 
             pp_hists = simp.pcall_static(
                 (ap_rank,),
-                lambda: tensor.run_jax(
-                    derive_right_and_combine, left_hists, parent_hists
+                lambda lh=left_hists, ph=parent_hists: tensor.run_jax(
+                    derive_right_and_combine, lh, ph
                 ),
             )
 
@@ -996,7 +998,7 @@ def _find_splits_pps(
 
         pp_gains, pp_feats, pp_threshs = simp.pcall_static(
             (ap_rank,),
-            lambda: tensor.run_jax(find_splits, pp_hists),
+            lambda h=pp_hists: tensor.run_jax(find_splits, h),
         )
 
         pp_gains_list.append(pp_gains)
@@ -1292,7 +1294,7 @@ def build_tree(
         # Local bt for this level
         bt_level = simp.pcall_static(
             (ap_rank,),
-            lambda off=level_offset: tensor.run_jax(lambda b: b - off, bt),
+            lambda off=level_offset, b=bt: tensor.run_jax(lambda x: x - off, b),
         )
 
         # === AP: Local histogram computation ===
@@ -1352,7 +1354,7 @@ def build_tree(
 
         best_gains, best_party = simp.pcall_static(
             (ap_rank,),
-            lambda: tensor.run_jax(find_global_best, *all_gains),
+            lambda gains=all_gains: tensor.run_jax(find_global_best, *gains),
         )
 
         # === Update Tree State ===
@@ -1498,8 +1500,9 @@ def predict_tree(
             (rank,),
             lambda d=all_datas[i],
             f=tree.feature[i],
-            t=tree.threshold[i]: predict_tree_single_party(
-                d, f, t, tree.is_leaf, tree.owned_party_id, i, n_nodes
+            t=tree.threshold[i],
+            idx=i: predict_tree_single_party(
+                d, f, t, tree.is_leaf, tree.owned_party_id, idx, n_nodes
             ),
         )
         # Transfer to AP
@@ -1564,7 +1567,7 @@ def predict_ensemble(
 
         y_pred_logits = simp.pcall_static(
             (ap_rank,),
-            lambda: tensor.run_jax(update_pred, y_pred_logits, tree_pred),
+            lambda yp=y_pred_logits, tp=tree_pred: tensor.run_jax(update_pred, yp, tp),
         )
 
     # Convert logits to probabilities
@@ -1634,7 +1637,9 @@ def fit_tree_ensemble(
 
         gh, qg, qh = simp.pcall_static(
             (ap_rank,),
-            lambda: tensor.run_jax(compute_gh_quantized, y_data, y_pred, fxp_scale),
+            lambda yp=y_pred: tensor.run_jax(
+                compute_gh_quantized, y_data, yp, fxp_scale
+            ),
         )
 
         # FHE encrypt only if we have passive parties
@@ -1678,7 +1683,7 @@ def fit_tree_ensemble(
 
         y_pred = simp.pcall_static(
             (ap_rank,),
-            lambda: tensor.run_jax(update_pred_fn, y_pred, tree_pred),
+            lambda yp=y_pred, tp=tree_pred: tensor.run_jax(update_pred_fn, yp, tp),
         )
 
     return TreeEnsemble(
@@ -1866,275 +1871,3 @@ class SecureBoost:
             lambda: tensor.run_jax(compute_metrics, y_prob, y_data),
         )
         return accuracy
-
-    # ==============================================================================
-    # Main
-    # ==============================================================================
-
-    print("=" * 60)
-
-
-def run_sgb_demo(sim):
-    """Test SecureBoost with 2 parties, enabling BFV FHE.
-
-    AP (party 0) holds labels + some features.
-    PP (party 1) holds remaining features.
-
-    Flow:
-    1. PP encrypts its histogram buckets with BFV
-    2. AP receives encrypted histogram, multiplies with gradient mask
-    3. PP decrypts and aggregates
-    """
-    import mplang.v2 as mp
-
-    print("=" * 60)
-    print("Multi-Party SecureBoost Test (with BFV FHE)")
-    print("=" * 60)
-
-    # Load BFV backend (registers implementations)
-    from mplang.v2.backends import load_backend
-
-    try:
-        load_backend("mplang.v2.backends.bfv_impl")
-        print("✓ BFV backend loaded successfully")
-    except ImportError as e:
-        print(f"✗ Failed to load BFV backend: {e}")
-        print("  Make sure 'tenseal' is installed: pip install tenseal")
-        return
-
-    # Generate synthetic data for 2 parties
-    np.random.seed(42)
-    n_samples = 100
-    n_features_ap = 3  # AP's features
-    n_features_pp = 2  # PP's features
-
-    # Generate linearly separable data
-    X_all = np.random.randn(n_samples, n_features_ap + n_features_pp).astype(np.float32)
-    y = (X_all[:, 0] + X_all[:, 1] + X_all[:, 3] > 0).astype(np.float32)
-
-    # Split features by party
-    X_ap = X_all[:, :n_features_ap]  # Party 0's features
-    X_pp = X_all[:, n_features_ap:]  # Party 1's features
-
-    print("\nData Distribution:")
-    print(f"  Party 0 (AP): {X_ap.shape} features + labels")
-    print(f"  Party 1 (PP): {X_pp.shape} features (encrypted)")
-
-    # Model parameters
-    n_estimators = 2  # Small for test
-    max_depth = 2
-
-    def job():
-        # Put data on respective parties
-        data_ap = mp.put("P0", X_ap)
-        data_pp = mp.put("P1", X_pp)
-        y_data = mp.put("P0", y)
-
-        # Create model with passive party
-        model = SecureBoost(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            learning_rate=0.1,
-            max_bin=8,
-            ap_rank=0,
-            pp_ranks=[1],  # Party 1 is passive party (uses FHE)
-        )
-
-        print("\nTraining with BFV FHE...")
-        model.fit(
-            [data_ap, data_pp],  # Both parties' data
-            y_data,
-            n_samples=n_samples,
-            n_features_per_party=[n_features_ap, n_features_pp],
-        )
-        print("Training complete!")
-
-        # Predict
-        print("\nPredicting...")
-        y_prob = model.predict([data_ap, data_pp], n_samples=n_samples)
-        print(f"Predictions type: {y_prob.type}")
-        return y_prob
-
-    # Execute with 2 parties
-    print("\nExecuting graph with 2 parties...")
-    y_prob_obj = mp.evaluate(job, context=sim)
-
-    # Calculate accuracy
-    y_pred_probs = mp.fetch(y_prob_obj, context=sim)
-    if isinstance(y_pred_probs, list):
-        y_pred_probs = y_pred_probs[0]
-    y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
-    accuracy = np.mean(y_pred_class == y)
-    print(f"\nPredictions (first 10): {y_pred_probs[:10]}")
-    print(f"True labels (first 10): {y[:10]}")
-    print(f"Training Accuracy: {accuracy:.4f}")
-
-    print("\n" + "=" * 60)
-    print("Multi-party test completed!")
-    print("=" * 60)
-
-
-def run_sgb_bench(sim):
-    """Benchmark SecureBoost with BFV FHE for performance analysis."""
-    import time
-
-    print("=" * 70)
-    print("SecureBoost v2 - Multi-Party FHE Performance Benchmark")
-    print("=" * 70)
-    # Benchmark configurations
-    configs = [
-        # Test m > 4096 case (multi-CT support)
-        {
-            "n_samples": 1000,
-            "n_features_ap": 50,
-            "n_features_pp": 50,
-            "n_trees": 2,
-            "max_depth": 3,
-        },
-    ]
-
-    results = []
-
-    for cfg in configs:
-        n_samples = cfg["n_samples"]
-        n_features_ap = cfg["n_features_ap"]
-        n_features_pp = cfg["n_features_pp"]
-        n_trees = cfg["n_trees"]
-        max_depth = cfg["max_depth"]
-
-        print(f"\n{'─' * 70}")
-        print(
-            f"Config: samples={n_samples}, features=({n_features_ap}+{n_features_pp}), "
-            f"trees={n_trees}, depth={max_depth}"
-        )
-        print(f"{'─' * 70}")
-
-        # Generate data
-        np.random.seed(42)
-        X_all = np.random.randn(n_samples, n_features_ap + n_features_pp).astype(
-            np.float32
-        )
-        y = (X_all[:, 0] + X_all[:, 1] > 0).astype(np.float32)
-        X_ap = X_all[:, :n_features_ap]
-        X_pp = X_all[:, n_features_ap:]
-
-        def job():
-            data_ap = mp.put("P0", X_ap)
-            data_pp = mp.put("P1", X_pp)
-            y_data = mp.put("P0", y)
-
-            model = SecureBoost(
-                n_estimators=n_trees,
-                max_depth=max_depth,
-                learning_rate=0.1,
-                max_bin=8,
-                ap_rank=0,
-                pp_ranks=[1],
-            )
-
-            model.fit(
-                [data_ap, data_pp],
-                y_data,
-                n_samples=n_samples,
-                n_features_per_party=[n_features_ap, n_features_pp],
-            )
-
-            y_prob = model.predict([data_ap, data_pp], n_samples=n_samples)
-            return y_prob
-
-        # Measure tracing time
-        t0 = time.perf_counter()
-        traced = mp.compile(job, context=sim)
-        trace_time = time.perf_counter() - t0
-
-        graph = traced.graph
-        n_ops = len(graph.operations)
-
-        print(f"  Tracing:    {trace_time:.3f}s ({n_ops} ops)")
-
-        # Measure execution time
-        t0 = time.perf_counter()
-
-        y_prob_obj = mp.evaluate(traced, context=sim)
-        exec_time = time.perf_counter() - t0
-
-        # Calculate accuracy
-        y_pred_probs = mp.fetch(y_prob_obj, context=sim)
-        if isinstance(y_pred_probs, list):
-            y_pred_probs = y_pred_probs[0]
-        y_pred_class = (y_pred_probs > 0.5).astype(np.float32)
-        accuracy = np.mean(y_pred_class == y)
-
-        print(f"  Execution:  {exec_time:.3f}s")
-        print(f"  Total:      {trace_time + exec_time:.3f}s")
-        print(f"  Accuracy:   {accuracy:.2%}")
-
-        results.append({
-            "config": cfg,
-            "trace_time": trace_time,
-            "exec_time": exec_time,
-            "n_ops": n_ops,
-            "accuracy": accuracy,
-        })
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("BENCHMARK SUMMARY")
-    print("=" * 70)
-    print(f"{'Config':<40} {'Trace':<10} {'Exec':<10} {'Ops':<8} {'Acc':<8}")
-    print("-" * 70)
-    for r in results:
-        cfg = r["config"]
-        cfg_str = f"n={cfg['n_samples']}, f={cfg['n_features_ap']}+{cfg['n_features_pp']}, t={cfg['n_trees']}, d={cfg['max_depth']}"
-        print(
-            f"{cfg_str:<40} {r['trace_time']:.3f}s    {r['exec_time']:.3f}s    {r['n_ops']:<8} {r['accuracy']:.2%}"
-        )
-
-    # Analyze operation distribution for last config
-    print("\n" + "=" * 70)
-    print("OPERATION DISTRIBUTION (last config)")
-    print("=" * 70)
-    from collections import Counter
-
-    op_counts = Counter(op.opcode for op in graph.operations)
-    for op_name, count in sorted(op_counts.items(), key=lambda x: -x[1])[:15]:
-        pct = count / n_ops * 100
-        bar = "█" * int(pct / 2)
-        print(f"  {op_name:<30} {count:>5}  ({pct:>5.1f}%) {bar}")
-
-    # BFV-specific operations
-    bfv_ops = {k: v for k, v in op_counts.items() if k.startswith("bfv.")}
-    if bfv_ops:
-        bfv_total = sum(bfv_ops.values())
-        print(f"\n  BFV operations total: {bfv_total} ({bfv_total / n_ops * 100:.1f}%)")
-        for op_name, count in sorted(bfv_ops.items(), key=lambda x: -x[1]):
-            print(f"    {op_name:<28} {count:>5}")
-
-    # Print profiling results
-    if hasattr(sim, "backend") and getattr(sim.backend, "profiler", None) is not None:
-        sim.backend.profiler.stop(filename_prefix="sgb_trace")
-
-    profiler = mp.get_profiler()
-    profiler.print_summary()  # All ops (includes container overhead)
-
-
-__mp_main__ = run_sgb_demo
-
-
-if __name__ == "__main__":
-    import argparse
-
-    import mplang.v2 as mp
-
-    parser = argparse.ArgumentParser(description="SecureBoost v2 Example")
-    parser.add_argument("--benchmark", action="store_true", help="Run benchmark")
-    parser.add_argument("--profile", action="store_true", help="Enable profiling")
-    args = parser.parse_args()
-
-    # Use high-level Simulator API with profiling if requested
-    sim = mp.make_simulator(2, enable_profiling=args.profile)
-
-    if args.benchmark:
-        run_sgb_bench(sim)
-    else:
-        run_sgb_demo(sim)

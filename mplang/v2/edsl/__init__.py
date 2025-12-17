@@ -33,12 +33,16 @@ from . import typing as typing
 # Context management
 from .context import (
     Context,
+    find_context,
+    find_context_with_state,
+    find_interpreter,
     get_current_context,
     get_default_context,
-    get_root_context,
+    is_tracing,
     pop_context,
     push_context,
     register_default_context_factory,
+    set_root_context,
 )
 
 # Graph IR
@@ -77,15 +81,19 @@ __all__ = [
     "Tracer",
     "Value",
     "VectorObject",
+    "find_context",
+    "find_context_with_state",
+    "find_interpreter",
     "format_graph",
     "get_current_context",
     "get_default_context",
-    "get_root_context",
+    "is_tracing",
     "jit",
     "pop_context",
     "primitive",
     "push_context",
     "register_default_context_factory",
+    "set_root_context",
     "trace",
     "typing",
 ]

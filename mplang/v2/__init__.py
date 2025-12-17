@@ -52,15 +52,19 @@ from mplang.v2.edsl import (
     TracedFunction,
     Tracer,
     Value,
+    find_context,
+    find_context_with_state,
+    find_interpreter,
     format_graph,
     get_current_context,
     get_default_context,
-    get_root_context,
+    is_tracing,
     jit,
     pop_context,
     primitive,
     push_context,
     register_default_context_factory,
+    set_root_context,
     trace,
 )
 from mplang.v2.edsl.registry import get_profiler
@@ -95,34 +99,6 @@ from mplang.v2.runtime.interpreter import Interpreter
 # =============================================================================
 # Context Management API (JAX-like pattern)
 # =============================================================================
-
-
-def set_root_context(context: Interpreter, force: bool = False) -> None:
-    """Set the global/root execution context.
-
-    This explicitly sets the provided interpreter as the Root Context.
-    All subsequent operations (compile, evaluate, device resolution) will
-    use this context as the default environment.
-
-    Args:
-        context: Interpreter to use as the root context.
-        force: If True, clears the existing context stack before setting.
-               If False (default), pushes onto the stack.
-    """
-    from mplang.v2.edsl.context import _context_stack, get_current_context
-
-    if force:
-        _context_stack.clear()
-        _context_stack.append(context)
-        return
-
-    if get_current_context() is not None:
-        raise RuntimeError(
-            "Cannot set root context: Context stack is not empty. "
-            "Use force=True to overwrite the existing root context."
-        )
-
-    push_context(context)
 
 
 def _get_context(context: Interpreter | None) -> Interpreter:
@@ -204,6 +180,30 @@ def fetch(
 ) -> Any:
     """Fetch results from interpreter context to Python.
 
+    This is a meta-function that operates at execution boundaries, not a traced
+    dialect operation. It brings data from the distributed/MPC runtime back to
+    the Python host.
+
+    Behavior in different contexts:
+    - **Tracing (compile)**: Returns the input unchanged (identity). The graph
+      outputs are determined by the function's return statement, not fetch calls.
+    - **Execution (evaluate)**: Actually fetches data from workers/parties.
+
+    Design Note (A vs B tradeoff):
+        Two designs were considered for fetch behavior during tracing:
+
+        - **Design A (chosen)**: fetch = identity during tracing. Graph outputs
+          are determined solely by the return statement. This is simpler and
+          avoids ambiguity when fetch and return reference different values.
+
+        - **Design B (alternative)**: fetch marks output points in the graph.
+          This would allow fetch(a), fetch(b), return b to output both a and b.
+          However, it complicates the semantics and requires tracking fetch
+          points separately from return values.
+
+        Design A was chosen for simplicity. If a value needs to be an output,
+        it should be returned. fetch's role is purely for execution-time I/O.
+
     Args:
         result: Object(s) to fetch. Can be a single InterpObject, DriverVar,
             or nested structure containing them.
@@ -216,14 +216,22 @@ def fetch(
         Fetched Python values. For device objects with follow_device=True,
         returns single value from the device's rank(s). Otherwise returns
         list of values (one per party) or single value for world_size=1.
+        During tracing, returns the input unchanged.
     """
-
     from jax.tree_util import tree_map
 
     from mplang.v2.backends.simp_driver.values import DriverVar
+    from mplang.v2.edsl.context import is_tracing
     from mplang.v2.runtime.interpreter import InterpObject
     from mplang.v2.runtime.value import WrapValue
 
+    # Check if we are in tracing context - if so, return identity
+    if is_tracing():
+        # Design A: fetch = identity during tracing
+        # Graph outputs are determined by return statement, not fetch calls
+        return result
+
+    # Execution context - actually fetch data
     interp = _get_context(context)
 
     def _fetch_single(var: Any) -> Any:
@@ -375,10 +383,14 @@ __all__ = [  # noqa: RUF022
     "compile",
     "evaluate",
     "fetch",
+    "find_context",
+    "find_context_with_state",
+    "find_interpreter",
     "format_graph",
     "function",
     "get_current_context",
     "get_default_context",
+    "is_tracing",
     "jit",
     "mplang",
     "pop_context",
@@ -404,7 +416,6 @@ __all__ = [  # noqa: RUF022
     # Dialects
     "dialects",
     "register_default_context_factory",
-    "get_root_context",
     "get_profiler",
 ]
 

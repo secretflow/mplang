@@ -141,18 +141,21 @@ def main():
     print("SQL on PPU and TEE (MPLang2)")
     print("=" * 70)
 
-    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
-    mp.set_root_context(sim)
-
     # Pattern 1: PPU
     print("\n--- Pattern 1: SQL on PPU ---")
-    r1 = mp.evaluate(sql_on_ppu)
-    result1 = mp.fetch(r1, "P0")
-    print("Result (doubled values):")
-    print(result1.to_pandas())
+    sim_ppu = mp.make_simulator(3, cluster_spec=cluster_spec)
+    with sim_ppu:
+        r1 = mp.evaluate(sql_on_ppu)
+        # TODO: mp.fetch(follow_device=True) doesn't work here because Object
+        # attributes (including __device__) are lost across mp.evaluate boundary.
+        # TracedFunction doesn't preserve Object attributes when reconstructing outputs.
+        # Workaround: manually index by rank (P0 = rank 0)
+        result1 = mp.fetch(r1)[0]
+        print("Result (doubled values):")
+        print(result1.to_pandas())
 
-    # Verify schema
-    print(f"Schema: {r1.type}")
+        # Verify schema
+        print(f"Schema: {r1.type}")
 
     # Pattern 2: TEE
     print("\n--- Pattern 2: SQL on TEE ---")
@@ -163,18 +166,18 @@ def main():
     }
     for n in cluster_spec.nodes.values():
         n.runtime_info.op_bindings.update(tee_bindings)
-    sim = mp.make_simulator(3, cluster_spec=cluster_spec)
-    mp.set_root_context(sim, force=True)
 
-    r2 = mp.evaluate(sql_on_tee)
-    # Fetch result specifically from TEE0 (since only TEE0 executed the query)
-    result2 = mp.fetch(r2, "TEE0")
-    print("TEE UNION result (combined rows from P0 and P1):")
-    if result2 is not None:
-        print(result2.to_pandas())
-    else:
-        print("(TEE result is None - mock TEE may not fully support table ops)")
-        print("Note: TEE table operations require proper attestation setup")
+    sim_tee = mp.make_simulator(3, cluster_spec=cluster_spec)
+    with sim_tee:
+        r2 = mp.evaluate(sql_on_tee)
+        # Workaround: manually index by rank (TEE0 = rank 2)
+        result2 = mp.fetch(r2)[2]
+        print("TEE UNION result (combined rows from P0 and P1):")
+        if result2 is not None:
+            print(result2.to_pandas())
+        else:
+            print("(TEE result is None - mock TEE may not fully support table ops)")
+            print("Note: TEE table operations require proper attestation setup")
 
     print("\n" + "=" * 70)
     print("Key takeaways:")

@@ -17,165 +17,108 @@
 Learning objectives:
 1. Use Simulator for local multi-threaded testing
 2. Use Driver for distributed HTTP-based execution
-3. Understand the differences between Simulator and Driver
+3. Same code runs on both - just swap context
 
 Key concepts:
 - Simulator: single-process, all parties in threads, fast iteration
 - Driver: multi-process, HTTP-based, for real distributed deployment
-
-Migrated from mplang v1 to mplang2.
+- Same cluster_spec works for both sim and driver
 """
 
-import random
-
 import httpx
+import jax
+import jax.numpy as jnp
 
 import mplang.v2 as mp
 
+# Modify JAX config to avoid "Error reading persistent compilation cache" warning
+# appearing in some environments where the cache is not properly initialized.
+jax.config.update("jax_enable_compilation_cache", False)
 
-def millionaire():
-    """Simple millionaire using device API (from 00_device_basics)."""
-    # Generate data on specific parties using mp.put for constants
-    x = mp.put("P0", random.randint(0, 10))
-    y = mp.put("P1", random.randint(0, 10))
+# ============================================================================
+# Shared cluster definition - works for both Simulator and Driver
+# ============================================================================
 
-    # Secure comparison on SPU
-    result = mp.device("SP0")(lambda a, b: a < b)(x, y)
+ENDPOINTS = ["http://127.0.0.1:8100", "http://127.0.0.1:8101"]
 
-    result = mp.put("P0", result)
-
-    return x, y, result
+cluster_spec = mp.ClusterSpec.simple(world_size=2, endpoints=ENDPOINTS)
 
 
 # ============================================================================
-# Simulator: Local Multi-Threaded Execution
+# Shared computation - runs on both Simulator and Driver
 # ============================================================================
 
 
-def run_with_simulator():
-    """Simulator: best for rapid prototyping and testing."""
-    print("\n" + "=" * 70)
-    print("Running with Simulator (local, multi-threaded)")
-    print("=" * 70)
+@mp.function
+def millionaire(alice_wealth, bob_wealth):
+    """Classic millionaire problem: who is richer without revealing amounts."""
+    return alice_wealth > bob_wealth
 
-    cluster_spec = mp.ClusterSpec.simple(2)
-    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
-    mp.set_root_context(sim)
 
-    print("\n--- Millionaire problem (device API) ---")
-    x, y, result = mp.evaluate(millionaire)
-
-    # Fetch results from all parties
-    x_vals = mp.fetch(x)
-    y_vals = mp.fetch(y)
-    result_vals = mp.fetch(result)
-
-    # Values are HostVar holding per-party results
-    print(f"P0 value: {x_vals}")
-    print(f"P1 value: {y_vals}")
-    print(f"x < y (SPU): {result_vals}")
+def run_computation(ctx_name: str):
+    """Run millionaire problem and print results."""
+    alice = jnp.array(5_000_000)  # Alice: $5M
+    bob = jnp.array(3_000_000)  # Bob: $3M
+    alice_is_richer = millionaire(alice, bob)
+    print(f"  [{ctx_name}] Alice($5M) > Bob($3M)? {bool(alice_is_richer)}")
 
 
 # ============================================================================
-# Driver: Distributed HTTP-based Execution
+# Health probe - simple inline check
 # ============================================================================
 
 
-def run_with_driver():
-    """Driver: for real distributed deployment.
-
-    Same API as Simulator, just different backend (HTTP instead of threads).
-
-    Usage:
-        Terminal 1: python -m mplang.v2.cli up --world-size 2 --base-port 8100
-        Terminal 2: python tutorials/v2/02_simulation_and_driver.py
-    """
-    endpoints = ["http://127.0.0.1:8100", "http://127.0.0.1:8101"]
-
-    print("\n" + "=" * 70)
-    print("Running with Driver (distributed, HTTP-based)")
-    print("=" * 70)
-
-    # Check if workers are running
-    print("\nChecking workers...")
-    all_healthy = True
+def probe(endpoints: list[str]) -> bool:
+    """Check if all workers are healthy. Returns True if all OK."""
+    all_ok = True
     for i, ep in enumerate(endpoints):
         try:
             resp = httpx.get(f"{ep}/health", timeout=2)
-            if resp.status_code == 200:
-                print(f"  Worker {i} ({ep}): ✓ healthy")
-            else:
-                print(f"  Worker {i} ({ep}): ✗ error (status {resp.status_code})")
-                all_healthy = False
+            status = "✓" if resp.status_code == 200 else f"✗ ({resp.status_code})"
+            if resp.status_code != 200:
+                all_ok = False
         except Exception:
-            print(f"  Worker {i} ({ep}): ✗ not running")
-            all_healthy = False
+            status = "✗ (not running)"
+            all_ok = False
+        print(f"  Worker {i}: {status}")
+    return all_ok
 
-    if not all_healthy:
-        # Workers not running - show help
-        print("\n--- Workers not running. To start: ---")
-        print("""
-    # Quick start: 2 workers on localhost
-    python -m mplang.v2.cli up --world-size 2 --base-port 8100
 
-    # Or from config file:
-    python -m mplang.v2.cli up -c examples/conf/3pc.yaml
-
-    # Then re-run this script to execute on distributed workers.
-        """)
-        return
-
-    # Workers running - execute!
-    print("\n--- Executing on distributed workers ---")
-
-    # Create driver - same interface as Simulator!
-    cluster = mp.ClusterSpec.simple(world_size=2, endpoints=endpoints)
-    driver = mp.make_driver(endpoints, cluster_spec=cluster)
-
-    # Define computation - same as Simulator!
-    @mp.function
-    def secure_add(x, y):
-        return x + y
-
-    # Run with driver context - same as Simulator!
-    import jax.numpy as jnp
-
-    with driver:
-        x = jnp.array([1, 2, 3])
-        y = jnp.array([4, 5, 6])
-        result = secure_add(x, y)
-        print("  Input x: [1, 2, 3]")
-        print("  Input y: [4, 5, 6]")
-        print(f"  Result:  {result.tolist()}")
-
-    driver.shutdown()
-    print("\n✓ Distributed execution completed!")
+# ============================================================================
+# Main: Run same code on Simulator, then Driver
+# ============================================================================
 
 
 def main():
-    """Run simulator and driver demos."""
     print("=" * 70)
-    print("Device Tutorial: Simulator vs Driver")
+    print("Simulator vs Driver: Same Code, Different Backend")
     print("=" * 70)
 
-    run_with_simulator()
-    run_with_driver()
+    # --- Pattern 1: Simulator (always works, local threads) ---
+    print("\n--- Simulator (local, multi-threaded) ---")
+    sim = mp.make_simulator(2, cluster_spec=cluster_spec)
+    with sim:
+        run_computation("Simulator")
+
+    # --- Pattern 2: Driver (requires workers to be running) ---
+    print("\n--- Driver (distributed, HTTP-based) ---")
+    print("Probing workers...")
+    if not probe(ENDPOINTS):
+        print("\n  Workers not running. To start:")
+        print("    python -m mplang.v2.cli up -w 2 -p 8100")
+        print("  Then re-run this script.")
+    else:
+        driver = mp.make_driver(ENDPOINTS, cluster_spec=cluster_spec)
+        with driver:
+            run_computation("Driver")
+        driver.shutdown()
+        print("  ✓ Distributed execution completed!")
 
     print("\n" + "=" * 70)
-    print("Summary:")
-    print("- Simulator: local threads, fast testing")
-    print("- Driver: HTTP workers, real distributed")
-    print("- Same API: with sim/driver: + @mp.function")
+    print("Key insight: Same cluster_spec, same @mp.function, same with-block.")
+    print("Only difference: make_simulator() vs make_driver()")
     print("=" * 70)
 
 
 if __name__ == "__main__":
-    """
-    Usage:
-       uv run tutorials/v2/02_simulation_and_driver.py
-
-    To run distributed:
-       Terminal 1: python -m mplang.v2.cli up --world-size 2 --base-port 8100
-       Terminal 2: uv run tutorials/v2/02_simulation_and_driver.py
-    """
     main()

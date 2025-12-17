@@ -31,7 +31,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from mplang.v2.edsl.context import AbstractInterpreter
 from mplang.v2.edsl.graph import Graph
@@ -381,7 +381,7 @@ class Interpreter(AbstractInterpreter):
         """
         state = self.get_state(f"dialect.{dialect}")
         # Type assertion: dialect states are always DialectState or None
-        return state  # type: ignore[no-any-return]
+        return cast(DialectState | None, state)
 
     def set_dialect_state(self, dialect: str, state: DialectState) -> None:
         """Set the state object for a specific dialect.

@@ -156,6 +156,28 @@ class Context(ABC):
 
 
 # =============================================================================
+# Abstract Interpreter Interface
+# =============================================================================
+
+
+class AbstractInterpreter(Context):
+    """Abstract interface for Interpreters.
+
+    This allows EDSL components (like JIT) to depend on the Interpreter interface
+    without depending on the concrete Runtime implementation (which may depend on
+    ObjectStore, Backends, etc.).
+    """
+
+    @abstractmethod
+    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
+        """Execute a Graph IR with given inputs."""
+
+    @abstractmethod
+    def lift(self, obj: Any) -> Any:
+        """Lift a python object to an interpreter object."""
+
+
+# =============================================================================
 # Global Context Stack Management
 # =============================================================================
 
@@ -226,9 +248,6 @@ def find_interpreter() -> Context | None:
     Returns:
         First Interpreter context, or None if not found.
     """
-    # Import here to avoid circular dependency
-    from mplang.v2.edsl.context import AbstractInterpreter
-
     return find_context(lambda c: isinstance(c, AbstractInterpreter))
 
 
@@ -290,25 +309,3 @@ def set_root_context(context: Context, force: bool = False) -> None:
         )
 
     push_context(context)
-
-
-# =============================================================================
-# Abstract Interpreter Interface
-# =============================================================================
-
-
-class AbstractInterpreter(Context):
-    """Abstract interface for Interpreters.
-
-    This allows EDSL components (like JIT) to depend on the Interpreter interface
-    without depending on the concrete Runtime implementation (which may depend on
-    ObjectStore, Backends, etc.).
-    """
-
-    @abstractmethod
-    def evaluate_graph(self, graph: Graph, inputs: list[Any]) -> Any:
-        """Execute a Graph IR with given inputs."""
-
-    @abstractmethod
-    def lift(self, obj: Any) -> Any:
-        """Lift a python object to an interpreter object."""

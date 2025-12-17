@@ -16,6 +16,7 @@
 
 import logging
 import multiprocessing
+import os
 import time
 
 import httpx
@@ -29,6 +30,14 @@ from mplang.v2.backends.simp_worker.http import create_worker_app
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp, tensor
 from mplang.v2.edsl.context import pop_context, push_context
+
+# Skip when running with pytest-xdist (parallel workers)
+# These tests use multiprocessing which conflicts with xdist's process model
+_is_xdist_worker = os.environ.get("PYTEST_XDIST_WORKER") is not None
+pytestmark = pytest.mark.skipif(
+    _is_xdist_worker,
+    reason="HTTP tests use fork() which conflicts with pytest-xdist workers",
+)
 
 logging.basicConfig(level=logging.DEBUG)
 

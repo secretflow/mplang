@@ -38,7 +38,7 @@ jobs:
           name: Run tests
           command: |
             mkdir -p test-results
-            uv run pytest tests/ -v --junitxml=test-results/results.xml
+            uv run pytest tests/ -v -n auto --junitxml=test-results/results.xml
       - store_test_results:
           path: test-results
   noop-job:

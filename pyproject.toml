@@ -57,6 +57,8 @@ dev = [
     "pre-commit",
     "pytest-repeat>=0.9.4",
     "taskipy",
+    "pytest-xdist>=3.8.0",
+    "pytest-forked>=1.6.0",
 ]
 
 examples = [

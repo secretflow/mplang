@@ -217,10 +217,10 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
             spu_endpoints.append(spu_endpoints_map[party_rank])
 
     # Get or create SPUState for caching Runtime/Io
-    spu_state = interpreter.get_dialect_state("spu")
+    spu_state = interpreter.get_dialect_state(SPUState.dialect_name)
     if not isinstance(spu_state, SPUState):
         spu_state = SPUState()
-        interpreter.set_dialect_state("spu", spu_state)
+        interpreter.set_dialect_state(SPUState.dialect_name, spu_state)
 
     runtime, io = spu_state.get_or_create(
         local_rank, spu_world_size, config, spu_endpoints

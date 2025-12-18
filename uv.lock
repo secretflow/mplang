@@ -941,7 +941,7 @@ requires-dist = [
     { name = "protobuf", specifier = ">=5.0,<6.0" },
     { name = "pyarrow", specifier = ">=14.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "spu", specifier = ">=0.10.0.dev20251211" },
+    { name = "spu", specifier = ">=0.10.0.dev20251208" },
     { name = "sqlglot", specifier = ">=23.0.0" },
     { name = "tenseal", specifier = "==0.3.16" },
     { name = "typing-extensions" },

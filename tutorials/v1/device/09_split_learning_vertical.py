@@ -60,12 +60,12 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-
-import mplang.v1 as mp
 import optax
 import pandas as pd
 from flax import nnx
-from mplang.v1.core.dtypes import FLOAT64, INT64
+
+import mplang.v1 as mp
+from mplang.v1.core.dtypes import FLOAT64
 from mplang.v1.ops import basic as basic_ops
 
 # We'll use a simplified state management approach similar to Tutorial 08
@@ -570,9 +570,9 @@ def prepare_vertical_split_data():
     df_bob = pd.DataFrame(bob_cols)
     df_bob.to_csv(f"{base_dir}/bob_data.csv", index=False)
 
-    print(f"✅ Alice data: {N_SAMPLES} samples × {M1} features + labels")
+    print(f"✅ Alice data: {N_SAMPLES} samples x {M1} features + labels")
     print(f"   Saved to: {base_dir}/alice_data.csv")
-    print(f"✅ Bob data: {N_SAMPLES} samples × {M2} features")
+    print(f"✅ Bob data: {N_SAMPLES} samples x {M2} features")
     print(f"   Saved to: {base_dir}/bob_data.csv")
     print("=" * 80)
 
@@ -638,7 +638,7 @@ def initialize_alice_base_model(m1: int, h1: int, seed: int, learning_rate: floa
         model = AliceBaseModel(input_dim=m1, hidden_dim=h1, rngs=nnx.Rngs(seed))
 
         # Split into graphdef + state
-        graphdef, state = nnx.split(model)
+        _graphdef, state = nnx.split(model)
 
         # Convert state to pure dict
         model_state_dict = state.to_pure_dict()
@@ -661,7 +661,7 @@ def initialize_bob_base_model(m2: int, h2: int, seed: int, learning_rate: float)
         model = BobBaseModel(input_dim=m2, hidden_dim=h2, rngs=nnx.Rngs(seed))
 
         # Split into graphdef + state
-        graphdef, state = nnx.split(model)
+        _graphdef, state = nnx.split(model)
 
         # Convert state to pure dict
         model_state_dict = state.to_pure_dict()
@@ -691,7 +691,7 @@ def initialize_alice_agg_model(
         )
 
         # Split into graphdef + state
-        graphdef, state = nnx.split(model)
+        _graphdef, state = nnx.split(model)
 
         # Convert state to pure dict
         model_state_dict = state.to_pure_dict()
@@ -889,7 +889,7 @@ def main():
         SEED_AGG,
         LEARNING_RATE,
     )
-    print(f"✅ Alice aggregate model initialized on P0 ({H1+H2} → 16 → {N_CLASSES})")
+    print(f"✅ Alice aggregate model initialized on P0 ({H1 + H2} → 16 → {N_CLASSES})")
 
     # Step 5: Run training iterations
     print("\n[Step 5] Running split learning training iterations...")
@@ -931,9 +931,9 @@ def main():
 
         # Fetch only for inspection
         (
-            new_alice_base_fetched,
-            new_bob_base_fetched,
-            new_alice_agg_fetched,
+            _new_alice_base_fetched,
+            _new_bob_base_fetched,
+            _new_alice_agg_fetched,
             loss_fetched,
         ) = mp.fetch(simulator, result)
 
@@ -945,7 +945,7 @@ def main():
         current_bob_base = result[1]
         current_alice_agg = result[2]
 
-    print(f"\n✅ Training complete!")
+    print("\n✅ Training complete!")
     print(f"   Final loss: {loss_fetched}")
 
     # Summary

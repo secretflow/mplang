@@ -35,10 +35,10 @@ Usage:
 
 import jax
 import jax.numpy as jnp
-
-import mplang.v1 as mp
 import optax
 from flax import nnx
+
+import mplang.v1 as mp
 
 
 class SimpleMLP(nnx.Module):
@@ -96,7 +96,7 @@ def initialize_model_and_return_state_dict(
         )
 
         # Split and convert state to pure dict
-        graphdef, state = nnx.split(model)
+        _graphdef, state = nnx.split(model)
         state_dict = state.to_pure_dict()
 
         print(f"[Device P0] Initialized model with {len(state_dict)} parameter groups")
@@ -151,18 +151,18 @@ def run_inference_with_state_dict(
         # So we can use it directly with replace_by_pure_dict
         abs_state.replace_by_pure_dict(params_dict)
 
-        print(f"[Device P0] Reconstructed state from dict")
+        print("[Device P0] Reconstructed state from dict")
 
         # Merge to get working model with the passed parameters
         model = nnx.merge(graphdef, abs_state)
 
-        print(f"[Device P0] Reconstructed model from state dict")
-        print(f"[Device P0] Running inference...")
+        print("[Device P0] Reconstructed model from state dict")
+        print("[Device P0] Running inference...")
 
         # Run inference
         output = model(x)
 
-        print(f"[Device P0] Inference complete!")
+        print("[Device P0] Inference complete!")
         print(f"  Input shape: {x.shape}")
         print(f"  Output shape: {output.shape}")
 
@@ -191,7 +191,7 @@ def initialize_model_with_optimizer(
         )
 
         # Split and convert model state to pure dict
-        graphdef, state = nnx.split(model)
+        _graphdef, state = nnx.split(model)
         model_state_dict = state.to_pure_dict()
 
         # Initialize optimizer and convert its state to pure dict
@@ -199,7 +199,7 @@ def initialize_model_with_optimizer(
         tx = optax.sgd(learning_rate)
         opt_state = tx.init(model_state_dict)
 
-        print(f"[Device P0] Initialized model with optimizer")
+        print("[Device P0] Initialized model with optimizer")
         print(f"[Device P0] Model state keys: {list(model_state_dict.keys())}")
         print(f"[Device P0] Optimizer state type: {type(opt_state)}")
 
@@ -340,7 +340,7 @@ def main():
     if not isinstance(output, jnp.ndarray):
         output = jnp.array(output)
 
-    print(f"\n[Driver] Inference complete!")
+    print("\n[Driver] Inference complete!")
     print(f"  Output shape: {output.shape}")
     print(f"  Output sample: {output[0]}")
 
@@ -393,7 +393,7 @@ def main():
 
     # Fetch only for human inspection
     updated_train_dict, loss_value = mp.fetch(simulator, train_result)
-    print(f"\n[Driver] Training step complete!")
+    print("\n[Driver] Training step complete!")
     print(f"  Loss value: {loss_value}")
     print(
         f"  Updated model state keys: {list(updated_train_dict['model_state_dict'].keys())}"

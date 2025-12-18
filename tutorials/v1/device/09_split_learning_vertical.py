@@ -188,8 +188,6 @@ class AliceAggregateModel(nnx.Module):
 def model_state_to_dict(state, opt_state, step):
     """Convert model state to pure Python dict for cross-device transfer.
 
-    Note: graphdef is NOT stored - it can be reconstructed from model class
-
     Args:
         state: NNX State (model parameters)
         opt_state: Optax optimizer state
@@ -197,6 +195,10 @@ def model_state_to_dict(state, opt_state, step):
 
     Returns:
         Dict with keys: model_state_dict, opt_state, step
+
+        Note: graphdef is NOT included - it can be reconstructed from the model class
+        definition. Only the state dict (parameters), optimizer state, and step counter
+        are stored for transfer.
     """
     return {
         "model_state_dict": state.to_pure_dict(),
@@ -296,6 +298,10 @@ def alice_aggregate_backward(h1, h2, y, model_dict, n_classes, seed):
 
     This is standard supervised learning - compute loss from predictions and labels.
 
+    Note: This function captures module-level constant H1 and H2 from the outer scope
+    for model reconstruction. The n_classes and seed parameters are passed explicitly
+    to support testing and reuse in different contexts.
+
     Args:
         h1: Alice's embeddings (n, h1)
         h2: Bob's embeddings (n, h2)
@@ -314,7 +320,8 @@ def alice_aggregate_backward(h1, h2, y, model_dict, n_classes, seed):
     # Define loss function
     def loss_fn(state_dict, h1, h2, y):
         # Reconstruct model from state dict
-        # n_classes and seed are captured from outer scope and are concrete values
+        # Note: H1, H2 are captured from module scope as concrete values
+        # n_classes and seed are captured from function parameters
         temp_model = AliceAggregateModel(H1 + H2, 16, n_classes, rngs=nnx.Rngs(seed))
         graphdef, temp_state = nnx.split(temp_model)
         temp_state.replace_by_pure_dict(state_dict)
@@ -361,7 +368,8 @@ def alice_base_backward(x_alice, grad_h1, model_dict, m1, h1, seed):
     # Surrogate loss function
     def surrogate_loss_fn(state_dict, x, grad_from_next_layer):
         # Reconstruct model from state dict
-        # m1, h1, seed are captured from outer scope and are concrete values
+        # m1, h1, seed are function parameters captured by this closure.
+        # They are fixed values for this invocation (not JAX tracers).
         temp_model = AliceBaseModel(m1, h1, rngs=nnx.Rngs(seed))
         graphdef, temp_state = nnx.split(temp_model)
         temp_state.replace_by_pure_dict(state_dict)
@@ -406,7 +414,8 @@ def bob_base_backward(x_bob, grad_h2, model_dict, m2, h2, seed):
     # Surrogate loss function
     def surrogate_loss_fn(state_dict, x, grad_from_next_layer):
         # Reconstruct model from state dict
-        # m2, h2, seed are captured from outer scope and are concrete values
+        # m2, h2, seed are function parameters captured by this closure.
+        # They are fixed values for this invocation (not JAX tracers).
         temp_model = BobBaseModel(m2, h2, rngs=nnx.Rngs(seed))
         graphdef, temp_state = nnx.split(temp_model)
         temp_state.replace_by_pure_dict(state_dict)
@@ -558,7 +567,8 @@ def load_vertical_split_data(
         bob_features: Tensor on P1 (n, m2)
     """
     # Define schemas (all columns must have same dtype for table_to_tensor)
-    # Cast label to FLOAT64 here, convert back to int after splitting
+    # Convert label to FLOAT64 to match feature columns, then cast back to int after
+    # This workaround is needed because table_to_tensor requires uniform dtypes
     schema_alice = mp.TableType.from_dict({
         **{f"alice_f{i}": FLOAT64 for i in range(m1)},
         "label": FLOAT64,
@@ -588,91 +598,15 @@ def load_vertical_split_data(
 
 
 # ============================================================================
-# Model Initialization
+# Batched MPLang Functions (Efficient Training)
 # ============================================================================
 
 
 @mp.function
-def initialize_alice_base_model(m1: int, h1: int, seed: int, learning_rate: float):
-    """Initialize Alice's base model on P0 and return state as dict."""
-
-    def _init():
-        # Create model
-        model = AliceBaseModel(input_dim=m1, hidden_dim=h1, rngs=nnx.Rngs(seed))
-
-        # Split into graphdef + state
-        _graphdef, state = nnx.split(model)
-
-        # Initialize optimizer
-        tx = optax.sgd(learning_rate)
-        opt_state = tx.init(state.to_pure_dict())
-
-        return model_state_to_dict(state, opt_state, 0)
-
-    return mp.device("P0", fe_type="nnx")(_init)()
-
-
-@mp.function
-def initialize_bob_base_model(m2: int, h2: int, seed: int, learning_rate: float):
-    """Initialize Bob's base model on P1 and return state as dict."""
-
-    def _init():
-        # Create model
-        model = BobBaseModel(input_dim=m2, hidden_dim=h2, rngs=nnx.Rngs(seed))
-
-        # Split into graphdef + state
-        _graphdef, state = nnx.split(model)
-
-        # Initialize optimizer
-        tx = optax.sgd(learning_rate)
-        opt_state = tx.init(state.to_pure_dict())
-
-        return model_state_to_dict(state, opt_state, 0)
-
-    return mp.device("P1", fe_type="nnx")(_init)()
-
-
-@mp.function
-def initialize_alice_agg_model(
-    input_dim: int, hidden_dim: int, output_dim: int, seed: int, learning_rate: float
-):
-    """Initialize Alice's aggregate model on P0 and return state as dict."""
-
-    def _init():
-        # Create model
-        model = AliceAggregateModel(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            output_dim=output_dim,
-            rngs=nnx.Rngs(seed),
-        )
-
-        # Split into graphdef + state
-        _graphdef, state = nnx.split(model)
-
-        # Initialize optimizer
-        tx = optax.sgd(learning_rate)
-        opt_state = tx.init(state.to_pure_dict())
-
-        return model_state_to_dict(state, opt_state, 0)
-
-    return mp.device("P0", fe_type="nnx")(_init)()
-
-
-# ============================================================================
-# Training Step
-# ============================================================================
-
-
-@mp.function
-def split_learning_train_step(
-    alice_features,  # On P0: (10000, m1)
-    alice_labels,  # On P0: (10000,)
-    bob_features,  # On P1: (10000, m2)
-    alice_base_model_dict,  # Alice base model state as dict
-    bob_base_model_dict,  # Bob base model state as dict
-    alice_agg_model_dict,  # Alice aggregate model state as dict
-    learning_rate: float,
+def train_split_learning_for_n_steps(
+    alice_features,
+    alice_labels,
+    bob_features,
     m1: int,
     m2: int,
     h1: int,
@@ -681,92 +615,108 @@ def split_learning_train_step(
     seed_alice: int,
     seed_bob: int,
     seed_agg: int,
+    learning_rate: float,
+    n_steps: int,
 ):
-    """One complete split learning training step (single batch = full dataset).
+    """Batched training: Initialize all models + train for N steps in one MPLang call.
 
-    Training Flow (Split Learning):
-    1. Alice computes base model forward → h1
-    2. Bob computes base model forward → h2
-    3. Transfer h2 from P1 to P0
-    4. Alice runs aggregate model → logits → loss (actual supervised loss)
-    5. Alice computes gradients for aggregate model (∂L/∂params_agg, ∂L/∂h1, ∂L/∂h2)
-    6. Alice updates aggregate model with actual gradients
-    7. Alice computes gradients for her base model using surrogate loss (grad_h1 · h1)
-    8. Alice updates her base model with surrogate gradients
-    9. Alice sends ∂L/∂h2 back to Bob (P0 → P1)
-    10. Bob computes gradients for his base model using surrogate loss (grad_h2 · h2)
-    11. Bob updates his base model with surrogate gradients
-
-    Note: Uses helper functions (get_*_backward_fn) that bind module-level constants
-    via functools.partial to avoid traced parameter issues in JAX gradient computation.
+    This is the most efficient approach, combining:
+    1. Initialize all three models
+    2. Run N training iterations
+    All in a single @mp.function call, avoiding repeated boundary crossings.
 
     Returns:
-        new_alice_base_model_dict: Updated Alice base model state (as dict)
-        new_bob_base_model_dict: Updated Bob base model state (as dict)
-        new_alice_agg_model_dict: Updated Alice aggregate model state (as dict)
-        loss: Training loss (scalar)
+        Tuple of (final_alice_base_dict, final_bob_base_dict, final_alice_agg_dict, final_loss)
     """
 
-    # === Forward Pass ===
+    # === Step 1: Initialize all models ===
 
-    # 1. Alice base model forward on P0
-    h1_embeddings = mp.device("P0", fe_type="nnx")(alice_base_forward)(
-        alice_features, alice_base_model_dict, m1, h1, seed_alice
-    )
+    def _init_alice_base():
+        model = AliceBaseModel(input_dim=m1, hidden_dim=h1, rngs=nnx.Rngs(seed_alice))
+        _graphdef, state = nnx.split(model)
+        tx = optax.sgd(learning_rate)
+        opt_state = tx.init(state.to_pure_dict())
+        return model_state_to_dict(state, opt_state, 0)
 
-    # 2. Bob base model forward on P1
-    h2_embeddings = mp.device("P1", fe_type="nnx")(bob_base_forward)(
-        bob_features, bob_base_model_dict, m2, h2, seed_bob
-    )
+    def _init_bob_base():
+        model = BobBaseModel(input_dim=m2, hidden_dim=h2, rngs=nnx.Rngs(seed_bob))
+        _graphdef, state = nnx.split(model)
+        tx = optax.sgd(learning_rate)
+        opt_state = tx.init(state.to_pure_dict())
+        return model_state_to_dict(state, opt_state, 0)
 
-    # 3. Transfer Bob's embeddings to Alice (P1 → P0)
-    h2_on_p0 = mp.put("P0", h2_embeddings)
+    def _init_alice_agg():
+        model = AliceAggregateModel(
+            input_dim=h1 + h2,
+            hidden_dim=16,
+            output_dim=n_classes,
+            rngs=nnx.Rngs(seed_agg),
+        )
+        _graphdef, state = nnx.split(model)
+        tx = optax.sgd(learning_rate)
+        opt_state = tx.init(state.to_pure_dict())
+        return model_state_to_dict(state, opt_state, 0)
 
-    # === Backward Pass (Alice Aggregate Model) ===
+    # Initialize models
+    alice_base_dict = mp.device("P0", fe_type="nnx")(_init_alice_base)()
+    alice_agg_dict = mp.device("P0", fe_type="nnx")(_init_alice_agg)()
+    bob_base_dict = mp.device("P1", fe_type="nnx")(_init_bob_base)()
 
-    # 4. Alice computes gradients for aggregate model using actual loss
-    agg_grads_dict, grad_h1, grad_h2, loss = mp.device("P0", fe_type="nnx")(
-        get_alice_agg_backward_fn()
-    )(h1_embeddings, h2_on_p0, alice_labels, alice_agg_model_dict)
+    # === Step 2: Training loop (all iterations run inside this @mp.function) ===
 
-    # 5. Alice updates her aggregate model with actual gradients
-    new_alice_agg_model_dict = mp.device("P0", fe_type="nnx")(update_model_state)(
-        alice_agg_model_dict, agg_grads_dict, learning_rate
-    )
+    final_loss = None
 
-    # === Backward Pass (Alice Base Model) ===
+    for _step_idx in range(n_steps):
+        # Forward pass: Alice base
+        h1_embeddings = mp.device("P0", fe_type="nnx")(alice_base_forward)(
+            alice_features, alice_base_dict, m1, h1, seed_alice
+        )
 
-    # 6. Alice computes gradients for her base model using surrogate loss
-    alice_base_grads_dict = mp.device("P0", fe_type="nnx")(
-        get_alice_base_backward_fn()
-    )(alice_features, grad_h1, alice_base_model_dict)
+        # Forward pass: Bob base
+        h2_embeddings = mp.device("P1", fe_type="nnx")(bob_base_forward)(
+            bob_features, bob_base_dict, m2, h2, seed_bob
+        )
 
-    # 7. Alice updates her base model with surrogate gradients
-    new_alice_base_model_dict = mp.device("P0", fe_type="nnx")(update_model_state)(
-        alice_base_model_dict, alice_base_grads_dict, learning_rate
-    )
+        # Transfer h2: P1 → P0
+        h2_on_p0 = mp.put("P0", h2_embeddings)
 
-    # === Backward Pass (Bob Base Model) ===
+        # Backward pass: Alice aggregate model (actual supervised loss)
+        agg_grads_dict, grad_h1, grad_h2, loss = mp.device("P0", fe_type="nnx")(
+            get_alice_agg_backward_fn()
+        )(h1_embeddings, h2_on_p0, alice_labels, alice_agg_dict)
 
-    # 8. Transfer grad_h2 to Bob (P0 → P1)
-    grad_h2_on_p1 = mp.put("P1", grad_h2)
+        # Update: Alice aggregate model
+        alice_agg_dict = mp.device("P0", fe_type="nnx")(update_model_state)(
+            alice_agg_dict, agg_grads_dict, learning_rate
+        )
 
-    # 9. Bob computes gradients for his base model using surrogate loss
-    bob_base_grads_dict = mp.device("P1", fe_type="nnx")(get_bob_base_backward_fn())(
-        bob_features, grad_h2_on_p1, bob_base_model_dict
-    )
+        # Backward pass: Alice base model (surrogate loss)
+        alice_base_grads_dict = mp.device("P0", fe_type="nnx")(
+            get_alice_base_backward_fn()
+        )(alice_features, grad_h1, alice_base_dict)
 
-    # 10. Bob updates his base model with surrogate gradients
-    new_bob_base_model_dict = mp.device("P1", fe_type="nnx")(update_model_state)(
-        bob_base_model_dict, bob_base_grads_dict, learning_rate
-    )
+        # Update: Alice base model
+        alice_base_dict = mp.device("P0", fe_type="nnx")(update_model_state)(
+            alice_base_dict, alice_base_grads_dict, learning_rate
+        )
 
-    return (
-        new_alice_base_model_dict,
-        new_bob_base_model_dict,
-        new_alice_agg_model_dict,
-        loss,
-    )
+        # Transfer grad_h2: P0 → P1
+        grad_h2_on_p1 = mp.put("P1", grad_h2)
+
+        # Backward pass: Bob base model (surrogate loss)
+        bob_base_grads_dict = mp.device("P1", fe_type="nnx")(
+            get_bob_base_backward_fn()
+        )(bob_features, grad_h2_on_p1, bob_base_dict)
+
+        # Update: Bob base model
+        bob_base_dict = mp.device("P1", fe_type="nnx")(update_model_state)(
+            bob_base_dict, bob_base_grads_dict, learning_rate
+        )
+
+        # Track final loss
+        final_loss = loss
+
+    return alice_base_dict, bob_base_dict, alice_agg_dict, final_loss
 
 
 # ============================================================================
@@ -808,116 +758,91 @@ def main():
     )
     print("✅ Data loaded successfully")
 
-    # Step 4: Initialize models
-    print("\n[Step 4] Initializing models on devices...")
+    # Step 4: Train with batched approach (efficient)
+    print("\n[Step 4] Initialize all models + Train for 10 steps (batched)...")
+    print("This runs ALL operations in a single @mp.function call for efficiency!\n")
 
-    # Alice base model (P0)
-    alice_base_model_dict = mp.evaluate(
+    batched_result = mp.evaluate(
         simulator,
-        initialize_alice_base_model,
+        train_split_learning_for_n_steps,
+        alice_features,
+        alice_labels,
+        bob_features,
         M1,
-        H1,
-        SEED_ALICE,
-        LEARNING_RATE,
-    )
-    print(f"✅ Alice base model initialized on P0 (m1={M1} → h1={H1})")
-
-    # Bob base model (P1)
-    bob_base_model_dict = mp.evaluate(
-        simulator,
-        initialize_bob_base_model,
         M2,
+        H1,
         H2,
-        SEED_BOB,
-        LEARNING_RATE,
-    )
-    print(f"✅ Bob base model initialized on P1 (m2={M2} → h2={H2})")
-
-    # Alice aggregate model (P0)
-    alice_agg_model_dict = mp.evaluate(
-        simulator,
-        initialize_alice_agg_model,
-        H1 + H2,  # Concatenated embeddings
-        16,  # Hidden dimension
         N_CLASSES,
+        SEED_ALICE,
+        SEED_BOB,
         SEED_AGG,
         LEARNING_RATE,
+        n_steps=10,
     )
-    print(f"✅ Alice aggregate model initialized on P0 ({H1 + H2} → 16 → {N_CLASSES})")
 
-    # Step 5: Run training iterations
-    print("\n[Step 5] Running split learning training iterations...")
-    print("Training flow:")
-    print("  1. Alice forward: x_alice → h1")
-    print("  2. Bob forward: x_bob → h2")
-    print("  3. Transfer h2: P1 → P0")
-    print("  4. Alice aggregate: [h1, h2] → loss")
-    print("  5. Alice aggregate backward & update")
-    print("  6. Alice base backward & update (surrogate loss)")
-    print("  7. Transfer grad_h2: P0 → P1")
-    print("  8. Bob base backward & update (surrogate loss)")
-    print("\nRunning 5 training iterations on the same batch...")
+    (
+        final_alice_base,
+        final_bob_base,
+        final_alice_agg,
+        final_loss,
+    ) = mp.fetch(simulator, batched_result)
 
-    current_alice_base = alice_base_model_dict
-    current_bob_base = bob_base_model_dict
-    current_alice_agg = alice_agg_model_dict
-
-    for iter_idx in range(5):
-        result = mp.evaluate(
-            simulator,
-            split_learning_train_step,
-            alice_features,
-            alice_labels,
-            bob_features,
-            current_alice_base,
-            current_bob_base,
-            current_alice_agg,
-            LEARNING_RATE,
-            M1,
-            M2,
-            H1,
-            H2,
-            N_CLASSES,
-            SEED_ALICE,
-            SEED_BOB,
-            SEED_AGG,
-        )
-
-        # Fetch only for inspection
-        (
-            _new_alice_base_fetched,
-            _new_bob_base_fetched,
-            _new_alice_agg_fetched,
-            loss_fetched,
-        ) = mp.fetch(simulator, result)
-
-        print(f"  Iteration {iter_idx + 1}: Loss = {loss_fetched}")
-
-        # Update current state using result (before fetch) for next iteration
-        # Extract components from tuple result
-        current_alice_base = result[0]
-        current_bob_base = result[1]
-        current_alice_agg = result[2]
+    # Handle final_loss if it's wrapped
+    if isinstance(final_loss, (list, tuple)):
+        final_loss = final_loss[0] if len(final_loss) > 0 else 0.0
 
     print("\n✅ Training complete!")
-    print(f"   Final loss: {loss_fetched}")
+    print(
+        f"   Final steps: Alice={final_alice_base['step']}, "
+        f"Bob={final_bob_base['step']}, "
+        f"Agg={final_alice_agg['step']}"
+    )
+    print(f"   Final loss: {final_loss:.4f}")
 
     # Summary
     print("\n" + "=" * 80)
     print("Key Takeaways")
     print("=" * 80)
-    print(
-        "1. ✅ Vertical data partitioning: Alice has features + labels, Bob has features"
-    )
-    print("2. ✅ Three-model architecture: Alice base, Bob base, Alice aggregate")
-    print(
-        "3. ✅ State dict pattern: model_state_dict + opt_state + step (following Tutorial 08)"
-    )
-    print("4. ✅ Optax integration: Use optax.sgd() for optimizer state management")
-    print("5. ✅ Surrogate loss: Base models use dot product (grad · embedding)")
-    print("6. ✅ Privacy-preserving: Only embeddings and gradients are shared")
-    print("7. ✅ Complete training: Multiple iterations with decreasing loss")
-    print("8. ✅ Efficient: Pass results before fetch, only fetch for inspection")
+    print("\n✅ SPLIT LEARNING CONCEPTS:")
+    print("1. ✅ Vertical data partitioning:")
+    print("   - Alice has features + labels, Bob has features")
+    print("   - Privacy-preserving: only embeddings and gradients are shared")
+
+    print("\n2. ✅ Three-model architecture:")
+    print("   - Alice base: m1 → h1 embeddings")
+    print("   - Bob base: m2 → h2 embeddings")
+    print("   - Alice aggregate: [h1, h2] → logits (has labels, computes loss)")
+
+    print("\n3. ✅ State dict pattern (following Tutorial 08):")
+    print("   - model_state_dict + opt_state + step")
+    print("   - Use state.to_pure_dict() and state.replace_by_pure_dict()")
+    print("   - Enables passing state across @mp.function boundaries")
+
+    print("\n4. ✅ Surrogate loss for base models:")
+    print("   - Alice base: L_surrogate = grad_h1 · h1")
+    print("   - Bob base: L_surrogate = grad_h2 · h2")
+    print("   - Mimics backpropagation from aggregate model")
+
+    print("\n✅ MPLANG EFFICIENCY PATTERNS:")
+    print("5. ✅ Batch operations into large @mp.function calls:")
+    print("   - train_split_learning_for_n_steps: init + N training steps in one call")
+    print("   - Minimizes @mp.function boundary crossings")
+    print("   - Significantly reduces overhead for multi-step training")
+
+    print("\n6. ✅ Use nnx.eval_shape() for memory efficiency:")
+    print("   - Creates GraphDef without allocating arrays")
+    print("   - Important when reconstructing models repeatedly")
+
+    print("\n7. ✅ Use module-level constants + functools.partial:")
+    print("   - Avoids JAX tracer issues in gradient computation")
+    print("   - Bind constants at module level, not as traced parameters")
+
+    print("\n🎯 BEST PRACTICES:")
+    print("   • Batch related operations into single @mp.function calls")
+    print("   • Minimize cross-device communication and boundary crossings")
+    print("   • Use state dicts for flexible model state management")
+    print("   • Leverage surrogate loss for privacy-preserving training")
+
     print("\nSplit Learning enables collaborative training without sharing raw data!")
     print("=" * 80)
 

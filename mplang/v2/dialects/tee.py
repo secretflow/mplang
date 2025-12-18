@@ -87,9 +87,6 @@ class QuoteType(elt.BaseType):
     root certificates (Intel, AMD, etc.).
     """
 
-    def __init__(self) -> None:
-        pass
-
     def __str__(self) -> str:
         return "TEEQuote"
 
@@ -166,9 +163,6 @@ class MeasurementType(elt.BaseType):
     Represents a cryptographic hash of the code and initial configuration
     running inside the TEE. Used to verify the TEE is running expected code.
     """
-
-    def __init__(self) -> None:
-        pass
 
     def __str__(self) -> str:
         return "TEEMeasurement"

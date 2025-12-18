@@ -201,7 +201,7 @@ def _run_psi_simulation(
 
         traced = mp.compile(job)
         mask_obj = mp.evaluate(traced)
-        mask_val = mp.fetch(mask_obj)[SENDER]
+        mask_val = mp.fetch(mask_obj)[RECEIVER]
     return mask_val
 
 

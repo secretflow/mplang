@@ -60,7 +60,6 @@ Phases:
     Thus, verification becomes checking if T == U* * Delta, where U* = Decode(U, x).
     This check is performed securely using hashes to prevent leakage.
 """
-
 from typing import Any, cast
 
 import jax.numpy as jnp
@@ -77,70 +76,65 @@ def psi_intersect(
     sender_items: el.Object,
     receiver_items: el.Object,
 ) -> el.Object:
-    """Execute OKVS-based PSI Protocol.
+    """Execute OKVS-based PSI Protocol (Original RR22 Logic).
+
+    This implementation follows the RR22 paper's role assignment where:
+    - PSI Sender holds Delta (and W).
+    - PSI Receiver holds U and V.
+    
+    This enables the "One Decode" optimization on the Sender side and prevents
+    offline brute-force attacks by the Receiver (though Sender could brute-force).
 
     Args:
         sender: Rank of Sender.
         receiver: Rank of Receiver.
-        n: Number of items (must be same for now).
-        sender_items: Object located at Sender containing (N,) u64 items.
-        receiver_items: Object located at Receiver containing (N,) u64 items.
+        n: Number of items.
+        sender_items: Object located at Sender.
+        receiver_items: Object located at Receiver.
 
     Returns:
-        Intersection verification tuple (T, U*, Delta).
+        Intersection mask (0/1) located at Receiver.
     """
 
     # Validation
     if sender == receiver:
-        raise ValueError(
-            f"Sender ({sender}) and Receiver ({receiver}) must be different."
-        )
-
+        raise ValueError("Sender and Receiver must be different.")
     if n <= 0:
         raise ValueError(f"Input size n must be positive, got {n}.")
 
     # =========================================================================
-    # Phase 1. Parameter Setup & Topology
+    # Phase 1. Parameter Setup
     # =========================================================================
-    # OKVS Size M = expansion * N.
-    # The expansion factor is critical for the success probability of the "Peeling"
-    # algorithm used in OKVS encoding (Garbled Cuckoo Table).
-    # Larger N allows smaller expansion (closer to theoretical 1.23) while maintaining safety.
     import mplang.v2.libs.mpc.psi.okvs_gct as okvs_gct
 
     expansion = okvs_gct.get_okvs_expansion(n)
     M = int(n * expansion)
-
-    # Align M to 128 boundary for efficient batch processing in Silent VOLE (LPN)
     if M % 128 != 0:
         M = ((M // 128) + 1) * 128
 
     # =========================================================================
-    # Phase 2. Correlated Randomness Generation (VOLE)
+    # Phase 2. Correlated Randomness (VOLE) - SWAPPED ROLES
     # =========================================================================
-    # Parties run Silent VOLE (based on LPN assumption) to generate:
-    #   Sender:   U, V  (Vectors of size M)
-    #   Receiver: W, Delta
-    # Correlation: W = V + U * Delta
+    # In the original paper logic (Fig 4), the PSI Sender holds Delta.
+    # Therefore, we swap the roles in the OT call.
     #
-    # Note: U is uniformly random. It acts as a "One-Time Pad" key for the protocol.
-
-    # silent_vole_random_u returns (v, w, u, delta)
-    res_tuple = silent_ot.silent_vole_random_u(sender, receiver, M, base_k=1024)
-    v_sender, w_receiver, u_sender, delta_receiver = res_tuple[:4]
-
-    # =========================================================================
-    # Phase 3. Receiver Encoding & Masking (OKVS)
-    # =========================================================================
-    # The Receiver encodes their input set Y into the OKVS structure P.
-    # Goal: Decode(P, y) = H(y)  forall y in Y.
+    # silent_vole_random_u(A, B) gives:
+    #   A (OT Sender):   U, V
+    #   B (OT Receiver): W, Delta
     #
-    # Then, Receiver masks P with the VOLE output W to get Q:
-    # Q = P ^ W
-    # This Q is sent to the Sender.
+    # We want PSI Sender to be OT Receiver.
+    res_tuple = silent_ot.silent_vole_random_u(receiver, sender, M, base_k=1024)
+    
+    # PSI Receiver gets U, V
+    v_recv, w_sender, u_recv, delta_sender = res_tuple[:4]
 
-    # 3.1 Generate OKVS Seed (Public/Session Randomness)
-    # Used for OKVS hashing distribution. Can be public, but generated at runtime for safety.
+    # =========================================================================
+    # Phase 3. Receiver Encoding & Masking
+    # =========================================================================
+    # Receiver computes P such that P(y) = H(y).
+    # Receiver masks P with U (Paper's A vector).
+    # Q = P ^ U
+
     from mplang.v2.dialects import crypto
     from mplang.v2.edsl import typing as elt
 
@@ -150,25 +144,17 @@ def psi_intersect(
     okvs_seed = simp.pcall_static((receiver,), _gen_seed)
     okvs_seed_sender = simp.shuffle_static(okvs_seed, {sender: receiver})
 
-    # Instantiate OKVS Data Structure
     okvs = okvs_gct.SparseOKVS(M)
 
-    def _recv_ops(y: Any, w: Any, delta: Any, seed: Any) -> Any:
-        # y: (N,) Inputs
-        # w: (M, 2) VOLE share
-
-        # 3.2 Compute H(y) - The Random Oracle Target
-        # We use Davies-Meyer construction: H(x) = E_x(0) ^ x
-        # This is a standard, efficient, and robust way to instantiate a RO from AES.
-
+    def _recv_ops(y: Any, u: Any, seed: Any) -> Any:
+        # 1. Compute H(y)
         def _reshape_seeds(items: Any) -> Any:
-            # Prepare items as AES keys (128-bit)
             lo = items
             hi = jnp.zeros_like(items)
-            return jnp.stack([lo, hi], axis=1)  # (N, 2)
+            return jnp.stack([lo, hi], axis=1)
 
         seeds = tensor.run_jax(_reshape_seeds, y)
-        res_exp = field.aes_expand(seeds, 1)  # (N, 1, 2)
+        res_exp = field.aes_expand(seeds, 1)
 
         def _davies_meyer(enc: Any, s: Any) -> Any:
             enc_flat = enc.reshape(enc.shape[0], 2)
@@ -176,55 +162,63 @@ def psi_intersect(
 
         h_y = tensor.run_jax(_davies_meyer, res_exp, seeds)
 
-        # 3.3 Solve System of Linear Equations (OKVS Encode)
-        # We find P such that: P * M_okvs(y) = h_y
+        # 2. Encode P
         p_storage = okvs.encode(y, h_y, seed)
 
-        # 3.4 Mask with Vole Share
-        # Q = P ^ W
-        q_storage = field.add(p_storage, w)
+        # 3. Mask with U (instead of W)
+        # Q = P ^ U
+        q_storage = field.add(p_storage, u)
 
         return q_storage
 
-    # Execute on Receiver
+    # Receiver uses U to mask
     q_shared = simp.pcall_static(
-        (receiver,), _recv_ops, receiver_items, w_receiver, delta_receiver, okvs_seed
+        (receiver,), _recv_ops, receiver_items, u_recv, okvs_seed
     )
 
-    # 3.5 Send Q to Sender
     q_sender_view = simp.shuffle_static(q_shared, {sender: receiver})
 
     # =========================================================================
-    # Phase 4. Sender Decoding & Reconstruction
+    # Phase 4. Sender "One Decode" & Tag Generation
     # =========================================================================
-    # Sender uses Q and their local shares (U, V) to reconstruct T.
+    # Sender holds W, Delta. Receives Q.
+    # W = V + U * Delta
     #
     # Derivation:
-    # 1. S_decoded = Decode(Q, x) = Decode(P ^ W, x) = P(x) ^ W(x)
-    # 2. Recall W(x) = V(x) ^ U(x)*Delta (VOLE property)
-    # 3. So S_decoded = P(x) ^ V(x) ^ U(x)*Delta
+    # K = Q * Delta + W
+    #   = (P + U) * Delta + (V + U * Delta)
+    #   = P * Delta + U * Delta + V + U * Delta
+    #   = P * Delta + V
     #
-    # 4. Sender computes T = S_decoded ^ V(x) ^ H(x)
-    #    T = P(x) ^ V(x) ^ U(x)*Delta ^ V(x) ^ H(x)
-    #    T = P(x) ^ H(x) ^ U(x)*Delta
-    #
-    # 5. If x is in Intersection (Meanings x == y for some y):
-    #    Then P(x) == H(x) (by OKVS property)
-    #    So T = H(x) ^ H(x) ^ U(x)*Delta
-    #    T = U(x)*Delta
-    #
-    # This relation T == U* * Delta is what we verify in Phase 5.
+    # Sender computes Tag = Decode(K, x) - H(x) * Delta
+    # If x in Intersection: P(x) = H(x)
+    # Tag = (P(x) * Delta + V(x)) - P(x) * Delta
+    # Tag = V(x)
 
-    def _sender_ops(x: Any, q: Any, u: Any, v: Any, seed: Any) -> tuple[Any, Any]:
-        # x: (N,) Sender Items
-        # q: (M, 2) Received OKVS
+    def _sender_ops(x: Any, q: Any, w: Any, delta: Any, seed: Any) -> Any:
+        # q, w: (M, 2)
+        # delta: (2,)
 
-        # 4.1 Decode Q and V at x
-        # OKVS Decode is a linear combination of storage positions.
-        s_decoded = okvs.decode(x, q, seed)
-        v_decoded = okvs.decode(x, v, seed)
+        # 1. Expand Delta for global multiplication (M, 2)
+        def _tile_m(d: Any) -> Any:
+            return jnp.tile(d, (M // 2, 1)).reshape(M, 2) # Adjust reshape based on lib
+        
+        # Safe tiling assuming M is aligned
+        def _tile_m_simple(d: Any) -> Any:
+            return jnp.tile(d, (M, 1))
 
-        # 4.2 Compute H(x)
+        delta_expanded_m = tensor.run_jax(_tile_m_simple, delta)
+
+        # 2. Compute Global K = Q * Delta + W
+        # This is the O(M) multiplication mentioned in the paper
+        q_times_delta = field.mul(q, delta_expanded_m)
+        k_storage = field.add(q_times_delta, w)
+
+        # 3. One Decode
+        # decoded_val = P(x)*Delta + V(x)
+        decoded_k = okvs.decode(x, k_storage, seed)
+
+        # 4. Remove H(x)*Delta
         def _reshape_seeds(items: Any) -> Any:
             lo = items
             hi = jnp.zeros_like(items)
@@ -239,106 +233,73 @@ def psi_intersect(
 
         h_x = tensor.run_jax(_davies_meyer, res_exp_x, seeds_x)
 
-        # 4.3 Compute T candidate
-        # T = S ^ V ^ H(x)
-        # Note: s_decoded is (S^V^U*Delta) effectively
-        t_val = field.add(s_decoded, v_decoded)
-        t_val = field.add(t_val, h_x)
-
-        # 4.4 Compute U* = Decode(U, x)
-        # This is the sender's share of the randomness for item x.
-        s_u = field.decode_okvs(x, u, seed)
-
-        return t_val, s_u
-
-    t_val_sender, u_star_sender = simp.pcall_static(
-        (sender,),
-        _sender_ops,
-        sender_items,
-        q_sender_view,
-        u_sender,
-        v_sender,
-        okvs_seed_sender,
-    )
-
-    # =========================================================================
-    # Phase 5. Secure Verification
-    # =========================================================================
-    # The Protocol invariant is T == U* * Delta for intersection items.
-    #
-    # Security Risk:
-    # We must NOT reveal T or Delta to the other party.
-    # - If Receiver learns T, they can compute Diff = T - U*Delta = H(x) + ... and attack x.
-    # - If Sender learns Delta, VOLE security collapses.
-    #
-    # Secure Verification Method:
-    # 1. Sender sends U* (Random Mask share) to Receiver.
-    #    - U* is derived from U (random VOLE inputs) so it reveals nothing about X.
-    #
-    # 2. Receiver computes Target = U* * Delta.
-    #    - This allows Receiver to construct the expected value of T without knowing T's components.
-    #
-    # 3. Receiver Hashes the Target and sends H(Target) to Sender.
-    #    - Hashing prevents Sender from learning Delta algebraically.
-    #    - Hash function acts as a commitment.
-    #
-    # 4. Sender compares H(T) =? H(Target).
-    #    - Equality implies x is in Intersection.
-
-    # 5.1 Sender -> Receiver: U*
-    u_star_recv = simp.shuffle_static(u_star_sender, {receiver: sender})
-
-    # 5.2 Receiver: Compute Expected Target (U* * Delta)
-    def _recv_verify_ops(u_s: Any, delta: Any) -> Any:
-        # u_s: (N, 2), delta: (2,)
-
-        # Use tensor.run_jax to isolate JAX operations (tile is not an EDSL primitive)
-        def _tile(d: Any) -> Any:
+        # Expand delta for batch N
+        def _tile_n(d: Any) -> Any:
             return jnp.tile(d, (n, 1))
+        
+        delta_expanded_n = tensor.run_jax(_tile_n, delta)
+        
+        h_x_times_delta = field.mul(h_x, delta_expanded_n)
 
-        delta_expanded = tensor.run_jax(_tile, delta)
+        # Final Tag = (P*Delta + V) - H*Delta = V(x)
+        tag = field.add(decoded_k, h_x_times_delta)
 
-        # Compute U* * Delta in GF(2^128)
-        target = field.mul(u_s, delta_expanded)
-        return target
+        return tag
 
-    target_val = simp.pcall_static(
-        (receiver,), _recv_verify_ops, u_star_recv, delta_receiver
+    # Execute on Sender
+    sender_tags = simp.pcall_static(
+        (sender,), 
+        _sender_ops, 
+        sender_items, 
+        q_sender_view, 
+        w_sender, 
+        delta_sender, 
+        okvs_seed_sender
     )
+    # =========================================================================
+    # Phase 5. Verification (Receiver Side)
+    # =========================================================================
+    # Sender sends Tags (which should be V(x)) to Receiver. To reduce
+    # communication we hash and truncate on the sender side and only send
+    # the truncated hash (first 16 bytes).
 
-    # 5.3 Hash Exchange
-    # Use robust hashing to prevent algebraic attacks or leakage
+    # 5.0 Compute hashed & truncated tags on Sender
     from mplang.v2.libs.mpc.ot import extension as ot_extension
 
-    def _hash_shares(share: el.Object, party: int) -> el.Object:
-        """Hash the shares using domain separator for security."""
-        return ot_extension.vec_hash(share, domain_sep=0xFEED, num_rows=n)
+    def _hash_and_trunc(tags: Any) -> Any:
+        # Compute batched hash on sender and truncate to 16 bytes
+        full_h = ot_extension.vec_hash(tags, domain_sep=0x1111, num_rows=n)
+        # Use tensor.slice_tensor to slice TraceObjects (start=(0,0), end=(n,16))
+        return tensor.slice_tensor(full_h, (0, 0), (n, 16))
 
-    # Hash(Target) on Receiver
-    h_target_recv = simp.pcall_static(
-        (receiver,), lambda x: _hash_shares(x, receiver), target_val
-    )
+    h_sender_trunc = simp.pcall_static((sender,), _hash_and_trunc, sender_tags)
 
-    # Hash(T) on Sender
-    h_t_sender = simp.pcall_static(
-        (sender,), lambda x: _hash_shares(x, sender), t_val_sender
-    )
+    # 5.1 Send truncated hashes to Receiver (much smaller payload)
+    tags_at_recv = simp.shuffle_static(h_sender_trunc, {receiver: sender})
 
-    # Send Hash to Sender for comparison
-    h_target_at_sender = simp.shuffle_static(h_target_recv, {sender: receiver})
+    # 5.2 Receiver computes local V(y) and compares
+    def _recv_verify(y: Any, v: Any, seed: Any, remote_tags: Any) -> Any:
+        # 1. Decode V locally: target = V(y)
+        local_v_y = okvs.decode(y, v, seed)
 
-    # 5.4 Final Comparison on Sender
-    def _compare(h_t: Any, h_target: Any) -> Any:
-        # Compare 32-byte hashes (N, 32) row-by-row
+        # 2. Hash local V(y) and compare with received truncated sender hashes
+        # Note: `remote_tags` here is already the truncated hash (16 bytes)
+        # sent from the Sender.
+        h_local = ot_extension.vec_hash(local_v_y, domain_sep=0x1111, num_rows=n)
 
-        def _core(a: Any, b: Any) -> Any:
-            eq = jnp.all(a == b, axis=1)
-            return eq.astype(jnp.uint8)  # (N,) 0 or 1
+        def _core(h_r16: Any, h_l_full: Any) -> Any:
+            # h_r16: (n_sender, 16) truncated bytes from sender
+            # h_l_full: (n_receiver, k) full hash bytes; truncate to 16
+            h_l16 = h_l_full[:, :16]
 
-        return tensor.run_jax(_core, h_t, h_target)
+            eq_matrix = jnp.all(h_r16[:, None, :] == h_l16[None, :, :], axis=2)
+            membership = jnp.any(eq_matrix, axis=1)
+            return membership.astype(jnp.uint8)
+
+        return tensor.run_jax(_core, remote_tags, h_local)
 
     intersection_mask = simp.pcall_static(
-        (sender,), _compare, h_t_sender, h_target_at_sender
+        (receiver,), _recv_verify, receiver_items, v_recv, okvs_seed, tags_at_recv
     )
 
     return cast(el.Object, intersection_mask)

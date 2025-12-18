@@ -89,23 +89,21 @@ SEED_BOB = 43
 SEED_AGG = 44
 
 # Cluster specification
-cluster_spec = mp.ClusterSpec.from_dict(
-    {
-        "nodes": [
-            {"name": "node_0", "endpoint": "127.0.0.1:61920"},
-            {"name": "node_1", "endpoint": "127.0.0.1:61921"},
-        ],
-        "devices": {
-            "SP0": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-            "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
-            "P1": {"kind": "PPU", "members": ["node_1"], "config": {}},
+cluster_spec = mp.ClusterSpec.from_dict({
+    "nodes": [
+        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+    ],
+    "devices": {
+        "SP0": {
+            "kind": "SPU",
+            "members": ["node_0", "node_1"],
+            "config": {"protocol": "SEMI2K", "field": "FM128"},
         },
-    }
-)
+        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+        "P1": {"kind": "PPU", "members": ["node_1"], "config": {}},
+    },
+})
 
 
 # ============================================================================
@@ -561,12 +559,10 @@ def load_vertical_split_data(
     """
     # Define schemas (all columns must have same dtype for table_to_tensor)
     # Cast label to FLOAT64 here, convert back to int after splitting
-    schema_alice = mp.TableType.from_dict(
-        {
-            **{f"alice_f{i}": FLOAT64 for i in range(m1)},
-            "label": FLOAT64,
-        }
-    )
+    schema_alice = mp.TableType.from_dict({
+        **{f"alice_f{i}": FLOAT64 for i in range(m1)},
+        "label": FLOAT64,
+    })
     schema_bob = mp.TableType.from_dict({f"bob_f{i}": FLOAT64 for i in range(m2)})
 
     # Read CSVs as tables on respective devices

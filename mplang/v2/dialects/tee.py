@@ -22,11 +22,11 @@ computation where:
 
 Architecture:
     PublicKey (from crypto.kem_keygen)
-        ↓ quote_gen(pk, platform)
-    Quote[platform]  (cryptographic attestation proof)
+        ↓ quote_gen(pk)
+    Quote  (cryptographic attestation proof)
         ↓ (transfer to verifier)
         ↓ attest(quote)
-    AttestedKey[platform, curve]  (verified TEE public key)
+    AttestedKey[curve]  (verified TEE public key)
         ↓ crypto.kem_derive(local_sk, attested_pk)
     SharedSecret  (secure channel with TEE)
 
@@ -71,7 +71,6 @@ from mplang.v2.edsl import serde
 # --- Type Definitions
 # ==============================================================================
 
-Platform = Literal["mock", "sgx", "tdx", "sev"]
 KeyCurve = Literal["x25519", "secp256k1"]
 
 
@@ -86,37 +85,32 @@ class QuoteType(elt.BaseType):
 
     The quote can be verified by anyone with access to the TEE vendor's
     root certificates (Intel, AMD, etc.).
-
-    Attributes:
-        platform: TEE platform identifier
     """
 
-    def __init__(self, platform: str = "mock"):
-        self.platform: Platform = platform  # type: ignore[assignment]
+    def __init__(self) -> None:
+        pass
 
     def __str__(self) -> str:
-        return f"TEEQuote[{self.platform}]"
+        return "TEEQuote"
 
     def __repr__(self) -> str:
-        return f"QuoteType(platform={self.platform!r})"
+        return "QuoteType()"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, QuoteType):
-            return False
-        return self.platform == other.platform
+        return isinstance(other, QuoteType)
 
     def __hash__(self) -> int:
-        return hash(("QuoteType", self.platform))
+        return hash("QuoteType")
 
     # --- Serde methods ---
     _serde_kind: ClassVar[str] = "tee.QuoteType"
 
     def to_json(self) -> dict[str, Any]:
-        return {"platform": self.platform}
+        return {}
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> QuoteType:
-        return cls(platform=data["platform"])
+        return cls()
 
 
 @serde.register_class
@@ -134,37 +128,35 @@ class AttestedKeyType(elt.BaseType):
     3. The public key is bound in the quote's report_data
 
     Attributes:
-        platform: TEE platform that generated the original quote
         curve: Cryptographic curve of the key
     """
 
-    def __init__(self, platform: str = "mock", curve: str = "x25519"):
-        self.platform: Platform = platform  # type: ignore[assignment]
+    def __init__(self, curve: str = "x25519"):
         self.curve: KeyCurve = curve  # type: ignore[assignment]
 
     def __str__(self) -> str:
-        return f"AttestedKey[{self.platform}, {self.curve}]"
+        return f"AttestedKey[{self.curve}]"
 
     def __repr__(self) -> str:
-        return f"AttestedKeyType(platform={self.platform!r}, curve={self.curve!r})"
+        return f"AttestedKeyType(curve={self.curve!r})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, AttestedKeyType):
             return False
-        return self.platform == other.platform and self.curve == other.curve
+        return self.curve == other.curve
 
     def __hash__(self) -> int:
-        return hash(("AttestedKeyType", self.platform, self.curve))
+        return hash(("AttestedKeyType", self.curve))
 
     # --- Serde methods ---
     _serde_kind: ClassVar[str] = "tee.AttestedKeyType"
 
     def to_json(self) -> dict[str, Any]:
-        return {"platform": self.platform, "curve": self.curve}
+        return {"curve": self.curve}
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> AttestedKeyType:
-        return cls(platform=data["platform"], curve=data["curve"])
+        return cls(curve=data["curve"])
 
 
 @serde.register_class
@@ -173,37 +165,32 @@ class MeasurementType(elt.BaseType):
 
     Represents a cryptographic hash of the code and initial configuration
     running inside the TEE. Used to verify the TEE is running expected code.
-
-    Attributes:
-        platform: TEE platform
     """
 
-    def __init__(self, platform: str = "mock"):
-        self.platform: Platform = platform  # type: ignore[assignment]
+    def __init__(self) -> None:
+        pass
 
     def __str__(self) -> str:
-        return f"TEEMeasurement[{self.platform}]"
+        return "TEEMeasurement"
 
     def __repr__(self) -> str:
-        return f"MeasurementType(platform={self.platform!r})"
+        return "MeasurementType()"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, MeasurementType):
-            return False
-        return self.platform == other.platform
+        return isinstance(other, MeasurementType)
 
     def __hash__(self) -> int:
-        return hash(("MeasurementType", self.platform))
+        return hash("MeasurementType")
 
     # --- Serde methods ---
     _serde_kind: ClassVar[str] = "tee.MeasurementType"
 
     def to_json(self) -> dict[str, Any]:
-        return {"platform": self.platform}
+        return {}
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> MeasurementType:
-        return cls(platform=data["platform"])
+        return cls()
 
 
 # ==============================================================================
@@ -223,14 +210,11 @@ get_measurement_p = el.Primitive[el.Object]("tee.get_measurement")
 @quote_gen_p.def_abstract_eval
 def _quote_gen_ae(
     pk: elt.BaseType,
-    *,
-    platform: Platform = "mock",
 ) -> QuoteType:
     """Generate a TEE quote binding the provided public key.
 
     Args:
         pk: Public key to bind in the quote (must be PublicKeyType from crypto.kem_keygen)
-        platform: TEE platform to use
 
     Returns:
         QuoteType representing the attestation proof
@@ -243,7 +227,7 @@ def _quote_gen_ae(
             f"quote_gen expects PublicKeyType (from crypto.kem_keygen), "
             f"got {type(pk).__name__}"
         )
-    return QuoteType(platform=platform)
+    return QuoteType()
 
 
 @attest_p.def_abstract_eval
@@ -261,7 +245,7 @@ def _attest_ae(
     Returns:
         AttestedKeyType containing the verified public key
     """
-    return AttestedKeyType(platform=quote.platform, curve=expected_curve)
+    return AttestedKeyType(curve=expected_curve)
 
 
 @get_measurement_p.def_abstract_eval
@@ -276,7 +260,7 @@ def _get_measurement_ae(
     Returns:
         MeasurementType containing the code measurement
     """
-    return MeasurementType(platform=quote.platform)
+    return MeasurementType()
 
 
 # ==============================================================================
@@ -286,7 +270,6 @@ def _get_measurement_ae(
 
 def quote_gen(
     pk: el.Object,
-    platform: Platform = "mock",
 ) -> el.Object:
     """Generate a TEE attestation quote binding the provided public key.
 
@@ -297,7 +280,6 @@ def quote_gen(
 
     Args:
         pk: Public key to bind (typically from crypto.kem_keygen)
-        platform: TEE platform ("mock", "sgx", "tdx", "sev")
 
     Returns:
         Object[QuoteType] - The attestation quote
@@ -306,7 +288,7 @@ def quote_gen(
         >>> sk, pk = crypto.kem_keygen("x25519")
         >>> quote = tee.quote_gen(pk)  # Bind pk in attestation
     """
-    return quote_gen_p.bind(pk, platform=platform)
+    return quote_gen_p.bind(pk)
 
 
 def attest(
@@ -360,7 +342,6 @@ __all__ = [
     "AttestedKeyType",
     "KeyCurve",
     "MeasurementType",
-    "Platform",
     "QuoteType",
     "attest",
     "attest_p",

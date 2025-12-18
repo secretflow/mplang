@@ -89,23 +89,21 @@ SEED_BOB = 43
 SEED_AGG = 44
 
 # Cluster specification
-cluster_spec = mp.ClusterSpec.from_dict(
-    {
-        "nodes": [
-            {"name": "node_0", "endpoint": "127.0.0.1:61920"},
-            {"name": "node_1", "endpoint": "127.0.0.1:61921"},
-        ],
-        "devices": {
-            "SP0": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-            "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
-            "P1": {"kind": "PPU", "members": ["node_1"], "config": {}},
+cluster_spec = mp.ClusterSpec.from_dict({
+    "nodes": [
+        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+    ],
+    "devices": {
+        "SP0": {
+            "kind": "SPU",
+            "members": ["node_0", "node_1"],
+            "config": {"protocol": "SEMI2K", "field": "FM128"},
         },
-    }
-)
+        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+        "P1": {"kind": "PPU", "members": ["node_1"], "config": {}},
+    },
+})
 
 
 # ============================================================================
@@ -288,40 +286,6 @@ def bob_base_forward(x, model_dict, m2, h2, seed):
     return h2
 
 
-def alice_aggregate_forward_and_loss(h1, h2, y, model_dict, n_classes, seed):
-    """Alice's aggregate model forward pass with loss computation.
-
-    Args:
-        h1: Alice's embeddings (n, h1)
-        h2: Bob's embeddings (n, h2)
-        y: Labels (n,)
-        model_dict: Alice aggregate model state as dict
-        n_classes: Number of output classes
-        seed: Random seed for model reconstruction
-
-    Returns:
-        loss: Scalar loss value
-        logits: Model predictions (n, n_classes)
-        combined: Concatenated embeddings (n, h1+h2)
-    """
-    # Reconstruct model
-    graphdef, state, _, _ = reconstruct_model_from_dict(
-        model_dict, AliceAggregateModel, H1 + H2, 16, n_classes, rngs=nnx.Rngs(seed)
-    )
-    model = nnx.merge(graphdef, state)
-
-    # Concatenate embeddings
-    combined = jnp.concatenate([h1, h2], axis=1)
-
-    # Forward pass
-    logits = model(combined)
-
-    # Compute loss (cross-entropy)
-    loss = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits, y))
-
-    return loss, logits, combined
-
-
 # ============================================================================
 # Helper Functions: Backward Pass
 # ============================================================================
@@ -365,12 +329,10 @@ def alice_aggregate_backward(h1, h2, y, model_dict, n_classes, seed):
     # Get model state dict
     model_state_dict = model_dict["model_state_dict"]
 
-    # Compute gradients w.r.t. state_dict and inputs (h1, h2)
-    grad_fn = jax.grad(loss_fn, argnums=(0, 1, 2))
-    grads_state_dict, grad_h1, grad_h2 = grad_fn(model_state_dict, h1, h2, y)
-
-    # Also compute loss for logging
-    loss = loss_fn(model_state_dict, h1, h2, y)
+    # Compute loss and gradients w.r.t. state_dict and inputs (h1, h2) in a single pass
+    # Using value_and_grad is more efficient than computing loss twice
+    grad_fn = jax.value_and_grad(loss_fn, argnums=(0, 1, 2))
+    loss, (grads_state_dict, grad_h1, grad_h2) = grad_fn(model_state_dict, h1, h2, y)
 
     return grads_state_dict, grad_h1, grad_h2, loss
 
@@ -597,9 +559,10 @@ def load_vertical_split_data(
     """
     # Define schemas (all columns must have same dtype for table_to_tensor)
     # Cast label to FLOAT64 here, convert back to int after splitting
-    schema_alice = mp.TableType.from_dict(
-        {**{f"alice_f{i}": FLOAT64 for i in range(m1)}, "label": FLOAT64}
-    )
+    schema_alice = mp.TableType.from_dict({
+        **{f"alice_f{i}": FLOAT64 for i in range(m1)},
+        "label": FLOAT64,
+    })
     schema_bob = mp.TableType.from_dict({f"bob_f{i}": FLOAT64 for i in range(m2)})
 
     # Read CSVs as tables on respective devices
@@ -640,14 +603,11 @@ def initialize_alice_base_model(m1: int, h1: int, seed: int, learning_rate: floa
         # Split into graphdef + state
         _graphdef, state = nnx.split(model)
 
-        # Convert state to pure dict
-        model_state_dict = state.to_pure_dict()
-
         # Initialize optimizer
         tx = optax.sgd(learning_rate)
-        opt_state = tx.init(model_state_dict)
+        opt_state = tx.init(state.to_pure_dict())
 
-        return {"model_state_dict": model_state_dict, "opt_state": opt_state, "step": 0}
+        return model_state_to_dict(state, opt_state, 0)
 
     return mp.device("P0", fe_type="nnx")(_init)()
 
@@ -663,14 +623,11 @@ def initialize_bob_base_model(m2: int, h2: int, seed: int, learning_rate: float)
         # Split into graphdef + state
         _graphdef, state = nnx.split(model)
 
-        # Convert state to pure dict
-        model_state_dict = state.to_pure_dict()
-
         # Initialize optimizer
         tx = optax.sgd(learning_rate)
-        opt_state = tx.init(model_state_dict)
+        opt_state = tx.init(state.to_pure_dict())
 
-        return {"model_state_dict": model_state_dict, "opt_state": opt_state, "step": 0}
+        return model_state_to_dict(state, opt_state, 0)
 
     return mp.device("P1", fe_type="nnx")(_init)()
 
@@ -693,14 +650,11 @@ def initialize_alice_agg_model(
         # Split into graphdef + state
         _graphdef, state = nnx.split(model)
 
-        # Convert state to pure dict
-        model_state_dict = state.to_pure_dict()
-
         # Initialize optimizer
         tx = optax.sgd(learning_rate)
-        opt_state = tx.init(model_state_dict)
+        opt_state = tx.init(state.to_pure_dict())
 
-        return {"model_state_dict": model_state_dict, "opt_state": opt_state, "step": 0}
+        return model_state_to_dict(state, opt_state, 0)
 
     return mp.device("P0", fe_type="nnx")(_init)()
 

@@ -58,22 +58,20 @@ class SimpleMLP(nnx.Module):
 
 
 # Cluster configuration
-cluster_spec = mp.ClusterSpec.from_dict(
-    {
-        "nodes": [
-            {"name": "node_0", "endpoint": "127.0.0.1:61920"},
-            {"name": "node_1", "endpoint": "127.0.0.1:61921"},
-        ],
-        "devices": {
-            "SP0": {
-                "kind": "SPU",
-                "members": ["node_0", "node_1"],
-                "config": {"protocol": "SEMI2K", "field": "FM128"},
-            },
-            "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+cluster_spec = mp.ClusterSpec.from_dict({
+    "nodes": [
+        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+    ],
+    "devices": {
+        "SP0": {
+            "kind": "SPU",
+            "members": ["node_0", "node_1"],
+            "config": {"protocol": "SEMI2K", "field": "FM128"},
         },
-    }
-)
+        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+    },
+})
 
 
 @mp.function
@@ -369,9 +367,16 @@ def main():
     # This gives the model something real to learn
     x_train = jax.random.normal(jax.random.PRNGKey(888), (32, 8))
     # Create target with a simple linear relationship
-    true_weights = jnp.array(
-        [[2.0], [-1.0], [0.5], [1.5], [-0.5], [1.0], [-1.5], [0.0]]
-    )
+    true_weights = jnp.array([
+        [2.0],
+        [-1.0],
+        [0.5],
+        [1.5],
+        [-0.5],
+        [1.0],
+        [-1.5],
+        [0.0],
+    ])
     true_weights2 = jnp.array([[1.0], [-0.5]])
     y_train = (
         x_train @ true_weights @ true_weights2.T

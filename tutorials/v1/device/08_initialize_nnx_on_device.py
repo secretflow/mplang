@@ -35,10 +35,10 @@ Usage:
 
 import jax
 import jax.numpy as jnp
-import optax
-from flax import nnx
 
 import mplang.v1 as mp
+import optax
+from flax import nnx
 
 # ============================================================================
 # Section 1: Pure Python Functions (Model Definition & Logic)
@@ -278,20 +278,22 @@ def train_step_logic(
 # ============================================================================
 
 # Cluster configuration
-cluster_spec = mp.ClusterSpec.from_dict({
-    "nodes": [
-        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
-        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
-    ],
-    "devices": {
-        "SP0": {
-            "kind": "SPU",
-            "members": ["node_0", "node_1"],
-            "config": {"protocol": "SEMI2K", "field": "FM128"},
+cluster_spec = mp.ClusterSpec.from_dict(
+    {
+        "nodes": [
+            {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+            {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+        ],
+        "devices": {
+            "SP0": {
+                "kind": "SPU",
+                "members": ["node_0", "node_1"],
+                "config": {"protocol": "SEMI2K", "field": "FM128"},
+            },
+            "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
         },
-        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
-    },
-})
+    }
+)
 
 
 @mp.function
@@ -399,7 +401,7 @@ def train_model_for_n_steps(
 
 
 def main():
-    """Main demonstration: Shows both efficient batched operations and granular operations."""
+    """Main demonstration: Shows efficient batched operations for NNX models."""
     print("=" * 80)
     print("NNX Model with State Dict Pattern")
     print("=" * 80)
@@ -408,16 +410,16 @@ def main():
     simulator = mp.Simulator(cluster_spec)
 
     # =========================================================================
-    # PART A: Efficient Batched Operations (RECOMMENDED)
+    # Efficient Batched Operations (RECOMMENDED)
     # =========================================================================
     print("\n" + "=" * 80)
-    print("PART A: Efficient Batched MPLang Functions (RECOMMENDED)")
+    print("Efficient Batched MPLang Functions (RECOMMENDED)")
     print("=" * 80)
     print("Combining multiple operations into single @mp.function calls")
     print("reduces overhead and improves performance!\n")
 
-    # Step A1: Combined init + inference in ONE MPLang call
-    print("[Step A1] Initialize model + Run inference (combined operation)...")
+    # Step 1: Combined init + inference in ONE MPLang call
+    print("[Step 1] Initialize model + Run inference (combined operation)...")
 
     # Create test input
     test_key = jax.random.PRNGKey(999)
@@ -446,22 +448,24 @@ def main():
     print(f"   Output shape: {output.shape}")
     print(f"   Output sample: {output[0]}")
 
-    # Step A2: Combined training loop in ONE MPLang call
-    print("\n[Step A2] Initialize + Train for 10 steps (combined operation)...")
+    # Step 2: Combined training loop in ONE MPLang call
+    print("\n[Step 2] Initialize + Train for 10 steps (combined operation)...")
     print("This is MUCH more efficient than 10 separate @mp.function calls!\n")
 
     # Create training data
     x_train = jax.random.normal(jax.random.PRNGKey(888), (32, 8))
-    true_weights = jnp.array([
-        [2.0],
-        [-1.0],
-        [0.5],
-        [1.5],
-        [-0.5],
-        [1.0],
-        [-1.5],
-        [0.0],
-    ])
+    true_weights = jnp.array(
+        [
+            [2.0],
+            [-1.0],
+            [0.5],
+            [1.5],
+            [-0.5],
+            [1.0],
+            [-1.5],
+            [0.0],
+        ]
+    )
     true_weights2 = jnp.array([[1.0], [-0.5]])
     y_train = (
         x_train @ true_weights @ true_weights2.T

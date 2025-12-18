@@ -49,11 +49,10 @@ class TestMockTEEExecution:
             _sk, pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
-                quote = tee.quote_gen(pk, platform="mock")
+                quote = tee.quote_gen(pk)
 
             # Verify type propagation
             assert isinstance(quote.type, tee.QuoteType)
-            assert quote.type.platform == "mock"
 
     def test_attest_execution(self):
         """Test attest primitive execution produces correct type.
@@ -65,7 +64,7 @@ class TestMockTEEExecution:
             _sk, pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
-                quote = tee.quote_gen(pk, platform="sgx")
+                quote = tee.quote_gen(pk)
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
                 attested_pk = tee.attest(quote, expected_curve="x25519")
@@ -73,7 +72,6 @@ class TestMockTEEExecution:
             # Type level still shows AttestedKeyType (for type checking)
             # But runtime returns PublicKeyValue directly
             assert isinstance(attested_pk.type, tee.AttestedKeyType)
-            assert attested_pk.type.platform == "sgx"
             assert attested_pk.type.curve == "x25519"
 
     def test_full_attestation_workflow(self):
@@ -82,14 +80,13 @@ class TestMockTEEExecution:
             _sk, pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
-                quote = tee.quote_gen(pk, platform="tdx")
+                quote = tee.quote_gen(pk)
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
                 attested_pk = tee.attest(quote, expected_curve="x25519")
 
             # Verify types propagate correctly through the workflow
             assert isinstance(attested_pk.type, tee.AttestedKeyType)
-            assert attested_pk.type.platform == "tdx"
 
 
 class TestTEEWithCryptoIntegration:
@@ -102,7 +99,7 @@ class TestTEEWithCryptoIntegration:
             tee_sk, tee_pk = crypto.kem_keygen("x25519")
 
             with pytest.warns(UserWarning, match="Insecure mock TEE"):
-                quote = tee.quote_gen(tee_pk, platform="sgx")
+                quote = tee.quote_gen(tee_pk)
 
             # Verifier side: attest and generate own keypair
             with pytest.warns(UserWarning, match="Insecure mock TEE"):

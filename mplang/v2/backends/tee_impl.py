@@ -155,7 +155,8 @@ def _quote_gen_impl(
             f"got {type(pk).__name__}"
         )
 
-    platform = op.attrs.get("platform", "mock")
+    # In a real implementation, the platform would be detected from the environment
+    platform = "mock"
 
     return MockQuoteValue(
         platform=platform,

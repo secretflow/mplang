@@ -89,21 +89,23 @@ SEED_BOB = 43
 SEED_AGG = 44
 
 # Cluster specification
-cluster_spec = mp.ClusterSpec.from_dict({
-    "nodes": [
-        {"name": "node_0", "endpoint": "127.0.0.1:61920"},
-        {"name": "node_1", "endpoint": "127.0.0.1:61921"},
-    ],
-    "devices": {
-        "SP0": {
-            "kind": "SPU",
-            "members": ["node_0", "node_1"],
-            "config": {"protocol": "SEMI2K", "field": "FM128"},
+cluster_spec = mp.ClusterSpec.from_dict(
+    {
+        "nodes": [
+            {"name": "node_0", "endpoint": "127.0.0.1:61920"},
+            {"name": "node_1", "endpoint": "127.0.0.1:61921"},
+        ],
+        "devices": {
+            "SP0": {
+                "kind": "SPU",
+                "members": ["node_0", "node_1"],
+                "config": {"protocol": "SEMI2K", "field": "FM128"},
+            },
+            "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
+            "P1": {"kind": "PPU", "members": ["node_1"], "config": {}},
         },
-        "P0": {"kind": "PPU", "members": ["node_0"], "config": {}},
-        "P1": {"kind": "PPU", "members": ["node_1"], "config": {}},
-    },
-})
+    }
+)
 
 
 # ============================================================================
@@ -247,7 +249,7 @@ def alice_base_forward(x, model_dict, m1, h1, seed):
         seed: Random seed for model reconstruction
 
     Returns:
-        h1: Alice's embeddings (n, h1)
+        embeddings: Alice's embeddings (n, h1)
     """
     # Reconstruct model
     graphdef, state, _, _ = reconstruct_model_from_dict(
@@ -256,9 +258,9 @@ def alice_base_forward(x, model_dict, m1, h1, seed):
     model = nnx.merge(graphdef, state)
 
     # Forward pass
-    h1 = model(x)
+    embeddings = model(x)
 
-    return h1
+    return embeddings
 
 
 def bob_base_forward(x, model_dict, m2, h2, seed):
@@ -272,7 +274,7 @@ def bob_base_forward(x, model_dict, m2, h2, seed):
         seed: Random seed for model reconstruction
 
     Returns:
-        h2: Bob's embeddings (n, h2)
+        embeddings: Bob's embeddings (n, h2)
     """
     # Reconstruct model
     graphdef, state, _, _ = reconstruct_model_from_dict(
@@ -281,9 +283,9 @@ def bob_base_forward(x, model_dict, m2, h2, seed):
     model = nnx.merge(graphdef, state)
 
     # Forward pass
-    h2 = model(x)
+    embeddings = model(x)
 
-    return h2
+    return embeddings
 
 
 # ============================================================================
@@ -305,7 +307,7 @@ def alice_aggregate_backward(h1, h2, y, model_dict, n_classes, seed):
         seed: Random seed for model reconstruction
 
     Returns:
-        grads_state: Gradients for aggregate model parameters
+        grads_state_dict: Gradients for aggregate model parameters
         grad_h1: Gradient w.r.t. Alice's embeddings (n, h1)
         grad_h2: Gradient w.r.t. Bob's embeddings (n, h2)
         loss: Scalar loss value
@@ -559,10 +561,12 @@ def load_vertical_split_data(
     """
     # Define schemas (all columns must have same dtype for table_to_tensor)
     # Cast label to FLOAT64 here, convert back to int after splitting
-    schema_alice = mp.TableType.from_dict({
-        **{f"alice_f{i}": FLOAT64 for i in range(m1)},
-        "label": FLOAT64,
-    })
+    schema_alice = mp.TableType.from_dict(
+        {
+            **{f"alice_f{i}": FLOAT64 for i in range(m1)},
+            "label": FLOAT64,
+        }
+    )
     schema_bob = mp.TableType.from_dict({f"bob_f{i}": FLOAT64 for i in range(m2)})
 
     # Read CSVs as tables on respective devices
@@ -710,24 +714,24 @@ def split_learning_train_step(
     # === Forward Pass ===
 
     # 1. Alice base model forward on P0
-    h1 = mp.device("P0", fe_type="nnx")(alice_base_forward)(
+    h1_embeddings = mp.device("P0", fe_type="nnx")(alice_base_forward)(
         alice_features, alice_base_model_dict, m1, h1, seed_alice
     )
 
     # 2. Bob base model forward on P1
-    h2_on_p1 = mp.device("P1", fe_type="nnx")(bob_base_forward)(
+    h2_embeddings = mp.device("P1", fe_type="nnx")(bob_base_forward)(
         bob_features, bob_base_model_dict, m2, h2, seed_bob
     )
 
     # 3. Transfer Bob's embeddings to Alice (P1 → P0)
-    h2_on_p0 = mp.put("P0", h2_on_p1)
+    h2_on_p0 = mp.put("P0", h2_embeddings)
 
     # === Backward Pass (Alice Aggregate Model) ===
 
     # 4. Alice computes gradients for aggregate model using actual loss
     agg_grads_dict, grad_h1, grad_h2, loss = mp.device("P0", fe_type="nnx")(
         get_alice_agg_backward_fn()
-    )(h1, h2_on_p0, alice_labels, alice_agg_model_dict)
+    )(h1_embeddings, h2_on_p0, alice_labels, alice_agg_model_dict)
 
     # 5. Alice updates her aggregate model with actual gradients
     new_alice_agg_model_dict = mp.device("P0", fe_type="nnx")(update_model_state)(

@@ -127,13 +127,13 @@ if __name__ == "__main__":
     Usage:
 
     1. Simulator (local, no setup needed):
-       uv run tutorials/device/02_simulation_and_driver.py sim
+       uv run tutorials/v1/device/02_simulation_and_driver.py sim
 
     2. Driver (distributed):
        Step 1: Start cluster in separate terminal:
-         uv run python -m mplang.runtime.cli up -c examples/v1/conf/3pc.yaml
+         uv run python -m mplang.v1.runtime.cli up -c examples/v1/conf/3pc.yaml
 
        Step 2: Run computation:
-         uv run tutorials/device/02_simulation_and_driver.py run
+         uv run tutorials/v1/device/02_simulation_and_driver.py run
     """
     cmd_main()

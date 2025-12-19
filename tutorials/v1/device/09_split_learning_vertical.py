@@ -838,7 +838,9 @@ def main():
 
     print("\n✅ MPLANG EFFICIENCY PATTERNS:")
     print("5. ✅ Batch operations into large @mp.function calls:")
-    print("   - initialize_and_train_split_learning: init + N training steps in one call")
+    print(
+        "   - initialize_and_train_split_learning: init + N training steps in one call"
+    )
     print("   - Minimizes @mp.function boundary crossings")
     print("   - Significantly reduces overhead for multi-step training")
 

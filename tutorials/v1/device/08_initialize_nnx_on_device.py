@@ -117,8 +117,9 @@ def inference_logic(
     Returns:
         Model output logits
     """
-    # Create an abstract model to get the GraphDef (memory efficient!)
-    # This only creates the structure without allocating actual arrays
+    # Create an abstract model to get the GraphDef.
+    # nnx.eval_shape only creates the abstract structure; parameter arrays are
+    # materialized later when replace_by_pure_dict is called with params_dict.
     abs_model = nnx.eval_shape(
         lambda: SimpleMLP(
             input_dim=input_dim,
@@ -233,8 +234,8 @@ def train_step_logic(
 
     # Define loss function that works with jax.grad
     def loss_fn(state_dict, x, y):
-        # Reconstruct model from state dict for forward pass
-        # Create abstract model to get GraphDef (memory efficient!)
+        # Reconstruct model from state dict for forward pass.
+        # Create abstract model to get GraphDef; parameters are then materialized from state_dict.
         abs_model = nnx.eval_shape(
             lambda: SimpleMLP(
                 input_dim=input_dim,
@@ -522,9 +523,9 @@ def main():
     print("   - state.replace_by_pure_dict() → deserialize model state")
     print("   - Works with optimizer state too!")
 
-    print("\n4. ✅ Use nnx.eval_shape() for memory efficiency")
-    print("   - Creates GraphDef without allocating arrays")
-    print("   - Especially important when reconstructing models repeatedly")
+    print("\n4. ✅ Use nnx.eval_shape() for GraphDef reconstruction")
+    print("   - Creates abstract model structure for obtaining GraphDef")
+    print("   - Actual parameters are materialized when replace_by_pure_dict is called")
 
     print("\n5. ✅ Use jax.value_and_grad for efficient gradient computation")
     print("   - Computes loss and gradients in a single pass")

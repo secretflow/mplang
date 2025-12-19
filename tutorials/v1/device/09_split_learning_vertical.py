@@ -33,10 +33,9 @@ Architecture:
 
 Key Concepts:
     1. **State Management**: Use graphdef + state dict pattern (following Tutorial 08)
-    2. **Memory Efficiency**: Use nnx.eval_shape() to create abstract models (no array allocation)
-    3. **Surrogate Loss**: Base models use dot product (grad · embedding) for training
-    4. **Privacy**: Only embeddings and gradients are shared, not raw features
-    5. **Optimizer**: Recreated on each step (SGD with fixed learning rate)
+    2. **Surrogate Loss**: Base models use dot product (grad · embedding) for training
+    3. **Privacy**: Only embeddings and gradients are shared, not raw features
+    4. **Optimizer**: Recreated on each step (SGD with fixed learning rate)
 
 Training Flow (One Iteration):
     1. Alice forward: x_alice → h1
@@ -197,8 +196,10 @@ def model_state_to_dict(state, opt_state, step):
         Dict with keys: model_state_dict, opt_state, step
 
         Note: graphdef is NOT included - it can be reconstructed from the model class
-        definition. Only the state dict (parameters), optimizer state, and step counter
-        are stored for transfer.
+        definition, but requires the same model initialization parameters (input_dim,
+        hidden_dim, output_dim, seed) to be provided when reconstructing via
+        reconstruct_model_from_dict. Only the state dict (parameters), optimizer state,
+        and step counter are stored for transfer.
     """
     return {
         "model_state_dict": state.to_pure_dict(),
@@ -298,9 +299,10 @@ def alice_aggregate_backward(h1, h2, y, model_dict, n_classes, seed):
 
     This is standard supervised learning - compute loss from predictions and labels.
 
-    Note: This function captures module-level constant H1 and H2 from the outer scope
+    Note: This function captures module-level constants H1 and H2 from the outer scope
     for model reconstruction. The n_classes and seed parameters are passed explicitly
-    to support testing and reuse in different contexts.
+    (rather than captured from module scope) to support testing flexibility and avoid
+    closure issues with JAX tracing.
 
     Args:
         h1: Alice's embeddings (n, h1)
@@ -319,9 +321,10 @@ def alice_aggregate_backward(h1, h2, y, model_dict, n_classes, seed):
 
     # Define loss function
     def loss_fn(state_dict, h1, h2, y):
-        # Reconstruct model from state dict
-        # Note: H1, H2 are captured from module scope as concrete values
-        # n_classes and seed are captured from function parameters
+        # Reconstruct model from state dict.
+        # Note: H1, H2 are module-level constants (safe to capture, not JAX tracers).
+        # n_classes and seed are parameters to alice_aggregate_backward and are
+        # captured here as fixed values for this invocation (avoiding tracer issues).
         temp_model = AliceAggregateModel(H1 + H2, 16, n_classes, rngs=nnx.Rngs(seed))
         graphdef, temp_state = nnx.split(temp_model)
         temp_state.replace_by_pure_dict(state_dict)
@@ -566,9 +569,18 @@ def load_vertical_split_data(
         alice_labels: Tensor on P0 (n,)
         bob_features: Tensor on P1 (n, m2)
     """
-    # Define schemas (all columns must have same dtype for table_to_tensor)
-    # Convert label to FLOAT64 to match feature columns, then cast back to int after
-    # This workaround is needed because table_to_tensor requires uniform dtypes
+    # Define schemas (all columns must have same dtype for table_to_tensor).
+    # NOTE: mp.ops.basic.table_to_tensor requires that all columns in a table share
+    # the same dtype. Since Alice's feature columns are FLOAT64, we also declare
+    # the label column as FLOAT64 so that we can load features + labels in a single
+    # table_to_tensor call. In this tutorial, the labels in the CSV are integer-valued
+    # class IDs (e.g. 0/1), so converting the label column from FLOAT64 back to
+    # jnp.int32 after tensorization is an exact, lossless cast.
+    #
+    # If your labels are not integer-valued, or if they must be stored with a
+    # different dtype than the features, prefer a more robust pattern such as
+    # reading features and labels via separate schemas / read calls so you do not
+    # rely on a FLOAT64 → int cast.
     schema_alice = mp.TableType.from_dict({
         **{f"alice_f{i}": FLOAT64 for i in range(m1)},
         "label": FLOAT64,
@@ -603,7 +615,7 @@ def load_vertical_split_data(
 
 
 @mp.function
-def train_split_learning_for_n_steps(
+def initialize_and_train_split_learning(
     alice_features,
     alice_labels,
     bob_features,
@@ -618,9 +630,10 @@ def train_split_learning_for_n_steps(
     learning_rate: float,
     n_steps: int,
 ):
-    """Batched training: Initialize all models + train for N steps in one MPLang call.
+    """Initialize all models and train for N steps in one batched MPLang call.
 
-    This is the most efficient approach, combining:
+    This is the most efficient approach, combining model initialization and training
+    into a single @mp.function call to minimize boundary crossings.
     1. Initialize all three models
     2. Run N training iterations
     All in a single @mp.function call, avoiding repeated boundary crossings.
@@ -664,7 +677,7 @@ def train_split_learning_for_n_steps(
 
     # === Step 2: Training loop (all iterations run inside this @mp.function) ===
 
-    final_loss = None
+    final_loss = jnp.array(0.0)  # Initialize as JAX array to maintain consistent type
 
     for _step_idx in range(n_steps):
         # Forward pass: Alice base
@@ -764,7 +777,7 @@ def main():
 
     batched_result = mp.evaluate(
         simulator,
-        train_split_learning_for_n_steps,
+        initialize_and_train_split_learning,
         alice_features,
         alice_labels,
         bob_features,
@@ -825,15 +838,11 @@ def main():
 
     print("\n✅ MPLANG EFFICIENCY PATTERNS:")
     print("5. ✅ Batch operations into large @mp.function calls:")
-    print("   - train_split_learning_for_n_steps: init + N training steps in one call")
+    print("   - initialize_and_train_split_learning: init + N training steps in one call")
     print("   - Minimizes @mp.function boundary crossings")
     print("   - Significantly reduces overhead for multi-step training")
 
-    print("\n6. ✅ Use nnx.eval_shape() for memory efficiency:")
-    print("   - Creates GraphDef without allocating arrays")
-    print("   - Important when reconstructing models repeatedly")
-
-    print("\n7. ✅ Use module-level constants + functools.partial:")
+    print("\n6. ✅ Use module-level constants + functools.partial:")
     print("   - Avoids JAX tracer issues in gradient computation")
     print("   - Bind constants at module level, not as traced parameters")
 

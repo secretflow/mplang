@@ -677,7 +677,7 @@ def initialize_and_train_split_learning(
 
     # === Step 2: Training loop (all iterations run inside this @mp.function) ===
 
-    final_loss = 0.0  # Initialize to 0.0 in case n_steps is 0
+    final_loss = jnp.array(0.0)  # Initialize as JAX array to maintain consistent type
 
     for _step_idx in range(n_steps):
         # Forward pass: Alice base

@@ -646,14 +646,14 @@ def initialize_and_train_split_learning(
 
     def _init_alice_base():
         model = AliceBaseModel(input_dim=m1, hidden_dim=h1, rngs=nnx.Rngs(seed_alice))
-        _graphdef, state = nnx.split(model)
+        _, state = nnx.split(model)
         tx = optax.sgd(learning_rate)
         opt_state = tx.init(state.to_pure_dict())
         return model_state_to_dict(state, opt_state, 0)
 
     def _init_bob_base():
         model = BobBaseModel(input_dim=m2, hidden_dim=h2, rngs=nnx.Rngs(seed_bob))
-        _graphdef, state = nnx.split(model)
+        _, state = nnx.split(model)
         tx = optax.sgd(learning_rate)
         opt_state = tx.init(state.to_pure_dict())
         return model_state_to_dict(state, opt_state, 0)
@@ -665,7 +665,7 @@ def initialize_and_train_split_learning(
             output_dim=n_classes,
             rngs=nnx.Rngs(seed_agg),
         )
-        _graphdef, state = nnx.split(model)
+        _, state = nnx.split(model)
         tx = optax.sgd(learning_rate)
         opt_state = tx.init(state.to_pure_dict())
         return model_state_to_dict(state, opt_state, 0)

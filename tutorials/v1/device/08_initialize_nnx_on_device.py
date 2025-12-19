@@ -84,7 +84,7 @@ def init_model_logic(input_dim: int, hidden_dim: int, output_dim: int, seed: int
     )
 
     # Split and convert state to pure dict
-    _graphdef, state = nnx.split(model)
+    _, state = nnx.split(model)
     state_dict = state.to_pure_dict()
 
     print(f"[Device P0] Initialized model with {len(state_dict)} parameter groups")
@@ -180,7 +180,7 @@ def init_model_with_optimizer_logic(
     )
 
     # Split and convert model state to pure dict
-    _graphdef, state = nnx.split(model)
+    _, state = nnx.split(model)
     model_state_dict = state.to_pure_dict()
 
     # Initialize optimizer and convert its state to pure dict

@@ -336,6 +336,14 @@ def sym_encrypt_impl(
     numpy arrays, scalars, etc.). This supports both high-level API usage
     (with TensorValue) and elementwise operations (with raw scalars).
     """
+    # Read and validate algo parameter
+    algo = op.attrs.get("algo", "aes-gcm")
+    if algo != "aes-gcm":
+        raise ValueError(
+            f"Unsupported encryption algorithm: {algo!r}. "
+            f"Currently only 'aes-gcm' is supported."
+        )
+
     # Get raw key bytes - strict type checking
     if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes
@@ -376,6 +384,14 @@ def sym_decrypt_impl(
     on what was encrypted - could be a Value subclass (TensorValue, BytesValue),
     a numpy array, or a scalar (int, float, etc.) when used in elementwise ops.
     """
+    # Read and validate algo parameter
+    algo = op.attrs.get("algo", "aes-gcm")
+    if algo != "aes-gcm":
+        raise ValueError(
+            f"Unsupported decryption algorithm: {algo!r}. "
+            f"Currently only 'aes-gcm' is supported."
+        )
+
     # Get raw key bytes - strict type checking
     if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes

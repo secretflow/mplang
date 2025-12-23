@@ -618,7 +618,9 @@ def hkdf_impl(
 
     # Extract operation attributes
     info_str = op.attrs.get("info", "")
-    hash_algo = op.attrs.get("hash_algo", "sha256").lower().replace("-", "").replace("_", "")
+    hash_algo = (
+        op.attrs.get("hash_algo", "sha256").lower().replace("-", "").replace("_", "")
+    )
 
     # Validate info parameter (REQUIRED for domain separation per NIST)
     if not info_str:

@@ -50,17 +50,16 @@ cluster_spec = mp.ClusterSpec.simple(world_size=2, endpoints=ENDPOINTS)
 
 
 @mp.function
-def millionaire(alice_wealth, bob_wealth):
-    """Classic millionaire problem: who is richer without revealing amounts."""
-    return alice_wealth > bob_wealth
+def jax_on_ppu():
+    """Pattern 1: Run JAX on PPU (plaintext computation)."""
+    # Generate data on P0 using mp.put for constants
+    x = mp.put("P0", jnp.array([1.0, 2.0, 3.0]))
 
+    # Run JAX computation on P0
+    # Use .jax for functions that use JAX operators
+    result = mp.device("P0").jax(lambda v: jnp.sum(v**2))(x)
 
-def run_computation(ctx_name: str):
-    """Run millionaire problem and print results."""
-    alice = jnp.array(5_000_000)  # Alice: $5M
-    bob = jnp.array(3_000_000)  # Bob: $3M
-    alice_is_richer = millionaire(alice, bob)
-    print(f"  [{ctx_name}] Alice($5M) > Bob($3M)? {bool(alice_is_richer)}")
+    return result
 
 
 # ============================================================================
@@ -98,7 +97,8 @@ def main():
     print("\n--- Simulator (local, multi-threaded) ---")
     sim = mp.make_simulator(2, cluster_spec=cluster_spec)
     with sim:
-        run_computation("Simulator")
+        result = jax_on_ppu()
+        print(f"  [Simulator] Result: {mp.fetch(result)}")
 
     # --- Pattern 2: Driver (requires workers to be running) ---
     print("\n--- Driver (distributed, HTTP-based) ---")
@@ -110,7 +110,8 @@ def main():
     else:
         driver = mp.make_driver(ENDPOINTS, cluster_spec=cluster_spec)
         with driver:
-            run_computation("Driver")
+            result = jax_on_ppu()
+            print(f"  [Driver] Result: {mp.fetch(result)}")
         driver.shutdown()
         print("  ✓ Distributed execution completed!")
 

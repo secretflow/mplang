@@ -241,65 +241,62 @@ class TestDigitalEnvelope:
 class TestAlgoParameter:
     """Test algo parameter validation in sym_encrypt/sym_decrypt."""
 
+    def setup_method(self):
+        self.interpreter = Interpreter()
+        self.interpreter.__enter__()
+        sk, pk = crypto.kem_keygen("x25519")
+        self.key = crypto.kem_derive(sk, pk)
+
+    def teardown_method(self):
+        self.interpreter.__exit__(None, None, None)
+
     def test_default_algo_works(self):
         """Test default algo='aes-gcm' works without explicit parameter."""
-        with Interpreter():
-            sk, pk = crypto.kem_keygen("x25519")
-            key = crypto.kem_derive(sk, pk)
 
-            message = np.array([1, 2, 3], dtype=np.uint8)
-            message_obj = tensor.constant(message)
+        message = np.array([1, 2, 3], dtype=np.uint8)
+        message_obj = tensor.constant(message)
 
-            # Use default algo (should be aes-gcm)
-            ciphertext = crypto.sym_encrypt(key, message_obj)
-            plaintext = crypto.sym_decrypt(
-                key, ciphertext, elt.TensorType(elt.u8, (3,))
-            )
-            np.testing.assert_array_equal(_unwrap(plaintext.runtime_obj), message)
+        # Use default algo (should be aes-gcm)
+        ciphertext = crypto.sym_encrypt(self.key, message_obj)
+        plaintext = crypto.sym_decrypt(
+            self.key, ciphertext, elt.TensorType(elt.u8, (3,))
+        )
+        np.testing.assert_array_equal(_unwrap(plaintext.runtime_obj), message)
 
     def test_explicit_aes_gcm_algo(self):
         """Test explicitly passing algo='aes-gcm' works."""
-        with Interpreter():
-            sk, pk = crypto.kem_keygen("x25519")
-            key = crypto.kem_derive(sk, pk)
 
-            message = np.array([4, 5, 6], dtype=np.uint8)
-            message_obj = tensor.constant(message)
+        message = np.array([4, 5, 6], dtype=np.uint8)
+        message_obj = tensor.constant(message)
 
-            # Explicitly pass algo='aes-gcm'
-            ciphertext = crypto.sym_encrypt(key, message_obj, algo="aes-gcm")
-            plaintext = crypto.sym_decrypt(
-                key, ciphertext, elt.TensorType(elt.u8, (3,)), algo="aes-gcm"
-            )
-            np.testing.assert_array_equal(_unwrap(plaintext.runtime_obj), message)
+        # Explicitly pass algo='aes-gcm'
+        ciphertext = crypto.sym_encrypt(self.key, message_obj, algo="aes-gcm")
+        plaintext = crypto.sym_decrypt(
+            self.key, ciphertext, elt.TensorType(elt.u8, (3,)), algo="aes-gcm"
+        )
+        np.testing.assert_array_equal(_unwrap(plaintext.runtime_obj), message)
 
     def test_unsupported_algo_encrypt_fails(self):
         """Test that unsupported algo raises ValueError during encryption."""
-        with Interpreter():
-            sk, pk = crypto.kem_keygen("x25519")
-            key = crypto.kem_derive(sk, pk)
 
-            message = np.array([7, 8, 9], dtype=np.uint8)
-            message_obj = tensor.constant(message)
+        message = np.array([7, 8, 9], dtype=np.uint8)
+        message_obj = tensor.constant(message)
 
-            # Try unsupported algorithm
-            with pytest.raises(ValueError, match="Unsupported encryption algorithm"):
-                crypto.sym_encrypt(key, message_obj, algo="aes-ctr")
+        # Try unsupported algorithm
+        with pytest.raises(ValueError, match="Unsupported encryption algorithm"):
+            crypto.sym_encrypt(self.key, message_obj, algo="aes-ctr")
 
     def test_unsupported_algo_decrypt_fails(self):
         """Test that unsupported algo raises ValueError during decryption."""
-        with Interpreter():
-            sk, pk = crypto.kem_keygen("x25519")
-            key = crypto.kem_derive(sk, pk)
 
-            message = np.array([10, 11, 12], dtype=np.uint8)
-            message_obj = tensor.constant(message)
+        message = np.array([10, 11, 12], dtype=np.uint8)
+        message_obj = tensor.constant(message)
 
-            # Encrypt with default algo
-            ciphertext = crypto.sym_encrypt(key, message_obj)
+        # Encrypt with default algo
+        ciphertext = crypto.sym_encrypt(self.key, message_obj)
 
-            # Try to decrypt with unsupported algorithm
-            with pytest.raises(ValueError, match="Unsupported decryption algorithm"):
-                crypto.sym_decrypt(
-                    key, ciphertext, elt.TensorType(elt.u8, (3,)), algo="sm4-gcm"
-                )
+        # Try to decrypt with unsupported algorithm
+        with pytest.raises(ValueError, match="Unsupported decryption algorithm"):
+            crypto.sym_decrypt(
+                self.key, ciphertext, elt.TensorType(elt.u8, (3,)), algo="sm4-gcm"
+            )

@@ -585,6 +585,87 @@ def kem_derive_impl(
         return SymmetricKeyValue(suite=suite, key_bytes=secret)
 
 
+@crypto.hkdf_p.def_impl
+def hkdf_impl(
+    interpreter: Interpreter,
+    op: Operation,
+    secret: SymmetricKeyValue | TensorValue,
+) -> SymmetricKeyValue:
+    """HKDF key derivation implementation using SHA-256.
+
+    Implements RFC 5869 HKDF with HMAC-SHA256. This is the NIST SP 800-56C
+    compliant way to derive symmetric keys from ECDH shared secrets.
+
+    Current implementation supports only SHA-256. Future versions will add
+    SHA-512, SHA3-256, and BLAKE2b support.
+
+    Args:
+        interpreter: Runtime interpreter context
+        op: Operation node containing attributes (info, hash_algo)
+        secret: Input key material (IKM) as SymmetricKeyValue or TensorValue
+
+    Returns:
+        SymmetricKeyValue with suite="hkdf-{hash_algo}" and 32-byte key_bytes
+
+    Raises:
+        TypeError: If secret is not SymmetricKeyValue or TensorValue
+        ValueError: If info parameter is empty (required for domain separation)
+        NotImplementedError: If hash_algo is not "sha256"
+    """
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    # Extract operation attributes
+    info_str = op.attrs.get("info", "")
+    hash_algo = op.attrs.get("hash_algo", "sha256")
+
+    # Validate info parameter (REQUIRED for domain separation per NIST)
+    if not info_str:
+        raise ValueError(
+            "HKDF requires non-empty 'info' parameter for domain separation. "
+            "The info string binds the derived key to a specific protocol/context. "
+            "Recommended format: 'namespace/component/purpose/version'"
+        )
+
+    info_bytes = info_str.encode("utf-8")
+
+    # Extract input key material (IKM) bytes
+    if isinstance(secret, SymmetricKeyValue):
+        ikm = secret.key_bytes
+    elif isinstance(secret, TensorValue):
+        ikm = secret.unwrap().tobytes()
+    else:
+        raise TypeError(
+            f"hkdf secret must be SymmetricKeyValue or TensorValue, "
+            f"got {type(secret).__name__}"
+        )
+
+    # Validate hash algorithm (currently only SHA-256 implemented)
+    if hash_algo != "sha256":
+        raise NotImplementedError(
+            f"HKDF with hash algorithm '{hash_algo}' is not yet implemented. "
+            f"Currently only 'sha256' is supported. "
+            f"Planned future support: sha512, sha3256, blake2b"
+        )
+
+    # Perform HKDF derivation using cryptography library
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,  # Output length in bytes (AES-256 key = 32 bytes)
+        salt=None,  # No salt: ECDH output is already uniformly random (per NIST)
+        info=info_bytes,  # Context-specific binding
+        backend=default_backend(),
+    )
+
+    derived_key = hkdf.derive(ikm)
+
+    # Return SymmetricKeyValue with composite suite name
+    # Format: "hkdf-{hash_algo}" to indicate derivation method and hash function
+    suite = f"hkdf-{hash_algo}"
+    return SymmetricKeyValue(suite=suite, key_bytes=derived_key)
+
+
 @crypto.random_bytes_p.def_impl
 def random_bytes_impl(interpreter: Interpreter, op: Operation) -> TensorValue:
     """Generate random bytes using os.urandom."""

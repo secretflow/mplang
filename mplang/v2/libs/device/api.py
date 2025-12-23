@@ -61,6 +61,9 @@ DEVICE_ATTR_NAME = "__device__"
 # Default KEM suite for TEE session establishment
 _TEE_KEM_SUITE: str = "x25519"
 
+# HKDF info string for TEE session key derivation (domain separation)
+_TEE_HKDF_INFO: str = "mplang/device/tee/v2"
+
 # Global cache for TEE sessions (keyed by (frm_dev_id, to_dev_id))
 # Each entry is (context_id, sess_frm, sess_tee) where context_id ensures
 # sessions are not reused across different trace/interp contexts.
@@ -412,16 +415,24 @@ def _ensure_tee_session(
     """Ensure a TEE session (sess_frm at sender, sess_tee at TEE) exists.
 
     Performs remote attestation and establishes an encrypted channel between
-    a PPU and a TEE device. The session keys are cached to avoid repeated
-    handshakes within the same execution context.
+    a PPU and a TEE device using NIST SP 800-56C compliant key derivation.
+    Session keys are cached within the same execution context to avoid
+    repeated handshakes.
 
-    The protocol:
+    Protocol (ECDH + Remote Attestation + HKDF):
     1. TEE generates keypair (sk, pk) and creates attestation quote binding pk
-    2. Quote is sent to the sender (PPU) for verification
+    2. Quote is sent to sender (PPU) for verification
     3. Sender verifies quote and extracts TEE's attested public key
-    4. Sender generates its own ephemeral keypair and sends pk to TEE
-    5. Both sides derive shared secret using ECDH (X25519)
-    6. The shared secret is used directly as the session key for AES-GCM
+    4. Sender generates ephemeral keypair and sends pk to TEE
+    5. Both sides derive ECDH shared secret using X25519
+    6. Both sides derive session keys from shared secret using HKDF-SHA256
+       with protocol-specific info string for domain separation
+
+    Security properties:
+    - Remote attestation: TEE identity is cryptographically verified
+    - Ephemeral keys: Perfect forward secrecy (keys not reused across sessions)
+    - HKDF derivation: NIST SP 800-56C compliant (shared secret not used directly)
+    - Domain separation: Info parameter binds keys to TEE protocol v2
 
     Args:
         frm_dev_id: Source device ID (PPU)
@@ -462,10 +473,18 @@ def _ensure_tee_session(
     v_sk, v_pk = simp.pcall_static((frm_rank,), crypto.kem_keygen, _TEE_KEM_SUITE)
     v_pk_at_tee = simp.shuffle_static(v_pk, {tee_rank: frm_rank})
 
-    # 5. Both sides derive shared secret (symmetric key) via ECDH
-    # The shared secret from X25519 ECDH is suitable for direct use as AES key
-    sess_frm = simp.pcall_static((frm_rank,), crypto.kem_derive, v_sk, tee_pk_at_sender)
-    sess_tee = simp.pcall_static((tee_rank,), crypto.kem_derive, tee_sk, v_pk_at_tee)
+    # 5. Both sides derive ECDH shared secret using X25519
+    # Note: kem_derive signature is (private_key, public_key) - suite is in key type
+    shared_frm = simp.pcall_static(
+        (frm_rank,), crypto.kem_derive, v_sk, tee_pk_at_sender
+    )
+    shared_tee = simp.pcall_static((tee_rank,), crypto.kem_derive, tee_sk, v_pk_at_tee)
+
+    # 6. Derive session keys using HKDF-SHA256 for domain separation
+    # Per NIST SP 800-56C: "shared secret SHALL NOT be used directly as a key"
+    # HKDF provides: uniform distribution + protocol-specific context binding
+    sess_frm = simp.pcall_static((frm_rank,), crypto.hkdf, shared_frm, _TEE_HKDF_INFO)
+    sess_tee = simp.pcall_static((tee_rank,), crypto.hkdf, shared_tee, _TEE_HKDF_INFO)
 
     # Cache the session
     _tee_session_cache[key] = (current_context_id, sess_frm, sess_tee)

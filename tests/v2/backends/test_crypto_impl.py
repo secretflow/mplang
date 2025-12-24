@@ -303,11 +303,77 @@ class TestHKDF:
             secret_tensor = tensor.constant(np.frombuffer(secret_bytes, dtype=np.uint8))
 
             # Derive key from raw bytes
-            derived_key = crypto.hkdf(secret_tensor, "test/raw-bytes")
+            derived_key = crypto.hkdf(secret_tensor, info="test/raw-bytes")
 
             assert isinstance(derived_key.runtime_obj, SymmetricKeyValue)
             assert len(derived_key.runtime_obj.key_bytes) == 32
             assert derived_key.runtime_obj.suite == "hkdf-sha256"
+
+    def test_hkdf_empty_info_runtime_error(self):
+        """Test that empty info raises ValueError at runtime (if it bypasses trace-time check)."""
+        import pytest
+
+        with Interpreter():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+
+            # This should be caught at trace time, but test runtime as well
+            with pytest.raises(ValueError, match="non-empty 'info' parameter"):
+                crypto.hkdf(shared_secret, info="")
+
+    def test_hkdf_unsupported_hash_algo(self):
+        """Test that unsupported hash algorithms raise NotImplementedError."""
+        import pytest
+
+        with Interpreter():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+
+            with pytest.raises(
+                NotImplementedError,
+                match="hash algorithm 'sha512' is not yet implemented",
+            ):
+                crypto.hkdf(shared_secret, info="test/info", hash_algo="sha512")
+
+    def test_hkdf_hash_algo_normalization(self):
+        """Test that hash_algo is normalized correctly (lowercase, no hyphens)."""
+        with Interpreter():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+
+            # All these should normalize to "sha256" and produce same result
+            key1 = crypto.hkdf(shared_secret, info="test", hash_algo="SHA-256")
+            key2 = crypto.hkdf(shared_secret, info="test", hash_algo="sha_256")
+            key3 = crypto.hkdf(shared_secret, info="test", hash_algo="Sha256")
+
+            # All should have same suite after normalization
+            assert key1.runtime_obj.suite == "hkdf-sha256"
+            assert key2.runtime_obj.suite == "hkdf-sha256"
+            assert key3.runtime_obj.suite == "hkdf-sha256"
+
+            # Keys should be identical (deterministic with same inputs)
+            assert key1.runtime_obj.key_bytes == key2.runtime_obj.key_bytes
+            assert key2.runtime_obj.key_bytes == key3.runtime_obj.key_bytes
+
+    def test_hkdf_keyword_only_params(self):
+        """Test that info and hash_algo are properly passed as keyword arguments."""
+        with Interpreter():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+
+            # Verify keyword-only parameter passing works
+            key = crypto.hkdf(shared_secret, info="mplang/device/tee/v2")
+            assert isinstance(key.runtime_obj, SymmetricKeyValue)
+            assert key.runtime_obj.suite == "hkdf-sha256"
+
+            # Verify with explicit hash_algo
+            key2 = crypto.hkdf(
+                shared_secret, info="mplang/device/tee/v2", hash_algo="sha256"
+            )
+            assert key2.runtime_obj.suite == "hkdf-sha256"
+
+            # Keys with same parameters should match
+            assert key.runtime_obj.key_bytes == key2.runtime_obj.key_bytes
 
     def test_hkdf_with_sym_encrypt(self):
         """Test HKDF-derived key works with symmetric encryption (roundtrip)."""
@@ -341,14 +407,14 @@ class TestHKDF:
                 crypto.hkdf(shared_secret, "")
 
     def test_hkdf_unsupported_hash_error(self):
-        """Test that unsupported hash algorithm raises ValueError at abstract eval time."""
+        """Test that unsupported hash algorithm raises NotImplementedError at runtime."""
         with Interpreter():
             sk, pk = crypto.kem_keygen("x25519")
             shared_secret = crypto.kem_derive(sk, pk)
 
-            # Unsupported hash algorithm is caught at abstract eval (type checking) time
-            with pytest.raises(ValueError, match="Unsupported hash algorithm"):
-                crypto.hkdf(shared_secret, "test/info", hash_algo="sha512")
+            # Unsupported hash algorithm is caught at runtime (execution time)
+            with pytest.raises(NotImplementedError, match="not yet implemented"):
+                crypto.hkdf(shared_secret, info="test/info", hash_algo="sha512")
 
     def test_hkdf_tee_session_scenario(self):
         """Test complete TEE session establishment scenario (ECDH + HKDF)."""

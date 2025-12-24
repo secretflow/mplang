@@ -312,36 +312,34 @@ def _kem_derive_ae(
 
 @hkdf_p.def_abstract_eval
 def _hkdf_ae(
-    secret: elt.BaseType, info: str, *, hash_algo: str = "sha256"
+    secret: elt.BaseType, *, info: str, hash_algo: str = "sha256"
 ) -> SymmetricKeyType:
     """Abstract evaluation for HKDF key derivation.
 
     Args:
         secret: Input key material (SymmetricKeyType from kem_derive or TensorType[u8])
-        info: Context string for domain separation (required, non-empty)
-        hash_algo: Hash algorithm in lowercase without hyphens (e.g., "sha256")
+        info: Context string for domain separation (required, non-empty, keyword-only)
+        hash_algo: Hash algorithm in lowercase without hyphens (e.g., "sha256", keyword-only)
 
     Returns:
         SymmetricKeyType with suite="hkdf-{hash_algo}"
 
     Raises:
-        TypeError: If hash_algo is not a string
-        ValueError: If hash_algo is not in supported list
+        TypeError: If info or hash_algo is not a string
+        ValueError: If info is empty (required for domain separation per NIST)
     """
-    # Validate hash_algo
+    # Validate info and hash_algo at trace time
+    if not isinstance(info, str) or not info:
+        raise ValueError(
+            "HKDF requires non-empty 'info' parameter for domain separation. "
+            "The info string binds the derived key to a specific protocol/context. "
+            "Recommended format: 'namespace/component/purpose/version'"
+        )
     if not isinstance(hash_algo, str) or not hash_algo:
         raise TypeError("hash_algo must be a non-empty string")
 
     # Normalize: lowercase, no hyphens
     hash_algo_normalized = hash_algo.lower().replace("-", "").replace("_", "")
-
-    # Check against supported algorithms (extensible list)
-    supported = ["sha256"]  # Future: sha512, sha3256, blake2b
-    if hash_algo_normalized not in supported:
-        raise ValueError(
-            f"Unsupported hash algorithm: {hash_algo!r}. "
-            f"Currently supported: {', '.join(supported)}"
-        )
 
     # Return SymmetricKeyType with composite suite indicating derivation method
     return SymmetricKeyType(suite=f"hkdf-{hash_algo_normalized}")

@@ -482,8 +482,11 @@ def hkdf(secret: el.Object, info: str, *, hash_algo: str = "sha256") -> el.Objec
         - Deterministic: Same (secret, info, hash_algo) always produces same key
 
     Raises:
-        ValueError: At execution time if info is empty
-        NotImplementedError: At execution time if hash_algo is not "sha256"
+        ValueError:
+            - At abstract evaluation time if hash_algo is unsupported.
+            - At execution time if info is empty.
+        NotImplementedError:
+            - At execution time if hash_algo is not "sha256".
 
     Examples:
         >>> # Standard TEE session establishment

@@ -142,3 +142,73 @@ class TestKEMTypeInference:
 
         assert isinstance(output.type, crypto.SymmetricKeyType)
         assert output.type.suite == "x25519"
+
+    def test_hkdf_type_inference(self):
+        """Test hkdf returns SymmetricKeyType with correct suite."""
+        tracer = el.Tracer()
+
+        def fn():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+            derived_key = crypto.hkdf(shared_secret, info="test/context/v1")
+            return derived_key
+
+        traced = tracer.run(fn)
+        output = traced.graph.outputs[0]
+
+        assert isinstance(output.type, crypto.SymmetricKeyType)
+        assert output.type.suite == "hkdf-sha256"  # Default hash algo
+
+    def test_hkdf_type_inference_custom_hash(self):
+        """Test hkdf with custom hash algorithm."""
+        tracer = el.Tracer()
+
+        def fn():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+            # Note: sha512 not yet implemented in backend, but type inference should work
+            derived_key = crypto.hkdf(
+                shared_secret, info="test/context/v1", hash_algo="sha512"
+            )
+            return derived_key
+
+        traced = tracer.run(fn)
+        output = traced.graph.outputs[0]
+
+        assert isinstance(output.type, crypto.SymmetricKeyType)
+        assert output.type.suite == "hkdf-sha512"
+
+    def test_hkdf_empty_info_raises(self):
+        """Test that empty info parameter raises ValueError at trace time."""
+        import pytest
+
+        tracer = el.Tracer()
+
+        def fn():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+            # Empty info should fail at trace time
+            derived_key = crypto.hkdf(shared_secret, info="")
+            return derived_key
+
+        with pytest.raises(ValueError, match="non-empty 'info' parameter"):
+            tracer.run(fn)
+
+    def test_hkdf_info_normalization(self):
+        """Test hash_algo normalization (lowercase, no hyphens)."""
+        tracer = el.Tracer()
+
+        def fn():
+            sk, pk = crypto.kem_keygen("x25519")
+            shared_secret = crypto.kem_derive(sk, pk)
+            # Test various hash_algo formats - all should normalize to "sha256"
+            key1 = crypto.hkdf(shared_secret, info="test1", hash_algo="SHA-256")
+            key2 = crypto.hkdf(shared_secret, info="test2", hash_algo="sha_256")
+            key3 = crypto.hkdf(shared_secret, info="test3", hash_algo="Sha256")
+            return key1, key2, key3
+
+        traced = tracer.run(fn)
+        outputs = traced.graph.outputs
+
+        assert all(isinstance(o.type, crypto.SymmetricKeyType) for o in outputs)
+        assert all(o.type.suite == "hkdf-sha256" for o in outputs)

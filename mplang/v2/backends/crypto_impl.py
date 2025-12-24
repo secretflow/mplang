@@ -357,8 +357,8 @@ def sym_encrypt_impl(
     numpy arrays, scalars, etc.). This supports both high-level API usage
     (with TensorValue) and elementwise operations (with raw scalars).
     """
-    # Read and validate algo parameter
-    algo = op.attrs.get("algo", "aes-gcm")
+    # Read and validate algo parameter (must be provided by frontend)
+    algo = op.attrs["algo"]
     _validate_algo(algo, "encryption")
 
     # Get raw key bytes - strict type checking
@@ -401,8 +401,8 @@ def sym_decrypt_impl(
     on what was encrypted - could be a Value subclass (TensorValue, BytesValue),
     a numpy array, or a scalar (int, float, etc.) when used in elementwise ops.
     """
-    # Read and validate algo parameter
-    algo = op.attrs.get("algo", "aes-gcm")
+    # Read and validate algo parameter (must be provided by frontend)
+    algo = op.attrs["algo"]
     _validate_algo(algo, "decryption")
 
     # Get raw key bytes - strict type checking

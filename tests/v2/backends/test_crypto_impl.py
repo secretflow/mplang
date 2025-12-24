@@ -174,6 +174,44 @@ class TestSymmetricEncryption:
             # Ciphertexts should be different due to random nonce
             assert _unwrap(ct1.runtime_obj) != _unwrap(ct2.runtime_obj)
 
+    def test_encrypt_decrypt_keyword_only_params(self):
+        """Test that algo parameter is properly passed as keyword-only."""
+        with Interpreter():
+            sk, pk = crypto.kem_keygen("x25519")
+            key = crypto.kem_derive(sk, pk)
+
+            message = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
+            message_obj = tensor.constant(message)
+
+            # Test keyword-only algo parameter in encrypt
+            ciphertext = crypto.sym_encrypt(key, message_obj, algo="aes-gcm")
+            assert isinstance(ciphertext.runtime_obj, BytesValue)
+
+            # Test keyword-only parameters in decrypt (target_type and algo)
+            plaintext = crypto.sym_decrypt(
+                key,
+                ciphertext,
+                target_type=elt.TensorType(elt.u8, (5,)),
+                algo="aes-gcm",
+            )
+            np.testing.assert_array_equal(_unwrap(plaintext.runtime_obj), message)
+
+    def test_encrypt_decrypt_default_algo(self):
+        """Test that default algo parameter works correctly."""
+        with Interpreter():
+            sk, pk = crypto.kem_keygen("x25519")
+            key = crypto.kem_derive(sk, pk)
+
+            message = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
+            message_obj = tensor.constant(message)
+
+            # Should work without explicit algo (defaults to "aes-gcm")
+            ciphertext = crypto.sym_encrypt(key, message_obj)
+            plaintext = crypto.sym_decrypt(
+                key, ciphertext, target_type=elt.TensorType(elt.u8, (5,))
+            )
+            np.testing.assert_array_equal(_unwrap(plaintext.runtime_obj), message)
+
 
 class TestDigitalEnvelope:
     """Test complete digital envelope workflow."""

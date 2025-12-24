@@ -276,8 +276,18 @@ def _hash_batch_ae(data: elt.BaseType) -> elt.TensorType:
 
 @sym_encrypt_p.def_abstract_eval
 def _sym_encrypt_ae(
-    key: elt.BaseType, plaintext: elt.BaseType, algo: str = "aes-gcm"
+    key: elt.BaseType, plaintext: elt.BaseType, *, algo: str = "aes-gcm"
 ) -> elt.TensorType:
+    """Abstract evaluation for symmetric encryption.
+
+    Args:
+        key: Symmetric encryption key
+        plaintext: Data to encrypt
+        algo: Encryption algorithm (keyword-only, validated at runtime)
+
+    Returns:
+        Ciphertext as dynamic-length uint8 tensor
+    """
     # Dynamic shape for ciphertext
     # algo validation is done at backend impl, not here
     return elt.TensorType(elt.u8, (-1,))
@@ -287,9 +297,21 @@ def _sym_encrypt_ae(
 def _sym_decrypt_ae(
     key: elt.BaseType,
     ciphertext: elt.BaseType,
+    *,
     target_type: elt.BaseType,
     algo: str = "aes-gcm",
 ) -> elt.BaseType:
+    """Abstract evaluation for symmetric decryption.
+
+    Args:
+        key: Symmetric decryption key
+        ciphertext: Encrypted data
+        target_type: Expected type of decrypted plaintext (keyword-only)
+        algo: Decryption algorithm (keyword-only, validated at runtime)
+
+    Returns:
+        Decrypted plaintext with type matching target_type
+    """
     # algo validation is done at backend impl, not here
     return target_type
 

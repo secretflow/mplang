@@ -612,7 +612,6 @@ def hkdf_impl(
         ValueError: If info parameter is empty (required for domain separation)
         NotImplementedError: If hash_algo is not "sha256"
     """
-    from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -657,7 +656,6 @@ def hkdf_impl(
         length=32,  # Output length in bytes (AES-256 key = 32 bytes)
         salt=None,  # No salt: ECDH output is already uniformly random (per NIST)
         info=info_bytes,  # Context-specific binding
-        backend=default_backend(),
     )
 
     derived_key = hkdf.derive(ikm)

@@ -271,6 +271,27 @@ def bytes_to_point_impl(
 
 # --- Sym / Hash Impl ---
 
+# Supported symmetric encryption algorithms
+_SUPPORTED_ALGOS = {"aes-gcm"}
+
+
+def _validate_algo(algo: str, operation: str) -> None:
+    """Validate that the algorithm is supported.
+
+    Args:
+        algo: Algorithm name to validate
+        operation: Operation name for error message (e.g., "encryption", "decryption")
+
+    Raises:
+        ValueError: If algo is not supported
+    """
+    if algo not in _SUPPORTED_ALGOS:
+        supported = ", ".join(sorted(_SUPPORTED_ALGOS))
+        raise ValueError(
+            f"Unsupported {operation} algorithm: {algo!r}. "
+            f"Supported algorithms: {supported}"
+        )
+
 
 @crypto.hash_p.def_impl
 def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
@@ -336,6 +357,10 @@ def sym_encrypt_impl(
     numpy arrays, scalars, etc.). This supports both high-level API usage
     (with TensorValue) and elementwise operations (with raw scalars).
     """
+    # Read and validate algo parameter (must be provided by frontend)
+    algo = op.attrs["algo"]
+    _validate_algo(algo, "encryption")
+
     # Get raw key bytes - strict type checking
     if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes
@@ -376,6 +401,10 @@ def sym_decrypt_impl(
     on what was encrypted - could be a Value subclass (TensorValue, BytesValue),
     a numpy array, or a scalar (int, float, etc.) when used in elementwise ops.
     """
+    # Read and validate algo parameter (must be provided by frontend)
+    algo = op.attrs["algo"]
+    _validate_algo(algo, "decryption")
+
     # Get raw key bytes - strict type checking
     if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes

@@ -186,10 +186,10 @@ def constant_impl(interpreter: Interpreter, op: Operation) -> TableValue:
     # If data was a DataFrame, it might have been stored as is if the IR supports it.
     # If data was a dict, it's fine.
 
-    if isinstance(data, pd.DataFrame):
-        return _wrap(pa.Table.from_pandas(data))
-
-    return _wrap(pa.Table.from_pydict(data))
+    if isinstance(data, pa.Table):
+        return _wrap(data)
+    else:
+        return _wrap(pa.table(data))
 
 
 def _infer_format(path: str, format_hint: str) -> str:

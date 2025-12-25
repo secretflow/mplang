@@ -236,9 +236,6 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 
     normalized_fn, variables = normalize_fn(fn, args, kwargs, _is_trace_object)
 
-    if not variables:
-        raise TypeError("tensor.run_jax requires at least one Tensor argument")
-
     # Convert TraceObjects to JAX placeholders for compilation
     placeholders: list[ShapeDtypeStruct] = []
     for var in variables:

@@ -490,6 +490,7 @@ def comm_send(
 
     # For raw bytes (SPU channel), pass through as dict with flag
     # For normal data, pass the base64 string directly
+    data_payload: str | dict[str, object]
     if request.is_raw_bytes:
         data_payload = {"data": request.data, "is_raw_bytes": True}
     else:

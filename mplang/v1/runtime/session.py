@@ -165,9 +165,13 @@ class Session:
         if self.is_spu_party:
             # Use Channels mode to reuse existing HttpCommunicator
             # This eliminates the need for separate BRPC ports (SPU_PORT_OFFSET)
+            from mplang.v1.core.comm import CommunicatorBase
+
+            # Type assertion: ICommunicator is actually CommunicatorBase
+            comm = cast(CommunicatorBase, self.communicator)
             link_ctx = LinkCommunicator(
                 rank=self.rank,
-                comm=self.communicator,
+                comm=comm,
                 spu_mask=self.spu_mask,
             )
 

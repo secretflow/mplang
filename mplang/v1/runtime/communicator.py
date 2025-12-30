@@ -58,7 +58,7 @@ class HttpCommunicator(CommunicatorBase):
 
     def send(self, to: int, key: str, data: Any) -> None:
         """Sends data to a peer party by PUTing to its /comm/{key}/from/{from_rank} endpoint.
-        
+
         Supports two modes:
         - SPU channel (key starts with "spu:"): sends raw bytes directly
         - Normal channel: wraps data in Value envelope
@@ -98,7 +98,7 @@ class HttpCommunicator(CommunicatorBase):
 
     def recv(self, frm: int, key: str) -> Any:
         """Wait until the key is set, returns the value.
-        
+
         Supports two modes:
         - SPU channel (key starts with "spu:"): returns raw bytes
         - Normal channel: returns deserialized Value
@@ -107,7 +107,7 @@ class HttpCommunicator(CommunicatorBase):
             f"Waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
         received_data = super().recv(frm, key)
-        
+
         # Check if this is raw bytes (SPU channel)
         if isinstance(received_data, dict) and received_data.get("is_raw_bytes"):
             data_bytes = base64.b64decode(received_data["data"])
@@ -115,7 +115,7 @@ class HttpCommunicator(CommunicatorBase):
                 f"Received raw bytes: from_rank={frm}, to_rank={self._rank}, key={key}, size={len(data_bytes)}"
             )
             return data_bytes
-        
+
         # Normal mode: deserialize Value envelope
         data_b64 = received_data if isinstance(received_data, str) else received_data.get("data")
         data_bytes = base64.b64decode(data_b64)

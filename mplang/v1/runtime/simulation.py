@@ -131,13 +131,13 @@ class Simulator(InterpContext):
         # Prepare link contexts for SPU parties (store for evaluator-time initialization)
         # Use Channels mode to reuse ThreadCommunicator instead of separate mem_link
         self._spu_link_ctxs: list[LinkCommunicator | None] = [None] * world_size
-        
+
         # Create LinkCommunicators in parallel to avoid deadlock
         # (create_with_channels does handshake via TestSend/TestRecv)
         import threading
-        
+
         exceptions: dict[int, Exception] = {}
-        
+
         def create_link(g_rank: int) -> None:
             try:
                 self._spu_link_ctxs[g_rank] = LinkCommunicator(
@@ -147,7 +147,7 @@ class Simulator(InterpContext):
                 )
             except Exception as e:
                 exceptions[g_rank] = e
-        
+
         threads = [
             threading.Thread(target=create_link, args=(g_rank,))
             for g_rank in spu_mask
@@ -156,7 +156,7 @@ class Simulator(InterpContext):
             t.start()
         for t in threads:
             t.join()
-        
+
         # Check for exceptions during link creation
         if exceptions:
             first_exc = next(iter(exceptions.values()))

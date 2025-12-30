@@ -494,7 +494,7 @@ def comm_send(
         data_payload = {"data": request.data, "is_raw_bytes": True}
     else:
         data_payload = request.data
-    
+
     # Use the proper onSent mechanism from CommunicatorBase
     sess.communicator.onSent(from_rank, key, data_payload)
     return {"status": "ok"}

@@ -25,7 +25,6 @@ Process-wide registries (sessions, global symbols) live in the server layer
 
 from __future__ import annotations
 
-import logging
 import time
 from dataclasses import dataclass, field
 from functools import cached_property

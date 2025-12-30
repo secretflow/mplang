@@ -75,8 +75,8 @@ class LinkCommunicator:
             # libspu expects world_size channels, with self channel being None
             channels = []
             rel_rank = spu_mask.global_to_relative_rank(rank)
-            
-            for idx, peer_rank in enumerate(spu_mask):
+
+            for _, peer_rank in enumerate(spu_mask):
                 if peer_rank == rank:
                     # For self, use None (won't be accessed by SPU)
                     channel = None
@@ -87,7 +87,7 @@ class LinkCommunicator:
             # Create link context with custom channels
             desc = libspu.link.Desc()  # type: ignore
             desc.recv_timeout_ms = 100 * 1000  # 100 seconds
-            
+
             # Add party info to desc (required for world_size inference)
             for idx, peer_rank in enumerate(spu_mask):
                 desc.add_party(f"P{idx}", f"dummy_{peer_rank}")
@@ -109,7 +109,9 @@ class LinkCommunicator:
 
             desc = libspu.link.Desc()  # type: ignore
             desc.recv_timeout_ms = 100 * 1000  # 100 seconds
-            desc.http_max_payload_size = 32 * 1024 * 1024  # Default set link payload to 32M
+            desc.http_max_payload_size = (
+                32 * 1024 * 1024
+            )  # Default set link payload to 32M
             for rank_idx, addr in enumerate(addrs):
                 desc.add_party(f"P{rank_idx}", addr)
 

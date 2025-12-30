@@ -17,9 +17,9 @@
 import pytest
 
 from mplang.v1.core.mask import Mask
+from mplang.v1.runtime.channel import BaseChannel
 from mplang.v1.runtime.link_comm import LinkCommunicator
 from mplang.v1.runtime.simulation import ThreadCommunicator
-from mplang.v1.runtime.channel import BaseChannel
 
 
 class TestBaseChannel:
@@ -73,10 +73,7 @@ class TestBaseChannel:
         ch1 = BaseChannel(comms[1], local_rank=1, peer_rank=0)
 
         # Send multiple messages with different tags
-        messages = [
-            (f"tag{i}", f"message_{i}".encode())
-            for i in range(5)
-        ]
+        messages = [(f"tag{i}", f"message_{i}".encode()) for i in range(5)]
 
         for tag, data in messages:
             ch0.send(tag, data)
@@ -154,7 +151,6 @@ class TestBaseChannel:
         for c in comms:
             c.set_peers(comms)
 
-        ch0 = BaseChannel(comms[0], local_rank=0, peer_rank=1)
         ch1 = BaseChannel(comms[1], local_rank=1, peer_rank=0)
 
         # Send non-bytes data directly via comm (bypass channel)
@@ -246,7 +242,7 @@ class TestLinkCommunicatorChannelsMode:
     def test_legacy_brpc_mode_still_works(self):
         """Ensure legacy BRPC mode still works."""
         addrs = ["127.0.0.1:8200", "127.0.0.1:8201"]
-        
+
         # Should not raise (though BRPC connection may fail in test env)
         try:
             link = LinkCommunicator(rank=0, addrs=addrs, mem_link=False)
@@ -259,7 +255,7 @@ class TestLinkCommunicatorChannelsMode:
         """Ensure legacy Mem mode still works."""
         addrs = ["P0", "P1", "P2"]
         link = LinkCommunicator(rank=0, addrs=addrs, mem_link=True)
-        
+
         assert link.world_size == 3
         assert link.rank == 0
 
@@ -271,26 +267,26 @@ class TestIntegration:
         """Simulate 3-party SPU communication using Channels mode."""
         world_size = 3
         spu_mask = Mask.from_ranks([0, 1, 2])
-        
+
         # Setup communicators
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
             c.set_peers(comms)
-        
+
         # Setup link communicators
         links = [
             LinkCommunicator(rank=i, comm=comms[i], spu_mask=spu_mask)
             for i in range(world_size)
         ]
-        
+
         # Verify link setup
         assert all(link.world_size == 3 for link in links)
         assert all(link.rank == i for i, link in enumerate(links))
-        
+
         # Test actual link context usage (basic barrier-like synchronization)
         # Note: We can't fully test libspu.link.Context operations without SPU runtime,
         # but we can verify the link was created successfully
         for link in links:
             assert link.get_lctx() is not None
-            assert hasattr(link.get_lctx(), 'rank')
-            assert hasattr(link.get_lctx(), 'world_size')
+            assert hasattr(link.get_lctx(), "rank")
+            assert hasattr(link.get_lctx(), "world_size")

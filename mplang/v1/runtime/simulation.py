@@ -149,8 +149,7 @@ class Simulator(InterpContext):
                 exceptions[g_rank] = e
 
         threads = [
-            threading.Thread(target=create_link, args=(g_rank,))
-            for g_rank in spu_mask
+            threading.Thread(target=create_link, args=(g_rank,)) for g_rank in spu_mask
         ]
         for t in threads:
             t.start()

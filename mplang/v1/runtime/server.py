@@ -219,6 +219,7 @@ class SymbolResponse(BaseModel):
 
 class CommSendRequest(BaseModel):
     data: str  # Base64 encoded binary data
+    is_raw_bytes: bool = False  # True for SPU channel raw bytes
 
 
 # Response Models for enhanced status
@@ -487,6 +488,13 @@ def comm_send(
     # The receiver rank should be the rank of the server hosting this endpoint
     # We don't need to validate to_rank since the request is coming to this server
 
+    # For raw bytes (SPU channel), pass through as dict with flag
+    # For normal data, pass the base64 string directly
+    if request.is_raw_bytes:
+        data_payload = {"data": request.data, "is_raw_bytes": True}
+    else:
+        data_payload = request.data
+    
     # Use the proper onSent mechanism from CommunicatorBase
-    sess.communicator.onSent(from_rank, key, request.data)
+    sess.communicator.onSent(from_rank, key, data_payload)
     return {"status": "ok"}

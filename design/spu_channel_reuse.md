@@ -1,8 +1,8 @@
 # SPU Channel Reuse Design
 
-**Status**: Phase 1 & 2 Complete ✅  
+**Status**: Phase 1-3 Complete ✅ (Production Ready for HTTP Runtime)  
 **Author**: zhsu  
-**Date**: 2025-12-30 (Updated)  
+**Date**: 2025-12-30 (Completed)  
 **Related**: [architecture_v2.md](architecture_v2.md)
 
 ## Summary
@@ -93,7 +93,22 @@ class IChannel:
 2. **握手死锁**：`create_with_channels` 内部调用所有 channel 的 `TestSend`/`TestRecv` 进行握手，必须并行创建所有 LinkCommunicator
 3. **Channels 列表**：必须包含 `world_size` 个元素，自己的位置为 `None`
 
-### ✅ Phase 2: Simulator Integration (Completed 2025-12-30)
+### ✅ Phase 3: Session/Driver Integration (Completed 2025-12-30)
+
+- **Session.ensure_spu_env 重构** (`mplang/v1/runtime/session.py`): 使用 Channels 模式，消除 SPU_PORT_OFFSET
+- **HttpCommunicator 增强** (`mplang/v1/runtime/communicator.py`): 支持 SPU 原始 bytes 传输
+- **Server 端适配** (`mplang/v1/runtime/server.py`): 处理 is_raw_bytes 标志
+- **分布式测试通过** (`tests/v1/integration/test_http_e2e.py`): 3-party HTTP 集群正常工作
+
+**关键实现**：
+
+1. **SPU 通道识别**：通过 tag 前缀 `"spu:"` 区分 SPU 流量和常规流量
+2. **数据格式兼容**：
+   - SPU channel: 传输原始 bytes ({"data": base64, "is_raw_bytes": True})
+   - Normal channel: 传输 Value 包装对象 ({"data": base64} 或直接 base64 字符串)
+3. **分布式握手**：HttpCommunicator 的异步特性自然支持跨节点的 TestSend/TestRecv 握手
+
+### 🚧 Phase 4-5: Enhancement & Migration (Future Work)
 
 - **Simulator 修改** (`mplang/v1/runtime/simulation.py`): 使用 Channels 模式替代 `mem_link=True`
 - **并行创建**：使用 threading 并行创建所有 SPU LinkCommunicator 避免握手死锁
@@ -483,11 +498,34 @@ class CommunicatorBase(ICommunicator):
 - [x] Run existing SPU tests (`tests/v1/kernels/test_spu.py`)
 - [x] Verify no BRPC ports created in simulation
 
-### Phase 3: Session/Driver Integration 
+### Phase 3: Session/Driver Integration ✅
 
-- [ ] Ensure `Session` has accessible `comm` attribute
-- [ ] Modify `Session._seed_spu_env` to use Channels mode
-- [ ] Test with distributed setup (3-party HTTP cluster)
+- [x] Ensure `Session` has accessible `comm` attribute
+- [x] Modify `Session.ensure_spu_env` to use Channels mode
+- [x] HttpCommunicator: Support raw bytes for SPU channels (tag prefix "spu:")
+- [x] Server: Handle is_raw_bytes flag in CommSendRequest
+- [x] Test with distributed setup (3-party HTTP cluster)
+
+**关键修改**:
+1. **Session.ensure_spu_env** (`mplang/v1/runtime/session.py`):
+   - 移除 SPU_PORT_OFFSET 端口计算逻辑
+   - 移除 LinkCommFactory 和 g_link_factory
+   - 直接使用 LinkCommunicator(rank, comm=self.communicator, spu_mask=self.spu_mask)
+   
+2. **HttpCommunicator** (`mplang/v1/runtime/communicator.py`):
+   - send: 检测 "spu:" 前缀，支持发送原始 bytes (添加 is_raw_bytes 标志)
+   - recv: 支持接收原始 bytes (检查 is_raw_bytes 标志)
+   
+3. **Server** (`mplang/v1/runtime/server.py`):
+   - CommSendRequest: 添加 is_raw_bytes 字段
+   - comm_send: 根据 is_raw_bytes 决定数据格式
+
+**测试结果** (2025-12-30):
+```bash
+# HTTP 端到端测试 (分布式 3-party)
+$ uv run pytest tests/v1/integration/test_http_e2e.py::test_simple_addition_e2e -xvs
+======================== 1 passed, 2 warnings in 8.58s =========================
+```
 
 ### Phase 4: Optional Enhancements 
 

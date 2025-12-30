@@ -200,7 +200,7 @@ class TestLinkCommunicatorChannelsMode:
             t.join()
 
         # Check for exceptions
-        for _, exc in enumerate(exceptions):
+        for exc in exceptions:
             if exc is not None:
                 raise exc
 
@@ -239,7 +239,7 @@ class TestLinkCommunicatorChannelsMode:
             t.join()
 
         # Check for exceptions
-        for _, exc in exceptions.items():
+        for exc in exceptions.values():
             if exc is not None:
                 raise exc
 
@@ -302,7 +302,7 @@ class TestIntegration:
             t.join()
 
         # Check for exceptions
-        for _, exc in enumerate(exceptions):
+        for exc in exceptions:
             if exc is not None:
                 raise exc
 
@@ -317,3 +317,297 @@ class TestIntegration:
             assert link.get_lctx() is not None
             assert hasattr(link.get_lctx(), "rank")
             assert hasattr(link.get_lctx(), "world_size")
+
+
+class TestLinkWithBaseChannel:
+    """Test libspu link context created with BaseChannel."""
+
+    def test_link_context_attributes(self):
+        """Test basic attributes of link context created with channels."""
+        import threading
+
+        world_size = 3
+        spu_mask = Mask.from_ranks([0, 1, 2])
+
+        # Setup communicators
+        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in comms:
+            c.set_peers(comms)
+
+        # Create LinkCommunicators in parallel
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Check for exceptions
+        for exc in exceptions:
+            if exc is not None:
+                raise exc
+
+        # Test link context attributes
+        for i, link in enumerate(links):
+            lctx = link.get_lctx()
+            assert lctx.rank == i
+            assert lctx.world_size == 3
+
+    def test_link_context_next_rank(self):
+        """Test next_rank method of link context."""
+        import threading
+
+        world_size = 3
+        spu_mask = Mask.from_ranks([0, 1, 2])
+        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in comms:
+            c.set_peers(comms)
+
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in exceptions:
+            if exc is not None:
+                raise exc
+
+        # Test next_rank (ring topology)
+        for i, link in enumerate(links):
+            lctx = link.get_lctx()
+            expected_next = (i + 1) % world_size
+            actual_next = lctx.next_rank()
+            assert actual_next == expected_next
+
+            # Test with strides
+            expected_next_2 = (i + 2) % world_size
+            actual_next_2 = lctx.next_rank(strides=2)
+            assert actual_next_2 == expected_next_2
+
+    def test_link_context_send_recv(self):
+        """Test send/recv methods of link context."""
+        import threading
+
+        world_size = 2
+        spu_mask = Mask.from_ranks([0, 1])
+        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in comms:
+            c.set_peers(comms)
+
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in exceptions:
+            if exc is not None:
+                raise exc
+
+        # Test send/recv through link context
+        results = [None] * world_size
+        comm_exceptions = [None] * world_size
+
+        def party_communicate(rank):
+            try:
+                lctx = links[rank].get_lctx()
+                if rank == 0:
+                    # Rank 0 sends to rank 1
+                    test_data = "hello from rank 0"
+                    lctx.send(1, test_data)  # send(dst_rank, data)
+                    results[rank] = "sent"
+                else:
+                    # Rank 1 receives from rank 0
+                    received = lctx.recv(0)  # recv(src_rank)
+                    results[rank] = received
+            except Exception as e:
+                comm_exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=party_communicate, args=(i,))
+            for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in comm_exceptions:
+            if exc is not None:
+                raise exc
+
+        assert results[0] == "sent"
+        assert results[1] == b"hello from rank 0"
+
+    def test_link_context_barrier(self):
+        """Test barrier method of link context."""
+        import threading
+        import time
+
+        world_size = 3
+        spu_mask = Mask.from_ranks([0, 1, 2])
+        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in comms:
+            c.set_peers(comms)
+
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in exceptions:
+            if exc is not None:
+                raise exc
+
+        # Test barrier synchronization
+        barrier_times = [None] * world_size
+        barrier_exceptions = [None] * world_size
+
+        def party_barrier(rank):
+            try:
+                lctx = links[rank].get_lctx()
+                # Each party waits different amount before barrier
+                time.sleep(rank * 0.1)
+                before = time.time()
+                lctx.barrier()
+                after = time.time()
+                barrier_times[rank] = (before, after)
+            except Exception as e:
+                barrier_exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=party_barrier, args=(i,)) for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in barrier_exceptions:
+            if exc is not None:
+                raise exc
+
+        # All parties should complete barrier at roughly the same time
+        # The last party (rank 2) sleeps longest, so all should finish after it arrives
+        assert all(t is not None for t in barrier_times)
+        finish_times = [after for _, after in barrier_times]
+        # Max spread should be small (< 0.5s, accounting for threading overhead)
+        time_spread = max(finish_times) - min(finish_times)
+        assert time_spread < 0.5
+
+    def test_link_context_all_gather(self):
+        """Test all_gather method of link context."""
+        import threading
+
+        world_size = 3
+        spu_mask = Mask.from_ranks([0, 1, 2])
+        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in comms:
+            c.set_peers(comms)
+
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in exceptions:
+            if exc is not None:
+                raise exc
+
+        # Test all_gather
+        results = [None] * world_size
+        gather_exceptions = [None] * world_size
+
+        def party_all_gather(rank):
+            try:
+                lctx = links[rank].get_lctx()
+                my_data = f"data_from_rank_{rank}"
+                gathered = lctx.all_gather(my_data)
+                results[rank] = gathered
+            except Exception as e:
+                gather_exceptions[rank] = e
+
+        threads = [
+            threading.Thread(target=party_all_gather, args=(i,))
+            for i in range(world_size)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for exc in gather_exceptions:
+            if exc is not None:
+                raise exc
+
+        # All parties should have the same gathered data
+        expected = ["data_from_rank_0", "data_from_rank_1", "data_from_rank_2"]
+        for result in results:
+            assert result == expected

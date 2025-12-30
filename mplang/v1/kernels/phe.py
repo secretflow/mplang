@@ -637,7 +637,8 @@ def _phe_mul(pfunc: PFunction, ciphertext: CipherText, plaintext: TensorValue) -
             # Use numpy to create a properly broadcasted index mapping
             # Create a dummy array with same shape as ciphertext, fill with indices
             dummy_ct = (
-                np.arange(np.prod(ciphertext.semantic_shape))
+                np
+                .arange(np.prod(ciphertext.semantic_shape))
                 .reshape(ciphertext.semantic_shape)
                 .astype(np.int64)
             )
@@ -744,7 +745,8 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
     # Broadcast ct1 if needed
     if ct1.semantic_shape != result_shape:
         dummy_ct1 = (
-            np.arange(np.prod(ct1.semantic_shape))
+            np
+            .arange(np.prod(ct1.semantic_shape))
             .reshape(ct1.semantic_shape)
             .astype(np.int64)
         )
@@ -757,7 +759,8 @@ def _phe_add_ct2ct(ct1: CipherText, ct2: CipherText) -> CipherText:
     # Broadcast ct2 if needed
     if ct2.semantic_shape != result_shape:
         dummy_ct2 = (
-            np.arange(np.prod(ct2.semantic_shape))
+            np
+            .arange(np.prod(ct2.semantic_shape))
             .reshape(ct2.semantic_shape)
             .astype(np.int64)
         )
@@ -830,7 +833,8 @@ def _phe_add_ct2pt(ciphertext: CipherText, plaintext: TensorValue) -> CipherText
     # Broadcast ciphertext if needed
     if ciphertext.semantic_shape != result_shape:
         dummy_ct = (
-            np.arange(np.prod(ciphertext.semantic_shape))
+            np
+            .arange(np.prod(ciphertext.semantic_shape))
             .reshape(ciphertext.semantic_shape)
             .astype(np.int64)
         )

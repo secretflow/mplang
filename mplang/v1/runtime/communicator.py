@@ -117,7 +117,11 @@ class HttpCommunicator(CommunicatorBase):
             return data_bytes
 
         # Normal mode: deserialize Value envelope
-        data_b64 = received_data if isinstance(received_data, str) else received_data.get("data")
+        data_b64 = (
+            received_data
+            if isinstance(received_data, str)
+            else received_data.get("data")
+        )
         data_bytes = base64.b64decode(data_b64)
         result = decode_value(data_bytes)
 

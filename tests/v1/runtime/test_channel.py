@@ -38,8 +38,8 @@ class TestBaseChannel:
 
         # Test send/recv
         data = b"hello spu from rank 0"
-        ch0.send("tag1", data)
-        received = ch1.recv("tag1")
+        ch0.Send("tag1", data)
+        received = ch1.Recv("tag1")
         assert received == data
 
     def test_bidirectional_send_recv(self):
@@ -54,13 +54,13 @@ class TestBaseChannel:
 
         # Rank 0 -> 1
         data01 = b"0 to 1"
-        ch0.send("msg1", data01)
-        assert ch1.recv("msg1") == data01
+        ch0.Send("msg1", data01)
+        assert ch1.Recv("msg1") == data01
 
         # Rank 1 -> 0
         data10 = b"1 to 0"
-        ch1.send("msg2", data10)
-        assert ch0.recv("msg2") == data10
+        ch1.Send("msg2", data10)
+        assert ch0.Recv("msg2") == data10
 
     def test_multiple_messages(self):
         """Test multiple messages with different tags."""
@@ -76,10 +76,10 @@ class TestBaseChannel:
         messages = [(f"tag{i}", f"message_{i}".encode()) for i in range(5)]
 
         for tag, data in messages:
-            ch0.send(tag, data)
+            ch0.Send(tag, data)
 
         for tag, expected_data in messages:
-            received = ch1.recv(tag)
+            received = ch1.Recv(tag)
             assert received == expected_data
 
     def test_tag_prefix_isolation(self):
@@ -96,15 +96,15 @@ class TestBaseChannel:
         ch1_custom = BaseChannel(comms[1], 1, 0, tag_prefix="custom")
 
         # Send via different channels with same tag name
-        ch0_spu.send("tag", b"spu data")
-        ch0_custom.send("tag", b"custom data")
+        ch0_spu.Send("tag", b"spu data")
+        ch0_custom.Send("tag", b"custom data")
 
         # Receive should get correct data based on prefix
-        assert ch1_spu.recv("tag") == b"spu data"
-        assert ch1_custom.recv("tag") == b"custom data"
+        assert ch1_spu.Recv("tag") == b"spu data"
+        assert ch1_custom.Recv("tag") == b"custom data"
 
     def test_send_async(self):
-        """Test send_async (should work like regular send)."""
+        """Test SendAsync (should work like regular Send)."""
         world_size = 2
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
@@ -114,18 +114,18 @@ class TestBaseChannel:
         ch1 = BaseChannel(comms[1], local_rank=1, peer_rank=0)
 
         data = b"async message"
-        ch0.send_async("async_tag", data)
-        assert ch1.recv("async_tag") == data
+        ch0.SendAsync("async_tag", data)
+        assert ch1.Recv("async_tag") == data
 
     def test_test_send_always_true(self):
-        """Test that test_send always returns True."""
+        """Test that TestSend always returns True."""
         world_size = 2
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
             c.set_peers(comms)
 
         ch0 = BaseChannel(comms[0], local_rank=0, peer_rank=1)
-        assert ch0.test_send("any_tag") is True
+        assert ch0.TestSend("any_tag") is True
 
     def test_large_data(self):
         """Test sending large data."""
@@ -139,8 +139,8 @@ class TestBaseChannel:
 
         # Send 1MB of data
         large_data = b"x" * (1024 * 1024)
-        ch0.send("large", large_data)
-        received = ch1.recv("large")
+        ch0.Send("large", large_data)
+        received = ch1.Recv("large")
         assert len(received) == len(large_data)
         assert received == large_data
 
@@ -158,7 +158,7 @@ class TestBaseChannel:
 
         # Recv via channel should raise TypeError
         with pytest.raises(TypeError, match="Expected bytes"):
-            ch1.recv("bad_tag")
+            ch1.Recv("bad_tag")
 
 
 class TestLinkCommunicatorChannelsMode:

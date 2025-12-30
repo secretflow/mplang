@@ -87,7 +87,7 @@ class BaseChannel(libspu.link.IChannel):
         """
         return f"{self._tag_prefix}:{tag}"
 
-    def send(self, tag: str, data: bytes) -> None:
+    def Send(self, tag: str, data: bytes) -> None:
         """Send bytes to peer (synchronous in SPU semantics).
 
         Args:
@@ -96,7 +96,7 @@ class BaseChannel(libspu.link.IChannel):
         """
         key = self._make_key(tag)
         logging.debug(
-            f"BaseChannel.send: {self._local_rank} -> {self._peer_rank}, "
+            f"BaseChannel.Send: {self._local_rank} -> {self._peer_rank}, "
             f"tag={tag}, key={key}, size={len(data)}"
         )
 
@@ -104,7 +104,7 @@ class BaseChannel(libspu.link.IChannel):
         # Note: CommunicatorBase.send expects Any type, bytes is acceptable
         self._comm.send(self._peer_rank, key, data)
 
-    def recv(self, tag: str) -> bytes:
+    def Recv(self, tag: str) -> bytes:
         """Receive bytes from peer (blocking).
 
         Args:
@@ -115,7 +115,7 @@ class BaseChannel(libspu.link.IChannel):
         """
         key = self._make_key(tag)
         logging.debug(
-            f"BaseChannel.recv: {self._local_rank} <- {self._peer_rank}, "
+            f"BaseChannel.Recv: {self._local_rank} <- {self._peer_rank}, "
             f"tag={tag}, key={key}"
         )
 
@@ -130,12 +130,12 @@ class BaseChannel(libspu.link.IChannel):
             )
 
         logging.debug(
-            f"BaseChannel.recv complete: {self._local_rank} <- {self._peer_rank}, "
+            f"BaseChannel.Recv complete: {self._local_rank} <- {self._peer_rank}, "
             f"tag={tag}, size={len(data)}"
         )
         return data
 
-    def send_async(self, tag: str, data: bytes) -> None:
+    def SendAsync(self, tag: str, data: bytes) -> None:
         """Async send (MPLang's send is already async at network layer).
 
         For HttpCommunicator, the underlying httpx.put() is non-blocking
@@ -147,21 +147,21 @@ class BaseChannel(libspu.link.IChannel):
             data: Raw bytes to send
         """
         # Reuse synchronous send - it's already async underneath
-        self.send(tag, data)
+        self.Send(tag, data)
 
-    def send_async_throttled(self, tag: str, data: bytes) -> None:
+    def SendAsyncThrottled(self, tag: str, data: bytes) -> None:
         """Throttled async send.
 
-        Currently maps to regular send_async. Future optimization could
+        Currently maps to regular SendAsync. Future optimization could
         implement rate limiting if needed.
 
         Args:
             tag: Message tag
             data: Raw bytes to send
         """
-        self.send_async(tag, data)
+        self.SendAsync(tag, data)
 
-    def test_send(self, tag: str) -> bool:
+    def TestSend(self, tag: str) -> bool:
         """Test if send buffer is available (non-blocking).
 
         For MPLang communicators, send buffer is always available since
@@ -175,7 +175,7 @@ class BaseChannel(libspu.link.IChannel):
         """
         return True
 
-    def test_recv(self, tag: str) -> bool:
+    def TestRecv(self, tag: str) -> bool:
         """Test if data is available for recv (non-blocking).
 
         This requires the communicator to support non-blocking message check.
@@ -198,7 +198,7 @@ class BaseChannel(libspu.link.IChannel):
         # Conservative fallback: assume not ready
         return False
 
-    def wait_link_task_finish(self) -> None:
+    def WaitLinkTaskFinish(self) -> None:
         """Wait for all pending async tasks.
 
         For MPLang communicators:
@@ -209,18 +209,18 @@ class BaseChannel(libspu.link.IChannel):
         """
         pass
 
-    def abort(self) -> None:
+    def Abort(self) -> None:
         """Abort communication (cleanup resources).
 
         This could be extended to notify the communicator to drop pending
         messages for this channel, but currently is a no-op.
         """
         logging.warning(
-            f"BaseChannel.abort called: {self._local_rank} <-> {self._peer_rank}"
+            f"BaseChannel.Abort called: {self._local_rank} <-> {self._peer_rank}"
         )
         # Future: Could call comm.abort_session() if implemented
 
-    def set_throttle_window_size(self, size: int) -> None:
+    def SetThrottleWindowSize(self, size: int) -> None:
         """Set throttle window size.
 
         Not applicable to MPLang communicators. No-op.
@@ -230,7 +230,7 @@ class BaseChannel(libspu.link.IChannel):
         """
         pass
 
-    def set_chunk_parallel_send_size(self, size: int) -> None:
+    def SetChunkParallelSendSize(self, size: int) -> None:
         """Set chunk parallel send size.
 
         Not applicable to MPLang communicators. No-op.

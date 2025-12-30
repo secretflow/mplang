@@ -161,42 +161,34 @@ class BaseChannel(libspu.link.IChannel):
         """
         self.SendAsync(tag, data)
 
-    def TestSend(self, tag: str) -> bool:
-        """Test if send buffer is available (non-blocking).
+    def TestSend(self, timeout: int) -> None:
+        """Test if this channel can send a dummy msg to peer.
 
-        For MPLang communicators, send buffer is always available since
-        we don't implement explicit buffering at this layer.
-
-        Args:
-            tag: Message tag to test
-
-        Returns:
-            Always True (send buffer available)
-        """
-        return True
-
-    def TestRecv(self, tag: str) -> bool:
-        """Test if data is available for recv (non-blocking).
-
-        This requires the communicator to support non-blocking message check.
-        Currently returns False as a conservative default.
-
-        TODO: Extend CommunicatorBase with has_message(frm, key) method.
+        Uses fixed 0 seq_id as dummy msg's id to make this function reentrant.
+        ConnectToMesh will retry on this multiple times.
 
         Args:
-            tag: Message tag to test
-
-        Returns:
-            True if message is ready, False otherwise
+            timeout: Timeout in milliseconds
         """
-        key = self._make_key(tag)
+        # Send a handshake message to test connectivity
+        # Use fixed tag "__test__" to make this reentrant (idempotent)
+        test_data = b"\x00"  # Minimal 1-byte message with seq_id=0
+        self.Send("__test__", test_data)
 
-        # Try to use has_message if available
-        if hasattr(self._comm, "has_message"):
-            return self._comm.has_message(self._peer_rank, key)  # type: ignore
+    def TestRecv(self) -> None:
+        """Wait for dummy msg from peer.
 
-        # Conservative fallback: assume not ready
-        return False
+        Timeout is controlled by recv_timeout_ms in link descriptor.
+        """
+        # Receive the handshake message from peer
+        # This blocks until message arrives (timeout from desc.recv_timeout_ms)
+        test_data = self.Recv("__test__")
+        # Validate it's the expected handshake message
+        if test_data != b"\x00":
+            logging.warning(
+                f"TestRecv: unexpected handshake data from {self._peer_rank}, "
+                f"expected b'\\x00', got {test_data!r}"
+            )
 
     def WaitLinkTaskFinish(self) -> None:
         """Wait for all pending async tasks.

@@ -126,7 +126,7 @@ class TestBaseChannel:
 
         ch0 = BaseChannel(comms[0], local_rank=0, peer_rank=1)
         ch1 = BaseChannel(comms[1], local_rank=1, peer_rank=0)
-        
+
         # These are no-ops for MPLang but should not raise
         ch0.TestSend(1000)  # timeout in ms
         ch1.TestRecv()
@@ -191,14 +191,16 @@ class TestLinkCommunicatorChannelsMode:
             except Exception as e:
                 exceptions[rank] = e
 
-        threads = [threading.Thread(target=create_link, args=(i,)) for i in range(world_size)]
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
         # Check for exceptions
-        for i, exc in enumerate(exceptions):
+        for _, exc in enumerate(exceptions):
             if exc is not None:
                 raise exc
 
@@ -237,7 +239,7 @@ class TestLinkCommunicatorChannelsMode:
             t.join()
 
         # Check for exceptions
-        for rank, exc in exceptions.items():
+        for _, exc in exceptions.items():
             if exc is not None:
                 raise exc
 
@@ -251,7 +253,6 @@ class TestLinkCommunicatorChannelsMode:
     def test_channels_mode_validation(self):
         """Test Channels mode validation."""
         world_size = 3
-        spu_mask = Mask.from_ranks([0, 1, 2])
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
             c.set_peers(comms)
@@ -292,14 +293,16 @@ class TestIntegration:
             except Exception as e:
                 exceptions[rank] = e
 
-        threads = [threading.Thread(target=create_link, args=(i,)) for i in range(world_size)]
+        threads = [
+            threading.Thread(target=create_link, args=(i,)) for i in range(world_size)
+        ]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
 
         # Check for exceptions
-        for i, exc in enumerate(exceptions):
+        for _, exc in enumerate(exceptions):
             if exc is not None:
                 raise exc
 

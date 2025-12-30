@@ -37,8 +37,7 @@ class BaseChannel(libspu.link.IChannel):
     (ThreadCommunicator or HttpCommunicator) instead of creating separate
     BRPC connections.
 
-    Each MPLangChannel represents a channel to ONE peer rank. SPU's
-    link.Context requires N-1 channels (one for each peer in the SPU mask).
+    Each MPLangChannel represents a channel to ONE peer rank.
 
     Communication Protocol:
         - SPU calls send(tag, bytes_data) -> MPLang comm.send(peer, key, bytes_data)

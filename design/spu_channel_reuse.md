@@ -112,7 +112,7 @@ class IChannel:
 │  └───▲────┘ │               │  └───▲────┘ │
 │      │      │               │      │      │
 │  ┌───┴────┐ │   (reuse      │  ┌───┴────┐ │
-│  │MPLang  │ │    HTTP)      │  │MPLang  │ │
+│  │Base    │ │    HTTP)      │  │Base    │ │
 │  │Channel │ │               │  │Channel │ │
 │  │(IChannel)│               │  │(IChannel)│
 │  └───▲────┘ │               │  └───▲────┘ │
@@ -133,14 +133,14 @@ class IChannel:
 | `CommunicatorBase` | 底层通信抽象（send/recv with msgbox） |
 | `ThreadCommunicator` | 进程内内存通信（模拟器） |
 | `HttpCommunicator` | 跨进程 HTTP 通信（分布式） |
-| `MPLangChannel` | **新增**：IChannel 适配器，桥接 Comm → SPU |
+| `BaseChannel` | **新增**：IChannel 适配器，桥接 Comm → SPU |
 | `LinkCommunicator` | SPU link 上下文封装，支持 BRPC/Mem/Channels 三种模式 |
 
 ## API Surface
 
-### 1. New Class: `MPLangChannel`
+### 1. New Class: `BaseChannel`
 
-**Location**: `mplang/v1/runtime/spu_channel.py`
+**Location**: `mplang/v1/runtime/channel.py`
 
 ```python
 from typing import TYPE_CHECKING
@@ -151,14 +151,14 @@ if TYPE_CHECKING:
     from mplang.v1.core.mask import Mask
 
 
-class MPLangChannel(libspu.link.IChannel):
+class BaseChannel(libspu.link.IChannel):
     """Bridge MPLang CommunicatorBase to SPU IChannel interface.
     
     This adapter allows SPU to use MPLang's existing communication layer
     (ThreadCommunicator or HttpCommunicator) instead of creating separate
     BRPC connections.
     
-    Note: Each MPLangChannel represents a channel to ONE peer rank.
+    Note: Each BaseChannel represents a channel to ONE peer rank.
     SPU link.Context requires N-1 channels (one for each peer in the SPU mask).
     """
     
@@ -288,13 +288,13 @@ class LinkCommunicator:
                 raise ValueError(f"rank {rank} not in spu_mask {spu_mask}")
                 
             # Create channels to all other SPU parties
-            from mplang.v1.runtime.spu_channel import MPLangChannel
+            from mplang.v1.runtime.channel import BaseChannel
             
             channels = []
             for peer_rank in spu_mask:
                 if peer_rank == rank:
                     continue  # Skip self
-                channel = MPLangChannel(comm, rank, peer_rank)
+                channel = BaseChannel(comm, rank, peer_rank)
                 channels.append(channel)
             
             # Create link context with custom channels
@@ -308,7 +308,7 @@ class LinkCommunicator:
             self._world_size = spu_mask.num_parties()
             
             logging.info(
-                f"LinkCommunicator initialized with MPLangChannel: "
+                f"LinkCommunicator initialized with BaseChannel: "
                 f"rank={rank}, rel_rank={rel_rank}, spu_mask={spu_mask}"
             )
         
@@ -435,31 +435,31 @@ class CommunicatorBase(ICommunicator):
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure (Week 1)
+### Phase 1: Core Infrastructure
 
-- [ ] Create `mplang/v1/runtime/spu_channel.py` with `MPLangChannel` class
-- [ ] Add Channels mode to `LinkCommunicator.__init__`
-- [ ] Add unit tests for `MPLangChannel` (mock SPU send/recv)
+- [x] Create `mplang/v1/runtime/channel.py` with `BaseChannel` class
+- [x] Add Channels mode to `LinkCommunicator.__init__`
+- [x] Add unit tests for `BaseChannel` (mock SPU send/recv)
 
-### Phase 2: Simulator Integration (Week 1)
+### Phase 2: Simulator Integration
 
 - [ ] Modify `Simulator.__init__` to use Channels mode
 - [ ] Run existing SPU tests (`tests/v1/kernels/test_spu.py`)
 - [ ] Verify no BRPC ports created in simulation
 
-### Phase 3: Session/Driver Integration (Week 2)
+### Phase 3: Session/Driver Integration 
 
 - [ ] Ensure `Session` has accessible `comm` attribute
 - [ ] Modify `Session._seed_spu_env` to use Channels mode
 - [ ] Test with distributed setup (3-party HTTP cluster)
 
-### Phase 4: Optional Enhancements (Week 2)
+### Phase 4: Optional Enhancements 
 
 - [ ] Add `has_message()` to `CommunicatorBase` for `test_recv()`
 - [ ] Performance benchmarking (BRPC vs HTTP for SPU traffic)
 - [ ] Add configuration flag to control mode selection
 
-### Phase 5: Migration & Deprecation (Week 3)
+### Phase 5: Migration & Deprecation 
 
 - [ ] Make Channels mode the default (if performance acceptable)
 - [ ] Add deprecation warning for BRPC mode
@@ -473,15 +473,15 @@ class CommunicatorBase(ICommunicator):
 ```python
 # tests/v1/runtime/test_spu_channel.py
 
-def test_mplang_channel_send_recv():
-    """Test basic send/recv through MPLangChannel"""
+def test_base_channel_send_recv():
+    """Test basic send/recv through BaseChannel"""
     world_size = 2
     comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
     for c in comms: c.set_peers(comms)
     
     # Create channels: rank0 -> rank1
-    ch0 = MPLangChannel(comms[0], local_rank=0, peer_rank=1)
-    ch1 = MPLangChannel(comms[1], local_rank=1, peer_rank=0)
+    ch0 = BaseChannel(comms[0], local_rank=0, peer_rank=1)
+    ch1 = BaseChannel(comms[1], local_rank=1, peer_rank=0)
     
     # Test send/recv
     data = b"hello spu"
@@ -598,7 +598,7 @@ nodes:
 | HTTP slower than BRPC | Medium | Benchmark first; keep BRPC as option |
 | libspu version incompatibility | High | Feature detection + graceful fallback |
 | Serialization overhead | Low | Use zero-copy where possible |
-| Debugging complexity | Low | Add detailed logging in MPLangChannel |
+| Debugging complexity | Low | Add detailed logging in BaseChannel |
 | Message collision | Medium | Use unique tag prefixes (`spu:*`) |
 
 ## Alternatives Considered
@@ -630,15 +630,17 @@ nodes:
    - Action: Add `has_message()` to CommunicatorBase
 
 4. **Error Recovery**: How to handle partial failures in channels?
-   - Action: Define error handling contract in MPLangChannel
+   - Action: Define error handling contract in BaseChannel
 
 ## References
 
 - libspu source: `yacl/link/context.h`, `yacl/link/channel.h`
 - MPLang v1 comm: `mplang/v1/core/comm.py`
+- BaseChannel implementation: `mplang/v1/runtime/channel.py`
 - Session SPU setup: `mplang/v1/runtime/session.py:_seed_spu_env`
 - Simulator SPU setup: `mplang/v1/runtime/simulation.py:__init__`
 
 ## Changelog
 
 - 2025-12-29: Initial design draft (zhsu)
+- 2025-12-29: Renamed `MPLangChannel` → `BaseChannel`, `spu_channel.py` → `channel.py` (zhsu)

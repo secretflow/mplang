@@ -129,16 +129,40 @@ class Simulator(InterpContext):
             comm.set_peers(self._comms)
 
         # Prepare link contexts for SPU parties (store for evaluator-time initialization)
-        spu_addrs = [f"P{spu_rank}" for spu_rank in spu_mask]
+        # Use Channels mode to reuse ThreadCommunicator instead of separate mem_link
         self._spu_link_ctxs: list[LinkCommunicator | None] = [None] * world_size
-        link_ctx_list = [
-            LinkCommunicator(idx, spu_addrs, mem_link=True)
-            for idx in range(spu_mask.num_parties())
+        
+        # Create LinkCommunicators in parallel to avoid deadlock
+        # (create_with_channels does handshake via TestSend/TestRecv)
+        import threading
+        
+        exceptions: dict[int, Exception] = {}
+        
+        def create_link(g_rank: int) -> None:
+            try:
+                self._spu_link_ctxs[g_rank] = LinkCommunicator(
+                    rank=g_rank,
+                    comm=self._comms[g_rank],
+                    spu_mask=spu_mask,
+                )
+            except Exception as e:
+                exceptions[g_rank] = e
+        
+        threads = [
+            threading.Thread(target=create_link, args=(g_rank,))
+            for g_rank in spu_mask
         ]
-        for g_rank in range(world_size):
-            if g_rank in spu_mask:
-                rel = Mask(spu_mask).global_to_relative_rank(g_rank)
-                self._spu_link_ctxs[g_rank] = link_ctx_list[rel]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        # Check for exceptions during link creation
+        if exceptions:
+            first_exc = next(iter(exceptions.values()))
+            raise RuntimeError(
+                f"Failed to create SPU link contexts for ranks {list(exceptions.keys())}"
+            ) from first_exc
 
         self._spu_runtime_cfg = libspu.RuntimeConfig(
             protocol=spu_protocol, field=spu_field

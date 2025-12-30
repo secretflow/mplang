@@ -199,7 +199,6 @@ class BaseChannel(libspu.link.IChannel):
 
         This is a no-op in current implementation.
         """
-        pass
 
     def Abort(self) -> None:
         """Abort communication (cleanup resources).
@@ -220,7 +219,6 @@ class BaseChannel(libspu.link.IChannel):
         Args:
             size: Window size (ignored)
         """
-        pass
 
     def SetChunkParallelSendSize(self, size: int) -> None:
         """Set chunk parallel send size.
@@ -230,4 +228,3 @@ class BaseChannel(libspu.link.IChannel):
         Args:
             size: Chunk size (ignored)
         """
-        pass

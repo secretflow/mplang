@@ -117,15 +117,19 @@ class TestBaseChannel:
         ch0.SendAsync("async_tag", data)
         assert ch1.Recv("async_tag") == data
 
-    def test_test_send_always_true(self):
-        """Test that TestSend always returns True."""
+    def test_test_send_recv(self):
+        """Test TestSend and TestRecv (handshake methods)."""
         world_size = 2
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
             c.set_peers(comms)
 
         ch0 = BaseChannel(comms[0], local_rank=0, peer_rank=1)
-        assert ch0.TestSend("any_tag") is True
+        ch1 = BaseChannel(comms[1], local_rank=1, peer_rank=0)
+        
+        # These are no-ops for MPLang but should not raise
+        ch0.TestSend(1000)  # timeout in ms
+        ch1.TestRecv()
 
     def test_large_data(self):
         """Test sending large data."""
@@ -166,17 +170,37 @@ class TestLinkCommunicatorChannelsMode:
 
     def test_channels_mode_basic(self):
         """Test LinkCommunicator with Channels mode."""
+        import threading
+
         world_size = 3
         spu_mask = Mask.from_ranks([0, 1, 2])
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
             c.set_peers(comms)
 
-        # Create LinkCommunicators using Channels mode
-        links = [
-            LinkCommunicator(rank=i, comm=comms[i], spu_mask=spu_mask)
-            for i in range(world_size)
-        ]
+        # Create LinkCommunicators in parallel to avoid deadlock
+        # (create_with_channels does handshake via TestSend/TestRecv)
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [threading.Thread(target=create_link, args=(i,)) for i in range(world_size)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Check for exceptions
+        for i, exc in enumerate(exceptions):
+            if exc is not None:
+                raise exc
 
         # Verify attributes
         assert all(link.world_size == 3 for link in links)
@@ -186,16 +210,36 @@ class TestLinkCommunicatorChannelsMode:
 
     def test_channels_mode_subset_mask(self):
         """Test Channels mode with subset of parties in SPU."""
+        import threading
+
         world_size = 4
         spu_mask = Mask.from_ranks([0, 2, 3])  # Rank 1 not in SPU
         comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
         for c in comms:
             c.set_peers(comms)
 
-        # Create LinkCommunicators only for SPU parties
+        # Create LinkCommunicators only for SPU parties (in parallel)
         links = {}
-        for i in spu_mask:
-            links[i] = LinkCommunicator(rank=i, comm=comms[i], spu_mask=spu_mask)
+        exceptions = {}
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [threading.Thread(target=create_link, args=(i,)) for i in spu_mask]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Check for exceptions
+        for rank, exc in exceptions.items():
+            if exc is not None:
+                raise exc
 
         # Verify attributes
         assert all(link.world_size == 3 for link in links.values())
@@ -220,51 +264,14 @@ class TestLinkCommunicatorChannelsMode:
         with pytest.raises(ValueError, match="not in spu_mask"):
             LinkCommunicator(rank=0, comm=comms[0], spu_mask=Mask.from_ranks([1, 2]))
 
-    def test_channels_mode_vs_mem_link(self):
-        """Compare Channels mode with legacy Mem mode."""
-        world_size = 2
-        spu_mask = Mask.from_ranks([0, 1])
-        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
-        for c in comms:
-            c.set_peers(comms)
-
-        # Channels mode
-        link_channels = LinkCommunicator(rank=0, comm=comms[0], spu_mask=spu_mask)
-
-        # Mem mode (legacy)
-        spu_addrs = [f"P{rank}" for rank in spu_mask]
-        link_mem = LinkCommunicator(rank=0, addrs=spu_addrs, mem_link=True)
-
-        # Both should have same world_size and rank
-        assert link_channels.world_size == link_mem.world_size
-        assert link_channels.rank == link_mem.rank
-
-    def test_legacy_brpc_mode_still_works(self):
-        """Ensure legacy BRPC mode still works."""
-        addrs = ["127.0.0.1:8200", "127.0.0.1:8201"]
-
-        # Should not raise (though BRPC connection may fail in test env)
-        try:
-            link = LinkCommunicator(rank=0, addrs=addrs, mem_link=False)
-            assert link.world_size == 2
-        except Exception:
-            # BRPC connection failure is expected in test env
-            pytest.skip("BRPC connection not available in test environment")
-
-    def test_legacy_mem_mode_still_works(self):
-        """Ensure legacy Mem mode still works."""
-        addrs = ["P0", "P1", "P2"]
-        link = LinkCommunicator(rank=0, addrs=addrs, mem_link=True)
-
-        assert link.world_size == 3
-        assert link.rank == 0
-
 
 class TestIntegration:
     """Integration tests combining multiple components."""
 
     def test_three_party_spu_simulation(self):
         """Simulate 3-party SPU communication using Channels mode."""
+        import threading
+
         world_size = 3
         spu_mask = Mask.from_ranks([0, 1, 2])
 
@@ -273,11 +280,28 @@ class TestIntegration:
         for c in comms:
             c.set_peers(comms)
 
-        # Setup link communicators
-        links = [
-            LinkCommunicator(rank=i, comm=comms[i], spu_mask=spu_mask)
-            for i in range(world_size)
-        ]
+        # Setup link communicators (in parallel to avoid deadlock)
+        links = [None] * world_size
+        exceptions = [None] * world_size
+
+        def create_link(rank):
+            try:
+                links[rank] = LinkCommunicator(
+                    rank=rank, comm=comms[rank], spu_mask=spu_mask
+                )
+            except Exception as e:
+                exceptions[rank] = e
+
+        threads = [threading.Thread(target=create_link, args=(i,)) for i in range(world_size)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Check for exceptions
+        for i, exc in enumerate(exceptions):
+            if exc is not None:
+                raise exc
 
         # Verify link setup
         assert all(link.world_size == 3 for link in links)

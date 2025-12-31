@@ -108,21 +108,12 @@ class IChannel:
    - Normal channel: 传输 Value 包装对象 ({"data": base64} 或直接 base64 字符串)
 3. **分布式握手**：HttpCommunicator 的异步特性自然支持跨节点的 TestSend/TestRecv 握手
 
-### 🚧 Phase 4-5: Enhancement & Migration (Future Work)
+### � Phase 4-5: Enhancement & Migration (Future Work)
 
-- **Simulator 修改** (`mplang/v1/runtime/simulation.py`): 使用 Channels 模式替代 `mem_link=True`
-- **并行创建**：使用 threading 并行创建所有 SPU LinkCommunicator 避免握手死锁
-- **集成测试通过**：
-  - `tests/v1/kernels/test_spu.py`: 5/5 通过
-  - `tests/v1/device/test_device_basic.py`: PPU↔SPU 传输测试通过
-  - 所有现有 SPU 相关测试无回归
-
-### 🚧 Phase 3: Session/Driver Integration (Pending)
-
-- [ ] Session._seed_spu_env 使用 Channels 模式
-- [ ] 分布式 HTTP 集群测试
-
-### 📋 Phase 4-5: Enhancement & Migration (Future Work)
+- **性能基准测试**：对比 BRPC 模式和 Channels 模式的性能
+- **配置选项**：添加运行时配置以选择 BRPC 或 Channels 模式
+- **迁移策略**：制定从 BRPC 到 Channels 的平滑迁移路径
+- **文档更新**：更新用户文档和最佳实践指南
 
 ## Architecture
 
@@ -336,23 +327,29 @@ class LinkCommunicator:
             if rank not in spu_mask:
                 raise ValueError(f"rank {rank} not in spu_mask {spu_mask}")
                 
-            # Create channels to all other SPU parties
+            # Create channels to ALL SPU parties (including self)
+            # libspu expects world_size channels, with self channel being None
             from mplang.v1.runtime.channel import BaseChannel
             
             channels = []
+            rel_rank = spu_mask.global_to_relative_rank(rank)
+            
             for peer_rank in spu_mask:
                 if peer_rank == rank:
-                    continue  # Skip self
-                channel = BaseChannel(comm, rank, peer_rank)
+                    # For self, use None (won't be accessed by SPU)
+                    channel = None
+                else:
+                    channel = BaseChannel(comm, rank, peer_rank)
                 channels.append(channel)
             
             # Create link context with custom channels
             desc = libspu.link.Desc()  # type: ignore
             desc.recv_timeout_ms = 100 * 1000
-            # Note: No need to add_party when using create_with_channels
             
-            # Convert global rank to relative rank within SPU mask
-            rel_rank = Mask(spu_mask).global_to_relative_rank(rank)
+            # Add party info to desc (required for world_size inference)
+            for idx, peer_rank in enumerate(spu_mask):
+                desc.add_party(f"P{idx}", f"dummy_{peer_rank}")
+            
             self.lctx = libspu.link.create_with_channels(desc, rel_rank, channels)
             self._world_size = spu_mask.num_parties()
             

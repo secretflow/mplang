@@ -61,72 +61,118 @@ class LinkCommunicator:
         """
         self._rank = rank
 
-        # Mode 1: Channels (NEW) - Reuse MPLang communicator
+        # Select initialization mode based on arguments
         if comm is not None:
-            if spu_mask is None:
-                raise ValueError("spu_mask required when using comm")
-            if rank not in spu_mask:
-                raise ValueError(f"rank {rank} not in spu_mask {spu_mask}")
-
-            # Lazy import to avoid circular dependency
-            from mplang.v1.runtime.channel import BaseChannel
-
-            # Create channels to ALL SPU parties (including self)
-            # libspu expects world_size channels, with self channel being None
-            channels = []
-            rel_rank = spu_mask.global_to_relative_rank(rank)
-
-            for _, peer_rank in enumerate(spu_mask):
-                if peer_rank == rank:
-                    # For self, use None (won't be accessed by SPU)
-                    channel = None
-                else:
-                    channel = BaseChannel(comm, rank, peer_rank)
-                channels.append(channel)
-
-            # Create link context with custom channels
-            desc = libspu.link.Desc()  # type: ignore
-            desc.recv_timeout_ms = 100 * 1000  # 100 seconds
-
-            # Add party info to desc (required for world_size inference)
-            for idx, peer_rank in enumerate(spu_mask):
-                desc.add_party(f"P{idx}", f"dummy_{peer_rank}")
-
-            self.lctx = libspu.link.create_with_channels(desc, rel_rank, channels)
-            self._world_size = spu_mask.num_parties()
-
-            logging.info(
-                f"LinkCommunicator initialized with BaseChannel: "
-                f"rank={rank}, rel_rank={rel_rank}, spu_mask={spu_mask}, "
-                f"world_size={self._world_size}"
-            )
-
-        # Mode 2 & 3: BRPC or Mem (legacy)
+            self._init_channels_mode(rank, comm, spu_mask)
+        elif mem_link:
+            self._init_mem_mode(rank, addrs)
         else:
-            if addrs is None:
-                raise ValueError("addrs required for BRPC/Mem mode")
-            self._world_size = len(addrs)
+            self._init_brpc_mode(rank, addrs)
 
-            desc = libspu.link.Desc()  # type: ignore
-            desc.recv_timeout_ms = 100 * 1000  # 100 seconds
-            desc.http_max_payload_size = (
-                32 * 1024 * 1024
-            )  # Default set link payload to 32M
-            for rank_idx, addr in enumerate(addrs):
-                desc.add_party(f"P{rank_idx}", addr)
+    def _init_channels_mode(
+        self, rank: int, comm: CommunicatorBase, spu_mask: Mask | None
+    ) -> None:
+        """Initialize Channels mode (reuse MPLang communicator).
 
-            if mem_link:
-                self.lctx = libspu.link.create_mem(desc, self._rank)
-                logging.info(
-                    f"LinkCommunicator initialized with Mem: "
-                    f"rank={self._rank}, world_size={self._world_size}, addrs={addrs}"
-                )
+        Args:
+            rank: Global rank of this party
+            comm: MPLang communicator to reuse
+            spu_mask: SPU parties mask
+
+        Raises:
+            ValueError: If spu_mask is None or rank not in mask
+        """
+        if spu_mask is None:
+            raise ValueError("spu_mask required when using comm")
+        if rank not in spu_mask:
+            raise ValueError(f"rank {rank} not in spu_mask {spu_mask}")
+
+        # Lazy import to avoid circular dependency
+        from mplang.v1.runtime.channel import BaseChannel
+
+        # Create channels to ALL SPU parties (including self)
+        # libspu expects world_size channels, with self channel being None
+        channels = []
+        rel_rank = spu_mask.global_to_relative_rank(rank)
+
+        for _, peer_rank in enumerate(spu_mask):
+            if peer_rank == rank:
+                # For self, use None (won't be accessed by SPU)
+                channel = None
             else:
-                self.lctx = libspu.link.create_brpc(desc, self._rank)
-                logging.info(
-                    f"LinkCommunicator initialized with BRPC: "
-                    f"rank={self._rank}, world_size={self._world_size}, addrs={addrs}"
-                )
+                channel = BaseChannel(comm, rank, peer_rank)
+            channels.append(channel)
+
+        # Create link context with custom channels
+        desc = libspu.link.Desc()  # type: ignore
+        desc.recv_timeout_ms = 100 * 1000  # 100 seconds
+
+        # Add party info to desc (required for world_size inference)
+        for idx, peer_rank in enumerate(spu_mask):
+            desc.add_party(f"P{idx}", f"dummy_{peer_rank}")
+
+        self.lctx = libspu.link.create_with_channels(desc, rel_rank, channels)
+        self._world_size = spu_mask.num_parties()
+
+        logging.info(
+            f"LinkCommunicator initialized with BaseChannel: "
+            f"rank={rank}, rel_rank={rel_rank}, spu_mask={spu_mask}, "
+            f"world_size={self._world_size}"
+        )
+
+    def _init_mem_mode(self, rank: int, addrs: list[str] | None) -> None:
+        """Initialize Mem mode (in-memory links for testing).
+
+        Args:
+            rank: Global rank of this party
+            addrs: List of addresses for all SPU parties
+
+        Raises:
+            ValueError: If addrs is None
+        """
+        if addrs is None:
+            raise ValueError("addrs required for Mem mode")
+
+        self._world_size = len(addrs)
+
+        desc = libspu.link.Desc()  # type: ignore
+        desc.recv_timeout_ms = 100 * 1000  # 100 seconds
+        desc.http_max_payload_size = 32 * 1024 * 1024  # 32M
+        for rank_idx, addr in enumerate(addrs):
+            desc.add_party(f"P{rank_idx}", addr)
+
+        self.lctx = libspu.link.create_mem(desc, self._rank)
+        logging.info(
+            f"LinkCommunicator initialized with Mem: "
+            f"rank={self._rank}, world_size={self._world_size}, addrs={addrs}"
+        )
+
+    def _init_brpc_mode(self, rank: int, addrs: list[str] | None) -> None:
+        """Initialize BRPC mode (production mode with separate BRPC ports).
+
+        Args:
+            rank: Global rank of this party
+            addrs: List of addresses for all SPU parties
+
+        Raises:
+            ValueError: If addrs is None
+        """
+        if addrs is None:
+            raise ValueError("addrs required for BRPC mode")
+
+        self._world_size = len(addrs)
+
+        desc = libspu.link.Desc()  # type: ignore
+        desc.recv_timeout_ms = 100 * 1000  # 100 seconds
+        desc.http_max_payload_size = 32 * 1024 * 1024  # 32M
+        for rank_idx, addr in enumerate(addrs):
+            desc.add_party(f"P{rank_idx}", addr)
+
+        self.lctx = libspu.link.create_brpc(desc, self._rank)
+        logging.info(
+            f"LinkCommunicator initialized with BRPC: "
+            f"rank={self._rank}, world_size={self._world_size}, addrs={addrs}"
+        )
 
     @property
     def rank(self) -> int:

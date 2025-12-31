@@ -18,6 +18,7 @@ import concurrent.futures
 import faulthandler
 import logging
 import sys
+import threading
 import traceback
 from collections.abc import Sequence
 from typing import Any, cast
@@ -134,8 +135,6 @@ class Simulator(InterpContext):
 
         # Create LinkCommunicators in parallel to avoid deadlock
         # (create_with_channels does handshake via TestSend/TestRecv)
-        import threading
-
         exceptions: dict[int, Exception] = {}
 
         def create_link(g_rank: int) -> None:

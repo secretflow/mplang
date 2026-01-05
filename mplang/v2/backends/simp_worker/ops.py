@@ -151,8 +151,6 @@ def _verify_uniform_predicate(
             received = comm.recv(src, f"uniform_cond_pred_{op.name}")
             gathered_values.append(received)
 
-    if not gathered_values:
-        raise ValueError("uniform_cond: empty gather for predicate")
 
     first_val = gathered_values[0]
     for i, val in enumerate(gathered_values[1:], start=1):

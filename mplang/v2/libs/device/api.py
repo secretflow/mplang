@@ -787,11 +787,11 @@ def fetch(obj: Object) -> Any:
 
             spu_shares = [SPUShareValue.from_libspu(share) for share in shares]
 
-            spu_state = simp_state.get_dialect_state("spu")
-            if spu_state is None:
-                raise RuntimeError("SPU state not found in dialect state")
 
-            reconstructed = spu.reconstruct(tuple(spu_shares))
+            reconstructed = spu.reconstruct(
+                spu.SPUConfig.from_dict(dev_info.config),
+                tuple(spu_shares),
+            )
 
             return _unwrap_value(reconstructed)
 

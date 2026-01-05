@@ -322,9 +322,11 @@ def _write_ae(in_types: list[elt.BaseType], *, path: str, format: str) -> elt.Ta
     """
 
     if not in_types:
-        raise ValueError(f"write requires at least one input table, got {in_types}")
+        raise ValueError(
+            f"write requires at least one input table, got {len(in_types)}"
+        )
 
-    # Verify all inputs are TensorType
+    # Verify all inputs are TableType
     for i, t in enumerate(in_types):
         if not isinstance(t, elt.TableType):
             raise TypeError(f"Input {i} is not TableType: {type(t)}")
@@ -344,7 +346,7 @@ def _write_ae(in_types: list[elt.BaseType], *, path: str, format: str) -> elt.Ta
         raise ValueError("path must be a non-empty string")
     if format not in ("auto", "parquet", "csv", "json"):
         raise ValueError(
-            f"format must be in ['parquet', 'csv', 'json'], got {format!r}"
+            f"format must be in ['auto', 'parquet', 'csv', 'json'], got {format!r}"
         )
     return elt.TableType(columns)
 

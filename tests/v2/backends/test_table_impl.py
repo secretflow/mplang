@@ -374,30 +374,29 @@ def test_file_table_source():
             pass  # This should raise ValueError during open
 
 
-def test_write_basic():
-    filename = "test_write_basic"
+def test_write_basic(tmp_path):
+    filename = tmp_path / "test_write_basic"
     data = {"x": [10, 20], "y": ["foo", "bar"]}
     src_table = pa.table(data)
     t1 = table.constant(data)
     formats = ["parquet", "csv", "json"]
     schema = elt.TableType({"x": elt.i64, "y": elt.STRING})
     for fmt in formats:
-        path = f"{filename}.{fmt}"
-        table.write(t1, path=path, format="auto")
-        result = table.read(path, schema=schema)
+        path = filename.with_suffix(f".{fmt}")
+        table.write(t1, path=str(path), format="auto")
+        result = table.read(str(path), schema=schema)
         res_table = _get_table(result)
         assert res_table == src_table
-        os.remove(path)
 
 
-def test_write_multi_tables():
+def test_write_multi_tables(tmp_path):
     data1 = {"x": [10, 20], "y": ["foo", "bar"]}
     data2 = {"z": [0.1, 0.2]}
-    path = "test_multi_write.parquet"
 
     def workload():
         t1 = table.constant(data1)
         t2 = table.constant(data2)
+        path = str(tmp_path / "test_multi_write.parquet")
         table.write([t1, t2], path=path)
         result = table.read(
             path, schema=elt.TableType({"x": elt.i64, "y": elt.STRING, "z": elt.f64})
@@ -407,7 +406,6 @@ def test_write_multi_tables():
     result = workload()
     res_table = _get_table(result)
     assert res_table == pa.table({**data1, **data2})
-    os.remove(path)
 
     # Test row data inconsistency
     data3 = {"a": [1, 2], "b": [3, 4]}  # 2 rows
@@ -419,7 +417,7 @@ def test_write_multi_tables():
         t4 = table.constant(data4)
         table.write([t3, t4], path=path2)
 
-    with pytest.raises(ValueError, match=r"Batch  has \d+ rows, expected \d+"):
+    with pytest.raises(ValueError, match=r"Batch 1 has \d+ rows, expected \d+"):
         workload_inconsistent()
 
     # Test duplicate column names

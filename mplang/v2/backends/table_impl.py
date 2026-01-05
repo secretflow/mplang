@@ -28,12 +28,11 @@ import duckdb
 import pandas as pd
 import pyarrow as pa
 
-import mplang.v2.edsl.typing as mp_typing
+import mplang.v2.edsl.typing as elt
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import table
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
-from mplang.v2.edsl.typing import TableType
 from mplang.v2.runtime.interpreter import Interpreter
 from mplang.v2.runtime.value import WrapValue
 
@@ -358,35 +357,35 @@ class ParquetReader(pa.RecordBatchReader):
         self._file.close()
 
 
-_type_mappping = {
-    mp_typing.bool_: pa.bool_(),
-    mp_typing.i8: pa.int8(),
-    mp_typing.i16: pa.int16(),
-    mp_typing.i32: pa.int32(),
-    mp_typing.i64: pa.int64(),
-    mp_typing.u8: pa.uint8(),
-    mp_typing.u16: pa.uint16(),
-    mp_typing.u32: pa.uint32(),
-    mp_typing.u64: pa.uint64(),
-    mp_typing.f16: pa.float16(),
-    mp_typing.f32: pa.float32(),
-    mp_typing.f64: pa.float64(),
-    mp_typing.STRING: pa.string(),
-    mp_typing.DATE: pa.date64(),
-    mp_typing.TIME: pa.time32("ms"),
-    mp_typing.TIMESTAMP: pa.timestamp("ms"),
-    mp_typing.DECIMAL: pa.decimal128(38, 10),
-    mp_typing.BINARY: pa.binary(),
-    mp_typing.JSON: pa.json_(),
+_type_mapping = {
+    elt.bool_: pa.bool_(),
+    elt.i8: pa.int8(),
+    elt.i16: pa.int16(),
+    elt.i32: pa.int32(),
+    elt.i64: pa.int64(),
+    elt.u8: pa.uint8(),
+    elt.u16: pa.uint16(),
+    elt.u32: pa.uint32(),
+    elt.u64: pa.uint64(),
+    elt.f16: pa.float16(),
+    elt.f32: pa.float32(),
+    elt.f64: pa.float64(),
+    elt.STRING: pa.string(),
+    elt.DATE: pa.date64(),
+    elt.TIME: pa.time32("ms"),
+    elt.TIMESTAMP: pa.timestamp("ms"),
+    elt.DECIMAL: pa.decimal128(38, 10),
+    elt.BINARY: pa.binary(),
+    elt.JSON: pa.json_(),
 }
 
 
-def _pa_schema(s: TableType) -> pa.Schema:
+def _pa_schema(s: elt.TableType) -> pa.Schema:
     fields = []
     for k, v in s.schema.items():
-        if v not in _type_mappping:
+        if v not in _type_mapping:
             raise ValueError(f"cannot convert to pyarrow type. type={v}, name={k}")
-        fields.append(pa.field(k, _type_mappping[v]))
+        fields.append(pa.field(k, _type_mapping[v]))
 
     return pa.schema(fields)
 
@@ -414,7 +413,8 @@ class FileTableSource(TableSource):
             case _:
                 raise ValueError(f"Unsupported format: {self.format}")
 
-        base_query = f"SELECT * FROM {func_name}('{self.path}')"
+        safe_path = self.path.replace("'", "''")
+        base_query = f"SELECT * FROM {func_name}('{safe_path}')"
         if replace:
             query = f"CREATE OR REPLACE VIEW {name} AS {base_query}"
         else:
@@ -447,7 +447,7 @@ class FileTableSource(TableSource):
                 )
             case "json":
                 read_options = pa_json.ReadOptions(use_threads=True)
-                table = pa_json.read_json(self.path)
+                table = pa_json.read_json(self.path, read_options=read_options)
                 if columns:
                     table = table.select(columns)
                 reader = table.to_reader()
@@ -504,6 +504,14 @@ class TableValue(WrapValue[pa.Table | TableSource]):
 
     @property
     def data(self) -> pa.Table:
+        """Get the underlying PyArrow Table data.
+
+        For lazy TableSource, this triggers a full read of the data and caches
+        the result in self._data. Subsequent calls will return the cached table.
+
+        Returns:
+            The PyArrow Table containing all data
+        """
         if isinstance(self._data, TableSource):
             source = self._data
             with source.open() as reader:
@@ -514,13 +522,13 @@ class TableValue(WrapValue[pa.Table | TableSource]):
     # =========== Wrap/Unwrap ===========
 
     def _convert(self, data: Any) -> pa.Table | TableSource:
-        """Convert input data to pa.Table."""
+        """Convert input data to pa.Table or TableSource."""
         if isinstance(data, TableValue):
             return data.unwrap()
         if isinstance(data, pd.DataFrame):
             data = pa.Table.from_pandas(data)
         if not isinstance(data, pa.Table | TableSource):
-            raise TypeError(f"Expected pa.Table or LazyTable, got {type(data)}")
+            raise TypeError(f"Expected pa.Table or TableSource, got {type(data)}")
         return data
 
     # =========== Serialization ===========
@@ -601,7 +609,7 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableVa
         for name, tbl in zip(table_names, tables, strict=True):
             data = tbl.unwrap()
             if name in state.tables:
-                if state.tables[name] is not tbl:
+                if state.tables[name] is not data:
                     # TODO: rename and rewrite sql??
                     raise ValueError(f"{name} has been registered.")
             else:
@@ -684,8 +692,6 @@ def _infer_format(path: str, format_hint: str) -> str:
     path_lower = path.lower()
     if path_lower.endswith((".parquet", ".pq")):
         return "parquet"
-    elif path_lower.endswith(".orc"):
-        return "orc"
     elif path_lower.endswith(".csv"):
         return "csv"
     elif path_lower.endswith((".json", ".jsonl")):
@@ -699,12 +705,12 @@ def _infer_format(path: str, format_hint: str) -> str:
 def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
     """Read table from file.
 
-    Supported formats: parquet, csv, json, feather
+    Supported formats: parquet, csv, json
     """
     import os
 
     path: str = op.attrs["path"]
-    schema: TableType = op.attrs["schema"]
+    schema: elt.TableType = op.attrs["schema"]
     format_hint: str = op.attrs.get("format", "auto")
     fmt = _infer_format(path, format_hint)
     if not os.path.exists(path):
@@ -733,13 +739,13 @@ class MultiTableReader(BatchReader):
     def read_next_batch(self) -> pa.RecordBatch:
         num_rows = -1
         columns: list[pa.ChunkedArray] = []
-        for r in self._readers:
+        for idx, r in enumerate(self._readers):
             batch = r.read_next_batch()
             if num_rows == -1:
                 num_rows = batch.num_rows
             elif num_rows != batch.num_rows:
                 raise ValueError(
-                    f"Batch  has {batch.num_rows} rows, expected {num_rows}"
+                    f"Batch {idx} has {batch.num_rows} rows, expected {num_rows}"
                 )
             columns.extend(batch.columns)
         return pa.RecordBatch.from_arrays(columns, names=self._schema.names)
@@ -753,7 +759,7 @@ class MultiTableReader(BatchReader):
 def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> None:
     """Write table to file.
 
-    Supported formats: parquet, orc, csv
+    Supported formats: parquet, csv, json
 
     For LazyTable, performs streaming writes when supported.
     For regular Tables, performs direct writes.
@@ -797,7 +803,7 @@ def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> 
             # PyArrow doesn't have direct JSON write, convert to pandas
             tbl = pa.Table.from_batches(self._batches)
             df = tbl.to_pandas()
-            df.to_json(path, orient="records", lines=True)
+            df.to_json(self._path, orient="records", lines=True)
 
     def _safe_remove_file(path: str) -> None:
         if os.path.exists(path):

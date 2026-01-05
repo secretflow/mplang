@@ -780,15 +780,20 @@ def fetch(obj: Object) -> Any:
             # 4. Unwrap if WrapValue
             return _unwrap_value(result)
 
-        # 3.2 SPU: fetch from all ranks and reconstruct
-        elif dev_info.kind.upper() == "SPU":
-            # Fetch shares from all SPU members
+            # 3.2 SPU: fetch from all ranks and reconstruct
             shares = [_fetch_from_rank(m.rank) for m in dev_info.members]
-            # For now, just return the first share (TODO: implement spu.reconstruct)
-            # In practice, SPU values should be revealed to a PPU first
-            result = shares[0] if shares else None
-            # 4. Unwrap if WrapValue
-            return _unwrap_value(result)
+
+            from mplang.v2.backends.spu_impl import SPUShareValue
+
+            spu_shares = [SPUShareValue.from_libspu(share) for share in shares]
+
+            spu_state = simp_state.get_dialect_state("spu")
+            if spu_state is None:
+                raise RuntimeError("SPU state not found in dialect state")
+
+            reconstructed = spu.reconstruct(tuple(spu_shares))
+
+            return _unwrap_value(reconstructed)
 
     # Direct value (not DriverVar)
     return _unwrap_value(runtime_obj)

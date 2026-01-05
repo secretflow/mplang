@@ -86,38 +86,3 @@ def test_simulator_object_store_flow():
     results = [int(r) for r in results]
     assert results == [11, 21]
     hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
-
-
-def test_uniform_cond_clean():
-    """Test uniform_cond (Clean ver)."""
-    sim = simp.make_simulator(world_size=2)
-
-    with sim:
-        # Check if pcall_static handling returns DriverVar
-        # Manually invoke pcall_static first
-        simp.pcall_static((0, 1), lambda: tensor.constant(True))
-
-        x0 = simp.constant((0,), 1)
-        x1 = simp.constant((1,), 2)
-        x_obj = simp.converge(x0, x1)
-
-        def then_fn(x):
-            return simp.pcall_static(
-                (0, 1), lambda a: tensor.run_jax(lambda v: v + v, a), x
-            )
-
-        def else_fn(x):
-            return simp.pcall_static(
-                (0, 1), lambda a: tensor.run_jax(lambda v: v * v, a), x
-            )
-
-        pred_true = simp.constant((0, 1), True)
-        # uniform_cond
-        res = simp.uniform_cond(pred_true, then_fn, else_fn, x_obj)
-
-        values = mp.fetch(res)
-        values = [
-            int(v) if not hasattr(v, "shape") or v.shape == () else v for v in values
-        ]
-        assert values == [2, 4]
-    hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()

@@ -113,3 +113,82 @@ def test_spu_e2e_simulation():
         # Shutdown the cluster via the interpreter's reference
         if hasattr(sim, "_simp_cluster"):
             sim._simp_cluster.shutdown()
+
+
+def test_spu_channels_mode_simulation():
+    """Test SPU using Channels mode (no BRPC endpoints, reuse simp communicator)."""
+    # 1. Setup
+    world_size = 3
+    sim = simp.make_simulator(world_size=world_size)
+    mp.set_root_context(sim)
+    spu_parties = (0, 1, 2)
+    spu_config = spu.SPUConfig()
+
+    # 2. Define computation
+    def secure_mul(x, y):
+        return x * y
+
+    # 3. Define workflow graph (no spu_endpoints -> Channels mode)
+    def workflow():
+        # Create data
+        x_mp = simp.constant((0,), np.array([2.0, 3.0], dtype=np.float32))
+        y_mp = simp.constant((0,), np.array([4.0, 5.0], dtype=np.float32))
+
+        # Encrypt
+        x_shares = simp.pcall_static((0,), spu.make_shares, spu_config, x_mp, count=3)
+        x_dist = [
+            simp.shuffle_static(x_shares[i], {target: 0})
+            for i, target in enumerate(spu_parties)
+        ]
+        x_enc = simp.converge(*x_dist)
+
+        y_shares = simp.pcall_static((0,), spu.make_shares, spu_config, y_mp, count=3)
+        y_dist = [
+            simp.shuffle_static(y_shares[i], {target: 0})
+            for i, target in enumerate(spu_parties)
+        ]
+        y_enc = simp.converge(*y_dist)
+
+        # Execute (Channels mode - no spu_endpoints)
+        z_enc = simp.pcall_static(
+            spu_parties,
+            spu.run_jax,
+            spu_config,
+            secure_mul,
+            x_enc,
+            y_enc,
+        )
+
+        # Decrypt
+        z_shares = [
+            simp.shuffle_static(
+                simp.pcall_static((source,), lambda x: x, z_enc), {0: source}
+            )
+            for source in spu_parties
+        ]
+        z_mp = simp.pcall_static(
+            (0,), lambda *s: spu.reconstruct(spu_config, s), *z_shares
+        )
+        return z_mp
+
+    # Trace and execute
+    traced = el.trace(workflow)
+    graph = traced.graph
+
+    try:
+        results_list = sim.evaluate_graph(graph, [])
+        results_var = results_list[0]
+        values = mp.fetch(results_var)
+
+        # Verify
+        res_p0 = values[0]
+        if hasattr(res_p0, "unwrap"):
+            res_p0 = res_p0.unwrap()
+        np.testing.assert_allclose(res_p0, [8.0, 15.0])
+
+        assert values[1] is None
+        assert values[2] is None
+
+    finally:
+        if hasattr(sim, "_simp_cluster"):
+            sim._simp_cluster.shutdown()

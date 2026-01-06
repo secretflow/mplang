@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import threading
+from collections import defaultdict, deque
 from typing import Any
 
 
@@ -35,7 +36,8 @@ class ThreadCommunicator:
         self.world_size = world_size
         self.use_serde = use_serde
         self.peers: list[ThreadCommunicator] = []
-        self._mailbox: dict[str, Any] = {}
+        # Changed from dict to queue: support multiple messages per key (SPU ALLGATHER)
+        self._mailbox: defaultdict[str, deque[Any]] = defaultdict(deque)
         self._cond = threading.Condition()
         self._sent_events: dict[str, threading.Event] = {}
         self._shutdown = False
@@ -59,19 +61,16 @@ class ThreadCommunicator:
 
     def recv(self, frm: int, key: str) -> Any:
         with self._cond:
-            while key not in self._mailbox and not self._shutdown:
+            while not self._mailbox[key] and not self._shutdown:
                 self._cond.wait()
             if self._shutdown:
                 raise RuntimeError("Communicator shut down")
-            return self._mailbox.pop(key)
+            return self._mailbox[key].popleft()
 
     def _on_receive(self, frm: int, key: str, data: Any) -> None:
         with self._cond:
-            if key in self._mailbox:
-                raise RuntimeError(
-                    f"Mailbox overflow for key {key} at rank {self.rank}"
-                )
-            self._mailbox[key] = data
+            # Append to queue instead of overwriting (allow multiple messages per key)
+            self._mailbox[key].append(data)
             self._cond.notify_all()
 
 

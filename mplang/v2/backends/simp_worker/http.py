@@ -100,18 +100,19 @@ class HttpCommunicator:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}")
-        
+
         # Detect SPU channel (tag prefix "spu:") and handle bytes
         if key.startswith("spu:") and isinstance(data, bytes):
             # Send raw bytes for SPU channels
             import base64
+
             payload = base64.b64encode(data).decode("ascii")
             is_raw_bytes = True
         else:
             # Use secure JSON serialization
             payload = serde.dumps_b64(data)
             is_raw_bytes = False
-        
+
         size_bytes = len(payload)
 
         # Log to profiler
@@ -301,11 +302,12 @@ def create_worker_app(
             if req.is_raw_bytes:
                 # Decode base64 to raw bytes
                 import base64
+
                 data = base64.b64decode(req.data)
             else:
                 # Use secure JSON deserialization
                 data = serde.loads_b64(req.data)
-            
+
             comm.on_receive(key, data)
             return {"status": "ok"}
         except Exception as e:

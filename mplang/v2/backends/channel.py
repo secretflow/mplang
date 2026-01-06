@@ -178,7 +178,6 @@ class BaseChannel(libspu.link.IChannel):
         # NO-OP: ThreadCommunicator in LocalMesh causes mailbox overflow
         # because libspu calls TestSend/TestRecv sequentially during
         # create_with_channels. HTTP mode doesn't need it either (stateless).
-        pass
 
     def TestRecv(self) -> None:
         """Wait for dummy message from peer.
@@ -186,7 +185,6 @@ class BaseChannel(libspu.link.IChannel):
         Timeout controlled by recv_timeout_ms in link descriptor.
         """
         # NO-OP: See TestSend comment
-        pass
 
     def WaitLinkTaskFinish(self) -> None:
         """Wait for all pending async tasks.
@@ -199,9 +197,7 @@ class BaseChannel(libspu.link.IChannel):
 
         Currently a no-op. Could be extended for resource cleanup.
         """
-        logging.warning(
-            f"BaseChannel.Abort: {self._local_rank} <-> {self._peer_rank}"
-        )
+        logging.warning(f"BaseChannel.Abort: {self._local_rank} <-> {self._peer_rank}")
 
     def SetThrottleWindowSize(self, size: int) -> None:
         """Set throttle window size (no-op).

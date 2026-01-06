@@ -214,6 +214,8 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     communicator = None
     if spu_endpoints is None:
         # Use worker's communicator for channel reuse
+        from mplang.v2.backends.simp_worker.state import SimpWorker
+        assert isinstance(context, SimpWorker), "Expected SimpWorker context"
         communicator = context.communicator
 
     # Get or create SPUState for caching Runtime/Io
@@ -228,7 +230,7 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         config,
         spu_endpoints,
         communicator=communicator,
-        parties=parties,
+        parties=list(parties),
     )
 
     executable_code = op.attrs["executable"]

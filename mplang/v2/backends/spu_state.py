@@ -20,7 +20,7 @@ multiple executions while binding to the Interpreter's lifecycle.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import spu.api as spu_api
 import spu.libspu as libspu
@@ -129,7 +129,7 @@ class SPUState(DialectState):
         self,
         local_rank: int,
         spu_world_size: int,
-        communicator: object,
+        communicator: Any,
         parties: list[int],
     ) -> libspu.link.Context:
         """Create link using custom channels (reuse v2 communicator).

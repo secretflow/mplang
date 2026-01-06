@@ -36,8 +36,9 @@ class ThreadCommunicator:
         self.world_size = world_size
         self.use_serde = use_serde
         self.peers: list[ThreadCommunicator] = []
-        # Changed from dict to queue: support multiple messages per key (SPU ALLGATHER)
-        self._mailbox: defaultdict[str, deque[Any]] = defaultdict(deque)
+        # Mailbox keyed by (from_rank, tag): support multiple peers sending same tag
+        # Each (from_rank, tag) pair can have multiple messages (queue)
+        self._mailbox: defaultdict[tuple[int, str], deque[Any]] = defaultdict(deque)
         self._cond = threading.Condition()
         self._sent_events: dict[str, threading.Event] = {}
         self._shutdown = False
@@ -60,17 +61,19 @@ class ThreadCommunicator:
         self.peers[to]._on_receive(self.rank, key, data)
 
     def recv(self, frm: int, key: str) -> Any:
+        mailbox_key = (frm, key)
         with self._cond:
-            while not self._mailbox[key] and not self._shutdown:
+            while not self._mailbox[mailbox_key] and not self._shutdown:
                 self._cond.wait()
             if self._shutdown:
                 raise RuntimeError("Communicator shut down")
-            return self._mailbox[key].popleft()
+            return self._mailbox[mailbox_key].popleft()
 
     def _on_receive(self, frm: int, key: str, data: Any) -> None:
+        mailbox_key = (frm, key)
         with self._cond:
-            # Append to queue instead of overwriting (allow multiple messages per key)
-            self._mailbox[key].append(data)
+            # Append to queue for this (from_rank, tag) pair
+            self._mailbox[mailbox_key].append(data)
             self._cond.notify_all()
 
 

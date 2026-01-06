@@ -339,7 +339,7 @@ class HttpCommunicator:
 4. **并行创建** ✅
    - **LocalMesh**: 不需要额外 threading（多线程 worker 自带并行）
    - **HttpDriver**: 不需要额外 threading（多进程 worker 天然并行）
-   - **TestSend/TestRecv**: 改为 no-op，无握手需求
+   - **TestSend/TestRecv**: 恢复正常握手逻辑（mailbox 修复后可以正常工作）
 
 ## Success Criteria
 
@@ -347,35 +347,59 @@ class HttpCommunicator:
 - [x] v2 的 SPU 可以复用 HttpCommunicator (HttpDriver)
 - [x] 单元测试覆盖：9 个 BaseChannel 单元测试
 - [x] 集成测试通过：LocalMesh (3-party) + HttpDriver (2-party)
-- [x] 关键修复：ThreadCommunicator mailbox 队列化
+- [x] 关键修复：ThreadCommunicator mailbox 使用 (from_rank, tag) 作为 key
 - [x] 文档更新（设计文档 + 实现总结）
 
 ## Key Implementation Insights
 
-### 1. ThreadCommunicator Mailbox Fix
+### 1. ThreadCommunicator Mailbox Fix（核心修复）
 
-**问题**: SPU 的并发通信（如 ALLGATHER）会在同一时刻向同一个 key 发送多条消息，但 v2 原始的 `ThreadCommunicator._mailbox: dict[str, Any]` 设计假设每个 key 只用一次，导致 "Mailbox overflow" 错误。
+**问题根源**: v2 原始的 `ThreadCommunicator._mailbox` 只使用 `tag` 作为 key，忽略了 `recv(frm, key)` 的 `frm` 参数。这导致：
+- 多个 peer 向同一个 receiver 发送相同 tag 时，消息会混淆
+- 无法区分是哪个 peer 发送的消息
+- SPU 的并发通信（如 ALLGATHER）会导致 "Mailbox overflow" 错误
 
-**解决**: 将 mailbox 改为队列结构：
+**正确的修复**：Mailbox 使用 `(from_rank, tag)` 作为复合 key：
 ```python
-# Before: dict[str, Any]
-# After: defaultdict[str, deque[Any]]
-self._mailbox: defaultdict[str, deque[Any]] = defaultdict(deque)
+# Before (错误): 只用 tag
+self._mailbox: dict[str, Any] = {}
+# 问题：收到 peer 0 和 peer 2 的相同 tag 会冲突
 
-# recv: popleft() instead of pop()
-return self._mailbox[key].popleft()
+# After (正确): 用 (from_rank, tag)
+self._mailbox: defaultdict[tuple[int, str], deque[Any]] = defaultdict(deque)
+#                              ↑         ↑        ↑
+#                          from_rank   tag    队列(支持同一sender多次发送)
 
-# _on_receive: append() instead of overwrite
-self._mailbox[key].append(data)
+def recv(self, frm: int, key: str) -> Any:
+    mailbox_key = (frm, key)  # 使用 frm 参数！
+    return self._mailbox[mailbox_key].popleft()
+
+def _on_receive(self, frm: int, key: str, data: Any) -> None:
+    mailbox_key = (frm, key)  # 区分不同发送方
+    self._mailbox[mailbox_key].append(data)
 ```
 
-### 2. TestSend/TestRecv NO-OP
+**为什么需要两层**：
+1. **第一层 (from_rank, tag)**：区分不同发送方的相同 tag
+2. **第二层 deque**：支持同一发送方多次发送相同 tag（队列化）
 
-libspu 的 `create_with_channels` 可能调用 `TestSend/TestRecv` 做握手，但：
-- **ThreadCommunicator**: LocalMesh 已并行执行，无需额外握手
-- **HttpCommunicator**: 无状态设计，握手无意义
+### 2. TestSend/TestRecv 握手逻辑
 
-因此 BaseChannel 的 TestSend/TestRecv 实现为 no-op。
+**之前的错误理解**: 以为 mailbox overflow 是因为握手冲突，所以改成 no-op。
+
+**现在的正确实现**: Mailbox 修复后，TestSend/TestRecv 可以正常工作：
+```python
+def TestSend(self, timeout: int) -> None:
+    test_data = b"\x00"  # 1-byte handshake
+    self.Send("__test__", test_data)
+
+def TestRecv(self) -> None:
+    test_data = self.Recv("__test__")
+    if test_data != b"\x00":
+        logging.warning(f"Unexpected handshake: {test_data!r}")
+```
+
+握手逻辑现在完全正常，因为 mailbox 使用 `(peer_rank, "spu:__test__")` 作为 key，不会冲突。
 
 ### 3. HttpCommunicator Bytes Handling
 
@@ -400,7 +424,8 @@ All 4 phases complete. SPU Channels mode fully functional in v2:
 - **9 BaseChannel unit tests** passing (`tests/v2/backends/test_channel.py`)
 - **LocalMesh integration** passing (`test_spu_channels_mode_simulation` - 3 parties)
 - **HttpDriver integration** passing (`test_spu_computation` - 2 parties, high-level device API)
-- **ThreadCommunicator** mailbox fixed for concurrent SPU communication (dict → deque)
+- **ThreadCommunicator** mailbox 正确实现：使用 `(from_rank, tag)` 复合 key + deque
+- **BaseChannel** TestSend/TestRecv 恢复正常握手逻辑
 - **HttpCommunicator** enhanced with raw bytes support (base64 + is_raw_bytes flag)
 
 ### Test Summary

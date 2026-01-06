@@ -171,16 +171,23 @@ class BaseChannel(libspu.link.IChannel):
         Args:
             timeout: Timeout in milliseconds (informational)
         """
-        # NO-OP: ThreadCommunicator in LocalMesh causes mailbox overflow
-        # because libspu calls TestSend/TestRecv sequentially during
-        # create_with_channels. HTTP mode doesn't need it either (stateless).
+        test_data = b"\x00"  # Minimal 1-byte handshake
+        self.Send("__test__", test_data)
 
     def TestRecv(self) -> None:
         """Wait for dummy message from peer.
 
         Timeout controlled by recv_timeout_ms in link descriptor.
+
+        Raises:
+            Warning if unexpected handshake data received
         """
-        # NO-OP: See TestSend comment
+        test_data = self.Recv("__test__")
+        if test_data != b"\x00":
+            logging.warning(
+                f"TestRecv: unexpected handshake from {self._peer_rank}, "
+                f"expected b'\\x00', got {test_data!r}"
+            )
 
     def WaitLinkTaskFinish(self) -> None:
         """Wait for all pending async tasks.

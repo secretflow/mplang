@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import threading
-from collections import defaultdict, deque
 from typing import Any
 
 
@@ -36,9 +35,8 @@ class ThreadCommunicator:
         self.world_size = world_size
         self.use_serde = use_serde
         self.peers: list[ThreadCommunicator] = []
-        # Mailbox keyed by (from_rank, tag): support multiple peers sending same tag
-        # Each (from_rank, tag) pair can have multiple messages (queue)
-        self._mailbox: defaultdict[tuple[int, str], deque[Any]] = defaultdict(deque)
+        # Mailbox keyed by (from_rank, tag): each key has exactly one message
+        self._mailbox: dict[tuple[int, str], Any] = {}
         self._cond = threading.Condition()
         self._sent_events: dict[str, threading.Event] = {}
         self._shutdown = False
@@ -63,17 +61,20 @@ class ThreadCommunicator:
     def recv(self, frm: int, key: str) -> Any:
         mailbox_key = (frm, key)
         with self._cond:
-            while not self._mailbox[mailbox_key] and not self._shutdown:
+            while mailbox_key not in self._mailbox and not self._shutdown:
                 self._cond.wait()
             if self._shutdown:
                 raise RuntimeError("Communicator shut down")
-            return self._mailbox[mailbox_key].popleft()
+            return self._mailbox.pop(mailbox_key)
 
     def _on_receive(self, frm: int, key: str, data: Any) -> None:
         mailbox_key = (frm, key)
         with self._cond:
-            # Append to queue for this (from_rank, tag) pair
-            self._mailbox[mailbox_key].append(data)
+            if mailbox_key in self._mailbox:
+                raise RuntimeError(
+                    f"Mailbox overflow: key {mailbox_key} already exists"
+                )
+            self._mailbox[mailbox_key] = data
             self._cond.notify_all()
 
 

@@ -22,13 +22,9 @@ infrastructure instead of creating separate BRPC connections.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 import spu.libspu as libspu
-
-if TYPE_CHECKING:
-    from mplang.v2.backends.simp_worker.http import HttpCommunicator
-    from mplang.v2.backends.simp_worker.mem import ThreadCommunicator
 
 
 class CommunicatorProtocol(Protocol):

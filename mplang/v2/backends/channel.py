@@ -58,7 +58,7 @@ class BaseChannel(libspu.link.IChannel):
 
     def __init__(
         self,
-        comm: ThreadCommunicator | HttpCommunicator | CommunicatorProtocol,
+        comm: CommunicatorProtocol,
         local_rank: int,
         peer_rank: int,
         tag_prefix: str = "spu",
@@ -66,7 +66,7 @@ class BaseChannel(libspu.link.IChannel):
         """Initialize channel to a specific peer.
 
         Args:
-            comm: v2 communicator (Thread/Http, duck typed)
+            comm: v2 communicator (any object implementing send/recv)
             local_rank: Global rank of this party
             peer_rank: Global rank of the peer party
             tag_prefix: Prefix for all tags (default: "spu")

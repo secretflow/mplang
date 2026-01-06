@@ -26,7 +26,6 @@ import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
 
-from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.spu_state import SPUState
 from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import spu
@@ -161,6 +160,8 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     The SPU config must contain parties info to correctly map global rank
     to local SPU rank and determine SPU world size.
     """
+    from mplang.v2.backends.simp_worker.state import SimpWorker
+
     # Get SPU config from attrs (passed through from run_jax)
     config: spu.SPUConfig = op.attrs["config"]
 
@@ -193,9 +194,8 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
         interpreter, "spu_endpoints", None
     )
     if spu_endpoints_map is None:
-        context = interpreter.get_dialect_state("simp")
-        if context is not None:
-            spu_endpoints_map = getattr(context, "spu_endpoints", None)
+        # Try getting from SimpWorker context (context is already SimpWorker)
+        spu_endpoints_map = getattr(context, "spu_endpoints", None)
 
     # Build ordered list of endpoints for SPU parties
     spu_endpoints: list[str] | None = None
@@ -214,8 +214,7 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     communicator = None
     if spu_endpoints is None:
         # Use worker's communicator for channel reuse
-        from mplang.v2.backends.simp_worker.state import SimpWorker
-        assert isinstance(context, SimpWorker), "Expected SimpWorker context"
+        # (SimpWorker already imported at function start)
         communicator = context.communicator
 
     # Get or create SPUState for caching Runtime/Io

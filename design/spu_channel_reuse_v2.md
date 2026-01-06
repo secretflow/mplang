@@ -295,8 +295,11 @@ class HttpCommunicator:
 ### ✅ Phase 3: Worker Integration (Completed)
 
 - [x] 修改 `spu_impl.py` 传递 communicator 和 parties
-- [x] ThreadCommunicator: 修复 mailbox 机制（dict → deque）
-- [x] HttpCommunicator: 增强 bytes 支持（tag prefix + is_raw_bytes）
+- [x] ThreadCommunicator: 修复 mailbox 机制（使用 `(from_rank, tag)` 复合 key）
+- [x] HttpCommunicator: 
+  - [x] 修复 mailbox 机制（使用 `(from_rank, tag)` 复合 key）
+  - [x] 增强 bytes 支持（tag prefix + is_raw_bytes）
+  - [x] on_receive 调用传递 from_rank
 - [x] CommRequest: 添加 is_raw_bytes 字段
 - [x] /comm/{key} 端点: 处理 raw bytes
 
@@ -347,14 +350,14 @@ class HttpCommunicator:
 - [x] v2 的 SPU 可以复用 HttpCommunicator (HttpDriver)
 - [x] 单元测试覆盖：9 个 BaseChannel 单元测试
 - [x] 集成测试通过：LocalMesh (3-party) + HttpDriver (2-party)
-- [x] 关键修复：ThreadCommunicator mailbox 使用 (from_rank, tag) 作为 key
+- [x] 关键修复：ThreadCommunicator 和 HttpCommunicator mailbox 使用 (from_rank, tag) 作为 key
 - [x] 文档更新（设计文档 + 实现总结）
 
 ## Key Implementation Insights
 
-### 1. ThreadCommunicator Mailbox Fix（核心修复）
+### 1. ThreadCommunicator & HttpCommunicator Mailbox Fix（核心修复）
 
-**问题根源**: v2 原始的 `ThreadCommunicator._mailbox` 只使用 `tag` 作为 key，忽略了 `recv(frm, key)` 的 `frm` 参数。这导致：
+**问题根源**: v2 原始的 `ThreadCommunicator` 和 `HttpCommunicator` 的 `_mailbox` 只使用 `tag` 作为 key，忽略了 `recv(frm, key)` 的 `frm` 参数。这导致：
 - 多个 peer 向同一个 receiver 发送相同 tag 时，消息会混淆
 - 无法区分是哪个 peer 发送的消息
 - SPU 的并发通信（如 ALLGATHER）会导致 "Mailbox overflow" 错误
@@ -366,22 +369,27 @@ self._mailbox: dict[str, Any] = {}
 # 问题：收到 peer 0 和 peer 2 的相同 tag 会冲突
 
 # After (正确): 用 (from_rank, tag)
-self._mailbox: defaultdict[tuple[int, str], deque[Any]] = defaultdict(deque)
-#                              ↑         ↑        ↑
-#                          from_rank   tag    队列(支持同一sender多次发送)
+self._mailbox: dict[tuple[int, str], Any] = {}
+#                       ↑         ↑
+#                   from_rank   tag
 
 def recv(self, frm: int, key: str) -> Any:
     mailbox_key = (frm, key)  # 使用 frm 参数！
-    return self._mailbox[mailbox_key].popleft()
+    return self._mailbox.pop(mailbox_key)
 
 def _on_receive(self, frm: int, key: str, data: Any) -> None:
     mailbox_key = (frm, key)  # 区分不同发送方
-    self._mailbox[mailbox_key].append(data)
+    if mailbox_key in self._mailbox:
+        raise RuntimeError(f"Mailbox overflow: key {mailbox_key} already exists")
+    self._mailbox[mailbox_key] = data
 ```
 
-**为什么需要两层**：
-1. **第一层 (from_rank, tag)**：区分不同发送方的相同 tag
-2. **第二层 deque**：支持同一发送方多次发送相同 tag（队列化）
+**重要发现**：使用 `(from_rank, tag)` 作为 key 后，每个 key 只对应一个消息，**不需要 deque**。原始设计队列化是为了解决 mailbox overflow，但实际上是因为没有区分 from_rank 导致的。正确区分后，每个 `(from_rank, tag)` 只会有一个消息在 mailbox 中等待。
+
+**两个 Communicator 实现保持一致**：
+- **ThreadCommunicator** (`mem.py`): `dict[tuple[int, str], Any]`
+- **HttpCommunicator** (`http.py`): `dict[tuple[int, str], Any]`
+- **on_receive** 调用: HttpCommunicator 的 `/comm/{key}` 端点需要传递 `req.from_rank`
 
 ### 2. TestSend/TestRecv 握手逻辑
 
@@ -424,9 +432,9 @@ All 4 phases complete. SPU Channels mode fully functional in v2:
 - **9 BaseChannel unit tests** passing (`tests/v2/backends/test_channel.py`)
 - **LocalMesh integration** passing (`test_spu_channels_mode_simulation` - 3 parties)
 - **HttpDriver integration** passing (`test_spu_computation` - 2 parties, high-level device API)
-- **ThreadCommunicator** mailbox 正确实现：使用 `(from_rank, tag)` 复合 key + deque
+- **ThreadCommunicator** mailbox 正确实现：使用 `(from_rank, tag)` 复合 key
+- **HttpCommunicator** mailbox 正确实现：使用 `(from_rank, tag)` 复合 key + raw bytes support
 - **BaseChannel** TestSend/TestRecv 恢复正常握手逻辑
-- **HttpCommunicator** enhanced with raw bytes support (base64 + is_raw_bytes flag)
 
 ### Test Summary
 
@@ -450,6 +458,7 @@ uv run pytest tests/v2/backends/simp_driver/test_http.py::TestDriverExecution::t
 2. **mplang/v2/backends/spu_state.py** (修改, +30 行)
 3. **mplang/v2/backends/spu_impl.py** (修改, +3 行)
 4. **mplang/v2/backends/simp_worker/http.py** (修改, +15 行)
-5. **mplang/v2/backends/simp_worker/mem.py** (修改, mailbox 队列化)
+5. **mplang/v2/backends/simp_worker/mem.py** (修改, mailbox 复合 key)
+6. **tests/v2/backends/test_channel.py** (新建, 9 单元测试)
 
 **准备合并！🚀**

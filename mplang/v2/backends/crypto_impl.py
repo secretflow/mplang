@@ -599,10 +599,21 @@ def hkdf_impl(
     Current implementation supports only SHA-256. Future versions will add
     SHA-512, SHA3-256, and BLAKE2b support.
 
+    Security Notes:
+        - Uses salt=None (defaults to 32-byte all-zero salt per RFC 5869)
+        - ONLY SAFE for high-entropy IKM (e.g., 256-bit ECDH shared secrets)
+        - NOT suitable for: passwords, low-entropy secrets, or repeated key derivations
+        - For session keys with same ECDH pair: use unique 'info' per session
+
+        Per NIST SP 800-56C Rev. 2:
+        "If the IKM is already cryptographically strong (e.g., from ECDH),
+         a salt may not be necessary, but using one does not hurt."
+
     Args:
         interpreter: Runtime interpreter context
         op: Operation node containing attributes (info, hash_algo)
         secret: Input key material (IKM) as SymmetricKeyValue or TensorValue
+                Must be high-entropy (≥256 bits) for security with salt=None
 
     Returns:
         SymmetricKeyValue with suite="hkdf-{hash_algo}" and 32-byte key_bytes
@@ -651,11 +662,14 @@ def hkdf_impl(
         )
 
     # Perform HKDF derivation using cryptography library
+    # Note: salt=None uses 32-byte all-zero salt (not random salt!)
+    # This is secure ONLY because ECDH outputs are already high-entropy (256-bit uniform)
+    # For low-entropy inputs or repeated derivations, a random salt would be required
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,  # Output length in bytes (AES-256 key = 32 bytes)
-        salt=None,  # No salt: ECDH output is already uniformly random (per NIST)
-        info=info_bytes,  # Context-specific binding
+        salt=None,  # 32-byte zero salt (secure for high-entropy ECDH shared secrets)
+        info=info_bytes,  # Context-specific binding for domain separation
     )
 
     derived_key = hkdf.derive(ikm)

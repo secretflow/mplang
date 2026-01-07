@@ -278,15 +278,44 @@ def _hash_batch_ae(data: elt.BaseType) -> elt.TensorType:
 
 
 @sym_encrypt_p.def_abstract_eval
-def _sym_encrypt_ae(key: elt.BaseType, plaintext: elt.BaseType) -> elt.TensorType:
+def _sym_encrypt_ae(
+    key: elt.BaseType, plaintext: elt.BaseType, *, algo: str = "aes-gcm"
+) -> elt.TensorType:
+    """Abstract evaluation for symmetric encryption.
+
+    Args:
+        key: Symmetric encryption key
+        plaintext: Data to encrypt
+        algo: Encryption algorithm (keyword-only, validated at runtime)
+
+    Returns:
+        Ciphertext as dynamic-length uint8 tensor
+    """
     # Dynamic shape for ciphertext
+    # algo validation is done at backend impl, not here
     return elt.TensorType(elt.u8, (-1,))
 
 
 @sym_decrypt_p.def_abstract_eval
 def _sym_decrypt_ae(
-    key: elt.BaseType, ciphertext: elt.BaseType, target_type: elt.BaseType
+    key: elt.BaseType,
+    ciphertext: elt.BaseType,
+    *,
+    target_type: elt.BaseType,
+    algo: str = "aes-gcm",
 ) -> elt.BaseType:
+    """Abstract evaluation for symmetric decryption.
+
+    Args:
+        key: Symmetric decryption key
+        ciphertext: Encrypted data
+        target_type: Expected type of decrypted plaintext (keyword-only)
+        algo: Decryption algorithm (keyword-only, validated at runtime)
+
+    Returns:
+        Decrypted plaintext with type matching target_type
+    """
+    # algo validation is done at backend impl, not here
     return target_type
 
 
@@ -405,16 +434,50 @@ def hash_batch(data: el.Object) -> el.Object:
     return hash_batch_p.bind(data)
 
 
-def sym_encrypt(key: el.Object, plaintext: el.Object) -> el.Object:
-    """Symmetric encrypt (XOR stream or AES-GCM)."""
-    return sym_encrypt_p.bind(key, plaintext)
+def sym_encrypt(
+    key: el.Object, plaintext: el.Object, *, algo: str = "aes-gcm"
+) -> el.Object:
+    """Symmetric encrypt.
+
+    Args:
+        key: Symmetric encryption key (SymmetricKeyType or bytes).
+        plaintext: Data to encrypt (any serializable object).
+        algo: Encryption algorithm. Currently only "aes-gcm" is supported.
+              Validation is performed at backend execution time.
+
+    Returns:
+        Ciphertext as Tensor[u8, (-1,)].
+
+    Raises:
+        ValueError: At runtime if algo is not supported by the backend.
+    """
+    return sym_encrypt_p.bind(key, plaintext, algo=algo)
 
 
 def sym_decrypt(
-    key: el.Object, ciphertext: el.Object, target_type: elt.BaseType
+    key: el.Object,
+    ciphertext: el.Object,
+    target_type: elt.BaseType,
+    *,
+    algo: str = "aes-gcm",
 ) -> el.Object:
-    """Symmetric decrypt."""
-    return sym_decrypt_p.bind(key, ciphertext, target_type=target_type)
+    """Symmetric decrypt.
+
+    Args:
+        key: Symmetric decryption key (SymmetricKeyType or bytes).
+        ciphertext: Encrypted data.
+        target_type: Expected type of the decrypted plaintext (for type inference).
+        algo: Decryption algorithm. Must match the algorithm used for encryption.
+              Currently only "aes-gcm" is supported.
+              Validation is performed at backend execution time.
+
+    Returns:
+        Decrypted plaintext with type matching target_type.
+
+    Raises:
+        ValueError: At runtime if algo is not supported by the backend.
+    """
+    return sym_decrypt_p.bind(key, ciphertext, target_type=target_type, algo=algo)
 
 
 def select(cond: el.Object, true_val: el.Object, false_val: el.Object) -> el.Object:

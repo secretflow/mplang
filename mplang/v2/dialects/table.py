@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import mplang.v2.edsl as el
 import mplang.v2.edsl.typing as elt
@@ -305,32 +305,54 @@ def read(
 
 
 @write_p.def_abstract_eval
-def _write_ae(table_type: elt.TableType, *, path: str, format: str) -> elt.TableType:
+def _write_ae(in_types: list[elt.BaseType], *, path: str, format: str) -> elt.TableType:
     """Infer output type for table.write.
 
     Args:
-        table_type: Input table's type
+        in_types: Input table's type
         path: File path to write to
         format: Output format ("csv", "parquet")
 
     Returns:
-        The input table type (passthrough)
+        The input table type
 
     Raises:
         TypeError: If input is not a TableType
         ValueError: If path is empty or format is invalid
     """
+
+    if not in_types:
+        raise ValueError(
+            f"write requires at least one input table, got {len(in_types)}"
+        )
+
+    # Verify all inputs are TableType
+    for i, t in enumerate(in_types):
+        if not isinstance(t, elt.TableType):
+            raise TypeError(f"Input {i} is not TableType: {type(t)}")
+
+    table_types = cast(list[elt.TableType], in_types)
+    columns = {}
+    for table_type in table_types:
+        for col_name in table_type.schema:
+            if col_name in columns:
+                raise ValueError(
+                    f"Duplicate column name '{col_name}' found across tables. "
+                    f"When writing multiple tables, column names must be unique."
+                )
+        columns.update(table_type.schema)
+
     if not isinstance(path, str) or not path:
         raise ValueError("path must be a non-empty string")
-    if not isinstance(table_type, elt.TableType):
-        raise TypeError(f"Expected TableType input, got {type(table_type).__name__}")
-    if format not in ("csv", "parquet"):
-        raise ValueError(f"format must be 'csv' or 'parquet', got {format!r}")
-    return table_type
+    if format not in ("auto", "parquet", "csv", "json"):
+        raise ValueError(
+            f"format must be in ['auto', 'parquet', 'csv', 'json'], got {format!r}"
+        )
+    return elt.TableType(columns)
 
 
 def write(
-    table: el.Object | Any,
+    tables: el.Object | list[el.Object] | Any,
     path: str,
     *,
     format: str = "parquet",
@@ -359,9 +381,14 @@ def write(
         >>> table.write(result, "/data/output.parquet")
     """
     # Auto-wrap runtime values
-    if not isinstance(table, el.Object):
-        table = constant(table)
-    return write_p.bind(table, path=path, format=format)  # type: ignore[no-any-return]
+    if not isinstance(tables, list):
+        tables = [tables]
+
+    for idx, tbl in enumerate(tables):
+        if not isinstance(tbl, el.Object):
+            tables[idx] = constant(tbl)
+
+    return write_p.bind(*tables, path=path, format=format)  # type: ignore[no-any-return]
 
 
 __all__ = [

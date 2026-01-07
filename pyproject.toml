@@ -34,7 +34,7 @@ dependencies = [
     "tenseal==0.3.16",         # for FHE(SEAL) backend implementation
     "pandas>=2.0.0",
     "duckdb>=1.0.0",
-    "httpx>=0.27.0",
+    "httpx>=0.27.0,<1.0.0",
     "fastapi",
     "uvicorn[standard]",
     "sqlglot>=23.0.0",

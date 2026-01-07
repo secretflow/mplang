@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from mplang.v2.backends.tensor_impl import TensorValue
 from mplang.v2.dialects import simp
 from mplang.v2.edsl.graph import Operation
 from mplang.v2.runtime.interpreter import Interpreter
@@ -111,10 +112,9 @@ def _uniform_cond_worker_impl(
     interpreter: Interpreter, op: Operation, pred: Any, *args: Any
 ) -> Any:
     """Worker implementation of simp.uniform_cond."""
-    from mplang.v2.backends.tensor_impl import TensorValue
 
     if op.attrs.get("verify_uniform", True):
-        pass  # TODO: Implement AllReduce verification
+        _verify_uniform_predicate(interpreter, op, pred)
 
     if isinstance(pred, TensorValue):
         pred = bool(pred.unwrap())
@@ -124,6 +124,41 @@ def _uniform_cond_worker_impl(
     else:
         result = interpreter.evaluate_graph(op.regions[1], list(args))
     return result[0] if len(op.outputs) == 1 else result
+
+
+def _verify_uniform_predicate(
+    interpreter: Interpreter, op: Operation, pred: Any
+) -> None:
+    worker = _ensure_worker_context(interpreter, "_verify_uniform_predicate")
+    comm = worker.communicator
+    world_size = worker.world_size
+
+    if isinstance(pred, TensorValue):
+        pred_bool = bool(pred.unwrap())
+    else:
+        pred_bool = bool(pred)
+
+    gathered_values = []
+
+    for dst in range(world_size):
+        if dst != comm.rank:
+            comm.send(dst, f"uniform_cond_pred_{op.name}", pred_bool)
+
+    for src in range(world_size):
+        if src == comm.rank:
+            gathered_values.append(pred_bool)
+        else:
+            received = comm.recv(src, f"uniform_cond_pred_{op.name}")
+            gathered_values.append(received)
+
+
+    first_val = gathered_values[0]
+    for i, val in enumerate(gathered_values[1:], start=1):
+        if val != first_val:
+            raise ValueError(
+                f"uniform_cond: predicate is not uniform across parties "
+                f"(rank 0={first_val}, rank {i}={val})"
+            )
 
 
 def _while_loop_worker_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:

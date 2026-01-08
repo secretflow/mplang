@@ -20,7 +20,7 @@ multiple executions while binding to the Interpreter's lifecycle.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import spu.api as spu_api
 import spu.libspu as libspu
@@ -56,6 +56,8 @@ class SPUState(DialectState):
         spu_world_size: int,
         config: spu.SPUConfig,
         spu_endpoints: list[str] | None = None,
+        communicator: object | None = None,
+        parties: list[int] | None = None,
     ) -> tuple[spu_api.Runtime, spu_api.Io]:
         """Get or create SPU Runtime and Io for the given configuration.
 
@@ -64,13 +66,24 @@ class SPUState(DialectState):
             spu_world_size: The number of parties in the SPU device.
             config: SPU configuration including protocol settings.
             spu_endpoints: Optional list of BRPC endpoints. If None, use mem link.
+            communicator: Optional v2 communicator (ThreadCommunicator/HttpCommunicator).
+                If provided, use Channels mode to reuse existing communication.
+            parties: Optional list of global ranks for SPU parties.
+                Required when communicator is provided.
 
         Returns:
             A tuple of (Runtime, Io) for this party.
         """
         from mplang.v2.backends.spu_impl import to_runtime_config
 
-        link_mode = "brpc" if spu_endpoints else "mem"
+        # Determine link mode
+        if communicator is not None:
+            link_mode = "channels"
+        elif spu_endpoints:
+            link_mode = "brpc"
+        else:
+            link_mode = "mem"
+
         cache_key = (
             local_rank,
             spu_world_size,
@@ -83,7 +96,13 @@ class SPUState(DialectState):
             return self._runtimes[cache_key]
 
         # Create Link
-        if spu_endpoints:
+        if communicator is not None:
+            if parties is None:
+                raise ValueError("parties required when using communicator")
+            link = self._create_channels_link(
+                local_rank, spu_world_size, communicator, parties
+            )
+        elif spu_endpoints:
             link = self._create_brpc_link(local_rank, spu_endpoints)
         else:
             link = self._create_mem_link(local_rank, spu_world_size)
@@ -105,6 +124,50 @@ class SPUState(DialectState):
         for i in range(spu_world_size):
             desc.add_party(f"P{i}", f"mem:{i}")
         return libspu.link.create_mem(desc, local_rank)
+
+    def _create_channels_link(
+        self,
+        local_rank: int,
+        spu_world_size: int,
+        communicator: Any,
+        parties: list[int],
+    ) -> libspu.link.Context:
+        """Create link using custom channels (reuse v2 communicator).
+
+        Args:
+            local_rank: SPU local rank (0-indexed, already converted from global)
+            spu_world_size: Number of SPU parties
+            communicator: v2 communicator (ThreadCommunicator/HttpCommunicator)
+            parties: List of global ranks for SPU parties (ordered by local rank)
+
+        Returns:
+            libspu link context using BaseChannel adapters
+        """
+        from mplang.v2.backends.channel import BaseChannel
+
+        # Get this worker's global rank
+        global_rank = parties[local_rank]
+
+        # Create channels list (world_size elements, self = None)
+        channels = []
+        for idx, peer_global_rank in enumerate(parties):
+            if idx == local_rank:
+                # Self channel must be None
+                channel = None
+            else:
+                # Create channel to peer
+                channel = BaseChannel(communicator, global_rank, peer_global_rank)
+            channels.append(channel)
+
+        # Create link descriptor
+        desc = libspu.link.Desc()  # type: ignore
+        desc.recv_timeout_ms = 100 * 1000  # 100 seconds
+
+        # Add party info (required for world_size inference)
+        for idx in range(spu_world_size):
+            desc.add_party(f"P{idx}", f"dummy_{parties[idx]}")
+
+        return libspu.link.create_with_channels(desc, local_rank, channels)
 
     def _create_brpc_link(
         self, local_rank: int, spu_endpoints: list[str]

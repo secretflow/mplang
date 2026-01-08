@@ -165,21 +165,19 @@ class TestDriverExecution:
             value = mp.fetch(result)
             assert value == 100
 
-    @pytest.mark.skip(
-        reason="SPU requires BRPC link setup in HTTP worker, not yet implemented"
-    )
     def test_spu_computation(self, driver_cluster):
-        """Test secure computation on SPU."""
+        """Test secure computation on SPU (now uses Channels mode automatically)."""
+        with driver_cluster:
 
-        def secure_add():
-            x = mp.device("P0")(lambda: 10)()
-            y = mp.device("P1")(lambda: 20)()
-            z = mp.device("SP0")(lambda a, b: a + b)(x, y)
-            return mp.put("P0", z)
+            def secure_add():
+                x = mp.device("P0")(lambda: 10)()
+                y = mp.device("P1")(lambda: 20)()
+                z = mp.device("SP0")(lambda a, b: a + b)(x, y)
+                return mp.put("P0", z)
 
-        result = mp.evaluate(secure_add)
-        value = mp.fetch(result)
-        assert value == 30
+            result = mp.evaluate(secure_add)
+            value = mp.fetch(result)
+            assert value == 30
 
 
 class TestDriverFetch:

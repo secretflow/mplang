@@ -57,7 +57,12 @@ class HttpCommunicator(CommunicatorBase):
         return str(res)
 
     def send(self, to: int, key: str, data: Any) -> None:
-        """Sends data to a peer party by PUTing to its /comm/{key}/from/{from_rank} endpoint."""
+        """Sends data to a peer party by PUTing to its /comm/{key}/from/{from_rank} endpoint.
+
+        Supports two modes:
+        - SPU channel (key starts with "spu:"): sends raw bytes directly
+        - Normal channel: wraps data in Value envelope
+        """
         target_endpoint = self.endpoints[to]
         url = f"{target_endpoint}/sessions/{self.session_name}/comm/{key}/from/{self._rank}"
         logging.debug(
@@ -65,19 +70,20 @@ class HttpCommunicator(CommunicatorBase):
         )
 
         try:
-            # Serialize data using Value envelope.
-            if not isinstance(data, Value):
+            # SPU channel mode: send raw bytes directly
+            if key.startswith("spu:") and isinstance(data, bytes):
+                data_b64 = base64.b64encode(data).decode("utf-8")
+                request_data = {"data": data_b64, "is_raw_bytes": True}
+            # Normal mode: serialize using Value envelope
+            elif isinstance(data, Value):
+                data_bytes = encode_value(data)
+                data_b64 = base64.b64encode(data_bytes).decode("utf-8")
+                request_data = {"data": data_b64}
+            else:
                 raise TypeError(
                     f"Communicator requires Value instance, got {type(data).__name__}. "
                     "Wrap data in TensorValue or custom Value subclass."
                 )
-            data_bytes = encode_value(data)
-
-            data_b64 = base64.b64encode(data_bytes).decode("utf-8")
-
-            request_data = {
-                "data": data_b64,
-            }
 
             response = httpx.put(url, json=request_data, timeout=60)
             logging.debug(f"Send response: status={response.status_code}")
@@ -91,14 +97,32 @@ class HttpCommunicator(CommunicatorBase):
             raise OSError(f"Failed to send data to rank {to}") from e
 
     def recv(self, frm: int, key: str) -> Any:
-        """Wait until the key is set, returns the value. Override to add logging."""
+        """Wait until the key is set, returns the value.
+
+        Supports two modes:
+        - SPU channel (key starts with "spu:"): returns raw bytes
+        - Normal channel: returns deserialized Value
+        """
         logging.debug(
             f"Waiting to receive: from_rank={frm}, to_rank={self._rank}, key={key}"
         )
-        data_b64 = super().recv(frm, key)
+        received_data = super().recv(frm, key)
 
+        # Check if this is raw bytes (SPU channel)
+        if isinstance(received_data, dict) and received_data.get("is_raw_bytes"):
+            data_bytes = base64.b64decode(received_data["data"])
+            logging.debug(
+                f"Received raw bytes: from_rank={frm}, to_rank={self._rank}, key={key}, size={len(data_bytes)}"
+            )
+            return data_bytes
+
+        # Normal mode: deserialize Value envelope
+        data_b64 = (
+            received_data
+            if isinstance(received_data, str)
+            else received_data.get("data")
+        )
         data_bytes = base64.b64decode(data_b64)
-        # Deserialize using Value envelope
         result = decode_value(data_bytes)
 
         logging.debug(

@@ -83,7 +83,7 @@ class HttpCommunicator:
         self.world_size = world_size
         self.endpoints = endpoints
         self.tracer = tracer
-        self._mailbox: dict[str, Any] = {}
+        self._mailbox: dict[tuple[int, str], Any] = {}
         self._cond = threading.Condition()
         self._send_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=world_size, thread_name_prefix=f"comm_send_{rank}"
@@ -100,8 +100,19 @@ class HttpCommunicator:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}")
-        # Use secure JSON serialization
-        payload = serde.dumps_b64(data)
+
+        # Detect SPU channel (tag prefix "spu:") and handle bytes
+        if key.startswith("spu:") and isinstance(data, bytes):
+            # Send raw bytes for SPU channels
+            import base64
+
+            payload = base64.b64encode(data).decode("ascii")
+            is_raw_bytes = True
+        else:
+            # Use secure JSON serialization
+            payload = serde.dumps_b64(data)
+            is_raw_bytes = False
+
         size_bytes = len(payload)
 
         # Log to profiler
@@ -116,7 +127,14 @@ class HttpCommunicator:
 
         try:
             t0 = time.time()
-            resp = self.client.put(url, json={"data": payload, "from_rank": self.rank})
+            resp = self.client.put(
+                url,
+                json={
+                    "data": payload,
+                    "from_rank": self.rank,
+                    "is_raw_bytes": is_raw_bytes,
+                },
+            )
             resp.raise_for_status()
             duration = time.time() - t0
             if self.tracer:
@@ -134,17 +152,21 @@ class HttpCommunicator:
     def recv(self, frm: int, key: str) -> Any:
         """Receive data from another rank (blocking)."""
         logger.debug(f"Rank {self.rank} waiting recv from {frm} key={key}")
+        mailbox_key = (frm, key)
         with self._cond:
-            while key not in self._mailbox:
+            while mailbox_key not in self._mailbox:
                 self._cond.wait(timeout=1.0)
-            return self._mailbox.pop(key)
+            return self._mailbox.pop(mailbox_key)
 
-    def on_receive(self, key: str, data: Any) -> None:
+    def on_receive(self, from_rank: int, key: str, data: Any) -> None:
         """Called when data is received from the HTTP endpoint."""
+        mailbox_key = (from_rank, key)
         with self._cond:
-            if key in self._mailbox:
-                logger.warning(f"Rank {self.rank} overwriting key={key}")
-            self._mailbox[key] = data
+            if mailbox_key in self._mailbox:
+                raise RuntimeError(
+                    f"Mailbox overflow: key {mailbox_key} already exists"
+                )
+            self._mailbox[mailbox_key] = data
             self._cond.notify_all()
 
     def wait_pending_sends(self) -> None:
@@ -176,6 +198,7 @@ class CommRequest(BaseModel):
 
     data: str
     from_rank: int
+    is_raw_bytes: bool = False  # NEW: indicates raw bytes (not serde)
 
 
 class FetchRequest(BaseModel):
@@ -279,9 +302,17 @@ def create_worker_app(
         """Receive communication data from another worker."""
         logger.debug(f"Worker {rank} received comm key={key} from {req.from_rank}")
         try:
-            # Use secure JSON deserialization
-            data = serde.loads_b64(req.data)
-            comm.on_receive(key, data)
+            # Handle raw bytes (SPU channels) vs serde data
+            if req.is_raw_bytes:
+                # Decode base64 to raw bytes
+                import base64
+
+                data = base64.b64decode(req.data)
+            else:
+                # Use secure JSON deserialization
+                data = serde.loads_b64(req.data)
+
+            comm.on_receive(req.from_rank, key, data)
             return {"status": "ok"}
         except Exception as e:
             logger.error(f"Worker {rank} comm failed: {e}")

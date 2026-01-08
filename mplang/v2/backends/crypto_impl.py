@@ -618,7 +618,7 @@ def kem_derive_impl(
 def hkdf_impl(
     interpreter: Interpreter,
     op: Operation,
-    secret: SymmetricKeyValue | TensorValue,
+    secret: SymmetricKeyValue | TensorValue | BytesValue,
 ) -> SymmetricKeyValue:
     """HKDF key derivation implementation using SHA-256.
 
@@ -674,11 +674,13 @@ def hkdf_impl(
     # Extract input key material (IKM) bytes
     if isinstance(secret, SymmetricKeyValue):
         ikm = secret.key_bytes
+    elif isinstance(secret, BytesValue):
+        ikm = secret.unwrap()
     elif isinstance(secret, TensorValue):
         ikm = secret.unwrap().tobytes()
     else:
         raise TypeError(
-            f"hkdf secret must be SymmetricKeyValue or TensorValue, "
+            f"hkdf secret must be SymmetricKeyValue, BytesValue, or TensorValue, "
             f"got {type(secret).__name__}"
         )
 

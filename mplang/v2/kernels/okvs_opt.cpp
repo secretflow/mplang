@@ -258,8 +258,8 @@ extern "C" {
                         b, bin_keys[b].size(), valid_m, (double)valid_m / bin_keys[b].size());
 
                     // Prepare pointers for the safe solver
-                    uint64_t* keys_ptr = bin_keys[b].empty() ? nullptr : &bin_keys[b][0];
-                    uint64_t* vals_ptr = bin_vals[b].empty() ? nullptr : (uint64_t*)&bin_vals[b][0];
+                    uint64_t* keys_ptr = &bin_keys[b][0];
+                    uint64_t* vals_ptr = &bin_vals[b][0];
                     uint64_t* out_ptr = output + (offset * 2ULL); // each 128-bit slot == 2 uint64_t
 
                     // Call the safe solver implemented in okvs.cpp

@@ -59,6 +59,7 @@ Phases:
     the same domain separation and truncation, and compares to the received
     truncated hashes to determine membership in the intersection.
 """
+
 from typing import Any, cast
 
 import jax.numpy as jnp
@@ -80,7 +81,7 @@ def psi_intersect(
     This implementation follows the RR22 paper's role assignment where:
     - PSI Sender holds Delta (and W).
     - PSI Receiver holds U and V.
-    
+
     This enables the "One Decode" optimization on the Sender side and prevents
     offline brute-force attacks by the Receiver (though Sender could brute-force).
 
@@ -97,7 +98,9 @@ def psi_intersect(
 
     # Validation
     if sender == receiver:
-        raise ValueError("Sender and Receiver must be different.")
+        raise ValueError(
+            f"Sender ({sender}) and Receiver ({receiver}) must be different."
+        )
     if n <= 0:
         raise ValueError(f"Input size n must be positive, got {n}.")
 
@@ -123,7 +126,7 @@ def psi_intersect(
     #
     # We want PSI Sender to be OT Receiver.
     res_tuple = silent_ot.silent_vole_random_u(receiver, sender, M, base_k=1024)
-    
+
     # PSI Receiver gets U, V
     v_recv, w_sender, u_recv, delta_sender = res_tuple[:4]
 
@@ -198,10 +201,6 @@ def psi_intersect(
         # q, w: (M, 2)
         # delta: (2,)
 
-        # 4.1 Expand Delta for global multiplication (M, 2)
-        def _tile_m(d: Any) -> Any:
-            return jnp.tile(d, (M // 2, 1)).reshape(M, 2) # Adjust reshape based on lib
-        
         # Safe tiling assuming M is aligned
         def _tile_m_simple(d: Any) -> Any:
             return jnp.tile(d, (M, 1))
@@ -235,25 +234,25 @@ def psi_intersect(
         # Expand delta for batch N
         def _tile_n(d: Any) -> Any:
             return jnp.tile(d, (n, 1))
-        
+
         delta_expanded_n = tensor.run_jax(_tile_n, delta)
-        
+
         h_x_times_delta = field.mul(h_x, delta_expanded_n)
 
-        # Final Tag = (P*Delta + V) - H*Delta = V(x)
+        # Final Tag = (P*Delta + V) + H*Delta = V(x)
         tag = field.add(decoded_k, h_x_times_delta)
 
         return tag
 
     # Execute on Sender
     sender_tags = simp.pcall_static(
-        (sender,), 
-        _sender_ops, 
-        sender_items, 
-        q_sender_view, 
-        w_sender, 
-        delta_sender, 
-        okvs_seed_sender
+        (sender,),
+        _sender_ops,
+        sender_items,
+        q_sender_view,
+        w_sender,
+        delta_sender,
+        okvs_seed_sender,
     )
     # =========================================================================
     # Phase 5. Verification (Receiver Side)
@@ -287,12 +286,12 @@ def psi_intersect(
         h_local = ot_extension.vec_hash(local_v_y, domain_sep=0x1111, num_rows=n)
 
         def _core(h_r16: Any, h_l_full: Any) -> Any:
-            # h_r16: (n_sender, 16) truncated bytes from sender
-            # h_l_full: (n_receiver, k) full hash bytes; truncate to 16
+            # h_r16: (n, 16) truncated bytes from sender
+            # h_l_full: (n, k) full hash bytes; truncate to 16
             h_l16 = h_l_full[:, :16]
 
             eq_matrix = jnp.all(h_r16[:, None, :] == h_l16[None, :, :], axis=2)
-            membership = jnp.any(eq_matrix, axis=1)
+            membership = jnp.any(eq_matrix, axis=0)
             return membership.astype(jnp.uint8)
 
         return tensor.run_jax(_core, remote_tags, h_local)

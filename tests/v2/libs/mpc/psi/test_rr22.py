@@ -225,8 +225,9 @@ def test_rr22_partial_intersection() -> None:
 
     mask_val = _run_psi_simulation(sender_items, receiver_items)
 
-    # Compute expected mask: 1 if sender_item is in common_items, else 0
-    expected_mask = np.isin(sender_items, common_items).astype(np.uint8)
+    # Compute expected mask: 1 if receiver_item is in common_items, else 0
+    # (PSI returns mask located at Receiver)
+    expected_mask = np.isin(receiver_items, common_items).astype(np.uint8)
 
     np.testing.assert_array_equal(
         mask_val,
@@ -275,8 +276,8 @@ def test_rr22_single_element_intersection() -> None:
 
     mask_val = _run_psi_simulation(sender_items, receiver_items)
 
-    # Exactly one element should match
-    expected_mask = (sender_items == common_item).astype(np.uint8)
+    # Exactly one element should match (mask is for receiver's items)
+    expected_mask = (receiver_items == common_item).astype(np.uint8)
 
     np.testing.assert_array_equal(
         mask_val,

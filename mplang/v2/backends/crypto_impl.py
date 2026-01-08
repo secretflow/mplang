@@ -271,6 +271,27 @@ def bytes_to_point_impl(
 
 # --- Sym / Hash Impl ---
 
+# Supported symmetric encryption algorithms
+_SUPPORTED_ALGOS = {"aes-gcm"}
+
+
+def _validate_algo(algo: str, operation: str) -> None:
+    """Validate that the algorithm is supported.
+
+    Args:
+        algo: Algorithm name to validate
+        operation: Operation name for error message (e.g., "encryption", "decryption")
+
+    Raises:
+        ValueError: If algo is not supported
+    """
+    if algo not in _SUPPORTED_ALGOS:
+        supported = ", ".join(sorted(_SUPPORTED_ALGOS))
+        raise ValueError(
+            f"Unsupported {operation} algorithm: {algo!r}. "
+            f"Supported algorithms: {supported}"
+        )
+
 
 @crypto.hash_p.def_impl
 def hash_impl(interpreter: Interpreter, op: Operation, data: Value) -> Value:
@@ -336,6 +357,10 @@ def sym_encrypt_impl(
     numpy arrays, scalars, etc.). This supports both high-level API usage
     (with TensorValue) and elementwise operations (with raw scalars).
     """
+    # Read and validate algo parameter (must be provided by frontend)
+    algo = op.attrs["algo"]
+    _validate_algo(algo, "encryption")
+
     # Get raw key bytes - strict type checking
     if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes
@@ -376,6 +401,10 @@ def sym_decrypt_impl(
     on what was encrypted - could be a Value subclass (TensorValue, BytesValue),
     a numpy array, or a scalar (int, float, etc.) when used in elementwise ops.
     """
+    # Read and validate algo parameter (must be provided by frontend)
+    algo = op.attrs["algo"]
+    _validate_algo(algo, "decryption")
+
     # Get raw key bytes - strict type checking
     if isinstance(key, SymmetricKeyValue):
         k = key.key_bytes
@@ -583,6 +612,101 @@ def kem_derive_impl(
         pk_bytes = public_key.key_bytes
         secret = bytes(a ^ b for a, b in zip(sk_bytes, pk_bytes, strict=True))
         return SymmetricKeyValue(suite=suite, key_bytes=secret)
+
+
+@crypto.hkdf_p.def_impl
+def hkdf_impl(
+    interpreter: Interpreter,
+    op: Operation,
+    secret: SymmetricKeyValue | TensorValue,
+) -> SymmetricKeyValue:
+    """HKDF key derivation implementation using SHA-256.
+
+    Implements RFC 5869 HKDF with HMAC-SHA256. This is the NIST SP 800-56C
+    compliant way to derive symmetric keys from ECDH shared secrets.
+
+    Current implementation supports only SHA-256. Future versions will add
+    SHA-512, SHA3-256, and BLAKE2b support.
+
+    Security Notes:
+        - Uses salt=None (defaults to 32-byte all-zero salt per RFC 5869)
+        - ONLY SAFE for high-entropy IKM (e.g., 256-bit ECDH shared secrets)
+        - NOT suitable for: passwords, low-entropy secrets, or repeated key derivations
+        - For session keys with same ECDH pair: use unique 'info' per session
+
+        Per NIST SP 800-56C Rev. 2:
+        "If the IKM is already cryptographically strong (e.g., from ECDH),
+         a salt may not be necessary, but using one does not hurt."
+
+    Args:
+        interpreter: Runtime interpreter context
+        op: Operation node containing attributes (info, hash_algo)
+        secret: Input key material (IKM) as SymmetricKeyValue or TensorValue
+                Must be high-entropy (≥256 bits) for security with salt=None
+
+    Returns:
+        SymmetricKeyValue with suite="hkdf-{hash_algo}" and 32-byte key_bytes
+
+    Raises:
+        TypeError: If secret is not SymmetricKeyValue or TensorValue
+        ValueError: If info parameter is empty (required for domain separation)
+        NotImplementedError: If hash_algo is not "sha256"
+    """
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    # Extract operation attributes
+    info_str = op.attrs.get("info", "")
+    hash_algo = (
+        op.attrs.get("hash_algo", "sha256").lower().replace("-", "").replace("_", "")
+    )
+
+    # Validate info parameter (REQUIRED for domain separation per NIST)
+    if not info_str:
+        raise ValueError(
+            "HKDF requires non-empty 'info' parameter for domain separation. "
+            "The info string binds the derived key to a specific protocol/context. "
+            "Recommended format: 'namespace/component/purpose/version'"
+        )
+
+    info_bytes = info_str.encode("utf-8")
+
+    # Extract input key material (IKM) bytes
+    if isinstance(secret, SymmetricKeyValue):
+        ikm = secret.key_bytes
+    elif isinstance(secret, TensorValue):
+        ikm = secret.unwrap().tobytes()
+    else:
+        raise TypeError(
+            f"hkdf secret must be SymmetricKeyValue or TensorValue, "
+            f"got {type(secret).__name__}"
+        )
+
+    # Validate hash algorithm (currently only SHA-256 implemented)
+    if hash_algo != "sha256":
+        raise NotImplementedError(
+            f"HKDF with hash algorithm '{hash_algo}' is not yet implemented. "
+            f"Currently only 'sha256' is supported. "
+            f"Planned future support: sha512, sha3256, blake2b"
+        )
+
+    # Perform HKDF derivation using cryptography library
+    # Note: salt=None uses 32-byte all-zero salt (not random salt!)
+    # This is secure ONLY because ECDH outputs are already high-entropy (256-bit uniform)
+    # For low-entropy inputs or repeated derivations, a random salt would be required
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,  # Output length in bytes (AES-256 key = 32 bytes)
+        salt=None,  # 32-byte zero salt (secure for high-entropy ECDH shared secrets)
+        info=info_bytes,  # Context-specific binding for domain separation
+    )
+
+    derived_key = hkdf.derive(ikm)
+
+    # Return SymmetricKeyValue with composite suite name
+    # Format: "hkdf-{hash_algo}" to indicate derivation method and hash function
+    suite = f"hkdf-{hash_algo}"
+    return SymmetricKeyValue(suite=suite, key_bytes=derived_key)
 
 
 @crypto.random_bytes_p.def_impl

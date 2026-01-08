@@ -25,12 +25,10 @@ Process-wide registries (sessions, global symbols) live in the server layer
 
 from __future__ import annotations
 
-import logging
 import time
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import urlparse
 
 import spu.libspu as libspu
 
@@ -49,27 +47,6 @@ from mplang.v1.utils.spu_utils import parse_field, parse_protocol
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checking
     from mplang.v1.core.cluster import ClusterSpec, Node, RuntimeInfo
-
-
-class LinkCommFactory:
-    """Factory for creating and caching link communicators."""
-
-    def __init__(self) -> None:
-        self._cache: dict[tuple[int, tuple[str, ...]], LinkCommunicator] = {}
-
-    def create_link(self, rel_rank: int, addrs: list[str]) -> LinkCommunicator:
-        key = (rel_rank, tuple(addrs))
-        link = self._cache.get(key)
-        if link is not None:
-            return link
-        logging.info(f"LinkCommunicator created: rel_rank={rel_rank} addrs={addrs}")
-        link = LinkCommunicator(rel_rank, addrs)
-        self._cache[key] = link
-        return link
-
-
-# Shared link factory (module-local, not global registry of sessions)
-g_link_factory = LinkCommFactory()
 
 
 @dataclass
@@ -184,23 +161,19 @@ class Session:
             return
 
         link_ctx = None
-        # TODO(jint): reuse same port for mplang and spu.
-        SPU_PORT_OFFSET = 100
 
         if self.is_spu_party:
-            # Build SPU address list across all endpoints for ranks in mask
-            spu_addrs: list[str] = []
-            for r, addr in enumerate(self.cluster_spec.endpoints):
-                if r in self.spu_mask:
-                    # TODO(oeqqwq): addr may contain other schema like grpc://
-                    if not addr.startswith(("http://", "https://")):
-                        addr = f"http://{addr}"
-                    parsed = urlparse(addr)
-                    assert isinstance(parsed.port, int)
-                    new_addr = f"{parsed.hostname}:{parsed.port + SPU_PORT_OFFSET}"
-                    spu_addrs.append(new_addr)
-            rel_index = sum(1 for r in range(self.rank) if r in self.spu_mask)
-            link_ctx = g_link_factory.create_link(rel_index, spu_addrs)
+            # Use Channels mode to reuse existing HttpCommunicator
+            # This eliminates the need for separate BRPC ports (SPU_PORT_OFFSET)
+            from mplang.v1.core.comm import CommunicatorBase
+
+            # Type assertion: ICommunicator is actually CommunicatorBase
+            comm = cast(CommunicatorBase, self.communicator)
+            link_ctx = LinkCommunicator(
+                rank=self.rank,
+                comm=comm,
+                spu_mask=self.spu_mask,
+            )
 
         spu_config = libspu.RuntimeConfig(
             protocol=parse_protocol(self.spu_protocol),

@@ -24,73 +24,54 @@ from mplang.v2.dialects import crypto, tee
 class TestTEETypes:
     """Test TEE type definitions."""
 
-    def test_quote_type_default(self):
-        """Test QuoteType with default platform."""
+    def test_quote_type(self):
+        """Test QuoteType."""
         qt = tee.QuoteType()
-        assert qt.platform == "mock"
-        assert str(qt) == "TEEQuote[mock]"
-        assert repr(qt) == "QuoteType(platform='mock')"
-
-    def test_quote_type_platforms(self):
-        """Test QuoteType with different platforms."""
-        platforms = ["mock", "sgx", "tdx", "sev"]
-        for platform in platforms:
-            qt = tee.QuoteType(platform=platform)
-            assert qt.platform == platform
-            assert str(qt) == f"TEEQuote[{platform}]"
+        assert str(qt) == "TEEQuote"
+        assert repr(qt) == "QuoteType()"
 
     def test_quote_type_equality(self):
         """Test QuoteType equality and hashing."""
-        q1 = tee.QuoteType("sgx")
-        q2 = tee.QuoteType("sgx")
-        q3 = tee.QuoteType("tdx")
+        q1 = tee.QuoteType()
+        q2 = tee.QuoteType()
 
         assert q1 == q2
-        assert q1 != q3
         assert hash(q1) == hash(q2)
-        assert hash(q1) != hash(q3)
 
-    def test_attested_key_type_default(self):
-        """Test AttestedKeyType with defaults."""
+    def test_attested_key_type(self):
+        """Test AttestedKeyType."""
         akt = tee.AttestedKeyType()
-        assert akt.platform == "mock"
         assert akt.curve == "x25519"
-        assert str(akt) == "AttestedKey[mock, x25519]"
+        assert str(akt) == "AttestedKey[x25519]"
 
     def test_attested_key_type_custom(self):
         """Test AttestedKeyType with custom values."""
-        akt = tee.AttestedKeyType(platform="sgx", curve="secp256k1")
-        assert akt.platform == "sgx"
+        akt = tee.AttestedKeyType(curve="secp256k1")
         assert akt.curve == "secp256k1"
-        assert str(akt) == "AttestedKey[sgx, secp256k1]"
+        assert str(akt) == "AttestedKey[secp256k1]"
 
     def test_attested_key_type_equality(self):
         """Test AttestedKeyType equality and hashing."""
-        a1 = tee.AttestedKeyType("sgx", "x25519")
-        a2 = tee.AttestedKeyType("sgx", "x25519")
-        a3 = tee.AttestedKeyType("sgx", "secp256k1")
-        a4 = tee.AttestedKeyType("tdx", "x25519")
+        a1 = tee.AttestedKeyType("x25519")
+        a2 = tee.AttestedKeyType("x25519")
+        a3 = tee.AttestedKeyType("secp256k1")
 
         assert a1 == a2
         assert a1 != a3  # Different curve
-        assert a1 != a4  # Different platform
         assert hash(a1) == hash(a2)
 
     def test_measurement_type(self):
         """Test MeasurementType."""
-        mt = tee.MeasurementType(platform="sgx")
-        assert mt.platform == "sgx"
-        assert str(mt) == "TEEMeasurement[sgx]"
-        assert repr(mt) == "MeasurementType(platform='sgx')"
+        mt = tee.MeasurementType()
+        assert str(mt) == "TEEMeasurement"
+        assert repr(mt) == "MeasurementType()"
 
     def test_measurement_type_equality(self):
         """Test MeasurementType equality."""
-        m1 = tee.MeasurementType("sgx")
-        m2 = tee.MeasurementType("sgx")
-        m3 = tee.MeasurementType("tdx")
+        m1 = tee.MeasurementType()
+        m2 = tee.MeasurementType()
 
         assert m1 == m2
-        assert m1 != m3
         assert hash(m1) == hash(m2)
 
 
@@ -111,26 +92,12 @@ class TestTEETypeInference:
         quote_op = graph.operations[1]
         assert quote_op.opcode == "tee.quote_gen"
 
-    def test_quote_gen_with_platform(self):
-        """Test quote_gen with explicit platform."""
-
-        def workflow():
-            _sk, pk = crypto.kem_keygen("x25519")
-            quote = tee.quote_gen(pk, platform="sgx")
-            return quote
-
-        traced = el.trace(workflow)
-        graph = traced.graph
-
-        quote_op = graph.operations[1]
-        assert quote_op.attrs["platform"] == "sgx"
-
     def test_attest_in_graph(self):
         """Test attest creates correct graph operation."""
 
         def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
-            quote = tee.quote_gen(pk, platform="sgx")
+            quote = tee.quote_gen(pk)
             attested_pk = tee.attest(quote, expected_curve="secp256k1")
             return attested_pk
 
@@ -147,7 +114,7 @@ class TestTEETypeInference:
 
         def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
-            quote = tee.quote_gen(pk, platform="sev")
+            quote = tee.quote_gen(pk)
             measurement = tee.get_measurement(quote)
             return measurement
 
@@ -163,7 +130,7 @@ class TestTEETypeInference:
 
         def workflow():
             _sk, pk = crypto.kem_keygen("x25519")
-            quote = tee.quote_gen(pk, platform="tdx")
+            quote = tee.quote_gen(pk)
             attested_pk = tee.attest(quote)
             measurement = tee.get_measurement(quote)
             return attested_pk, measurement

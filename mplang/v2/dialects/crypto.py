@@ -199,6 +199,9 @@ select_p = el.Primitive[el.Object]("crypto.select")
 kem_keygen_p = el.Primitive[tuple[el.Object, el.Object]]("crypto.kem_keygen")
 kem_derive_p = el.Primitive[el.Object]("crypto.kem_derive")
 
+# HKDF (Key Derivation Function)
+hkdf_p = el.Primitive[el.Object]("crypto.hkdf")
+
 # Randomness
 random_bytes_p = el.Primitive[el.Object]("crypto.random_bytes")
 
@@ -275,15 +278,44 @@ def _hash_batch_ae(data: elt.BaseType) -> elt.TensorType:
 
 
 @sym_encrypt_p.def_abstract_eval
-def _sym_encrypt_ae(key: elt.BaseType, plaintext: elt.BaseType) -> elt.TensorType:
+def _sym_encrypt_ae(
+    key: elt.BaseType, plaintext: elt.BaseType, *, algo: str = "aes-gcm"
+) -> elt.TensorType:
+    """Abstract evaluation for symmetric encryption.
+
+    Args:
+        key: Symmetric encryption key
+        plaintext: Data to encrypt
+        algo: Encryption algorithm (keyword-only, validated at runtime)
+
+    Returns:
+        Ciphertext as dynamic-length uint8 tensor
+    """
     # Dynamic shape for ciphertext
+    # algo validation is done at backend impl, not here
     return elt.TensorType(elt.u8, (-1,))
 
 
 @sym_decrypt_p.def_abstract_eval
 def _sym_decrypt_ae(
-    key: elt.BaseType, ciphertext: elt.BaseType, target_type: elt.BaseType
+    key: elt.BaseType,
+    ciphertext: elt.BaseType,
+    *,
+    target_type: elt.BaseType,
+    algo: str = "aes-gcm",
 ) -> elt.BaseType:
+    """Abstract evaluation for symmetric decryption.
+
+    Args:
+        key: Symmetric decryption key
+        ciphertext: Encrypted data
+        target_type: Expected type of decrypted plaintext (keyword-only)
+        algo: Decryption algorithm (keyword-only, validated at runtime)
+
+    Returns:
+        Decrypted plaintext with type matching target_type
+    """
+    # algo validation is done at backend impl, not here
     return target_type
 
 
@@ -305,6 +337,41 @@ def _kem_derive_ae(
 ) -> SymmetricKeyType:
     suite = getattr(private_key, "suite", "x25519")
     return SymmetricKeyType(suite)
+
+
+@hkdf_p.def_abstract_eval
+def _hkdf_ae(
+    secret: elt.BaseType, *, info: str, hash_algo: str = "sha256"
+) -> SymmetricKeyType:
+    """Abstract evaluation for HKDF key derivation.
+
+    Args:
+        secret: Input key material (SymmetricKeyType from kem_derive or TensorType[u8])
+        info: Context string for domain separation (required, non-empty, keyword-only)
+        hash_algo: Hash algorithm in lowercase without hyphens (e.g., "sha256", keyword-only)
+
+    Returns:
+        SymmetricKeyType with suite="hkdf-{hash_algo}"
+
+    Raises:
+        TypeError: If info or hash_algo is not a string
+        ValueError: If info is empty (required for domain separation per NIST)
+    """
+    # Validate info and hash_algo at trace time
+    if not isinstance(info, str) or not info:
+        raise ValueError(
+            "HKDF requires non-empty 'info' parameter for domain separation. "
+            "The info string binds the derived key to a specific protocol/context. "
+            "Recommended format: 'namespace/component/purpose/version'"
+        )
+    if not isinstance(hash_algo, str) or not hash_algo:
+        raise TypeError("hash_algo must be a non-empty string")
+
+    # Normalize: lowercase, no hyphens
+    hash_algo_normalized = hash_algo.lower().replace("-", "").replace("_", "")
+
+    # Return SymmetricKeyType with composite suite indicating derivation method
+    return SymmetricKeyType(suite=f"hkdf-{hash_algo_normalized}")
 
 
 @random_bytes_p.def_abstract_eval
@@ -367,16 +434,50 @@ def hash_batch(data: el.Object) -> el.Object:
     return hash_batch_p.bind(data)
 
 
-def sym_encrypt(key: el.Object, plaintext: el.Object) -> el.Object:
-    """Symmetric encrypt (XOR stream or AES-GCM)."""
-    return sym_encrypt_p.bind(key, plaintext)
+def sym_encrypt(
+    key: el.Object, plaintext: el.Object, *, algo: str = "aes-gcm"
+) -> el.Object:
+    """Symmetric encrypt.
+
+    Args:
+        key: Symmetric encryption key (SymmetricKeyType or bytes).
+        plaintext: Data to encrypt (any serializable object).
+        algo: Encryption algorithm. Currently only "aes-gcm" is supported.
+              Validation is performed at backend execution time.
+
+    Returns:
+        Ciphertext as Tensor[u8, (-1,)].
+
+    Raises:
+        ValueError: At runtime if algo is not supported by the backend.
+    """
+    return sym_encrypt_p.bind(key, plaintext, algo=algo)
 
 
 def sym_decrypt(
-    key: el.Object, ciphertext: el.Object, target_type: elt.BaseType
+    key: el.Object,
+    ciphertext: el.Object,
+    target_type: elt.BaseType,
+    *,
+    algo: str = "aes-gcm",
 ) -> el.Object:
-    """Symmetric decrypt."""
-    return sym_decrypt_p.bind(key, ciphertext, target_type=target_type)
+    """Symmetric decrypt.
+
+    Args:
+        key: Symmetric decryption key (SymmetricKeyType or bytes).
+        ciphertext: Encrypted data.
+        target_type: Expected type of the decrypted plaintext (for type inference).
+        algo: Decryption algorithm. Must match the algorithm used for encryption.
+              Currently only "aes-gcm" is supported.
+              Validation is performed at backend execution time.
+
+    Returns:
+        Decrypted plaintext with type matching target_type.
+
+    Raises:
+        ValueError: At runtime if algo is not supported by the backend.
+    """
+    return sym_decrypt_p.bind(key, ciphertext, target_type=target_type, algo=algo)
 
 
 def select(cond: el.Object, true_val: el.Object, false_val: el.Object) -> el.Object:
@@ -407,6 +508,69 @@ def kem_derive(private_key: el.Object, public_key: el.Object) -> el.Object:
         A symmetric key suitable for use with sym_encrypt/sym_decrypt
     """
     return kem_derive_p.bind(private_key, public_key)
+
+
+def hkdf(secret: el.Object, info: str, *, hash_algo: str = "sha256") -> el.Object:
+    """Derive a cryptographic key from input key material using HKDF.
+
+    HKDF (HMAC-based Key Derivation Function) is specified in RFC 5869 and
+    required by NIST SP 800-56C Rev.2 for deriving symmetric keys from
+    key agreement schemes like ECDH. Per NIST: "The shared secret output
+    from a key-agreement scheme SHALL NOT be used directly as a cryptographic
+    key. A key-derivation function (KDF) SHALL be used."
+
+    Args:
+        secret: Input key material (IKM). Accepts:
+                - SymmetricKeyValue: Typically from crypto.kem_derive (ECDH output)
+                - TensorType[u8, (N,)]: Raw bytes (N-byte secret)
+        info: Application-specific context string for domain separation.
+              REQUIRED and must be non-empty. Different info values produce
+              cryptographically independent keys even from the same secret.
+              Recommended format: "namespace/component/purpose/version"
+              Example: "mplang/device/tee/v2"
+        hash_algo: Hash function to use. Must be lowercase without hyphens.
+                   Currently supported: "sha256" (default)
+                   Future support planned: "sha512", "sha3256", "blake2b"
+                   Default "sha256" provides 128-bit security level.
+
+    Returns:
+        SymmetricKeyValue with:
+        - suite: "hkdf-{hash_algo}" (e.g., "hkdf-sha256")
+        - key_bytes: 32-byte derived key suitable for AES-256-GCM
+
+    Security considerations:
+        - Output length: Fixed at 32 bytes (256 bits) for AES-256 keys
+        - Salt: Uses salt=None (acceptable for ECDH output per NIST guidance)
+        - Info: Provides protocol/context binding (domain separation)
+        - Deterministic: Same (secret, info, hash_algo) always produces same key
+
+    Raises:
+        ValueError:
+            - At abstract evaluation time if hash_algo is unsupported.
+            - At execution time if info is empty.
+        NotImplementedError:
+            - At execution time if hash_algo is not "sha256".
+
+    Examples:
+        >>> # Standard TEE session establishment
+        >>> sk_local, pk_local = crypto.kem_keygen("x25519")
+        >>> sk_remote, pk_remote = crypto.kem_keygen("x25519")
+        >>> # ECDH on both sides
+        >>> shared_local = crypto.kem_derive(sk_local, pk_remote)
+        >>> shared_remote = crypto.kem_derive(sk_remote, pk_local)
+        >>> # HKDF for domain separation
+        >>> sess_local = crypto.hkdf(shared_local, "mplang/device/tee/v2")
+        >>> sess_remote = crypto.hkdf(shared_remote, "mplang/device/tee/v2")
+        >>> # sess_local and sess_remote have identical key_bytes
+        >>> # but suite="hkdf-sha256" (not "x25519")
+        >>>
+        >>> # Derive multiple independent keys from one master secret
+        >>> master_secret = crypto.kem_derive(sk, pk)
+        >>> encryption_key = crypto.hkdf(master_secret, "app/encryption/v1")
+        >>> mac_key = crypto.hkdf(master_secret, "app/mac/v1")
+        >>> # encryption_key ≠ mac_key due to different info strings
+    """
+    return hkdf_p.bind(secret, info=info, hash_algo=hash_algo)
 
 
 def random_bytes(length: int) -> el.Object:

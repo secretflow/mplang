@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from concurrent.futures import Future
 
     from mplang.v2.edsl.graph import Graph
-    from mplang.v2.edsl.spec import ClusterSpec
+    from mplang.v2.libs.device import ClusterSpec
 
 
 class MemCluster:

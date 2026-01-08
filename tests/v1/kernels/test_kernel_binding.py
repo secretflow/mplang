@@ -79,14 +79,16 @@ def test_rebind_only_affects_context():
     ctx = RuntimeContext(rank=0, world_size=1, initial_bindings={op: "test.echo.v1"})
     pfunc = make_pfunc(op)
     assert (
-        ctx.run_kernel(pfunc, [TensorValue(np.array(5, dtype=np.int64))])[0]
+        ctx
+        .run_kernel(pfunc, [TensorValue(np.array(5, dtype=np.int64))])[0]
         .to_numpy()
         .item()
         == 6
     )
     ctx.rebind_op(op, "test.echo.v2")
     assert (
-        ctx.run_kernel(pfunc, [TensorValue(np.array(5, dtype=np.int64))])[0]
+        ctx
+        .run_kernel(pfunc, [TensorValue(np.array(5, dtype=np.int64))])[0]
         .to_numpy()
         .item()
         == 7
@@ -100,7 +102,8 @@ def test_force_flag():
     ctx.bind_op(op, "test.echo.v2", force=False)
     pfunc = make_pfunc(op)
     assert (
-        ctx.run_kernel(pfunc, [TensorValue(np.array(1, dtype=np.int64))])[0]
+        ctx
+        .run_kernel(pfunc, [TensorValue(np.array(1, dtype=np.int64))])[0]
         .to_numpy()
         .item()
         == 2
@@ -108,7 +111,8 @@ def test_force_flag():
     # Now force
     ctx.bind_op(op, "test.echo.v2", force=True)
     assert (
-        ctx.run_kernel(pfunc, [TensorValue(np.array(1, dtype=np.int64))])[0]
+        ctx
+        .run_kernel(pfunc, [TensorValue(np.array(1, dtype=np.int64))])[0]
         .to_numpy()
         .item()
         == 3

@@ -73,6 +73,9 @@ packages = ["mplang"]
 # Users can compile locally with: cd mplang/v2/kernels && make
 exclude = ["*.so", "*.o", "mplang/v2/kernels/*.so", "mplang/v2/kernels/*.o"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"mplang/py.typed" = "mplang/py.typed"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "/mplang",

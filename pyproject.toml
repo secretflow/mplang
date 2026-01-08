@@ -24,7 +24,7 @@ dependencies = [
     "protobuf>=5.0,<6.0",
     "typing_extensions",
     # both FE & BE
-    "spu>=0.10.0.dev20251208",
+    "spu>=0.10.0.dev20251211",
     "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
     "jax[cpu]==0.8.0",         # Align with SPU JAX version
     "flax>=0.12.0",            # NNX is part of Flax 0.12+

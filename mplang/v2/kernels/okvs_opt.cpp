@@ -36,6 +36,10 @@ extern "C" {
         uint64_t h1, h2, h3;
     };
 
+    // Declaration of the safe (robust) solver implemented in okvs.cpp
+    // Signature: solve_okvs(keys, values, output, n, m, seed_ptr)
+    void solve_okvs(uint64_t* keys, uint64_t* values, uint64_t* output, uint64_t n, uint64_t m, uint64_t* seed_ptr);
+
     // Stateless Bin Selection
     // Maps a key to a deterministic bin index [0, NUM_BINS).
     inline uint64_t get_bin_index(uint64_t key, __m128i seed) {
@@ -245,10 +249,21 @@ extern "C" {
             uint64_t valid_m = m_per_bin[b];
             
             if(!solve_bin(bin_keys[b], bin_vals[b], &P_vec[offset], valid_m, seed)) {
+                // On failure, log and fall back to the robust solver for this bin.
+                // The fallback is executed inside a critical section to avoid nested OpenMP
+                // regions and to serialize rare fallbacks.
                 #pragma omp critical
                 {
-                    fprintf(stderr, "[ERROR] Bin %lu failed OKVS peeling. Items: %lu / M: %lu (Ratio: %.2f). Try increasing expansion factor.\n", 
+                    fprintf(stderr, "[WARN] Bin %lu failed optimized peeling; falling back to safe solver. Items: %lu / M: %lu (Ratio: %.2f)\n",
                         b, bin_keys[b].size(), valid_m, (double)valid_m / bin_keys[b].size());
+
+                    // Prepare pointers for the safe solver
+                    uint64_t* keys_ptr = &bin_keys[b][0];
+                    uint64_t* vals_ptr = &bin_vals[b][0];
+                    uint64_t* out_ptr = output + (offset * 2ULL); // each 128-bit slot == 2 uint64_t
+
+                    // Call the safe solver implemented in okvs.cpp
+                    solve_okvs(keys_ptr, vals_ptr, out_ptr, bin_keys[b].size(), valid_m, seed_ptr);
                 }
             }
         }

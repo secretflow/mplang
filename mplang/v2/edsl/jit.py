@@ -25,6 +25,9 @@ from mplang.v2.edsl.context import (
     get_default_context,
 )
 from mplang.v2.edsl.tracer import Tracer
+from mplang.v2.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def jit(fn: Callable) -> Callable:
@@ -42,13 +45,17 @@ def jit(fn: Callable) -> Callable:
     """
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        fn_name = getattr(fn, "__name__", "anonymous")
+
         # If we are already inside a Tracer (e.g. pcall_static), just inline
         # the function to trace it into the current graph.
         cur_ctx = get_current_context()
         if isinstance(cur_ctx, Tracer):
+            logger.debug("JIT: inlining '%s' into current trace context", fn_name)
             return fn(*args, **kwargs)
 
         # otherwise trace for JIT compilation
+        logger.debug("JIT: compiling '%s'", fn_name)
         with Tracer():
             result = fn(*args, **kwargs)
 
@@ -57,6 +64,7 @@ def jit(fn: Callable) -> Callable:
         assert isinstance(cur_ctx, AbstractInterpreter), (
             "JIT execution requires Interpreter context"
         )
+        logger.debug("JIT: executing compiled '%s'", fn_name)
         return tree_map(cur_ctx.lift, result)
 
     return wrapper

@@ -36,7 +36,6 @@ Security:
 from __future__ import annotations
 
 import concurrent.futures
-import logging
 import os
 import pathlib
 import threading
@@ -55,10 +54,11 @@ from mplang.v2.backends.simp_worker import SimpWorker
 from mplang.v2.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Graph
+from mplang.v2.logging_config import get_logger
 from mplang.v2.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.v2.runtime.object_store import ObjectStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HttpCommunicator:

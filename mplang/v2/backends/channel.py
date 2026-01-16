@@ -21,10 +21,13 @@ infrastructure instead of creating separate BRPC connections.
 
 from __future__ import annotations
 
-import logging
 from typing import Protocol
 
 import spu.libspu as libspu
+
+from mplang.v2.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class CommunicatorProtocol(Protocol):
@@ -73,9 +76,11 @@ class BaseChannel(libspu.link.IChannel):
         self._peer_rank = peer_rank
         self._tag_prefix = tag_prefix
 
-        logging.debug(
-            f"BaseChannel initialized: local_rank={local_rank}, "
-            f"peer_rank={peer_rank}, tag_prefix={tag_prefix}"
+        logger.debug(
+            "BaseChannel initialized: local_rank=%d, peer_rank=%d, tag_prefix=%s",
+            local_rank,
+            peer_rank,
+            tag_prefix,
         )
 
     def _make_key(self, tag: str) -> str:
@@ -97,9 +102,13 @@ class BaseChannel(libspu.link.IChannel):
             data: Raw bytes to send
         """
         key = self._make_key(tag)
-        logging.debug(
-            f"BaseChannel.Send: {self._local_rank} -> {self._peer_rank}, "
-            f"tag={tag}, key={key}, size={len(data)}"
+        logger.debug(
+            "BaseChannel.Send: %d -> %d, tag=%s, key=%s, size=%d",
+            self._local_rank,
+            self._peer_rank,
+            tag,
+            key,
+            len(data),
         )
 
         # Send raw bytes directly
@@ -119,9 +128,12 @@ class BaseChannel(libspu.link.IChannel):
             TypeError: If received data is not bytes
         """
         key = self._make_key(tag)
-        logging.debug(
-            f"BaseChannel.Recv: {self._local_rank} <- {self._peer_rank}, "
-            f"tag={tag}, key={key}"
+        logger.debug(
+            "BaseChannel.Recv: %d <- %d, tag=%s, key=%s",
+            self._local_rank,
+            self._peer_rank,
+            tag,
+            key,
         )
 
         # Receive data (should be bytes)
@@ -134,9 +146,12 @@ class BaseChannel(libspu.link.IChannel):
                 f"Communicator must support raw bytes transmission for SPU channels."
             )
 
-        logging.debug(
-            f"BaseChannel.Recv complete: {self._local_rank} <- {self._peer_rank}, "
-            f"tag={tag}, size={len(data)}"
+        logger.debug(
+            "BaseChannel.Recv complete: %d <- %d, tag=%s, size=%d",
+            self._local_rank,
+            self._peer_rank,
+            tag,
+            len(data),
         )
         return data
 
@@ -184,9 +199,10 @@ class BaseChannel(libspu.link.IChannel):
         """
         test_data = self.Recv("__test__")
         if test_data != b"\x00":
-            logging.warning(
-                f"TestRecv: unexpected handshake from {self._peer_rank}, "
-                f"expected b'\\x00', got {test_data!r}"
+            logger.warning(
+                "TestRecv: unexpected handshake from %d, expected b'\\x00', got %r",
+                self._peer_rank,
+                test_data,
             )
 
     def WaitLinkTaskFinish(self) -> None:
@@ -200,7 +216,9 @@ class BaseChannel(libspu.link.IChannel):
 
         Currently a no-op. Could be extended for resource cleanup.
         """
-        logging.warning(f"BaseChannel.Abort: {self._local_rank} <-> {self._peer_rank}")
+        logger.warning(
+            "BaseChannel.Abort: %d <-> %d", self._local_rank, self._peer_rank
+        )
 
     def SetThrottleWindowSize(self, size: int) -> None:
         """Set throttle window size (no-op).

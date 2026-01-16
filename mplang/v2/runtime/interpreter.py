@@ -38,11 +38,14 @@ from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.registry import get_impl
 from mplang.v2.edsl.typing import BaseType
+from mplang.v2.logging_config import get_logger
 from mplang.v2.runtime.dialect_state import DialectState
 from mplang.v2.runtime.object_store import ObjectStore
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
+
+logger = get_logger(__name__)
 
 
 class ExecutionTracer:
@@ -347,6 +350,13 @@ class Interpreter(AbstractInterpreter):
         self.handlers: dict[str, Callable] = handlers or {}
         self.tracer = tracer
 
+        logger.debug(
+            "Initialized Interpreter '%s' with store=%s, tracer=%s",
+            name,
+            store is not None,
+            tracer is not None,
+        )
+
         # GraphValue -> InterpObject cache
         # Maps a GraphValue (IR node) to its computed InterpObject (Runtime result).
         # This serves two purposes:
@@ -369,19 +379,24 @@ class Interpreter(AbstractInterpreter):
         2. Stops the execution tracer (if any).
         3. Shuts down any attached dialect states (e.g., stopping drivers).
         """
+        logger.info("Shutting down Interpreter '%s'", self.name)
+
         # 1. Shutdown Executor
         if self.executor:
+            logger.debug("Shutting down executor")
             self.executor.shutdown(wait=True)
             self.executor = None
 
         # 2. Stop Tracer
         if self.tracer:
+            logger.debug("Stopping execution tracer")
             self.tracer.stop()
             # Don't clear self.tracer, as we might want to read stats later
 
         # 3. Shutdown Dialect States
         # Iterate over all attached states (e.g., drivers, cluster managers)
         # and shut them down if they support it.
+        logger.debug("Shutting down dialect states")
         for state in self._states.values():
             if hasattr(state, "shutdown") and callable(state.shutdown):
                 state.shutdown()
@@ -598,6 +613,9 @@ class Interpreter(AbstractInterpreter):
 
             # Now the result for our requested object should be in the cache
             if graph_value not in self._execution_cache:
+                logger.error(
+                    "Failed to compute value for %s after graph execution", obj
+                )
                 raise RuntimeError(
                     f"Failed to compute value for {obj} even after graph execution"
                 )
@@ -623,6 +641,14 @@ class Interpreter(AbstractInterpreter):
         Returns:
             List of runtime execution results corresponding to graph.outputs.
         """
+        logger.debug(
+            "Evaluating graph: %d inputs, %d ops, %d outputs (job_id=%s, async=%s)",
+            len(inputs),
+            len(graph.operations),
+            len(graph.outputs),
+            job_id,
+            self.executor is not None,
+        )
         if self.executor:
             return self._evaluate_graph_async(graph, inputs, job_id)
         else:

@@ -32,8 +32,11 @@ from mplang.v2.backends import load_builtins
 from mplang.v2.dialects import crypto, simp, spu, tee
 from mplang.v2.edsl.object import Object
 from mplang.v2.libs.device.cluster import Device
+from mplang.v2.logging_config import get_logger
 
 load_builtins()
+
+logger = get_logger(__name__)
 
 
 def _resolve_cluster() -> Any:

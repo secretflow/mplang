@@ -36,9 +36,12 @@ from mplang.v2.edsl.graph import Graph
 from mplang.v2.edsl.graph import Value as GraphValue
 from mplang.v2.edsl.object import Object
 from mplang.v2.edsl.typing import BaseType
+from mplang.v2.logging_config import get_logger
 
 if TYPE_CHECKING:
     from mplang.v2.edsl.primitive import Primitive
+
+logger = get_logger(__name__)
 
 
 class TraceObject(Object):
@@ -121,6 +124,12 @@ class Tracer(Context):
         Raises:
             RuntimeError: If primitive has neither trace nor abstract_eval defined
         """
+        logger.debug(
+            "Binding primitive '%s' in trace mode (args=%d, kwargs=%s)",
+            primitive.name,
+            len(args),
+            list(kwargs.keys()),
+        )
         if primitive._trace is not None:
             return primitive._trace(*args, **kwargs)
 
@@ -298,6 +307,7 @@ class Tracer(Context):
             raise TypeError(f"fn must be callable, got {type(fn)}")
 
         fn_name = getattr(fn, "__name__", "anonymous")
+        logger.debug("Starting trace of function: %s", fn_name)
         in_flat, in_treedef = tree_flatten((args, kwargs))
         in_imms, in_var_pos, in_vars = _separate_vars_and_imms(in_flat)
 
@@ -328,6 +338,15 @@ class Tracer(Context):
         captured_objects: list[Object] = [
             obj for obj, _ in self._captured_vars.values()
         ]
+
+        logger.debug(
+            "Trace completed: %s - %d inputs, %d outputs, %d ops, %d captured vars",
+            fn_name,
+            len(graph.inputs),
+            len(graph.outputs),
+            len(graph.operations),
+            len(captured_objects),
+        )
 
         return TracedFunction(
             name=fn_name,

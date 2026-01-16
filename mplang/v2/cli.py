@@ -49,6 +49,10 @@ from typing import Any, cast
 import uvicorn
 import yaml
 
+from mplang.v2.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 def run_worker(
     rank: int,
@@ -287,26 +291,33 @@ def cmd_status(args: argparse.Namespace) -> None:
             resp.raise_for_status()
             print(f"OK  {url} -> {resp.json()}")
         except Exception as exc:
+            logger.warning("Health check failed for %s: %s", url, exc)
             print(f"ERR {url} -> {exc}")
 
 
 def load_user_module(path: str) -> ModuleType:
     """Load a Python module from file path."""
+    logger.debug("Loading user module from %s", path)
     if not os.path.exists(path):
+        logger.error("Module file not found: %s", path)
         raise FileNotFoundError(path)
     spec = importlib.util.spec_from_file_location("mp_user_module", path)
     if spec is None or spec.loader is None:
+        logger.error("Cannot import module from %s", path)
         raise ImportError(f"Cannot import module from {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    logger.debug("Successfully loaded module: %s", path)
     return module
 
 
 def resolve_entry(module: ModuleType, name: str) -> Callable[..., Any]:
     entry = getattr(module, name, None)
     if entry is None or not callable(entry):
+        logger.error("Entry function '%s' not found or not callable in module", name)
         raise AttributeError(f"Entry function '{name}' not found or not callable")
+    logger.debug("Resolved entry function: %s", name)
     return cast(Callable[..., Any], entry)
 
 
@@ -421,6 +432,7 @@ def cmd_trace_merge(args: argparse.Namespace) -> None:
                     merged_events.append(event)
 
         except Exception as e:
+            logger.error("Error processing trace file %s: %s", fname, e, exc_info=True)
             print(f"Error processing {fname}: {e}")
 
     # Write merged file
@@ -458,6 +470,7 @@ def cmd_objects(args: argparse.Namespace) -> None:
                     f"{rank:<6} | {endpoints[rank]:<25} | {'Err':<6} | Status {resp.status_code}"
                 )
         except Exception as e:
+            logger.warning("Failed to list objects on rank %d: %s", rank, e)
             print(f"{rank:<6} | {endpoints[rank]:<25} | {'Err':<6} | {e}")
 
 

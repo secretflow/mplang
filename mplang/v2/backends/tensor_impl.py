@@ -36,8 +36,11 @@ import mplang.v2.edsl.typing as elt
 from mplang.v2.dialects import dtypes, tensor
 from mplang.v2.edsl import serde
 from mplang.v2.edsl.graph import Operation
+from mplang.v2.logging_config import get_logger
 from mplang.v2.runtime.interpreter import Interpreter
 from mplang.v2.runtime.value import Value, WrapValue
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # TensorValue Wrapper

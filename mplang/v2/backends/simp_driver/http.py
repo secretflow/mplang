@@ -25,8 +25,11 @@ import httpx
 
 from mplang.v2.backends.simp_driver.state import SimpDriver
 from mplang.v2.edsl import serde
+from mplang.v2.logging_config import get_logger
 from mplang.v2.runtime.interpreter import Interpreter
 from mplang.v2.runtime.object_store import ObjectStore
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from concurrent.futures import Future

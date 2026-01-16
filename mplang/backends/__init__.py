@@ -48,6 +48,8 @@ def load_builtins() -> None:
         "mplang.backends.tee_impl",
         "mplang.backends.bfv_impl",
         "mplang.backends.store_impl",
+        "mplang.backends.func_impl",
+        "mplang.backends.field_impl",
     ]
 
     for module_name in builtin_backends:

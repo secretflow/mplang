@@ -23,8 +23,6 @@ This module tests:
 import numpy as np
 import pytest
 
-import mplang.backends.bfv_impl
-import mplang.backends.table_impl
 import mplang.backends.tensor_impl  # noqa: F401 - Register backend
 from mplang.dialects import bfv, table, tensor
 from mplang.libs.device import device, get_dev_attr, put

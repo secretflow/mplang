@@ -16,7 +16,6 @@
 
 import numpy as np
 
-import mplang.backends.bfv_impl
 import mplang.backends.tensor_impl  # noqa: F401
 from mplang.dialects import bfv, tensor
 from mplang.libs.mpc.analytics import aggregation

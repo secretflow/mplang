@@ -34,16 +34,6 @@ except Exception:
     # Fallback for development/editable installs when package is not installed
     __version__ = "0.0.0-dev"
 
-# =============================================================================
-# Core EDSL components
-# =============================================================================
-# =============================================================================
-# Dialects
-# =============================================================================
-# =============================================================================
-# Backend / Runtime
-# =============================================================================
-import mplang.backends.func_impl  # Register func handlers
 from mplang import dialects
 from mplang.backends.simp_driver.ops import DRIVER_HANDLERS
 from mplang.backends.simp_worker import SimpWorker
@@ -400,7 +390,6 @@ __all__ = [  # noqa: RUF022
     "get_default_context",
     "is_tracing",
     "jit",
-    "mplang",
     "pop_context",
     "primitive",
     "push_context",

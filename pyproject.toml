@@ -25,7 +25,7 @@ dependencies = [
     "typing_extensions",
     # both FE & BE
     "spu>=0.10.0.dev20251211",
-    "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
+    "numpy>=2.0.0,!=2.4.0",    # Updated for JAX 0.8.0 compatibility, excluded 2.4.0 (yanked)
     "jax[cpu]==0.8.0",         # Align with SPU JAX version
     "flax>=0.12.0",            # NNX is part of Flax 0.12+
     "pyarrow>=14.0.0",
@@ -56,6 +56,7 @@ dev = [
     "pre-commit",
     "pytest-repeat>=0.9.4",
     "taskipy",
+    "numpy==2.4.1",
 ]
 
 examples = [
@@ -133,6 +134,7 @@ ignore = [
     "E501",   # line-too-long (will be handled by formatter when possible)
     "E731",   # lambda-assignment (can be acceptable in some cases)
     "RUF002", # ambiguous-unicode-character-docstring (may be intentional)
+    "RUF067", # __init__ module should only contain docstrings and re-exports
 ]
 
 # Per-file ignores for specific cases

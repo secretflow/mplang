@@ -1097,11 +1097,9 @@ def _update_tree_state(
 
         all_feats[party_idx] = simp.pcall_static(
             (party_rank,),
-            lambda pf=all_feats[party_idx],
-            bf=all_feats_level[party_idx],
-            ci=cur_indices_party,
-            op=owned_party_party,
-            il=is_leaf_party: (tensor.run_jax(update_party_feats, pf, bf, ci, op, il)),
+            lambda pf=all_feats[party_idx], bf=all_feats_level[party_idx], ci=cur_indices_party, op=owned_party_party, il=is_leaf_party: (
+                tensor.run_jax(update_party_feats, pf, bf, ci, op, il)
+            ),
         )
 
         def update_party_thresholds(
@@ -1123,13 +1121,7 @@ def _update_tree_state(
 
         all_thresholds[party_idx] = simp.pcall_static(
             (party_rank,),
-            lambda pt=all_thresholds[party_idx],
-            b=all_bins[party_idx],
-            bf=all_feats_level[party_idx],
-            bt_idx=all_threshs_level[party_idx],
-            ci=cur_indices_party,
-            op=owned_party_party,
-            il=is_leaf_party: (
+            lambda pt=all_thresholds[party_idx], b=all_bins[party_idx], bf=all_feats_level[party_idx], bt_idx=all_threshs_level[party_idx], ci=cur_indices_party, op=owned_party_party, il=is_leaf_party: (
                 tensor.run_jax(
                     update_party_thresholds,
                     pt,
@@ -1154,12 +1146,7 @@ def _update_tree_state(
 
         tmp_bt = simp.pcall_static(
             (party_rank,),
-            lambda bi=all_bin_indices[party_idx],
-            bf=all_feats_level[party_idx],
-            bt_idx=all_threshs_level[party_idx],
-            bt_arr=bt_party,
-            bt_lv=bt_level_party,
-            il=is_leaf_party: (
+            lambda bi=all_bin_indices[party_idx], bf=all_feats_level[party_idx], bt_idx=all_threshs_level[party_idx], bt_arr=bt_party, bt_lv=bt_level_party, il=is_leaf_party: (
                 tensor.run_jax(update_bt, bt_arr, bt_lv, il, bi, bf, bt_idx)
             ),
         )

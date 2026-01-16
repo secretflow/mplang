@@ -18,8 +18,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import mplang.backends.field_impl
-import mplang.backends.tensor_impl  # noqa: F401
 from mplang.runtime.dialect_state import DialectState
 from mplang.runtime.object_store import ObjectStore
 

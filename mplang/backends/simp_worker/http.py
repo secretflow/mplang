@@ -99,7 +99,7 @@ class HttpCommunicator:
     def _do_send(self, to: int, key: str, data: Any) -> None:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
-        logger.debug(f"Rank {self.rank} sending to {to} key={key}")
+        logger.debug(f"Rank {self.rank} sending to {to} key={key}, url={url}")
 
         # Detect SPU channel (tag prefix "spu:") and handle bytes
         if key.startswith("spu:") and isinstance(data, bytes):

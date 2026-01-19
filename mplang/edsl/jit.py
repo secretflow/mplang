@@ -27,6 +27,8 @@ from mplang.edsl.context import (
 from mplang.edsl.tracer import Tracer
 from mplang.logging_config import get_logger
 
+logger = get_logger(__name__)
+
 
 def jit(fn: Callable) -> Callable:
     """JIT compilation decorator.

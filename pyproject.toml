@@ -25,7 +25,7 @@ dependencies = [
     "typing_extensions",
     # both FE & BE
     "spu>=0.10.0.dev20251211",
-    "numpy>=2.0.0",            # Updated for JAX 0.8.0 compatibility
+    "numpy>=2.0.0,!=2.4.0",    # Updated for JAX 0.8.0 compatibility, excluded 2.4.0 (yanked)
     "jax[cpu]==0.8.0",         # Align with SPU JAX version
     "flax>=0.12.0",            # NNX is part of Flax 0.12+
     "pyarrow>=14.0.0",
@@ -51,12 +51,12 @@ dev = [
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
-    "pytest-asyncio",
     "ruff",
     "mypy",
     "pre-commit",
     "pytest-repeat>=0.9.4",
     "taskipy",
+    "numpy==2.4.1",
 ]
 
 examples = [
@@ -70,8 +70,8 @@ examples = [
 [tool.hatch.build.targets.wheel]
 packages = ["mplang"]
 # Exclude native C++ kernels by default - they are optional
-# Users can compile locally with: cd mplang/v2/kernels && make
-exclude = ["*.so", "*.o", "mplang/v2/kernels/*.so", "mplang/v2/kernels/*.o"]
+# Users can compile locally with: cd mplang/kernels && make
+exclude = ["*.so", "*.o", "mplang/kernels/*.so", "mplang/kernels/*.o"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -134,6 +134,7 @@ ignore = [
     "E501",   # line-too-long (will be handled by formatter when possible)
     "E731",   # lambda-assignment (can be acceptable in some cases)
     "RUF002", # ambiguous-unicode-character-docstring (may be intentional)
+    "RUF067", # __init__ module should only contain docstrings and re-exports
 ]
 
 # Per-file ignores for specific cases

@@ -12,6 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Auto-loaded pytest configuration to expose shared fixtures.
-# Register server fixtures as a pytest plugin for proper assert-rewrite.
-pytest_plugins = ("tests.v1.utils.server_fixtures",)
+import warnings
+
+import jax
+import pytest
+
+# Disable JAX persistent compilation cache to avoid warnings in tests
+# (cache fails when jax_compilation_cache_dir is not configured)
+jax.config.update("jax_enable_compilation_cache", False)
+
+# Enable x64 to match numpy's default integer precision
+jax.config.update("jax_enable_x64", True)
+
+# Suppress known TEE mock warnings in tests (expected for local testing)
+warnings.filterwarnings("ignore", message=".*Insecure mock TEE.*")
+
+import mplang.edsl.context  # noqa: E402
+from mplang.dialects import simp  # noqa: E402
+from tests.utils.tensor_patch import patch_object_operators  # noqa: E402
+
+# Apply tensor operator overloading patch for tests
+patch_object_operators()
+
+
+@pytest.fixture
+def simp_simulator_default():
+    """Provide a SIMP simulator context for tests that need it.
+
+    Usage: Add @pytest.mark.usefixtures("simp_simulator_default") to test classes
+    or use simp_simulator_default fixture parameter in test functions.
+    """
+    sim = simp.make_simulator(world_size=3)
+    with sim:
+        yield sim
+
+
+@pytest.fixture(autouse=True)
+def reset_context_stack():
+    """Reset the context stack before and after each test."""
+    # Clear context stack for test isolation
+    mplang.edsl.context._context_stack.clear()
+    yield
+    # Clear again after test
+    mplang.edsl.context._context_stack.clear()

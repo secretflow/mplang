@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-import mplang.v2 as mp
+import mplang as mp
 
 
 def test_logging_disabled_by_default():

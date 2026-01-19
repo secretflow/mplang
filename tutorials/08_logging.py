@@ -17,7 +17,7 @@ import tempfile
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-import mplang.v2 as mp
+import mplang as mp
 
 
 # =============================================================================

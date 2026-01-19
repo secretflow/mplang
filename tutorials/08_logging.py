@@ -121,7 +121,7 @@ def example_3_unified_logging():
 
         print("\n✓ Both application and MPLang logs are in the same file")
         print("  - Application logs: myapp")
-        print("  - MPLang logs: mplang.v2.*")
+        print("  - MPLang logs: mplang.*")
 
     print()
 
@@ -360,13 +360,20 @@ def example_8_json_logging():
                     log_data["exception"] = self.formatException(record.exc_info)
                 return json.dumps(log_data, ensure_ascii=False)
 
+        # Clean up any existing handlers first
+        root_logger = logging.getLogger()
+        for h in root_logger.handlers[:]:
+            root_logger.removeHandler(h)
+            h.close()
+
         # Configure JSON logging
         handler = logging.FileHandler(str(log_file), mode="w")
         handler.setFormatter(JsonFormatter())
-
-        root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
         root_logger.addHandler(handler)
+
+        # Enable MPLang logging and propagate to root logger for unified JSON logging
+        mp.setup_logging(level="INFO", propagate=True, force=True)
 
         app_logger = logging.getLogger("myapp")
         app_logger.info("Structured logging application started")
@@ -376,13 +383,23 @@ def example_8_json_logging():
 
         app_logger.info("Application completed")
 
+        # Flush to ensure all logs are written
+        handler.flush()
+
         # Display JSON logs
         log_content = log_file.read_text()
         print("\nJSON log content (first 3 lines):")
         print("-" * 70)
-        for line in log_content.strip().split("\n")[:3]:
-            log_entry = json.loads(line)
-            print(json.dumps(log_entry, indent=2, ensure_ascii=False))
+        if log_content.strip():
+            for line in log_content.strip().split("\n")[:3]:
+                if line:  # Skip empty lines
+                    try:
+                        log_entry = json.loads(line)
+                        print(json.dumps(log_entry, indent=2, ensure_ascii=False))
+                    except json.JSONDecodeError:
+                        print(f"Warning: Could not parse line: {line[:50]}...")
+        else:
+            print("[No log content generated]")
         print("-" * 70)
         print(
             "\n✓ JSON format facilitates processing by log analysis tools (ELK, Splunk, etc.)"
@@ -391,6 +408,7 @@ def example_8_json_logging():
         # Cleanup
         root_logger.removeHandler(handler)
         handler.close()
+        mp.disable_logging()  # Reset mplang logger state for next examples
 
     print()
 
@@ -407,14 +425,14 @@ def example_9_hierarchical_logging():
     print("""
 MPLang v2 uses a hierarchical logger structure:
 
-mplang.v2                           # Root logger
-├── mplang.v2.edsl                  # EDSL components
-│   ├── mplang.v2.edsl.tracer       # Tracer logs
-│   ├── mplang.v2.edsl.interpreter  # Interpreter logs
-│   └── mplang.v2.edsl.jit          # JIT logs
-├── mplang.v2.backends              # Backend implementations
-├── mplang.v2.dialects              # Dialect primitives
-└── mplang.v2.runtime               # Runtime components
+mplang                           # Root logger
+├── mplang.edsl                  # EDSL components
+│   ├── mplang.edsl.tracer       # Tracer logs
+│   ├── mplang.edsl.interpreter  # Interpreter logs
+│   └── mplang.edsl.jit          # JIT logs
+├── mplang.backends              # Backend implementations
+├── mplang.dialects              # Dialect primitives
+└── mplang.runtime               # Runtime components
 
 You can set different log levels for different modules:
 """)
@@ -423,11 +441,11 @@ You can set different log levels for different modules:
     mp.setup_logging(level="WARNING")
 
     # But enable DEBUG for specific module
-    logging.getLogger("mplang.v2.edsl.tracer").setLevel(logging.DEBUG)
+    logging.getLogger("mplang.edsl.tracer").setLevel(logging.DEBUG)
 
     print("✓ Configuration example:")
     print("  - Global: WARNING")
-    print("  - mplang.v2.edsl.tracer: DEBUG")
+    print("  - mplang.edsl.tracer: DEBUG")
     print(
         "\nThis allows viewing detailed logs only for modules of interest, avoiding information overload"
     )
@@ -452,7 +470,7 @@ def print_best_practices():
    
    ```python
    import logging
-   import mplang.v2 as mp
+   import mplang as mp
 
    # Configure Python root logger
    logging.basicConfig(
@@ -545,7 +563,7 @@ def print_best_practices():
 
 ✅ Verify Logging Configuration:
    ```python
-   logger = logging.getLogger("mplang.v2")
+   logger = logging.getLogger("mplang")
    print(f"Logger level: {logger.level}")
    print(f"Handlers: {logger.handlers}")
    ```

@@ -20,7 +20,7 @@ When MPLang is used as a library, logging is disabled by default (NullHandler),
 allowing applications to configure logging as needed.
 
 Example usage:
-    >>> import mplang.v2 as mp
+    >>> import mplang as mp
     >>> # Enable logging with INFO level
     >>> mp.setup_logging(level="INFO")
     >>> # Enable logging with DEBUG level and write to file
@@ -36,7 +36,7 @@ import sys
 from typing import Any, Literal
 
 # Root logger for all MPLang v2 components
-MPLANG_LOGGER_NAME = "mplang.v2"
+MPLANG_LOGGER_NAME = "mplang"
 
 # Default format for log messages
 DEFAULT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -76,7 +76,7 @@ def setup_logging(
                    its own handlers independently.
 
     Example:
-        >>> import mplang.v2 as mp
+        >>> import mplang as mp
         >>> # Enable debug logging to stderr
         >>> mp.setup_logging(level="DEBUG")
         >>> # Log mplang to file only
@@ -91,12 +91,21 @@ def setup_logging(
         ... )
         >>> mp.setup_logging(level="INFO", propagate=True)  # Inherits app config
     """
-    # Get the root logger for mplang.v2
+    # Get the root logger for mplang
     logger = logging.getLogger(MPLANG_LOGGER_NAME)
 
     # Set log level
     log_level = getattr(logging, level.upper())
     logger.setLevel(log_level)
+
+    # If propagate=True, automatically remove NullHandler to avoid confusion
+    # (NullHandler doesn't prevent propagation, but its presence is confusing)
+    if propagate and not force:
+        # Check if there's only a NullHandler
+        if len(logger.handlers) == 1 and isinstance(
+            logger.handlers[0], logging.NullHandler
+        ):
+            force = True  # Auto-enable force to remove NullHandler
 
     # Remove existing handlers if force=True
     if force:
@@ -141,7 +150,7 @@ def disable_logging() -> None:
     MPLang log output.
 
     Example:
-        >>> import mplang.v2 as mp
+        >>> import mplang as mp
         >>> mp.disable_logging()
     """
     logger = logging.getLogger(MPLANG_LOGGER_NAME)
@@ -158,7 +167,7 @@ def get_logger(name: str) -> logging.Logger:
     Get a logger for a specific MPLang v2 module.
 
     This function should be used by all MPLang v2 modules to create their loggers.
-    The logger name will be prefixed with 'mplang.v2' automatically if not already.
+    The logger name will be prefixed with 'mplang' automatically if not already.
 
     Args:
         name: Module name, typically __name__ from the calling module.
@@ -168,18 +177,18 @@ def get_logger(name: str) -> logging.Logger:
 
     Example:
         >>> # In mplang/v2/edsl/tracer.py
-        >>> logger = get_logger(__name__)  # Creates 'mplang.v2.edsl.tracer' logger
+        >>> logger = get_logger(__name__)  # Creates 'mplang.edsl.tracer' logger
     """
-    # Ensure the logger name is under mplang.v2 hierarchy
+    # Ensure the logger name is under mplang hierarchy
     if not name.startswith(MPLANG_LOGGER_NAME):
         # Handle cases where __name__ might be a relative module name
-        if name.startswith("mplang.v2."):
+        if name.startswith("mplang."):
             pass  # Already correct
         elif "." in name:
             # Assume it's already a full module path
             pass
         else:
-            # Relative module name, prefix with mplang.v2
+            # Relative module name, prefix with mplang
             name = f"{MPLANG_LOGGER_NAME}.{name}"
 
     return logging.getLogger(name)

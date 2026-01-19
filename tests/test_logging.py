@@ -130,9 +130,9 @@ def test_get_logger_helper():
     # Should be under mplang.v2 hierarchy
     assert logger.name == "mplang.v2.test_module"
 
-    # Should inherit from mplang.v2 root logger
-    root_logger = logging.getLogger("mplang.v2")
-    assert logger.parent == root_logger or logger.name.startswith("mplang.v2")
+    # Should be part of the mplang root logger hierarchy
+    root_logger = logging.getLogger("mplang")
+    assert logger.name.startswith("mplang")
 
 
 def test_logging_with_custom_format():

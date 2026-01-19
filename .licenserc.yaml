@@ -57,6 +57,7 @@ header: # <1>
     - 'pyproject.toml'
     - 'uv.lock'
     - '.python-version'
+    - '**/.gitkeep'
 
   comment: never # <9>
 

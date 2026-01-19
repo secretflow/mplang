@@ -1,11 +1,10 @@
-# MPLang v1 → MPLang2 Migration Guide
+# MPLang v1 → MPLang Migration Guide
 
-> Last updated: 2025-12-01 (File I/O + Pipeline + Distributed CLI verified)
+> Last updated: 2026-01-16 (Tutorials restructured)
 
 ## Overview
 
-MPLang2 is a type-safe EDSL replacement for MPLang v1, supporting nested DSLs (e.g., MP + BFV).
-Target: Replace `tutorials/device/*` with `tutorials/mplang2/*`.
+MPLang v2 is now the default API and has been moved to `mplang` directly. The tutorial structure has been simplified - all tutorials are now in the root `tutorials/` directory instead of being separated into v1/v2.
 
 **Goal is NOT 100% API compatibility**, but functional parity with cleaner design.
 
@@ -38,8 +37,8 @@ Target: Replace `tutorials/device/*` with `tutorials/mplang2/*`.
 # v1
 import mplang as mp
 
-# v2
-import mplang2 as mp
+# v2 (now default)
+import mplang as mp
 ```
 
 ### Device Execution with JAX
@@ -71,22 +70,26 @@ x = mp.put("P0", 42)
 from mplang.ops import sql_cc
 result = mp.device("P0")(sql_cc.run_sql)(query, input_table=tbl)
 
-# v2
-from mplang2.dialects import table
+# v2 (now default)
+from mplang.dialects import table
 result = table.run_sql(query, out_type=schema, tbl=tbl)
 ```
 
 ## Tutorial Mapping
 
-| v1 Tutorial | v2 Tutorial | Status |
-|-------------|-------------|--------|
-| 00_device_basics.py | ✅ 00_device_basics.py | Done |
-| 01_function_decorator.py | ✅ 01_function_decorator.py | Done |
-| 02_simulation_and_driver.py | ✅ 02_simulation_and_driver.py | Done (includes CLI + live driver) |
-| 03_run_jax.py | ✅ 03_run_jax.py | Done |
-| 04_run_sql.py | ✅ 05_run_sql.py | Done (PPU only, TEE needs work) |
-| 05_pipeline.py | ✅ 06_pipeline.py | Done |
-| 06_ir_dump_and_analysis.py | ✅ 04_ir_dump_and_analysis.py | Partial (no analysis module) |
+The v1 tutorials have been replaced. All tutorials are now in the root `tutorials/` directory:
+
+| Old v1 Location | New Location | Status |
+|-----------------|--------------|--------|
+| v1/device/00_device_basics.py | tutorials/00_device_basics.py | ✅ Done |
+| v1/device/01_function_decorator.py | tutorials/01_function_decorator.py | ✅ Done |
+| v1/device/02_simulation_and_driver.py | tutorials/02_simulation_and_driver.py | ✅ Done |
+| v1/device/03_run_jax.py | tutorials/03_run_jax.py | ✅ Done |
+| v1/device/04_run_sql.py | tutorials/05_run_sql.py | ✅ Done |
+| v1/device/05_pipeline.py | tutorials/06_pipeline.py | ✅ Done |
+| v1/device/06_ir_dump_and_analysis.py | tutorials/04_ir_dump_and_analysis.py | ✅ Done |
+| v1/pitfalls/late_binding.py | - | Removed |
+| v1/pitfalls/rand.py | - | Removed |
 
 ## TODO
 
@@ -102,7 +105,7 @@ result = table.run_sql(query, out_type=schema, tbl=tbl)
 
 ### Architecture Difference
 
-| Aspect | mplang v1 | mplang2 |
+| Aspect | mplang v1 | mplang (v2) |
 |--------|-----------|---------|
 | Design | Single `DType` dataclass | Type class hierarchy |
 | Core | `DType(name, bitwidth, is_signed, ...)` | `ScalarType` → `IntegerType` / `FloatType` / `ComplexType` |
@@ -121,7 +124,7 @@ class DType:
     is_table_only: bool  # STRING, DATE, etc.
 ```
 
-### v2 Types (`mplang2/edsl/typing.py`)
+### v2 Types (`mplang/v2/edsl/typing.py`)
 
 ```python
 class ScalarType(BaseType): ...
@@ -149,10 +152,10 @@ class ComplexType(ScalarType):  # c64, c128
 
 ### Completed Improvements (2025-11-30)
 
-**P0: Added `mplang2/dialects/dtypes.py`** (renamed from type_utils.py) with clean API:
+**P0: Added `mplang/v2/dialects/dtypes.py`** (renamed from type_utils.py) with clean API:
 
 ```python
-from mplang2.dialects import dtypes
+from mplang.v2.dialects import dtypes
 
 dtypes.to_jax(scalar_types.f32)      # ScalarType → jax dtype
 dtypes.to_numpy(scalar_types.i64)    # ScalarType → numpy dtype
@@ -161,7 +164,7 @@ dtypes.from_dtype(jnp.int64)         # works with JAX too
 dtypes.from_dtype("float32")         # works with strings too
 ```
 
-**P3: Added `bool_` and Table-only types to `mplang2/edsl/typing.py`**:
+**P3: Added `bool_` and Table-only types to `mplang/v2/edsl/typing.py`**:
 
 ```python
 # Boolean

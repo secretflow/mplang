@@ -160,13 +160,13 @@ def test_logging_hierarchy():
     # Create child logger
     from mplang.v2.logging_config import get_logger
 
-    child_logger = get_logger("mplang.v2.edsl.tracer")
+    child_logger = get_logger("mplang.edsl.tracer")
 
     child_logger.info("Child message")
 
     log_output = log_stream.getvalue()
     assert "Child message" in log_output
-    assert "mplang.v2.edsl.tracer" in log_output
+    assert "mplang.edsl.tracer" in log_output
 
     # Cleanup
     mp.disable_logging()

@@ -185,8 +185,8 @@ def get_logger(name: str) -> logging.Logger:
         if name.startswith("mplang."):
             pass  # Already correct
         elif "." in name:
-            # Assume it's already a full module path
-            pass
+            # It's a submodule, but not under mplang, so prefix it.
+            name = f"{MPLANG_LOGGER_NAME}.{name}"
         else:
             # Relative module name, prefix with mplang
             name = f"{MPLANG_LOGGER_NAME}.{name}"

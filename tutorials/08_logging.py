@@ -220,7 +220,7 @@ def example_5_separate_logs():
     with mp.Interpreter(name="SeparateExample") as _:
         app_logger.info("Application continues")
 
-    print(f"✓ Logs separated:")
+    print("✓ Logs separated:")
     print(f"  - {app_log}: Application logs")
     print(f"  - {mplang_log}: MPLang logs")
 
@@ -481,7 +481,7 @@ def print_best_practices():
 
 1️⃣ [Recommended] Unified Management (Application + MPLang)
    Use case: Most application scenarios
-   
+
    ```python
    import logging
    import mplang as mp
@@ -496,14 +496,14 @@ def print_best_practices():
    # MPLang logs automatically inherit configuration (Method 1)
    with mp.Interpreter() as interp:
        pass  # Logs automatically written to app.log
-   
+
    # Or explicit propagation (Method 2)
    mp.setup_logging(level="INFO", propagate=True)
    ```
 
 2️⃣ Only Log MPLang
    Use case: Only want to view MPLang internals
-   
+
    ```python
    mp.setup_logging(
        level="INFO",
@@ -514,7 +514,7 @@ def print_best_practices():
 
 3️⃣ Separate Management (Application and Library)
    Use case: Need to analyze logs independently
-   
+
    ```python
    # Application configures its own logger
    app_logger = logging.getLogger("myapp")
@@ -526,20 +526,20 @@ def print_best_practices():
 
 4️⃣ Production Environment (Multiple Handlers)
    Use case: File records detailed logs, console shows only important info
-   
+
    ```python
    # File handler: INFO+
    file_handler = logging.FileHandler("app.log")
    file_handler.setLevel(logging.INFO)
-   
+
    # Console handler: WARNING+
    console_handler = logging.StreamHandler()
    console_handler.setLevel(logging.WARNING)
-   
+
    root_logger = logging.getLogger()
    root_logger.addHandler(file_handler)
    root_logger.addHandler(console_handler)
-   
+
    mp.setup_logging(level="INFO", propagate=True)
    ```
 

@@ -1,3 +1,17 @@
+# Copyright 2026 Ant Group Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tests for MPLang v2 logging functionality."""
 
 import io
@@ -91,7 +105,7 @@ def test_logging_with_trace():
     try:
         # Test that basic logging infrastructure is working
         # We can verify by creating a logger and checking logs are captured
-        from mplang.v2.logging_config import get_logger
+        from mplang.logging_config import get_logger
 
         test_logger = get_logger("mplang.test")
         test_logger.debug("Test trace log message")
@@ -122,16 +136,16 @@ def test_logging_with_interpreter():
 
 def test_get_logger_helper():
     """Test the get_logger helper function."""
-    from mplang.v2.logging_config import get_logger
+    from mplang.logging_config import get_logger
 
     # Get a logger for a hypothetical module
-    logger = get_logger("mplang.v2.test_module")
+    logger = get_logger("mplang.edsl.test_module")
 
-    # Should be under mplang.v2 hierarchy
-    assert logger.name == "mplang.v2.test_module"
+    # Should be under mplang hierarchy
+    assert logger.name == "mplang.edsl.test_module"
 
     # Should be part of the mplang root logger hierarchy
-    root_logger = logging.getLogger("mplang")
+    logging.getLogger("mplang")
     assert logger.name.startswith("mplang")
 
 
@@ -158,7 +172,7 @@ def test_logging_hierarchy():
     mp.setup_logging(level="INFO", stream=log_stream, force=True)
 
     # Create child logger
-    from mplang.v2.logging_config import get_logger
+    from mplang.logging_config import get_logger
 
     child_logger = get_logger("mplang.edsl.tracer")
 

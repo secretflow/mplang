@@ -114,7 +114,7 @@ def test_logging_with_interpreter():
         with mp.Interpreter(name="TestInterpreter") as _:
             # Should log interpreter initialization
             log_output = log_stream.getvalue()
-            assert "Initialized Interpreter" in log_output or len(log_output) > 0
+            assert "Initialized Interpreter" in log_output
 
     finally:
         mp.disable_logging()

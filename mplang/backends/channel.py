@@ -31,6 +31,20 @@ class CommunicatorProtocol(Protocol):
     """Protocol for v2 communicators (duck typing).
 
     Both ThreadCommunicator and HttpCommunicator implement this interface.
+
+    Required Methods:
+        send(): Send data to peer rank
+        recv(): Receive data from peer rank
+
+    Optional Methods (detected via hasattr() at runtime):
+        get_context_id(): If implemented, returns context identifier (e.g., session_id)
+                         for multi-session isolation. If not implemented or returns None,
+                         no context isolation is applied (backward compatible).
+
+    Note:
+        get_context_id() is NOT defined in this Protocol to avoid forcing
+        all implementations to provide it. BaseChannel checks for its existence
+        at runtime using hasattr() and gracefully degrades if not available.
     """
 
     def send(self, to: int, key: str, data: bytes) -> None: ...
@@ -44,12 +58,54 @@ class BaseChannel(libspu.link.IChannel):
     Each BaseChannel represents a channel to ONE peer rank.
 
     Communication Protocol:
-        - SPU calls send(tag, bytes) -> comm.send(peer, "spu:tag", bytes)
-        - SPU calls recv(tag) -> bytes <- comm.recv(peer, "spu:tag")
+        - SPU calls send(tag, bytes) -> comm.send(peer, key, bytes)
+        - SPU calls recv(tag) -> bytes <- comm.recv(peer, key)
+
+        Where key format is determined by context_id and tag_prefix:
+        - Without context: "{tag_prefix}:{tag}" (e.g., "spu:send_0")
+        - With context: "{context_id}:{tag_prefix}:{tag}" (e.g., "session_abc:spu:send_0")
 
     Tag Namespace:
-        All tags are prefixed with "spu:" to avoid collision with other
-        traffic on the same communicator.
+        - tag_prefix: Identifies protocol/application type (spu, tee, custom, etc.)
+        - context_id: Isolates concurrent sessions/contexts (from communicator)
+        - tag: SPU-provided message tag (send_0, recv_1, __test__, etc.)
+
+    Multi-Session Isolation:
+        Upper-layer applications can enable session isolation by providing
+        communicators that implement get_context_id() method:
+
+        Example 1 - Single session (default, no isolation):
+            comm = ThreadCommunicator(rank=0, world_size=2)
+            channel = BaseChannel(comm, 0, 1, tag_prefix="spu")
+            # Keys: "spu:send_0", "spu:__test__"
+            # (comm.get_context_id() not implemented or returns None)
+
+        Example 2 - Multi-session with context-aware communicator:
+            # Option A: Wrapper pattern
+            base_comm = ThreadCommunicator(rank=0, world_size=2)
+            session_comm = SessionAwareCommunicator(base_comm, session_id="abc")
+            channel = BaseChannel(session_comm, 0, 1, tag_prefix="spu")
+            # Keys: "abc:spu:send_0", "abc:spu:__test__"
+
+            # Option B: Extended communicator
+            comm = ThreadCommunicator(rank=0, world_size=2, context_id="abc")
+            channel = BaseChannel(comm, 0, 1, tag_prefix="spu")
+            # Keys: "abc:spu:send_0", "abc:spu:__test__"
+
+        Example 3 - Multiple protocols with session isolation:
+            session_comm = SessionAwareCommunicator(base_comm, session_id="abc")
+            spu_channel = BaseChannel(session_comm, 0, 1, tag_prefix="spu")
+            tee_channel = BaseChannel(session_comm, 0, 1, tag_prefix="tee")
+            # SPU keys: "abc:spu:send_0"
+            # TEE keys: "abc:tee:send_0"
+            # Both isolated by session + differentiated by protocol
+
+    Design Rationale:
+        - BaseChannel remains agnostic to session semantics
+        - Communicator owns context/session identity
+        - Automatic isolation without manual key construction
+        - Backward compatible (get_context_id() is optional)
+        - Preserves tag_prefix semantic meaning (protocol type)
     """
 
     def __init__(
@@ -62,10 +118,16 @@ class BaseChannel(libspu.link.IChannel):
         """Initialize channel to a specific peer.
 
         Args:
-            comm: v2 communicator (any object implementing send/recv)
+            comm: v2 communicator (any object implementing send/recv).
+                  If comm implements get_context_id(), the returned context ID
+                  (e.g., session_id) will be automatically prepended to all keys
+                  for multi-session isolation.
             local_rank: Global rank of this party
             peer_rank: Global rank of the peer party
-            tag_prefix: Prefix for all tags (default: "spu")
+            tag_prefix: Prefix identifying protocol/application type (default: "spu").
+                        Should NOT encode session_id here; use communicator's
+                        get_context_id() instead for proper session isolation.
+                        Examples: "spu", "tee", "custom_protocol"
         """
         super().__init__()
         self._comm = comm
@@ -81,12 +143,43 @@ class BaseChannel(libspu.link.IChannel):
     def _make_key(self, tag: str) -> str:
         """Create unique key for communicator.
 
+        Key format:
+            - Without context: "{tag_prefix}:{tag}"
+            - With context: "{context_id}:{tag_prefix}:{tag}"
+
+        Context ID is obtained from communicator via get_context_id() method.
+        If communicator doesn't implement this method or returns None, no
+        context prefix is added (backward compatible).
+
         Args:
-            tag: SPU-provided tag (e.g., "send_0")
+            tag: SPU-provided tag (e.g., "send_0", "__test__")
 
         Returns:
-            Prefixed key (e.g., "spu:send_0")
+            Prefixed key with optional context isolation
+
+        Examples:
+            # Communicator without get_context_id():
+            "spu:send_0", "spu:__test__"
+
+            # Communicator with get_context_id() returning "session_abc":
+            "session_abc:spu:send_0", "session_abc:spu:__test__"
         """
+        # Try to get context ID from communicator (optional method)
+        context_id = None
+        if hasattr(self._comm, "get_context_id"):
+            try:
+                context_id = self._comm.get_context_id()
+            except Exception as e:
+                # Log but don't fail - graceful degradation
+                logger.debug(
+                    "Failed to get context_id from communicator: %s. "
+                    "Proceeding without context isolation.",
+                    e,
+                )
+
+        # Build key with optional context prefix
+        if context_id:
+            return f"{context_id}:{self._tag_prefix}:{tag}"
         return f"{self._tag_prefix}:{tag}"
 
     def Send(self, tag: str, data: bytes) -> None:
@@ -166,7 +259,9 @@ class BaseChannel(libspu.link.IChannel):
     def TestSend(self, timeout: int) -> None:
         """Test if channel can send a dummy message to peer.
 
-        Uses fixed tag "__test__" for idempotency.
+        Uses fixed tag "__test__" combined with tag_prefix and optional context_id.
+        If communicator implements get_context_id(), the handshake will be
+        automatically isolated per context (e.g., "session_abc:spu:__test__").
 
         Args:
             timeout: Timeout in milliseconds (informational)
@@ -178,6 +273,9 @@ class BaseChannel(libspu.link.IChannel):
         """Wait for dummy message from peer.
 
         Timeout controlled by recv_timeout_ms in link descriptor.
+        If communicator implements get_context_id(), the handshake will be
+        automatically received from context-isolated mailbox (e.g.,
+        "session_abc:spu:__test__"), preventing crosstalk with other sessions.
 
         Raises:
             Warning if unexpected handshake data received
@@ -215,3 +313,23 @@ class BaseChannel(libspu.link.IChannel):
         Args:
             size: Chunk size (ignored)
         """
+
+
+# Type hint for context-aware communicators (optional runtime feature)
+# This is NOT a Protocol because get_context_id() is optional and checked via hasattr().
+# Example implementation:
+#
+#   class SessionAwareCommunicator:
+#       def __init__(self, base_comm: CommunicatorProtocol, context_id: str):
+#           self._base_comm = base_comm
+#           self._context_id = context_id
+#
+#       def send(self, to: int, key: str, data: bytes) -> None:
+#           self._base_comm.send(to, key, data)
+#
+#       def recv(self, frm: int, key: str) -> bytes:
+#           return self._base_comm.recv(frm, key)
+#
+#       def get_context_id(self) -> str | None:
+#           """Enable multi-session isolation in BaseChannel."""
+#           return self._context_id

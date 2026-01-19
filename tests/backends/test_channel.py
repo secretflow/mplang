@@ -186,3 +186,113 @@ class TestBaseChannel:
         assert ch10.Recv("ring") == b"from 0"
         assert ch21.Recv("ring") == b"from 1"
         assert ch02.Recv("ring") == b"from 2"
+
+    def test_multi_session_isolation_via_tag_prefix(self):
+        """Test multi-session isolation using tag_prefix encoding.
+
+        Demonstrates how upper layers can implement session isolation by
+        encoding session_id into tag_prefix, without BaseChannel needing
+        to know about session semantics.
+        """
+        world_size = 2
+        comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in comms:
+            c.set_peers(comms)
+
+        # Session A: two parties with session-specific prefix
+        session_a_prefix = "session_aaa:spu"
+        ch0_session_a = BaseChannel(comms[0], 0, 1, tag_prefix=session_a_prefix)
+        ch1_session_a = BaseChannel(comms[1], 1, 0, tag_prefix=session_a_prefix)
+
+        # Session B: same two parties, different session
+        session_b_prefix = "session_bbb:spu"
+        ch0_session_b = BaseChannel(comms[0], 0, 1, tag_prefix=session_b_prefix)
+        ch1_session_b = BaseChannel(comms[1], 1, 0, tag_prefix=session_b_prefix)
+
+        # Send messages in both sessions
+        ch0_session_a.Send("data", b"message from session A")
+        ch0_session_b.Send("data", b"message from session B")
+
+        # Receive - no crosstalk between sessions
+        recv_a = ch1_session_a.Recv("data")
+        recv_b = ch1_session_b.Recv("data")
+
+        assert recv_a == b"message from session A"
+        assert recv_b == b"message from session B"
+
+        # TestSend/TestRecv also isolated
+        ch0_session_a.TestSend(1000)
+        ch0_session_b.TestSend(1000)
+
+        ch1_session_a.TestRecv()  # Receives from session A only
+        ch1_session_b.TestRecv()  # Receives from session B only
+
+    def test_multi_session_isolation_via_context_id(self):
+        """Test multi-session isolation via communicator get_context_id().
+
+        This tests the recommended pattern for upper-layer session management:
+        communicator provides context_id, BaseChannel automatically constructs
+        isolated keys without requiring manual tag_prefix encoding.
+        """
+
+        class SessionAwareCommunicator:
+            """Wrapper that adds context_id to any communicator."""
+
+            def __init__(self, base_comm, context_id: str | None):
+                self._base_comm = base_comm
+                self._context_id = context_id
+
+            def send(self, to: int, key: str, data: bytes) -> None:
+                self._base_comm.send(to, key, data)
+
+            def recv(self, frm: int, key: str) -> bytes:
+                return self._base_comm.recv(frm, key)
+
+            def get_context_id(self) -> str | None:
+                """Provide context ID for isolation."""
+                return self._context_id
+
+        # Setup base communicators
+        world_size = 2
+        base_comms = [ThreadCommunicator(i, world_size) for i in range(world_size)]
+        for c in base_comms:
+            c.set_peers(base_comms)
+
+        # Session A: wrap with session_id="session_aaa"
+        comms_a = [
+            SessionAwareCommunicator(base_comms[0], "session_aaa"),
+            SessionAwareCommunicator(base_comms[1], "session_aaa"),
+        ]
+        ch0_a = BaseChannel(comms_a[0], 0, 1, tag_prefix="spu")
+        ch1_a = BaseChannel(comms_a[1], 1, 0, tag_prefix="spu")
+
+        # Session B: wrap with session_id="session_bbb"
+        comms_b = [
+            SessionAwareCommunicator(base_comms[0], "session_bbb"),
+            SessionAwareCommunicator(base_comms[1], "session_bbb"),
+        ]
+        ch0_b = BaseChannel(comms_b[0], 0, 1, tag_prefix="spu")
+        ch1_b = BaseChannel(comms_b[1], 1, 0, tag_prefix="spu")
+
+        # Send messages in both sessions (same tag "data", different contexts)
+        ch0_a.Send("data", b"message from session A")
+        ch0_b.Send("data", b"message from session B")
+
+        # Verify no crosstalk - each session receives its own message
+        recv_a = ch1_a.Recv("data")
+        recv_b = ch1_b.Recv("data")
+
+        assert recv_a == b"message from session A"
+        assert recv_b == b"message from session B"
+
+        # Verify TestSend/TestRecv also isolated by context_id
+        ch0_a.TestSend(1000)
+        ch0_b.TestSend(1000)
+
+        ch1_a.TestRecv()  # Receives handshake from session_aaa:spu:__test__
+        ch1_b.TestRecv()  # Receives handshake from session_bbb:spu:__test__
+
+        # Verify key format in underlying mailbox (internal verification)
+        # Session A keys should be "session_aaa:spu:data", "session_aaa:spu:__test__"
+        # Session B keys should be "session_bbb:spu:data", "session_bbb:spu:__test__"
+        # This is implicitly verified by successful isolation above

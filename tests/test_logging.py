@@ -11,11 +11,11 @@ import mplang as mp
 def test_logging_disabled_by_default():
     """Test that logging is disabled by default (library mode)."""
     # Get the root mplang logger
-    logger = logging.getLogger("mplang.v2")
+    logger = logging.getLogger("mplang")
 
     # Should have a NullHandler by default
-    assert len(logger.handlers) > 0
-    assert any(isinstance(h, logging.NullHandler) for h in logger.handlers)
+    assert len(logger.handlers) == 1
+    assert isinstance(logger.handlers[0], logging.NullHandler)
 
 
 def test_setup_logging_basic():

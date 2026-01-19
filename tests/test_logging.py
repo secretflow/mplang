@@ -93,7 +93,7 @@ def test_logging_with_trace():
         # We can verify by creating a logger and checking logs are captured
         from mplang.v2.logging_config import get_logger
 
-        test_logger = get_logger("mplang.v2.test")
+        test_logger = get_logger("mplang.test")
         test_logger.debug("Test trace log message")
 
         # The log should be captured

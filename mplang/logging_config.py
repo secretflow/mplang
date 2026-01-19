@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Logging configuration for MPLang v2.
+Logging configuration for MPLang.
 
 This module provides a unified logging setup for the MPLang library.
 When MPLang is used as a library, logging is disabled by default (NullHandler),
@@ -35,7 +35,7 @@ import logging
 import sys
 from typing import Any, Literal
 
-# Root logger for all MPLang v2 components
+# Root logger for all MPLang components
 MPLANG_LOGGER_NAME = "mplang"
 
 # Default format for log messages
@@ -53,9 +53,9 @@ def setup_logging(
     propagate: bool = False,
 ) -> None:
     """
-    Configure logging for MPLang v2.
+    Configure logging for MPLang.
 
-    This function sets up a logger for all MPLang v2 components. By default,
+    This function sets up a logger for all MPLang components. By default,
     MPLang uses a NullHandler to suppress log output when used as a library.
     Call this function to enable logging with custom settings.
 
@@ -164,9 +164,9 @@ def disable_logging() -> None:
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Get a logger for a specific MPLang v2 module.
+    Get a logger for a specific MPLang module.
 
-    This function should be used by all MPLang v2 modules to create their loggers.
+    This function should be used by all MPLang modules to create their loggers.
     The logger name will be prefixed with 'mplang' automatically if not already.
 
     Args:
@@ -176,7 +176,7 @@ def get_logger(name: str) -> logging.Logger:
         A logger instance for the specified module.
 
     Example:
-        >>> # In mplang/v2/edsl/tracer.py
+        >>> # In mplang/edsl/tracer.py
         >>> logger = get_logger(__name__)  # Creates 'mplang.edsl.tracer' logger
     """
     # Ensure the logger name is under mplang hierarchy

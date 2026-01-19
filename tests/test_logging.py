@@ -27,7 +27,7 @@ def test_setup_logging_basic():
     mp.setup_logging(level="INFO", stream=log_stream, force=True)
 
     # Get a logger and log a message
-    logger = logging.getLogger("mplang.v2.test")
+    logger = logging.getLogger("mplang.test")
     logger.info("Test message")
 
     # Check that the message was logged
@@ -46,7 +46,7 @@ def test_setup_logging_levels():
     # Setup with WARNING level
     mp.setup_logging(level="WARNING", stream=log_stream, force=True)
 
-    logger = logging.getLogger("mplang.v2.test")
+    logger = logging.getLogger("mplang.test")
     logger.debug("Debug message")
     logger.info("Info message")
     logger.warning("Warning message")
@@ -75,7 +75,7 @@ def test_disable_logging():
     mp.disable_logging()
 
     # Try to log
-    logger = logging.getLogger("mplang.v2.test")
+    logger = logging.getLogger("mplang.test")
     logger.error("This should not appear")
 
     # Nothing should be logged
@@ -142,7 +142,7 @@ def test_logging_with_custom_format():
 
     mp.setup_logging(level="INFO", format=custom_format, stream=log_stream, force=True)
 
-    logger = logging.getLogger("mplang.v2.test")
+    logger = logging.getLogger("mplang.test")
     logger.info("Test message")
 
     log_output = log_stream.getvalue()
@@ -198,7 +198,7 @@ def test_propagate_to_root_logger():
         app_logger.info("App message")
 
         # MPLang logger
-        mplang_logger = logging.getLogger("mplang.v2.test")
+        mplang_logger = logging.getLogger("mplang.test")
         mplang_logger.info("MPLang message")
 
         # Read log file
@@ -234,7 +234,7 @@ def test_stream_false_only_file():
         )
 
         # Log a message
-        logger = logging.getLogger("mplang.v2.test")
+        logger = logging.getLogger("mplang.test")
         logger.info("File only message")
 
         # Flush handlers

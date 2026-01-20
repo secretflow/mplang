@@ -36,7 +36,6 @@ Security:
 from __future__ import annotations
 
 import concurrent.futures
-import logging
 import os
 import pathlib
 import threading
@@ -55,10 +54,11 @@ from mplang.backends.simp_worker import SimpWorker
 from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
+from mplang.logging_config import get_logger
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.runtime.object_store import ObjectStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class HttpCommunicator:
@@ -99,7 +99,7 @@ class HttpCommunicator:
     def _do_send(self, to: int, key: str, data: Any) -> None:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
-        logger.debug(f"Rank {self.rank} sending to {to} key={key}")
+        logger.debug(f"Rank {self.rank} sending to {to} key={key}, url={url}")
 
         # Detect SPU channel (tag prefix "spu:") and handle bytes
         if key.startswith("spu:") and isinstance(data, bytes):

@@ -29,11 +29,14 @@ from jax.tree_util import tree_map
 
 from mplang.edsl.context import get_current_context, get_default_context
 from mplang.edsl.object import Object
+from mplang.logging_config import get_logger
 
 if TYPE_CHECKING:
     from mplang.edsl.typing import BaseType
 
 T_Ret = TypeVar("T_Ret")
+
+logger = get_logger(__name__)
 
 
 class Primitive(Generic[T_Ret]):
@@ -89,6 +92,7 @@ class Primitive(Generic[T_Ret]):
         Returns:
             The same function (for decorator pattern)
         """
+        logger.debug("Registering impl for primitive '%s'", self.name)
         self._impl = fn
         # Register with the global interpreter registry
         from mplang.edsl.registry import register_impl
@@ -140,6 +144,7 @@ class Primitive(Generic[T_Ret]):
             >>> # Variable number of inputs
             >>>     return in_types[0]  # Concatenated type
         """
+        logger.debug("Registering abstract_eval for primitive '%s'", self.name)
         self._abstract_eval = fn
         return fn
 
@@ -187,6 +192,7 @@ class Primitive(Generic[T_Ret]):
             >>>     parts = [slice_p.bind(x, i) for i in range(num_splits)]
             >>>     return parts  # Returns list of Objects
         """
+        logger.debug("Registering trace for primitive '%s'", self.name)
         self._trace = fn
         return fn
 

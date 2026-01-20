@@ -91,6 +91,9 @@ from mplang.libs.device import (
     set_dev_attr,
 )
 from mplang.libs.device import fetch as device_fetch
+
+# Logging configuration
+from mplang.logging_config import disable_logging, get_logger, setup_logging
 from mplang.runtime.interpreter import Interpreter
 
 # =============================================================================
@@ -359,6 +362,10 @@ def compile(
 __all__ = [  # noqa: RUF022
     # Version
     "__version__",
+    # Logging
+    "disable_logging",
+    "setup_logging",
+    "get_logger",
     # Device API
     "ClusterSpec",
     "Device",

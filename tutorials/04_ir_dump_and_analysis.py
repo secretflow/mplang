@@ -105,10 +105,11 @@ def main():
     print("\n--- Pattern 3: Human-readable IR (verbose types) ---")
     print("[plain]")
     ir_verbose_plain = traced_plain.compiler_ir(verbose=True)
-    lines = ir_verbose_plain.split("\n")[:20]
+    all_lines = ir_verbose_plain.split("\n")
+    lines = all_lines[:20]
     for line in lines:
         print(line)
-    if len(ir_verbose_plain.split("\n")) > 20:
+    if len(all_lines) > 20:
         print("  ...")
 
     print("\n[@mp.function]")

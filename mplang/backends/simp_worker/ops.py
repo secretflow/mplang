@@ -84,16 +84,20 @@ def _shuffle_static_worker_impl(
     my_rank = worker.rank
     data = args[0]
 
+    exec_id = interpreter.current_op_exec_id()
+    graph_key = interpreter.current_graph_exec_key()
+    key_prefix = f"shuffle_{graph_key}_{op.name}_{exec_id}"
+
     for tgt, src in routing.items():
         if src == my_rank and tgt != my_rank:
-            key = f"shuffle_{op.name}_{tgt}"
+            key = f"{key_prefix}_{tgt}"
             comm.send(tgt, key, data)
 
     if my_rank in routing:
         src = routing[my_rank]
         if src == my_rank:
             return data
-        key = f"shuffle_{op.name}_{my_rank}"
+        key = f"{key_prefix}_{my_rank}"
         return comm.recv(src, key)
     else:
         return None

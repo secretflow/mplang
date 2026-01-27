@@ -45,18 +45,18 @@ nodes:
 # This is the complete universe of entities addressable by the user-facing API.
 # ===================================================================
 devices:
-  # --- Devices representing single nodes (kind: local) ---
-  # These devices map 1:1 to physical nodes for local computation
+  # --- Devices representing single nodes (kind: PPU) ---
+  # These devices map 1:1 to physical nodes for plaintext computation
   alice:
-    kind: local
+    kind: PPU
     members: [alice_node]
 
   bob:
-    kind: local
+    kind: PPU
     members: [bob_node]
 
   carol_local:
-    kind: local
+    kind: PPU
     members: [carol_node]
 
   # --- Composite and Special Devices ---

@@ -65,9 +65,14 @@ This section is a dictionary defining the complete universe of logical devices
 addressable by the D-API. Each key is a logical device name.
 
 - `kind`: The type of device. We define several base kinds:
-  - `local`: A device representing a single physical node for local computation.
-  - `spu`: A composite device for multi-party computation.
-  - `tee`: A device for trusted execution environments (e.g., Intel SGX, ARM TrustZone).
+  - `PPU` (Public Processing Unit): A device representing a single physical node
+    for plaintext computation. Data and computations are visible to that party.
+    Must have exactly one member node.
+  - `SPU` (Secure Processing Unit): A composite device for multi-party secure
+    computation (MPC). Data is secret-shared across multiple parties.
+    Typically has 2-3 member nodes.
+  - `TEE` (Trusted Execution Environment): A device for isolated trusted computation
+    (e.g., Intel SGX, ARM TrustZone). Must have exactly one member node.
 - `members`: A list of `name`s from the `nodes` section, linking the device
   to its constituent physical nodes.
 - `config`: Device-specific configuration (e.g., SPU protocol, enclave binary path).

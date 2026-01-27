@@ -36,7 +36,7 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, cast
 
 from mplang.edsl.context import AbstractInterpreter
-from mplang.edsl.graph import Graph
+from mplang.edsl.graph import Graph, Value
 from mplang.edsl.object import Object
 from mplang.edsl.registry import get_impl
 from mplang.edsl.typing import BaseType
@@ -441,8 +441,116 @@ class Interpreter(AbstractInterpreter):
         if cached is not None:
             return cast(str, cached)
 
+        # NOTE: We intentionally do NOT use graph.to_json() here.
+        # graph.to_json() requires all attrs to be JSON-serializable via serde,
+        # but graphs may legitimately contain runtime-only objects (e.g. JAX
+        # PyTreeDef used by func.func). For communication tag namespaces we use
+        # a simple structural fingerprint that is deterministic across parties.
+
+        def _stable_attr_value(obj: Any) -> Any | None:
+            """Return a JSON-compatible stable value or None if unsupported.
+
+            We include only values that are likely deterministic across parties.
+            Unknown runtime objects are skipped (e.g. PyTreeDef, callables, etc.).
+            """
+
+            if obj is None or isinstance(obj, (bool, int, float, str)):
+                return obj
+
+            if isinstance(obj, (bytes, bytearray, memoryview)):
+                b = bytes(obj)
+                return {
+                    "_kind": "bytes",
+                    "len": len(b),
+                    "sha256": hashlib.sha256(b).hexdigest(),
+                }
+
+            try:
+                import numpy as np  # type: ignore
+
+                if isinstance(obj, np.ndarray):
+                    b = obj.tobytes(order="C")
+                    return {
+                        "_kind": "ndarray",
+                        "dtype": str(obj.dtype),
+                        "shape": list(obj.shape),
+                        "sha256": hashlib.sha256(b).hexdigest(),
+                    }
+                if isinstance(obj, (np.integer, np.floating)):
+                    return obj.item()
+            except Exception:
+                pass
+
+            if isinstance(obj, (list, tuple)):
+                items: list[Any] = []
+                for x in obj:
+                    sx = _stable_attr_value(x)
+                    if sx is None:
+                        return None
+                    items.append(sx)
+                return items
+
+            if isinstance(obj, dict):
+                stable_items: list[tuple[Any, Any]] = []
+                for k, v in obj.items():
+                    sk = _stable_attr_value(k)
+                    sv = _stable_attr_value(v)
+                    if sk is None or sv is None:
+                        return None
+                    stable_items.append((sk, sv))
+                stable_items.sort(
+                    key=lambda kv: json.dumps(
+                        kv[0], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                    )
+                )
+                return {"_kind": "dict", "items": stable_items}
+
+            return None
+
+        def _graph_fingerprint(g: Graph) -> Any:
+            # Map SSA Values to stable indices independent of their textual names.
+            value_to_index: dict[Value, int] = {}
+
+            def _index(v: Value) -> int:
+                if v in value_to_index:
+                    return value_to_index[v]
+                value_to_index[v] = len(value_to_index)
+                return value_to_index[v]
+
+            for v in g.inputs:
+                _index(v)
+            for op in g.operations:
+                for out in op.outputs:
+                    _index(out)
+
+            ops_fp: list[dict[str, Any]] = []
+            for op in g.operations:
+                attr_keys = sorted(op.attrs.keys())
+                stable_attr_items: list[tuple[str, Any]] = []
+                for k in attr_keys:
+                    attr_val = op.attrs.get(k)
+                    sv = _stable_attr_value(attr_val)
+                    if sv is not None:
+                        stable_attr_items.append((k, sv))
+
+                ops_fp.append({
+                    "opcode": op.opcode,
+                    "inputs": [_index(v) for v in op.inputs],
+                    "outputs": [str(v.type) for v in op.outputs],
+                    "attrs": {"keys": attr_keys, "stable": stable_attr_items},
+                    "regions": [_graph_fingerprint(r) for r in op.regions],
+                })
+
+            return {
+                "inputs": [str(v.type) for v in g.inputs],
+                "ops": ops_fp,
+                "outputs": [_index(v) for v in g.outputs],
+            }
+
+        fingerprint = _graph_fingerprint(graph)
+
         payload = json.dumps(
-            graph.to_json(),
+            fingerprint,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,

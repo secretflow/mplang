@@ -16,6 +16,10 @@
 
 set -e
 
+# Ensure examples dependencies are installed
+echo "Installing tutorial dependencies (if needed)..."
+uv sync --group examples
+
 echo "================================"
 echo "Running Device-level Tutorials"
 echo "================================"

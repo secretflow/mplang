@@ -1,6 +1,6 @@
 # MPLang Architecture: Design Document
 
-**Date:** 2025-09-08
+**Date:** 2026-01-27
 **Status:** Current
 
 ## 1. Introduction & Motivation

@@ -46,7 +46,7 @@ nodes:
 # ===================================================================
 devices:
   # --- Devices representing single nodes (kind: PPU) ---
-  # These devices map 1:1 to physical nodes for plaintext computation
+  # These devices map 1:1 to physical nodes for local plaintext computation
   alice:
     kind: PPU
     members: [alice_node]

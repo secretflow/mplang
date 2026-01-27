@@ -92,6 +92,6 @@ Neither v1 nor v2 focuses on optimization passes yet; v2's goals are **typing** 
 
 ## RFC process (for new modules)
 
-Before significant changes, write `design/<feature>.md` with: Summary, Motivation, API Surface, Implementation (modules, TraceContext vs InterpContext interaction), Alternatives, Migration/Compat, Test Plan. See `design/architecture_v2.md` as example.
+Before significant changes, write `design/<feature>.md` with: Summary, Motivation, API Surface, Implementation (modules, TraceContext vs InterpContext interaction), Alternatives, Migration/Compat, Test Plan. See `design/architecture.md` as example.
 
 Questions or unclear areas? Pin them to specific files/APIs and I'll refine this doc.

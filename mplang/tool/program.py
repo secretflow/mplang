@@ -17,21 +17,46 @@ from mplang.edsl.program import (
 )
 from mplang.edsl.tracer import TracedFunction, trace
 
+DEFAULT_MAX_ARTIFACT_JSON_BYTES = 512 * 1024 * 1024  # 512 MiB
+
+
+def _iter_graphs(root: Graph) -> list[Graph]:
+    # Use an explicit stack to avoid Python recursion limits.
+    # Also guard against potential region graph cycles.
+    out: list[Graph] = []
+    stack: list[Graph] = [root]
+    visited: set[int] = set()
+    while stack:
+        graph = stack.pop()
+        graph_id = id(graph)
+        if graph_id in visited:
+            continue
+        visited.add(graph_id)
+        out.append(graph)
+
+        for op in graph.operations:
+            if op.regions:
+                stack.extend(op.regions)
+
+    return out
+
 
 def _collect_opcodes(graph: Graph) -> set[str]:
     opcodes: set[str] = set()
-    for op in graph.operations:
-        opcodes.add(op.opcode)
-        for region in op.regions:
-            opcodes |= _collect_opcodes(region)
+    for g in _iter_graphs(graph):
+        for op in g.operations:
+            opcodes.add(op.opcode)
     return opcodes
 
 
 def _collect_parties(graph: Graph) -> set[int]:
     parties: set[int] = set()
-    for op in graph.operations:
-        raw = op.attrs.get("parties")
-        if raw is not None:
+    for g in _iter_graphs(graph):
+        for op in g.operations:
+            raw = op.attrs.get("parties")
+            if raw is None:
+                continue
+
             if not isinstance(raw, (list, tuple, set)):
                 raise TypeError(
                     "Invalid 'parties' attribute: expected list/tuple/set of ints, "
@@ -42,9 +67,6 @@ def _collect_parties(graph: Graph) -> set[int]:
                 if p_int < 0:
                     raise ValueError("Invalid 'parties' attribute: negative party id")
                 parties.add(p_int)
-
-        for region in op.regions:
-            parties |= _collect_parties(region)
     return parties
 
 
@@ -224,7 +246,9 @@ def pack_to_path(
     return out_path
 
 
-def unpack(data: bytes) -> CompiledProgram:
+def unpack(
+    data: bytes, *, max_artifact_json_bytes: int = DEFAULT_MAX_ARTIFACT_JSON_BYTES
+) -> CompiledProgram:
     """Unpack bytes into a `CompiledProgram`.
 
     Supported container format: tar(.gz) containing `artifact.json`.
@@ -233,6 +257,19 @@ def unpack(data: bytes) -> CompiledProgram:
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf:
             member = tf.getmember("artifact.json")
+
+            if not member.isfile():
+                raise ValueError("artifact.json is not a regular file")
+
+            if member.size < 0:
+                raise ValueError("Invalid artifact.json size in tar header")
+
+            if member.size > max_artifact_json_bytes:
+                raise ValueError(
+                    "artifact.json is too large to unpack safely: "
+                    f"size={member.size} bytes, limit={max_artifact_json_bytes} bytes"
+                )
+
             f = tf.extractfile(member)
             if f is None:
                 raise ValueError("artifact.json not found in tar archive")
@@ -246,13 +283,6 @@ def unpack(data: bytes) -> CompiledProgram:
     if not isinstance(program, CompiledProgram):
         raise TypeError(
             f"Expected artifact.json to deserialize to CompiledProgram, got {type(program).__name__}"
-        )
-
-    actual_digest = compute_graph_digest(program.graph)
-    if program.graph_digest and program.graph_digest != actual_digest:
-        raise ValueError(
-            "Graph digest mismatch while unpacking artifact: "
-            f"expected={program.graph_digest}, actual={actual_digest}"
         )
 
     _validate_program(program)

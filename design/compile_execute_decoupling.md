@@ -468,7 +468,7 @@ Existing APIs remain unchanged:
 - `mp.tool.pack_to_path(program, path, *, compress=True) -> Path`
 - `mp.tool.unpack(bytes) -> CompiledProgram`
 - `mp.tool.unpack_path(path) -> CompiledProgram`
-- `mp.tool.inspect(program|artifact) -> report`
+- `mp.tool.inspect_artifact(program|artifact) -> report`
 
 ---
 
@@ -484,6 +484,15 @@ Existing APIs remain unchanged:
 - Provide tool-layer pack/unpack:
   - container format: `tar(.gz)` with a single UTF-8 JSON file `artifact.json` (human-readable, `indent=2`, `sort_keys=True`).
   - schema: `serde.to_json(program)` / `serde.from_json(payload)`.
+
+### 10.2 P1 (Security & platformization)
+
+- Add firewall/allowlists/quotas/audit to worker `/exec` or gateway.
+- Rely on platform isolation (dedicated workers/sandbox roots/ObjectStore isolation).
+
+### 10.3 P2 (Performance)
+
+- chunked dispatch, graph cache by digest, digest-based registration/exec.
 
 ### 10.4 Implementation Status (2026-01-26)
 
@@ -507,15 +516,6 @@ Existing APIs remain unchanged:
 - P1 firewall/allowlists/quotas: NOT STARTED
 - P1 TreeSpec signature (structured I/O): NOT STARTED
 - P2 caching/digest-based submission: NOT STARTED
-
-### 10.2 P1 (Security & platformization)
-
-- Add firewall/allowlists/quotas/audit to worker `/exec` or gateway.
-- Rely on platform isolation (dedicated workers/sandbox roots/ObjectStore isolation).
-
-### 10.3 P2 (Performance)
-
-- chunked dispatch, graph cache by digest, digest-based registration/exec.
 
 ---
 

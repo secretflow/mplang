@@ -1,3 +1,5 @@
+import io
+import tarfile
 from pathlib import Path
 
 import numpy as np
@@ -119,3 +121,57 @@ def test_required_world_size_roundtrip_and_validation() -> None:
     )
     with pytest.raises(ValueError, match="required_world_size mismatch"):
         mp.tool.unpack(mp.tool.pack(bad))
+
+
+def test_collect_helpers_handle_deeply_nested_regions_without_recursionerror() -> None:
+    # Regression test: these helpers used to recurse through regions.
+    # A crafted (or accidental) deep nesting could trigger RecursionError (DoS).
+    from mplang.tool import program as program_tool
+
+    depth = 2000
+    graphs = [Graph() for _ in range(depth)]
+
+    for i in range(depth - 1):
+        # Add a single op whose region points to the next graph.
+        (out,) = graphs[i].add_op(
+            "dummy",
+            [],
+            output_types=[TensorType(f32, ())],
+            attrs={"parties": [i % 3]} if i == depth - 2 else {},
+            regions=[graphs[i + 1]],
+        )
+        graphs[i].add_output(out)
+
+    # Leaf graph: just one op.
+    (leaf_out,) = graphs[-1].add_op(
+        "leaf",
+        [],
+        output_types=[TensorType(f32, ())],
+        attrs={},
+        regions=[],
+    )
+    graphs[-1].add_output(leaf_out)
+
+    opcodes = program_tool._collect_opcodes(graphs[0])
+    parties = program_tool._collect_parties(graphs[0])
+
+    assert "dummy" in opcodes
+    assert "leaf" in opcodes
+    assert parties.issubset({0, 1, 2})
+
+
+def test_unpack_rejects_oversized_artifact_json_header_size() -> None:
+    # Security regression: prevent tar(.gz) "zip bomb" style DoS.
+    # We simulate this by setting a tiny max_artifact_json_bytes.
+    from mplang.tool import program as program_tool
+
+    artifact_json = b"{}"  # small payload
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        info = tarfile.TarInfo(name="artifact.json")
+        info.size = len(artifact_json)
+        tf.addfile(info, io.BytesIO(artifact_json))
+
+    with pytest.raises(ValueError, match="artifact\\.json is too large"):
+        program_tool.unpack(buf.getvalue(), max_artifact_json_bytes=1)

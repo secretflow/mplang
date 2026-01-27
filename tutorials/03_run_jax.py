@@ -76,6 +76,8 @@ def jax_on_spu():
     # Reveal result to P0
     result = mp.put("P0", dot_product)
 
+    print(f"Sum of squares [1,2,3]: {mp.fetch(result)}")
+
     return result
 
 

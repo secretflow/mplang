@@ -53,6 +53,7 @@ from .jit import jit
 from .object import Object
 from .primitive import Primitive, primitive
 from .printer import GraphPrinter, format_graph
+from .program import CompiledProgram, FlatIOSignature
 from .tracer import TracedFunction, TraceObject, Tracer, trace
 from .typing import MPType, ScalarType, SSType, TableType, TensorType, VectorType
 
@@ -65,7 +66,9 @@ TensorObject = Object[TensorType]
 VectorObject = Object[VectorType]
 
 __all__ = [
+    "CompiledProgram",
     "Context",
+    "FlatIOSignature",
     "Graph",
     "GraphPrinter",
     "MPObject",

@@ -23,9 +23,16 @@ Key tools:
 - mp.compile: generate Graph IR representation without executing
 - traced.compiler_ir(): get human-readable IR text
 - mp.format_graph: format graph for debugging
+- mp.tool.compile_program: build a portable CompiledProgram artifact (no user source on execute side)
+- mp.tool.pack_to_path / mp.tool.unpack_path: persist/load artifact as tar(.gz) with human-readable JSON
+- mp.evaluate: execute TracedFunction / CompiledProgram (useful for source-free execution)
 
 Migrated from mplang v1 to mplang.
 """
+
+from __future__ import annotations
+
+from pathlib import Path
 
 import mplang as mp
 
@@ -150,6 +157,35 @@ def main():
         f"[traced/@mp.function] x={mp.fetch(x3)}, y={mp.fetch(y3)}, z={mp.fetch(z3)}, r={mp.fetch(r3)}"
     )
 
+    # Pattern 5: Build and execute CompiledProgram artifact (source-free execution)
+    print("\n--- Pattern 5: CompiledProgram artifact (pack/unpack/execute) ---")
+    program = mp.tool.compile_program(millionaire, context=sim, name="millionaire")
+    print("CompiledProgram name:", program.name)
+    print("Artifact graph digest:", program.graph_digest)
+    print("Required opcodes (count):", len(program.required_opcodes))
+    print(
+        "Signature:",
+        f"inputs={program.signature.input_arity}",
+        f"outputs={program.signature.output_arity}",
+    )
+
+    artifact_dir = Path("tmp")
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / "millionaire_program.tar.gz"
+    mp.tool.pack_to_path(program, artifact_path)
+    print("Artifact written to:", artifact_path)
+    print("Inspect via: tar -xzf", artifact_path, "&& cat artifact.json")
+
+    loaded = mp.tool.unpack_path(artifact_path)
+    print("Loaded artifact digest:", loaded.graph_digest)
+
+    # Execute without referencing the original Python function.
+    # For this example, the graph has no inputs (all constants are embedded in IR).
+    out_vars = mp.evaluate(loaded, context=sim)
+    out_vals = mp.fetch(out_vars, context=sim)
+    x4, y4, z4, r4 = out_vals
+    print(f"[artifact] x={x4}, y={y4}, z={z4}, r={r4}")
+
     print("\n" + "=" * 70)
     print("Key takeaways:")
     print("1. mp.compile: trace function to IR without executing backend")
@@ -161,6 +197,7 @@ def main():
     )
     print("4. mp.evaluate can execute TracedFunction graphs directly")
     print("5. IR helps debug data flow and device placement")
+    print("6. CompiledProgram artifacts enable source-free execution")
     print("=" * 70)
 
 

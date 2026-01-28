@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import json
 import tarfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -27,11 +28,14 @@ from mplang.edsl.program import (
     CompiledProgram,
     FlatIOSignature,
     compute_graph_digest,
-    utc_now_iso,
 )
 from mplang.edsl.tracer import TracedFunction, trace
 
 DEFAULT_MAX_ARTIFACT_JSON_BYTES = 512 * 1024 * 1024  # 512 MiB
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _iter_graphs(root: Graph) -> list[Graph]:
@@ -203,11 +207,10 @@ def compile_program(
         required_opcodes=required_opcodes,
         graph_digest=graph_digest,
         required_world_size=required_world_size,
-        created_at=utc_now_iso(),
+        created_at=_utc_now_iso(),
         mplang_version=getattr(mplang, "__version__", None),
         name=name or traced.name,
     )
-    _validate_program(program)
     return program
 
 

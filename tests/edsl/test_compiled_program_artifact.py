@@ -46,7 +46,7 @@ def test_artifact_roundtrip_and_execute_identity() -> None:
     assert program2.signature.output_arity == 1
     assert program2.graph_digest == program.graph_digest
 
-    out = mp.evaluate(program2, x_val, context=interp)
+    out = mp.evaluate(program, x_val, context=interp)
     fetched = mp.fetch(out, context=interp)
     assert isinstance(fetched, list)
     np.testing.assert_allclose(fetched[0], x_val)

@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from mplang.edsl import serde
@@ -93,7 +92,9 @@ class CompiledProgram:
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> CompiledProgram:
-        schema_version = int(data.get("schema_version", 1))
+        if "schema_version" not in data:
+            raise KeyError("Missing required field: schema_version")
+        schema_version = int(data["schema_version"])
         if schema_version != 1:
             raise ValueError(
                 f"Unsupported CompiledProgram schema_version: {schema_version}"
@@ -107,12 +108,9 @@ class CompiledProgram:
 
         signature = FlatIOSignature.from_json(data["signature"])
 
-        required_world_size_raw = data.get("required_world_size")
-        required_world_size: int | None
-        if required_world_size_raw is None:
-            required_world_size = None
-        else:
-            required_world_size = int(required_world_size_raw)
+        required_world_size = data.get("required_world_size")
+        if required_world_size is not None:
+            required_world_size = int(required_world_size)
         return cls(
             graph=graph,
             signature=signature,
@@ -134,7 +132,3 @@ def compute_graph_digest(graph: Graph) -> str:
 
     canonical = json.dumps(serde.to_json(graph), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat()

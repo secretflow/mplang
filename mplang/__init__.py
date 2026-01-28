@@ -34,6 +34,7 @@ except Exception:
     # Fallback for development/editable installs when package is not installed
     __version__ = "0.0.0-dev"
 
+import mplang.tool as tool
 from mplang import dialects
 from mplang.backends.simp_driver.ops import DRIVER_HANDLERS
 from mplang.backends.simp_worker import SimpWorker
@@ -41,6 +42,8 @@ from mplang.backends.simp_worker.mem import LocalMesh
 from mplang.backends.simp_worker.ops import WORKER_HANDLERS
 from mplang.dialects.simp import make_driver, make_simulator
 from mplang.edsl import (
+    CompiledProgram,
+    FlatIOSignature,
     Graph,
     GraphPrinter,
     Object,
@@ -125,7 +128,7 @@ def _get_context(context: Interpreter | None) -> Interpreter:
 
 
 def evaluate(
-    fn: Callable[..., Any] | TracedFunction,
+    fn: Callable[..., Any] | TracedFunction | CompiledProgram,
     *args: Any,
     context: Interpreter | None = None,
     **kwargs: Any,
@@ -158,15 +161,33 @@ def evaluate(
             return val.runtime_obj
         return val
 
+    def eval_graph(graph: Graph, inputs: list[Any]) -> list[InterpObject]:
+        runtime_inputs = [unwrap_if_interp(v) for v in inputs]
+        raw_result = interp.evaluate_graph(graph, runtime_inputs)
+        return [
+            InterpObject(v, graph.outputs[i].type, interp)
+            for i, v in enumerate(raw_result)
+        ]
+
     with interp:
+        if isinstance(fn, CompiledProgram):
+            if kwargs:
+                raise TypeError(
+                    "mp.evaluate(CompiledProgram, ...) does not accept keyword arguments; "
+                    "pass flat positional inputs only."
+                )
+            if len(args) != fn.signature.input_arity:
+                raise ValueError(
+                    "CompiledProgram requires flat positional inputs matching its signature; "
+                    f"expected {fn.signature.input_arity}, got {len(args)}."
+                )
+
+            return eval_graph(fn.graph, list(args))
+
         if isinstance(fn, TracedFunction):
             inputs = fn.prepare_inputs(*args, **kwargs)
             inputs = [unwrap_if_interp(v) for v in inputs]
-            raw_result = interp.evaluate_graph(fn.graph, inputs)
-            wrapped = [
-                InterpObject(v, fn.graph.outputs[i].type, interp)
-                for i, v in enumerate(raw_result)
-            ]
+            wrapped = eval_graph(fn.graph, inputs)
             return fn.reconstruct_outputs(wrapped)
 
         return fn(*args, **kwargs)
@@ -417,6 +438,9 @@ __all__ = [  # noqa: RUF022
     "WORKER_HANDLERS",
     "make_driver",
     "make_simulator",
+    "tool",
+    "CompiledProgram",
+    "FlatIOSignature",
     # Dialects
     "dialects",
     "register_default_context_factory",

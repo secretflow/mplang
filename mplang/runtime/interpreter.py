@@ -24,17 +24,19 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures
+import contextlib
+import hashlib
 import json
 import os
 import pathlib
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, cast
 
 from mplang.edsl.context import AbstractInterpreter
-from mplang.edsl.graph import Graph
+from mplang.edsl.graph import Graph, Value
 from mplang.edsl.object import Object
 from mplang.edsl.registry import get_impl
 from mplang.edsl.typing import BaseType
@@ -364,11 +366,200 @@ class Interpreter(AbstractInterpreter):
         # 2. MIMO Optimization: When one output of a multi-output op is computed,
         #    all sibling outputs are cached here to avoid re-execution.
         self._execution_cache: dict[Any, InterpObject] = {}
+
+        # -----------------------------------------------------------------
+        # Graph-local op execution ids (for deterministic communication tags)
+        # -----------------------------------------------------------------
+        # We assign a monotonically increasing exec_id to each op execution
+        # within a graph namespace, and keep it deterministic across parties.
+        #
+        # IMPORTANT:
+        # - We intentionally make exec_id grow across repeated executions of the
+        #   same region graph (e.g., while_loop iterations) to avoid tag/key reuse.
+        #
+        # Implementation:
+        # - Each evaluate_graph(graph, ...) reserves a contiguous exec_id range
+        #   [base, base + len(graph.operations)).
+        # - Op exec_id = base + op_index_in_graph.
+        # - Reservation is persisted per graph_exec_key (structural hash).
+        # - We forbid concurrent execution of the same graph_hash to avoid
+        #   message tag confusion when a backend uses only per-op tags.
+        self._exec_id_lock = threading.Lock()
+        self._graph_next_exec_base: dict[str, int] = {}
+        self._active_graph_exec_keys: set[str] = set()
+        self._tls = threading.local()
         self.executor = executor
         self.async_ops: set[str] = set()
         self.name = name
         self.trace_pid = trace_pid
         self.store: ObjectStore | None = store
+
+    @contextlib.contextmanager
+    def _tls_exec_context(
+        self,
+        *,
+        graph_exec_key: str | None = None,
+        op_exec_id: int | None = None,
+    ) -> Iterator[None]:
+        """Temporarily set execution context in thread-local storage."""
+
+        prev_graph_key = getattr(self._tls, "current_graph_exec_key", None)
+        prev_exec_id = getattr(self._tls, "current_op_exec_id", None)
+
+        if graph_exec_key is not None:
+            self._tls.current_graph_exec_key = graph_exec_key
+        if op_exec_id is not None:
+            self._tls.current_op_exec_id = op_exec_id
+
+        try:
+            yield
+        finally:
+            if graph_exec_key is not None:
+                if prev_graph_key is None:
+                    delattr(self._tls, "current_graph_exec_key")
+                else:
+                    self._tls.current_graph_exec_key = prev_graph_key
+
+            if op_exec_id is not None:
+                if prev_exec_id is None:
+                    delattr(self._tls, "current_op_exec_id")
+                else:
+                    self._tls.current_op_exec_id = prev_exec_id
+
+    def _graph_exec_key(self, graph: Graph) -> str:
+        """Return a deterministic, structural hash for a graph.
+
+        Used for:
+        - Namespacing per-graph exec_id counters
+        - Communication tag disambiguation (worker ops may include this key)
+
+        Note: we cache on the Graph object assuming graphs are immutable during
+        execution (finalized graphs / regions).
+        """
+
+        cached = getattr(graph, "_exec_key", None)
+        if cached is not None:
+            return cast(str, cached)
+
+        # NOTE: We intentionally do NOT use graph.to_json() here.
+        # graph.to_json() requires all attrs to be JSON-serializable via serde,
+        # but graphs may legitimately contain runtime-only objects (e.g. JAX
+        # PyTreeDef used by func.func). For communication tag namespaces we use
+        # a simple structural fingerprint that is deterministic across parties.
+
+        def _stable_attr_value(obj: Any) -> Any | None:
+            """Return a JSON-compatible stable value or None if unsupported.
+
+            We include only values that are likely deterministic across parties.
+            Unknown runtime objects are skipped (e.g. PyTreeDef, callables, etc.).
+            """
+
+            if obj is None or isinstance(obj, (bool, int, float, str)):
+                return obj
+
+            if isinstance(obj, (bytes, bytearray, memoryview)):
+                b = bytes(obj)
+                return {
+                    "_kind": "bytes",
+                    "len": len(b),
+                    "sha256": hashlib.sha256(b).hexdigest(),
+                }
+
+            try:
+                import numpy as np  # type: ignore
+
+                if isinstance(obj, np.ndarray):
+                    b = obj.tobytes(order="C")
+                    return {
+                        "_kind": "ndarray",
+                        "dtype": str(obj.dtype),
+                        "shape": list(obj.shape),
+                        "sha256": hashlib.sha256(b).hexdigest(),
+                    }
+                if isinstance(obj, (np.integer, np.floating)):
+                    return obj.item()
+            except Exception:
+                pass
+
+            if isinstance(obj, (list, tuple)):
+                items: list[Any] = []
+                for x in obj:
+                    sx = _stable_attr_value(x)
+                    if sx is None:
+                        return None
+                    items.append(sx)
+                return items
+
+            if isinstance(obj, dict):
+                stable_items: list[tuple[Any, Any]] = []
+                for k, v in obj.items():
+                    sk = _stable_attr_value(k)
+                    sv = _stable_attr_value(v)
+                    if sk is None or sv is None:
+                        return None
+                    stable_items.append((sk, sv))
+                stable_items.sort(
+                    key=lambda kv: json.dumps(
+                        kv[0], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                    )
+                )
+                return {"_kind": "dict", "items": stable_items}
+
+            return None
+
+        def _graph_fingerprint(g: Graph) -> Any:
+            # Map SSA Values to stable indices independent of their textual names.
+            value_to_index: dict[Value, int] = {}
+
+            def _index(v: Value) -> int:
+                if v in value_to_index:
+                    return value_to_index[v]
+                value_to_index[v] = len(value_to_index)
+                return value_to_index[v]
+
+            for v in g.inputs:
+                _index(v)
+            for op in g.operations:
+                for out in op.outputs:
+                    _index(out)
+
+            ops_fp: list[dict[str, Any]] = []
+            for op in g.operations:
+                attr_keys = sorted(op.attrs.keys())
+                stable_attr_items: list[tuple[str, Any]] = []
+                for k in attr_keys:
+                    attr_val = op.attrs.get(k)
+                    sv = _stable_attr_value(attr_val)
+                    if sv is not None:
+                        stable_attr_items.append((k, sv))
+
+                ops_fp.append({
+                    "opcode": op.opcode,
+                    "inputs": [_index(v) for v in op.inputs],
+                    "outputs": [str(v.type) for v in op.outputs],
+                    "attrs": {"keys": attr_keys, "stable": stable_attr_items},
+                    "regions": [_graph_fingerprint(r) for r in op.regions],
+                })
+
+            return {
+                "inputs": [str(v.type) for v in g.inputs],
+                "ops": ops_fp,
+                "outputs": [_index(v) for v in g.outputs],
+            }
+
+        fingerprint = _graph_fingerprint(graph)
+
+        payload = json.dumps(
+            fingerprint,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        key = hashlib.sha256(payload).hexdigest()
+
+        # Store on graph to avoid id(graph) reuse pitfalls.
+        graph._exec_key = key  # type: ignore[attr-defined]
+        return key
 
     def shutdown(self) -> None:
         """Shutdown the interpreter and release resources.
@@ -641,18 +832,70 @@ class Interpreter(AbstractInterpreter):
         Returns:
             List of runtime execution results corresponding to graph.outputs.
         """
-        logger.debug(
-            "Evaluating graph: %d inputs, %d ops, %d outputs (job_id=%s, async=%s)",
-            len(inputs),
-            len(graph.operations),
-            len(graph.outputs),
-            job_id,
-            self.executor is not None,
-        )
-        if self.executor:
-            return self._evaluate_graph_async(graph, inputs, job_id)
-        else:
-            return self._evaluate_graph_sync(graph, inputs, job_id)
+        graph_exec_key = self._graph_exec_key(graph)
+
+        # Prevent concurrent execution of the same graph hash.
+        with self._exec_id_lock:
+            if graph_exec_key in self._active_graph_exec_keys:
+                raise RuntimeError(
+                    "Concurrent execution of the same graph is not allowed. "
+                    f"graph_exec_key={graph_exec_key}"
+                )
+            self._active_graph_exec_keys.add(graph_exec_key)
+
+        try:
+            with self._tls_exec_context(graph_exec_key=graph_exec_key):
+                logger.debug(
+                    "Evaluating graph: %d inputs, %d ops, %d outputs (job_id=%s, async=%s, graph_key=%s)",
+                    len(inputs),
+                    len(graph.operations),
+                    len(graph.outputs),
+                    job_id,
+                    self.executor is not None,
+                    graph_exec_key,
+                )
+                if self.executor:
+                    return self._evaluate_graph_async(graph, inputs, job_id)
+                else:
+                    return self._evaluate_graph_sync(graph, inputs, job_id)
+        finally:
+            with self._exec_id_lock:
+                self._active_graph_exec_keys.discard(graph_exec_key)
+
+    def _reserve_op_exec_base(self, graph: Graph) -> int:
+        """Reserve a contiguous exec_id range for a single evaluate_graph call.
+
+        Counter is namespaced by the current graph_exec_key.
+        """
+        key = self.current_graph_exec_key()
+        with self._exec_id_lock:
+            base = self._graph_next_exec_base.get(key, 0)
+            self._graph_next_exec_base[key] = base + len(graph.operations)
+        return base
+
+    def current_graph_exec_key(self) -> str:
+        """Return current graph execution key during evaluate_graph execution."""
+
+        key = getattr(self._tls, "current_graph_exec_key", None)
+        if key is None:
+            raise RuntimeError(
+                "current_graph_exec_key() called outside of evaluate_graph execution"
+            )
+        return cast(str, key)
+
+    def current_op_exec_id(self) -> int:
+        """Return current op exec_id during graph execution.
+
+        Worker-side implementations can use this to build deterministic,
+        unique communication tags without coupling to any specific op.
+        """
+
+        exec_id = getattr(self._tls, "current_op_exec_id", None)
+        if exec_id is None:
+            raise RuntimeError(
+                "current_op_exec_id() called outside of evaluate_graph execution"
+            )
+        return cast(int, exec_id)
 
     def _evaluate_graph_sync(
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
@@ -661,7 +904,10 @@ class Interpreter(AbstractInterpreter):
         # Local environment: Value -> Runtime Object
         env = dict(zip(graph.inputs, inputs, strict=True))
 
-        for op in graph.operations:
+        op_exec_base = self._reserve_op_exec_base(graph)
+
+        for op_index, op in enumerate(graph.operations):
+            exec_id = op_exec_base + op_index
             # Resolve inputs
             try:
                 args = [env[val] for val in op.inputs]
@@ -685,15 +931,16 @@ class Interpreter(AbstractInterpreter):
             if not handler:
                 handler = get_impl(op.opcode)
 
-            if handler:
-                # Pass interpreter to support recursive execution (HOFs)
-                # Pass op to access attributes and regions
-                # Pass args as runtime values
-                results = handler(self, op, *args)
-            else:
-                raise NotImplementedError(
-                    f"No implementation registered for opcode: {op.opcode}"
-                )
+            with self._tls_exec_context(op_exec_id=exec_id):
+                if handler:
+                    # Pass interpreter to support recursive execution (HOFs)
+                    # Pass op to access attributes and regions
+                    # Pass args as runtime values
+                    results = handler(self, op, *args)
+                else:
+                    raise NotImplementedError(
+                        f"No implementation registered for opcode: {op.opcode}"
+                    )
 
             # Update environment with outputs
             # Handler should return a single value or a tuple/list of values
@@ -719,6 +966,9 @@ class Interpreter(AbstractInterpreter):
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> list[Any]:
         """Asynchronous execution with non-blocking DAG scheduling."""
+        graph_exec_key = self.current_graph_exec_key()
+        op_exec_base = self._reserve_op_exec_base(graph)
+        op_to_index = {op: i for i, op in enumerate(graph.operations)}
         # Tracer setup (if not provided, use a disabled stub)
         tracer: ExecutionTracer | _NullTracer
         if self.tracer:
@@ -817,6 +1067,8 @@ class Interpreter(AbstractInterpreter):
             # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
 
+            exec_id = op_exec_base + op_to_index[op]
+
             handler = self.handlers.get(op.opcode)
             if not handler:
                 handler = get_impl(op.opcode)
@@ -833,12 +1085,15 @@ class Interpreter(AbstractInterpreter):
 
                 # Submit to executor
                 def task() -> Any:
-                    start_ts = tracer.log_start(
-                        op, pid=self.trace_pid, namespace=self.trace_pid
-                    )
-                    res = handler(self, op, *args)
-                    tracer.log_end(op, start_ts, pid=self.trace_pid)
-                    return res
+                    with self._tls_exec_context(
+                        graph_exec_key=graph_exec_key, op_exec_id=exec_id
+                    ):
+                        start_ts = tracer.log_start(
+                            op, pid=self.trace_pid, namespace=self.trace_pid
+                        )
+                        res = handler(self, op, *args)
+                        tracer.log_end(op, start_ts, pid=self.trace_pid)
+                        return res
 
                 def callback(fut: Any) -> None:
                     try:
@@ -852,12 +1107,15 @@ class Interpreter(AbstractInterpreter):
             else:
                 # Sync execution (run immediately)
                 try:
-                    start_ts = tracer.log_start(
-                        op, pid=self.trace_pid, namespace=self.trace_pid
-                    )
-                    res = handler(self, op, *args)
-                    tracer.log_end(op, start_ts, pid=self.trace_pid)
-                    on_op_done(op, res)
+                    with self._tls_exec_context(
+                        graph_exec_key=graph_exec_key, op_exec_id=exec_id
+                    ):
+                        start_ts = tracer.log_start(
+                            op, pid=self.trace_pid, namespace=self.trace_pid
+                        )
+                        res = handler(self, op, *args)
+                        tracer.log_end(op, start_ts, pid=self.trace_pid)
+                        on_op_done(op, res)
                 except Exception as e:
                     on_op_done(op, None, error=e)
 

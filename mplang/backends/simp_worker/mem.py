@@ -50,7 +50,7 @@ class ThreadCommunicator:
             self._shutdown = True
             self._cond.notify_all()
 
-    def send(self, to: int, key: str, data: Any) -> None:
+    def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
         assert 0 <= to < self.world_size
         if self.use_serde:
             from mplang.edsl import serde

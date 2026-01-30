@@ -91,27 +91,42 @@ class HttpCommunicator:
         self._pending_sends: list[concurrent.futures.Future[None]] = []
         self.client = httpx.Client(timeout=None)
 
-    def send(self, to: int, key: str, data: Any) -> None:
-        """Send data to another rank asynchronously."""
-        future = self._send_executor.submit(self._do_send, to, key, data)
+    def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
+        """Send data to another rank asynchronously.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: If True, treat `data` as raw bytes and transmit as
+                base64-encoded bytes (no serde). If False, the transport may still
+                treat `bytes` payloads as raw bytes.
+        """
+        future = self._send_executor.submit(self._do_send, to, key, data, is_raw_bytes)
         self._pending_sends.append(future)
 
-    def _do_send(self, to: int, key: str, data: Any) -> None:
+    def _do_send(self, to: int, key: str, data: Any, is_raw_bytes: bool) -> None:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}, url={url}")
 
-        # Detect SPU channel (tag prefix "spu:") and handle bytes
-        if key.startswith("spu:") and isinstance(data, bytes):
-            # Send raw bytes for SPU channels
+        # Raw-bytes transport rule:
+        # - If caller explicitly marks raw bytes, always use raw path.
+        # - Otherwise, if payload is `bytes`, use raw path.
+        # This avoids coupling encoding format to key naming conventions.
+        send_raw_bytes = is_raw_bytes or isinstance(data, bytes)
+
+        if send_raw_bytes:
+            if not isinstance(data, bytes):
+                raise TypeError(
+                    f"Expected bytes when is_raw_bytes=True, got {type(data).__name__}"
+                )
+
             import base64
 
             payload = base64.b64encode(data).decode("ascii")
-            is_raw_bytes = True
         else:
-            # Use secure JSON serialization
             payload = serde.dumps_b64(data)
-            is_raw_bytes = False
 
         size_bytes = len(payload)
 
@@ -132,7 +147,7 @@ class HttpCommunicator:
                 json={
                     "data": payload,
                     "from_rank": self.rank,
-                    "is_raw_bytes": is_raw_bytes,
+                    "is_raw_bytes": send_raw_bytes,
                 },
             )
             resp.raise_for_status()

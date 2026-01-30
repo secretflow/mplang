@@ -36,7 +36,9 @@ class CommunicatorProtocol(Protocol):
     Both ThreadCommunicator and HttpCommunicator implement this interface.
     """
 
-    def send(self, to: int, key: str, data: bytes) -> None: ...
+    def send(
+        self, to: int, key: str, data: bytes, *, is_raw_bytes: bool = False
+    ) -> None: ...
     def recv(self, frm: int, key: str) -> bytes: ...
 
 
@@ -111,9 +113,10 @@ class BaseChannel(libspu.link.IChannel):
             len(data),
         )
 
-        # Send raw bytes directly
-        # v2 communicators accept Any, bytes is valid
-        self._comm.send(self._peer_rank, key, data)
+        # Send raw bytes directly.
+        # Prefer explicit `is_raw_bytes=True` so transports (e.g. HTTP)
+        # don't need to infer raw-byte payloads via key naming conventions.
+        self._comm.send(self._peer_rank, key, data, is_raw_bytes=True)
 
     def Recv(self, tag: str) -> bytes:
         """Receive bytes from peer (blocking).

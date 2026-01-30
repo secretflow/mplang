@@ -114,8 +114,6 @@ class BaseChannel(libspu.link.IChannel):
         )
 
         # Send raw bytes directly.
-        # Prefer explicit `is_raw_bytes=True` so transports (e.g. HTTP)
-        # don't need to infer raw-byte payloads via key naming conventions.
         self._comm.send(self._peer_rank, key, data, is_raw_bytes=True)
 
     def Recv(self, tag: str) -> bytes:

@@ -117,11 +117,6 @@ class HttpCommunicator:
         send_raw_bytes = is_raw_bytes or isinstance(data, bytes)
 
         if send_raw_bytes:
-            if not isinstance(data, bytes):
-                raise TypeError(
-                    f"Expected bytes when is_raw_bytes=True, got {type(data).__name__}"
-                )
-
             import base64
 
             payload = base64.b64encode(data).decode("ascii")

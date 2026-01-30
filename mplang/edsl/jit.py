@@ -25,7 +25,7 @@ from mplang.edsl.context import (
     get_default_context,
 )
 from mplang.edsl.tracer import Tracer
-from mplang.logging_config import get_logger
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 

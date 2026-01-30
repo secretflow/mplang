@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Logging configuration for MPLang.
+"""Logging configuration for MPLang.
 
 This module provides a unified logging setup for the MPLang library.
 When MPLang is used as a library, logging is disabled by default (NullHandler),
@@ -30,6 +29,8 @@ Example usage:
     ...     level="DEBUG", format="%(asctime)s [%(name)s] %(levelname)s: %(message)s"
     ... )
 """
+
+from __future__ import annotations
 
 import logging
 import sys
@@ -52,8 +53,7 @@ def setup_logging(
     force: bool = False,
     propagate: bool = False,
 ) -> None:
-    """
-    Configure logging for MPLang.
+    """Configure logging for MPLang.
 
     This function sets up a logger for all MPLang components. By default,
     MPLang uses a NullHandler to suppress log output when used as a library.
@@ -143,8 +143,7 @@ def setup_logging(
 
 
 def disable_logging() -> None:
-    """
-    Disable all MPLang logging by adding a NullHandler.
+    """Disable all MPLang logging by adding a NullHandler.
 
     This is useful for testing or when you want to completely suppress
     MPLang log output.
@@ -163,21 +162,9 @@ def disable_logging() -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Get a logger for a specific MPLang module.
+    """Get a logger for a specific MPLang module.
 
-    This function should be used by all MPLang modules to create their loggers.
     The logger name will be prefixed with 'mplang' automatically if not already.
-
-    Args:
-        name: Module name, typically __name__ from the calling module.
-
-    Returns:
-        A logger instance for the specified module.
-
-    Example:
-        >>> # In mplang/edsl/tracer.py
-        >>> logger = get_logger(__name__)  # Creates 'mplang.edsl.tracer' logger
     """
     # Ensure the logger name is under mplang hierarchy
     if not name.startswith(MPLANG_LOGGER_NAME):

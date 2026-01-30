@@ -33,9 +33,9 @@ from mplang.backends.tensor_impl import TensorValue
 from mplang.dialects import table
 from mplang.edsl import serde
 from mplang.edsl.graph import Operation
-from mplang.logging_config import get_logger
 from mplang.runtime.interpreter import Interpreter
 from mplang.runtime.value import WrapValue
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 

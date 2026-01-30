@@ -94,10 +94,10 @@ from mplang.libs.device import (
     set_dev_attr,
 )
 from mplang.libs.device import fetch as device_fetch
+from mplang.runtime.interpreter import Interpreter
 
 # Logging configuration
-from mplang.logging_config import disable_logging, get_logger, setup_logging
-from mplang.runtime.interpreter import Interpreter
+from mplang.utils.logging import disable_logging, get_logger, setup_logging
 
 # =============================================================================
 # Context Management API (JAX-like pattern)

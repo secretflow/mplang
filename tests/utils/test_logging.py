@@ -105,7 +105,7 @@ def test_logging_with_trace():
     try:
         # Test that basic logging infrastructure is working
         # We can verify by creating a logger and checking logs are captured
-        from mplang.logging_config import get_logger
+        from mplang.utils.logging import get_logger
 
         test_logger = get_logger("mplang.test")
         test_logger.debug("Test trace log message")
@@ -136,7 +136,7 @@ def test_logging_with_interpreter():
 
 def test_get_logger_helper():
     """Test the get_logger helper function."""
-    from mplang.logging_config import get_logger
+    from mplang.utils.logging import get_logger
 
     # Get a logger for a hypothetical module
     logger = get_logger("mplang.edsl.test_module")
@@ -172,7 +172,7 @@ def test_logging_hierarchy():
     mp.setup_logging(level="INFO", stream=log_stream, force=True)
 
     # Create child logger
-    from mplang.logging_config import get_logger
+    from mplang.utils.logging import get_logger
 
     child_logger = get_logger("mplang.edsl.tracer")
 

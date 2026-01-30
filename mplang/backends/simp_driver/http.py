@@ -25,9 +25,9 @@ import httpx
 
 from mplang.backends.simp_driver.state import SimpDriver
 from mplang.edsl import serde
-from mplang.logging_config import get_logger
 from mplang.runtime.interpreter import Interpreter
 from mplang.runtime.object_store import ObjectStore
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 

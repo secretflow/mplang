@@ -143,7 +143,15 @@ def setup_logging(
 
 
 def disable_logging() -> None:
-    """Disable all MPLang logging by adding a NullHandler."""
+    """Disable all MPLang logging by adding a NullHandler.
+
+    This is useful for testing or when you want to completely suppress
+    MPLang log output.
+
+    Example:
+        >>> import mplang as mp
+        >>> mp.disable_logging()
+    """
     logger = logging.getLogger(MPLANG_LOGGER_NAME)
     # Remove all existing handlers
     for handler in logger.handlers[:]:

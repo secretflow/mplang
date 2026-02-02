@@ -144,7 +144,15 @@ class BaseType:
     """Base class for all MPLang types."""
 
     def __repr__(self) -> str:
-        return str(self)
+        # Prevent infinite recursion: only call __str__ if it's overridden
+        if type(self).__str__ is not BaseType.__str__:
+            return str(self)
+        # Fallback to default object repr if __str__ not implemented
+        return object.__repr__(self)
+
+    def __str__(self) -> str:
+        # Default implementation for subclasses that don't override
+        return f"{self.__class__.__name__}()"
 
 
 # ==============================================================================

@@ -82,10 +82,17 @@ underlying HE libraries.
     - **Core Type**: `Tensor[Scalar, ...]`
     - **API Standard**: Follows NumPy/JAX conventions. All layout and arithmetic operations are valid.
 
+-   **World 2: The Element-wise HE World**
     - **Core Type**: `Tensor[EncryptedScalar, ...]` (e.g., `Tensor[phe.CiphertextType, ...]`)
     - **API Standard**: Follows TenSEAL-like (Tensor-level) conventions. Layout operations
       (`transpose`, `reshape`) are valid as they merely shuffle independent ciphertext objects.
       Arithmetic operations are overloaded for element-wise HE computation.
+
+-   **World 3: The SIMD HE World**
+    - **Core Type**: `Tensor[Vector[...], ...]` where the inner `Vector` holds SIMD-encrypted slots
+    - **API Standard**: SIMD-HE specific (e.g., BFV/CKKS). Only specific operations are supported
+      due to the batched nature of SIMD encryption. Layout operations must account for slot packing,
+      and arithmetic operates on batched ciphertexts with slot-wise semantics.
 
 ===========================
 Principle 3: Contracts via Protocols
@@ -137,7 +144,15 @@ class BaseType:
     """Base class for all MPLang types."""
 
     def __repr__(self) -> str:
-        return str(self)
+        # Prevent infinite recursion: only call __str__ if it's overridden
+        if type(self).__str__ is not BaseType.__str__:
+            return str(self)
+        # Fallback to default object repr if __str__ not implemented
+        return object.__repr__(self)
+
+    def __str__(self) -> str:
+        # Default implementation for subclasses that don't override
+        return f"{self.__class__.__name__}()"
 
 
 # ==============================================================================
@@ -175,11 +190,11 @@ class ScalarType(BaseType):
 
 @serde.register_class
 class IntegerType(ScalarType):
-    """Represents a variable-length integer type.
+    """Represents a fixed-width integer type with configurable bitwidth.
 
-    This is a standard integer type with configurable bit width, used for
-    arbitrary-precision arithmetic. It can represent integers that exceed
-    the range of fixed-width types like i64.
+    This is a standard integer type with parameterized bit width, used for
+    arbitrary-precision arithmetic. By configuring larger bitwidths (e.g., 128, 256),
+    this type can represent integers that exceed the range of standard types like i64.
 
     Examples:
         >>> i128 = IntegerType(bitwidth=128, signed=True)  # i128
@@ -229,15 +244,16 @@ class IntegerType(ScalarType):
 
 @serde.register_class
 class FloatType(ScalarType):
-    """Represents a floating-point type.
+    """Represents a fixed-width floating-point type with configurable bitwidth.
 
-    This supports standard IEEE 754 floating-point types with configurable
-    precision (bitwidth).
+    This supports standard IEEE 754 floating-point types with parameterized
+    bit width for different precision requirements.
 
     Examples:
         >>> f16 = FloatType(bitwidth=16)  # half precision
         >>> f32 = FloatType(bitwidth=32)  # single precision
         >>> f64 = FloatType(bitwidth=64)  # double precision
+        >>> f128 = FloatType(bitwidth=128)  # quadruple precision
     """
 
     def __init__(self, *, bitwidth: int = 32):
@@ -245,7 +261,7 @@ class FloatType(ScalarType):
 
         Args:
             bitwidth: Number of bits for the float representation.
-                     Standard values: 16 (half), 32 (single), 64 (double).
+                     Standard values: 16 (half), 32 (single), 64 (double), 128 (quadruple).
         """
         if bitwidth not in (16, 32, 64, 128):
             raise ValueError(f"bitwidth must be 16, 32, 64, or 128, got {bitwidth}")

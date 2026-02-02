@@ -190,11 +190,11 @@ class ScalarType(BaseType):
 
 @serde.register_class
 class IntegerType(ScalarType):
-    """Represents a variable-length integer type.
+    """Represents a fixed-width integer type with configurable bitwidth.
 
-    This is a standard integer type with configurable bit width, used for
-    arbitrary-precision arithmetic. It can represent integers that exceed
-    the range of fixed-width types like i64.
+    This is a standard integer type with parameterized bit width, used for
+    arbitrary-precision arithmetic. By configuring larger bitwidths (e.g., 128, 256),
+    this type can represent integers that exceed the range of standard types like i64.
 
     Examples:
         >>> i128 = IntegerType(bitwidth=128, signed=True)  # i128

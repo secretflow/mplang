@@ -1,279 +1,252 @@
-# MPLang EDSL - Experimental Architecture
+# MPLang EDSL - Embedded Domain-Specific Language
 
-**⚠️ Status**: Experimental / Work in Progress
+The EDSL (Embedded Domain-Specific Language) module is the core infrastructure for MPLang's graph-based IR system. It provides the foundational components for tracing Python functions into SSA-based graphs, type checking, and program compilation.
 
-This directory contains the next-generation EDSL (Embedded Domain-Specific Language) architecture for MPLang.
+## Overview
 
-## Why a New Architecture?
+MPLang EDSL uses a modern **Operation List + SSA** approach for better analyzability and optimization, similar to PyTorch FX and JAX. The EDSL captures Python function execution into an explicit graph IR that can be analyzed, optimized, and executed across distributed parties and devices.
 
-The current `mplang.core` architecture (Expr Tree + @primitive) has served us well, but we're hitting limitations:
+## Architecture
 
-1. **Expr Tree** is hard to optimize (visitor pattern, nested structure)
-2. **@primitive decorators** hide complexity and limit flexibility
-3. **Type system** is split between `mptype.MPType` and `typing.BaseType`
-4. **No clear separation** between IR, frontend, and backend
-
-Modern EDSLs (torch.fx, JAX) use **Operation List + SSA** for better analyzability and optimization.
-
-## Goals
-
-### 1. Modern IR (Operation List)
-
-**From** (Expr Tree):
-```python
-CallExpr(
-    func=add,
-    args=[VariableExpr("x"), VariableExpr("y")]
-)
-```
-
-**To** (Operation List):
-```python
-%0 = input "x"
-%1 = input "y"
-%2 = add %0, %1
-return %2
-```
-
-### 2. Unified Type System
-
-**Single source of truth**: `mplang.edsl.typing.MPType`
-
-```python
-from mplang2.edsl.typing import Tensor, Vector, MPType, f32
-
-# All types use BaseType
-plaintext: MPType = Tensor[f32, (4096,)]
-ciphertext: MPType = Vector[f32, 4096]
-```
-
-### 3. Explicit Tracing
-
-**Clean context management**:
-```python
-from mplang2.edsl import Tracer
-
-tracer = Tracer()
-with tracer:  # Context manager protocol
-    result = my_function(x, y)
-graph = tracer.finalize(result)
-```
-
-### 4. Extensibility
-
-Easy to add new backends:
-- FHE (Fully Homomorphic Encryption)
-- TEE (Trusted Execution Environment)
-- Custom accelerators
-
-### 5. Layered API Architecture
-
-The EDSL provides two distinct API layers:
-
-1.  **Low-Level API (Graph Manipulation)**:
-    - Direct manipulation of the `Graph` IR.
-    - Generic `add_op` method (pure graph API, no op semantics).
-    - Analogous to MLIR's generic operation construction.
-    - Used by compiler passes and backend implementations.
-
-2.  **High-Level API (Tracing)**:
-    - Uses `Tracer` + `Primitive` (with `abstract_eval`).
-    - Pythonic interface (functions, operators).
-    - Automatic type inference and graph construction.
-    - The primary interface for users.
-
-## Directory Structure
+### Key Components
 
 ```
 mplang/edsl/
-├── __init__.py          # Public API
-├── README.md            # This file
-│
-├── design/              # Design documents
-│   ├── architecture.md  # Complete architecture overview
-│   ├── type_system.md   # Type system design
-│   └── migration.md     # Migration from mplang.core
-│
-├── typing.py            # ✅ Unified type system
-├── graph.py             # ✅ IR: Operation List + SSA
-├── primitive.py         # ✅ Primitive abstraction
-├── object.py            # ✅ TraceObject/InterpObject
-├── context.py           # ✅ Context management
-├── tracer.py            # ✅ Explicit tracer
-├── interpreter.py       # ✅ Interpreter + GraphInterpreter
-└── jit.py               # ✅ @jit decorator
+├── typing.py         # Unified type system (MPType hierarchy)
+├── graph.py          # IR: Operation List + SSA (Graph, Operation, Value)
+├── primitive.py      # Primitive abstraction and registration
+├── object.py         # Object hierarchy (TraceObject, runtime values)
+├── context.py        # Context management (tracing vs execution)
+├── tracer.py         # Explicit tracer for graph construction
+├── jit.py            # @jit decorator for function compilation
+├── program.py        # Compiled program representation
+├── printer.py        # Graph visualization and debugging
+├── registry.py       # Op registry and dialect management
+└── serde.py          # Serialization/deserialization
 ```
 
-## Implementation Status
+### Type System
 
-### ✅ Completed (Phase 1-4)
+**Single source of truth**: `mplang.edsl.typing.MPType`
 
-- [x] Type system (`typing.py`) - 649 lines
-- [x] Graph IR (`graph.py`) - 388 lines
-- [x] Primitive abstraction (`primitive.py`) - 338 lines
-- [x] Object hierarchy (`object.py`) - 153 lines
-- [x] Context system (`context.py`) - 117 lines
-- [x] Tracer (`tracer.py`) - 201 lines
-- [x] Interpreter (`interpreter.py`) - 66 lines
-- [x] JIT decorator (`jit.py`) - 42 lines
-- [x] Design documents
-- [x] **153 tests passing** (140 edsl + 13 core2)
+The EDSL provides a unified, extensible type system that supports:
 
-### 🚧 In Progress
-- [ ] Integration with existing ops/kernels
-- [ ] Migration utilities
-- [ ] Performance benchmarks
-
-### ❌ Dropped / Deprecated
-- [x] Builder API (`builder.py`) - Integrated into `Tracer`
-
-### 📋 Planned
-- [ ] Advanced optimizations
-- [ ] More backends (TEE, MPC)
-
-## Quick Start
-
-### Using the New Type System
+- **ScalarType**: `i32`, `i64`, `f32`, `f64`, `bool`, etc.
+- **TensorType**: Multi-dimensional arrays with shape and dtype
+- **TableType**: Structured tabular data
+- **VectorType**: Encrypted vectors (for FHE/MPC)
+- **SSType**: Secret-shared values (for MPC)
+- **CustomType**: Extensible type system for domain-specific types
 
 ```python
-from mplang2.edsl.typing import Tensor, Vector, CustomType, f32
+from mplang.edsl.typing import TensorType, VectorType, f32, i64
 
 # Define types
-PlaintextVec = Tensor[f32, (4096,)]
-CiphertextVec = Vector[f32, 4096]
-EncryptionKey = CustomType("EncryptionKey")
-
-# Type annotations
-def encrypt(data: PlaintextVec, key: EncryptionKey) -> CiphertextVec:
-    ...
+plaintext: TensorType = TensorType(f32, (4096,))
+ciphertext: VectorType = VectorType(f32, 4096)
+counter: TensorType = TensorType(i64, ())  # scalar
 ```
 
-### Using the Tracer (Graph Construction)
+### Graph IR
+
+The Graph IR uses SSA (Static Single Assignment) form with explicit operations:
 
 ```python
-from mplang2.edsl import Tracer
-from mplang2.dialects.simp import pcall_static
+# Example graph structure:
+# %0 = input "x"
+# %1 = input "y"
+# %2 = add %0, %1
+# return %2
+```
 
+Each operation has:
+- **opcode**: Operation type (e.g., "add", "mul", "simp.pcall")
+- **inputs**: List of input Values (SSA variables)
+- **outputs**: List of output Values
+- **attributes**: Operation-specific metadata
+
+### Tracing and Compilation
+
+```python
+from mplang.edsl import jit, trace, Tracer
+
+# Method 1: @jit decorator (automatic tracing and execution)
+@jit
 def my_program(x, y):
-    # This function is traced into a Graph
-    return pcall_static((0, 1), lambda a, b: a + b, x, y)
+    return x + y
 
+result = my_program(data_x, data_y)
+
+# Method 2: Explicit tracing (returns TracedFunction with .graph)
+traced_fn = trace(my_program, x_obj, y_obj)
+graph = traced_fn.graph
+
+# Method 3: Manual tracing with Tracer context
 tracer = Tracer()
 with tracer:
-    # Inputs are automatically lifted to TraceObjects
     result = my_program(x, y)
-
-# Finalize graph
 graph = tracer.finalize(result)
 ```
 
-## Design Documents
+## API Layers
 
-Detailed design documents are in the `design/` subdirectory:
+The EDSL provides two distinct API layers:
 
-### 1. [architecture.md](design/architecture.md)
+### 1. High-Level API (User-Facing)
 
-Complete EDSL architecture overview covering:
-- Core components (Tracer, Graph)
-- Design principles (Closed-World, TracedFunction vs First-Class Functions)
-- Control flow handling (Dialect-specific, e.g., `simp.uniform_cond`)
-- Comparison with JAX, PyTorch, TensorFlow
+- **Tracing**: `@jit`, `trace()`, `Tracer` context manager
+- **Primitives**: `@primitive` decorator for defining new operations
+- **Types**: Type annotations and type inference
+- **Objects**: Automatic wrapping of Python values
 
-### 2. [type_system.md](design/type_system.md)
+This is the **primary interface for users**.
 
-New type system design:
-- Three orthogonal dimensions (Layout, Encryption, Distribution)
-- Type composition examples
-- Ops writing guide
-- Migration strategy
+### 2. Low-Level API (Compiler/Backend)
 
-### 3. [migration.md](design/migration.md)
+- **Graph manipulation**: Direct `Graph.add_op()` calls
+- **Op registry**: `register_impl()`, `get_impl()`
+- **Serialization**: Graph to/from protobuf
+- **Execution**: Direct graph interpretation via runtime
 
-Migration path from `mplang.core` to `mplang.edsl`:
-- 6-phase migration plan
-- Backward compatibility strategy
-- Type conversion utilities
+Used by compiler passes and backend implementations.
 
-## Relationship with mplang.core
+## Integration with Dialects
 
+The EDSL is dialect-agnostic. Dialects provide domain-specific operations:
+
+- **mplang.dialects.simp**: SPMD/MPI-style operations (pcall_static, pcall_dynamic)
+- **mplang.dialects.tensor**: Tensor operations (run_jax for JAX-backed computation, structural ops)
+- **mplang.dialects.table**: Table operations (run_sql, read/write, conversions)
+- **mplang.dialects.spu**: Secure multi-party computation
+- **mplang.dialects.tee**: Trusted execution environment
+- **mplang.dialects.bfv**: Homomorphic encryption (BFV scheme)
+- **mplang.dialects.phe**: Paillier homomorphic encryption
+
+Each dialect registers its operations and type implementations with the EDSL.
+
+## Examples
+
+### Basic Tracing
+
+```python
+import mplang.edsl as el
+from mplang.dialects.simp import pcall_static
+
+@el.jit
+def distribute_computation(x, y):
+    # Execute computation on parties 0 and 1
+    result = pcall_static((0, 1), lambda a, b: a + b, x, y)
+    return result
 ```
-mplang/
-├── core/           # Stable API (current production)
-│   ├── primitive.py
-│   ├── tracer.py
-│   └── expr/
-│
-├── edsl/           # Experimental (this directory)
-│   ├── typing.py   # Can be used independently
-│   ├── graph.py    # Future replacement for core.expr
-│   └── tracer.py   # Future replacement for core.tracer
-│
-├── ops/            # Shared between core and edsl
-├── kernels/        # Shared between core and edsl
-└── runtime/        # Shared between core and edsl
+
+### Custom Primitives
+
+```python
+from mplang.edsl import primitive
+from mplang.edsl.typing import TensorType, f32
+
+@primitive("custom_op")
+def custom_op_abstract(x: TensorType, y: TensorType) -> TensorType:
+    # Type inference (abstract evaluation) for the "custom_op" primitive.
+    # In this simple example, we say the result has the same abstract type as `x`.
+    return x
 ```
 
-**Migration Strategy**:
-1. Develop `edsl` in parallel (no breaking changes to `core`)
-2. Gradually move internal code to use `edsl.typing`
-3. Add adapters between `core` and `edsl`
-4. Deprecate `core` in future major version
+### Graph Inspection
 
-## Contributing
+```python
+from mplang.edsl import trace, format_graph
 
-We welcome contributions! Since this is experimental:
+def my_fn(x):
+    return x * 2 + 1
 
-1. **Read the design docs first**: Understand the architecture
-2. **Start small**: Pick a specific component (e.g., Graph IR)
-3. **Discuss early**: Open an issue before implementing
-4. **Test thoroughly**: Add unit tests for new code
+# Trace the function
+traced_fn = trace(my_fn, x_obj)
 
-### Development Workflow
+# Print graph IR
+print(format_graph(traced_fn.graph))
+```
+
+## Testing
+
+The EDSL has comprehensive test coverage:
 
 ```bash
-# Install dev dependencies
-uv sync --group dev
+# Run all EDSL tests
+uv run pytest tests/edsl/
 
-# Run tests (future)
-uv run pytest mplang/edsl/
+# Run specific test files
+uv run pytest tests/edsl/test_tracer.py
+uv run pytest tests/edsl/test_typing.py
+uv run pytest tests/edsl/test_graph.py
+```
+
+Test files:
+- `test_typing.py`: Type system tests
+- `test_graph.py`: Graph IR tests
+- `test_tracer.py`: Tracing functionality
+- `test_primitive.py`: Primitive operations
+- `test_context.py`: Context management
+- `test_printer.py`: Graph visualization
+- `test_serde.py`: Serialization/deserialization
+- `test_compiled_program_artifact.py`: Program compilation
+
+## Development
+
+### Adding New Operations
+
+1. Define the operation in the appropriate dialect (e.g., `mplang/dialects/tensor.py`)
+2. Register the operation with `@primitive` or explicit registry
+3. Implement backend execution in `mplang/backends/`
+4. Add tests in `tests/dialects/` and `tests/backends/`
+
+### Type System Extension
+
+To add a new type:
+
+1. Subclass `MPType` in `mplang/edsl/typing.py`
+2. Implement required methods (`__repr__`, `__eq__`, `__hash__`)
+3. Add serialization support in `typing.py` and `serde.py`
+4. Add tests in `tests/edsl/test_typing.py`
+
+### Code Style
+
+```bash
+# Format code
+uv run ruff format mplang/edsl/
 
 # Lint
-uv run ruff check mplang/edsl/
-uv run ruff format mplang/edsl/
+uv run ruff check mplang/edsl/ --fix
 
 # Type check
 uv run mypy mplang/edsl/
 ```
 
-## FAQ
+## Relationship with Other Components
 
-### Q: Should I use `mplang.edsl` in production?
+```
+mplang/
+├── edsl/              # Core IR and tracing (this module)
+├── dialects/          # Domain-specific operations
+├── backends/          # Execution implementations
+├── runtime/           # Runtime execution engine
+├── libs/              # High-level libraries (device, ml, mpc)
+└── kernels/           # Low-level kernel implementations
+```
 
-**A**: No, use `mplang.core`. `mplang.edsl` is experimental.
-
-### Q: Can I use `mplang.edsl.typing` independently?
-
-**A**: Yes! The type system is stable and can be used for type annotations.
-
-### Q: When will `edsl` replace `core`?
-
-**A**: No timeline yet. We need to:
-1. Complete the implementation
-2. Validate performance
-3. Migrate all tests
-4. Get community feedback
-
-### Q: How can I help?
-
-**A**: Check the implementation status above and pick an unimplemented component. Open an issue to discuss!
+**Design documents** are in the project root `design/` directory:
+- [`design/architecture.md`](../../design/architecture.md): Overall architecture
+- [`design/control_flow.md`](../../design/control_flow.md): Control flow handling
+- [`design/compile_execute_decoupling.md`](../../design/compile_execute_decoupling.md): Compilation model
 
 ## References
 
-- **torch.fx**: https://pytorch.org/docs/stable/fx.html
+- **MPLang Documentation**: See repository root README.md and AGENTS.md
+- **Design Documents**: `/design/` directory
+- **PyTorch FX**: https://pytorch.org/docs/stable/fx.html
 - **JAX jaxpr**: https://jax.readthedocs.io/en/latest/jaxpr.html
 - **MLIR**: https://mlir.llvm.org/
 
 ---
 
-**Last Updated**: 2025-01-11
-**Maintainers**: MPLang Team
+**Last Updated**: 2026-02-02

@@ -145,11 +145,11 @@ def distribute_computation(x, y):
 from mplang.edsl import primitive
 from mplang.edsl.typing import TensorType, f32
 
-@primitive
-def custom_op(x: TensorType, y: TensorType) -> TensorType:
-    # Implementation for tracing/execution
-    # This function is traced into the graph
-    return x * 2 + y
+@primitive("custom_op")
+def custom_op_abstract(x: TensorType, y: TensorType) -> TensorType:
+    # Type inference (abstract evaluation) for the "custom_op" primitive.
+    # In this simple example, we say the result has the same abstract type as `x`.
+    return x
 ```
 
 ### Graph Inspection

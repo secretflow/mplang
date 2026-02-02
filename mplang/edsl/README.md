@@ -156,7 +156,6 @@ def custom_op_abstract(x: TensorType, y: TensorType) -> TensorType:
 
 ```python
 from mplang.edsl import trace, format_graph
-import mplang.edsl as el
 
 def my_fn(x):
     return x * 2 + 1

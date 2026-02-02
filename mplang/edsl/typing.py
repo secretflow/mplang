@@ -244,15 +244,16 @@ class IntegerType(ScalarType):
 
 @serde.register_class
 class FloatType(ScalarType):
-    """Represents a floating-point type.
+    """Represents a fixed-width floating-point type with configurable bitwidth.
 
-    This supports standard IEEE 754 floating-point types with configurable
-    precision (bitwidth).
+    This supports standard IEEE 754 floating-point types with parameterized
+    bit width for different precision requirements.
 
     Examples:
         >>> f16 = FloatType(bitwidth=16)  # half precision
         >>> f32 = FloatType(bitwidth=32)  # single precision
         >>> f64 = FloatType(bitwidth=64)  # double precision
+        >>> f128 = FloatType(bitwidth=128)  # quadruple precision
     """
 
     def __init__(self, *, bitwidth: int = 32):
@@ -260,7 +261,7 @@ class FloatType(ScalarType):
 
         Args:
             bitwidth: Number of bits for the float representation.
-                     Standard values: 16 (half), 32 (single), 64 (double).
+                     Standard values: 16 (half), 32 (single), 64 (double), 128 (quadruple).
         """
         if bitwidth not in (16, 32, 64, 128):
             raise ValueError(f"bitwidth must be 16, 32, 64, or 128, got {bitwidth}")

@@ -82,10 +82,17 @@ underlying HE libraries.
     - **Core Type**: `Tensor[Scalar, ...]`
     - **API Standard**: Follows NumPy/JAX conventions. All layout and arithmetic operations are valid.
 
+-   **World 2: The Element-wise HE World**
     - **Core Type**: `Tensor[EncryptedScalar, ...]` (e.g., `Tensor[phe.CiphertextType, ...]`)
     - **API Standard**: Follows TenSEAL-like (Tensor-level) conventions. Layout operations
       (`transpose`, `reshape`) are valid as they merely shuffle independent ciphertext objects.
       Arithmetic operations are overloaded for element-wise HE computation.
+
+-   **World 3: The SIMD HE World**
+    - **Core Type**: `Tensor[Vector[...], ...]` where the inner `Vector` holds SIMD-encrypted slots
+    - **API Standard**: SIMD-HE specific (e.g., BFV/CKKS). Only specific operations are supported
+      due to the batched nature of SIMD encryption. Layout operations must account for slot packing,
+      and arithmetic operates on batched ciphertexts with slot-wise semantics.
 
 ===========================
 Principle 3: Contracts via Protocols

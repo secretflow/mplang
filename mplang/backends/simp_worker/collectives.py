@@ -27,7 +27,7 @@ The underlying algorithms only depend on the communicator interface.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from mplang.backends.simp_worker import collective_algorithms as algo
@@ -52,40 +52,37 @@ def resolve_participants(
     *,
     op: Operation | None = None,
     participants: Sequence[int] | None = None,
-) -> tuple[int, ...]:
-    """Resolve and normalize participant ranks.
+) -> Sequence[int]:
+    """Resolve participant ranks.
 
     Priority:
     1) explicit participants argument
     2) op.attrs["parties"] if present
     3) worker.current_parties if set (pcall_static dynamic scope)
     4) all ranks [0, world_size)
+
+    Note:
+        Normalization/validation (sorting, emptiness, range checks, rank
+        inclusion) is intentionally delegated to the lower-level algorithms in
+        `collective_algorithms`.
     """
 
-    resolved: Iterable[int] | None = None
-
     if participants is not None:
-        resolved = participants
-    elif op is not None:
+        return participants
+
+    if op is not None:
         parties = op.attrs.get("parties")
         if parties is not None:
-            resolved = parties
+            if not isinstance(parties, Sequence):
+                raise TypeError(
+                    "op.attrs['parties'] must be a sequence of rank integers"
+                )
+            return tuple(int(r) for r in parties)
 
-    if resolved is None and worker.current_parties is not None:
-        resolved = worker.current_parties
-    if resolved is None:
-        resolved = range(worker.world_size)
+    if worker.current_parties is not None:
+        return worker.current_parties
 
-    uniq = sorted({int(r) for r in resolved})
-    if not uniq:
-        raise ValueError("participants must be non-empty")
-    if any(r < 0 or r >= worker.world_size for r in uniq):
-        raise ValueError(
-            f"participants out of range: {uniq}, world_size={worker.world_size}"
-        )
-    if worker.rank not in uniq:
-        raise ValueError(f"rank {worker.rank} is not in participants {uniq}")
-    return tuple(uniq)
+    return tuple(range(worker.world_size))
 
 
 def _collective_prefix(
@@ -268,10 +265,11 @@ def verify_uniform_predicate(
             participants=ps,
             name=f"{name}_gather",
         )
-        dist = dict(zip(ps, gathered, strict=True))
+        ps_norm = algo.normalize_participants(worker.communicator, ps)
+        dist = dict(zip(ps_norm, gathered, strict=True))
         raise RuntimeError(
             "simp.uniform_cond predicate is not uniform across participants: "
-            f"participants={ps}, values={dist}"
+            f"participants={ps_norm}, values={dist}"
         )
 
     return bool(pred)

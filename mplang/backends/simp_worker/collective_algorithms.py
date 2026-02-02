@@ -28,7 +28,8 @@ instance.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import operator
+from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 
@@ -154,28 +155,13 @@ def allreduce_bool_and(
     participants: Sequence[int],
     key_prefix: str,
 ) -> bool:
-    ps = normalize_participants(comm, participants)
-    root = ps[0]
-
-    gather_key = f"{key_prefix}_gather"
-    bcast_key = f"{key_prefix}_bcast"
-
-    if comm.rank != root:
-        comm.send(root, gather_key, bool(value))
-        return bool(comm.recv(root, bcast_key))
-
-    acc = bool(value)
-    for r in ps:
-        if r == root:
-            continue
-        acc = acc and bool(comm.recv(r, gather_key))
-
-    for r in ps:
-        if r == root:
-            continue
-        comm.send(r, bcast_key, acc)
-
-    return acc
+    return _allreduce_bool(
+        comm,
+        value,
+        participants=participants,
+        key_prefix=key_prefix,
+        combine=operator.and_,
+    )
 
 
 def allreduce_bool_or(
@@ -185,28 +171,13 @@ def allreduce_bool_or(
     participants: Sequence[int],
     key_prefix: str,
 ) -> bool:
-    ps = normalize_participants(comm, participants)
-    root = ps[0]
-
-    gather_key = f"{key_prefix}_gather"
-    bcast_key = f"{key_prefix}_bcast"
-
-    if comm.rank != root:
-        comm.send(root, gather_key, bool(value))
-        return bool(comm.recv(root, bcast_key))
-
-    acc = bool(value)
-    for r in ps:
-        if r == root:
-            continue
-        acc = acc or bool(comm.recv(r, gather_key))
-
-    for r in ps:
-        if r == root:
-            continue
-        comm.send(r, bcast_key, acc)
-
-    return acc
+    return _allreduce_bool(
+        comm,
+        value,
+        participants=participants,
+        key_prefix=key_prefix,
+        combine=operator.or_,
+    )
 
 
 def allreduce_bool_xor(
@@ -215,6 +186,23 @@ def allreduce_bool_xor(
     *,
     participants: Sequence[int],
     key_prefix: str,
+) -> bool:
+    return _allreduce_bool(
+        comm,
+        value,
+        participants=participants,
+        key_prefix=key_prefix,
+        combine=operator.xor,
+    )
+
+
+def _allreduce_bool(
+    comm: Communicator,
+    value: bool,
+    *,
+    participants: Sequence[int],
+    key_prefix: str,
+    combine: Callable[[bool, bool], bool],
 ) -> bool:
     ps = normalize_participants(comm, participants)
     root = ps[0]
@@ -230,7 +218,7 @@ def allreduce_bool_xor(
     for r in ps:
         if r == root:
             continue
-        acc = bool(acc) ^ bool(comm.recv(r, gather_key))
+        acc = combine(acc, bool(comm.recv(r, gather_key)))
 
     for r in ps:
         if r == root:

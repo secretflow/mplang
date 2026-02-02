@@ -60,7 +60,7 @@ The Graph IR uses SSA (Static Single Assignment) form with explicit operations:
 ```
 
 Each operation has:
-- **op_type**: Operation type (e.g., "add", "mul", "simp.pcall")
+- **opcode**: Operation type (e.g., "add", "mul", "simp.pcall")
 - **inputs**: List of input Values (SSA variables)
 - **outputs**: List of output Values
 - **attributes**: Operation-specific metadata

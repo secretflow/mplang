@@ -178,7 +178,7 @@ print(format_graph(traced_fn.graph))
 The EDSL has comprehensive test coverage:
 
 ```bash
-# Run all EDSL tests (219+ tests)
+# Run all EDSL tests
 uv run pytest tests/edsl/
 
 # Run specific test files

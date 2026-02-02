@@ -139,9 +139,6 @@ def distribute_computation(x, y):
     # Execute computation on parties 0 and 1
     result = pcall_static((0, 1), lambda a, b: a + b, x, y)
     return result
-
-# Compile to graph
-graph = distribute_computation.graph
 ```
 
 ### Custom Primitives
@@ -245,20 +242,6 @@ mplang/
 - [`design/control_flow.md`](../../design/control_flow.md): Control flow handling
 - [`design/compile_execute_decoupling.md`](../../design/compile_execute_decoupling.md): Compilation model
 
-## FAQ
-
-### Q: Is this experimental?
-
-**A**: No. The EDSL is the stable, production implementation of MPLang's IR system. It is actively used and well-tested.
-
-### Q: What about mplang2?
-
-**A**: `mplang2` is a separate next-generation project mentioned in AGENTS.md with enhanced dialect extensibility. It is not part of this repository. The current EDSL (mplang.edsl) is the recommended and supported version.
-
-### Q: Can I extend the type system?
-
-**A**: Yes! Subclass `MPType` in `mplang.edsl.typing` and register your type. See the existing type implementations for examples.
-
 ## References
 
 - **MPLang Documentation**: See repository root README.md and AGENTS.md
@@ -269,5 +252,4 @@ mplang/
 
 ---
 
-**Last Updated**: 2026-02-02  
-**Maintainers**: MPLang Team
+**Last Updated**: 2026-02-02

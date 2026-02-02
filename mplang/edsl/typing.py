@@ -59,7 +59,7 @@ rather than by creating a large, monolithic set of specific types.
     - `Tensor`: A multi-dimensional array of a `ScalarType` element type.
     - `Table`: A dictionary-like structure with named columns of any type.
 
-    2.  **Encryption Types**: Wrap other types to confer privacy properties by making them opaque.
+2.  **Encryption Types**: Wrap other types to confer privacy properties by making them opaque.
     - `SS`: A single share of a secret-shared value.
     - Note: Element-wise HE types (like `phe.CiphertextType`) are defined in their respective dialects (e.g., `phe`).
 

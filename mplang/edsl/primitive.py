@@ -29,7 +29,7 @@ from jax.tree_util import tree_map
 
 from mplang.edsl.context import get_current_context, get_default_context
 from mplang.edsl.object import Object
-from mplang.logging_config import get_logger
+from mplang.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from mplang.edsl.typing import BaseType

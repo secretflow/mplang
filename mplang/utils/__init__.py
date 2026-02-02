@@ -22,13 +22,17 @@ from .func_utils import (
     var_demorph,
     var_morph,
 )
+from .logging import disable_logging, get_logger, setup_logging
 
 __all__ = [
     "MorphStruct",
+    "disable_logging",
+    "get_logger",
     "is_treedef_list",
     "list_reconstruct",
     "list_split",
     "normalize_fn",
+    "setup_logging",
     "validate_morph_struct",
     "var_demorph",
     "var_morph",

@@ -40,9 +40,9 @@ from mplang.edsl.graph import Graph, Value
 from mplang.edsl.object import Object
 from mplang.edsl.registry import get_impl
 from mplang.edsl.typing import BaseType
-from mplang.logging_config import get_logger
 from mplang.runtime.dialect_state import DialectState
 from mplang.runtime.object_store import ObjectStore
+from mplang.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from mplang.edsl.primitive import Primitive

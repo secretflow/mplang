@@ -49,7 +49,7 @@ from typing import Any, cast
 import uvicorn
 import yaml
 
-from mplang.logging_config import get_logger
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 

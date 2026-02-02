@@ -54,9 +54,9 @@ from mplang.backends.simp_worker import SimpWorker
 from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
-from mplang.logging_config import get_logger
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.runtime.object_store import ObjectStore
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -222,6 +222,7 @@ def create_worker_app(
     world_size: int,
     endpoints: list[str],
     spu_endpoints: dict[int, str] | None = None,
+    enable_tracing: bool = False,
 ) -> FastAPI:
     """Create a FastAPI app for the worker.
 
@@ -234,6 +235,7 @@ def create_worker_app(
         world_size: Total number of workers.
         endpoints: HTTP endpoints for all workers (for shuffle communication).
         spu_endpoints: Optional dict mapping global_rank -> BRPC endpoint for SPU.
+        enable_tracing: Whether to enable execution tracing for profiler.
 
     Returns:
         FastAPI application instance
@@ -246,11 +248,12 @@ def create_worker_app(
     data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
     cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
     root_dir = data_root / cluster_id / f"node{rank}"
-    trace_dir = root_dir / "trace"
 
-    # Enable tracing by default for now (or make it configurable via env)
-    tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
-    tracer.start()
+    tracer = None
+    if enable_tracing:
+        trace_dir = root_dir / "trace"
+        tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
+        tracer.start()
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
     store = ObjectStore(fs_root=str(root_dir))

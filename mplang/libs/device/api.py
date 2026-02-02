@@ -32,7 +32,7 @@ from mplang.backends import load_builtins
 from mplang.dialects import crypto, simp, spu, tee
 from mplang.edsl.object import Object
 from mplang.libs.device.cluster import Device
-from mplang.logging_config import get_logger
+from mplang.utils.logging import get_logger
 
 load_builtins()
 

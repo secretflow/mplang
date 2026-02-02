@@ -36,7 +36,7 @@ from mplang.edsl.graph import Graph
 from mplang.edsl.graph import Value as GraphValue
 from mplang.edsl.object import Object
 from mplang.edsl.typing import BaseType
-from mplang.logging_config import get_logger
+from mplang.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from mplang.edsl.primitive import Primitive

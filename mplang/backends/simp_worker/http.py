@@ -54,9 +54,9 @@ from mplang.backends.simp_worker import SimpWorker
 from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
-from mplang.logging_config import get_logger
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.runtime.object_store import ObjectStore
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -91,27 +91,37 @@ class HttpCommunicator:
         self._pending_sends: list[concurrent.futures.Future[None]] = []
         self.client = httpx.Client(timeout=None)
 
-    def send(self, to: int, key: str, data: Any) -> None:
-        """Send data to another rank asynchronously."""
-        future = self._send_executor.submit(self._do_send, to, key, data)
+    def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
+        """Send data to another rank asynchronously.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: If True, treat `data` as raw bytes and transmit as
+                base64-encoded bytes (no serde). If False, the transport may still
+                treat `bytes` payloads as raw bytes.
+        """
+        future = self._send_executor.submit(self._do_send, to, key, data, is_raw_bytes)
         self._pending_sends.append(future)
 
-    def _do_send(self, to: int, key: str, data: Any) -> None:
+    def _do_send(self, to: int, key: str, data: Any, is_raw_bytes: bool) -> None:
         """Perform the HTTP send."""
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}, url={url}")
 
-        # Detect SPU channel (tag prefix "spu:") and handle bytes
-        if key.startswith("spu:") and isinstance(data, bytes):
-            # Send raw bytes for SPU channels
+        # Raw-bytes transport rule:
+        # - If caller explicitly marks raw bytes, always use raw path.
+        # - Otherwise, if payload is `bytes`, use raw path.
+        # This avoids coupling encoding format to key naming conventions.
+        send_raw_bytes = is_raw_bytes or isinstance(data, bytes)
+
+        if send_raw_bytes:
             import base64
 
             payload = base64.b64encode(data).decode("ascii")
-            is_raw_bytes = True
         else:
-            # Use secure JSON serialization
             payload = serde.dumps_b64(data)
-            is_raw_bytes = False
 
         size_bytes = len(payload)
 
@@ -132,7 +142,7 @@ class HttpCommunicator:
                 json={
                     "data": payload,
                     "from_rank": self.rank,
-                    "is_raw_bytes": is_raw_bytes,
+                    "is_raw_bytes": send_raw_bytes,
                 },
             )
             resp.raise_for_status()
@@ -212,6 +222,7 @@ def create_worker_app(
     world_size: int,
     endpoints: list[str],
     spu_endpoints: dict[int, str] | None = None,
+    enable_tracing: bool = False,
 ) -> FastAPI:
     """Create a FastAPI app for the worker.
 
@@ -224,6 +235,7 @@ def create_worker_app(
         world_size: Total number of workers.
         endpoints: HTTP endpoints for all workers (for shuffle communication).
         spu_endpoints: Optional dict mapping global_rank -> BRPC endpoint for SPU.
+        enable_tracing: Whether to enable execution tracing for profiler.
 
     Returns:
         FastAPI application instance
@@ -236,11 +248,12 @@ def create_worker_app(
     data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
     cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
     root_dir = data_root / cluster_id / f"node{rank}"
-    trace_dir = root_dir / "trace"
 
-    # Enable tracing by default for now (or make it configurable via env)
-    tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
-    tracer.start()
+    tracer = None
+    if enable_tracing:
+        trace_dir = root_dir / "trace"
+        tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
+        tracer.start()
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
     store = ObjectStore(fs_root=str(root_dir))

@@ -25,7 +25,7 @@ from typing import Protocol
 
 import spu.libspu as libspu
 
-from mplang.logging_config import get_logger
+from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -36,7 +36,9 @@ class CommunicatorProtocol(Protocol):
     Both ThreadCommunicator and HttpCommunicator implement this interface.
     """
 
-    def send(self, to: int, key: str, data: bytes) -> None: ...
+    def send(
+        self, to: int, key: str, data: bytes, *, is_raw_bytes: bool = False
+    ) -> None: ...
     def recv(self, frm: int, key: str) -> bytes: ...
 
 
@@ -111,9 +113,8 @@ class BaseChannel(libspu.link.IChannel):
             len(data),
         )
 
-        # Send raw bytes directly
-        # v2 communicators accept Any, bytes is valid
-        self._comm.send(self._peer_rank, key, data)
+        # Send raw bytes directly.
+        self._comm.send(self._peer_rank, key, data, is_raw_bytes=True)
 
     def Recv(self, tag: str) -> bytes:
         """Receive bytes from peer (blocking).

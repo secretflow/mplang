@@ -52,8 +52,6 @@ counter: TensorType = TensorType(i64, ())  # scalar
 The Graph IR uses SSA (Static Single Assignment) form with explicit operations:
 
 ```python
-from mplang.edsl import Graph, Operation, Value
-
 # Example graph structure:
 # %0 = input "x"
 # %1 = input "y"

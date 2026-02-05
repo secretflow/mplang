@@ -278,6 +278,43 @@ def test_parquet_reader():
             os.unlink(tmp_path)
 
 
+def test_parquet_reader_empty_file():
+    """Test ParquetReader with empty file (schema exists but no data)."""
+    import tempfile
+
+    import pyarrow.parquet as pq
+
+    # Create test data with schema but no rows
+    data = pa.table({
+        "id": pa.array([], type=pa.int64()),
+        "name": pa.array([], type=pa.string()),
+        "score": pa.array([], type=pa.float64()),
+    })
+
+    # Write to temporary parquet file
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp_file:
+        tmp_path = tmp_file.name
+        pq.write_table(data, tmp_path)
+
+    try:
+        # Test reading empty file
+        reader = ParquetReader(tmp_path, columns=None)
+        assert reader.num_rows == 0
+        assert hasattr(reader.schema, "names")
+        assert reader.schema.names == ["id", "name", "score"]
+        assert reader.read_all().num_rows == 0
+
+        # Test with column selection
+        reader = ParquetReader(tmp_path, columns=["id"])
+        assert reader.num_rows == 0
+        assert reader.schema.names == ["id"]
+        assert reader.read_all().num_rows == 0
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 def test_file_table_source():
     """Test FileTableSource implementation for different file formats."""
     import os

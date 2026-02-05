@@ -346,7 +346,7 @@ class ParquetReader(pa.RecordBatchReader):
             pass
         if batches:
             return pa.Table.from_batches(batches)
-        return pa.Table.from_batches([])
+        return pa.Table.from_batches([], schema=self._schema)
 
     def read_next_batch(self) -> pa.RecordBatch:
         batch = next(self._iter)

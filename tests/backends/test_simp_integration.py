@@ -99,6 +99,33 @@ def test_uniform_cond():
         assert values == [1, 4]
 
 
+def test_uniform_cond_verify_uniform_mismatch_raises() -> None:
+    sim = simp.make_simulator(world_size=2)
+
+    def then_fn(x):
+        return pcall_static((0, 1), lambda a: add(a, a), x)
+
+    def else_fn(x):
+        return pcall_static((0, 1), lambda a: mul(a, a), x)
+
+    with sim:
+        x0 = simp.constant((0,), 1)
+        x1 = simp.constant((1,), 2)
+        x_obj = simp.converge(x0, x1)
+
+        pred0 = simp.constant((0,), True)
+        pred1 = simp.constant((1,), False)
+        pred = simp.converge(pred0, pred1)
+
+        try:
+            _ = uniform_cond(pred, then_fn, else_fn, x_obj)
+            raise AssertionError(
+                "expected uniform_cond to raise on non-uniform predicate"
+            )
+        except RuntimeError as e:
+            assert "predicate is not uniform" in str(e)
+
+
 def test_while_loop_eager():
     """Test simp.while_loop eager execution."""
 

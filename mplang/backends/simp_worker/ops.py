@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from mplang.backends.simp_worker.collectives import verify_uniform_predicate
 from mplang.dialects import simp
 from mplang.edsl.graph import Operation
 from mplang.runtime.interpreter import Interpreter
@@ -117,11 +118,13 @@ def _uniform_cond_worker_impl(
     """Worker implementation of simp.uniform_cond."""
     from mplang.backends.tensor_impl import TensorValue
 
-    if op.attrs.get("verify_uniform", True):
-        pass  # TODO: Implement AllReduce verification
+    worker = _ensure_worker_context(interpreter, "uniform_cond_impl")
 
     if isinstance(pred, TensorValue):
         pred = bool(pred.unwrap())
+
+    if op.attrs.get("verify_uniform", True):
+        pred = verify_uniform_predicate(interpreter, worker, bool(pred), op=op)
 
     if pred:
         result = interpreter.evaluate_graph(op.regions[0], list(args))

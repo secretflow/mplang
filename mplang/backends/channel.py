@@ -39,7 +39,18 @@ class CommunicatorProtocol(Protocol):
     def send(
         self, to: int, key: str, data: bytes, *, is_raw_bytes: bool = False
     ) -> None: ...
-    def recv(self, frm: int, key: str) -> bytes: ...
+
+    def send_sync(
+        self,
+        to: int,
+        key: str,
+        data: bytes,
+        *,
+        is_raw_bytes: bool = False,
+        timeout: float | None = ...,
+    ) -> None: ...
+
+    def recv(self, frm: int, key: str, *, timeout: float | None = ...) -> bytes: ...
 
 
 class BaseChannel(libspu.link.IChannel):
@@ -97,7 +108,7 @@ class BaseChannel(libspu.link.IChannel):
         return f"{self._tag_prefix}:{tag}"
 
     def Send(self, tag: str, data: bytes) -> None:
-        """Send bytes to peer.
+        """Send bytes to peer (synchronous, blocks until complete).
 
         Args:
             tag: Message tag for matching send/recv pairs
@@ -113,8 +124,8 @@ class BaseChannel(libspu.link.IChannel):
             len(data),
         )
 
-        # Send raw bytes directly.
-        self._comm.send(self._peer_rank, key, data, is_raw_bytes=True)
+        # Send raw bytes synchronously (blocks until complete).
+        self._comm.send_sync(self._peer_rank, key, data, is_raw_bytes=True)
 
     def Recv(self, tag: str) -> bytes:
         """Receive bytes from peer (blocking).
@@ -157,16 +168,26 @@ class BaseChannel(libspu.link.IChannel):
         return data
 
     def SendAsync(self, tag: str, data: bytes) -> None:
-        """Async send.
+        """Async send (non-blocking).
 
-        For HttpCommunicator, underlying HTTP client is non-blocking.
-        For ThreadCommunicator, send is instant (memory transfer).
+        For HttpCommunicator, send is queued to background thread pool.
+        For ThreadCommunicator, send is instant (in-memory transfer).
 
         Args:
             tag: Message tag
             data: Raw bytes to send
         """
-        self.Send(tag, data)
+        key = self._make_key(tag)
+        logger.debug(
+            "BaseChannel.SendAsync: %d -> %d, tag=%s, key=%s, size=%d",
+            self._local_rank,
+            self._peer_rank,
+            tag,
+            key,
+            len(data),
+        )
+        # Use async send (non-blocking)
+        self._comm.send(self._peer_rank, key, data, is_raw_bytes=True)
 
     def SendAsyncThrottled(self, tag: str, data: bytes) -> None:
         """Throttled async send.

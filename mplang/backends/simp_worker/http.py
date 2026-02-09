@@ -103,7 +103,7 @@ class CommConfig:
     """
 
     default_send_timeout: float = 60.0
-    default_recv_timeout: float | None = None  # None = no timeout (backward compatible)
+    default_recv_timeout: float | None = 10 * 60.0  # 10 minutes
     http_timeout: float | None = None
     max_retries: int = 0
     retry_backoff: float = 1.0

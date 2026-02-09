@@ -1,4 +1,4 @@
-# Copyright 2025 Ant Group Co., Ltd.
+# Copyright 2026 Ant Group Co., Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ class TestCommConfig:
         """Test default configuration values."""
         config = CommConfig()
         assert config.default_send_timeout == 60.0
-        assert config.default_recv_timeout is None  # backward compatible
+        assert config.default_recv_timeout == 600.0  # 10 minutes
         assert config.http_timeout is None
         assert config.max_retries == 0
         assert config.retry_backoff == 1.0
@@ -285,7 +285,7 @@ class TestHttpCommunicatorInit:
         assert comm.rank == 0
         assert comm.world_size == 3
         assert comm.config.default_send_timeout == 60.0
-        assert comm.config.default_recv_timeout is None
+        assert comm.config.default_recv_timeout == 600.0  # 10 minutes
         assert isinstance(comm.stats, CommStats)
 
         comm.shutdown()

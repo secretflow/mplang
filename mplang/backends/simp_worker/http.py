@@ -334,7 +334,7 @@ class HttpCommunicator:
                 },
             )
             resp.raise_for_status()
-            duration = time.time() - t0
+            duration = time.monotonic() - t0
             duration_ms = duration * 1000
 
             # Record stats

@@ -18,10 +18,9 @@ These tests use mocks to avoid actual HTTP communication, focusing on
 the communicator's internal logic.
 """
 
-import concurrent.futures
 import threading
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -44,18 +43,15 @@ class TestCommConfig:
     def test_default_values(self):
         """Test default configuration values."""
         config = CommConfig()
-        assert config.default_send_timeout == 60.0
         assert config.default_recv_timeout == 600.0  # 10 minutes
         assert config.http_timeout == 60.0
 
     def test_custom_values(self):
         """Test custom configuration values."""
         config = CommConfig(
-            default_send_timeout=30.0,
             default_recv_timeout=10.0,
             http_timeout=5.0,
         )
-        assert config.default_send_timeout == 30.0
         assert config.default_recv_timeout == 10.0
         assert config.http_timeout == 5.0
 
@@ -278,8 +274,8 @@ class TestHttpCommunicatorInit:
 
         assert comm.rank == 0
         assert comm.world_size == 3
-        assert comm.config.default_send_timeout == 60.0
         assert comm.config.default_recv_timeout == 600.0  # 10 minutes
+        assert comm.config.http_timeout == 60.0
         assert isinstance(comm.stats, CommStats)
 
         comm.shutdown()
@@ -479,23 +475,24 @@ class TestHttpCommunicatorSendSync:
 
         _, kwargs = mock_client.return_value.put.call_args
         assert kwargs["json"]["is_raw_bytes"] is True
+        # send_sync with no explicit timeout should use client-level default
+        assert "timeout" not in kwargs
 
         comm.shutdown()
 
     @patch("mplang.backends.simp_worker.http.httpx.Client")
-    def test_send_sync_timeout_raises_error(self, _mock_client):
-        """Test that send_sync raises SendTimeoutError on timeout."""
+    def test_send_sync_timeout_raises_error(self, mock_client):
+        """Test that send_sync raises SendTimeoutError on httpx timeout."""
+        import httpx as _httpx
+
+        # Make httpx.Client.put raise a TimeoutException
+        mock_client.return_value.put.side_effect = _httpx.ReadTimeout("timed out")
+
         comm = HttpCommunicator(
             rank=0,
             world_size=2,
             endpoints=["http://localhost:8000", "http://localhost:8001"],
         )
-
-        mock_future = Mock(spec=concurrent.futures.Future)
-        mock_future.result.side_effect = concurrent.futures.TimeoutError()
-        mock_future.cancel = Mock()
-
-        comm._send_executor.submit = Mock(return_value=mock_future)  # type: ignore[method-assign]
 
         with pytest.raises(SendTimeoutError) as exc_info:
             comm.send_sync(to=1, key="k", data="payload", timeout=0.01)
@@ -503,6 +500,8 @@ class TestHttpCommunicatorSendSync:
         assert exc_info.value.to == 1
         assert exc_info.value.key == "k"
         assert exc_info.value.timeout == 0.01
+        # Stats should record exactly one error (no double-count)
         assert comm.stats.send_errors == 1
+        assert comm.stats.messages_sent == 0
 
         comm.shutdown()

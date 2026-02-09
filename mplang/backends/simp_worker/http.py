@@ -94,13 +94,13 @@ class CommConfig:
     """Configuration for HttpCommunicator.
 
     Attributes:
-        default_send_timeout: Default timeout (seconds) for send_sync operations.
         default_recv_timeout: Default timeout (seconds) for recv operations.
             None means wait indefinitely (legacy behavior).
-        http_timeout: Timeout for individual HTTP requests (None = no timeout).
+        http_timeout: Default timeout for all HTTP requests (applied at the
+            httpx Client level).  ``send_sync()`` uses the same default
+            unless a per-call *timeout* is supplied.  None = no timeout.
     """
 
-    default_send_timeout: float = 60.0
     default_recv_timeout: float | None = 10 * 60.0  # 10 minutes
     http_timeout: float | None = 60.0
 
@@ -264,33 +264,48 @@ class HttpCommunicator:
     ) -> None:
         """Send data to another rank synchronously (blocking).
 
-        Waits for the send to complete before returning. Raises immediately
-        if the send fails.
+        The HTTP request is executed in the **calling thread** with a
+        per-request timeout wired into httpx.  When the timeout fires the
+        underlying socket is closed, so the request is truly cancelled and
+        stats are recorded exactly once.
 
         Args:
             to: Target rank.
             key: Message key.
             data: Payload.
             is_raw_bytes: If True, treat `data` as raw bytes.
-            timeout: Timeout in seconds. If None, uses config.default_send_timeout.
+            timeout: Per-request HTTP timeout in seconds.  If *None*, the
+                client-level ``config.http_timeout`` is used.
 
         Raises:
-            SendTimeoutError: If send times out.
+            SendTimeoutError: If the HTTP request times out.
             RuntimeError: If send fails for other reasons.
         """
-        effective_timeout = (
-            timeout if timeout is not None else self.config.default_send_timeout
-        )
-        future = self._send_executor.submit(self._do_send, to, key, data, is_raw_bytes)
         try:
-            future.result(timeout=effective_timeout)
-        except concurrent.futures.TimeoutError as e:
-            future.cancel()
-            self.stats.record_send_error()
-            raise SendTimeoutError(to, key, effective_timeout) from e
+            self._do_send(to, key, data, is_raw_bytes, request_timeout=timeout)
+        except httpx.TimeoutException as e:
+            effective = timeout if timeout is not None else self.config.http_timeout
+            raise SendTimeoutError(to, key, effective or 0.0) from e
 
-    def _do_send(self, to: int, key: str, data: Any, is_raw_bytes: bool) -> None:
-        """Perform the HTTP send."""
+    def _do_send(
+        self,
+        to: int,
+        key: str,
+        data: Any,
+        is_raw_bytes: bool,
+        *,
+        request_timeout: float | None = None,
+    ) -> None:
+        """Perform the HTTP send.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: Whether to treat *data* as raw bytes.
+            request_timeout: Per-request timeout passed to httpx.  If *None*,
+                the client-level ``http_timeout`` is used instead.
+        """
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}, url={url}")
 
@@ -314,13 +329,19 @@ class HttpCommunicator:
             self.tracer.log_custom_event(
                 name="comm.send",
                 start_ts=time.time(),
-                end_ts=time.time(),  # Instant event for size? Or measure duration?
+                end_ts=time.time(),  # Instant event for size
                 cat="comm",
                 args={"to": to, "key": key, "bytes": size_bytes},
             )
 
+        # Build per-request timeout kwargs (empty dict → use client default).
+        put_kwargs: dict[str, Any] = {}
+        if request_timeout is not None:
+            put_kwargs["timeout"] = request_timeout
+
         try:
-            t0 = time.time()
+            t0_mono = time.monotonic()
+            t0_wall = time.time()
             resp = self.client.put(
                 url,
                 json={
@@ -328,9 +349,10 @@ class HttpCommunicator:
                     "from_rank": self.rank,
                     "is_raw_bytes": send_raw_bytes,
                 },
+                **put_kwargs,
             )
             resp.raise_for_status()
-            duration = time.monotonic() - t0
+            duration = time.monotonic() - t0_mono
             duration_ms = duration * 1000
 
             # Record stats
@@ -339,11 +361,15 @@ class HttpCommunicator:
             if self.tracer:
                 self.tracer.log_custom_event(
                     name="comm.send_req",
-                    start_ts=t0,
-                    end_ts=t0 + duration,
+                    start_ts=t0_wall,
+                    end_ts=t0_wall + duration,
                     cat="comm",
                     args={"to": to, "key": key, "bytes": size_bytes},
                 )
+        except httpx.TimeoutException:
+            self.stats.record_send_error()
+            logger.error(f"Rank {self.rank} send to {to} timed out (key={key})")
+            raise
         except Exception as e:
             self.stats.record_send_error()
             logger.error(f"Rank {self.rank} failed to send to {to}: {e}")
@@ -409,11 +435,15 @@ class HttpCommunicator:
             self._mailbox[mailbox_key] = data
             self._cond.notify_all()
 
-    def wait_pending_sends(self) -> None:
-        """Wait for all pending sends to complete."""
+    def wait_pending_sends(self, timeout: float = 120.0) -> None:
+        """Wait for all pending async sends to complete.
+
+        Args:
+            timeout: Timeout in seconds for each pending future.
+        """
         for future in self._pending_sends:
             try:
-                future.result(timeout=60.0)
+                future.result(timeout=timeout)
             except Exception as e:
                 logger.error(f"Rank {self.rank} send failed: {e}")
         self._pending_sends.clear()

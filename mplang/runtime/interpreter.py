@@ -51,7 +51,22 @@ logger = get_logger(__name__)
 
 
 class ExecutionTracer:
-    """Tracer for DAG execution events (Chrome Tracing format)."""
+    """Tracer for DAG execution events (Chrome Tracing format).
+
+    This tracer captures:
+    1. Op-level execution events (schedule, start, end)
+    2. Communication statistics (via registered CommStats)
+    3. Custom events (e.g., comm.send, comm.recv)
+
+    The output is compatible with Chrome's chrome://tracing viewer.
+
+    Integration with CommStats:
+        >>> tracer = ExecutionTracer(enabled=True, trace_dir="./traces")
+        >>> comm = HttpCommunicator(..., tracer=tracer)
+        >>> tracer.register_comm_stats("rank_0", comm.stats)
+        >>> # ... run computation ...
+        >>> tracer.stop()  # Includes comm stats in output
+    """
 
     def __init__(self, enabled: bool = False, *, trace_dir: str | pathlib.Path):
         self.enabled = enabled
@@ -69,6 +84,21 @@ class ExecutionTracer:
             tuple[int, Any], float
         ] = {}  # (id(op), namespace) -> ts (us)
         self.pid = os.getpid()
+
+        # Communication statistics registry: name -> CommStats-like object
+        # Objects must have a snapshot() method returning dict[str, Any]
+        self._comm_stats: dict[str, Any] = {}
+
+    def register_comm_stats(self, name: str, stats: Any) -> None:
+        """Register a CommStats object for inclusion in trace output.
+
+        The stats object must have a snapshot() method that returns a dict.
+
+        Args:
+            name: Identifier for this stats source (e.g., "rank_0", "worker_1")
+            stats: CommStats-like object with snapshot() method
+        """
+        self._comm_stats[name] = stats
 
     def start(self) -> None:
         self.start_time = time.time()
@@ -187,8 +217,24 @@ class ExecutionTracer:
             self.trace_dir.mkdir(parents=True, exist_ok=True)
             filepath = self.trace_dir / filename
 
+            # Build trace output with optional metadata
+            trace_output: dict[str, Any] = {"traceEvents": self.trace_events}
+
+            # Include communication statistics as metadata
+            if self._comm_stats:
+                comm_snapshots = {}
+                for name, stats in self._comm_stats.items():
+                    if hasattr(stats, "snapshot") and callable(stats.snapshot):
+                        comm_snapshots[name] = stats.snapshot()
+                if comm_snapshots:
+                    trace_output["metadata"] = {
+                        "comm_stats": comm_snapshots,
+                        "duration_s": self.end_time - self.start_time,
+                        "total_ops": self.total_ops,
+                    }
+
             with open(filepath, "w") as f:
-                json.dump({"traceEvents": self.trace_events}, f)
+                json.dump(trace_output, f)
             print(f"\n[Tracer] Trace saved to {filepath.absolute()}")
         except Exception as e:
             print(f"[Tracer] Failed to save trace: {e}")
@@ -224,7 +270,49 @@ class ExecutionTracer:
         print("-" * 80)
         print(f"Active Tasks:   Avg={avg_active:.1f}, Max={max_active}")
         print(f"Ready Queue:    Avg={avg_queue:.1f}")
+
+        # Print communication statistics if available
+        if self._comm_stats:
+            print("-" * 80)
+            print("COMMUNICATION STATS:")
+            for name, stats in self._comm_stats.items():
+                if hasattr(stats, "snapshot") and callable(stats.snapshot):
+                    snap = stats.snapshot()
+                    print(f"  [{name}]")
+                    print(
+                        f"    Messages: sent={snap.get('messages_sent', 0)}, "
+                        f"recv={snap.get('messages_received', 0)}"
+                    )
+                    bytes_sent = snap.get("bytes_sent", 0)
+                    bytes_recv = snap.get("bytes_received", 0)
+                    print(
+                        f"    Bytes:    sent={self._format_bytes(bytes_sent)}, "
+                        f"recv={self._format_bytes(bytes_recv)}"
+                    )
+                    print(
+                        f"    Latency:  send_avg={snap.get('avg_send_latency_ms', 0):.1f}ms, "
+                        f"recv_wait_avg={snap.get('avg_recv_wait_time_ms', 0):.1f}ms"
+                    )
+                    errors = snap.get("send_errors", 0) + snap.get("recv_timeouts", 0)
+                    if errors > 0:
+                        print(
+                            f"    Errors:   send_errors={snap.get('send_errors', 0)}, "
+                            f"recv_timeouts={snap.get('recv_timeouts', 0)}"
+                        )
+
         print("=" * 80 + "\n")
+
+    @staticmethod
+    def _format_bytes(num_bytes: int) -> str:
+        """Format bytes as human-readable string."""
+        if num_bytes < 1024:
+            return f"{num_bytes}B"
+        elif num_bytes < 1024 * 1024:
+            return f"{num_bytes / 1024:.1f}KB"
+        elif num_bytes < 1024 * 1024 * 1024:
+            return f"{num_bytes / (1024 * 1024):.1f}MB"
+        else:
+            return f"{num_bytes / (1024 * 1024 * 1024):.1f}GB"
 
 
 class _NullTracer:

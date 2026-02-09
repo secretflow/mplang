@@ -236,6 +236,10 @@ class HttpCommunicator:
         self._pending_sends: list[concurrent.futures.Future[None]] = []
         self.client = httpx.Client(timeout=self.config.http_timeout)
 
+        # Auto-register stats with tracer for unified profiling output
+        if self.tracer is not None:
+            self.tracer.register_comm_stats(f"rank_{rank}", self.stats)
+
     def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
         """Send data to another rank asynchronously.
 

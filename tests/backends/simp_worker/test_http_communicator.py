@@ -45,7 +45,7 @@ class TestCommConfig:
         config = CommConfig()
         assert config.default_send_timeout == 60.0
         assert config.default_recv_timeout == 600.0  # 10 minutes
-        assert config.http_timeout is None
+        assert config.http_timeout == 60.0
         assert config.max_retries == 0
         assert config.retry_backoff == 1.0
 

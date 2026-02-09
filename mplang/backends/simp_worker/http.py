@@ -104,7 +104,7 @@ class CommConfig:
 
     default_send_timeout: float = 60.0
     default_recv_timeout: float | None = 10 * 60.0  # 10 minutes
-    http_timeout: float | None = None
+    http_timeout: float | None = 60.0
     max_retries: int = 0
     retry_backoff: float = 1.0
 
@@ -376,12 +376,12 @@ class HttpCommunicator:
             timeout if timeout is not None else self.config.default_recv_timeout
         )
 
-        t0 = time.time()
+        t0 = time.monotonic()
         with self._cond:
             while mailbox_key not in self._mailbox:
                 # Calculate remaining time if timeout is set
                 if effective_timeout is not None:
-                    elapsed = time.time() - t0
+                    elapsed = time.monotonic() - t0
                     remaining = effective_timeout - elapsed
                     if remaining <= 0:
                         self.stats.record_recv_timeout()
@@ -395,7 +395,7 @@ class HttpCommunicator:
             data = self._mailbox.pop(mailbox_key)
 
         # Record stats (estimate size from data)
-        wait_time_ms = (time.time() - t0) * 1000
+        wait_time_ms = (time.monotonic() - t0) * 1000
         # Estimate bytes - for bytes data use len, otherwise use a nominal value
         size_bytes = len(data) if isinstance(data, bytes) else 0
         self.stats.record_recv(size_bytes, wait_time_ms)

@@ -98,15 +98,11 @@ class CommConfig:
         default_recv_timeout: Default timeout (seconds) for recv operations.
             None means wait indefinitely (legacy behavior).
         http_timeout: Timeout for individual HTTP requests (None = no timeout).
-        max_retries: Maximum number of retries for failed sends.
-        retry_backoff: Base delay (seconds) for exponential backoff between retries.
     """
 
     default_send_timeout: float = 60.0
     default_recv_timeout: float | None = 10 * 60.0  # 10 minutes
     http_timeout: float | None = 60.0
-    max_retries: int = 0
-    retry_backoff: float = 1.0
 
 
 @dataclass

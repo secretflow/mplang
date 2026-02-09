@@ -18,9 +18,10 @@ These tests use mocks to avoid actual HTTP communication, focusing on
 the communicator's internal logic.
 """
 
+import concurrent.futures
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -46,8 +47,6 @@ class TestCommConfig:
         assert config.default_send_timeout == 60.0
         assert config.default_recv_timeout == 600.0  # 10 minutes
         assert config.http_timeout == 60.0
-        assert config.max_retries == 0
-        assert config.retry_backoff == 1.0
 
     def test_custom_values(self):
         """Test custom configuration values."""
@@ -55,14 +54,10 @@ class TestCommConfig:
             default_send_timeout=30.0,
             default_recv_timeout=10.0,
             http_timeout=5.0,
-            max_retries=3,
-            retry_backoff=2.0,
         )
         assert config.default_send_timeout == 30.0
         assert config.default_recv_timeout == 10.0
         assert config.http_timeout == 5.0
-        assert config.max_retries == 3
-        assert config.retry_backoff == 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -457,5 +452,57 @@ class TestHttpCommunicatorStats:
         assert comm.stats.messages_received == 2
         # bytes data should record size
         assert comm.stats.bytes_received == 5  # len(b"hello")
+
+        comm.shutdown()
+
+
+class TestHttpCommunicatorSendSync:
+    """Tests for send_sync() behavior."""
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_sync_success_records_stats(self, mock_client):
+        """Test that send_sync succeeds and records stats."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        comm.send_sync(to=1, key="k", data=b"hi")
+
+        assert comm.stats.messages_sent == 1
+        assert comm.stats.send_errors == 0
+        assert comm.stats.bytes_sent == 4  # len(base64.b64encode(b"hi"))
+
+        _, kwargs = mock_client.return_value.put.call_args
+        assert kwargs["json"]["is_raw_bytes"] is True
+
+        comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_sync_timeout_raises_error(self, _mock_client):
+        """Test that send_sync raises SendTimeoutError on timeout."""
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        mock_future = Mock(spec=concurrent.futures.Future)
+        mock_future.result.side_effect = concurrent.futures.TimeoutError()
+        mock_future.cancel = Mock()
+
+        comm._send_executor.submit = Mock(return_value=mock_future)  # type: ignore[method-assign]
+
+        with pytest.raises(SendTimeoutError) as exc_info:
+            comm.send_sync(to=1, key="k", data="payload", timeout=0.01)
+
+        assert exc_info.value.to == 1
+        assert exc_info.value.key == "k"
+        assert exc_info.value.timeout == 0.01
+        assert comm.stats.send_errors == 1
 
         comm.shutdown()

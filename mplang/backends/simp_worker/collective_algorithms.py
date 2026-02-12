@@ -30,24 +30,13 @@ from __future__ import annotations
 
 import operator
 from collections.abc import Callable, Sequence
-from typing import Any, Protocol
+from typing import Any
 
-
-class Communicator(Protocol):
-    """Minimal communicator interface required by the algorithms."""
-
-    rank: int
-    world_size: int
-
-    def send(
-        self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False
-    ) -> None: ...
-
-    def recv(self, frm: int, key: str, *, timeout: float | None = ...) -> Any: ...
+from mplang.backends.simp_worker.base import CommunicatorProtocol
 
 
 def normalize_participants(
-    comm: Communicator, participants: Sequence[int]
+    comm: CommunicatorProtocol, participants: Sequence[int]
 ) -> tuple[int, ...]:
     ps = tuple(sorted({int(r) for r in participants}))
     if not ps:
@@ -62,7 +51,7 @@ def normalize_participants(
 
 
 def barrier(
-    comm: Communicator, *, participants: Sequence[int], key_prefix: str
+    comm: CommunicatorProtocol, *, participants: Sequence[int], key_prefix: str
 ) -> None:
     """Barrier using root gather + root release."""
 
@@ -89,7 +78,7 @@ def barrier(
 
 
 def broadcast(
-    comm: Communicator,
+    comm: CommunicatorProtocol,
     value: Any,
     *,
     root: int,
@@ -115,7 +104,11 @@ def broadcast(
 
 
 def allgather(
-    comm: Communicator, value: Any, *, participants: Sequence[int], key_prefix: str
+    comm: CommunicatorProtocol,
+    value: Any,
+    *,
+    participants: Sequence[int],
+    key_prefix: str,
 ) -> list[Any]:
     """Allgather implemented as gather-to-root then root broadcast."""
 
@@ -149,7 +142,7 @@ def allgather(
 
 
 def allreduce_bool_and(
-    comm: Communicator,
+    comm: CommunicatorProtocol,
     value: bool,
     *,
     participants: Sequence[int],
@@ -165,7 +158,7 @@ def allreduce_bool_and(
 
 
 def allreduce_bool_or(
-    comm: Communicator,
+    comm: CommunicatorProtocol,
     value: bool,
     *,
     participants: Sequence[int],
@@ -181,7 +174,7 @@ def allreduce_bool_or(
 
 
 def allreduce_bool_xor(
-    comm: Communicator,
+    comm: CommunicatorProtocol,
     value: bool,
     *,
     participants: Sequence[int],
@@ -197,7 +190,7 @@ def allreduce_bool_xor(
 
 
 def _allreduce_bool(
-    comm: Communicator,
+    comm: CommunicatorProtocol,
     value: bool,
     *,
     participants: Sequence[int],

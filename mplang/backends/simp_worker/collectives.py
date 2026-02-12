@@ -31,6 +31,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from mplang.backends.simp_worker import collective_algorithms as algo
+from mplang.backends.simp_worker.base import CommunicatorProtocol
 from mplang.edsl.graph import Operation
 
 
@@ -43,7 +44,7 @@ class _ExecContext(Protocol):
 class _Worker(Protocol):
     rank: int
     world_size: int
-    communicator: algo.Communicator
+    communicator: CommunicatorProtocol
     current_parties: tuple[int, ...] | None
 
 

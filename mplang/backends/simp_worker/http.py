@@ -48,7 +48,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from mplang.backends.simp_worker.base import (
-    RecvRequest,
     Request,
     RequestStatus,
     SendRequest,
@@ -102,7 +101,6 @@ __all__ = [
     "CommConfig",
     "CommStats",
     "HttpCommunicator",
-    "RecvRequest",
     "RecvTimeoutError",
     "Request",
     "RequestStatus",

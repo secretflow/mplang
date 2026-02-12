@@ -20,7 +20,6 @@ Provides Worker-side state and ops for the simp dialect.
 # Import base components first
 from mplang.backends.simp_worker.base import (
     CommunicatorProtocol,
-    RecvRequest,
     Request,
     RequestStatus,
     SendRequest,
@@ -50,7 +49,6 @@ __all__ = [
     "CommunicatorProtocol",
     "HttpCommunicator",
     "LocalMesh",
-    "RecvRequest",
     "RecvTimeoutError",
     "Request",
     "RequestStatus",

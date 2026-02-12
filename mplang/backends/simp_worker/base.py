@@ -17,7 +17,7 @@
 This module contains shared components used by both HttpCommunicator and
 ThreadCommunicator:
 - CommunicatorProtocol: Structural interface (Protocol) for communicators
-- Request handles: RequestStatus, Request, SendRequest, RecvRequest
+- Request handles: RequestStatus, Request, SendRequest
 - Batch operations: wait_all, wait_any, testall, testany
 """
 
@@ -250,20 +250,6 @@ class SendRequest(Request):
     ):
         super().__init__(future, f"send to rank {to} key={key}")
         self.to = to
-        self.key = key
-
-
-class RecvRequest(Request):
-    """Request handle for non-blocking receive operations."""
-
-    def __init__(
-        self,
-        future: concurrent.futures.Future[Any],
-        frm: int,
-        key: str,
-    ):
-        super().__init__(future, f"recv from rank {frm} key={key}")
-        self.frm = frm
         self.key = key
 
 

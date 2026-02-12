@@ -77,7 +77,7 @@ class ThreadCommunicator:
         assert 0 <= to < self.world_size
         future: concurrent.futures.Future[None] = concurrent.futures.Future()
         try:
-            if self.use_serde:
+            if self.use_serde and not is_raw_bytes:
                 from mplang.edsl import serde
 
                 data = serde.loads(serde.dumps(data))

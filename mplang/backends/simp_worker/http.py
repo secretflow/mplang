@@ -40,18 +40,14 @@ import os
 import pathlib
 import threading
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from mplang.backends import spu_impl as _spu_impl  # noqa: F401
-from mplang.backends import tensor_impl as _tensor_impl  # noqa: F401
-
-# Register operation implementations (side-effect imports)
-from mplang.backends.simp_worker import SimpWorker
-from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
+from mplang.backends.simp_worker.state import SimpWorker
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
@@ -59,6 +55,146 @@ from mplang.runtime.object_store import ObjectStore
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class RecvTimeoutError(TimeoutError):
+    """Raised when recv() times out waiting for a message."""
+
+    def __init__(self, frm: int, key: str, timeout: float):
+        self.frm = frm
+        self.key = key
+        self.timeout = timeout
+        super().__init__(
+            f"Timeout after {timeout}s waiting for message from rank {frm} key={key}"
+        )
+
+
+class SendTimeoutError(TimeoutError):
+    """Raised when send_sync() times out."""
+
+    def __init__(self, to: int, key: str, timeout: float):
+        self.to = to
+        self.key = key
+        self.timeout = timeout
+        super().__init__(f"Timeout after {timeout}s sending to rank {to} key={key}")
+
+
+# ---------------------------------------------------------------------------
+# Configuration and Statistics
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CommConfig:
+    """Configuration for HttpCommunicator.
+
+    Attributes:
+        default_recv_timeout: Default timeout (seconds) for recv operations.
+            None means wait indefinitely (legacy behavior).
+        http_timeout: Default timeout for all HTTP requests (applied at the
+            httpx Client level).  ``send_sync()`` uses the same default
+            unless a per-call *timeout* is supplied.  None = no timeout.
+    """
+
+    default_recv_timeout: float | None = 10 * 60.0  # 10 minutes
+    http_timeout: float | None = 60.0
+
+
+@dataclass
+class CommStats:
+    """Communication statistics for observability.
+
+    All fields are updated atomically using a lock.
+    """
+
+    messages_sent: int = 0
+    messages_received: int = 0
+    bytes_sent: int = 0
+    bytes_received: int = 0
+    send_errors: int = 0
+    recv_timeouts: int = 0
+    total_send_time_ms: float = 0.0
+    total_recv_wait_time_ms: float = 0.0
+
+    # Use RLock (reentrant lock) because snapshot() calls avg_* properties
+    # which also acquire the lock
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+
+    def record_send(self, size_bytes: int, duration_ms: float) -> None:
+        """Record a successful send."""
+        with self._lock:
+            self.messages_sent += 1
+            self.bytes_sent += size_bytes
+            self.total_send_time_ms += duration_ms
+
+    def record_send_error(self) -> None:
+        """Record a send error."""
+        with self._lock:
+            self.send_errors += 1
+
+    def record_recv(self, size_bytes: int, wait_time_ms: float) -> None:
+        """Record a successful receive."""
+        with self._lock:
+            self.messages_received += 1
+            self.bytes_received += size_bytes
+            self.total_recv_wait_time_ms += wait_time_ms
+
+    def record_recv_timeout(self) -> None:
+        """Record a receive timeout."""
+        with self._lock:
+            self.recv_timeouts += 1
+
+    @property
+    def avg_send_latency_ms(self) -> float:
+        """Average send latency in milliseconds."""
+        with self._lock:
+            if self.messages_sent == 0:
+                return 0.0
+            return self.total_send_time_ms / self.messages_sent
+
+    @property
+    def avg_recv_wait_time_ms(self) -> float:
+        """Average receive wait time in milliseconds."""
+        with self._lock:
+            if self.messages_received == 0:
+                return 0.0
+            return self.total_recv_wait_time_ms / self.messages_received
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a snapshot of current stats as a dict."""
+        with self._lock:
+            return {
+                "messages_sent": self.messages_sent,
+                "messages_received": self.messages_received,
+                "bytes_sent": self.bytes_sent,
+                "bytes_received": self.bytes_received,
+                "send_errors": self.send_errors,
+                "recv_timeouts": self.recv_timeouts,
+                "avg_send_latency_ms": self.avg_send_latency_ms,
+                "avg_recv_wait_time_ms": self.avg_recv_wait_time_ms,
+            }
+
+    def reset(self) -> None:
+        """Reset all statistics."""
+        with self._lock:
+            self.messages_sent = 0
+            self.messages_received = 0
+            self.bytes_sent = 0
+            self.bytes_received = 0
+            self.send_errors = 0
+            self.recv_timeouts = 0
+            self.total_send_time_ms = 0.0
+            self.total_recv_wait_time_ms = 0.0
+
+
+# ---------------------------------------------------------------------------
+# HttpCommunicator
+# ---------------------------------------------------------------------------
 
 
 class HttpCommunicator:
@@ -70,6 +206,8 @@ class HttpCommunicator:
         rank: This worker's rank
         world_size: Total number of workers
         endpoints: HTTP endpoints for all workers
+        config: Communication configuration
+        stats: Communication statistics
     """
 
     def __init__(
@@ -78,21 +216,31 @@ class HttpCommunicator:
         world_size: int,
         endpoints: list[str],
         tracer: ExecutionTracer | None = None,
+        config: CommConfig | None = None,
     ):
         self.rank = rank
         self.world_size = world_size
         self.endpoints = endpoints
         self.tracer = tracer
+        self.config = config or CommConfig()
+        self.stats = CommStats()
         self._mailbox: dict[tuple[int, str], Any] = {}
         self._cond = threading.Condition()
         self._send_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=world_size, thread_name_prefix=f"comm_send_{rank}"
         )
         self._pending_sends: list[concurrent.futures.Future[None]] = []
-        self.client = httpx.Client(timeout=None)
+        self.client = httpx.Client(timeout=self.config.http_timeout)
+
+        # Auto-register stats with tracer for unified profiling output
+        if self.tracer is not None:
+            self.tracer.register_comm_stats(f"rank_{rank}", self.stats)
 
     def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
         """Send data to another rank asynchronously.
+
+        The send is queued and executed in a background thread. Exceptions are
+        captured and will be raised when wait_pending_sends() is called.
 
         Args:
             to: Target rank.
@@ -105,8 +253,59 @@ class HttpCommunicator:
         future = self._send_executor.submit(self._do_send, to, key, data, is_raw_bytes)
         self._pending_sends.append(future)
 
-    def _do_send(self, to: int, key: str, data: Any, is_raw_bytes: bool) -> None:
-        """Perform the HTTP send."""
+    def send_sync(
+        self,
+        to: int,
+        key: str,
+        data: Any,
+        *,
+        is_raw_bytes: bool = False,
+        timeout: float | None = None,
+    ) -> None:
+        """Send data to another rank synchronously (blocking).
+
+        The HTTP request is executed in the **calling thread** with a
+        per-request timeout wired into httpx.  When the timeout fires the
+        underlying socket is closed, so the request is truly cancelled and
+        stats are recorded exactly once.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: If True, treat `data` as raw bytes.
+            timeout: Per-request HTTP timeout in seconds.  If *None*, the
+                client-level ``config.http_timeout`` is used.
+
+        Raises:
+            SendTimeoutError: If the HTTP request times out.
+            RuntimeError: If send fails for other reasons.
+        """
+        try:
+            self._do_send(to, key, data, is_raw_bytes, request_timeout=timeout)
+        except httpx.TimeoutException as e:
+            effective = timeout if timeout is not None else self.config.http_timeout
+            raise SendTimeoutError(to, key, effective or 0.0) from e
+
+    def _do_send(
+        self,
+        to: int,
+        key: str,
+        data: Any,
+        is_raw_bytes: bool,
+        *,
+        request_timeout: float | None = None,
+    ) -> None:
+        """Perform the HTTP send.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: Whether to treat *data* as raw bytes.
+            request_timeout: Per-request timeout passed to httpx.  If *None*,
+                the client-level ``http_timeout`` is used instead.
+        """
         url = f"{self.endpoints[to]}/comm/{key}"
         logger.debug(f"Rank {self.rank} sending to {to} key={key}, url={url}")
 
@@ -130,13 +329,19 @@ class HttpCommunicator:
             self.tracer.log_custom_event(
                 name="comm.send",
                 start_ts=time.time(),
-                end_ts=time.time(),  # Instant event for size? Or measure duration?
+                end_ts=time.time(),  # Instant event for size
                 cat="comm",
                 args={"to": to, "key": key, "bytes": size_bytes},
             )
 
+        # Build per-request timeout kwargs (empty dict → use client default).
+        put_kwargs: dict[str, Any] = {}
+        if request_timeout is not None:
+            put_kwargs["timeout"] = request_timeout
+
         try:
-            t0 = time.time()
+            t0_mono = time.monotonic()
+            t0_wall = time.time()
             resp = self.client.put(
                 url,
                 json={
@@ -144,29 +349,80 @@ class HttpCommunicator:
                     "from_rank": self.rank,
                     "is_raw_bytes": send_raw_bytes,
                 },
+                **put_kwargs,
             )
             resp.raise_for_status()
-            duration = time.time() - t0
+            duration = time.monotonic() - t0_mono
+            duration_ms = duration * 1000
+
+            # Record stats
+            self.stats.record_send(size_bytes, duration_ms)
+
             if self.tracer:
                 self.tracer.log_custom_event(
                     name="comm.send_req",
-                    start_ts=t0,
-                    end_ts=t0 + duration,
+                    start_ts=t0_wall,
+                    end_ts=t0_wall + duration,
                     cat="comm",
                     args={"to": to, "key": key, "bytes": size_bytes},
                 )
+        except httpx.TimeoutException:
+            self.stats.record_send_error()
+            logger.error(f"Rank {self.rank} send to {to} timed out (key={key})")
+            raise
         except Exception as e:
+            self.stats.record_send_error()
             logger.error(f"Rank {self.rank} failed to send to {to}: {e}")
             raise RuntimeError(f"Failed to send to {to} ({url}): {e}") from e
 
-    def recv(self, frm: int, key: str) -> Any:
-        """Receive data from another rank (blocking)."""
+    def recv(self, frm: int, key: str, *, timeout: float | None = None) -> Any:
+        """Receive data from another rank (blocking).
+
+        Args:
+            frm: Source rank.
+            key: Message key.
+            timeout: Timeout in seconds. If None, uses config.default_recv_timeout.
+                If config.default_recv_timeout is also None, waits indefinitely.
+
+        Returns:
+            The received data.
+
+        Raises:
+            RecvTimeoutError: If timeout is reached before message arrives.
+        """
         logger.debug(f"Rank {self.rank} waiting recv from {frm} key={key}")
         mailbox_key = (frm, key)
+
+        # Determine effective timeout
+        effective_timeout = (
+            timeout if timeout is not None else self.config.default_recv_timeout
+        )
+
+        t0 = time.monotonic()
         with self._cond:
             while mailbox_key not in self._mailbox:
-                self._cond.wait(timeout=1.0)
-            return self._mailbox.pop(mailbox_key)
+                # Calculate remaining time if timeout is set
+                if effective_timeout is not None:
+                    elapsed = time.monotonic() - t0
+                    remaining = effective_timeout - elapsed
+                    if remaining <= 0:
+                        self.stats.record_recv_timeout()
+                        raise RecvTimeoutError(frm, key, effective_timeout)
+                    wait_time = min(1.0, remaining)
+                else:
+                    wait_time = 1.0
+
+                self._cond.wait(timeout=wait_time)
+
+            data = self._mailbox.pop(mailbox_key)
+
+        # Record stats (estimate size from data)
+        wait_time_ms = (time.monotonic() - t0) * 1000
+        # Estimate bytes - for bytes data use len, otherwise use a nominal value
+        size_bytes = len(data) if isinstance(data, bytes) else 0
+        self.stats.record_recv(size_bytes, wait_time_ms)
+
+        return data
 
     def on_receive(self, from_rank: int, key: str, data: Any) -> None:
         """Called when data is received from the HTTP endpoint."""
@@ -179,11 +435,15 @@ class HttpCommunicator:
             self._mailbox[mailbox_key] = data
             self._cond.notify_all()
 
-    def wait_pending_sends(self) -> None:
-        """Wait for all pending sends to complete."""
+    def wait_pending_sends(self, timeout: float = 120.0) -> None:
+        """Wait for all pending async sends to complete.
+
+        Args:
+            timeout: Timeout in seconds for each pending future.
+        """
         for future in self._pending_sends:
             try:
-                future.result(timeout=60.0)
+                future.result(timeout=timeout)
             except Exception as e:
                 logger.error(f"Rank {self.rank} send failed: {e}")
         self._pending_sends.clear()
@@ -241,6 +501,11 @@ def create_worker_app(
         FastAPI application instance
     """
     import asyncio
+
+    # Register operation implementations (lazy import to avoid slow module-level loading)
+    from mplang.backends import spu_impl as _spu_impl  # noqa: F401
+    from mplang.backends import tensor_impl as _tensor_impl  # noqa: F401
+    from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
 
     app = FastAPI(title=f"SIMP Worker {rank}")
 

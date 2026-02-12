@@ -51,6 +51,7 @@ class ThreadCommunicator:
             self._cond.notify_all()
 
     def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
+        """Send data to another rank (async-style but instant for in-memory)."""
         assert 0 <= to < self.world_size
         if self.use_serde:
             from mplang.edsl import serde
@@ -58,7 +59,46 @@ class ThreadCommunicator:
             data = serde.loads(serde.dumps(data))
         self.peers[to]._on_receive(self.rank, key, data)
 
-    def recv(self, frm: int, key: str) -> Any:
+    def send_sync(
+        self,
+        to: int,
+        key: str,
+        data: Any,
+        *,
+        is_raw_bytes: bool = False,
+        timeout: float | None = None,
+    ) -> None:
+        """Send data to another rank synchronously.
+
+        For ThreadCommunicator, this is identical to send() since in-memory
+        transfer is instant. The timeout parameter is accepted for interface
+        compatibility but ignored.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: If True, treat data as raw bytes.
+            timeout: Timeout in seconds (ignored, for interface compatibility).
+        """
+        _ = timeout  # Unused, in-memory transfer is instant
+        self.send(to, key, data, is_raw_bytes=is_raw_bytes)
+
+    def recv(self, frm: int, key: str, *, timeout: float | None = None) -> Any:
+        """Receive data from another rank.
+
+        Args:
+            frm: Source rank.
+            key: Message key.
+            timeout: Timeout in seconds. Currently ignored for ThreadCommunicator
+                (waits indefinitely), but accepted for interface compatibility.
+
+        Returns:
+            The received data.
+        """
+        # Note: timeout is accepted for interface compatibility but not implemented
+        # ThreadCommunicator is used for in-process simulation where timeouts are less critical
+        _ = timeout  # Unused, for interface compatibility
         mailbox_key = (frm, key)
         with self._cond:
             while mailbox_key not in self._mailbox and not self._shutdown:

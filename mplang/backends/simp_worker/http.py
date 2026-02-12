@@ -338,8 +338,7 @@ class HttpCommunicator:
                 to, key, data, is_raw_bytes, request_timeout=effective_timeout
             )
         except httpx.TimeoutException as e:
-            effective = timeout if timeout is not None else self.config.http_timeout
-            raise SendTimeoutError(to, key, effective or 0.0) from e
+            raise SendTimeoutError(to, key, effective_timeout or 0.0) from e
 
     def _do_send(
         self,

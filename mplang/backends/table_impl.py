@@ -635,12 +635,11 @@ def table2tensor_impl(interpreter: Interpreter, op: Operation, table_val: Any) -
     Returns TensorValue if tensor_impl is available, otherwise raw np.ndarray.
     """
     from mplang.backends.tensor_impl import TensorValue
+    from mplang.extend.arrow.vector import table_to_numpy
 
     tbl = _unwrap(table_val)
-    df = tbl.to_pandas()
-    # Convert to numpy array
-    # Note: This assumes the table is homogeneous as enforced by abstract_eval
-    arr = df.to_numpy()
+    arr = table_to_numpy(tbl)
+
     return TensorValue.wrap(arr)
 
 

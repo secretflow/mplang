@@ -21,9 +21,9 @@ from mplang.runtime.interpreter import InterpObject
 
 
 def _sample_table() -> InterpObject:
-    ttype = elt.Table[{"value": elt.Tensor[elt.f32, ()]}]
+    ttype = elt.Table[{"value": elt.f32}]
     data = np.array([(1.0,)], dtype=[("value", np.float64)])
-    return InterpObject(data, ttype)
+    return InterpObject(data, ttype)  # type: ignore
 
 
 def test_table_run_sql_op_emitted():
@@ -49,7 +49,7 @@ def test_table_to_tensor_and_back():
 
     def wrapper(tbl):
         tensor = table2tensor(tbl, number_rows=1)
-        return tensor2table(tensor, column_names=["value"])
+        return tensor2table(tensor, column_names=["value"])  # type: ignore
 
     traced = el.trace(wrapper, table)
     graph = traced.graph

@@ -249,7 +249,7 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
                 # We assume the tracer ensured all non-scalar tensors have compatible shapes.
                 arg = args[i]
                 if hasattr(arg, "shape"):
-                    shape = arg.shape
+                    shape = arg.shape  # type: ignore
                 break
 
     # 2. Construct output container

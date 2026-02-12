@@ -85,10 +85,13 @@ def test_thread_communicator_mailbox_overflow():
     data1 = "data1"
     data2 = "data2"
 
-    comm0.send(1, key, data1)
+    req1 = comm0.send(1, key, data1)
+    req1.wait()  # Ensure first send completes
 
+    # Second send to same key should raise on wait()
+    req2 = comm0.send(1, key, data2)
     with pytest.raises(RuntimeError, match="Mailbox overflow"):
-        comm0.send(1, key, data2)
+        req2.wait()
 
 
 def test_host_var():

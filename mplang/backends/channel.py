@@ -21,36 +21,12 @@ infrastructure instead of creating separate BRPC connections.
 
 from __future__ import annotations
 
-from typing import Protocol
-
 import spu.libspu as libspu
 
+from mplang.backends.simp_worker.base import CommunicatorProtocol
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-class CommunicatorProtocol(Protocol):
-    """Protocol for v2 communicators (duck typing).
-
-    Both ThreadCommunicator and HttpCommunicator implement this interface.
-    """
-
-    def send(
-        self, to: int, key: str, data: bytes, *, is_raw_bytes: bool = False
-    ) -> None: ...
-
-    def send_sync(
-        self,
-        to: int,
-        key: str,
-        data: bytes,
-        *,
-        is_raw_bytes: bool = False,
-        timeout: float | None = ...,
-    ) -> None: ...
-
-    def recv(self, frm: int, key: str, *, timeout: float | None = ...) -> bytes: ...
 
 
 class BaseChannel(libspu.link.IChannel):

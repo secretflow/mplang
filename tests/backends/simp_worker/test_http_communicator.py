@@ -24,6 +24,11 @@ from unittest.mock import patch
 
 import pytest
 
+from mplang.backends.simp_worker.base import (
+    RequestStatus,
+    SendRequest,
+    wait_all,
+)
 from mplang.backends.simp_worker.http import (
     CommConfig,
     CommStats,
@@ -475,8 +480,8 @@ class TestHttpCommunicatorSendSync:
 
         _, kwargs = mock_client.return_value.put.call_args
         assert kwargs["json"]["is_raw_bytes"] is True
-        # send_sync with no explicit timeout should use client-level default
-        assert "timeout" not in kwargs
+        # send_sync with no explicit timeout uses config.http_timeout (default 60.0)
+        assert kwargs["timeout"] == 60.0
 
         comm.shutdown()
 
@@ -503,5 +508,145 @@ class TestHttpCommunicatorSendSync:
         # Stats should record exactly one error (no double-count)
         assert comm.stats.send_errors == 1
         assert comm.stats.messages_sent == 0
+
+        comm.shutdown()
+
+
+class TestHttpCommunicatorSend:
+    """Tests for send() returning SendRequest (non-blocking send)."""
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_returns_send_request(self, mock_client):
+        """Test that send() returns a SendRequest object."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        req = comm.send(to=1, key="test_key", data=b"payload")
+
+        assert isinstance(req, SendRequest)
+        assert req.to == 1
+        assert req.key == "test_key"
+
+        comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_request_wait(self, mock_client):
+        """Test that SendRequest.wait() blocks until send completes."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        req = comm.send(to=1, key="k", data="data")
+        result = req.wait()  # Should complete successfully
+
+        assert result is None  # send returns None
+        assert req.status == RequestStatus.COMPLETED
+        assert comm.stats.messages_sent == 1
+
+        comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_request_test_method(self, mock_client):
+        """Test that SendRequest.test() returns completion status."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        req = comm.send(to=1, key="k", data="data")
+
+        # Wait briefly for background thread to complete
+        time.sleep(0.1)
+
+        done, result = req.test()
+        assert done is True
+        assert result is None
+
+        comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_multiple_sends_with_wait_all(self, mock_client):
+        """Test multiple send() calls with wait_all()."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        reqs = [
+            comm.send(to=1, key="k1", data="data1"),
+            comm.send(to=1, key="k2", data="data2"),
+            comm.send(to=1, key="k3", data="data3"),
+        ]
+
+        results = wait_all(reqs)
+
+        assert len(results) == 3
+        assert all(r is None for r in results)  # send returns None
+        assert comm.stats.messages_sent == 3
+
+        comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_isend_alias(self, mock_client):
+        """Test that isend is an alias for send."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        # isend should be the same underlying function as send
+        assert HttpCommunicator.isend is HttpCommunicator.send
+
+        req = comm.isend(to=1, key="k", data="payload")
+        assert isinstance(req, SendRequest)
+        req.wait()
+
+        comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_error_propagates_to_request(self, mock_client):
+        """Test that send errors are captured in SendRequest."""
+        import httpx as _httpx
+
+        mock_client.return_value.put.side_effect = _httpx.ConnectError(
+            "connection failed"
+        )
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        req = comm.send(to=1, key="k", data="data")
+
+        with pytest.raises(RuntimeError, match="Failed to send"):
+            req.wait()
+
+        assert req.status == RequestStatus.ERROR
+        assert comm.stats.send_errors == 1
 
         comm.shutdown()

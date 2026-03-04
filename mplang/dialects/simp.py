@@ -992,7 +992,7 @@ def make_compile_context(
         )
 
     if cluster_spec is None:
-        cluster_spec = CS.simple(world_size)  # type: ignore[arg-type]
+        cluster_spec = CS.simple(world_size)
 
     if world_size is None:
         world_size = len(cluster_spec.nodes)

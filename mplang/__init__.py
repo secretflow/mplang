@@ -40,7 +40,7 @@ from mplang.backends.simp_driver.ops import DRIVER_HANDLERS
 from mplang.backends.simp_worker import SimpWorker
 from mplang.backends.simp_worker.mem import LocalMesh
 from mplang.backends.simp_worker.ops import WORKER_HANDLERS
-from mplang.dialects.simp import make_driver, make_simulator
+from mplang.dialects.simp import make_compile_context, make_driver, make_simulator
 from mplang.edsl import (
     CompiledProgram,
     FlatIOSignature,
@@ -436,6 +436,7 @@ __all__ = [  # noqa: RUF022
     "LocalMesh",
     "SimpWorker",
     "WORKER_HANDLERS",
+    "make_compile_context",
     "make_driver",
     "make_simulator",
     "tool",

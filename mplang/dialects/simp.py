@@ -922,10 +922,95 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Any:
     return _make_drv(endpoints, cluster_spec=cluster_spec)
 
 
+class _CompileOnlyState:
+    """Minimal simp dialect state for compile-only contexts.
+
+    Provides the ``world_size`` property required by ``mp.function`` (which
+    queries ``ctx.get_dialect_state('simp').world_size``) without creating
+    any actual workers, communication mesh, or thread-pool executor.
+
+    This is intentionally **not** a subclass of ``SimpDriver`` – it does not
+    support ``submit``/``fetch``/``collect`` and will fail loudly if someone
+    attempts to *execute* through it.
+    """
+
+    dialect_name: str = "simp"
+
+    def __init__(self, world_size: int) -> None:
+        self._world_size = world_size
+
+    @property
+    def world_size(self) -> int:
+        return self._world_size
+
+
+def make_compile_context(
+    world_size: int | None = None,
+    *,
+    cluster_spec: Any = None,
+) -> Any:
+    """Create a lightweight Interpreter context sufficient for ``mp.compile``.
+
+    Unlike ``make_simulator`` this does **not** create workers, communication
+    meshes, thread-pool executors, or object stores.  It only provides the
+    two pieces of metadata that the Device API reads during tracing:
+
+    * ``_cluster_spec`` – consumed by ``_resolve_cluster()`` (device name
+      resolution, e.g. ``"P0"`` → rank 0).
+    * A minimal simp dialect state exposing ``world_size`` – consumed by
+      ``mp.function``.
+
+    This makes ``mp.compile`` work without any network / worker dependency,
+    which is the correct semantics: compilation (tracing) is a *driver-side
+    only* operation that builds the Graph IR.
+
+    Args:
+        world_size: Number of parties.  Required if *cluster_spec* is not
+            provided; inferred from *cluster_spec* otherwise.
+        cluster_spec: Optional ``ClusterSpec``.  If omitted a simple spec
+            is generated via ``ClusterSpec.simple(world_size)``.
+
+    Returns:
+        A configured ``Interpreter`` that can be passed to
+        ``mp.compile(..., context=ctx)`` or used as a context manager.
+
+    Raises:
+        ValueError: If neither *world_size* nor *cluster_spec* is provided.
+
+    Example:
+        >>> ctx = mp.make_compile_context(cluster_spec=my_cluster)
+        >>> traced = mp.compile(my_job, context=ctx)
+        >>> print(traced.compiler_ir())
+    """
+    from mplang.libs.device import ClusterSpec as CS
+    from mplang.runtime.interpreter import Interpreter
+
+    if cluster_spec is None and world_size is None:
+        raise ValueError(
+            "make_compile_context requires at least one of 'world_size' or "
+            "'cluster_spec'."
+        )
+
+    if cluster_spec is None:
+        cluster_spec = CS.simple(world_size)  # type: ignore[arg-type]
+
+    if world_size is None:
+        world_size = len(cluster_spec.nodes)
+
+    state = _CompileOnlyState(world_size)
+
+    interp = Interpreter(name="CompileContext")
+    interp.set_dialect_state("simp", state)
+    interp._cluster_spec = cluster_spec  # type: ignore[attr-defined]
+
+    return interp
+
+
 __all__ = [
     "constant",
     "converge",
     "converge_p",
+    "make_compile_context",
     "make_driver",
     "make_simulator",
     "pcall_dynamic",

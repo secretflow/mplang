@@ -985,17 +985,15 @@ def make_compile_context(
     from mplang.libs.device import ClusterSpec as CS
     from mplang.runtime.interpreter import Interpreter
 
-    if cluster_spec is None and world_size is None:
+    if cluster_spec is not None:
+        world_size = world_size or len(cluster_spec.nodes)
+    elif world_size is not None:
+        cluster_spec = CS.simple(world_size)
+    else:
         raise ValueError(
             "make_compile_context requires at least one of 'world_size' or "
             "'cluster_spec'."
         )
-
-    if cluster_spec is None:
-        cluster_spec = CS.simple(world_size)
-
-    if world_size is None:
-        world_size = len(cluster_spec.nodes)
 
     state = _CompileOnlyState(world_size)
 

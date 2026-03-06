@@ -76,15 +76,13 @@ class ThreadCommunicator:
         """
         assert 0 <= to < self.world_size
         future: concurrent.futures.Future[None] = concurrent.futures.Future()
-        try:
-            if self.use_serde and not is_raw_bytes:
-                from mplang.edsl import serde
+        if self.use_serde and not is_raw_bytes:
+            from mplang.edsl import serde
 
-                data = serde.loads(serde.dumps(data))
-            self.peers[to]._on_receive(self.rank, key, data)
-            future.set_result(None)
-        except Exception as e:
-            future.set_exception(e)
+            data = serde.loads(serde.dumps(data))
+        # Fail fast for in-memory transport: let any exception propagate.
+        self.peers[to]._on_receive(self.rank, key, data)
+        future.set_result(None)
         return SendRequest(future, to, key)
 
     # Alias for MPI-style naming

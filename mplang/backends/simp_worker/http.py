@@ -259,7 +259,8 @@ class HttpCommunicator:
         self._send_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=world_size, thread_name_prefix=f"comm_send_{rank}"
         )
-        self._pending_sends: list[concurrent.futures.Future[None]] = []
+        self._pending_sends: set[concurrent.futures.Future[None]] = set()
+        self._pending_sends_lock = threading.Lock()
         self.client = httpx.Client(timeout=self.config.http_timeout)
 
         # Auto-register stats with tracer for unified profiling output
@@ -298,7 +299,9 @@ class HttpCommunicator:
             >>> req.wait()  # Block until complete
         """
         future = self._send_executor.submit(self._do_send, to, key, data, is_raw_bytes)
-        self._pending_sends.append(future)
+        with self._pending_sends_lock:
+            self._pending_sends.add(future)
+        future.add_done_callback(self._remove_pending_send)
         return SendRequest(future, to, key)
 
     # Alias for MPI-style naming
@@ -488,18 +491,24 @@ class HttpCommunicator:
             self._mailbox[mailbox_key] = data
             self._cond.notify_all()
 
+    def _remove_pending_send(self, future: concurrent.futures.Future[None]) -> None:
+        """Done callback to prune completed futures from the pending set."""
+        with self._pending_sends_lock:
+            self._pending_sends.discard(future)
+
     def wait_pending_sends(self, timeout: float = 120.0) -> None:
         """Wait for all pending async sends to complete.
 
         Args:
             timeout: Timeout in seconds for each pending future.
         """
-        for future in self._pending_sends:
+        with self._pending_sends_lock:
+            pending = list(self._pending_sends)
+        for future in pending:
             try:
                 future.result(timeout=timeout)
             except Exception as e:
                 logger.error(f"Rank {self.rank} send failed: {e}")
-        self._pending_sends.clear()
 
     def shutdown(self) -> None:
         """Shutdown the send executor."""

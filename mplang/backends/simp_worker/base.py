@@ -24,6 +24,7 @@ ThreadCommunicator:
 from __future__ import annotations
 
 import concurrent.futures
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 # ---------------------------------------------------------------------------
@@ -258,11 +259,11 @@ class SendRequest(Request):
 # ---------------------------------------------------------------------------
 
 
-def wait_all(requests: list[Request], timeout: float | None = None) -> list[Any]:
+def wait_all(requests: Sequence[Request], timeout: float | None = None) -> list[Any]:
     """Wait for all requests to complete.
 
     Args:
-        requests: List of Request objects.
+        requests: Sequence of Request objects.
         timeout: Maximum total time to wait (seconds). None means wait forever.
 
     Returns:
@@ -298,11 +299,13 @@ def wait_all(requests: list[Request], timeout: float | None = None) -> list[Any]
     return results
 
 
-def wait_any(requests: list[Request], timeout: float | None = None) -> tuple[int, Any]:
+def wait_any(
+    requests: Sequence[Request], timeout: float | None = None
+) -> tuple[int, Any]:
     """Wait for any one request to complete.
 
     Args:
-        requests: List of Request objects.
+        requests: Sequence of Request objects.
         timeout: Maximum time to wait (seconds). None means wait forever.
 
     Returns:
@@ -338,11 +341,11 @@ def wait_any(requests: list[Request], timeout: float | None = None) -> tuple[int
     raise RuntimeError("Unexpected state in wait_any")
 
 
-def testall(requests: list[Request]) -> tuple[bool, list[Any] | None]:
+def testall(requests: Sequence[Request]) -> tuple[bool, list[Any] | None]:
     """Test if all requests are complete (non-blocking).
 
     Args:
-        requests: List of Request objects.
+        requests: Sequence of Request objects.
 
     Returns:
         Tuple of (all_done: bool, results: list | None).
@@ -369,11 +372,11 @@ def testall(requests: list[Request]) -> tuple[bool, list[Any] | None]:
     return True, results
 
 
-def testany(requests: list[Request]) -> tuple[int | None, Any | None]:
+def testany(requests: Sequence[Request]) -> tuple[int | None, Any | None]:
     """Test if any request is complete (non-blocking).
 
     Args:
-        requests: List of Request objects.
+        requests: Sequence of Request objects.
 
     Returns:
         Tuple of (index: int | None, result: Any | None).

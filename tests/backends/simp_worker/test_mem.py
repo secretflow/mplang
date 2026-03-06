@@ -88,10 +88,9 @@ def test_thread_communicator_mailbox_overflow():
     req1 = comm0.send(1, key, data1)
     req1.wait()  # Ensure first send completes
 
-    # Second send to same key should raise on wait()
-    req2 = comm0.send(1, key, data2)
+    # Second send to same key should raise (immediately for in-memory transport)
     with pytest.raises(RuntimeError, match="Mailbox overflow"):
-        req2.wait()
+        comm0.send(1, key, data2)
 
 
 def test_host_var():

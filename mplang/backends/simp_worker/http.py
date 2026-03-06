@@ -47,6 +47,15 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from mplang.backends.simp_worker.base import (
+    Request,
+    RequestStatus,
+    SendRequest,
+    testall,
+    testany,
+    wait_all,
+    wait_any,
+)
 from mplang.backends.simp_worker.state import SimpWorker
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
@@ -82,6 +91,27 @@ class SendTimeoutError(TimeoutError):
         self.key = key
         self.timeout = timeout
         super().__init__(f"Timeout after {timeout}s sending to rank {to} key={key}")
+
+
+# ---------------------------------------------------------------------------
+# Re-export Request handles for backward compatibility
+# ---------------------------------------------------------------------------
+
+__all__ = [
+    "CommConfig",
+    "CommStats",
+    "HttpCommunicator",
+    "RecvTimeoutError",
+    "Request",
+    "RequestStatus",
+    "SendRequest",
+    "SendTimeoutError",
+    "create_worker_app",
+    "testall",
+    "testany",
+    "wait_all",
+    "wait_any",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -229,18 +259,24 @@ class HttpCommunicator:
         self._send_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=world_size, thread_name_prefix=f"comm_send_{rank}"
         )
-        self._pending_sends: list[concurrent.futures.Future[None]] = []
+        self._pending_sends: set[concurrent.futures.Future[None]] = set()
+        self._pending_sends_lock = threading.Lock()
         self.client = httpx.Client(timeout=self.config.http_timeout)
 
         # Auto-register stats with tracer for unified profiling output
         if self.tracer is not None:
             self.tracer.register_comm_stats(f"rank_{rank}", self.stats)
 
-    def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
-        """Send data to another rank asynchronously.
+    def send(
+        self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False
+    ) -> SendRequest:
+        """Send data to another rank asynchronously (non-blocking).
 
-        The send is queued and executed in a background thread. Exceptions are
-        captured and will be raised when wait_pending_sends() is called.
+        The send is queued and executed in a background thread. Returns a
+        request handle that can be used to wait/test for completion.
+
+        Callers can ignore the return value for fire-and-forget semantics,
+        or use it for fine-grained control (MPI_Isend style).
 
         Args:
             to: Target rank.
@@ -249,9 +285,27 @@ class HttpCommunicator:
             is_raw_bytes: If True, treat `data` as raw bytes and transmit as
                 base64-encoded bytes (no serde). If False, the transport may still
                 treat `bytes` payloads as raw bytes.
+
+        Returns:
+            SendRequest handle for tracking the operation.
+
+        Example:
+            >>> # Fire-and-forget (ignore handle)
+            >>> comm.send(to=1, key="data", data=payload)
+            >>>
+            >>> # With handle (MPI_Isend style)
+            >>> req = comm.send(to=1, key="data", data=payload)
+            >>> # ... do other work ...
+            >>> req.wait()  # Block until complete
         """
         future = self._send_executor.submit(self._do_send, to, key, data, is_raw_bytes)
-        self._pending_sends.append(future)
+        with self._pending_sends_lock:
+            self._pending_sends.add(future)
+        future.add_done_callback(self._remove_pending_send)
+        return SendRequest(future, to, key)
+
+    # Alias for MPI-style naming
+    isend = send
 
     def send_sync(
         self,
@@ -281,11 +335,13 @@ class HttpCommunicator:
             SendTimeoutError: If the HTTP request times out.
             RuntimeError: If send fails for other reasons.
         """
+        effective_timeout = timeout if timeout is not None else self.config.http_timeout
         try:
-            self._do_send(to, key, data, is_raw_bytes, request_timeout=timeout)
+            self._do_send(
+                to, key, data, is_raw_bytes, request_timeout=effective_timeout
+            )
         except httpx.TimeoutException as e:
-            effective = timeout if timeout is not None else self.config.http_timeout
-            raise SendTimeoutError(to, key, effective or 0.0) from e
+            raise SendTimeoutError(to, key, effective_timeout or 0.0) from e
 
     def _do_send(
         self,
@@ -435,18 +491,24 @@ class HttpCommunicator:
             self._mailbox[mailbox_key] = data
             self._cond.notify_all()
 
+    def _remove_pending_send(self, future: concurrent.futures.Future[None]) -> None:
+        """Done callback to prune completed futures from the pending set."""
+        with self._pending_sends_lock:
+            self._pending_sends.discard(future)
+
     def wait_pending_sends(self, timeout: float = 120.0) -> None:
         """Wait for all pending async sends to complete.
 
         Args:
             timeout: Timeout in seconds for each pending future.
         """
-        for future in self._pending_sends:
+        with self._pending_sends_lock:
+            pending = list(self._pending_sends)
+        for future in pending:
             try:
                 future.result(timeout=timeout)
             except Exception as e:
                 logger.error(f"Rank {self.rank} send failed: {e}")
-        self._pending_sends.clear()
 
     def shutdown(self) -> None:
         """Shutdown the send executor."""

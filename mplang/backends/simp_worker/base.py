@@ -78,10 +78,18 @@ class CommunicatorProtocol(Protocol):
             key: Message key for matching send/recv pairs.
             data: Payload to send.
             is_raw_bytes: If True, treat data as raw bytes (skip serde).
-            timeout: Maximum time to wait (seconds). None means wait forever.
+            timeout: Maximum time to wait (seconds), if supported by the
+                implementation. ``None`` means wait indefinitely or use the
+                communicator's default behavior.
 
         Raises:
-            TimeoutError: If timeout expires before send completes.
+            TimeoutError: If the implementation supports timeouts and the
+                timeout expires before the send completes.
+
+        Note:
+            Support for ``timeout`` is implementation-dependent. Some
+            communicators may ignore this parameter and never raise
+            ``TimeoutError``.
         """
         ...
 

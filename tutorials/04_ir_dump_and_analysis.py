@@ -21,6 +21,7 @@ Learning objectives:
 
 Key tools:
 - mp.compile: generate Graph IR representation without executing
+- mp.make_compile_context: lightweight context for compile-only (no workers needed)
 - traced.compiler_ir(): get human-readable IR text
 - mp.format_graph: format graph for debugging
 - mp.tool.compile_program: build a portable CompiledProgram artifact (no user source on execute side)
@@ -100,6 +101,28 @@ def main():
     print("Number of graph inputs:", len(traced_pcall.graph.inputs))
     print("Number of graph outputs:", len(traced_pcall.graph.outputs))
     print("Number of operations:", len(traced_pcall.graph.operations))
+
+    # Pattern 1c: Compile without workers (make_compile_context)
+    # For compile-only scenarios, you don't need a full simulator with workers.
+    # make_compile_context creates a lightweight context with just metadata.
+    print("\n--- Pattern 1c: Compile without workers (make_compile_context) ---")
+    compile_ctx = mp.make_compile_context(cluster_spec=cluster_spec)
+    traced_light = mp.compile(millionaire, context=compile_ctx)
+    print("Traced (lightweight) ops:", len(traced_light.graph.operations))
+    print("Traced (simulator)  ops:", len(traced_plain.graph.operations))
+    print("IR identical:", traced_light.compiler_ir() == traced_plain.compiler_ir())
+
+    # You can also use just world_size (auto-generates a simple ClusterSpec)
+    compile_ctx2 = mp.make_compile_context(2)
+    traced_light2 = mp.compile(millionaire, context=compile_ctx2)
+    print("Compile with world_size only: ops =", len(traced_light2.graph.operations))
+
+    # Or use as a context manager (no need to pass context= explicitly)
+    with mp.make_compile_context(cluster_spec=cluster_spec):
+        traced_light3 = mp.compile(jitted_millionaire)
+    print(
+        "@mp.function via compile_context: ops =", len(traced_light3.graph.operations)
+    )
 
     # Pattern 2: Human-readable IR (compact)
     print("\n--- Pattern 2: Human-readable IR (compact) ---")
@@ -197,7 +220,8 @@ def main():
     )
     print("4. mp.evaluate can execute TracedFunction graphs directly")
     print("5. IR helps debug data flow and device placement")
-    print("6. CompiledProgram artifacts enable source-free execution")
+    print("6. make_compile_context: lightweight compile without workers/network")
+    print("7. CompiledProgram artifacts enable source-free execution")
     print("=" * 70)
 
 

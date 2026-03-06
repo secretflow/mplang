@@ -78,26 +78,28 @@ def _table2tensor_ae(table_t: elt.TableType, *, number_rows: int) -> elt.TensorT
         raise ValueError("number_rows must be >= 0")
     if not table_t.schema:
         raise ValueError("Cannot convert empty table to tensor")
-    column_types = list(table_t.schema.values())
-    first = column_types[0]
 
-    def _scalar_dtype(col: elt.BaseType) -> elt.BaseType:
-        if hasattr(col, "element_type"):
-            tensor_col = col  # type: ignore[assignment]
-            if tensor_col.shape not in ((), None):  # type: ignore[attr-defined]
-                raise TypeError(
-                    "table2tensor expects scalar columns (rank-0 TensorType)"
-                )
-            return tensor_col.element_type  # type: ignore[attr-defined,no-any-return]
-        return col
+    column_shape = 0
+    first_scalar: elt.BaseType | None = None
+    for col_name, col_type in table_t.schema.items():
+        if isinstance(col_type, elt.VectorType):
+            column_shape += col_type.size
+            scalar_type = col_type.element_type
+        else:
+            column_shape += 1
+            scalar_type = col_type  # type: ignore[assignment]
+        if not isinstance(scalar_type, elt.ScalarType):
+            raise TypeError(
+                f"table2tensor expects scalar columns, but column '{col_name}' has type {col_type}"
+            )
 
-    first_scalar = _scalar_dtype(first)
-    for col in column_types[1:]:
-        if _scalar_dtype(col) != first_scalar:
+        if first_scalar is None:
+            first_scalar = cast(elt.ScalarType, scalar_type)
+        elif scalar_type != first_scalar:
             raise TypeError("All table columns must share the same scalar dtype")
-    if not isinstance(first_scalar, elt.BaseType):
-        raise TypeError("All table columns must share the same dtype for table2tensor")
-    return elt.TensorType(first_scalar, (number_rows, len(column_types)))
+
+    assert isinstance(first_scalar, elt.ScalarType)
+    return elt.TensorType(first_scalar, (number_rows, column_shape))
 
 
 @tensor2table_p.def_abstract_eval

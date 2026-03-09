@@ -17,6 +17,18 @@
 Provides Worker-side state and ops for the simp dialect.
 """
 
+# Import base components first
+from mplang.backends.simp_worker.base import (
+    CommunicatorProtocol,
+    Request,
+    RequestStatus,
+    SendRequest,
+    testall,
+    testany,
+    wait_all,
+    wait_any,
+)
+
 # Import http module components after state to avoid circular import
 # (http.py imports SimpWorker from state.py directly)
 from mplang.backends.simp_worker.http import (
@@ -34,10 +46,18 @@ __all__ = [
     "WORKER_HANDLERS",
     "CommConfig",
     "CommStats",
+    "CommunicatorProtocol",
     "HttpCommunicator",
     "LocalMesh",
     "RecvTimeoutError",
+    "Request",
+    "RequestStatus",
+    "SendRequest",
     "SendTimeoutError",
     "SimpWorker",
     "ThreadCommunicator",
+    "testall",
+    "testany",
+    "wait_all",
+    "wait_any",
 ]

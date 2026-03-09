@@ -20,6 +20,12 @@ import concurrent.futures
 import threading
 from typing import Any
 
+from mplang.backends.simp_worker.base import SendRequest
+
+# ---------------------------------------------------------------------------
+# ThreadCommunicator
+# ---------------------------------------------------------------------------
+
 
 class ThreadCommunicator:
     """Thread-based communicator for in-memory communication.
@@ -50,14 +56,37 @@ class ThreadCommunicator:
             self._shutdown = True
             self._cond.notify_all()
 
-    def send(self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False) -> None:
-        """Send data to another rank (async-style but instant for in-memory)."""
+    def send(
+        self, to: int, key: str, data: Any, *, is_raw_bytes: bool = False
+    ) -> SendRequest:
+        """Send data to another rank (instant for in-memory).
+
+        Returns a request handle for API consistency with HttpCommunicator.
+        For ThreadCommunicator the handle is already completed since
+        in-memory transfer is instant.
+
+        Args:
+            to: Target rank.
+            key: Message key.
+            data: Payload.
+            is_raw_bytes: If True, treat data as raw bytes.
+
+        Returns:
+            SendRequest handle (already completed for in-memory).
+        """
         assert 0 <= to < self.world_size
-        if self.use_serde:
+        future: concurrent.futures.Future[None] = concurrent.futures.Future()
+        if self.use_serde and not is_raw_bytes:
             from mplang.edsl import serde
 
             data = serde.loads(serde.dumps(data))
+        # Fail fast for in-memory transport: let any exception propagate.
         self.peers[to]._on_receive(self.rank, key, data)
+        future.set_result(None)
+        return SendRequest(future, to, key)
+
+    # Alias for MPI-style naming
+    isend = send
 
     def send_sync(
         self,
@@ -82,7 +111,8 @@ class ThreadCommunicator:
             timeout: Timeout in seconds (ignored, for interface compatibility).
         """
         _ = timeout  # Unused, in-memory transfer is instant
-        self.send(to, key, data, is_raw_bytes=is_raw_bytes)
+        req = self.send(to, key, data, is_raw_bytes=is_raw_bytes)
+        req.wait()  # Immediate for in-memory, but ensures any exception is raised
 
     def recv(self, frm: int, key: str, *, timeout: float | None = None) -> Any:
         """Receive data from another rank.

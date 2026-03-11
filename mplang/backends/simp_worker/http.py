@@ -107,6 +107,7 @@ __all__ = [
     "SendRequest",
     "SendTimeoutError",
     "create_worker_app",
+    "register_routes",
     "testall",
     "testany",
     "wait_all",
@@ -539,71 +540,39 @@ class FetchRequest(BaseModel):
     uri: str
 
 
-def create_worker_app(
+def register_routes(
+    app: FastAPI,
+    *,
     rank: int,
     world_size: int,
-    endpoints: list[str],
-    spu_endpoints: dict[int, str] | None = None,
-    enable_tracing: bool = False,
-) -> FastAPI:
-    """Create a FastAPI app for the worker.
+    worker: Interpreter,
+    comm: HttpCommunicator,
+    store: ObjectStore,
+    exec_pool: concurrent.futures.ThreadPoolExecutor,
+) -> None:
+    """Register HTTP routes on a FastAPI app for a SIMP worker.
 
-    The app uses async endpoints with run_in_executor to allow concurrent
-    handling of /exec and /comm requests. This is essential for cross-party
-    communication where one party sends while another receives.
+    This is extracted from ``create_worker_app`` so that the same set of
+    routes can be mounted on a caller-provided ``FastAPI`` instance,
+    enabling reuse in custom server setups.
+
+    Note:
+        The *worker* ``Interpreter`` must have the ``"simp"`` dialect state
+        registered (via ``worker.set_dialect_state("simp", ctx)``) before
+        any request is served, as the ``/fetch`` and ``/objects`` endpoints
+        rely on it.
 
     Args:
-        rank: The global rank of this worker.
+        app: The FastAPI application to register routes on.
+        rank: This worker's rank.
         world_size: Total number of workers.
-        endpoints: HTTP endpoints for all workers (for shuffle communication).
-        spu_endpoints: Optional dict mapping global_rank -> BRPC endpoint for SPU.
-        enable_tracing: Whether to enable execution tracing for profiler.
-
-    Returns:
-        FastAPI application instance
+        worker: The Interpreter instance for graph execution.
+        comm: The HttpCommunicator for inter-worker communication.
+        store: The ObjectStore for data persistence.
+        exec_pool: Thread pool for executing graphs.
     """
     import asyncio
-
-    # Register operation implementations (lazy import to avoid slow module-level loading)
-    from mplang.backends import spu_impl as _spu_impl  # noqa: F401
-    from mplang.backends import tensor_impl as _tensor_impl  # noqa: F401
-    from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
-
-    app = FastAPI(title=f"SIMP Worker {rank}")
-
-    # Persistence root: ${MPLANG_DATA_ROOT}/<cluster_id>/node<rank>/
-    data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
-    cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
-    root_dir = data_root / cluster_id / f"node{rank}"
-
-    tracer = None
-    if enable_tracing:
-        trace_dir = root_dir / "trace"
-        tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
-        tracer.start()
-
-    comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
-    store = ObjectStore(fs_root=str(root_dir))
-    ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
-
-    # Register handlers
-    from collections.abc import Callable
     from typing import cast
-
-    from mplang.backends.simp_worker.ops import WORKER_HANDLERS
-
-    # func_impl is already imported at module level for side-effects
-    handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
-
-    worker = Interpreter(
-        tracer=tracer, root_dir=root_dir, handlers=handlers, store=store
-    )
-    # Register SimpWorker context as 'simp' dialect state
-    worker.set_dialect_state("simp", ctx)
-
-    exec_pool = concurrent.futures.ThreadPoolExecutor(
-        max_workers=2, thread_name_prefix=f"exec_{rank}"
-    )
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
         """Execute graph in worker thread."""
@@ -688,7 +657,79 @@ def create_worker_app(
     @app.on_event("shutdown")
     def shutdown_event() -> None:
         """Cleanup on shutdown."""
+        worker.shutdown()
         comm.shutdown()
         exec_pool.shutdown(wait=True)
+
+
+def create_worker_app(
+    rank: int,
+    world_size: int,
+    endpoints: list[str],
+    spu_endpoints: dict[int, str] | None = None,
+    enable_tracing: bool = False,
+) -> FastAPI:
+    """Create a FastAPI app for the worker.
+
+    The app uses async endpoints with run_in_executor to allow concurrent
+    handling of /exec and /comm requests. This is essential for cross-party
+    communication where one party sends while another receives.
+
+    Args:
+        rank: The global rank of this worker.
+        world_size: Total number of workers.
+        endpoints: HTTP endpoints for all workers (for shuffle communication).
+        spu_endpoints: Optional dict mapping global_rank -> BRPC endpoint for SPU.
+        enable_tracing: Whether to enable execution tracing for profiler.
+
+    Returns:
+        FastAPI application instance
+    """
+    # Register operation implementations (lazy import to avoid slow module-level loading)
+    from collections.abc import Callable
+
+    from mplang.backends import spu_impl as _spu_impl  # noqa: F401
+    from mplang.backends import tensor_impl as _tensor_impl  # noqa: F401
+    from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
+    from mplang.backends.simp_worker.ops import WORKER_HANDLERS
+
+    app = FastAPI(title=f"SIMP Worker {rank}")
+
+    # Persistence root: ${MPLANG_DATA_ROOT}/<cluster_id>/node<rank>/
+    data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
+    cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
+    root_dir = data_root / cluster_id / f"node{rank}"
+
+    tracer = None
+    if enable_tracing:
+        trace_dir = root_dir / "trace"
+        tracer = ExecutionTracer(enabled=True, trace_dir=trace_dir)
+        tracer.start()
+
+    comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
+    store = ObjectStore(fs_root=str(root_dir))
+    ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
+
+    handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
+
+    worker = Interpreter(
+        tracer=tracer, root_dir=root_dir, handlers=handlers, store=store
+    )
+    # Register SimpWorker context as 'simp' dialect state
+    worker.set_dialect_state("simp", ctx)
+
+    exec_pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=2, thread_name_prefix=f"exec_{rank}"
+    )
+
+    register_routes(
+        app,
+        rank=rank,
+        world_size=world_size,
+        worker=worker,
+        comm=comm,
+        store=store,
+        exec_pool=exec_pool,
+    )
 
     return app

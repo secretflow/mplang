@@ -553,8 +553,14 @@ def register_routes(
     """Register HTTP routes on a FastAPI app for a SIMP worker.
 
     This is extracted from ``create_worker_app`` so that the same set of
-    routes can be mounted on a caller-provided ``FastAPI`` (or ``APIRouter``)
-    instance, enabling reuse in custom server setups.
+    routes can be mounted on a caller-provided ``FastAPI`` instance,
+    enabling reuse in custom server setups.
+
+    Note:
+        The *worker* ``Interpreter`` must have the ``"simp"`` dialect state
+        registered (via ``worker.set_dialect_state("simp", ctx)``) before
+        any request is served, as the ``/fetch`` and ``/objects`` endpoints
+        rely on it.
 
     Args:
         app: The FastAPI application to register routes on.
@@ -651,6 +657,7 @@ def register_routes(
     @app.on_event("shutdown")
     def shutdown_event() -> None:
         """Cleanup on shutdown."""
+        worker.shutdown()
         comm.shutdown()
         exec_pool.shutdown(wait=True)
 

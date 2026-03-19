@@ -241,7 +241,7 @@ def _device_run(
     if g_auto_trans:
 
         def trans(obj: Any) -> Any:
-            if isinstance(obj, Object) and is_device_obj(obj):
+            if is_device_obj(obj):
                 return _d2d(dev_id, obj)
             else:
                 return obj
@@ -681,7 +681,7 @@ def put(to_dev_id: str, obj: Any) -> Object:
             f"Device '{to_dev_id}' not found in cluster. Available devices: {available}"
         )
 
-    if isinstance(obj, Object) and is_device_obj(obj):
+    if is_device_obj(obj):
         return _d2d(to_dev_id, obj)
 
     # Host -> Device

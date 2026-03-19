@@ -152,50 +152,23 @@ def _infer_device_from_args(*args: Any, **kwargs: Any) -> str:
     cluster = _resolve_cluster()
     device_kinds = {dev_id: cluster.devices[dev_id].kind.upper() for dev_id in devices}
 
-    # Count devices by type
-    spu_devs = [d for d, k in device_kinds.items() if k == "SPU"]
-    tee_devs = [d for d, k in device_kinds.items() if k == "TEE"]
-    ppu_devs = [d for d, k in device_kinds.items() if k == "PPU"]
+    # Secure devices (SPU/TEE) take priority over PPU; exactly one must be present
+    secure_devs = [d for d, k in device_kinds.items() if k in ("SPU", "TEE")]
 
-    # Decision logic
-    # Case 1: Only PPUs -> ambiguous (unless we want to pick one arbitrarily, but safer to error)
-    if not spu_devs and not tee_devs:
+    if len(secure_devs) == 1:
+        return secure_devs[0]
+
+    if not secure_devs:
+        ppu_devs = [d for d, k in device_kinds.items() if k == "PPU"]
         raise DeviceInferenceError(
             f"Cannot infer device: arguments from multiple PPU devices {ppu_devs}. "
             f"Please specify device explicitly or use put() to consolidate data."
         )
 
-    # Case 2: Single SPU (possibly with PPUs) -> use SPU
-    if len(spu_devs) == 1 and len(tee_devs) == 0:
-        return spu_devs[0]
-
-    # Case 3: Single TEE (possibly with PPUs) -> use TEE
-    if len(tee_devs) == 1 and len(spu_devs) == 0:
-        return tee_devs[0]
-
-    # Case 4: Multiple SPUs -> ambiguous
-    if len(spu_devs) > 1:
-        raise DeviceInferenceError(
-            f"Ambiguous device inference: arguments from multiple SPU devices {spu_devs}. "
-            f"Please specify which SPU to use explicitly."
-        )
-
-    # Case 5: Multiple TEEs -> ambiguous
-    if len(tee_devs) > 1:
-        raise DeviceInferenceError(
-            f"Ambiguous device inference: arguments from multiple TEE devices {tee_devs}. "
-            f"Please specify which TEE to use explicitly."
-        )
-
-    # Case 6: Both SPU and TEE -> conflicting
-    if spu_devs and tee_devs:
-        raise DeviceInferenceError(
-            f"Ambiguous device inference: arguments from both SPU {spu_devs} and TEE {tee_devs}. "
-            f"Please specify which secure device to use explicitly."
-        )
-
-    # Should never reach here
-    raise DeviceInferenceError(f"Unexpected device configuration: {devices}")
+    raise DeviceInferenceError(
+        f"Ambiguous device inference: arguments from multiple secure devices {secure_devs}. "
+        f"Please specify which device to use explicitly."
+    )
 
 
 def _device_run_spu(dev_info: Device, fn: Callable, *args: Any, **kwargs: Any) -> Any:

@@ -12,7 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""ObjectStore implementation for MPLang v2 runtime."""
+"""ObjectStore implementation for MPLang v2 runtime.
+
+ObjectStore provides a two-layer storage model:
+
+- **Transient layer** (MemoryBackend): system-managed in-memory storage for
+  runtime values passed between graph executions. Users never interact with
+  this layer directly.
+- **Persistent layer** (pluggable StoreBackend): user-facing storage for
+  checkpointing via ``store.save`` / ``store.load`` dialect. The concrete
+  backend (local filesystem, S3, OSS, …) is chosen at deployment time.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +35,12 @@ from typing import Any
 
 class StoreBackend(ABC):
     """Abstract base class for storage backends."""
+
+    @property
+    @abstractmethod
+    def scheme(self) -> str:
+        """URI scheme identifying this backend (e.g. ``mem``, ``fs``, ``s3``)."""
+        ...
 
     @abstractmethod
     def put(self, key: str, value: Any) -> None:
@@ -55,6 +71,10 @@ class StoreBackend(ABC):
 class MemoryBackend(StoreBackend):
     """In-memory storage backend."""
 
+    @property
+    def scheme(self) -> str:
+        return "mem"
+
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
 
@@ -78,6 +98,10 @@ class MemoryBackend(StoreBackend):
 
 class FileSystemBackend(StoreBackend):
     """File system storage backend using pickle."""
+
+    @property
+    def scheme(self) -> str:
+        return "fs"
 
     def __init__(self, root_dir: str) -> None:
         self._root = os.path.abspath(root_dir)
@@ -125,47 +149,93 @@ class FileSystemBackend(StoreBackend):
 
 
 class ObjectStore:
-    """Distributed Object Store dispatcher."""
+    """Object store with scheme-based dispatch.
 
-    def __init__(self, fs_root: str) -> None:
-        self._backends: dict[str, StoreBackend] = {}
-        # Register default memory backend
-        self.register_backend("mem", MemoryBackend())
-        # Register file system backend
-        self.register_backend("fs", FileSystemBackend(root_dir=fs_root))
+    Manages two backend layers:
 
-    def register_backend(self, scheme: str, backend: StoreBackend) -> None:
-        """Register a storage backend for a specific URI scheme."""
-        self._backends[scheme] = backend
+    - **transient** (``mem://``): built-in ``MemoryBackend`` for runtime value
+      passing between graph executions.
+    - **persistent** (pluggable): optional ``StoreBackend`` for checkpointing
+      via the ``store.save`` / ``store.load`` dialect.  The concrete backend
+      (filesystem, S3, OSS, ...) is provided at construction time.
+
+    All values are addressed by URIs of the form ``<scheme>://<key>``.
+    :meth:`put` / :meth:`get` / :meth:`delete` / :meth:`exists` dispatch to
+    the correct backend based on the URI scheme.
+    """
+
+    def __init__(self, persistent: StoreBackend | None = None) -> None:
+        self._transient = MemoryBackend()
+        self._persistent = persistent
+        # Build scheme -> backend lookup
+        self._backends: dict[str, StoreBackend] = {
+            self._transient.scheme: self._transient,
+        }
+        if persistent is not None:
+            if persistent.scheme == self._transient.scheme:
+                raise ValueError(
+                    f"Persistent backend scheme '{persistent.scheme}' "
+                    f"collides with the built-in transient scheme."
+                )
+            self._backends[persistent.scheme] = persistent
+
+    # ------------------------------------------------------------------
+    # URI helpers
+    # ------------------------------------------------------------------
 
     def _parse_uri(self, uri: str) -> tuple[StoreBackend, str]:
-        """Parse URI and return (backend, key)."""
-        if "://" not in uri:
-            raise ValueError(f"Invalid URI format: {uri}")
+        """Parse ``<scheme>://<key>`` and return (backend, key).
 
+        Raises ``ValueError`` for malformed URIs or unknown schemes.
+        """
+        if "://" not in uri:
+            raise ValueError(f"Invalid URI format (missing '://'): {uri}")
         scheme, _, key = uri.partition("://")
         if scheme not in self._backends:
-            raise ValueError(f"No backend registered for scheme: {scheme}")
-
+            raise ValueError(
+                f"No backend registered for scheme '{scheme}'. "
+                f"Available: {list(self._backends)}"
+            )
         return self._backends[scheme], key
 
+    # ------------------------------------------------------------------
+    # Core API
+    # ------------------------------------------------------------------
+
     def put(self, value: Any, uri: str | None = None) -> str:
-        """
-        Store a value.
+        """Store a value.
 
         Args:
             value: The object to store.
-            uri: Optional URI. If None, generates 'mem://<uuid>'.
+            uri: Optional URI.
+
+                - *None* -> auto-generate ``mem://<uuid>`` (transient).
+                - *has scheme* (e.g. ``fs://ckpt/s100``) -> dispatch by scheme;
+                  the scheme must match a registered backend.
+                - *no scheme* (e.g. ``ckpt/s100``) -> auto-prefix with the
+                  persistent backend's scheme.
 
         Returns:
-            The URI where the object is stored.
+            The full URI (always includes ``<scheme>://``).
         """
         if uri is None:
-            uri = f"mem://{uuid.uuid4()}"
+            key = uuid.uuid4().hex
+            self._transient.put(key, value)
+            return f"{self._transient.scheme}://{key}"
 
-        backend, key = self._parse_uri(uri)
-        backend.put(key, value)
-        return uri
+        if "://" in uri:
+            backend, key = self._parse_uri(uri)
+            backend.put(key, value)
+            return uri
+
+        # No scheme -> persistent backend
+        if self._persistent is None:
+            raise RuntimeError(
+                "No persistent backend configured. "
+                "Pass a StoreBackend to ObjectStore(persistent=...)."
+            )
+        self._persistent.put(uri, value)
+        return f"{self._persistent.scheme}://{uri}"
 
     def get(self, uri: str) -> Any:
         """Retrieve a value by URI."""
@@ -182,13 +252,36 @@ class ObjectStore:
         backend, key = self._parse_uri(uri)
         return backend.exists(key)
 
-    def list_objects(self) -> list[str]:
-        """List all objects in all backends."""
-        uris: list[str] = []
+    # ------------------------------------------------------------------
+    # Convenience
+    # ------------------------------------------------------------------
+
+    @property
+    def persistent(self) -> StoreBackend | None:
+        """Access the persistent backend (for advanced usage or testing)."""
+        return self._persistent
+
+    def resolve_uri(self, uri_or_key: str) -> str:
+        """Ensure a string is a full URI.
+
+        If *uri_or_key* already contains ``://``, return it unchanged.
+        Otherwise, prefix it with the persistent backend's scheme.
+        """
+        if "://" in uri_or_key:
+            return uri_or_key
+        if self._persistent is None:
+            raise RuntimeError(
+                "No persistent backend configured. "
+                "Pass a StoreBackend to ObjectStore(persistent=...)."
+            )
+        return f"{self._persistent.scheme}://{uri_or_key}"
+
+    def list_keys(self) -> list[str]:
+        """List all objects as scheme-prefixed URIs.
+
+        Returns a flat list, e.g. ``["mem://abc", "fs://ckpt/s100"]``.
+        """
+        keys: list[str] = []
         for scheme, backend in self._backends.items():
-            try:
-                keys = backend.list_keys()
-                uris.extend(f"{scheme}://{key}" for key in keys)
-            except NotImplementedError:
-                pass
-        return uris
+            keys.extend(f"{scheme}://{k}" for k in backend.list_keys())
+        return keys

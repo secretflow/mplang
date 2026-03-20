@@ -28,11 +28,12 @@ def test_memory_backend():
         backend.get("k1")
 
 
-def test_object_store(tmp_path):
-    store = ObjectStore(fs_root=str(tmp_path))
+def test_object_store_transient():
+    store = ObjectStore()
 
-    # Test default put (mem://)
+    # put returns a mem:// URI
     uri = store.put("value")
+    assert isinstance(uri, str)
     assert uri.startswith("mem://")
     assert store.get(uri) == "value"
     assert store.exists(uri)
@@ -42,14 +43,31 @@ def test_object_store(tmp_path):
     with pytest.raises(KeyError):
         store.get(uri)
 
-    # Test explicit URI
-    uri2 = "mem://custom-key"
-    store.put("value2", uri2)
-    assert store.get(uri2) == "value2"
 
-    # Test invalid scheme
-    with pytest.raises(ValueError, match="No backend registered"):
-        store.put("val", "invalid://key")
+def test_object_store_persistent(tmp_path):
+    from mplang.runtime.object_store import FileSystemBackend
 
-    with pytest.raises(ValueError, match="Invalid URI"):
-        store.put("val", "invalid-uri")
+    store = ObjectStore(persistent=FileSystemBackend(str(tmp_path)))
+
+    # Bare key -> auto-prefix with persistent scheme
+    uri = store.put("my_value", uri="my_key")
+    assert uri == "fs://my_key"
+    assert store.get("fs://my_key") == "my_value"
+
+    # Explicit scheme
+    store.put("v2", uri="fs://explicit")
+    assert store.get("fs://explicit") == "v2"
+
+
+def test_object_store_no_persistent():
+    store = ObjectStore()
+    with pytest.raises(RuntimeError, match="No persistent backend configured"):
+        store.put("v", uri="bare_key")
+
+
+def test_object_store_invalid_scheme():
+    store = ObjectStore()
+    with pytest.raises(ValueError, match="No backend registered for scheme"):
+        store.put("v", uri="unknown://key")
+    with pytest.raises(ValueError, match="Invalid URI format"):
+        store.get("no-scheme")

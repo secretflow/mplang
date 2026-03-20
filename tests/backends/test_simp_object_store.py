@@ -25,34 +25,30 @@ def test_object_store_put_get():
     worker0 = workers[0]
     store0 = worker0.store
 
-    key = "test_key"
     data = "test_data"
 
-    # Fixed put usage
-    uri_0 = f"mem://{key}"
-    store0.put(data, uri_0)
+    # Store with generated key
+    key = store0.put(data)
+    assert isinstance(key, str)
+    assert store0.get(key) == data
 
-    val = store0.get(uri_0)
-    assert val == data
-
-    # Store with generated URI
-    uri_gen = store0.put("some_data")
-    assert "mem://" in uri_gen
-    assert store0.get(uri_gen) == "some_data"
-    val = store0.get(uri_0)
-    assert val == data
+    # Store another value
+    key2 = store0.put("some_data")
+    assert store0.get(key2) == "some_data"
+    # Original still accessible
+    assert store0.get(key) == data
     hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
-def test_object_store_host_var_storage(tmp_path):
+def test_object_store_host_var_storage():
     """Test storing DriverVar."""
     from mplang.runtime.object_store import ObjectStore
 
-    store = ObjectStore(fs_root=tmp_path)
+    store = ObjectStore()
     hv = DriverVar([1, 2, 3])
-    uri = store.put(hv)
+    key = store.put(hv)
 
-    hv_out = store.get(uri)
+    hv_out = store.get(key)
     assert isinstance(hv_out, DriverVar)
     assert hv_out.values == hv.values
 
@@ -68,7 +64,7 @@ def test_simulator_object_store_flow():
     uri_x0 = workers[0].store.put(data_0)
     uri_x1 = workers[1].store.put(data_1)
 
-    # 2. Verify URIs are valid format
+    # 2. Verify URIs have scheme prefix
     assert isinstance(uri_x0, str) and "://" in uri_x0
     assert isinstance(uri_x1, str) and "://" in uri_x1
 

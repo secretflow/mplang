@@ -26,7 +26,7 @@ import httpx
 from mplang.backends.simp_driver.state import SimpDriver
 from mplang.edsl import serde
 from mplang.runtime.interpreter import Interpreter
-from mplang.runtime.object_store import ObjectStore
+from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -163,7 +163,7 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Interprete
         name="DriverInterpreter",
         root_dir=state.driver_root,
         handlers=handlers,
-        store=ObjectStore(fs_root=str(state.driver_root)),
+        store=ObjectStore(persistent=FileSystemBackend(str(state.driver_root))),
     )
     interp.set_dialect_state("simp", state)
     interp._cluster_spec = cluster_spec  # type: ignore[attr-defined]

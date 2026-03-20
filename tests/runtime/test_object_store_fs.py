@@ -77,28 +77,32 @@ class TestFileSystemBackend(unittest.TestCase):
 class TestObjectStoreWithFS(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.store = ObjectStore(fs_root=self.test_dir)
+        self.store = ObjectStore(persistent=FileSystemBackend(self.test_dir))
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
-    def test_fs_uri(self):
-        uri = "fs://mydata"
+    def test_save_load(self):
         value = [1, 2, 3]
+        uri = self.store.put(value, uri="mydata")
+        self.assertEqual(uri, "fs://mydata")
 
-        # Put with explicit URI
-        returned_uri = self.store.put(value, uri=uri)
-        self.assertEqual(returned_uri, uri)
-
-        # Get
-        retrieved = self.store.get(uri)
+        retrieved = self.store.get("fs://mydata")
         self.assertEqual(retrieved, value)
 
         # Check file existence
         self.assertTrue(os.path.exists(os.path.join(self.test_dir, "mydata")))
 
-    def test_fs_uri_nested(self):
-        uri = "fs://path/to/data"
+    def test_save_load_nested(self):
         value = "hello"
-        self.store.put(value, uri=uri)
-        self.assertEqual(self.store.get(uri), value)
+        self.store.put(value, uri="path/to/data")
+        self.assertEqual(self.store.get("fs://path/to/data"), value)
+
+    def test_transient_independent(self):
+        """Transient put/get works independently from persistent."""
+        uri = self.store.put("transient_val")
+        self.assertTrue(uri.startswith("mem://"))
+        self.assertEqual(self.store.get(uri), "transient_val")
+
+        self.store.put("persistent_val", uri="persistent_key")
+        self.assertEqual(self.store.get("fs://persistent_key"), "persistent_val")

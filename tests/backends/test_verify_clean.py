@@ -27,24 +27,22 @@ def test_object_store_put_get():
     worker0 = workers[0]
     store0 = worker0.store
 
-    key = "mem://test_key"
     data = "test_data"
 
-    # Store with explicit URI
-    store0.put(data, uri=key)
+    # Store with generated key
+    key = store0.put(data)
     assert store0.get(key) == data
     hasattr(sim, "_simp_cluster") and sim._simp_cluster.shutdown()
 
 
-def test_object_store_host_var_storage(tmp_path):
+def test_object_store_host_var_storage():
     """Test storing DriverVar."""
     from mplang.runtime.object_store import ObjectStore
 
-    store = ObjectStore(fs_root=tmp_path)
+    store = ObjectStore()
     hv = DriverVar([1, 2, 3])
-    # Let it generate URI
-    uri = store.put(hv)
-    val = store.get(uri)
+    key = store.put(hv)
+    val = store.get(key)
     assert val.values == [1, 2, 3]
 
 

@@ -26,7 +26,7 @@ from mplang.backends.simp_driver.state import SimpDriver
 from mplang.backends.simp_worker import WORKER_HANDLERS, SimpWorker
 from mplang.backends.simp_worker.mem import LocalMesh
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
-from mplang.runtime.object_store import ObjectStore
+from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
@@ -78,7 +78,9 @@ class MemCluster:
         self._workers: list[Interpreter] = []
         for rank in range(world_size):
             worker_root = cluster_root / f"node{rank}"
-            store = ObjectStore(fs_root=str(worker_root / "store"))
+            store = ObjectStore(
+                persistent=FileSystemBackend(str(worker_root / "store"))
+            )
 
             worker_state = SimpWorker(
                 rank=rank,
@@ -265,7 +267,7 @@ def make_simulator(
         root_dir=cluster.host_root,
         handlers=handlers,
         tracer=cluster.tracer,
-        store=ObjectStore(fs_root=str(cluster.host_root)),
+        store=ObjectStore(persistent=FileSystemBackend(str(cluster.host_root))),
     )
     interp.set_dialect_state("simp", state)
 

@@ -23,40 +23,20 @@ from mplang.edsl.graph import Operation
 from mplang.runtime.interpreter import Interpreter
 
 
-def _get_uri(uri_base: str) -> str:
-    """Generate URI: {uri_base}."""
-    # Handle different schemes if necessary, for now assume simple path joining
-    # or scheme preservation.
-    if "://" in uri_base:
-        scheme, _, path = uri_base.partition("://")
-        # Ensure we don't double slash if path is absolute
-        return f"{scheme}://{path}"
-    else:
-        # Default to fs:// for absolute paths (sandboxed)
-        return f"fs://{uri_base}"
-
-
 @store.save_p.def_impl
 def save_impl(interpreter: Interpreter, op: Operation, obj_val: Any) -> Any:
-    """Save implementation."""
+    """Save implementation — delegates to ObjectStore.put(uri=...)."""
     uri_base: str = op.attrs["uri_base"]
-
-    # Use ObjectStore to put the value
-    # Note: obj_val is the runtime value (e.g. TensorValue, TableValue, or raw)
-    # We store it as is (pickle).
     if interpreter.store is None:
         raise RuntimeError("Interpreter has no ObjectStore configured. Cannot save.")
-    interpreter.store.put(obj_val, uri=_get_uri(uri_base))
-
+    interpreter.store.put(obj_val, uri=uri_base)
     return obj_val
 
 
 @store.load_p.def_impl
 def load_impl(interpreter: Interpreter, op: Operation) -> Any:
-    """Load implementation."""
+    """Load implementation — delegates to ObjectStore.get()."""
     uri_base: str = op.attrs["uri_base"]
-    # expected_type is in attrs but not needed for runtime loading (pickle handles it)
-
     if interpreter.store is None:
         raise RuntimeError("Interpreter has no ObjectStore configured. Cannot load.")
-    return interpreter.store.get(_get_uri(uri_base))
+    return interpreter.store.get(interpreter.store.resolve_uri(uri_base))

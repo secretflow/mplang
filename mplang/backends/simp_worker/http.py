@@ -60,7 +60,7 @@ from mplang.backends.simp_worker.state import SimpWorker
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
-from mplang.runtime.object_store import ObjectStore
+from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -629,7 +629,7 @@ def register_routes(
 
     @app.post("/fetch")
     async def fetch(req: FetchRequest) -> dict[str, str]:
-        """Fetch data by URI."""
+        """Fetch data by URI (e.g. ``mem://abc123``, ``fs://ckpt/s100``)."""
         logger.debug(f"Worker {rank} received fetch request for {req.uri}")
         try:
             state = cast(SimpWorker, worker.get_dialect_state("simp"))
@@ -641,10 +641,10 @@ def register_routes(
 
     @app.get("/objects")
     async def list_objects() -> dict[str, list[str]]:
-        """List all objects in the worker's store."""
+        """List all objects in the worker's store (transient + persistent)."""
         try:
             state = cast(SimpWorker, worker.get_dialect_state("simp"))
-            return {"objects": state.store.list_objects()}
+            return {"objects": state.store.list_keys()}
         except Exception as e:
             logger.error(f"Worker {rank} list_objects failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -668,6 +668,7 @@ def create_worker_app(
     endpoints: list[str],
     spu_endpoints: dict[int, str] | None = None,
     enable_tracing: bool = False,
+    store: ObjectStore | None = None,
 ) -> FastAPI:
     """Create a FastAPI app for the worker.
 
@@ -681,6 +682,9 @@ def create_worker_app(
         endpoints: HTTP endpoints for all workers (for shuffle communication).
         spu_endpoints: Optional dict mapping global_rank -> BRPC endpoint for SPU.
         enable_tracing: Whether to enable execution tracing for profiler.
+        store: Optional pre-configured ObjectStore. If not provided, a default
+            ObjectStore with FileSystemBackend is created using the standard
+            persistence root (``${MPLANG_DATA_ROOT}/<cluster_id>/node<rank>/``).
 
     Returns:
         FastAPI application instance
@@ -707,7 +711,8 @@ def create_worker_app(
         tracer.start()
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
-    store = ObjectStore(fs_root=str(root_dir))
+    if store is None:
+        store = ObjectStore(persistent=FileSystemBackend(str(root_dir)))
     ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
 
     handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]

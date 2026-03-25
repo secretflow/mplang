@@ -150,7 +150,7 @@ class TestDeviceInferenceError:
         with pytest.raises(DeviceInferenceError) as exc_info:
             add(x, y)
 
-        assert "multiple SPU devices" in str(exc_info.value)
+        assert "multiple secure devices" in str(exc_info.value)
 
 
 # =============================================================================

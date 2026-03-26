@@ -46,6 +46,7 @@ Helper Functions
 from __future__ import annotations
 
 import base64
+import functools
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -314,12 +315,10 @@ def jax_fn(fn: Callable[..., Any]) -> Callable[..., Any]:
         >>> result = pcall_static((0,), wrapped, x_p0)
     """
 
+    @functools.wraps(fn)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
         return run_jax(fn, *args, **kwargs)
 
-    # Preserve function name for better IR readability
-    wrapped.__name__ = fn.__name__
-    wrapped.__doc__ = fn.__doc__
     return wrapped
 
 

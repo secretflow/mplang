@@ -820,8 +820,9 @@ def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> 
             if os.path.exists(p):
                 try:
                     os.remove(p)
-                except Exception:
-                    pass  # Ignore cleanup errors
+                except OSError as e:
+                    # Log the error for debugging purposes, but continue cleanup attempt
+                    logger.warning("Failed to remove file %s: %s", p, e)
 
         try:
             match fmt:

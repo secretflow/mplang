@@ -222,7 +222,6 @@ def _uniform_cond_trace(
 
     return cur_ctx.reconstruct_outputs(
         then_traced.out_morph,
-        then_traced.out_imms,
         result_values,
     )
 
@@ -418,7 +417,9 @@ def _pcall_static_trace(
     # TracedFunction guarantees: graph.inputs = [*params_inputs, *captured_inputs]
     all_input_objs = local_traced.params + local_traced.captured
 
-    # All types are guaranteed to be MPType by _LocalMPTracer._lift
+    # params/captured are original Objects (before _LocalMPTracer._lift_type
+    # unwraps MPType → value_type), so their types are expected to be MPType
+    # per simp dialect convention.
     all_input_types: list[elt.MPType] = [obj.type for obj in all_input_objs]  # type: ignore[misc]
     deduced_parties = _deduce_parties(all_input_types)
 
@@ -450,7 +451,6 @@ def _pcall_static_trace(
 
     return cur_ctx.reconstruct_outputs(
         local_traced.out_morph,
-        local_traced.out_imms,
         result_values,
     )
 
@@ -510,7 +510,6 @@ def _pcall_dynamic_trace(
 
     return cur_ctx.reconstruct_outputs(
         local_traced.out_morph,
-        local_traced.out_imms,
         result_values,
     )
 

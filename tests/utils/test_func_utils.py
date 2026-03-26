@@ -36,11 +36,11 @@ def test_morph_struct_type():
     _flat_data, tree_def = tree_flatten(data)
 
     # Create a MorphStruct
-    morph_struct: MorphStruct = (tree_def, (0, 1))
+    morph_struct: MorphStruct = (tree_def, (0, 1), [])
 
     # Verify it's a tuple with correct types
     assert isinstance(morph_struct, tuple)
-    assert len(morph_struct) == 2
+    assert len(morph_struct) == 3
 
     # The first element should be a PyTreeDef
     assert isinstance(morph_struct[0], PyTreeDef)
@@ -49,13 +49,16 @@ def test_morph_struct_type():
     assert isinstance(morph_struct[1], tuple)
     assert all(isinstance(x, int) for x in morph_struct[1])
 
+    # The third element should be a list
+    assert isinstance(morph_struct[2], list)
+
 
 def test_validate_morph_struct():
     """Test validate_morph_struct function."""
     # Test valid MorphStruct
     data = {"a": [1, 2], "b": 3}
     _flat_data, tree_def = tree_flatten(data)
-    valid_morph_struct: MorphStruct = (tree_def, (0, 1))
+    valid_morph_struct: MorphStruct = (tree_def, (0, 1), [])
 
     # Should not raise any exception
     validate_morph_struct(valid_morph_struct)
@@ -68,15 +71,18 @@ def test_validate_morph_struct():
         validate_morph_struct((tree_def,))  # type: ignore
 
     with pytest.raises(TypeError, match="MorphStruct\\[0\\] must be PyTreeDef"):
-        validate_morph_struct(("not a PyTreeDef", (0, 1)))  # type: ignore
+        validate_morph_struct(("not a PyTreeDef", (0, 1), []))  # type: ignore
 
     with pytest.raises(TypeError, match="MorphStruct\\[1\\] must be tuple"):
-        validate_morph_struct((tree_def, [0, 1]))  # type: ignore
+        validate_morph_struct((tree_def, [0, 1], []))  # type: ignore
 
     with pytest.raises(
         TypeError, match="MorphStruct\\[1\\] must contain only integers"
     ):
-        validate_morph_struct((tree_def, (0, "not an int")))  # type: ignore
+        validate_morph_struct((tree_def, (0, "not an int"), []))  # type: ignore
+
+    with pytest.raises(TypeError, match="MorphStruct\\[2\\] must be list"):
+        validate_morph_struct((tree_def, (0, 1), "not a list"))  # type: ignore
 
 
 def create_empty_morph_struct() -> MorphStruct:
@@ -88,7 +94,7 @@ def create_empty_morph_struct() -> MorphStruct:
     """
     # Create a simple empty tuple and flatten it
     _, tree_def = tree_flatten(())
-    return (tree_def, ())
+    return (tree_def, (), [])
 
 
 def test_create_empty_morph_struct():
@@ -99,9 +105,10 @@ def test_create_empty_morph_struct():
     validate_morph_struct(empty_struct)
 
     # Should represent empty structure
-    tree_def, split_info = empty_struct
+    tree_def, split_info, immediates = empty_struct
     assert isinstance(tree_def, PyTreeDef)
     assert split_info == ()
+    assert immediates == []
 
 
 def test_var_morph_returns_morphstruct():
@@ -110,19 +117,19 @@ def test_var_morph_returns_morphstruct():
     data = ([1, 2], {"c": 3})
     is_variable = lambda x: isinstance(x, list)
 
-    variables, immediates, morph_struct = var_morph(data, is_variable)
+    variables, morph_struct = var_morph(data, is_variable)
 
     # Verify types
     assert isinstance(variables, list)
-    assert isinstance(immediates, list)
     assert isinstance(morph_struct, tuple)
-    assert len(morph_struct) == 2
+    assert len(morph_struct) == 3
 
     # Verify the MorphStruct is correctly typed
-    tree_def, split_info = morph_struct
+    tree_def, split_info, immediates = morph_struct
     assert isinstance(tree_def, PyTreeDef)
     assert isinstance(split_info, tuple)
     assert all(isinstance(x, int) for x in split_info)
+    assert isinstance(immediates, list)
 
     # Test that it passes validation
     validate_morph_struct(morph_struct)
@@ -135,10 +142,10 @@ def test_var_demorph_with_morphstruct():
     is_variable = lambda x: isinstance(x, np.ndarray)
 
     # Morph the data
-    variables, immediates, morph_struct = var_morph(original_data, is_variable)
+    variables, morph_struct = var_morph(original_data, is_variable)
 
     # Verify we can demorph it back
-    reconstructed = var_demorph(variables, immediates, morph_struct)
+    reconstructed = var_demorph(variables, morph_struct)
 
     # Check structure is preserved
     assert len(reconstructed) == 2  # tuple with 2 elements
@@ -155,16 +162,16 @@ def test_empty_var_morph():
     data = (1, 2, "hello")
     is_variable = lambda x: False  # Nothing is a variable
 
-    variables, immediates, morph_struct = var_morph(data, is_variable)
+    variables, morph_struct = var_morph(data, is_variable)
 
     assert variables == []
-    assert immediates == [1, 2, "hello"]
 
     # Verify MorphStruct is still well-formed
-    tree_def, split_info = morph_struct
+    tree_def, split_info, immediates = morph_struct
     assert isinstance(tree_def, PyTreeDef)
     assert isinstance(split_info, tuple)
     assert split_info == ()  # Empty tuple for no variables
+    assert immediates == [1, 2, "hello"]
 
     # Test that it passes validation
     validate_morph_struct(morph_struct)
@@ -175,16 +182,16 @@ def test_all_variables_morph():
     data = [np.array([1]), np.array([2]), np.array([3])]
     is_variable = lambda x: isinstance(x, np.ndarray)
 
-    variables, immediates, morph_struct = var_morph(data, is_variable)
+    variables, morph_struct = var_morph(data, is_variable)
 
     assert len(variables) == 3
-    assert immediates == []
 
     # Verify MorphStruct
-    tree_def, split_info = morph_struct
+    tree_def, split_info, immediates = morph_struct
     assert isinstance(tree_def, PyTreeDef)
     assert isinstance(split_info, tuple)
     assert split_info == (0, 1, 2)  # All positions are variables
+    assert immediates == []
 
     # Test that it passes validation
     validate_morph_struct(morph_struct)

@@ -267,8 +267,9 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     out_morph: MorphStruct = (
         compilation.out_tree,
         tuple(range(len(result_values))),
+        [],
     )
-    return tracer.reconstruct_outputs(out_morph, [], result_values)
+    return tracer.reconstruct_outputs(out_morph, result_values)
 
 
 def run_jax(
@@ -589,7 +590,6 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
 
     return tracer.reconstruct_outputs(
         traced_fn.out_morph,
-        traced_fn.out_imms,
         result_values,
     )
 

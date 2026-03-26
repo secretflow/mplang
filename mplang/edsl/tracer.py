@@ -311,7 +311,7 @@ class Tracer(Context):
         logger.debug("Starting trace of function: %s", fn_name)
 
         is_obj = lambda x: isinstance(x, Object)
-        in_vars, in_imms, in_morph = var_morph((args, kwargs), is_obj)
+        in_vars, in_morph = var_morph((args, kwargs), is_obj)
 
         with self:
             # Helper to lift params, allowing BaseType as placeholders
@@ -327,7 +327,7 @@ class Tracer(Context):
             # Lift any Objects in result (captures use default is_param=False)
             result = tree_map(self.lift, result)
 
-        out_vars, out_imms, out_morph = var_morph(result, is_obj)
+        out_vars, out_morph = var_morph(result, is_obj)
 
         if out_vars:
             graph = self.finalize(out_vars)
@@ -353,9 +353,7 @@ class Tracer(Context):
             name=fn_name,
             graph=graph,
             in_morph=in_morph,
-            in_imms=in_imms,
             out_morph=out_morph,
-            out_imms=out_imms,
             params=in_vars,  # Original parameter objects
             captured=captured_objects,
         )
@@ -363,12 +361,11 @@ class Tracer(Context):
     def reconstruct_outputs(
         self,
         out_morph: MorphStruct,
-        out_imms: list[Any],
         result_values: list[GraphValue],
     ) -> Any:
         """Rebuild PyTree outputs from recorded metadata."""
         trace_objects = [TraceObject(val, self) for val in result_values]
-        return var_demorph(trace_objects, out_imms, out_morph)
+        return var_demorph(trace_objects, out_morph)
 
 
 @dataclass
@@ -387,33 +384,29 @@ class TracedFunction:
         name: Function name (from fn.__name__)
         graph: The finalized Graph IR containing traced computations
         in_morph: MorphStruct describing how to reconstruct (args, kwargs) from
-            flattened inputs. Contains (PyTreeDef, var_positions).
-        in_imms: Input immediates (constants) in flattened order
+            flattened inputs. Contains (PyTreeDef, var_positions, immediates).
         out_morph: MorphStruct describing how to reconstruct the result from
-            flattened outputs. Contains (PyTreeDef, var_positions).
-        out_imms: Output immediates (constants) in flattened order
+            flattened outputs. Contains (PyTreeDef, var_positions, immediates).
         params: Original parameter Objects (in order matching graph.inputs[:len(params)])
         captured: Captured Objects from closures (in order matching graph.inputs[len(params):])
 
     Reconstruction:
         To reconstruct result from graph.outputs:
-            var_demorph(graph.outputs, out_imms, out_morph)
+            var_demorph(graph.outputs, out_morph)
 
     Example:
         >>> def fn(x, y, *, scale=2.0):
         ...     return x + y, scale
         >>> traced = make_graph(fn, x_obj, y_obj, scale=2.0)
-        >>> # in_imms = [2.0], in_morph[1] = (0, 1) (x, y are vars)
-        >>> # out_imms = [2.0], out_morph[1] = (0,) (x+y is var, scale is constant)
+        >>> # in_morph = (tree, (0, 1), [2.0])  — x, y are vars; 2.0 is immediate
+        >>> # out_morph = (tree, (0,), [2.0])    — x+y is var; scale is immediate
         >>> # params = [x_obj, y_obj], captured = []
     """
 
     name: str
     graph: Graph
     in_morph: MorphStruct
-    in_imms: list[Any]
     out_morph: MorphStruct
-    out_imms: list[Any]
     params: list[Object]  # Original parameter objects
     captured: list[Object]  # Captured objects from closures
 
@@ -428,6 +421,11 @@ class TracedFunction:
         return self.in_morph[0]
 
     @property
+    def in_imms(self) -> list[Any]:
+        """Input immediates (constants) in flattened order."""
+        return self.in_morph[2]
+
+    @property
     def out_var_pos(self) -> tuple[int, ...]:
         """Variable positions in flattened output list."""
         return self.out_morph[1]
@@ -436,6 +434,11 @@ class TracedFunction:
     def out_tree(self) -> Any:
         """PyTreeDef for output structure."""
         return self.out_morph[0]
+
+    @property
+    def out_imms(self) -> list[Any]:
+        """Output immediates (constants) in flattened order."""
+        return self.out_morph[2]
 
     def is_input_signature_match(self, other: TracedFunction) -> bool:
         """Check if this TracedFunction has the same input signature as another.
@@ -572,7 +575,7 @@ class TracedFunction:
         Returns:
             Structured output matching the original function's return signature.
         """
-        return var_demorph(execution_result, self.out_imms, self.out_morph)
+        return var_demorph(execution_result, self.out_morph)
 
 
 def trace(

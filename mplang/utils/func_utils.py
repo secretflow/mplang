@@ -21,11 +21,12 @@ from typing import Any
 from jax.tree_util import PyTreeDef, tree_flatten, tree_unflatten
 
 # Type alias for the structure information returned by var_morph
-# This represents (values_tree, split_info) where:
+# This represents (values_tree, split_info, immediates) where:
 # - values_tree: PyTreeDef from JAX tree_flatten
 # - split_info: tuple of indices where variables were located in the flattened list
+# - immediates: list of non-variable values in order
 # This type is never None - var_morph always returns a valid MorphStruct
-MorphStruct = tuple[PyTreeDef, tuple[int, ...]]
+MorphStruct = tuple[PyTreeDef, tuple[int, ...], list[Any]]
 
 
 def validate_morph_struct(morph_struct: MorphStruct) -> None:
@@ -37,12 +38,12 @@ def validate_morph_struct(morph_struct: MorphStruct) -> None:
     Raises:
         TypeError: If the MorphStruct has invalid structure or types
     """
-    if not isinstance(morph_struct, tuple) or len(morph_struct) != 2:
+    if not isinstance(morph_struct, tuple) or len(morph_struct) != 3:
         raise TypeError(
-            f"MorphStruct must be a tuple of length 2, got {type(morph_struct)}"
+            f"MorphStruct must be a tuple of length 3, got {type(morph_struct)}"
         )
 
-    values_tree, split_info = morph_struct
+    values_tree, split_info, immediates = morph_struct
     if not isinstance(values_tree, PyTreeDef):
         raise TypeError(f"MorphStruct[0] must be PyTreeDef, got {type(values_tree)}")
 
@@ -55,6 +56,9 @@ def validate_morph_struct(morph_struct: MorphStruct) -> None:
         raise TypeError(
             f"MorphStruct[1] must contain only integers, got types: {[type(x) for x in split_info]}"
         )
+
+    if not isinstance(immediates, list):
+        raise TypeError(f"MorphStruct[2] must be list, got {type(immediates)}")
 
 
 def list_split(origin: list, pred: Callable) -> tuple[list, list, list]:
@@ -87,16 +91,16 @@ def list_reconstruct(fst: list, snd: list, fst_idxs: list) -> list:
 
 def var_morph(
     values: Any, is_variable: Callable[[Any], bool]
-) -> tuple[list, list, MorphStruct]:
+) -> tuple[list, MorphStruct]:
     """aka. flat_and_split Flat and split variable from immediates"""
     values_flat, values_tree = tree_flatten(values)
     variables, immediates, split_info = list_split(values_flat, is_variable)
-    return variables, immediates, (values_tree, tuple(split_info))
+    return variables, (values_tree, tuple(split_info), immediates)
 
 
-def var_demorph(variables: list, immediates: list, morph_info: MorphStruct) -> Any:
+def var_demorph(variables: list, morph_info: MorphStruct) -> Any:
     """aka. merge_and_unflat. Merge vars and immediates, and reconstruct the tree."""
-    values_tree, split_info = morph_info
+    values_tree, split_info, immediates = morph_info
     values_flat = list_reconstruct(variables, immediates, list(split_info))
     return tree_unflatten(values_tree, values_flat)
 
@@ -107,13 +111,13 @@ def normalize_fn(
     """Flatten (args, kwargs) and capture immediate.
     Returns the a function captures all immediates and a list of variables.
     """
-    params, immediates, morph = var_morph((args, kwargs), is_variable)
+    params, morph = var_morph((args, kwargs), is_variable)
 
     @functools.wraps(fn)
     def normalized(rargs: list[Any]) -> tuple[Any]:
         # aargs is short actual arguments.
         # reconstruct original paramter, replace the traced object with actual object.
-        aargs, akwargs = var_demorph(rargs, immediates, morph)
+        aargs, akwargs = var_demorph(rargs, morph)
         return fn(*aargs, **akwargs)  # type: ignore[no-any-return]
 
     return normalized, params

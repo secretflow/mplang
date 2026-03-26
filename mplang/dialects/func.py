@@ -52,9 +52,7 @@ def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> el.TraceOb
     attrs = {
         "sym_name": traced.name,
         "in_morph": traced.in_morph,
-        "in_imms": traced.in_imms,
         "out_morph": traced.out_morph,
-        "out_imms": traced.out_imms,
         "output_types": [val.type for val in traced.graph.outputs],
     }
 
@@ -91,7 +89,6 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
         raise ValueError("Function handle has no defining operation")
     output_types = fn_op.attrs.get("output_types", [elt.TensorType(elt.i64, ())])
     out_morph = fn_op.attrs.get("out_morph")
-    out_imms = fn_op.attrs.get("out_imms", [])
 
     result_values = tracer.graph.add_op(
         opcode="func.call",
@@ -106,7 +103,7 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
     # Restructure outputs using MorphStruct if available
     if out_morph is not None:
         try:
-            return var_demorph(traced_results, out_imms, out_morph)
+            return var_demorph(traced_results, out_morph)
         except ValueError as e:
             import warnings
 

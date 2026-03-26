@@ -718,7 +718,7 @@ def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
 
     def _do_read(resolved: str) -> TableValue:
         if not os.path.exists(resolved):
-            raise FileNotFoundError(f"{resolved} not exists")
+            raise FileNotFoundError(f"{resolved} does not exist")
         pa_schema = _pa_schema(schema) if schema else None
         return _wrap(FileTableSource(path=resolved, format=fmt, schema=pa_schema))
 

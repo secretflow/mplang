@@ -221,9 +221,8 @@ def _uniform_cond_trace(
     )
 
     return cur_ctx.reconstruct_outputs(
-        then_traced.out_var_pos,
+        then_traced.out_morph,
         then_traced.out_imms,
-        then_traced.out_tree,
         result_values,
     )
 
@@ -450,9 +449,8 @@ def _pcall_static_trace(
     )
 
     return cur_ctx.reconstruct_outputs(
-        local_traced.out_var_pos,
+        local_traced.out_morph,
         local_traced.out_imms,
-        local_traced.out_tree,
         result_values,
     )
 
@@ -511,9 +509,8 @@ def _pcall_dynamic_trace(
     )
 
     return cur_ctx.reconstruct_outputs(
-        local_traced.out_var_pos,
+        local_traced.out_morph,
         local_traced.out_imms,
-        local_traced.out_tree,
         result_values,
     )
 

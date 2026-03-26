@@ -715,11 +715,17 @@ def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
     schema: elt.TableType = op.attrs["schema"]
     format_hint: str = op.attrs.get("format", "auto")
     fmt = _infer_format(path, format_hint)
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"{path} not exists")
 
-    pa_schema = _pa_schema(schema) if schema else None
-    return _wrap(FileTableSource(path=path, format=fmt, schema=pa_schema))
+    def _do_read(resolved: str) -> TableValue:
+        if not os.path.exists(resolved):
+            raise FileNotFoundError(f"{resolved} not exists")
+        pa_schema = _pa_schema(schema) if schema else None
+        return _wrap(FileTableSource(path=resolved, format=fmt, schema=pa_schema))
+
+    if interpreter.store:
+        with interpreter.store.open_data(path, "r") as resolved:
+            return _do_read(resolved)
+    return _do_read(path)
 
 
 class MultiTableReader(BatchReader):
@@ -773,68 +779,77 @@ def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> 
 
     fmt = _infer_format(path, format_hint)
 
-    batch_size = DEFAULT_BATCH_SIZE if len(tables) > 1 else -1
-    readers: list[TableReader] = []
-    for t in tables:
-        data = t.unwrap()
-        readers.append(
-            data.open(batch_size)
-            if isinstance(data, TableSource)
-            else TableReader(data)
+    def _do_write(resolved: str) -> None:
+        batch_size = DEFAULT_BATCH_SIZE if len(tables) > 1 else -1
+        readers: list[TableReader] = []
+        for t in tables:
+            data = t.unwrap()
+            readers.append(
+                data.open(batch_size)
+                if isinstance(data, TableSource)
+                else TableReader(data)
+            )
+
+        reader: BatchReader = (
+            readers[0] if len(readers) == 1 else MultiTableReader(readers)
         )
 
-    reader: BatchReader = readers[0] if len(readers) == 1 else MultiTableReader(readers)
+        import pyarrow.csv as pa_csv
+        import pyarrow.parquet as pa_pq
 
-    import pyarrow.csv as pa_csv
-    import pyarrow.parquet as pa_pq
+        @runtime_checkable
+        class BatchWriter(Protocol):
+            def write_batch(self, batch: pa.RecordBatch) -> None: ...
+            def close(self) -> None: ...
 
-    @runtime_checkable
-    class BatchWriter(Protocol):
-        def write_batch(self, batch: pa.RecordBatch) -> None: ...
-        def close(self) -> None: ...
+        class JsonWriter(BatchWriter):
+            def __init__(self, path: str) -> None:
+                self._path = path
+                self._batches: list[pa.RecordBatch] = []
 
-    class JsonWriter(BatchWriter):
-        def __init__(self, path: str) -> None:
-            self._path = path
-            self._batches: list[pa.RecordBatch] = []
+            def write_batch(self, batch: pa.RecordBatch) -> None:
+                self._batches.append(batch)
 
-        def write_batch(self, batch: pa.RecordBatch) -> None:
-            self._batches.append(batch)
+            def close(self) -> None:
+                # PyArrow doesn't have direct JSON write, convert to pandas
+                tbl = pa.Table.from_batches(self._batches)
+                df = tbl.to_pandas()
+                df.to_json(self._path, orient="records", lines=True)
 
-        def close(self) -> None:
-            # PyArrow doesn't have direct JSON write, convert to pandas
-            tbl = pa.Table.from_batches(self._batches)
-            df = tbl.to_pandas()
-            df.to_json(self._path, orient="records", lines=True)
+        def _safe_remove_file(p: str) -> None:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass  # Ignore cleanup errors
 
-    def _safe_remove_file(path: str) -> None:
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except Exception:
-                pass  # Ignore cleanup errors
+        try:
+            match fmt:
+                case "parquet":
+                    writer = pa_pq.ParquetWriter(resolved, reader.schema)
+                case "csv":
+                    writer = pa_csv.CSVWriter(resolved, reader.schema)
+                case "json":
+                    writer = JsonWriter(resolved)
+                case _:
+                    raise ValueError(f"Unsupported format: {fmt}")
+        except Exception as e:
+            reader.close()
+            _safe_remove_file(resolved)
+            raise e
 
-    try:
-        match fmt:
-            case "parquet":
-                writer = pa_pq.ParquetWriter(path, reader.schema)
-            case "csv":
-                writer = pa_csv.CSVWriter(path, reader.schema)
-            case "json":
-                writer = JsonWriter(path)
-            case _:
-                raise ValueError(f"Unsupported format: {fmt}")
-    except Exception as e:
-        reader.close()
-        _safe_remove_file(path)
-        raise e
+        try:
+            for batch in reader:
+                writer.write_batch(batch)
+        except Exception as e:
+            _safe_remove_file(resolved)
+            raise e
+        finally:
+            reader.close()
+            writer.close()
 
-    try:
-        for batch in reader:
-            writer.write_batch(batch)
-    except Exception as e:
-        _safe_remove_file(path)
-        raise e
-    finally:
-        reader.close()
-        writer.close()
+    if interpreter.store:
+        with interpreter.store.open_data(path, "w") as resolved:
+            _do_write(resolved)
+    else:
+        _do_write(path)

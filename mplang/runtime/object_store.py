@@ -30,7 +30,9 @@ import os
 import pickle
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any, Literal
 
 
 class StoreBackend(ABC):
@@ -66,6 +68,30 @@ class StoreBackend(ABC):
     def list_keys(self) -> list[str]:
         """List all keys in the backend."""
         ...
+
+    @contextmanager
+    def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
+        """Context manager yielding a local filesystem path for data I/O.
+
+        Used by table I/O (file-based read/write) as opposed to
+        :meth:`put`/:meth:`get` which handle serialized Python objects.
+
+        Args:
+            key: Relative path within the backend's data root.
+            mode: ``"r"`` for reading, ``"w"`` for writing.
+
+        Yields:
+            A local filesystem path that DuckDB / PyArrow can operate on
+            directly.  Backend implementations may:
+
+            - **Yield a direct local path** (``FileSystemBackend``).
+            - **Download first** then yield a local cache path (future
+              remote backends), uploading on successful context exit for
+              ``mode="w"``.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support data path resolution"
+        )
 
 
 class MemoryBackend(StoreBackend):
@@ -146,6 +172,18 @@ class FileSystemBackend(StoreBackend):
                 rel_path = os.path.relpath(full_path, self._root)
                 keys.append(rel_path)
         return keys
+
+    @contextmanager
+    def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
+        """Yield a local path under ``root_dir`` for file-based data I/O.
+
+        For ``mode="w"``, parent directories are created automatically.
+        Path traversal is prevented by :meth:`_get_path`.
+        """
+        path = self._get_path(key)
+        if mode == "w":
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        yield path
 
 
 class ObjectStore:
@@ -285,3 +323,33 @@ class ObjectStore:
         for scheme, backend in self._backends.items():
             keys.extend(f"{scheme}://{k}" for k in backend.list_keys())
         return keys
+
+    # ------------------------------------------------------------------
+    # Data path resolution (for table I/O)
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def open_data(self, path: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
+        """Resolve a data file path for table I/O.
+
+        - **Absolute path**: yielded as-is (backward compatibility).
+        - **Relative path with persistent backend**: delegated to
+          :meth:`StoreBackend.open_data`.
+        - **Relative path without persistent backend**: resolved against
+          the current working directory.
+
+        Args:
+            path: File path from the user (stored in IR attrs).
+            mode: ``"r"`` for reading, ``"w"`` for writing.
+
+        Yields:
+            A local filesystem path usable by DuckDB / PyArrow.
+        """
+        if os.path.isabs(path):
+            yield path
+            return
+        if self._persistent is None:
+            yield os.path.abspath(path)
+            return
+        with self._persistent.open_data(path, mode) as resolved:
+            yield resolved

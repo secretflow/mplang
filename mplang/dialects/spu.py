@@ -264,16 +264,7 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
 
     normalized_fn, in_vars = normalize_fn(fn, args, kwargs, is_variable)
 
-    # Validate inputs
-    for arg in in_vars:
-        if not (
-            isinstance(arg.type, elt.SSType) or isinstance(arg.type, elt.TensorType)
-        ):
-            raise TypeError(
-                f"spu.run_jax inputs must be SSType or TensorType, got {arg.type}"
-            )
-
-    # 2. Prepare for compilation
+    # 2. Validate inputs and prepare for compilation
     jax_args_flat = []
     input_vis: list[Visibility] = []  # String-based visibility for IR
 

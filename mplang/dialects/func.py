@@ -26,6 +26,7 @@ from typing import Any
 
 import mplang.edsl as el
 import mplang.edsl.typing as elt
+from mplang.utils.func_utils import var_demorph
 
 func_def_p = el.Primitive[el.TraceObject]("func.func")
 call_p = el.Primitive[Any]("func.call")
@@ -50,12 +51,8 @@ def _func_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> el.TraceOb
 
     attrs = {
         "sym_name": traced.name,
-        "in_var_pos": traced.in_var_pos,
-        "in_imms": traced.in_imms,
-        "in_tree": traced.in_tree,
-        "out_var_pos": traced.out_var_pos,
-        "out_imms": traced.out_imms,
-        "out_tree": traced.out_tree,
+        "in_morph": traced.in_morph,
+        "out_morph": traced.out_morph,
         "output_types": [val.type for val in traced.graph.outputs],
     }
 
@@ -86,12 +83,12 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
     if not all(isinstance(arg, el.TraceObject) for arg in args):
         raise TypeError("func.call arguments must be TraceObjects")
 
-    # Get output types and PyTree from the func.func operation that produced fn_handle
+    # Get output types and MorphStruct from the func.func operation that produced fn_handle
     fn_op = fn_handle._graph_value.defining_op
     if fn_op is None:
         raise ValueError("Function handle has no defining operation")
     output_types = fn_op.attrs.get("output_types", [elt.TensorType(elt.i64, ())])
-    out_tree = fn_op.attrs.get("out_tree")
+    out_morph = fn_op.attrs.get("out_morph")
 
     result_values = tracer.graph.add_op(
         opcode="func.call",
@@ -103,15 +100,15 @@ def _call_trace(fn_handle: el.TraceObject, *args: Any) -> Any:
 
     traced_results = [el.TraceObject(v, tracer) for v in result_values]
 
-    # Restructure outputs using PyTree if available
-    if out_tree is not None:
+    # Restructure outputs using MorphStruct if available
+    if out_morph is not None:
         try:
-            return out_tree.unflatten(traced_results)
+            return var_demorph(traced_results, out_morph)
         except ValueError as e:
             import warnings
 
             warnings.warn(
-                f"Failed to unflatten PyTree for func.call: {e}", stacklevel=2
+                f"Failed to reconstruct PyTree for func.call: {e}", stacklevel=2
             )
 
     # Single result: return directly

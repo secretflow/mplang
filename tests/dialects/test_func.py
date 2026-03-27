@@ -108,7 +108,7 @@ def test_func_call_handles_complex_pytree_output():
     expected_ir = dedent(
         """\
             (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-              %0 = func.func() {in_imms=[], in_tree=PyTreeDef(((*, *), {})), in_var_pos=[0, 1], out_imms=[], out_tree=PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), out_var_pos=[0, 1, 2], output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
+              %0 = func.func() {in_morph=(PyTreeDef(((*, *), {})), (0, 1), []), out_morph=(PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), (0, 1, 2), []), output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
                 (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
                   %0 = tensor.run_jax(%arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
                   %1 = tensor.run_jax(%0, %arg1) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]

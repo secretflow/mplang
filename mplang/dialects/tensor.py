@@ -63,6 +63,7 @@ import mplang.edsl as el
 import mplang.edsl.typing as elt
 from mplang.dialects import dtypes
 from mplang.utils import normalize_fn
+from mplang.utils.func_utils import MorphStruct
 
 run_jax_p = el.Primitive[Any]("tensor.run_jax")
 constant_p = el.Primitive[el.Object]("tensor.constant")
@@ -263,11 +264,13 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         },
     )
 
-    # Reconstruct output PyTree (JAX outputs are all variables)
-    out_var_pos = list(range(len(result_values)))
-    return tracer.reconstruct_outputs(
-        out_var_pos, [], compilation.out_tree, result_values
+    # Reconstruct output PyTree (JAX outputs are all variables, no immediates)
+    out_morph: MorphStruct = (
+        compilation.out_tree,
+        tuple(range(len(result_values))),
+        [],
     )
+    return tracer.reconstruct_outputs(out_morph, result_values)
 
 
 def run_jax(
@@ -585,9 +588,7 @@ def _elementwise_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
     )
 
     return tracer.reconstruct_outputs(
-        traced_fn.out_var_pos,
-        traced_fn.out_imms,
-        traced_fn.out_tree,
+        traced_fn.out_morph,
         result_values,
     )
 

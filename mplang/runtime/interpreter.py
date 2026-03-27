@@ -748,7 +748,7 @@ class Interpreter(AbstractInterpreter):
             result_traced = primitive.bind(*args, **kwargs)
 
             # Separate outputs into variables (Objects) and immediates (constants)
-            out_vars, out_imms, morph_struct = var_morph(
+            out_vars, morph_struct = var_morph(
                 result_traced, lambda x: isinstance(x, Object)
             )
 
@@ -779,7 +779,7 @@ class Interpreter(AbstractInterpreter):
         ]
 
         # Reconstruct the output tree: merge InterpObjects and immediates
-        return var_demorph(interp_results, out_imms, morph_struct)
+        return var_demorph(interp_results, morph_struct)
 
     def lift(self, obj: Any) -> InterpObject | Any:
         """Lift an object to the Interpreter's native representation.

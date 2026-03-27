@@ -29,13 +29,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from jax.tree_util import PyTreeDef, tree_flatten, tree_map
+from jax.tree_util import tree_flatten, tree_map
 
 from mplang.edsl.context import Context
 from mplang.edsl.graph import Graph
 from mplang.edsl.graph import Value as GraphValue
 from mplang.edsl.object import Object
 from mplang.edsl.typing import BaseType
+from mplang.utils.func_utils import MorphStruct, var_demorph, var_morph
 from mplang.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -308,8 +309,9 @@ class Tracer(Context):
 
         fn_name = getattr(fn, "__name__", "anonymous")
         logger.debug("Starting trace of function: %s", fn_name)
-        in_flat, in_treedef = tree_flatten((args, kwargs))
-        in_imms, in_var_pos, in_vars = _separate_vars_and_imms(in_flat)
+
+        is_obj = lambda x: isinstance(x, Object)
+        in_vars, in_morph = var_morph((args, kwargs), is_obj)
 
         with self:
             # Helper to lift params, allowing BaseType as placeholders
@@ -325,8 +327,7 @@ class Tracer(Context):
             # Lift any Objects in result (captures use default is_param=False)
             result = tree_map(self.lift, result)
 
-        output_flat, output_treedef = tree_flatten(result)
-        out_imms, out_var_pos, out_vars = _separate_vars_and_imms(output_flat)
+        out_vars, out_morph = var_morph(result, is_obj)
 
         if out_vars:
             graph = self.finalize(out_vars)
@@ -351,67 +352,20 @@ class Tracer(Context):
         return TracedFunction(
             name=fn_name,
             graph=graph,
-            in_imms=in_imms,
-            in_var_pos=in_var_pos,
-            in_tree=in_treedef,
-            out_imms=out_imms,
-            out_var_pos=out_var_pos,
-            out_tree=output_treedef,
+            in_morph=in_morph,
+            out_morph=out_morph,
             params=in_vars,  # Original parameter objects
             captured=captured_objects,
         )
 
     def reconstruct_outputs(
         self,
-        out_var_pos: list[int],
-        out_imms: list[Any],
-        out_tree: PyTreeDef,
+        out_morph: MorphStruct,
         result_values: list[GraphValue],
     ) -> Any:
         """Rebuild PyTree outputs from recorded metadata."""
-
-        var_iter = iter([TraceObject(val, self) for val in result_values])
-        var_pos_iter = iter(out_var_pos)
-        next_var_pos = next(var_pos_iter, None)
-        imm_idx = 0
-        total_len = len(out_imms) + len(out_var_pos)
-        flat_out: list[Any] = []
-        for idx in range(total_len):
-            if next_var_pos is not None and idx == next_var_pos:
-                flat_out.append(next(var_iter))
-                next_var_pos = next(var_pos_iter, None)
-            else:
-                flat_out.append(out_imms[imm_idx])
-                imm_idx += 1
-        return out_tree.unflatten(flat_out)
-
-
-def _separate_vars_and_imms(
-    flat_values: list[Any],
-) -> tuple[list[Any], list[int], list[Any]]:
-    """Separate a flattened list into variables (Objects) and immediates (constants).
-
-    Args:
-        flat_values: Flattened list of values (mix of Objects and constants)
-
-    Returns:
-        Tuple of (imms, var_pos, vars) where:
-            - imms: List of immediate values (constants) in order
-            - var_pos: List of positions where variables appear in flat_values
-            - vars: List of variable values (Objects) in order
-    """
-    imms = []
-    var_pos = []
-    vars_list = []
-
-    for i, val in enumerate(flat_values):
-        if isinstance(val, Object):
-            var_pos.append(i)
-            vars_list.append(val)
-        else:
-            imms.append(val)
-
-    return imms, var_pos, vars_list
+        trace_objects = [TraceObject(val, self) for val in result_values]
+        return var_demorph(trace_objects, out_morph)
 
 
 @dataclass
@@ -429,43 +383,62 @@ class TracedFunction:
     Attributes:
         name: Function name (from fn.__name__)
         graph: The finalized Graph IR containing traced computations
-        in_imms: Input immediates (constants) in flattened order
-        in_var_pos: Positions of graph.inputs in the flattened input list
-        in_tree: PyTreeDef to reconstruct (args, kwargs) from flattened inputs
-        out_imms: Output immediates (constants) in flattened order
-        out_var_pos: Positions of graph.outputs in the flattened output list
-        out_tree: PyTreeDef to reconstruct result from flattened outputs
+        in_morph: MorphStruct describing how to reconstruct (args, kwargs) from
+            flattened inputs. Contains (PyTreeDef, var_positions, immediates).
+        out_morph: MorphStruct describing how to reconstruct the result from
+            flattened outputs. Contains (PyTreeDef, var_positions, immediates).
         params: Original parameter Objects (in order matching graph.inputs[:len(params)])
         captured: Captured Objects from closures (in order matching graph.inputs[len(params):])
 
     Reconstruction:
-        To reconstruct *args, **kwargs from graph.inputs:
-        1. Create flattened list: [in_imms[i] if i not in in_var_pos else graph.inputs[...]]
-        2. Use in_tree.unflatten() to get (args, kwargs)
-
         To reconstruct result from graph.outputs:
-        1. Create flattened list: [out_imms[i] if i not in out_var_pos else graph.outputs[...]]
-        2. Use out_tree.unflatten() to get result
+            var_demorph(graph.outputs, out_morph)
 
     Example:
         >>> def fn(x, y, *, scale=2.0):
         ...     return x + y, scale
         >>> traced = make_graph(fn, x_obj, y_obj, scale=2.0)
-        >>> # in_imms = [2.0], in_var_pos = [0, 1] (x, y are vars)
-        >>> # out_imms = [2.0], out_var_pos = [0] (x+y is var, scale is constant)
+        >>> # in_morph = (tree, (0, 1), [2.0])  — x, y are vars; 2.0 is immediate
+        >>> # out_morph = (tree, (0,), [2.0])    — x+y is var; scale is immediate
         >>> # params = [x_obj, y_obj], captured = []
     """
 
     name: str
     graph: Graph
-    in_imms: list[Any]
-    in_var_pos: list[int]
-    in_tree: PyTreeDef
-    out_imms: list[Any]
-    out_var_pos: list[int]
-    out_tree: PyTreeDef
+    in_morph: MorphStruct
+    out_morph: MorphStruct
     params: list[Object]  # Original parameter objects
     captured: list[Object]  # Captured objects from closures
+
+    @property
+    def in_var_pos(self) -> tuple[int, ...]:
+        """Variable positions in flattened input list."""
+        return self.in_morph[1]
+
+    @property
+    def in_tree(self) -> Any:
+        """PyTreeDef for input structure."""
+        return self.in_morph[0]
+
+    @property
+    def in_imms(self) -> list[Any]:
+        """Input immediates (constants) in flattened order."""
+        return self.in_morph[2]
+
+    @property
+    def out_var_pos(self) -> tuple[int, ...]:
+        """Variable positions in flattened output list."""
+        return self.out_morph[1]
+
+    @property
+    def out_tree(self) -> Any:
+        """PyTreeDef for output structure."""
+        return self.out_morph[0]
+
+    @property
+    def out_imms(self) -> list[Any]:
+        """Output immediates (constants) in flattened order."""
+        return self.out_morph[2]
 
     def is_input_signature_match(self, other: TracedFunction) -> bool:
         """Check if this TracedFunction has the same input signature as another.
@@ -585,10 +558,9 @@ class TracedFunction:
         """
         flat_args, _ = tree_flatten((args, kwargs))
 
-        # Map to graph inputs
-        # fn.in_var_pos contains indices in flat_args that correspond to graph inputs
+        # Map to graph inputs using var positions from in_morph
         # Note: graph.inputs = [explicit_inputs...] + [captured_inputs...]
-        explicit_inputs = [flat_args[i] for i in self.in_var_pos]
+        explicit_inputs = [flat_args[i] for i in self.in_morph[1]]
         all_inputs = explicit_inputs + list(self.captured)
         return all_inputs
 
@@ -603,24 +575,7 @@ class TracedFunction:
         Returns:
             Structured output matching the original function's return signature.
         """
-        # execution_result is always a list (now that evaluate_graph returns list)
-        results = execution_result
-
-        # Reconstruct
-        total_len = len(self.out_imms) + len(self.out_var_pos)
-        flat_out = [None] * total_len
-
-        var_indices = set(self.out_var_pos)
-        imm_iter = iter(self.out_imms)
-        res_iter = iter(results)
-
-        for i in range(total_len):
-            if i in var_indices:
-                flat_out[i] = next(res_iter)
-            else:
-                flat_out[i] = next(imm_iter)
-
-        return self.out_tree.unflatten(flat_out)
+        return var_demorph(execution_result, self.out_morph)
 
 
 def trace(

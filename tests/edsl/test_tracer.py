@@ -56,7 +56,7 @@ class TestMakeGraph:
         # 2 variables (x, y), no constants
         assert len(traced.in_var_pos) == 2
         assert len(traced.in_imms) == 0
-        assert traced.in_var_pos == [0, 1]
+        assert traced.in_var_pos == (0, 1)
         # 2 variable outputs (x, y), no constants
         assert len(traced.out_var_pos) == 2
         assert len(traced.out_imms) == 0
@@ -128,7 +128,7 @@ class TestMakeGraph:
         # 1 variable (x), 1 constant (factor=2.0)
         assert len(traced.in_var_pos) == 1
         assert len(traced.in_imms) == 1
-        assert traced.in_var_pos == [0]  # x at position 0
+        assert traced.in_var_pos == (0,)  # x at position 0
         assert traced.in_imms == [2.0]  # factor is constant
         # 1 variable output (x)
         assert len(traced.out_var_pos) == 1
@@ -186,7 +186,7 @@ class TestMakeGraph:
         # Input: ((x, y), {"threshold": 0.5}) flattened = [x, y, 0.5]
         # x, y are variables at pos 0, 1; 0.5 is constant at pos 2
         assert len(traced.in_var_pos) == 2
-        assert traced.in_var_pos == [0, 1]
+        assert traced.in_var_pos == (0, 1)
         assert len(traced.in_imms) == 1
         assert traced.in_imms == [0.5]
         # Output: {"result": (x, y), "metadata": 0.5}
@@ -194,7 +194,7 @@ class TestMakeGraph:
         # So flattened = [0.5, x, y] (metadata first, then result tuple)
         # 0.5 is constant at pos 0; x, y are variables at pos 1, 2
         assert len(traced.out_var_pos) == 2
-        assert traced.out_var_pos == [1, 2]
+        assert traced.out_var_pos == (1, 2)
         assert len(traced.out_imms) == 1
         assert traced.out_imms == [0.5]
 
@@ -266,7 +266,7 @@ class TestMakeGraph:
         assert len(traced.graph.inputs) == 2  # arg + capture
         assert traced.graph.inputs[0].type == x_obj.type
         assert traced.graph.inputs[1].type == captured.type
-        assert traced.out_var_pos == [0]
+        assert traced.out_var_pos == (0,)
         assert traced.out_imms == []
 
     def test_mixed_param_and_capture_outputs(self, sample_inputs):
@@ -285,7 +285,7 @@ class TestMakeGraph:
             x_obj.type,
             captured.type,
         ]
-        assert traced.out_var_pos == [0, 1]
+        assert traced.out_var_pos == (0, 1)
         assert traced.out_imms == []
 
     def test_duplicate_captures_deduped(self, sample_inputs, interpreter):
@@ -305,5 +305,5 @@ class TestMakeGraph:
 
         assert traced.captured == [captured]
         assert len(traced.graph.inputs) == 2  # arg + single capture
-        assert traced.out_var_pos == [0, 1]
+        assert traced.out_var_pos == (0, 1)
         assert traced.out_imms == []

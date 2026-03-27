@@ -246,45 +246,6 @@ class Primitive(Generic[T_Ret]):
         return self.bind(*args, **kwargs)
 
 
-# ============================================================================
-# Decorator: @primitive for defining primitives in a concise way
-# ============================================================================
-
-
-def primitive(name: str) -> Callable[[Callable], Primitive]:
-    """Decorator for defining primitives in a concise way.
-
-    This is a convenience decorator that creates a Primitive and registers
-    the decorated function as its abstract_eval rule.
-
-    Args:
-        name: Unique name for the primitive
-
-    Returns:
-        Decorator function
-
-    Example:
-        >>> @primitive("my_custom_op")
-        >>> def my_op_abstract(x_type: BaseType, y_type: BaseType) -> BaseType:
-        >>> # Type inference logic
-        >>>     return x_type
-        >>>
-        >>> # The decorator returns a Primitive instance
-        >>> my_op_p = my_op_abstract
-        >>>
-        >>> # Use it (execution via Graph IR → Backend)
-        >>> z = my_op_p.bind(x, y)
-    """
-
-    def decorator(fn: Callable) -> Primitive[Any]:
-        p: Primitive[Any] = Primitive(name)
-        p.def_abstract_eval(fn)
-        return p
-
-    return decorator
-
-
 __all__ = [
     "Primitive",
-    "primitive",
 ]

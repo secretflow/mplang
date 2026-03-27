@@ -90,8 +90,8 @@ class Tracer(Context):
 
     Example:
         >>> tracer = Tracer()
-        >>> graph = tracer.trace(lambda x, y: x + y, x_interp, y_interp)
-        >>> print(graph)
+        >>> traced_fn = tracer.run(lambda x, y: x + y, x_interp, y_interp)
+        >>> print(traced_fn.graph)
     """
 
     def __init__(self) -> None:

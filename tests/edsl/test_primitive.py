@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from mplang.edsl.context import pop_context, push_context
-from mplang.edsl.primitive import Primitive, primitive
+from mplang.edsl.primitive import Primitive
 from mplang.edsl.tracer import TraceObject, Tracer
 from mplang.edsl.typing import Tensor, f32
 from mplang.runtime.interpreter import InterpObject
@@ -138,25 +138,6 @@ class TestPrimitiveTraceMode:
                 p.bind(x)
         finally:
             pop_context()
-
-
-class TestPrimitiveDecorator:
-    """Test @primitive decorator."""
-
-    def test_primitive_decorator(self):
-        """Test @primitive decorator creates Primitive."""
-
-        @primitive("custom_neg")
-        def custom_neg_abstract(x_type):
-            return x_type
-
-        # Verify it returns a Primitive
-        assert isinstance(custom_neg_abstract, Primitive)
-        assert custom_neg_abstract.name == "custom_neg"
-        assert custom_neg_abstract._abstract_eval is not None
-
-
-# TestPredefinedPrimitives removed - primitives should be defined in dialects/backends
 
 
 class TestPrimitiveComplexScenarios:

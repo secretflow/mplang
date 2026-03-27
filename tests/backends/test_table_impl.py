@@ -471,3 +471,67 @@ def test_write_multi_tables(tmp_path):
         ValueError, match=r"Duplicate column name 'y' found across tables"
     ):
         workload_duplicate()
+
+
+def test_read_write_with_store(tmp_path):
+    """Test that read/write resolve relative paths via ObjectStore."""
+    from mplang.edsl.context import set_root_context
+    from mplang.runtime.interpreter import Interpreter
+    from mplang.runtime.object_store import FileSystemBackend, ObjectStore
+
+    store = ObjectStore(persistent=FileSystemBackend(str(tmp_path)))
+    interp = Interpreter(store=store)
+    set_root_context(interp, force=True)
+
+    try:
+        data = {"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]}
+        schema = elt.TableType({"a": elt.i64, "b": elt.f64})
+        t1 = table.constant(data)
+
+        # Write with a relative path — should resolve under tmp_path
+        table.write(t1, "output/result.parquet")
+        assert os.path.exists(tmp_path / "output" / "result.parquet")
+
+        # Read with the same relative path
+        t2 = table.read("output/result.parquet", schema=schema)
+        res = t2 if isinstance(t2, pa.Table) else _get_table(t2)
+        assert res == pa.table(data)
+    finally:
+        from mplang.edsl.context import pop_context
+
+        pop_context()
+
+
+def test_read_write_absolute_path_with_store(tmp_path):
+    """Test that absolute paths bypass ObjectStore path resolution."""
+    from mplang.edsl.context import set_root_context
+    from mplang.runtime.interpreter import Interpreter
+    from mplang.runtime.object_store import FileSystemBackend, ObjectStore
+
+    store_root = tmp_path / "store_root"
+    store_root.mkdir()
+    store = ObjectStore(persistent=FileSystemBackend(str(store_root)))
+    interp = Interpreter(store=store)
+    set_root_context(interp, force=True)
+
+    try:
+        data = {"x": [10, 20]}
+        schema = elt.TableType({"x": elt.i64})
+        t1 = table.constant(data)
+
+        # Write with absolute path — should NOT resolve via store
+        abs_path = str(tmp_path / "direct" / "output.parquet")
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        table.write(t1, abs_path)
+        assert os.path.exists(abs_path)
+        # Verify it did NOT write under store_root
+        assert not os.path.exists(store_root / "direct" / "output.parquet")
+
+        # Read with absolute path
+        t2 = table.read(abs_path, schema=schema)
+        res = _get_table(t2)
+        assert res == pa.table(data)
+    finally:
+        from mplang.edsl.context import pop_context
+
+        pop_context()

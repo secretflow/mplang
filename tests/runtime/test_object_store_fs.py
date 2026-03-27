@@ -106,3 +106,77 @@ class TestObjectStoreWithFS(unittest.TestCase):
 
         self.store.put("persistent_val", uri="persistent_key")
         self.assertEqual(self.store.get("fs://persistent_key"), "persistent_val")
+
+
+class TestOpenData(unittest.TestCase):
+    """Tests for StoreBackend.open_data / ObjectStore.open_data."""
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.backend = FileSystemBackend(root_dir=self.test_dir)
+        self.store = ObjectStore(persistent=self.backend)
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    # -- FileSystemBackend.open_data --
+
+    def test_backend_open_data_read(self):
+        """open_data('r') yields the resolved local path."""
+        with self.backend.open_data("data/input.csv", "r") as path:
+            expected = os.path.join(self.test_dir, "data/input.csv")
+            self.assertEqual(path, expected)
+
+    def test_backend_open_data_write_creates_dirs(self):
+        """open_data('w') creates parent directories automatically."""
+        with self.backend.open_data("output/nested/result.parquet", "w") as path:
+            expected = os.path.join(self.test_dir, "output/nested/result.parquet")
+            self.assertEqual(path, expected)
+            self.assertTrue(os.path.isdir(os.path.dirname(path)))
+
+    def test_backend_open_data_traversal_prevention(self):
+        """open_data rejects directory traversal attempts."""
+        with self.assertRaises(ValueError):
+            with self.backend.open_data("../outside", "r"):
+                pass
+
+    def test_backend_open_data_write_roundtrip(self):
+        """Write a file via open_data('w'), then read it back via open_data('r')."""
+        with self.backend.open_data("test.txt", "w") as path:
+            with open(path, "w") as f:
+                f.write("hello")
+
+        with self.backend.open_data("test.txt", "r") as path:
+            with open(path) as f:
+                self.assertEqual(f.read(), "hello")
+
+    # -- ObjectStore.open_data --
+
+    def test_store_open_data_relative_path(self):
+        """Relative paths are resolved via persistent backend."""
+        with self.store.open_data("data/file.csv", "r") as path:
+            self.assertTrue(path.startswith(self.test_dir))
+            self.assertTrue(path.endswith("data/file.csv"))
+
+    def test_store_open_data_absolute_path(self):
+        """Absolute paths are yielded as-is (backward compat)."""
+        abs_path = "/tmp/some/absolute/path.csv"
+        with self.store.open_data(abs_path, "r") as path:
+            self.assertEqual(path, abs_path)
+
+    def test_store_open_data_no_persistent_backend(self):
+        """Without persistent backend, relative paths resolve against cwd."""
+        store_no_persist = ObjectStore()
+        with store_no_persist.open_data("relative/path.csv", "r") as path:
+            self.assertEqual(path, os.path.abspath("relative/path.csv"))
+
+    # -- MemoryBackend.open_data --
+
+    def test_memory_backend_open_data_raises(self):
+        """MemoryBackend does not support open_data."""
+        from mplang.runtime.object_store import MemoryBackend
+
+        mem = MemoryBackend()
+        with self.assertRaises(NotImplementedError):
+            with mem.open_data("key", "r"):
+                pass

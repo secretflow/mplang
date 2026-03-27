@@ -442,8 +442,7 @@ MPLang v2 uses a hierarchical logger structure:
 mplang                           # Root logger
 ├── mplang.edsl                  # EDSL components
 │   ├── mplang.edsl.tracer       # Tracer logs
-│   ├── mplang.edsl.interpreter  # Interpreter logs
-│   └── mplang.edsl.jit          # JIT logs
+│   └── mplang.edsl.interpreter  # Interpreter logs
 ├── mplang.backends              # Backend implementations
 ├── mplang.dialects              # Dialect primitives
 └── mplang.runtime               # Runtime components

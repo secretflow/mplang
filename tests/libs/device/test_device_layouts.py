@@ -349,7 +349,7 @@ class TestMultipleSPUs:
         x = put("SP0", jnp.array([1.0, 2.0]))
         y = put("SP1", jnp.array([3.0, 4.0]))
 
-        with pytest.raises(DeviceInferenceError, match="multiple SPU devices"):
+        with pytest.raises(DeviceInferenceError, match="multiple secure devices"):
             add(x, y)
 
 

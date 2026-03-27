@@ -49,9 +49,8 @@ from .context import (
 from .graph import Graph, Operation, Value
 
 # High-level helpers
-from .jit import jit
 from .object import Object
-from .primitive import Primitive, primitive
+from .primitive import Primitive
 from .printer import GraphPrinter, format_graph
 from .program import CompiledProgram, FlatIOSignature
 from .tracer import TracedFunction, TraceObject, Tracer, trace
@@ -91,9 +90,7 @@ __all__ = [
     "get_current_context",
     "get_default_context",
     "is_tracing",
-    "jit",
     "pop_context",
-    "primitive",
     "push_context",
     "register_default_context_factory",
     "set_root_context",

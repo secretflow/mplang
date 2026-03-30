@@ -79,7 +79,10 @@ class MemCluster:
         for rank in range(world_size):
             worker_root = cluster_root / f"node{rank}"
             store = ObjectStore(
-                persistent=FileSystemBackend(str(worker_root / "store"))
+                persistent=FileSystemBackend(
+                    obj_root=str(worker_root / "store"),
+                    data_root=str(data_root),
+                )
             )
 
             worker_state = SimpWorker(
@@ -267,7 +270,9 @@ def make_simulator(
         root_dir=cluster.host_root,
         handlers=handlers,
         tracer=cluster.tracer,
-        store=ObjectStore(persistent=FileSystemBackend(str(cluster.host_root))),
+        store=ObjectStore(
+            persistent=FileSystemBackend(obj_root=str(cluster.host_root))
+        ),
     )
     interp.set_dialect_state("simp", state)
 

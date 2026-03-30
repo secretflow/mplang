@@ -23,7 +23,7 @@ from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 class TestFileSystemBackend(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.backend = FileSystemBackend(root_dir=self.test_dir)
+        self.backend = FileSystemBackend(obj_root=self.test_dir)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -77,7 +77,7 @@ class TestFileSystemBackend(unittest.TestCase):
 class TestObjectStoreWithFS(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.store = ObjectStore(persistent=FileSystemBackend(self.test_dir))
+        self.store = ObjectStore(persistent=FileSystemBackend(obj_root=self.test_dir))
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -113,7 +113,7 @@ class TestOpenData(unittest.TestCase):
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.backend = FileSystemBackend(root_dir=self.test_dir)
+        self.backend = FileSystemBackend(obj_root=self.test_dir)
         self.store = ObjectStore(persistent=self.backend)
 
     def tearDown(self):
@@ -173,10 +173,61 @@ class TestOpenData(unittest.TestCase):
     # -- MemoryBackend.open_data --
 
     def test_memory_backend_open_data_raises(self):
-        """MemoryBackend does not support open_data."""
+        """MemoryBackend without data_root raises RuntimeError."""
         from mplang.runtime.object_store import MemoryBackend
 
         mem = MemoryBackend()
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(RuntimeError):
             with mem.open_data("key", "r"):
                 pass
+
+
+class TestOpenDataWithSeparateDataRoot(unittest.TestCase):
+    """Tests for FileSystemBackend with data_root != obj_root."""
+
+    def setUp(self):
+        self.store_dir = tempfile.mkdtemp()  # for put/get (obj storage)
+        self.data_dir = tempfile.mkdtemp()  # for open_data (table I/O)
+        self.backend = FileSystemBackend(
+            obj_root=self.store_dir, data_root=self.data_dir
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.store_dir)
+        shutil.rmtree(self.data_dir)
+
+    def test_put_get_uses_obj_root(self):
+        """put/get stores under obj_root, not data_root."""
+        self.backend.put("obj_key", {"x": 1})
+        self.assertTrue(os.path.exists(os.path.join(self.store_dir, "obj_key")))
+        self.assertFalse(os.path.exists(os.path.join(self.data_dir, "obj_key")))
+        self.assertEqual(self.backend.get("obj_key"), {"x": 1})
+
+    def test_open_data_uses_data_root(self):
+        """open_data resolves under data_root, not obj_root."""
+        with self.backend.open_data("my_data.csv", "r") as path:
+            self.assertTrue(path.startswith(self.data_dir))
+            self.assertFalse(path.startswith(self.store_dir))
+
+    def test_open_data_write_roundtrip(self):
+        """Write via open_data goes to data_root."""
+        with self.backend.open_data("output/result.csv", "w") as path:
+            self.assertTrue(path.startswith(self.data_dir))
+            with open(path, "w") as f:
+                f.write("a,b\n1,2\n")
+
+        with self.backend.open_data("output/result.csv", "r") as path:
+            with open(path) as f:
+                self.assertEqual(f.read(), "a,b\n1,2\n")
+
+    def test_open_data_traversal_prevention(self):
+        """open_data rejects traversal even with separate data_root."""
+        with self.assertRaises(ValueError):
+            with self.backend.open_data("../outside", "r"):
+                pass
+
+    def test_default_data_root_equals_obj_root(self):
+        """Without data_root, open_data uses obj_root (backward compat)."""
+        backend = FileSystemBackend(obj_root=self.store_dir)
+        with backend.open_data("file.csv", "r") as path:
+            self.assertTrue(path.startswith(self.store_dir))

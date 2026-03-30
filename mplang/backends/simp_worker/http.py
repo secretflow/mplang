@@ -712,7 +712,9 @@ def create_worker_app(
 
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
     if store is None:
-        store = ObjectStore(persistent=FileSystemBackend(str(root_dir)))
+        store = ObjectStore(
+            persistent=FileSystemBackend(obj_root=str(root_dir), data_root=".")
+        )
     ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
 
     handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]

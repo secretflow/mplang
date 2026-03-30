@@ -36,7 +36,34 @@ from typing import Any, Literal
 
 
 class StoreBackend(ABC):
-    """Abstract base class for storage backends."""
+    """Abstract base class for storage backends.
+
+    A backend serves two orthogonal APIs, each with its own base path:
+
+    - **Object API** (:meth:`put` / :meth:`get` / :meth:`delete` /
+      :meth:`exists`): serialised Python objects, resolved under
+      *obj_root*.
+    - **Data API** (:meth:`open_data`): file-based I/O for table
+      read/write (csv, parquet, …), resolved under *data_root*.
+
+    Subclass implementations **must** use :attr:`_obj_root` for the
+    Object API and :attr:`_data_root` for the Data API.
+
+    Args:
+        obj_root: Base path for object storage (put/get).  The
+            interpretation is backend-specific (local dir, S3 prefix, …).
+        data_root: Base path for file-based data I/O (open_data).  The
+            interpretation is backend-specific.  If *None*,
+            :meth:`open_data` is unavailable.
+    """
+
+    def __init__(
+        self,
+        obj_root: str | None = None,
+        data_root: str | None = None,
+    ) -> None:
+        self._obj_root: str | None = obj_root
+        self._data_root: str | None = data_root
 
     @property
     @abstractmethod
@@ -69,12 +96,20 @@ class StoreBackend(ABC):
         """List all keys in the backend."""
         ...
 
+    # ------------------------------------------------------------------
+    # Data path resolution (for table I/O)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
     @contextmanager
     def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
-        """Context manager yielding a local filesystem path for data I/O.
+        """Context manager yielding a usable path for file-based data I/O.
 
-        Used by table I/O (file-based read/write) as opposed to
+        Used by table I/O (csv, parquet, …) as opposed to
         :meth:`put`/:meth:`get` which handle serialized Python objects.
+
+        Implementations should sanitise *key* (strip leading ``/``,
+        reject ``..`` segments) and resolve it under :attr:`_data_root`.
 
         Args:
             key: Relative path within the backend's data root.
@@ -82,16 +117,9 @@ class StoreBackend(ABC):
 
         Yields:
             A local filesystem path that DuckDB / PyArrow can operate on
-            directly.  Backend implementations may:
-
-            - **Yield a direct local path** (``FileSystemBackend``).
-            - **Download first** then yield a local cache path (future
-              remote backends), uploading on successful context exit for
-              ``mode="w"``.
+            directly.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support data path resolution"
-        )
+        ...
 
 
 class MemoryBackend(StoreBackend):
@@ -102,6 +130,7 @@ class MemoryBackend(StoreBackend):
         return "mem"
 
     def __init__(self) -> None:
+        super().__init__()
         self._data: dict[str, Any] = {}
 
     def put(self, key: str, value: Any) -> None:
@@ -121,6 +150,10 @@ class MemoryBackend(StoreBackend):
     def list_keys(self) -> list[str]:
         return list(self._data.keys())
 
+    @contextmanager
+    def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
+        raise RuntimeError("MemoryBackend does not support file-based data I/O.")
+
 
 class FileSystemBackend(StoreBackend):
     """File system storage backend using pickle."""
@@ -129,17 +162,17 @@ class FileSystemBackend(StoreBackend):
     def scheme(self) -> str:
         return "fs"
 
-    def __init__(self, root_dir: str) -> None:
-        self._root = os.path.abspath(root_dir)
-        os.makedirs(self._root, exist_ok=True)
+    def __init__(self, obj_root: str, data_root: str | None = None) -> None:
+        super().__init__(obj_root=obj_root, data_root=data_root or obj_root)
+        os.makedirs(os.path.abspath(obj_root), exist_ok=True)
 
     def _get_path(self, key: str) -> str:
         # Security check: prevent directory traversal
-        # We assume key is a relative path from root
-        # If key starts with /, strip it to make it relative
+        assert self._obj_root is not None
+        root = os.path.abspath(self._obj_root)
         clean_key = key.lstrip("/")
-        path = os.path.abspath(os.path.join(self._root, clean_key))
-        if not path.startswith(self._root):
+        path = os.path.abspath(os.path.join(root, clean_key))
+        if not path.startswith(root):
             raise ValueError(f"Invalid key (traversal attempt): {key}")
         return path
 
@@ -165,22 +198,23 @@ class FileSystemBackend(StoreBackend):
         return os.path.exists(self._get_path(key))
 
     def list_keys(self) -> list[str]:
+        assert self._obj_root is not None
+        root = os.path.abspath(self._obj_root)
         keys = []
-        for root, _, files in os.walk(self._root):
+        for dirpath, _, files in os.walk(root):
             for file in files:
-                full_path = os.path.join(root, file)
-                rel_path = os.path.relpath(full_path, self._root)
+                full_path = os.path.join(dirpath, file)
+                rel_path = os.path.relpath(full_path, root)
                 keys.append(rel_path)
         return keys
 
     @contextmanager
     def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
-        """Yield a local path under ``root_dir`` for file-based data I/O.
-
-        For ``mode="w"``, parent directories are created automatically.
-        Path traversal is prevented by :meth:`_get_path`.
-        """
-        path = self._get_path(key)
+        """Yield a local path under ``data_root`` for file-based data I/O."""
+        clean = key.lstrip("/")
+        if ".." in clean.split("/"):
+            raise ValueError(f"Invalid key (traversal attempt): {key}")
+        path = os.path.join(self._data_root, clean)  # type: ignore[arg-type]
         if mode == "w":
             os.makedirs(os.path.dirname(path), exist_ok=True)
         yield path

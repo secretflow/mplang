@@ -211,10 +211,12 @@ class FileSystemBackend(StoreBackend):
     @contextmanager
     def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
         """Yield a local path under ``data_root`` for file-based data I/O."""
-        clean = key.lstrip("/")
-        if ".." in clean.split("/"):
+        assert self._data_root is not None
+        root = os.path.abspath(self._data_root)
+        clean_key = key.lstrip("/")
+        path = os.path.abspath(os.path.join(root, clean_key))
+        if not path.startswith(root):
             raise ValueError(f"Invalid key (traversal attempt): {key}")
-        path = os.path.join(self._data_root, clean)  # type: ignore[arg-type]
         if mode == "w":
             os.makedirs(os.path.dirname(path), exist_ok=True)
         yield path

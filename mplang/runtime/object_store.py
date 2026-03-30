@@ -166,10 +166,10 @@ class FileSystemBackend(StoreBackend):
         super().__init__(obj_root=obj_root, data_root=data_root or obj_root)
         os.makedirs(os.path.abspath(obj_root), exist_ok=True)
 
-    def _get_path(self, key: str) -> str:
+    def _get_path(self, base_path: str | None, key: str) -> str:
         # Security check: prevent directory traversal
-        assert self._obj_root is not None
-        root = os.path.abspath(self._obj_root)
+        assert base_path is not None
+        root = os.path.abspath(base_path)
         clean_key = key.lstrip("/")
         path = os.path.abspath(os.path.join(root, clean_key))
         if not path.startswith(root):
@@ -177,25 +177,25 @@ class FileSystemBackend(StoreBackend):
         return path
 
     def put(self, key: str, value: Any) -> None:
-        path = self._get_path(key)
+        path = self._get_path(self._obj_root, key)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             pickle.dump(value, f)
 
     def get(self, key: str) -> Any:
-        path = self._get_path(key)
+        path = self._get_path(self._obj_root, key)
         if not os.path.exists(path):
             raise KeyError(f"Key not found: {key}")
         with open(path, "rb") as f:
             return pickle.load(f)
 
     def delete(self, key: str) -> None:
-        path = self._get_path(key)
+        path = self._get_path(self._obj_root, key)
         if os.path.exists(path):
             os.remove(path)
 
     def exists(self, key: str) -> bool:
-        return os.path.exists(self._get_path(key))
+        return os.path.exists(self._get_path(self._obj_root, key))
 
     def list_keys(self) -> list[str]:
         assert self._obj_root is not None
@@ -212,11 +212,7 @@ class FileSystemBackend(StoreBackend):
     def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
         """Yield a local path under ``data_root`` for file-based data I/O."""
         assert self._data_root is not None
-        root = os.path.abspath(self._data_root)
-        clean_key = key.lstrip("/")
-        path = os.path.abspath(os.path.join(root, clean_key))
-        if not path.startswith(root):
-            raise ValueError(f"Invalid key (traversal attempt): {key}")
+        path = self._get_path(self._data_root, key)
         if mode == "w":
             os.makedirs(os.path.dirname(path), exist_ok=True)
         yield path

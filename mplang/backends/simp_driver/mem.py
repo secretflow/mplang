@@ -80,8 +80,7 @@ class MemCluster:
             worker_root = cluster_root / f"node{rank}"
             store = ObjectStore(
                 persistent=FileSystemBackend(
-                    obj_root=str(worker_root / "store"),
-                    data_root=str(data_root),
+                    root_path=str(worker_root / "store"),
                 )
             )
 
@@ -271,7 +270,7 @@ def make_simulator(
         handlers=handlers,
         tracer=cluster.tracer,
         store=ObjectStore(
-            persistent=FileSystemBackend(obj_root=str(cluster.host_root))
+            persistent=FileSystemBackend(root_path=str(cluster.host_root))
         ),
     )
     interp.set_dialect_state("simp", state)

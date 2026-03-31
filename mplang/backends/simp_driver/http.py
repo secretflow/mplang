@@ -164,7 +164,7 @@ def make_driver(endpoints: list[str], *, cluster_spec: Any = None) -> Interprete
         root_dir=state.driver_root,
         handlers=handlers,
         store=ObjectStore(
-            persistent=FileSystemBackend(obj_root=str(state.driver_root))
+            persistent=FileSystemBackend(root_path=str(state.driver_root))
         ),
     )
     interp.set_dialect_state("simp", state)

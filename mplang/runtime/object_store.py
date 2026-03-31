@@ -28,42 +28,31 @@ from __future__ import annotations
 
 import os
 import pickle
+import shutil
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
-from contextlib import contextmanager
-from typing import Any, Literal
+from typing import Any
 
 
 class StoreBackend(ABC):
     """Abstract base class for storage backends.
 
-    A backend serves two orthogonal APIs, each with its own base path:
+    A backend provides:
 
     - **Object API** (:meth:`put` / :meth:`get` / :meth:`delete` /
-      :meth:`exists`): serialised Python objects, resolved under
-      *obj_root*.
-    - **Data API** (:meth:`open_data`): file-based I/O for table
-      read/write (csv, parquet, …), resolved under *data_root*.
+      :meth:`exists`): serialised Python objects.
+    - **Data API** (:meth:`download` / :meth:`upload`): file-based
+      I/O for table read/write (csv, parquet, …).
 
-    Subclass implementations **must** use :attr:`_obj_root` for the
-    Object API and :attr:`_data_root` for the Data API.
+    Both APIs resolve paths under a single *root_path*.
 
     Args:
-        obj_root: Base path for object storage (put/get).  The
-            interpretation is backend-specific (local dir, S3 prefix, …).
-        data_root: Base path for file-based data I/O (open_data).  The
-            interpretation is backend-specific.  If *None*,
-            :meth:`open_data` is unavailable.
+        root_path: Base path for all storage.  The interpretation is
+            backend-specific (local dir, S3 prefix, …).
     """
 
-    def __init__(
-        self,
-        obj_root: str | None = None,
-        data_root: str | None = None,
-    ) -> None:
-        self._obj_root: str | None = obj_root
-        self._data_root: str | None = data_root
+    def __init__(self, root_path: str | None = None) -> None:
+        self._root_path: str | None = root_path
 
     @property
     @abstractmethod
@@ -101,23 +90,39 @@ class StoreBackend(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    @contextmanager
-    def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
-        """Context manager yielding a usable path for file-based data I/O.
+    def download(self, key: str, dest: str) -> None:
+        """Download data from the backend to a local path.
 
         Used by table I/O (csv, parquet, …) as opposed to
         :meth:`put`/:meth:`get` which handle serialized Python objects.
 
         Implementations should sanitise *key* (strip leading ``/``,
-        reject ``..`` segments) and resolve it under :attr:`_data_root`.
+        reject ``..`` segments) and resolve it under :attr:`_root_path`.
+
+        For local backends a file copy (or no-op when paths coincide) is
+        performed.  For remote backends (S3, OSS, …) the object is
+        downloaded to *dest*.
 
         Args:
-            key: Relative path within the backend's data root.
-            mode: ``"r"`` for reading, ``"w"`` for writing.
+            key: Relative path within the backend's root.
+            dest: Local filesystem path to write the data to.
+        """
+        ...
 
-        Yields:
-            A local filesystem path that DuckDB / PyArrow can operate on
-            directly.
+    @abstractmethod
+    def upload(self, source: str, key: str) -> None:
+        """Upload data from a local path to the backend.
+
+        For local backends a file copy (or no-op when paths coincide) is
+        performed.  For remote backends the local file at *source* is
+        uploaded.
+
+        Implementations should sanitise *key* (strip leading ``/``,
+        reject ``..`` segments) and resolve it under :attr:`_root_path`.
+
+        Args:
+            source: Local filesystem path containing the data.
+            key: Relative path within the backend's root.
         """
         ...
 
@@ -150,8 +155,10 @@ class MemoryBackend(StoreBackend):
     def list_keys(self) -> list[str]:
         return list(self._data.keys())
 
-    @contextmanager
-    def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
+    def download(self, key: str, dest: str) -> None:
+        raise RuntimeError("MemoryBackend does not support file-based data I/O.")
+
+    def upload(self, source: str, key: str) -> None:
         raise RuntimeError("MemoryBackend does not support file-based data I/O.")
 
 
@@ -162,14 +169,14 @@ class FileSystemBackend(StoreBackend):
     def scheme(self) -> str:
         return "fs"
 
-    def __init__(self, obj_root: str, data_root: str | None = None) -> None:
-        super().__init__(obj_root=obj_root, data_root=data_root or obj_root)
-        os.makedirs(os.path.abspath(obj_root), exist_ok=True)
+    def __init__(self, root_path: str) -> None:
+        super().__init__(root_path=root_path)
+        os.makedirs(os.path.abspath(root_path), exist_ok=True)
 
-    def _get_path(self, base_path: str | None, key: str) -> str:
-        # Security check: prevent directory traversal
-        assert base_path is not None
-        root = os.path.abspath(base_path)
+    def _resolve_key(self, key: str) -> str:
+        """Resolve *key* under ``root_path`` with traversal prevention."""
+        assert self._root_path is not None
+        root = os.path.abspath(self._root_path)
         clean_key = key.lstrip("/")
         path = os.path.abspath(os.path.join(root, clean_key))
         if not path.startswith(root):
@@ -177,29 +184,29 @@ class FileSystemBackend(StoreBackend):
         return path
 
     def put(self, key: str, value: Any) -> None:
-        path = self._get_path(self._obj_root, key)
+        path = self._resolve_key(key)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             pickle.dump(value, f)
 
     def get(self, key: str) -> Any:
-        path = self._get_path(self._obj_root, key)
+        path = self._resolve_key(key)
         if not os.path.exists(path):
             raise KeyError(f"Key not found: {key}")
         with open(path, "rb") as f:
             return pickle.load(f)
 
     def delete(self, key: str) -> None:
-        path = self._get_path(self._obj_root, key)
+        path = self._resolve_key(key)
         if os.path.exists(path):
             os.remove(path)
 
     def exists(self, key: str) -> bool:
-        return os.path.exists(self._get_path(self._obj_root, key))
+        return os.path.exists(self._resolve_key(key))
 
     def list_keys(self) -> list[str]:
-        assert self._obj_root is not None
-        root = os.path.abspath(self._obj_root)
+        assert self._root_path is not None
+        root = os.path.abspath(self._root_path)
         keys = []
         for dirpath, _, files in os.walk(root):
             for file in files:
@@ -208,14 +215,39 @@ class FileSystemBackend(StoreBackend):
                 keys.append(rel_path)
         return keys
 
-    @contextmanager
-    def open_data(self, key: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
-        """Yield a local path under ``data_root`` for file-based data I/O."""
-        assert self._data_root is not None
-        path = self._get_path(self._data_root, key)
-        if mode == "w":
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-        yield path
+    def download(self, key: str, dest: str) -> None:
+        """Copy data to local *dest*.
+
+        - **Absolute *key***: treated as a direct source path.
+        - **Relative *key***: resolved under ``root_path``.
+
+        No-op when source and *dest* resolve to the same path.
+        """
+        dest = os.path.abspath(dest)
+        if os.path.isabs(key):
+            src = os.path.abspath(key)
+        else:
+            src = self._resolve_key(key)
+        if src != dest:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(src, dest)
+
+    def upload(self, source: str, key: str) -> None:
+        """Copy data from local *source* to the backend.
+
+        - **Absolute *key***: treated as a direct destination path.
+        - **Relative *key***: resolved under ``root_path``.
+
+        No-op when *source* and destination resolve to the same path.
+        """
+        source = os.path.abspath(source)
+        if os.path.isabs(key):
+            dst = os.path.abspath(key)
+        else:
+            dst = self._resolve_key(key)
+        if source != dst:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(source, dst)
 
 
 class ObjectStore:
@@ -360,28 +392,34 @@ class ObjectStore:
     # Data path resolution (for table I/O)
     # ------------------------------------------------------------------
 
-    @contextmanager
-    def open_data(self, path: str, mode: Literal["r", "w"] = "r") -> Iterator[str]:
-        """Resolve a data file path for table I/O.
+    def download(self, path: str, dest: str) -> None:
+        """Download / copy a data file to a local destination.
 
-        - **Absolute path**: yielded as-is (backward compatibility).
-        - **Relative path with persistent backend**: delegated to
-          :meth:`StoreBackend.open_data`.
-        - **Relative path without persistent backend**: resolved against
-          the current working directory.
+        Delegates to the persistent backend.
 
         Args:
-            path: File path from the user (stored in IR attrs).
-            mode: ``"r"`` for reading, ``"w"`` for writing.
-
-        Yields:
-            A local filesystem path usable by DuckDB / PyArrow.
+            path: Data path from the user (stored in IR attrs).
+            dest: Local filesystem path to write the data to.
         """
-        if os.path.isabs(path):
-            yield path
-            return
         if self._persistent is None:
-            yield os.path.abspath(path)
-            return
-        with self._persistent.open_data(path, mode) as resolved:
-            yield resolved
+            raise RuntimeError(
+                "No persistent backend configured. "
+                "Pass a StoreBackend to ObjectStore(persistent=...)."
+            )
+        self._persistent.download(path, dest)
+
+    def upload(self, source: str, path: str) -> None:
+        """Upload / copy a local data file to the backend.
+
+        Delegates to the persistent backend.
+
+        Args:
+            source: Local filesystem path containing the data.
+            path: Data path from the user (stored in IR attrs).
+        """
+        if self._persistent is None:
+            raise RuntimeError(
+                "No persistent backend configured. "
+                "Pass a StoreBackend to ObjectStore(persistent=...)."
+            )
+        self._persistent.upload(source, path)

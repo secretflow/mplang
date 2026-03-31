@@ -47,7 +47,7 @@ def test_object_store_transient():
 def test_object_store_persistent(tmp_path):
     from mplang.runtime.object_store import FileSystemBackend
 
-    store = ObjectStore(persistent=FileSystemBackend(obj_root=str(tmp_path)))
+    store = ObjectStore(persistent=FileSystemBackend(root_path=str(tmp_path)))
 
     # Bare key -> auto-prefix with persistent scheme
     uri = store.put("my_value", uri="my_key")

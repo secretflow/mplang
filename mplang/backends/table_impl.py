@@ -723,8 +723,10 @@ def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
         return _wrap(FileTableSource(path=resolved, format=fmt, schema=pa_schema))
 
     if interpreter.store:
-        with interpreter.store.open_data(path, "r") as resolved:
-            return _do_read(resolved)
+        local_path = os.path.abspath(os.path.join(".tmp", path))
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        interpreter.store.download(path, local_path)
+        return _do_read(local_path)
     return _do_read(path)
 
 
@@ -850,7 +852,9 @@ def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> 
             writer.close()
 
     if interpreter.store:
-        with interpreter.store.open_data(path, "w") as resolved:
-            _do_write(resolved)
+        local_path = os.path.abspath(os.path.join(".tmp", path))
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        _do_write(local_path)
+        interpreter.store.upload(local_path, path)
     else:
         _do_write(path)

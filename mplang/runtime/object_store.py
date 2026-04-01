@@ -238,12 +238,14 @@ class FileSystemBackend(StoreBackend):
             os.symlink(src, dest)
 
     def upload(self, source: str, key: str) -> None:
-        """Copy data from local *source* to the backend.
+        """Move data from local *source* to the backend.
 
         - **Absolute *key***: treated as a direct destination path.
         - **Relative *key***: resolved under ``root_path``.
 
         No-op when *source* and destination resolve to the same path.
+        Uses ``os.rename`` (zero-copy on same filesystem) with
+        ``shutil.move`` as fallback for cross-filesystem moves.
 
         Raises:
             FileExistsError: If the destination already exists.
@@ -257,7 +259,7 @@ class FileSystemBackend(StoreBackend):
             if os.path.exists(dst):
                 raise FileExistsError(f"Upload destination already exists: {dst}")
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(source, dst)
+            shutil.move(source, dst)
 
 
 class ObjectStore:

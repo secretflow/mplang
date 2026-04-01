@@ -151,7 +151,7 @@ class TestDownloadUpload(unittest.TestCase):
     # -- FileSystemBackend.upload --
 
     def test_backend_upload(self):
-        """upload copies data from local source to root."""
+        """upload moves data from local source to root."""
         source = os.path.join(self.local_dir, "result.parquet")
         with open(source, "w") as f:
             f.write("parquet_data")
@@ -159,6 +159,7 @@ class TestDownloadUpload(unittest.TestCase):
         self.backend.upload(source, "output/nested/result.parquet")
         dest = os.path.join(self.test_dir, "output/nested/result.parquet")
         self.assertTrue(os.path.exists(dest))
+        self.assertFalse(os.path.exists(source))
         with open(dest) as f:
             self.assertEqual(f.read(), "parquet_data")
 

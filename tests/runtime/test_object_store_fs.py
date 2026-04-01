@@ -23,7 +23,7 @@ from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 class TestFileSystemBackend(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.backend = FileSystemBackend(root_dir=self.test_dir)
+        self.backend = FileSystemBackend(root_path=self.test_dir)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -77,7 +77,7 @@ class TestFileSystemBackend(unittest.TestCase):
 class TestObjectStoreWithFS(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.store = ObjectStore(persistent=FileSystemBackend(self.test_dir))
+        self.store = ObjectStore(persistent=FileSystemBackend(root_path=self.test_dir))
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -108,75 +108,204 @@ class TestObjectStoreWithFS(unittest.TestCase):
         self.assertEqual(self.store.get("fs://persistent_key"), "persistent_val")
 
 
-class TestOpenData(unittest.TestCase):
-    """Tests for StoreBackend.open_data / ObjectStore.open_data."""
+class TestDownloadUpload(unittest.TestCase):
+    """Tests for StoreBackend.download/upload / ObjectStore.download/upload."""
 
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
-        self.backend = FileSystemBackend(root_dir=self.test_dir)
+        self.local_dir = tempfile.mkdtemp()
+        self.backend = FileSystemBackend(root_path=self.test_dir)
         self.store = ObjectStore(persistent=self.backend)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
+        shutil.rmtree(self.local_dir)
 
-    # -- FileSystemBackend.open_data --
+    # -- FileSystemBackend.download --
 
-    def test_backend_open_data_read(self):
-        """open_data('r') yields the resolved local path."""
-        with self.backend.open_data("data/input.csv", "r") as path:
-            expected = os.path.join(self.test_dir, "data/input.csv")
-            self.assertEqual(path, expected)
+    def test_backend_download(self):
+        """download creates a symlink from root to local dest."""
+        # Create a source file in root_path
+        src = os.path.join(self.test_dir, "data", "input.csv")
+        os.makedirs(os.path.dirname(src), exist_ok=True)
+        with open(src, "w") as f:
+            f.write("a,b\n1,2\n")
 
-    def test_backend_open_data_write_creates_dirs(self):
-        """open_data('w') creates parent directories automatically."""
-        with self.backend.open_data("output/nested/result.parquet", "w") as path:
-            expected = os.path.join(self.test_dir, "output/nested/result.parquet")
-            self.assertEqual(path, expected)
-            self.assertTrue(os.path.isdir(os.path.dirname(path)))
+        dest = os.path.join(self.local_dir, "input.csv")
+        self.backend.download("data/input.csv", dest)
+        self.assertTrue(os.path.islink(dest))
+        with open(dest) as f:
+            self.assertEqual(f.read(), "a,b\n1,2\n")
 
-    def test_backend_open_data_traversal_prevention(self):
-        """open_data rejects directory traversal attempts."""
+    def test_backend_download_noop_same_path(self):
+        """download is a no-op when src and dest resolve to the same path."""
+        src = os.path.join(self.test_dir, "file.csv")
+        with open(src, "w") as f:
+            f.write("data")
+
+        # dest == src (absolute)
+        self.backend.download("file.csv", src)
+        with open(src) as f:
+            self.assertEqual(f.read(), "data")
+
+    # -- FileSystemBackend.upload --
+
+    def test_backend_upload(self):
+        """upload moves data from local source to root."""
+        source = os.path.join(self.local_dir, "result.parquet")
+        with open(source, "w") as f:
+            f.write("parquet_data")
+
+        self.backend.upload(source, "output/nested/result.parquet")
+        dest = os.path.join(self.test_dir, "output/nested/result.parquet")
+        self.assertTrue(os.path.exists(dest))
+        self.assertFalse(os.path.exists(source))
+        with open(dest) as f:
+            self.assertEqual(f.read(), "parquet_data")
+
+    def test_backend_download_traversal_prevention(self):
+        """download rejects directory traversal attempts."""
+        dest = os.path.join(self.local_dir, "out.csv")
         with self.assertRaises(ValueError):
-            with self.backend.open_data("../outside", "r"):
-                pass
+            self.backend.download("../outside", dest)
 
-    def test_backend_open_data_write_roundtrip(self):
-        """Write a file via open_data('w'), then read it back via open_data('r')."""
-        with self.backend.open_data("test.txt", "w") as path:
-            with open(path, "w") as f:
-                f.write("hello")
+    def test_backend_upload_traversal_prevention(self):
+        """upload rejects directory traversal attempts."""
+        source = os.path.join(self.local_dir, "in.csv")
+        with open(source, "w") as f:
+            f.write("data")
+        with self.assertRaises(ValueError):
+            self.backend.upload(source, "../outside")
 
-        with self.backend.open_data("test.txt", "r") as path:
-            with open(path) as f:
-                self.assertEqual(f.read(), "hello")
+    def test_backend_upload_download_roundtrip(self):
+        """Upload a file, then download it back."""
+        source = os.path.join(self.local_dir, "test.txt")
+        with open(source, "w") as f:
+            f.write("hello")
 
-    # -- ObjectStore.open_data --
+        self.backend.upload(source, "test.txt")
 
-    def test_store_open_data_relative_path(self):
+        dest = os.path.join(self.local_dir, "test_downloaded.txt")
+        self.backend.download("test.txt", dest)
+        with open(dest) as f:
+            self.assertEqual(f.read(), "hello")
+
+    def test_backend_download_rejects_existing_dest(self):
+        """download raises FileExistsError when dest already exists."""
+        src = os.path.join(self.test_dir, "src.csv")
+        with open(src, "w") as f:
+            f.write("data")
+
+        dest = os.path.join(self.local_dir, "existing.csv")
+        with open(dest, "w") as f:
+            f.write("old")
+
+        with self.assertRaises(FileExistsError):
+            self.backend.download("src.csv", dest)
+
+    def test_backend_upload_rejects_existing_dest(self):
+        """upload raises FileExistsError when dest already exists."""
+        source = os.path.join(self.local_dir, "new.csv")
+        with open(source, "w") as f:
+            f.write("new_data")
+
+        # Pre-create the destination in root_path
+        dst = os.path.join(self.test_dir, "existing_key")
+        with open(dst, "w") as f:
+            f.write("old_data")
+
+        with self.assertRaises(FileExistsError):
+            self.backend.upload(source, "existing_key")
+
+    # -- FileSystemBackend.download with absolute key --
+
+    def test_backend_download_absolute_key(self):
+        """download with absolute key treats it as direct source path."""
+        abs_src = os.path.join(self.local_dir, "abs_src.csv")
+        with open(abs_src, "w") as f:
+            f.write("abs_data")
+
+        dest = os.path.join(self.local_dir, "abs_dest.csv")
+        self.backend.download(abs_src, dest)
+        with open(dest) as f:
+            self.assertEqual(f.read(), "abs_data")
+
+    def test_backend_upload_absolute_key(self):
+        """upload with absolute key treats it as direct dest path."""
+        source = os.path.join(self.local_dir, "src.csv")
+        with open(source, "w") as f:
+            f.write("upload_abs")
+
+        abs_dest = os.path.join(self.local_dir, "abs_uploaded.csv")
+        self.backend.upload(source, abs_dest)
+        with open(abs_dest) as f:
+            self.assertEqual(f.read(), "upload_abs")
+
+    # -- ObjectStore.download --
+
+    def test_store_download_relative_path(self):
         """Relative paths are resolved via persistent backend."""
-        with self.store.open_data("data/file.csv", "r") as path:
-            self.assertTrue(path.startswith(self.test_dir))
-            self.assertTrue(path.endswith("data/file.csv"))
+        src = os.path.join(self.test_dir, "data", "file.csv")
+        os.makedirs(os.path.dirname(src), exist_ok=True)
+        with open(src, "w") as f:
+            f.write("content")
 
-    def test_store_open_data_absolute_path(self):
-        """Absolute paths are yielded as-is (backward compat)."""
-        abs_path = "/tmp/some/absolute/path.csv"
-        with self.store.open_data(abs_path, "r") as path:
-            self.assertEqual(path, abs_path)
+        dest = os.path.join(self.local_dir, "file.csv")
+        self.store.download("data/file.csv", dest)
+        with open(dest) as f:
+            self.assertEqual(f.read(), "content")
 
-    def test_store_open_data_no_persistent_backend(self):
-        """Without persistent backend, relative paths resolve against cwd."""
+    def test_store_download_absolute_path(self):
+        """Absolute paths are handled by the backend directly."""
+        abs_src = os.path.join(self.test_dir, "abs_file.csv")
+        with open(abs_src, "w") as f:
+            f.write("abs_content")
+
+        dest = os.path.join(self.local_dir, "abs_out.csv")
+        self.store.download(abs_src, dest)
+        with open(dest) as f:
+            self.assertEqual(f.read(), "abs_content")
+
+    def test_store_download_no_persistent_backend_raises(self):
+        """Without persistent backend, download raises RuntimeError."""
         store_no_persist = ObjectStore()
-        with store_no_persist.open_data("relative/path.csv", "r") as path:
-            self.assertEqual(path, os.path.abspath("relative/path.csv"))
+        with self.assertRaises(RuntimeError):
+            store_no_persist.download("relative/path.csv", "/tmp/dest.csv")
 
-    # -- MemoryBackend.open_data --
+    def test_store_upload_no_persistent_backend_raises(self):
+        """Without persistent backend, upload raises RuntimeError."""
+        store_no_persist = ObjectStore()
+        with self.assertRaises(RuntimeError):
+            store_no_persist.upload("/tmp/source.csv", "relative/path.csv")
 
-    def test_memory_backend_open_data_raises(self):
-        """MemoryBackend does not support open_data."""
+    # -- ObjectStore.upload --
+
+    def test_store_upload_relative_path(self):
+        """Relative paths upload via persistent backend."""
+        source = os.path.join(self.local_dir, "upload.csv")
+        with open(source, "w") as f:
+            f.write("upload_data")
+
+        self.store.upload(source, "uploaded/file.csv")
+        stored = os.path.join(self.test_dir, "uploaded/file.csv")
+        self.assertTrue(os.path.exists(stored))
+        with open(stored) as f:
+            self.assertEqual(f.read(), "upload_data")
+
+    # -- MemoryBackend.download/upload --
+
+    def test_memory_backend_download_raises(self):
+        """MemoryBackend raises RuntimeError on download."""
         from mplang.runtime.object_store import MemoryBackend
 
         mem = MemoryBackend()
-        with self.assertRaises(NotImplementedError):
-            with mem.open_data("key", "r"):
-                pass
+        with self.assertRaises(RuntimeError):
+            mem.download("key", "/tmp/dest")
+
+    def test_memory_backend_upload_raises(self):
+        """MemoryBackend raises RuntimeError on upload."""
+        from mplang.runtime.object_store import MemoryBackend
+
+        mem = MemoryBackend()
+        with self.assertRaises(RuntimeError):
+            mem.upload("/tmp/source", "key")

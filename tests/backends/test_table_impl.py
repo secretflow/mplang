@@ -479,7 +479,7 @@ def test_read_write_with_store(tmp_path):
     from mplang.runtime.interpreter import Interpreter
     from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 
-    store = ObjectStore(persistent=FileSystemBackend(str(tmp_path)))
+    store = ObjectStore(persistent=FileSystemBackend(root_path=str(tmp_path)))
     interp = Interpreter(store=store)
     set_root_context(interp, force=True)
 
@@ -510,7 +510,7 @@ def test_read_write_absolute_path_with_store(tmp_path):
 
     store_root = tmp_path / "store_root"
     store_root.mkdir()
-    store = ObjectStore(persistent=FileSystemBackend(str(store_root)))
+    store = ObjectStore(persistent=FileSystemBackend(root_path=str(store_root)))
     interp = Interpreter(store=store)
     set_root_context(interp, force=True)
 

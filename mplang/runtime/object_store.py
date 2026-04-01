@@ -216,12 +216,15 @@ class FileSystemBackend(StoreBackend):
         return keys
 
     def download(self, key: str, dest: str) -> None:
-        """Copy data to local *dest*.
+        """Symlink data to local *dest*.
 
         - **Absolute *key***: treated as a direct source path.
         - **Relative *key***: resolved under ``root_path``.
 
         No-op when source and *dest* resolve to the same path.
+
+        Raises:
+            FileExistsError: If *dest* already exists.
         """
         dest = os.path.abspath(dest)
         if os.path.isabs(key):
@@ -229,8 +232,10 @@ class FileSystemBackend(StoreBackend):
         else:
             src = self._resolve_key(key)
         if src != dest:
+            if os.path.lexists(dest):
+                raise FileExistsError(f"Download destination already exists: {dest}")
             os.makedirs(os.path.dirname(dest), exist_ok=True)
-            shutil.copy2(src, dest)
+            os.symlink(src, dest)
 
     def upload(self, source: str, key: str) -> None:
         """Copy data from local *source* to the backend.
@@ -239,6 +244,9 @@ class FileSystemBackend(StoreBackend):
         - **Relative *key***: resolved under ``root_path``.
 
         No-op when *source* and destination resolve to the same path.
+
+        Raises:
+            FileExistsError: If the destination already exists.
         """
         source = os.path.abspath(source)
         if os.path.isabs(key):
@@ -246,6 +254,8 @@ class FileSystemBackend(StoreBackend):
         else:
             dst = self._resolve_key(key)
         if source != dst:
+            if os.path.exists(dst):
+                raise FileExistsError(f"Upload destination already exists: {dst}")
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(source, dst)
 

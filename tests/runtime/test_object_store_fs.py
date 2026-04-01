@@ -124,7 +124,7 @@ class TestDownloadUpload(unittest.TestCase):
     # -- FileSystemBackend.download --
 
     def test_backend_download(self):
-        """download copies data from root to local dest."""
+        """download creates a symlink from root to local dest."""
         # Create a source file in root_path
         src = os.path.join(self.test_dir, "data", "input.csv")
         os.makedirs(os.path.dirname(src), exist_ok=True)
@@ -133,6 +133,7 @@ class TestDownloadUpload(unittest.TestCase):
 
         dest = os.path.join(self.local_dir, "input.csv")
         self.backend.download("data/input.csv", dest)
+        self.assertTrue(os.path.islink(dest))
         with open(dest) as f:
             self.assertEqual(f.read(), "a,b\n1,2\n")
 
@@ -187,6 +188,33 @@ class TestDownloadUpload(unittest.TestCase):
         self.backend.download("test.txt", dest)
         with open(dest) as f:
             self.assertEqual(f.read(), "hello")
+
+    def test_backend_download_rejects_existing_dest(self):
+        """download raises FileExistsError when dest already exists."""
+        src = os.path.join(self.test_dir, "src.csv")
+        with open(src, "w") as f:
+            f.write("data")
+
+        dest = os.path.join(self.local_dir, "existing.csv")
+        with open(dest, "w") as f:
+            f.write("old")
+
+        with self.assertRaises(FileExistsError):
+            self.backend.download("src.csv", dest)
+
+    def test_backend_upload_rejects_existing_dest(self):
+        """upload raises FileExistsError when dest already exists."""
+        source = os.path.join(self.local_dir, "new.csv")
+        with open(source, "w") as f:
+            f.write("new_data")
+
+        # Pre-create the destination in root_path
+        dst = os.path.join(self.test_dir, "existing_key")
+        with open(dst, "w") as f:
+            f.write("old_data")
+
+        with self.assertRaises(FileExistsError):
+            self.backend.upload(source, "existing_key")
 
     # -- FileSystemBackend.download with absolute key --
 

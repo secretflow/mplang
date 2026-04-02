@@ -36,8 +36,8 @@ def _complex_body(a, b):
 
 
 def test_func_call_emits_region():
-    x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-    y = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+    x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])  # type: ignore
+    y = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])  # type: ignore
 
     def wrapper(a, b):
         fn = func(_scale_add, a, b)
@@ -53,8 +53,8 @@ def test_func_call_emits_region():
 
 
 def test_func_define_returns_traceobject():
-    x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])
-    y = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])
+    x = InterpObject(np.array(1.0), elt.Tensor[elt.f32, ()])  # type: ignore
+    y = InterpObject(np.array(3.0), elt.Tensor[elt.f32, ()])  # type: ignore
 
     def wrapper(a, b):
         return func(_scale_add, a, b)
@@ -66,8 +66,8 @@ def test_func_define_returns_traceobject():
 
 
 def test_func_call_handles_complex_pytree_output():
-    x = InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])
-    y = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])
+    x = InterpObject(np.array(2.0), elt.Tensor[elt.f32, ()])  # type: ignore
+    y = InterpObject(np.array(5.0), elt.Tensor[elt.f32, ()])  # type: ignore
 
     def wrapper(a, b):
         nested_fn = func(_complex_body, a, b)
@@ -110,9 +110,9 @@ def test_func_call_handles_complex_pytree_output():
             (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
               %0 = func.func() {in_morph=(PyTreeDef(((*, *), {})), (0, 1), []), out_morph=(PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), (0, 1, 2), []), output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
                 (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-                  %0 = tensor.run_jax(%arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
-                  %1 = tensor.run_jax(%0, %arg1) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
-                  %2 = tensor.run_jax(%1, %arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %0 = tensor.run_jax(%arg0) {arg_keep_map=None, backend='auto', ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %1 = tensor.run_jax(%0, %arg1) {arg_keep_map=None, backend='auto', ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %2 = tensor.run_jax(%1, %arg0) {arg_keep_map=None, backend='auto', ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
                   return %2, %arg1, %1
                 }
               }

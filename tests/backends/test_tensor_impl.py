@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -49,6 +50,70 @@ def test_tensor_ops_e2e():
     np.testing.assert_allclose(result.runtime_obj.unwrap(), expected)
 
 
+def test_tensor_run_dynamic_shape():
+    """Test tracing with TensorType to get compiled graph.
+
+    This test requires IREE to be installed because dynamic shapes
+    (uses_shape_polymorphism) are only supported by IREE, not by JAX XLA.
+    """
+
+    # Check if IREE is available
+    try:
+        import iree.compiler  # noqa: F401
+        import iree.runtime  # noqa: F401
+    except ImportError:
+        import pytest
+
+        pytest.skip("IREE not installed, skipping dynamic shape test")
+
+    import jax.numpy as jnp
+
+    import mplang as mp
+    import mplang.edsl as el
+    import mplang.edsl.typing as elt
+
+    # jax.config.update("jax_enable_x64", True)
+
+    # Phase 1: Define function with type annotations
+    @tensor.mark_symbolic_shapes(in_shapes=[("rows",)])
+    def square(x: jnp.ndarray):
+        return jnp.square(x)
+
+    def exec(x):
+        return tensor.run_jax(square, x)
+
+    tracer = el.Tracer()
+    tensor_type = elt.TensorType(elt.f32, (-1,))
+    x_obj = tracer._new_arg(tensor_type)
+    traced_fn = mp.compile(exec, x_obj)
+
+    assert "tensor<?xf32>" in traced_fn.graph.to_string(verbose=True)
+
+    # Phase 2: Execute with various test inputs to verify run_jax_impl handles dynamic shapes
+    from mplang.runtime.interpreter import Interpreter
+
+    # Create interpreter context
+    interp = Interpreter()
+
+    test_cases = [
+        np.array([1.0, 2.0, 3.0], dtype=np.float32),  # Size 3
+        np.array([0.5, -1.5, 2.0, 3.5], dtype=np.float32),  # Size 4
+        np.arange(10, dtype=np.float32),  # Size 10
+    ]
+
+    for input_data in test_cases:
+        # Execute the compiled function with actual data using mp.evaluate
+        result = mp.evaluate(traced_fn, input_data, context=interp)
+
+        # Verify the result
+        expected = np.square(input_data)
+        np.testing.assert_allclose(result.runtime_obj.unwrap(), expected)
+
+        # Verify output is TensorValue
+        assert hasattr(result, "runtime_obj")
+        assert hasattr(result.runtime_obj, "unwrap")
+
+
 def test_tensor_elementwise():
     """Test elementwise operation."""
 
@@ -65,7 +130,7 @@ def test_tensor_elementwise():
 
     result = workload()
     # elementwise_impl returns TensorValue wrapping object array, unwrap it first
-    result_val = result.runtime_obj
+    result_val = result.runtime_obj  # type: ignore
     if hasattr(result_val, "unwrap"):
         result_val = result_val.unwrap()
 
@@ -94,7 +159,7 @@ def test_tensor_elementwise_broadcasting():
 
     result = workload()
     # elementwise_impl returns TensorValue wrapping object array, unwrap it first
-    result_val = result.runtime_obj
+    result_val = result.runtime_obj  # type: ignore
     if hasattr(result_val, "unwrap"):
         result_val = result_val.unwrap()
 
@@ -122,8 +187,8 @@ def test_tensor_elementwise_scalar():
 
     result = workload()
     # Result should be a 0-d array or scalar
-    assert np.ndim(result.runtime_obj.unwrap()) == 0
-    assert result.runtime_obj.unwrap() == 200.0
+    assert np.ndim(result.runtime_obj.unwrap()) == 0  # type: ignore
+    assert result.runtime_obj.unwrap() == 200.0  # type: ignore
 
 
 # =============================================================================

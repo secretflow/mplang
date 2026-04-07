@@ -238,7 +238,7 @@ class FileSystemBackend(StoreBackend):
             return False
 
     def download(self, key: str, dest: str) -> None:
-        """Symlink data to local *dest*.
+        """Materialize backend data at local *dest*.
 
         - **Absolute *key***: treated as a direct source path.
         - **Relative *key***: resolved under ``root_path``.
@@ -246,7 +246,8 @@ class FileSystemBackend(StoreBackend):
         No-op when source and *dest* resolve to the same path.
         If *dest* already exists and is a file/symlink, compare content:
         size differs -> replace directly; size same -> compare MD5;
-        same -> no-op, different -> replace with symlink to source.
+        same -> no-op and keep existing *dest* as-is,
+        different -> replace with symlink to source.
 
         Raises:
             FileExistsError: If *dest* is an existing directory.

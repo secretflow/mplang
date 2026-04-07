@@ -34,8 +34,12 @@ from mplang.backends.simp_worker.http import (
     CommStats,
     HttpCommunicator,
     RecvTimeoutError,
+    SERDE_FORMAT_BINARY_CONTAINER,
+    SERDE_FORMAT_RAW_BYTES,
     SendTimeoutError,
+    _decode_binary_payload,
 )
+from mplang.edsl import serde
 
 # ---------------------------------------------------------------------------
 # CommConfig Tests
@@ -476,10 +480,14 @@ class TestHttpCommunicatorSendSync:
 
         assert comm.stats.messages_sent == 1
         assert comm.stats.send_errors == 0
-        assert comm.stats.bytes_sent == 4  # len(base64.b64encode(b"hi"))
+        # Binary transport: bytes_sent is the actual payload size, not base64 length.
+        assert comm.stats.bytes_sent == 2  # len(b"hi")
 
         _, kwargs = mock_client.return_value.put.call_args
-        assert kwargs["json"]["is_raw_bytes"] is True
+        # Binary transport uses content= + headers instead of json= envelope.
+        assert kwargs["content"] == b"hi"
+        assert kwargs["headers"]["X-Is-Raw-Bytes"] == "1"
+        assert kwargs["headers"]["X-Serde-Format"] == SERDE_FORMAT_RAW_BYTES
         # send_sync with no explicit timeout uses config.http_timeout (default 60.0)
         assert kwargs["timeout"] == 60.0
 
@@ -510,6 +518,56 @@ class TestHttpCommunicatorSendSync:
         assert comm.stats.messages_sent == 0
 
         comm.shutdown()
+
+    @patch("mplang.backends.simp_worker.http.httpx.Client")
+    def test_send_sync_sets_binary_container_header(self, mock_client):
+        """Non-raw sends should mark payload as binary container by default."""
+        mock_response = mock_client.return_value.put.return_value
+        mock_response.raise_for_status.return_value = None
+
+        comm = HttpCommunicator(
+            rank=0,
+            world_size=2,
+            endpoints=["http://localhost:8000", "http://localhost:8001"],
+        )
+
+        comm.send_sync(to=1, key="k", data={"a": 1})
+
+        _, kwargs = mock_client.return_value.put.call_args
+        assert kwargs["headers"]["X-Serde-Format"] == SERDE_FORMAT_BINARY_CONTAINER
+        assert kwargs["headers"]["X-Is-Raw-Bytes"] == "0"
+
+        comm.shutdown()
+
+
+class TestDecodeBinaryPayload:
+    """Tests for decoding binary transport payloads."""
+
+    def test_decode_binary_container_without_magic_sniffing(self):
+        """Binary-container payloads must decode by header, not by prefix guessing."""
+        payload = {"x": "a" * 35560}  # Produces b"\x1f\x8b" prefix in meta_len bytes.
+        body = serde.dumps_binary(payload)
+
+        decoded = _decode_binary_payload(
+            body,
+            is_raw_bytes=False,
+            serde_format=SERDE_FORMAT_BINARY_CONTAINER,
+        )
+
+        assert decoded == payload
+
+    def test_decode_binary_payload_fallback_without_header(self):
+        """Missing format header should still decode via compatibility fallback."""
+        payload = {"x": "a" * 35560}
+        body = serde.dumps_binary(payload)
+
+        decoded = _decode_binary_payload(
+            body,
+            is_raw_bytes=False,
+            serde_format=None,
+        )
+
+        assert decoded == payload
 
 
 class TestHttpCommunicatorSend:

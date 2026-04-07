@@ -537,7 +537,7 @@ class TableValue(WrapValue[pa.Table | TableSource]):
     # =========== Serialization ===========
 
     def to_json(self) -> dict[str, Any]:
-        # Serialize using Arrow IPC streaming format
+        # Serialize using Arrow IPC streaming format (base64-encoded for JSON transport)
         data = self.data
         sink = pa.BufferOutputStream()
         with pa.ipc.new_stream(sink, data.schema) as writer:
@@ -545,9 +545,36 @@ class TableValue(WrapValue[pa.Table | TableSource]):
         ipc_bytes = sink.getvalue().to_pybytes()
         return {"ipc": base64.b64encode(ipc_bytes).decode("ascii")}
 
+    def to_binary_json(self, ctx: serde.BinaryContext) -> dict[str, Any]:
+        """Binary-aware serialization: stores Arrow IPC bytes as a raw segment.
+
+        The IPC bytes are pushed directly into *ctx* without base64 encoding.
+        """
+        data = self.data
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, data.schema) as writer:
+            writer.write_table(data)
+        ipc_bytes = sink.getvalue().to_pybytes()
+        seg_idx = ctx.add_segment(ipc_bytes)
+        return {"ipc_bref": seg_idx}
+
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> TableValue:
         ipc_bytes = base64.b64decode(data["ipc"])
+        reader = pa.ipc.open_stream(ipc_bytes)
+        table = reader.read_all()
+        return cls(table)
+
+    @classmethod
+    def from_binary_json(
+        cls, data: dict[str, Any], segments: list[bytes]
+    ) -> TableValue:
+        """Binary-aware deserialization: reads Arrow IPC bytes from raw segments."""
+        if "ipc_bref" in data:
+            ipc_bytes = segments[data["ipc_bref"]]
+        else:
+            # Fallback: base64-encoded "ipc" from to_json()
+            ipc_bytes = base64.b64decode(data["ipc"])
         reader = pa.ipc.open_stream(ipc_bytes)
         table = reader.read_all()
         return cls(table)

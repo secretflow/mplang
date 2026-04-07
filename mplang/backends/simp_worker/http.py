@@ -45,6 +45,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi import Request as FastAPIRequest
 from pydantic import BaseModel
 
 from mplang.backends.simp_worker.base import (
@@ -64,6 +65,10 @@ from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+SERDE_FORMAT_RAW_BYTES = "raw-bytes"
+SERDE_FORMAT_BINARY_CONTAINER = "binary-container"
 
 
 # ---------------------------------------------------------------------------
@@ -130,10 +135,20 @@ class CommConfig:
         http_timeout: Default timeout for all HTTP requests (applied at the
             httpx Client level).  ``send_sync()`` uses the same default
             unless a per-call *timeout* is supplied.  None = no timeout.
+        use_binary: If True (default), use the binary container transport:
+            payload is sent as raw bytes (``Content-Type: application/octet-stream``)
+            with metadata in HTTP headers, and the body is formatted with
+            ``serde.dumps_binary`` so that registered classes (e.g. TensorValue,
+            TableValue) emit raw binary segments instead of base64-encoded data.
+            This eliminates both the outer and inner base64 layers (~43% smaller
+            on the wire for large tensors/tables, 4x fewer base64 ops).
+            Set to False to fall back to the legacy JSON envelope, e.g. when
+            talking to older workers that do not understand binary transport.
     """
 
     default_recv_timeout: float | None = 10 * 60.0  # 10 minutes
     http_timeout: float | None = 60.0
+    use_binary: bool = True
 
 
 @dataclass
@@ -372,16 +387,36 @@ class HttpCommunicator:
         # This avoids coupling encoding format to key naming conventions.
         send_raw_bytes = is_raw_bytes or isinstance(data, bytes)
 
-        if send_raw_bytes:
-            import base64
-
-            payload = base64.b64encode(data).decode("ascii")
+        # Serialize payload and build HTTP request arguments.
+        #
+        # Binary transport (default, use_binary=True):
+        #   Send raw bytes in the HTTP body with metadata in HTTP headers.
+        #   Non-raw payloads are serialized with serde.dumps_binary, which
+        #   stores array/table bytes as raw segments (no inner base64).  This
+        #   eliminates both base64 layers and gives the best wire efficiency.
+        #
+        # Legacy JSON envelope (use_binary=False):
+        #   Wraps payload in a base64-encoded JSON body.  Kept for backward
+        #   compatibility with older workers.
+        if self.config.use_binary:
+            if send_raw_bytes:
+                binary_content: bytes = data
+                serde_format = SERDE_FORMAT_RAW_BYTES
+            else:
+                binary_content = serde.dumps_binary(data)
+                serde_format = SERDE_FORMAT_BINARY_CONTAINER
+            size_bytes = len(binary_content)
         else:
-            payload = serde.dumps_b64(data)
+            # Legacy path: base64 + JSON envelope.
+            if send_raw_bytes:
+                import base64
 
-        size_bytes = len(payload)
+                payload = base64.b64encode(data).decode("ascii")
+            else:
+                payload = serde.dumps_b64(data)
+            size_bytes = len(payload)
 
-        # Log to profiler
+        # Log to profiler (before the network call so we capture the size).
         if self.tracer:
             self.tracer.log_custom_event(
                 name="comm.send",
@@ -399,15 +434,30 @@ class HttpCommunicator:
         try:
             t0_mono = time.monotonic()
             t0_wall = time.time()
-            resp = self.client.put(
-                url,
-                json={
-                    "data": payload,
-                    "from_rank": self.rank,
-                    "is_raw_bytes": send_raw_bytes,
-                },
-                **put_kwargs,
-            )
+
+            if self.config.use_binary:
+                resp = self.client.put(
+                    url,
+                    content=binary_content,
+                    headers={
+                        "Content-Type": "application/octet-stream",
+                        "X-From-Rank": str(self.rank),
+                        "X-Is-Raw-Bytes": "1" if send_raw_bytes else "0",
+                        "X-Serde-Format": serde_format,
+                    },
+                    **put_kwargs,
+                )
+            else:
+                resp = self.client.put(
+                    url,
+                    json={
+                        "data": payload,
+                        "from_rank": self.rank,
+                        "is_raw_bytes": send_raw_bytes,
+                    },
+                    **put_kwargs,
+                )
+
             resp.raise_for_status()
             duration = time.monotonic() - t0_mono
             duration_ms = duration * 1000
@@ -540,6 +590,23 @@ class FetchRequest(BaseModel):
     uri: str
 
 
+def _decode_binary_payload(
+    body: bytes,
+    *,
+    is_raw_bytes: bool,
+    serde_format: str | None,
+) -> Any:
+    """Decode binary transport payload according to explicit serde format."""
+    if is_raw_bytes:
+        return body
+
+    if serde_format == SERDE_FORMAT_BINARY_CONTAINER or serde_format is None:
+        # None: backward compat for binary senders that omit X-Serde-Format.
+        return serde.loads_binary(body)
+
+    raise ValueError(f"Unsupported X-Serde-Format: {serde_format}")
+
+
 def register_routes(
     app: FastAPI,
     *,
@@ -607,22 +674,60 @@ def register_routes(
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.put("/comm/{key}")
-    async def receive_comm(key: str, req: CommRequest) -> dict[str, str]:
-        """Receive communication data from another worker."""
-        logger.debug(f"Worker {rank} received comm key={key} from {req.from_rank}")
+    async def receive_comm(key: str, request: FastAPIRequest) -> dict[str, str]:
+        """Receive communication data from another worker.
+
+        Supports two transport modes selected by the client via Content-Type:
+
+        Binary (``application/octet-stream``, preferred):
+            Body is raw bytes.  Metadata is carried in HTTP headers:
+            - ``X-From-Rank``: sender rank (int)
+            - ``X-Is-Raw-Bytes``: "1" for opaque bytes (SPU/crypto),
+              "0" for serde-compressed payload.
+
+        JSON (``application/json``, legacy / backward-compatible):
+            Body is a JSON-encoded ``CommRequest``.  Older workers that do
+            not set ``use_binary=True`` will use this path.
+        """
+        content_type = request.headers.get("content-type", "application/json")
         try:
-            # Handle raw bytes (SPU channels) vs serde data
-            if req.is_raw_bytes:
-                # Decode base64 to raw bytes
-                import base64
-
-                data = base64.b64decode(req.data)
+            if "octet-stream" in content_type:
+                # Binary transport path: metadata from headers, no base64.
+                raw_from_rank = request.headers.get("x-from-rank")
+                if raw_from_rank is None:
+                    raise HTTPException(
+                        status_code=400, detail="Missing X-From-Rank header"
+                    )
+                from_rank = int(raw_from_rank)
+                is_raw = request.headers.get("x-is-raw-bytes", "0") == "1"
+                serde_format = request.headers.get("x-serde-format")
+                body = await request.body()
+                logger.debug(
+                    f"Worker {rank} received bin-comm key={key} from {from_rank}"
+                    f" is_raw={is_raw} size={len(body)}"
+                )
+                data = _decode_binary_payload(
+                    body,
+                    is_raw_bytes=is_raw,
+                    serde_format=serde_format,
+                )
             else:
-                # Use secure JSON deserialization
-                data = serde.loads_b64(req.data)
+                # Legacy JSON envelope path (backward-compatible).
+                body_json = await request.json()
+                req = CommRequest(**body_json)
+                from_rank = req.from_rank
+                logger.debug(f"Worker {rank} received comm key={key} from {from_rank}")
+                if req.is_raw_bytes:
+                    import base64
 
-            comm.on_receive(req.from_rank, key, data)
+                    data = base64.b64decode(req.data)
+                else:
+                    data = serde.loads_b64(req.data)
+
+            comm.on_receive(from_rank, key, data)
             return {"status": "ok"}
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Worker {rank} comm failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e

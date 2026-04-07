@@ -16,8 +16,14 @@
 
 from __future__ import annotations
 
+import json
+import struct
+
+import numpy as np
 import pytest
 
+import mplang.backends.tensor_impl  # noqa: F401
+from mplang.backends.tensor_impl import TensorValue
 from mplang.edsl import serde
 
 # =============================================================================
@@ -216,6 +222,27 @@ class TestWireFormat:
         result = serde.loads_b64(b64_str)
         assert isinstance(result["point"], Point)
         assert result["point"] == p
+
+
+class TestBinaryWireFormat:
+    """Test binary container format for nested objects."""
+
+    def test_dumps_binary_nested_tensor_uses_segment_reference(self):
+        arr = np.arange(6, dtype=np.float32).reshape(2, 3)
+        payload = {"items": [TensorValue(arr)]}
+
+        serialized = serde.dumps_binary(payload)
+        meta_len = struct.unpack_from("<I", serialized, 0)[0]
+        meta = json.loads(serialized[4 : 4 + meta_len].decode("utf-8"))
+
+        item_meta = meta["items"]["items"]["items"][0]
+        assert item_meta["_kind"] == "tensor_impl.TensorValue"
+        assert "bref" in item_meta
+        assert "data" not in item_meta
+
+        result = serde.loads_binary(serialized)
+        assert isinstance(result["items"][0], TensorValue)
+        np.testing.assert_array_equal(result["items"][0].unwrap(), arr)
 
 
 # =============================================================================

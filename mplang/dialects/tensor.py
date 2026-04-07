@@ -48,7 +48,7 @@ from __future__ import annotations
 import base64
 import functools
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import count
 from typing import Any, cast
@@ -56,7 +56,6 @@ from weakref import WeakKeyDictionary
 
 import jax
 import numpy as np
-from jax import ShapeDtypeStruct
 from jax.tree_util import PyTreeDef, tree_flatten
 
 import mplang.edsl as el
@@ -82,6 +81,7 @@ class RunJaxCompilation:
     out_tree: PyTreeDef  # type: ignore
     output_types: list[elt.BaseType]
     arg_keep_map: list[int] | None = None
+    has_dynamic_shape: bool = False
 
 
 _RUN_JAX_REGISTRY: dict[str, RunJaxCompilation] = {}
@@ -103,41 +103,10 @@ def _numpy_dtype_to_scalar(dtype: Any) -> elt.ScalarType:
     return dtypes.from_dtype(dtype)
 
 
-def _tensor_type_to_placeholder(
-    tensor_type: elt.TensorType | elt.ScalarType,
-) -> ShapeDtypeStruct:
-    if isinstance(tensor_type, elt.ScalarType):
-        # Treat scalar as rank-0 tensor
-        dtype = _scalar_to_numpy_dtype(tensor_type)
-        return ShapeDtypeStruct((), dtype)
-
-    normalized_shape: list[int] = []
-    for idx, dim in enumerate(tensor_type.shape):
-        if dim is None:
-            raise TypeError(
-                f"tensor.run_jax argument dimension {idx} is None; "
-                "please provide a static dimension."
-            )
-        if dim == -1:
-            raise TypeError(
-                "tensor.run_jax does not yet support dynamic (-1) dimensions"
-            )
-        if dim <= 0 and dim != 0:
-            raise ValueError(f"Invalid tensor dimension {dim}")
-        normalized_shape.append(dim)
-    # element_type must be ScalarType for conversion to numpy dtype
-    if not isinstance(tensor_type.element_type, elt.ScalarType):
-        raise TypeError(
-            f"Expected ScalarType element, got {type(tensor_type.element_type)}"
-        )
-    dtype = _scalar_to_numpy_dtype(tensor_type.element_type)
-    return ShapeDtypeStruct(tuple(normalized_shape), dtype)
-
-
 def _out_info_to_edsl(out_info: Any) -> elt.TensorType:
     scalar = _numpy_dtype_to_scalar(out_info.dtype)
-    shape = tuple(out_info.shape)
-    return elt.TensorType(scalar, shape)
+    shape = [dim if isinstance(dim, int) else -1 for dim in out_info.shape]
+    return elt.TensorType(scalar, tuple(shape))
 
 
 def _register_compilation(compilation: RunJaxCompilation) -> str:
@@ -160,14 +129,146 @@ def get_run_jax_compilation(compilation_id: str) -> RunJaxCompilation:
         ) from exc
 
 
+def mark_symbolic_shapes(
+    fn: Callable | None = None, *, in_shapes: Sequence[Sequence[str | None]]
+) -> Callable:
+    """Mark symbolic shapes for function parameters.
+
+    This function can be used as a decorator or applied directly to a function.
+    It marks the input parameters with symbolic shape specifications where
+    dynamic dimensions are represented by strings and None indicates static shapes.
+
+    Args:
+        fn: Function to mark (when used directly, not as decorator)
+        in_shapes: List of shape specifications for each parameter.
+                  Each element can be:
+                  - None: Use static shape (don't mark)
+                  - List/tuple of dimensions: Each dimension can be:
+                    - str: Symbolic dimension name (e.g., "batch", "seq_len")
+                    - None: Static (will be inferred from actual input)
+
+    Returns:
+        The function with symbolic shapes marked
+
+    Examples:
+        # As decorator
+        @mark_symbolic_shapes(in_shapes=[("batch", "seq_len"), ("seq_len", "hidden")])
+        def matmul(x, y):
+            return jnp.matmul(x, y)
+
+        # Applied directly
+        def add(x, y):
+            return x + y
+        add = mark_symbolic_shapes(add, in_shapes=[("batch",), ("batch",)])
+    """
+
+    def decorator(func: Callable) -> Callable:
+        # Store symbolic shapes information on the function
+        cast(Any, func)._symbolic_shapes = in_shapes
+        return func
+
+    if fn is not None:
+        # Direct application mode
+        return decorator(fn)
+    else:
+        # Decorator mode
+        return decorator
+
+
+def _get_symbolic_shapes(fn: Callable) -> Sequence[Sequence[str | None]] | None:
+    """Get symbolic shapes information from a marked function.
+
+    Args:
+        fn: Function that was marked with mark_symbolic_shapes
+
+    Returns:
+        Dictionary with symbolic shapes information or None if not marked
+    """
+    if hasattr(fn, "_symbolic_shapes"):
+        return cast(Sequence[Sequence[str | None]], fn._symbolic_shapes)  # type: ignore[attr-defined]
+
+    # Also check the original function if fn is a wrapper
+    if hasattr(fn, "__wrapped__"):
+        return _get_symbolic_shapes(fn.__wrapped__)
+
+    return None
+
+
+def _get_symbolic_name(
+    symbolic_shapes: Sequence[Sequence[str | None]] | None, obj_idx: int, dim_idx: int
+) -> str:
+    if (
+        symbolic_shapes is not None
+        and obj_idx < len(symbolic_shapes)
+        and dim_idx < len(symbolic_shapes[obj_idx])
+    ):
+        name = symbolic_shapes[obj_idx][dim_idx]
+        if not isinstance(name, str):
+            raise ValueError(f"Symbolic shape name must be a string, got {type(name)}")
+        return name
+
+    # We use "n_rows" instead of generic pattern like f"arg_{obj_idx}_dim_{dim_idx}"
+    # because our common use case is representing unknown row count in tabular data
+    return "n_rows"
+
+
+def _make_placeholders(
+    variables: list[el.Object], symbolic_shapes: Sequence[Sequence[str | None]] | None
+) -> list[jax.ShapeDtypeStruct]:
+    # Build symbolic shapes and placeholders
+    symbol_scope = jax.export.SymbolicScope()
+    # Maps symbol name to SymbolicDimension
+    symbol_map: dict[str, Any] = {}
+
+    def _make_symbol(name: str) -> Any:
+        if name in symbol_map:
+            return symbol_map[name]
+        symbolics = jax.export.symbolic_shape(name, scope=symbol_scope)
+        symbol_map[name] = symbolics[0]
+        return symbolics[0]
+
+    placeholders: list[jax.ShapeDtypeStruct] = []
+    for obj_idx, obj in enumerate(variables):
+        if not isinstance(obj.type, (elt.TensorType, elt.ScalarType)):
+            raise TypeError(f"run_jax only supports Tensors/Scalars, got {obj.type}")
+        if isinstance(obj.type, elt.ScalarType):
+            dtype = _scalar_to_numpy_dtype(obj.type)
+            placeholders.append(jax.ShapeDtypeStruct((), dtype))
+        else:
+            # element_type must be ScalarType for conversion to numpy dtype
+            if not isinstance(obj.type.element_type, elt.ScalarType):
+                raise TypeError(
+                    f"Expected ScalarType element, got {type(obj.type.element_type)}"
+                )
+            obj_shape = []
+            for idx, dim in enumerate(obj.type.shape):
+                if dim is None:
+                    raise TypeError(
+                        f"tensor.run_jax argument dimension {idx} is None; "
+                        "please provide a static dimension."
+                    )
+                elif dim < -1 or dim == 0:
+                    raise ValueError(f"Invalid tensor dimension {dim}")
+                if dim == -1:
+                    name = _get_symbolic_name(symbolic_shapes, obj_idx, idx)
+                    symbol = _make_symbol(name)
+                    obj_shape.append(symbol)
+                else:
+                    obj_shape.append(dim)
+            dtype = _scalar_to_numpy_dtype(obj.type.element_type)
+            placeholders.append(jax.ShapeDtypeStruct(obj_shape, dtype))
+
+    return placeholders
+
+
 def _compile_run_jax(
     fn: Callable[..., Any],
     normalized_fn: Callable[..., Any],
-    placeholders: list[ShapeDtypeStruct],
+    placeholders: list[jax.ShapeDtypeStruct],
 ) -> tuple[RunJaxCompilation, str]:
     """Compile JAX function to StableHLO MLIR.
 
-    Pipeline: jit → lower → StableHLO MLIR
+    Pipeline: jit → export → StableHLO MLIR
 
     Args:
         fn: Original JAX function
@@ -177,37 +278,55 @@ def _compile_run_jax(
     Returns:
         Tuple of (compilation record, compilation_id)
     """
-    jitted = jax.jit(normalized_fn)
-    lowered = jitted.lower(placeholders)
-    stablehlo_text = str(lowered.compiler_ir("stablehlo"))
+
+    # Calculate has_dynamic_shape from placeholders
+    # Check if any placeholder has symbolic dimensions (i.e., non-concrete shape)
+    has_dynamic_shape = any(
+        not all(isinstance(dim, int) for dim in placeholder.shape)
+        for placeholder in placeholders
+    )
+
+    # Wrap normalized_fn to collect JAX's individual args into a list
+    # This is needed because:
+    # - normalized_fn expects: normalized([arg1, arg2, ...])
+    # - But JAX export calls: wrapper_fn(arg1, arg2, ...)
+    def wrapped_fn(*args: Any) -> Any:
+        return normalized_fn(list(args))
+
+    # Tip: Use `jax.config.update("jax_traceback_in_locations_limit", 0)` to reduce location information
+    # in MLIR output. This disables JAX traceback locations, removing verbose source location
+    # annotations (e.g., #loc = #loc1) from the generated MLIR, which makes the output more
+    # readable and reduces serialization overhead.
+    jitted = jax.jit(wrapped_fn)
+    exported = jax.export.export(jitted)(*placeholders)
+    stablehlo_text = str(exported.mlir_module())
 
     # Handle JAX's unused parameter elimination
     arg_keep_map: list[int] | None = None
     try:
-        compile_args = lowered._lowering.compile_args
-        kept_var_idx = compile_args["kept_var_idx"]
-        kept_indices = sorted(kept_var_idx)
-        if len(kept_indices) < len(placeholders):
-            arg_keep_map = kept_indices
-    except (AttributeError, KeyError, TypeError) as e:
+        kept_var_idx = exported.module_kept_var_idx
+        if len(kept_var_idx) < len(placeholders):
+            arg_keep_map = list(kept_var_idx)
+    except (AttributeError, TypeError) as e:
         raise RuntimeError(
-            f"Cannot access JAX's kept_var_idx for unused parameter handling. "
+            f"Cannot access JAX's module_kept_var_idx for unused parameter handling. "
             f"JAX may have optimized away unused parameters. Error: {e}"
         ) from e
 
     # Convert output info to EDSL types
     output_types: list[elt.BaseType]
-    if isinstance(lowered.out_info, tuple):
-        output_types = [_out_info_to_edsl(info) for info in lowered.out_info]
+    if isinstance(exported.out_avals, tuple):
+        output_types = [_out_info_to_edsl(aval) for aval in exported.out_avals]
     else:
-        output_types = [_out_info_to_edsl(lowered.out_info)]
+        output_types = [_out_info_to_edsl(exported.out_avals)]
 
     compilation = RunJaxCompilation(
         fn=fn,
         stablehlo=stablehlo_text,
-        out_tree=lowered.out_tree,
+        out_tree=exported.out_tree,
         output_types=output_types,
         arg_keep_map=arg_keep_map,
+        has_dynamic_shape=has_dynamic_shape,
     )
     compilation_id = _register_compilation(compilation)
     return compilation, compilation_id
@@ -238,19 +357,14 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
 
     normalized_fn, variables = normalize_fn(fn, args, kwargs, _is_trace_object)
 
-    # Convert TraceObjects to JAX placeholders for compilation
-    placeholders: list[ShapeDtypeStruct] = []
-    for var in variables:
-        if not isinstance(var, el.TraceObject):
-            raise TypeError(f"Expected TraceObject, got {type(var)}")
-        if not isinstance(var.type, (elt.TensorType, elt.ScalarType)):
-            raise TypeError(f"run_jax only supports Tensors/Scalars, got {var.type}")
-        placeholders.append(_tensor_type_to_placeholder(var.type))
+    symbolic_shapes = _get_symbolic_shapes(fn)
+    placeholders = _make_placeholders(variables, symbolic_shapes)
 
     # Compile to StableHLO
     compilation, text_ref = _compile_run_jax(fn, normalized_fn, placeholders)
 
     # Emit graph operation
+    backend = "iree" if compilation.has_dynamic_shape else "auto"
     input_values = [var._graph_value for var in variables]
     result_values = tracer.graph.add_op(
         opcode="tensor.run_jax",
@@ -261,6 +375,7 @@ def _run_jax_trace(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
             "text_ref": text_ref,
             "stablehlo_code": compilation.stablehlo,
             "arg_keep_map": compilation.arg_keep_map,
+            "backend": backend,
         },
     )
 
@@ -1162,6 +1277,7 @@ __all__ = [
     "gather_p",
     "get_run_jax_compilation",
     "jax_fn",
+    "mark_symbolic_shapes",
     "reshape",
     "reshape_p",
     "run_jax",

@@ -229,8 +229,9 @@ class FileSystemBackend(StoreBackend):
         """Check file equality with a size-first fast path."""
         try:
             return os.path.samefile(src, dest) or (
-                os.path.getsize(src) == os.path.getsize(dest) and
-                FileSystemBackend._file_md5(src) == FileSystemBackend._file_md5(dest)
+                os.path.getsize(src) == os.path.getsize(dest)
+                and FileSystemBackend._file_md5(src)
+                == FileSystemBackend._file_md5(dest)
             )
         except OSError:
             return False

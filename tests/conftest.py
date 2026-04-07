@@ -24,6 +24,9 @@ jax.config.update("jax_enable_compilation_cache", False)
 # Enable x64 to match numpy's default integer precision
 jax.config.update("jax_enable_x64", True)
 
+# reduce location information
+jax.config.update("jax_traceback_in_locations_limit", 0)
+
 # Suppress known TEE mock warnings in tests (expected for local testing)
 warnings.filterwarnings("ignore", message=".*Insecure mock TEE.*")
 

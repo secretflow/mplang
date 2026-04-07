@@ -75,7 +75,7 @@ z = spu.reconstruct(tuple(z_shares))
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, cast
 
@@ -184,8 +184,7 @@ def _exec_ae(
     executable: bytes,
     input_vis: list[Visibility],
     output_vis: list[Visibility],
-    output_shapes: list[tuple[int, ...]],
-    output_dtypes: list[elt.ScalarType],
+    output_types: list[elt.TensorType],
     input_names: list[str],
     output_names: list[str],
     config: SPUConfig,
@@ -197,9 +196,7 @@ def _exec_ae(
             raise TypeError(f"spu.exec expects SSType or TensorType inputs, got {arg}")
 
     # Outputs are SS[Tensor]
-    outputs: list[elt.SSType[Any]] = []
-    for shape, dtype in zip(output_shapes, output_dtypes, strict=True):
-        outputs.append(elt.SS(elt.Tensor(dtype, shape)))
+    outputs: list[elt.SSType[Any]] = [elt.SS(dt) for dt in output_types]
 
     if len(outputs) == 1:
         return outputs[0]
@@ -244,7 +241,13 @@ def reconstruct(config: SPUConfig, shares: tuple[el.Object, ...]) -> el.Object:
     return reconstruct_p.bind(*shares, config=config)
 
 
-def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+def run_jax(
+    config: SPUConfig,
+    fn: Callable,
+    *args: Any,
+    symbolic_shapes: Sequence[Sequence[str | None]] | None = None,
+    **kwargs: Any,
+) -> Any:
     """Execute a function on SPU locally.
 
     This function should be called inside a `simp.pcall` region.
@@ -267,6 +270,7 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     # 2. Validate inputs and prepare for compilation
     jax_args_flat = []
     input_vis: list[Visibility] = []  # String-based visibility for IR
+    has_dynamic_shape = False
 
     for arg in in_vars:
         if isinstance(arg.type, elt.SSType):
@@ -284,6 +288,8 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         # Map to JAX
         jax_dtype = dtypes.to_jax(cast(elt.ScalarType, pt_type.element_type))
         shape = tuple(d if d != -1 else 1 for d in pt_type.shape)
+        if not has_dynamic_shape:
+            has_dynamic_shape = any(d == -1 for d in pt_type.shape)
 
         jax_args_flat.append(ShapeDtypeStruct(shape, jax_dtype))
         input_vis.append(vis)
@@ -312,19 +318,27 @@ def run_jax(config: SPUConfig, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     )
 
     # 4. Execute SPU Kernel
-    flat_outputs_info, out_tree = tree_flatten(output_info)
-    output_shapes = [out.shape for out in flat_outputs_info]
+    if has_dynamic_shape:
+        from ._jax_utils import compile_jax
 
-    output_dtypes = [dtypes.from_dtype(out.dtype) for out in flat_outputs_info]
-    output_vis_list: list[Visibility] = ["secret"] * len(flat_outputs_info)
+        # Fix output shape by ensuring symbolic dimensions are represented as -1
+        compilation = compile_jax(normalized_fn, in_vars, symbolic_shapes)
+        output_types = compilation.output_types
+        out_tree = compilation.out_tree
+    else:
+        flat_outputs_info, out_tree = tree_flatten(output_info)
+        output_types = [
+            elt.TensorType(dtypes.from_dtype(out.dtype), out.shape)
+            for out in flat_outputs_info
+        ]
+    output_vis_list: list[Visibility] = ["secret"] * len(output_types)
 
     res_shares = exec_p.bind(
         *in_vars,
         executable=executable.code,
         input_vis=input_vis,
         output_vis=output_vis_list,
-        output_shapes=output_shapes,
-        output_dtypes=output_dtypes,
+        output_types=output_types,
         input_names=executable.input_names,
         output_names=executable.output_names,
         config=config,

@@ -75,18 +75,20 @@ def test_tensor_run_dynamic_shape():
     # jax.config.update("jax_enable_x64", True)
 
     # Phase 1: Define function with type annotations
-    @tensor.mark_symbolic_shapes(in_shapes=[("rows",)])
     def square(x: jnp.ndarray):
         return jnp.square(x)
 
     def exec(x):
-        return tensor.run_jax(square, x)
+        return tensor.run_jax(square, x, symbolic_shapes=[("rows",)])
 
     tracer = el.Tracer()
     tensor_type = elt.TensorType(elt.f32, (-1,))
     x_obj = tracer._new_arg(tensor_type)
     traced_fn = mp.compile(exec, x_obj)
+    out_type = traced_fn.graph.outputs[0].type
 
+    # print(f"Graph structure:\n{traced_fn.graph.to_string(verbose=True)}")
+    assert isinstance(out_type, elt.TensorType) and out_type.shape == (-1,)
     assert "tensor<?xf32>" in traced_fn.graph.to_string(verbose=True)
 
     # Phase 2: Execute with various test inputs to verify run_jax_impl handles dynamic shapes

@@ -20,6 +20,7 @@ import mplang as mp
 import mplang.backends.tensor_impl
 import mplang.edsl as el
 from mplang.dialects import simp, spu
+from mplang.edsl import typing as elt
 
 
 def test_spu_e2e_simulation():
@@ -192,3 +193,92 @@ def test_spu_channels_mode_simulation():
     finally:
         if hasattr(sim, "_simp_cluster"):
             sim._simp_cluster.shutdown()
+
+
+def test_spu_run_dynamic_shape():
+    """Test SPU backend with dynamic shapes (using -1 for unknown dimensions).
+
+    This test follows the exact pattern from test_tensor_run_dynamic_shape:
+    1. Compile with dynamic shape (-1) - shape unknown at compile time
+    2. Execute multiple times with different actual data to demonstrate dynamic behavior
+    """
+    # Phase 1: Setup and compilation
+    world_size = 3
+    sim = simp.make_simulator(world_size=world_size)
+    mp.set_root_context(sim)
+
+    # Define computation
+    def jax_add(x, y):
+        return x + y
+
+    # Define the SPU execution function
+    def exec_spu(x, y):
+        # Create SPU config and parties
+        spu_config = spu.SPUConfig()
+        spu_parties = (0, 1, 2)
+
+        # Manual encryption using make_shares
+        x_shares = simp.pcall_static((0,), spu.make_shares, spu_config, x, count=3)
+        x_enc = simp.converge(*[
+            simp.shuffle_static(x_shares[i], {spu_parties[i]: 0}) for i in range(3)
+        ])
+
+        y_shares = simp.pcall_static((0,), spu.make_shares, spu_config, y, count=3)
+        y_enc = simp.converge(*[
+            simp.shuffle_static(y_shares[i], {spu_parties[i]: 0}) for i in range(3)
+        ])
+
+        # Execute on SPU
+        z_enc = simp.pcall_static(
+            spu_parties, spu.run_jax, spu_config, jax_add, x_enc, y_enc
+        )
+
+        # Decrypt (SPU -> Public)
+        z_shares = [
+            simp.shuffle_static(
+                simp.pcall_static((source,), lambda x: x, z_enc), {0: source}
+            )
+            for source in spu_parties
+        ]
+        z_mp = simp.pcall_static(
+            (0,), lambda *s: spu.reconstruct(spu_config, s), *z_shares
+        )
+
+        return z_mp
+
+    # Compile with dynamic shape tensor
+    tracer = el.Tracer()
+    tensor_type = elt.TensorType(elt.f32, (-1,))
+    x_obj = tracer._new_arg(tensor_type)
+    y_obj = tracer._new_arg(tensor_type)
+    traced_fn = mp.compile(exec_spu, x_obj, y_obj)
+    out_type = traced_fn.graph.outputs[0].type
+    assert isinstance(out_type, elt.MPType)
+    out_type = out_type.value_type
+
+    # print(f"Graph structure:\n{traced_fn.graph.to_string(verbose=True)}")
+    assert isinstance(out_type, elt.TensorType) and out_type.shape == (-1,)
+    # Verify the graph contains dynamic shape notation
+    assert "Tensor[f32, (-1)" in traced_fn.graph.to_string(verbose=True)
+
+    # Phase 2: Execution with various test inputs
+    test_cases = [
+        np.array([1.0, 2.0, 3.0], dtype=np.float32),  # Size 3
+        np.array([0.5, -1.5, 2.0, 3.5], dtype=np.float32),  # Size 4
+        np.arange(5, dtype=np.float32),  # Size 5
+    ]
+
+    for input_data in test_cases:
+        # Need to run within simp context since this uses simp operations
+        with sim:
+            # Create MP objects from the input data
+            x_mp = simp.constant((0,), input_data)
+            y_mp = simp.constant((0,), input_data)
+
+            # Execute the compiled function with MP objects
+            result = mp.evaluate(traced_fn, x_mp, y_mp)
+
+        # Verify the result - need to fetch from DriverVar
+        expected = input_data + input_data
+        result_values = mp.fetch(result)
+        np.testing.assert_allclose(result_values[0], expected)

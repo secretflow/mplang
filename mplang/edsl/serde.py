@@ -608,7 +608,10 @@ def loads_binary(data: bytes) -> Any:
     meta_bytes = data[offset : offset + meta_len]
     offset += meta_len
 
-    meta_dict = json.loads(meta_bytes.decode("utf-8"))
+    try:
+        meta_dict = json.loads(meta_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise ValueError(f"Malformed metadata in binary data: {e}") from e
 
     segments: list[bytes] = []
     while offset < len(data):

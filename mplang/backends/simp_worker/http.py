@@ -706,11 +706,14 @@ def register_routes(
                     f"Worker {rank} received bin-comm key={key} from {from_rank}"
                     f" is_raw={is_raw} size={len(body)}"
                 )
-                data = _decode_binary_payload(
-                    body,
-                    is_raw_bytes=is_raw,
-                    serde_format=serde_format,
-                )
+                try:
+                    data = _decode_binary_payload(
+                        body,
+                        is_raw_bytes=is_raw,
+                        serde_format=serde_format,
+                    )
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
             else:
                 # Legacy JSON envelope path (backward-compatible).
                 body_json = await request.json()

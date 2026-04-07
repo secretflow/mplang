@@ -698,7 +698,13 @@ def register_routes(
                     raise HTTPException(
                         status_code=400, detail="Missing X-From-Rank header"
                     )
-                from_rank = int(raw_from_rank)
+                try:
+                    from_rank = int(raw_from_rank)
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid X-From-Rank header: {raw_from_rank!r}",
+                    ) from e
                 is_raw = request.headers.get("x-is-raw-bytes", "0") == "1"
                 serde_format = request.headers.get("x-serde-format")
                 body = await request.body()

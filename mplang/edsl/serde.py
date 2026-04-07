@@ -462,9 +462,26 @@ def _to_binary_json(obj: Any, ctx: BinaryContext) -> dict[str, Any]:
     if isinstance(obj, np.floating):
         return {"_kind": "_float", "v": float(obj)}
 
-    # Numpy/bytes are delegated to the existing encoding path.
-    if isinstance(obj, (np.ndarray, bytes)):
-        return to_json(obj)
+    # Numpy arrays: numeric arrays go to a raw segment; object arrays recurse.
+    if isinstance(obj, np.ndarray):
+        if obj.dtype == np.object_:
+            return {
+                "_kind": "_ndarray_object",
+                "shape": list(obj.shape),
+                "items": [_to_binary_json(item, ctx) for item in obj.flat],
+            }
+        seg_idx = ctx.add_segment(obj.tobytes())
+        return {
+            "_kind": "_ndarray_bref",
+            "dtype": str(obj.dtype),
+            "shape": list(obj.shape),
+            "bref": seg_idx,
+        }
+
+    # Raw bytes go to a segment instead of base64.
+    if isinstance(obj, bytes):
+        seg_idx = ctx.add_segment(obj)
+        return {"_kind": "_bytes_bref", "bref": seg_idx}
 
     # Array-like (e.g., JAX arrays)
     if hasattr(obj, "__array__"):
@@ -509,6 +526,14 @@ def _from_binary_json(data: dict[str, Any], segments: list[bytes]) -> Any:
     # Built-in primitives and collections.
     if kind in {"_null", "_bool", "_int", "_float", "_str", "_bytes", "_ndarray"}:
         return from_json(data)
+
+    if kind == "_bytes_bref":
+        return segments[data["bref"]]
+
+    if kind == "_ndarray_bref":
+        raw = segments[data["bref"]]
+        arr = np.frombuffer(raw, dtype=np.dtype(data["dtype"]))
+        return arr.reshape(tuple(data["shape"])).copy()
 
     if kind == "_list":
         return [_from_binary_json(item, segments) for item in data["items"]]

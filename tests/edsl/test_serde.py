@@ -244,6 +244,36 @@ class TestBinaryWireFormat:
         assert isinstance(result["items"][0], TensorValue)
         np.testing.assert_array_equal(result["items"][0].unwrap(), arr)
 
+    def test_dumps_binary_raw_ndarray_no_base64(self):
+        """Bare np.ndarray should use a segment reference, not base64."""
+        arr = np.arange(12, dtype=np.float64).reshape(3, 4)
+
+        serialized = serde.dumps_binary(arr)
+        meta_len = struct.unpack_from("<I", serialized, 0)[0]
+        meta = json.loads(serialized[4 : 4 + meta_len].decode("utf-8"))
+
+        assert meta["_kind"] == "_ndarray_bref"
+        assert "bref" in meta
+        assert "data" not in meta  # no base64 field
+
+        result = serde.loads_binary(serialized)
+        np.testing.assert_array_equal(result, arr)
+
+    def test_dumps_binary_raw_bytes_no_base64(self):
+        """Bare bytes object should use a segment reference, not base64."""
+        payload = b"\x00\x01\x02\x03" * 100
+
+        serialized = serde.dumps_binary(payload)
+        meta_len = struct.unpack_from("<I", serialized, 0)[0]
+        meta = json.loads(serialized[4 : 4 + meta_len].decode("utf-8"))
+
+        assert meta["_kind"] == "_bytes_bref"
+        assert "bref" in meta
+        assert "data" not in meta  # no base64 field
+
+        result = serde.loads_binary(serialized)
+        assert result == payload
+
 
 # =============================================================================
 # Tests: Error Handling

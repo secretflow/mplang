@@ -30,12 +30,12 @@ from mplang.backends.simp_worker.base import (
     wait_all,
 )
 from mplang.backends.simp_worker.http import (
+    SERDE_FORMAT_BINARY_CONTAINER,
+    SERDE_FORMAT_RAW_BYTES,
     CommConfig,
     CommStats,
     HttpCommunicator,
     RecvTimeoutError,
-    SERDE_FORMAT_BINARY_CONTAINER,
-    SERDE_FORMAT_RAW_BYTES,
     SendTimeoutError,
     _decode_binary_payload,
 )

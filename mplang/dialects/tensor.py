@@ -129,15 +129,6 @@ def get_run_jax_compilation(compilation_id: str) -> RunJaxCompilation:
         ) from exc
 
 
-# Configure JAX to limit the number of location attributes in exported MLIR.
-# This reduces the verbosity of StableHLO output and:
-# 1. Makes the generated code more readable
-# 2. Reduces memory usage for large models
-# 3. Avoids excessive location information that traces through the entire call stack
-# Setting to 0 disables detailed trace locations while preserving essential source info.
-jax.config.update("jax_traceback_in_locations_limit", 0)
-
-
 def mark_symbolic_shapes(
     fn: Callable | None = None, *, in_shapes: Sequence[Sequence[str | None]]
 ) -> Callable:
@@ -154,7 +145,6 @@ def mark_symbolic_shapes(
                   - None: Use static shape (don't mark)
                   - List/tuple of dimensions: Each dimension can be:
                     - str: Symbolic dimension name (e.g., "batch", "seq_len")
-                    - int: Static dimension size
                     - None: Static (will be inferred from actual input)
 
     Returns:
@@ -217,7 +207,8 @@ def _get_symbolic_name(
             raise ValueError(f"Symbolic shape name must be a string, got {type(name)}")
         return name
 
-    # builtin symbolic shape name
+    # We use "n_rows" instead of generic pattern like f"arg_{obj_idx}_dim_{dim_idx}"
+    # because our common use case is representing unknown row count in tabular data
     return "n_rows"
 
 
@@ -233,6 +224,7 @@ def _make_placeholders(
         if name in symbol_map:
             return symbol_map[name]
         symbolics = jax.export.symbolic_shape(name, scope=symbol_scope)
+        symbol_map[name] = symbolics[0]
         return symbolics[0]
 
     placeholders: list[jax.ShapeDtypeStruct] = []
@@ -301,9 +293,13 @@ def _compile_run_jax(
     def wrapped_fn(*args: Any) -> Any:
         return normalized_fn(list(args))
 
+    # Tip: Use `jax.config.update("jax_traceback_in_locations_limit", 0)` to reduce location information
+    # in MLIR output. This disables JAX traceback locations, removing verbose source location
+    # annotations (e.g., #loc = #loc1) from the generated MLIR, which makes the output more
+    # readable and reduces serialization overhead.
     jitted = jax.jit(wrapped_fn)
     exported = jax.export.export(jitted)(*placeholders)
-    stablehlo_text = exported.mlir_module()
+    stablehlo_text = str(exported.mlir_module())
 
     # Handle JAX's unused parameter elimination
     arg_keep_map: list[int] | None = None

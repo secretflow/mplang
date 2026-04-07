@@ -693,7 +693,9 @@ def run_jax_impl(
             "run_jax execution requires 'stablehlo_code' attribute"
         )
 
-    backend = op.attrs.get("backend", "iree")
+    backend = op.attrs.get("backend", "")
+    if backend == "" or backend == "auto":
+        backend = "xla"
 
     # Use IREE if available (supports dynamic shapes), otherwise use XLA
     if IREE_AVAILABLE and backend == "iree":

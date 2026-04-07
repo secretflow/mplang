@@ -75,7 +75,7 @@ def test_tensor_run_dynamic_shape():
     # jax.config.update("jax_enable_x64", True)
 
     # Phase 1: Define function with type annotations
-    @tensor.mark_symbolic_shapes(in_shapes=[("rows")])
+    @tensor.mark_symbolic_shapes(in_shapes=[("rows",)])
     def square(x: jnp.ndarray):
         return jnp.square(x)
 

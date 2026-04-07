@@ -228,12 +228,10 @@ class FileSystemBackend(StoreBackend):
     def _same_file_content(src: str, dest: str) -> bool:
         """Check file equality with a size-first fast path."""
         try:
-            if os.path.getsize(src) != os.path.getsize(dest):
-                return False
-        except OSError:
-            return False
-        try:
-            return FileSystemBackend._file_md5(src) == FileSystemBackend._file_md5(dest)
+            return os.path.samefile(src, dest) or (
+                os.path.getsize(src) == os.path.getsize(dest) and
+                FileSystemBackend._file_md5(src) == FileSystemBackend._file_md5(dest)
+            )
         except OSError:
             return False
 
@@ -298,7 +296,11 @@ class FileSystemBackend(StoreBackend):
                         f"Upload destination is an existing directory: {dst}"
                     )
                 if self._same_file_content(source, dst):
-                    os.remove(source)
+                    if os.path.islink(dst):
+                        os.remove(dst)
+                        shutil.move(source, dst)
+                    else:
+                        os.remove(source)
                     return
                 raise FileExistsError(
                     f"Upload destination already exists with different content: {dst}"

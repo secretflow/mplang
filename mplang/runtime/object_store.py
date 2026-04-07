@@ -295,7 +295,11 @@ class FileSystemBackend(StoreBackend):
                         f"Upload destination is an existing directory: {dst}"
                     )
                 if self._same_file_content(source, dst):
-                    os.remove(source)
+                    if os.path.islink(dst):
+                        os.remove(dst)
+                        shutil.move(source, dst)
+                    else:
+                        os.remove(source)
                     return
                 raise FileExistsError(
                     f"Upload destination already exists with different content: {dst}"

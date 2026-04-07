@@ -31,6 +31,7 @@ import pickle
 import shutil
 import uuid
 from abc import ABC, abstractmethod
+from hashlib import md5
 from typing import Any
 
 
@@ -215,6 +216,27 @@ class FileSystemBackend(StoreBackend):
                 keys.append(rel_path)
         return keys
 
+    @staticmethod
+    def _file_md5(path: str) -> str:
+        hasher = md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    @staticmethod
+    def _same_file_content(src: str, dest: str) -> bool:
+        """Check file equality with a size-first fast path."""
+        try:
+            if os.path.getsize(src) != os.path.getsize(dest):
+                return False
+        except OSError:
+            return False
+        try:
+            return FileSystemBackend._file_md5(src) == FileSystemBackend._file_md5(dest)
+        except OSError:
+            return False
+
     def download(self, key: str, dest: str) -> None:
         """Symlink data to local *dest*.
 
@@ -222,9 +244,12 @@ class FileSystemBackend(StoreBackend):
         - **Relative *key***: resolved under ``root_path``.
 
         No-op when source and *dest* resolve to the same path.
+        If *dest* already exists and is a file/symlink, compare content:
+        size differs -> replace directly; size same -> compare MD5;
+        same -> no-op, different -> replace with symlink to source.
 
         Raises:
-            FileExistsError: If *dest* already exists.
+            FileExistsError: If *dest* is an existing directory.
         """
         dest = os.path.abspath(dest)
         if os.path.isabs(key):
@@ -233,7 +258,13 @@ class FileSystemBackend(StoreBackend):
             src = self._resolve_key(key)
         if src != dest:
             if os.path.lexists(dest):
-                raise FileExistsError(f"Download destination already exists: {dest}")
+                if os.path.isdir(dest) and not os.path.islink(dest):
+                    raise FileExistsError(
+                        f"Download destination is an existing directory: {dest}"
+                    )
+                if self._same_file_content(src, dest):
+                    return
+                os.remove(dest)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             os.symlink(src, dest)
 
@@ -244,11 +275,15 @@ class FileSystemBackend(StoreBackend):
         - **Relative *key***: resolved under ``root_path``.
 
         No-op when *source* and destination resolve to the same path.
+        If destination exists and is a file/symlink, compare content:
+        same -> treat as success and remove *source*;
+        different -> raise ``FileExistsError`` (no overwrite).
         Uses ``os.rename`` (zero-copy on same filesystem) with
         ``shutil.move`` as fallback for cross-filesystem moves.
 
         Raises:
-            FileExistsError: If the destination already exists.
+            FileExistsError: If destination is an existing directory, or
+                destination exists with different content.
         """
         source = os.path.abspath(source)
         if os.path.isabs(key):
@@ -256,8 +291,17 @@ class FileSystemBackend(StoreBackend):
         else:
             dst = self._resolve_key(key)
         if source != dst:
-            if os.path.exists(dst):
-                raise FileExistsError(f"Upload destination already exists: {dst}")
+            if os.path.lexists(dst):
+                if os.path.isdir(dst) and not os.path.islink(dst):
+                    raise FileExistsError(
+                        f"Upload destination is an existing directory: {dst}"
+                    )
+                if self._same_file_content(source, dst):
+                    os.remove(source)
+                    return
+                raise FileExistsError(
+                    f"Upload destination already exists with different content: {dst}"
+                )
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.move(source, dst)
 

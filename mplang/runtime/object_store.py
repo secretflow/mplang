@@ -255,7 +255,9 @@ class FileSystemBackend(StoreBackend):
         if os.path.isabs(key):
             src = os.path.abspath(key)
             if not os.path.exists(src):
-                raise FileNotFoundError(f"Download source does not exist: {key!r} (searched {src})")
+                raise FileNotFoundError(
+                    f"Download source does not exist: {key!r} (searched {src})"
+                )
         else:
             src = self._resolve_key(key)
             if not os.path.exists(src):

@@ -216,6 +216,7 @@ pylintrc
 
 # Temporary files
 tmp/
+.tmp/
 
 # LLM
 CLAUDE.md

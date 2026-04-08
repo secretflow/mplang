@@ -388,13 +388,15 @@ def loads_b64(data: str, *, compressed: bool = True) -> Any:
 #       [4 bytes] segment_len
 #       [segment_len bytes] raw binary data
 #
-# Inside the JSON metadata, large binary blobs are replaced by a reference
-# placeholder:  {"_bref": <segment_index>, "len": <byte_length>}
+# Inside the JSON metadata, binary blobs are replaced by a segment reference:
+#   {"_kind": "_ndarray_bref", "dtype": ..., "shape": ..., "bref": <segment_index>}
+#   {"_kind": "_bytes_bref", "bref": <segment_index>}
+# Registered classes that implement ``to_binary_json(ctx)`` may use any key name
+# for the segment index (conventionally ``"bref"``).
 #
-# This eliminates the inner base64 encoding for types that opt in by
-# implementing ``to_binary_json(ctx)`` / ``from_binary_json(data, segments)``.
-# Types that do *not* opt in fall back to the standard ``to_json()`` path
-# (their base64-encoded fields remain inside the JSON metadata unchanged).
+# This eliminates the inner base64 encoding for all binary types.
+# Types that do *not* implement ``to_binary_json`` fall back to the standard
+# ``to_json()`` path (base64-encoded fields remain inside the JSON metadata).
 #
 # Wire efficiency comparison for a 100 MB float32 array (TensorValue):
 #   dumps()         → JSON+base64 inner + gzip             ≈ 125 MB
@@ -514,7 +516,7 @@ def _to_binary_json(obj: Any, ctx: BinaryContext) -> dict[str, Any]:
     return to_json(obj)
 
 
-def _from_binary_json(data: dict[str, Any], segments: list[bytes]) -> Any:
+def _from_binary_json(data: dict[str, Any], segments: list[memoryview]) -> Any:
     """Deserialize from a binary-aware JSON dict plus raw segments."""
     if not isinstance(data, dict):
         raise ValueError(f"Expected dict, got {type(data).__name__}")
@@ -528,7 +530,8 @@ def _from_binary_json(data: dict[str, Any], segments: list[bytes]) -> Any:
         return from_json(data)
 
     if kind == "_bytes_bref":
-        return segments[data["bref"]]
+        # Convert to bytes: memoryview is not always accepted by callers expecting bytes.
+        return bytes(segments[data["bref"]])
 
     if kind == "_ndarray_bref":
         raw = segments[data["bref"]]
@@ -638,7 +641,12 @@ def loads_binary(data: bytes) -> Any:
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise ValueError(f"Malformed metadata in binary data: {e}") from e
 
-    segments: list[bytes] = []
+    # Use a memoryview over the original buffer so each segment slice is a
+    # zero-copy view rather than a copy of the raw bytes.  Both np.frombuffer
+    # and pa.ipc.open_stream accept the buffer protocol, so downstream
+    # consumers can use the views directly without materialising extra copies.
+    mv = memoryview(data)
+    segments: list[memoryview] = []
     while offset < len(data):
         if offset + 4 > len(data):
             raise ValueError("Binary data truncated: segment length header incomplete")
@@ -646,7 +654,7 @@ def loads_binary(data: bytes) -> Any:
         offset += 4
         if offset + seg_len > len(data):
             raise ValueError("Binary data truncated: segment data incomplete")
-        segments.append(data[offset : offset + seg_len])
+        segments.append(mv[offset : offset + seg_len])
         offset += seg_len
 
     return _from_binary_json(meta_dict, segments)

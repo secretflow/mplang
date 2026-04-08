@@ -163,11 +163,12 @@ class TensorValue(WrapValue[Any]):
         data_np = np.asarray(self._data)
 
         if data_np.dtype == np.object_:
-            # Object arrays: element-wise — no binary segment possible
+            # Object arrays: serialize elements recursively so nested bytes,
+            # ndarrays, and binary-aware registered types still emit segments.
             return {
                 "kind": "object",
                 "shape": list(data_np.shape),
-                "items": [serde.to_json(item) for item in data_np.flat],
+                "items": [serde._to_binary_json(item, ctx) for item in data_np.flat],
             }
 
         raw = data_np.tobytes()
@@ -199,14 +200,14 @@ class TensorValue(WrapValue[Any]):
 
     @classmethod
     def from_binary_json(
-        cls, data: dict[str, Any], segments: list[bytes]
+        cls, data: dict[str, Any], segments: list[memoryview]
     ) -> TensorValue:
         """Binary-aware deserialization: reads array bytes from raw segments."""
         kind = data.get("kind", "numeric")
         shape = tuple(data["shape"])
 
         if kind == "object":
-            items = [serde.from_json(item) for item in data["items"]]
+            items = [serde._from_binary_json(item, segments) for item in data["items"]]
             arr = np.empty(len(items), dtype=object)
             for i, item in enumerate(items):
                 arr[i] = item

@@ -567,7 +567,7 @@ class TableValue(WrapValue[pa.Table | TableSource]):
 
     @classmethod
     def from_binary_json(
-        cls, data: dict[str, Any], segments: list[bytes]
+        cls, data: dict[str, Any], segments: list[memoryview]
     ) -> TableValue:
         """Binary-aware deserialization: reads Arrow IPC bytes from raw segments."""
         if "ipc_bref" in data:

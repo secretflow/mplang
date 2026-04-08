@@ -723,8 +723,20 @@ def register_routes(
                     raise HTTPException(status_code=400, detail=str(e)) from e
             else:
                 # Legacy JSON envelope path (backward-compatible).
-                body_json = await request.json()
-                req = CommRequest(**body_json)
+                try:
+                    body_json = await request.json()
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid JSON body: {e}"
+                    ) from e
+                try:
+                    from pydantic import ValidationError
+
+                    req = CommRequest(**body_json)
+                except (TypeError, ValidationError) as e:
+                    raise HTTPException(
+                        status_code=422, detail=f"Invalid CommRequest payload: {e}"
+                    ) from e
                 from_rank = req.from_rank
                 logger.debug(f"Worker {rank} received comm key={key} from {from_rank}")
                 if req.is_raw_bytes:

@@ -256,7 +256,12 @@ def run_jax(
     Args:
         config: SPU configuration.
         fn: The function to execute.
-        *args: Positional arguments (SSType or TensorType).
+        *args: Positional arguments (SSType or TensorType). For dynamic shapes,
+            tensors can have dimensions as -1 to indicate unknown size.
+        symbolic_shapes: Optional sequence of symbolic shape names for dynamic dimensions.
+            Each inner sequence corresponds to an input argument's dimensions:
+            - Use None for static dimensions
+            - Use string names (e.g., "n_rows", "batch_size") for dynamic dimensions
         **kwargs: Keyword arguments.
     """
 

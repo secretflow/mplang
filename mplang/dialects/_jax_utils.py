@@ -20,7 +20,6 @@ from typing import Any
 import jax
 from jax.tree_util import PyTreeDef
 
-import mplang as mp
 import mplang.edsl as el
 import mplang.edsl.typing as elt
 from mplang.dialects import dtypes
@@ -94,7 +93,7 @@ def _make_placeholders(
 
     placeholders: list[jax.ShapeDtypeStruct] = []
     for obj_idx, obj in enumerate(variables):
-        #
+        # Extract the plain tensor type from SS (Secret Sharing) type if needed
         obj_type = obj.type.pt_type if isinstance(obj.type, elt.SSType) else obj.type
 
         if not isinstance(obj_type, (elt.TensorType, elt.ScalarType)):
@@ -112,7 +111,7 @@ def _make_placeholders(
             for idx, dim in enumerate(obj_type.shape):
                 if dim is None:
                     raise TypeError(
-                        f"tensor.run_jax argument dimension {idx} is None; "
+                        f"Argument dimension {idx} is None; "
                         "please provide a static dimension."
                     )
                 elif dim < -1:
@@ -131,7 +130,7 @@ def _make_placeholders(
 
 def compile_jax(
     normalized_fn: Callable[..., Any],
-    variables: list[mp.Object],
+    variables: list[el.Object],
     symbolic_shapes: Sequence[Sequence[str | None]] | None = None,
 ) -> JaxCompilation:
     """Compile JAX function to StableHLO MLIR.
@@ -139,12 +138,16 @@ def compile_jax(
     Pipeline: jit → export → StableHLO MLIR
 
     Args:
-        fn: Original JAX function
         normalized_fn: Function accepting list of variables (for JAX lower API)
-        placeholders: JAX ShapeDtypeStruct list for lowering
+        variables: List of MPLang objects representing function inputs
+        symbolic_shapes: Optional sequence of symbolic shape names for dynamic dimensions.
+            Each inner sequence corresponds to an input variable's dimensions, with None
+            for static dimensions and string names for symbolic dimensions.
 
     Returns:
-        Tuple of (compilation record, compilation_id)
+        JaxCompilation: Compilation record containing StableHLO MLIR, output types,
+        tree structure, and metadata for execution including arg_keep_map for JAX's
+        unused parameter elimination and dynamic shape flag.
     """
 
     placeholders = _make_placeholders(variables, symbolic_shapes)

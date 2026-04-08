@@ -202,10 +202,8 @@ def test_spu_run_dynamic_shape():
     1. Compile with dynamic shape (-1) - shape unknown at compile time
     2. Execute multiple times with different actual data to demonstrate dynamic behavior
     """
+
     # Phase 1: Setup and compilation
-    world_size = 3
-    sim = simp.make_simulator(world_size=world_size)
-    mp.set_root_context(sim)
 
     # Define computation
     def jax_add(x, y):
@@ -268,17 +266,26 @@ def test_spu_run_dynamic_shape():
         np.arange(5, dtype=np.float32),  # Size 5
     ]
 
-    for input_data in test_cases:
-        # Need to run within simp context since this uses simp operations
-        with sim:
-            # Create MP objects from the input data
-            x_mp = simp.constant((0,), input_data)
-            y_mp = simp.constant((0,), input_data)
+    world_size = 3
+    sim = simp.make_simulator(world_size=world_size)
+    mp.set_root_context(sim)
 
-            # Execute the compiled function with MP objects
-            result = mp.evaluate(traced_fn, x_mp, y_mp)
+    try:
+        for input_data in test_cases:
+            # Need to run within simp context since this uses simp operations
+            with sim:
+                # Create MP objects from the input data
+                x_mp = simp.constant((0,), input_data)
+                y_mp = simp.constant((0,), input_data)
 
-        # Verify the result - need to fetch from DriverVar
-        expected = input_data + input_data
-        result_values = mp.fetch(result)
-        np.testing.assert_allclose(result_values[0], expected)
+                # Execute the compiled function with MP objects
+                result = mp.evaluate(traced_fn, x_mp, y_mp)
+
+            # Verify the result - need to fetch from DriverVar
+            expected = input_data + input_data
+            result_values = mp.fetch(result)
+            np.testing.assert_allclose(result_values[0], expected)
+    finally:
+        # Shutdown the cluster via the interpreter's reference
+        if hasattr(sim, "_simp_cluster"):
+            sim._simp_cluster.shutdown()

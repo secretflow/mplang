@@ -690,8 +690,9 @@ def register_routes(
             not set ``use_binary=True`` will use this path.
         """
         content_type = request.headers.get("content-type", "application/json")
+        media_type = content_type.split(";", 1)[0].strip().lower()
         try:
-            if "octet-stream" in content_type:
+            if media_type == "application/octet-stream":
                 # Binary transport path: metadata from headers, no base64.
                 raw_from_rank = request.headers.get("x-from-rank")
                 if raw_from_rank is None:

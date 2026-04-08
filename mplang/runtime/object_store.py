@@ -256,6 +256,16 @@ class FileSystemBackend(StoreBackend):
             src = os.path.abspath(key)
         else:
             src = self._resolve_key(key)
+            # Fallback: if key doesn't exist under root_path, try CWD-relative.
+            if not os.path.exists(src):
+                cwd_src = os.path.abspath(key)
+                if os.path.exists(cwd_src):
+                    src = cwd_src
+        if not os.path.exists(src):
+            raise FileNotFoundError(
+                f"Download source does not exist: {key!r} "
+                f"(searched {self._resolve_key(key)} and {os.path.abspath(key)})"
+            )
         if src != dest:
             if os.path.lexists(dest):
                 if os.path.isdir(dest) and not os.path.islink(dest):
@@ -286,6 +296,8 @@ class FileSystemBackend(StoreBackend):
                 destination exists with different content.
         """
         source = os.path.abspath(source)
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"Upload source does not exist: {source}")
         if os.path.isabs(key):
             dst = os.path.abspath(key)
         else:

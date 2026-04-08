@@ -41,7 +41,6 @@ def test_tensor_run_jax_op_emitted():
 
 
 def test_tensor_run_jax_on_dynamic_shape():
-    from mplang.dialects.tensor import mark_symbolic_shapes
 
     tracer = el.get_current_context()
     value = el.Value("xx", elt.TensorType(elt.f32, (-1,)))
@@ -54,12 +53,11 @@ def test_tensor_run_jax_on_dynamic_shape():
     op = traced.graph.operations[0]
     assert "tensor<?xf32>" in op.attrs["stablehlo_code"]
 
-    @mark_symbolic_shapes(in_shapes=[("x", "y"), ("x", "y")])
     def _add_dim2(x, y):
         return x + y
 
     def wrapper1(x, y):
-        return run_jax(_add_dim2, x, y)
+        return run_jax(_add_dim2, x, y, symbolic_shapes=[("x", "y"), ("x", "y")])
 
     tensor_type = elt.TensorType(elt.f32, (-1, -1))
     x = el.TraceObject(el.Value("x", tensor_type), tracer)  # type: ignore

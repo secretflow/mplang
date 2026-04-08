@@ -16,6 +16,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 
@@ -190,8 +191,23 @@ class TestDownloadUpload(unittest.TestCase):
         with open(dest) as f:
             self.assertEqual(f.read(), "hello")
 
-    def test_backend_download_rejects_existing_dest(self):
-        """download raises FileExistsError when dest already exists."""
+    def test_backend_download_existing_dest_same_content_noop(self):
+        """download is a no-op when dest exists with identical content."""
+        src = os.path.join(self.test_dir, "src.csv")
+        with open(src, "w") as f:
+            f.write("data")
+
+        dest = os.path.join(self.local_dir, "existing.csv")
+        with open(dest, "w") as f:
+            f.write("data")
+
+        self.backend.download("src.csv", dest)
+        self.assertFalse(os.path.islink(dest))
+        with open(dest) as f:
+            self.assertEqual(f.read(), "data")
+
+    def test_backend_download_existing_dest_different_content_replaces(self):
+        """download replaces existing dest when content differs."""
         src = os.path.join(self.test_dir, "src.csv")
         with open(src, "w") as f:
             f.write("data")
@@ -200,11 +216,46 @@ class TestDownloadUpload(unittest.TestCase):
         with open(dest, "w") as f:
             f.write("old")
 
+        self.backend.download("src.csv", dest)
+        self.assertTrue(os.path.islink(dest))
+        with open(dest) as f:
+            self.assertEqual(f.read(), "data")
+
+    def test_backend_download_existing_dest_size_diff_skips_md5(self):
+        """download replaces directly when size differs, without MD5 checks."""
+        src = os.path.join(self.test_dir, "src.csv")
+        with open(src, "w") as f:
+            f.write("longer_data")
+
+        dest = os.path.join(self.local_dir, "existing.csv")
+        with open(dest, "w") as f:
+            f.write("old")
+
+        with mock.patch.object(
+            FileSystemBackend,
+            "_file_md5",
+            side_effect=AssertionError("MD5 should not be called for size mismatch"),
+        ):
+            self.backend.download("src.csv", dest)
+
+        self.assertTrue(os.path.islink(dest))
+        with open(dest) as f:
+            self.assertEqual(f.read(), "longer_data")
+
+    def test_backend_download_existing_dest_dir_raises(self):
+        """download raises FileExistsError when dest is an existing directory."""
+        src = os.path.join(self.test_dir, "src.csv")
+        with open(src, "w") as f:
+            f.write("data")
+
+        dest = os.path.join(self.local_dir, "existing_dir")
+        os.makedirs(dest, exist_ok=True)
+
         with self.assertRaises(FileExistsError):
             self.backend.download("src.csv", dest)
 
     def test_backend_upload_rejects_existing_dest(self):
-        """upload raises FileExistsError when dest already exists."""
+        """upload raises FileExistsError when existing dest content differs."""
         source = os.path.join(self.local_dir, "new.csv")
         with open(source, "w") as f:
             f.write("new_data")
@@ -216,6 +267,39 @@ class TestDownloadUpload(unittest.TestCase):
 
         with self.assertRaises(FileExistsError):
             self.backend.upload(source, "existing_key")
+
+    def test_backend_upload_existing_dest_same_content_consumes_source(self):
+        """upload succeeds when existing dest content matches and consumes source."""
+        source = os.path.join(self.local_dir, "new.csv")
+        with open(source, "w") as f:
+            f.write("same_data")
+
+        dst = os.path.join(self.test_dir, "existing_key")
+        with open(dst, "w") as f:
+            f.write("same_data")
+
+        self.backend.upload(source, "existing_key")
+        self.assertFalse(os.path.exists(source))
+        with open(dst) as f:
+            self.assertEqual(f.read(), "same_data")
+
+    def test_backend_upload_existing_dest_size_diff_skips_md5(self):
+        """upload raises on size mismatch without invoking MD5."""
+        source = os.path.join(self.local_dir, "new.csv")
+        with open(source, "w") as f:
+            f.write("much_longer_data")
+
+        dst = os.path.join(self.test_dir, "existing_key")
+        with open(dst, "w") as f:
+            f.write("old")
+
+        with mock.patch.object(
+            FileSystemBackend,
+            "_file_md5",
+            side_effect=AssertionError("MD5 should not be called for size mismatch"),
+        ):
+            with self.assertRaises(FileExistsError):
+                self.backend.upload(source, "existing_key")
 
     # -- FileSystemBackend.download with absolute key --
 

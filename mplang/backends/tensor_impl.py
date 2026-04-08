@@ -379,24 +379,224 @@ def elementwise_impl(interpreter: Interpreter, op: Operation, *args: Value) -> A
         return _wrap(results)
 
 
-# Global cache for compiled StableHLO executables
-_STABLEHLO_CACHE: dict[str, Any] = {}
+# =============================================================================
+# IREE Runtime Support
+# =============================================================================
+
+# Check if IREE is available (actual imports are done lazily in _run_jax_with_iree)
+try:
+    import importlib.util
+
+    IREE_AVAILABLE = (
+        importlib.util.find_spec("iree.compiler") is not None
+        and importlib.util.find_spec("iree.runtime") is not None
+    )
+except (ImportError, ValueError):
+    IREE_AVAILABLE = False
+
+# Global cache for IREE compiled flatbuffers
+# Key: SHA256 hash of stablehlo_code
+# Value: compiled flatbuffer bytes
+_IREE_CACHE: dict[str, Any] = {}
 
 
-@tensor.run_jax_p.def_impl
-def run_jax_impl(
-    interpreter: Interpreter, op: Operation, *args: TensorValue
+def _create_iree_context() -> Any:
+    """Create a new IREE runtime context.
+
+    Creates a fresh context for each execution to avoid module name conflicts
+    when multiple run_jax calls are made with different functions.
+
+    Note: This function should only be called when IREE is available.
+    The caller is responsible for checking IREE_AVAILABLE before calling.
+
+    Returns:
+        IREE SystemContext instance
+
+    Raises:
+        RuntimeError: If IREE context initialization fails
+    """
+    try:
+        import iree.runtime
+
+        config = iree.runtime.Config("local-task")
+        ctx = iree.runtime.SystemContext(config=config)
+        return ctx
+
+    except Exception as e:
+        logger.error(f"Failed to create IREE context: {e}")
+        raise RuntimeError(f"IREE context creation failed: {e}") from e
+
+
+def _run_jax_with_iree(
+    interpreter: Interpreter,
+    op: Operation,
+    args: tuple[TensorValue, ...],
+    stablehlo_code: str,
+    t0: float,
 ) -> TensorValue | list[TensorValue]:
-    """Execute JAX function."""
-    t0 = time.time()
+    """Execute JAX function using IREE runtime.
 
-    # Execute via StableHLO
-    stablehlo_code = op.attrs.get("stablehlo_code")
-    if stablehlo_code is None:
-        raise NotImplementedError(
-            "run_jax execution requires 'stablehlo_code' attribute"
+    IREE supports jax.uses_shape_polymorphism, making it suitable for dynamic shapes.
+
+    Args:
+        interpreter: The interpreter instance
+        op: The operation being executed
+        args: Input tensor values
+        stablehlo_code: StableHLO MLIR code
+        t0: Start time for profiling
+
+    Returns:
+        Output tensor value(s)
+    """
+    if not IREE_AVAILABLE:
+        raise RuntimeError(
+            "IREE execution requested but IREE is not installed. "
+            "Install IREE with: pip install iree-compiler iree-runtime"
         )
 
+    import iree.compiler
+    import iree.runtime
+    from iree.compiler import InputType
+
+    # Prepare inputs: unwrap TensorValue to numpy arrays
+    t1 = time.time()
+    numpy_args = []
+    for i, arg in enumerate(args):
+        if isinstance(arg, TensorValue):
+            numpy_args.append(arg.unwrap())
+        else:
+            numpy_args.append(np.asarray(arg))
+
+        # Cast to expected dtype if needed
+        if i < len(op.inputs):
+            input_type = op.inputs[i].type
+            if isinstance(input_type, elt.TensorType):
+                dtype = dtypes.to_jax(cast(elt.ScalarType, input_type.element_type))
+                if (
+                    dtype is not None
+                    and isinstance(numpy_args[i], np.ndarray)
+                    and numpy_args[i].dtype != dtype
+                ):
+                    numpy_args[i] = numpy_args[i].astype(dtype)
+
+    # Handle JAX's unused parameter elimination via arg_keep_map
+    arg_keep_map = op.attrs.get("arg_keep_map")
+    if arg_keep_map is not None:
+        # Filter out arguments that were eliminated by JAX during compilation
+        numpy_args = [numpy_args[i] for i in arg_keep_map]
+
+    t2 = time.time()
+
+    # Use SHA256 of code as cache key
+    code_hash = hashlib.sha256(stablehlo_code.encode("utf-8")).hexdigest()
+
+    # Compile with IREE (cache flatbuffer, create new context for each execution)
+    if code_hash in _IREE_CACHE:
+        flatbuffer = _IREE_CACHE[code_hash]
+        t3 = t2  # No compilation time
+    else:
+        try:
+            # Use CPU backend for stability (avoids CUDA context issues)
+            target_backend = "llvm-cpu"
+
+            # Compile with full type preservation:
+            # 1. Disable all type demotions (f64->f32, i64->i32) to preserve original types
+            # 2. Use system linker instead of embedded linker to support f64 math functions
+            #    (embedded linker cannot link system libm which is needed for exp, log, etc.)
+            # See: https://iree.dev/reference/mlir-passes/InputConversion/
+            compile_args = [
+                "--iree-llvmcpu-target-cpu=host",
+                # Disable type demotions
+                "--iree-input-demote-f64-to-f32=false",
+                "--iree-input-demote-i64-to-i32=false",
+                # Use system linker for libm support
+                "--iree-llvmcpu-link-embedded=false",
+            ]
+
+            flatbuffer = iree.compiler.compile_str(
+                stablehlo_code,
+                target_backends=[target_backend],
+                input_type=InputType.STABLEHLO,
+                extra_args=compile_args,
+            )
+
+            # Cache the flatbuffer (not the module, since context is not shared)
+            _IREE_CACHE[code_hash] = flatbuffer
+
+            t3 = time.time()
+
+        except Exception as e:
+            raise RuntimeError(f"IREE compilation failed: {e}") from e
+
+    # Create a new IREE context for each execution to avoid module name conflicts
+    ctx = _create_iree_context()
+
+    # Load the compiled module into the new context
+    vm_module = iree.runtime.VmModule.copy_buffer(ctx.instance, flatbuffer)
+    ctx.add_vm_module(vm_module)
+
+    # Get module name from vm_module
+    module_name = vm_module.name
+    if module_name not in ctx.modules:
+        raise RuntimeError(
+            f"Module '{module_name}' not found in IREE context. "
+            f"Available modules: {list(ctx.modules.keys())}"
+        )
+
+    module = ctx.modules[module_name]
+
+    # Execute the function
+    result = module.main(*numpy_args)
+    t4 = time.time()
+
+    # Convert result to TensorValue
+    if isinstance(result, (list, tuple)):
+        flat = [_wrap(np.asarray(r)) for r in result]
+    else:
+        flat = [_wrap(np.asarray(result))]
+
+    t5 = time.time()
+
+    # Profiling
+    if interpreter.tracer:
+        p = interpreter.tracer
+        p.log_custom_event("IREE Prep", t0, t1, cat="iree")
+        p.log_custom_event("IREE Cast", t1, t2, cat="iree")
+        p.log_custom_event("IREE Compile", t2, t3, cat="iree")
+        p.log_custom_event("IREE Exec", t3, t4, cat="iree")
+        p.log_custom_event("IREE Wrap", t4, t5, cat="iree")
+
+    # Return single value or list based on output count
+    if len(op.outputs) == 1 and len(flat) == 1:
+        return flat[0]
+    return flat
+
+
+# Global cache for compiled StableHLO executables
+_XLA_CACHE: dict[str, Any] = {}
+
+
+def _run_jax_with_xla(
+    interpreter: Interpreter,
+    op: Operation,
+    args: tuple[TensorValue, ...],
+    stablehlo_code: str,
+    t0: float,
+) -> TensorValue | list[TensorValue]:
+    """Execute JAX function using JAX XLA compilation.
+
+    This is the original execution method using JAX's XLA compiler.
+
+    Args:
+        interpreter: The interpreter instance
+        op: The operation being executed
+        args: Input tensor values
+        stablehlo_code: StableHLO MLIR code
+        t0: Start time for profiling
+
+    Returns:
+        Output tensor value(s)
+    """
     # Compile StableHLO
     client = jxt.backend.get_backend()
 
@@ -404,8 +604,8 @@ def run_jax_impl(
     # Note: We assume compile_options are constant (num_replicas=1, num_partitions=1)
     code_hash = hashlib.sha256(stablehlo_code.encode("utf-8")).hexdigest()
 
-    if code_hash in _STABLEHLO_CACHE:
-        compiled = _STABLEHLO_CACHE[code_hash]
+    if code_hash in _XLA_CACHE:
+        compiled = _XLA_CACHE[code_hash]
     else:
         compile_options = compiler.get_compile_options(num_replicas=1, num_partitions=1)
 
@@ -443,7 +643,7 @@ def run_jax_impl(
             except Exception as e:
                 raise RuntimeError(f"StableHLO compile failed: {e}") from e
 
-        _STABLEHLO_CACHE[code_hash] = compiled
+        _XLA_CACHE[code_hash] = compiled
 
     # Cast inputs to expected types (Boundary Type Guard)
     # This allows users to pass Python ints/floats to functions expecting f32/i32
@@ -522,6 +722,41 @@ def run_jax_impl(
         return flat
     except Exception as e:
         raise RuntimeError(f"StableHLO execute failed: {e}") from e
+
+
+@tensor.run_jax_p.def_impl
+def run_jax_impl(
+    interpreter: Interpreter, op: Operation, *args: TensorValue
+) -> TensorValue | list[TensorValue]:
+    """Execute JAX function.
+
+    This is the entry point for JAX function execution.
+
+    Execution strategy:
+    - If IREE is available: use IREE runtime (supports jax.uses_shape_polymorphism for dynamic shapes)
+    - Otherwise: use JAX XLA compilation
+
+    IREE is preferred because it supports dynamic shapes via shape polymorphism,
+    while XLA requires static shapes.
+    """
+    t0 = time.time()
+
+    # Get StableHLO code
+    stablehlo_code = op.attrs.get("stablehlo_code")
+    if stablehlo_code is None:
+        raise NotImplementedError(
+            "run_jax execution requires 'stablehlo_code' attribute"
+        )
+
+    backend = op.attrs.get("backend", "")
+    if backend == "" or backend == "auto":
+        backend = "xla"
+
+    # Use IREE if available (supports dynamic shapes), otherwise use XLA
+    if IREE_AVAILABLE and backend == "iree":
+        return _run_jax_with_iree(interpreter, op, args, stablehlo_code, t0)
+    else:
+        return _run_jax_with_xla(interpreter, op, args, stablehlo_code, t0)
 
 
 @tensor.gather_p.def_impl

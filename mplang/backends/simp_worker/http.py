@@ -657,6 +657,23 @@ def register_routes(
         exec_pool.submit(_do_execute_async, exec_id, graph, inputs, req.job_id)
         return {"exec_id": exec_id, "error": None}
 
+    @app.get("/exec/{exec_id}/status")
+    async def get_exec_status(exec_id: str) -> dict[str, str | None]:
+        """Poll the status of an async execution task."""
+        task = _async_tasks.get(exec_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"exec_id '{exec_id}' not found")
+
+        response: dict[str, str | None] = {
+            "exec_id": exec_id,
+            "status": task.status.value,
+        }
+        if task.status == AsyncTaskStatus.SUCCESS:
+            response["result"] = task.result
+        elif task.status == AsyncTaskStatus.FAILED:
+            response["error"] = task.error
+        return response
+
     @app.put("/comm/{key}")
     async def receive_comm(key: str, req: CommRequest) -> dict[str, str]:
         """Receive communication data from another worker."""

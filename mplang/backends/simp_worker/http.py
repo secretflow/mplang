@@ -610,6 +610,7 @@ def register_routes(
             return None
         return [store.put(res) if res is not None else None for res in result]
 
+    # Mutable closure state shared between endpoint handlers and exec_pool threads.
     _async_tasks: dict[str, AsyncTaskState] = {}
 
     def _do_execute_async(exec_id: str, graph: Graph, inputs: list[Any], job_id: str | None = None) -> None:
@@ -644,7 +645,9 @@ def register_routes(
     @app.post("/exec/async")
     async def execute_async(req: ExecRequest) -> dict[str, str | None]:
         """Submit async graph execution, return immediately with exec_id."""
-        exec_id = req.job_id or ""
+        exec_id = req.job_id
+        if not exec_id:
+            return {"exec_id": "-1", "error": "job_id is required for async execution"}
         logger.debug(f"Worker {rank} received async exec request, exec_id={exec_id}")
         try:
             graph = serde.loads_b64(req.graph)
@@ -652,6 +655,10 @@ def register_routes(
         except Exception as e:
             logger.error(f"Worker {rank} async exec deserialization failed: {e}")
             return {"exec_id": "-1", "error": str(e)}
+
+        for existing_task in _async_tasks.values():
+            if existing_task.status in (AsyncTaskStatus.PENDING, AsyncTaskStatus.RUNNING):
+                return {"exec_id": "-1", "error": "another task is already running"}
 
         _async_tasks[exec_id] = AsyncTaskState(status=AsyncTaskStatus.PENDING)
         exec_pool.submit(_do_execute_async, exec_id, graph, inputs, req.job_id)

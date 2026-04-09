@@ -643,26 +643,26 @@ def register_routes(
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/exec/async")
-    async def execute_async(req: ExecRequest) -> dict[str, str | None]:
+    async def execute_async(req: ExecRequest) -> dict[str, str]:
         """Submit async graph execution, return immediately with exec_id."""
         exec_id = req.job_id
         if not exec_id:
-            return {"exec_id": "-1", "error": "job_id is required for async execution"}
+            raise HTTPException(status_code=400, detail="job_id is required for async execution")
         logger.debug(f"Worker {rank} received async exec request, exec_id={exec_id}")
         try:
             graph = serde.loads_b64(req.graph)
             inputs = serde.loads_b64(req.inputs)
         except Exception as e:
             logger.error(f"Worker {rank} async exec deserialization failed: {e}")
-            return {"exec_id": "-1", "error": str(e)}
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
         for existing_task in async_tasks.values():
             if existing_task.status in (AsyncTaskStatus.PENDING, AsyncTaskStatus.RUNNING):
-                return {"exec_id": "-1", "error": "another task is already running"}
+                raise HTTPException(status_code=409, detail="another task is already running")
 
         async_tasks[exec_id] = AsyncTaskState(status=AsyncTaskStatus.PENDING)
         exec_pool.submit(_do_execute_async, exec_id, graph, inputs, req.job_id)
-        return {"exec_id": exec_id, "error": None}
+        return {"exec_id": exec_id}
 
     @app.get("/exec/{exec_id}/status")
     async def get_exec_status(exec_id: str) -> dict[str, str | None]:

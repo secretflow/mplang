@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 
 import mplang.edsl as el
 from mplang.backends.simp_worker.http import create_worker_app
-from mplang.dialects import simp, tensor
+from mplang.dialects import simp
 from mplang.edsl import serde
 
 
@@ -61,9 +61,8 @@ class TestExecAsync:
         assert resp.status_code == 200
         data = resp.json()
         assert data["exec_id"] == "test-job-1"
-        assert data["error"] is None
 
-    def test_submit_bad_graph_returns_error(self, single_worker_client):
+    def test_submit_bad_graph_returns_400(self, single_worker_client):
         client = single_worker_client
         payload = {
             "graph": "not-valid-base64-graph",
@@ -72,12 +71,9 @@ class TestExecAsync:
         }
 
         resp = client.post("/exec/async", json=payload)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["exec_id"] == "-1"
-        assert data["error"] is not None
+        assert resp.status_code == 400
 
-    def test_submit_missing_job_id_returns_error(self, single_worker_client):
+    def test_submit_missing_job_id_returns_400(self, single_worker_client):
         client = single_worker_client
         graph = _make_constant_graph()
         payload = {
@@ -86,10 +82,8 @@ class TestExecAsync:
         }
 
         resp = client.post("/exec/async", json=payload)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["exec_id"] == "-1"
-        assert "job_id is required" in data["error"]
+        assert resp.status_code == 400
+        assert "job_id is required" in resp.json()["detail"]
 
 
 class TestExecStatus:

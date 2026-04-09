@@ -41,6 +41,7 @@ import pathlib
 import threading
 import time
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -103,6 +104,8 @@ class SendTimeoutError(TimeoutError):
 # ---------------------------------------------------------------------------
 
 __all__ = [
+    "AsyncTaskState",
+    "AsyncTaskStatus",
     "CommConfig",
     "CommStats",
     "HttpCommunicator",
@@ -607,6 +610,24 @@ def _decode_binary_payload(
     raise ValueError(f"Unsupported X-Serde-Format: {serde_format}")
 
 
+class AsyncTaskStatus(StrEnum):
+    """Status of an async execution task."""
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+
+
+@dataclass
+class AsyncTaskState:
+    """Tracks the state of an async execution task."""
+
+    status: AsyncTaskStatus
+    result: str | None = None
+    error: str | None = None
+
+
 def register_routes(
     app: FastAPI,
     *,
@@ -656,6 +677,21 @@ def register_routes(
             return None
         return [store.put(res) if res is not None else None for res in result]
 
+    # Mutable closure state shared between endpoint handlers and exec_pool threads.
+    async_tasks: dict[str, AsyncTaskState] = {}
+
+    def _do_execute_async(exec_id: str, graph: Graph, inputs: list[Any], job_id: str | None = None) -> None:
+        """Wrapper that updates AsyncTaskState around _do_execute."""
+        async_tasks[exec_id].status = AsyncTaskStatus.RUNNING
+        try:
+            result = _do_execute(graph, inputs, job_id)
+            async_tasks[exec_id].status = AsyncTaskStatus.SUCCESS
+            async_tasks[exec_id].result = serde.dumps_b64(result)
+        except Exception as e:
+            logger.error(f"Worker {rank} async exec failed: {e}")
+            async_tasks[exec_id].status = AsyncTaskStatus.FAILED
+            async_tasks[exec_id].error = str(e)
+
     @app.post("/exec")
     async def execute(req: ExecRequest) -> dict[str, str]:
         """Execute a graph on this worker."""
@@ -672,6 +708,45 @@ def register_routes(
         except Exception as e:
             logger.error(f"Worker {rank} exec failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/exec/async")
+    async def execute_async(req: ExecRequest) -> dict[str, str]:
+        """Submit async graph execution, return immediately with exec_id."""
+        exec_id = req.job_id
+        if not exec_id:
+            raise HTTPException(status_code=400, detail="job_id is required for async execution")
+        logger.debug(f"Worker {rank} received async exec request, exec_id={exec_id}")
+        try:
+            graph = serde.loads_b64(req.graph)
+            inputs = serde.loads_b64(req.inputs)
+        except Exception as e:
+            logger.error(f"Worker {rank} async exec deserialization failed: {e}")
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        for existing_task in async_tasks.values():
+            if existing_task.status in (AsyncTaskStatus.PENDING, AsyncTaskStatus.RUNNING):
+                raise HTTPException(status_code=409, detail="another task is already running")
+
+        async_tasks[exec_id] = AsyncTaskState(status=AsyncTaskStatus.PENDING)
+        exec_pool.submit(_do_execute_async, exec_id, graph, inputs, req.job_id)
+        return {"exec_id": exec_id}
+
+    @app.get("/exec/{exec_id}/status")
+    async def get_exec_status(exec_id: str) -> dict[str, str | None]:
+        """Poll the status of an async execution task."""
+        task = async_tasks.get(exec_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"exec_id '{exec_id}' not found")
+
+        response: dict[str, str | None] = {
+            "exec_id": exec_id,
+            "status": task.status.value,
+        }
+        if task.status == AsyncTaskStatus.SUCCESS:
+            response["result"] = task.result
+        elif task.status == AsyncTaskStatus.FAILED:
+            response["error"] = task.error
+        return response
 
     @app.put("/comm/{key}")
     async def receive_comm(key: str, request: FastAPIRequest) -> dict[str, str]:

@@ -610,6 +610,20 @@ def register_routes(
             return None
         return [store.put(res) if res is not None else None for res in result]
 
+    _async_tasks: dict[str, AsyncTaskState] = {}
+
+    def _do_execute_async(exec_id: str, graph: Graph, inputs: list[Any], job_id: str | None = None) -> None:
+        """Wrapper that updates AsyncTaskState around _do_execute."""
+        _async_tasks[exec_id].status = AsyncTaskStatus.RUNNING
+        try:
+            result = _do_execute(graph, inputs, job_id)
+            _async_tasks[exec_id].status = AsyncTaskStatus.SUCCESS
+            _async_tasks[exec_id].result = serde.dumps_b64(result)
+        except Exception as e:
+            logger.error(f"Worker {rank} async exec failed: {e}")
+            _async_tasks[exec_id].status = AsyncTaskStatus.FAILED
+            _async_tasks[exec_id].error = str(e)
+
     @app.post("/exec")
     async def execute(req: ExecRequest) -> dict[str, str]:
         """Execute a graph on this worker."""
@@ -626,6 +640,22 @@ def register_routes(
         except Exception as e:
             logger.error(f"Worker {rank} exec failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/exec/async")
+    async def execute_async(req: ExecRequest) -> dict[str, str | None]:
+        """Submit async graph execution, return immediately with exec_id."""
+        exec_id = req.job_id or ""
+        logger.debug(f"Worker {rank} received async exec request, exec_id={exec_id}")
+        try:
+            graph = serde.loads_b64(req.graph)
+            inputs = serde.loads_b64(req.inputs)
+        except Exception as e:
+            logger.error(f"Worker {rank} async exec deserialization failed: {e}")
+            return {"exec_id": "-1", "error": str(e)}
+
+        _async_tasks[exec_id] = AsyncTaskState(status=AsyncTaskStatus.PENDING)
+        exec_pool.submit(_do_execute_async, exec_id, graph, inputs, req.job_id)
+        return {"exec_id": exec_id, "error": None}
 
     @app.put("/comm/{key}")
     async def receive_comm(key: str, req: CommRequest) -> dict[str, str]:

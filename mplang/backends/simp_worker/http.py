@@ -41,7 +41,7 @@ import pathlib
 import threading
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -543,7 +543,7 @@ class FetchRequest(BaseModel):
     uri: str
 
 
-class AsyncTaskStatus(str, Enum):
+class AsyncTaskStatus(StrEnum):
     """Status of an async execution task."""
 
     PENDING = "PENDING"
@@ -611,19 +611,19 @@ def register_routes(
         return [store.put(res) if res is not None else None for res in result]
 
     # Mutable closure state shared between endpoint handlers and exec_pool threads.
-    _async_tasks: dict[str, AsyncTaskState] = {}
+    async_tasks: dict[str, AsyncTaskState] = {}
 
     def _do_execute_async(exec_id: str, graph: Graph, inputs: list[Any], job_id: str | None = None) -> None:
         """Wrapper that updates AsyncTaskState around _do_execute."""
-        _async_tasks[exec_id].status = AsyncTaskStatus.RUNNING
+        async_tasks[exec_id].status = AsyncTaskStatus.RUNNING
         try:
             result = _do_execute(graph, inputs, job_id)
-            _async_tasks[exec_id].status = AsyncTaskStatus.SUCCESS
-            _async_tasks[exec_id].result = serde.dumps_b64(result)
+            async_tasks[exec_id].status = AsyncTaskStatus.SUCCESS
+            async_tasks[exec_id].result = serde.dumps_b64(result)
         except Exception as e:
             logger.error(f"Worker {rank} async exec failed: {e}")
-            _async_tasks[exec_id].status = AsyncTaskStatus.FAILED
-            _async_tasks[exec_id].error = str(e)
+            async_tasks[exec_id].status = AsyncTaskStatus.FAILED
+            async_tasks[exec_id].error = str(e)
 
     @app.post("/exec")
     async def execute(req: ExecRequest) -> dict[str, str]:
@@ -656,18 +656,18 @@ def register_routes(
             logger.error(f"Worker {rank} async exec deserialization failed: {e}")
             return {"exec_id": "-1", "error": str(e)}
 
-        for existing_task in _async_tasks.values():
+        for existing_task in async_tasks.values():
             if existing_task.status in (AsyncTaskStatus.PENDING, AsyncTaskStatus.RUNNING):
                 return {"exec_id": "-1", "error": "another task is already running"}
 
-        _async_tasks[exec_id] = AsyncTaskState(status=AsyncTaskStatus.PENDING)
+        async_tasks[exec_id] = AsyncTaskState(status=AsyncTaskStatus.PENDING)
         exec_pool.submit(_do_execute_async, exec_id, graph, inputs, req.job_id)
         return {"exec_id": exec_id, "error": None}
 
     @app.get("/exec/{exec_id}/status")
     async def get_exec_status(exec_id: str) -> dict[str, str | None]:
         """Poll the status of an async execution task."""
-        task = _async_tasks.get(exec_id)
+        task = async_tasks.get(exec_id)
         if task is None:
             raise HTTPException(status_code=404, detail=f"exec_id '{exec_id}' not found")
 

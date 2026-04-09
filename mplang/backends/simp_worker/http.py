@@ -41,6 +41,7 @@ import pathlib
 import threading
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -98,6 +99,8 @@ class SendTimeoutError(TimeoutError):
 # ---------------------------------------------------------------------------
 
 __all__ = [
+    "AsyncTaskState",
+    "AsyncTaskStatus",
     "CommConfig",
     "CommStats",
     "HttpCommunicator",
@@ -538,6 +541,24 @@ class FetchRequest(BaseModel):
     """Request model for /fetch endpoint."""
 
     uri: str
+
+
+class AsyncTaskStatus(str, Enum):
+    """Status of an async execution task."""
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+
+
+@dataclass
+class AsyncTaskState:
+    """Tracks the state of an async execution task."""
+
+    status: AsyncTaskStatus
+    result: str | None = None
+    error: str | None = None
 
 
 def register_routes(

@@ -51,6 +51,7 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+import struct
 from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
@@ -373,3 +374,287 @@ def loads_b64(data: str, *, compressed: bool = True) -> Any:
         Deserialized object
     """
     return loads(base64.b64decode(data), compressed=compressed)
+
+
+# =============================================================================
+# Binary Container Format
+# =============================================================================
+#
+# Layout (all lengths are unsigned 32-bit little-endian integers):
+#
+#   [4 bytes] metadata_len
+#   [metadata_len bytes] UTF-8 JSON metadata
+#   for each binary segment i:
+#       [4 bytes] segment_len
+#       [segment_len bytes] raw binary data
+#
+# Inside the JSON metadata, binary blobs are replaced by a segment reference:
+#   {"_kind": "_ndarray_bref", "dtype": ..., "shape": ..., "bref": <segment_index>}
+#   {"_kind": "_bytes_bref", "bref": <segment_index>}
+# Registered classes that implement ``to_binary_json(ctx)`` may use any key name
+# for the segment index (conventionally ``"bref"``).
+#
+# This eliminates the inner base64 encoding for all binary types.
+# Types that do *not* implement ``to_binary_json`` fall back to the standard
+# ``to_json()`` path (base64-encoded fields remain inside the JSON metadata).
+#
+# Wire efficiency comparison for a 100 MB float32 array (TensorValue):
+#   dumps()         → JSON+base64 inner + gzip             ≈ 125 MB
+#   dumps_binary()  → binary segment (no base64) + 4-byte header ≈ 100 MB
+#   (gzip is intentionally NOT applied to binary segments because random /
+#    already-compressed data compresses poorly; callers that need transport-
+#    level compression can apply gzip around the whole blob.)
+# =============================================================================
+
+
+class BinaryContext:
+    """Accumulates binary segments during serialization.
+
+    Passed to ``to_binary_json()`` of registered classes.  Callers call
+    :meth:`add_segment` to append a raw bytes object and receive the
+    segment index to embed in the JSON metadata as a ``_bref`` placeholder.
+    """
+
+    def __init__(self) -> None:
+        self._segments: list[bytes] = []
+
+    def add_segment(self, data: bytes) -> int:
+        """Append *data* as a new binary segment and return its index."""
+        idx = len(self._segments)
+        self._segments.append(data)
+        return idx
+
+    @property
+    def segments(self) -> list[bytes]:
+        return self._segments
+
+
+def _to_binary_json(obj: Any, ctx: BinaryContext) -> dict[str, Any]:
+    """Serialize *obj* to JSON-compatible data, placing binary blobs into *ctx*.
+
+    This mirrors :func:`to_json` semantics but recursively applies binary-aware
+    serialization to nested values so registered classes inside lists/tuples/
+    dicts can also emit binary segment references.
+    """
+    # Registered classes with binary-aware serialization
+    if hasattr(obj, "_serde_kind") and hasattr(obj, "to_binary_json"):
+        data: dict[str, Any] = obj.to_binary_json(ctx)
+        data["_kind"] = obj._serde_kind
+        return data
+
+    # Registered classes without binary-aware serialization (standard path)
+    if hasattr(obj, "_serde_kind") and hasattr(obj, "to_json"):
+        data = obj.to_json()
+        data["_kind"] = obj._serde_kind
+        return data
+
+    # Primitive scalars (keep parity with to_json)
+    if obj is None:
+        return {"_kind": "_null"}
+    if isinstance(obj, bool):
+        return {"_kind": "_bool", "v": obj}
+    if isinstance(obj, int):
+        return {"_kind": "_int", "v": obj}
+    if isinstance(obj, float):
+        return {"_kind": "_float", "v": obj}
+    if isinstance(obj, str):
+        return {"_kind": "_str", "v": obj}
+    if isinstance(obj, np.integer):
+        return {"_kind": "_int", "v": int(obj)}
+    if isinstance(obj, np.floating):
+        return {"_kind": "_float", "v": float(obj)}
+
+    # Numpy arrays: numeric arrays go to a raw segment; object arrays recurse.
+    if isinstance(obj, np.ndarray):
+        if obj.dtype == np.object_:
+            return {
+                "_kind": "_ndarray_object",
+                "shape": list(obj.shape),
+                "items": [_to_binary_json(item, ctx) for item in obj.flat],
+            }
+        seg_idx = ctx.add_segment(obj.tobytes())
+        return {
+            "_kind": "_ndarray_bref",
+            "dtype": str(obj.dtype),
+            "shape": list(obj.shape),
+            "bref": seg_idx,
+        }
+
+    # Raw bytes go to a segment instead of base64.
+    if isinstance(obj, bytes):
+        seg_idx = ctx.add_segment(obj)
+        return {"_kind": "_bytes_bref", "bref": seg_idx}
+
+    # Array-like (e.g., JAX arrays)
+    if hasattr(obj, "__array__"):
+        return _to_binary_json(np.asarray(obj), ctx)
+
+    # Collections (recursive)
+    if isinstance(obj, (list, tuple)):
+        return {
+            "_kind": "_list" if isinstance(obj, list) else "_tuple",
+            "items": [_to_binary_json(item, ctx) for item in obj],
+        }
+
+    if isinstance(obj, dict):
+        has_non_string_keys = any(not isinstance(k, str) for k in obj.keys())
+        if has_non_string_keys:
+            return {
+                "_kind": "_dict_pairs",
+                "pairs": [
+                    [_to_binary_json(k, ctx), _to_binary_json(v, ctx)]
+                    for k, v in obj.items()
+                ],
+            }
+
+        return {
+            "_kind": "_dict",
+            "items": {k: _to_binary_json(v, ctx) for k, v in obj.items()},
+        }
+
+    # Fallback (keeps existing error behavior for unsupported types)
+    return to_json(obj)
+
+
+def _from_binary_json(data: dict[str, Any], segments: list[memoryview]) -> Any:
+    """Deserialize from a binary-aware JSON dict plus raw segments."""
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected dict, got {type(data).__name__}")
+
+    kind = data.get("_kind")
+    if kind is None:
+        raise ValueError("Missing '_kind' field in binary JSON data")
+
+    # Built-in primitives and collections.
+    if kind in {"_null", "_bool", "_int", "_float", "_str", "_bytes", "_ndarray"}:
+        return from_json(data)
+
+    if kind == "_bytes_bref":
+        # Convert to bytes: memoryview is not always accepted by callers expecting bytes.
+        return bytes(segments[data["bref"]])
+
+    if kind == "_ndarray_bref":
+        raw = segments[data["bref"]]
+        arr = np.frombuffer(raw, dtype=np.dtype(data["dtype"]))
+        return arr.reshape(tuple(data["shape"])).copy()
+
+    if kind == "_list":
+        return [_from_binary_json(item, segments) for item in data["items"]]
+
+    if kind == "_tuple":
+        return tuple(_from_binary_json(item, segments) for item in data["items"])
+
+    if kind == "_dict":
+        return {k: _from_binary_json(v, segments) for k, v in data["items"].items()}
+
+    if kind == "_dict_pairs":
+        return {
+            _from_binary_json(pair[0], segments): _from_binary_json(pair[1], segments)
+            for pair in data["pairs"]
+        }
+
+    if kind == "_ndarray_object":
+        shape = tuple(data["shape"])
+        items = [_from_binary_json(item, segments) for item in data["items"]]
+        arr = np.empty(len(items), dtype=object)
+        for i, item in enumerate(items):
+            arr[i] = item
+        return arr.reshape(shape)
+
+    # Registered classes with binary-aware deserialization
+    if kind in _CLASS_REGISTRY:
+        cls = _CLASS_REGISTRY[kind]
+        data_copy = {k: v for k, v in data.items() if k != "_kind"}
+        if hasattr(cls, "from_binary_json"):
+            return cls.from_binary_json(data_copy, segments)  # type: ignore[attr-defined]
+        return cls.from_json(data_copy)  # type: ignore[attr-defined]
+
+    # Fall back to standard from_json for built-in types
+    return from_json(data)
+
+
+def dumps_binary(obj: Any) -> bytes:
+    """Serialize *obj* to the binary container format.
+
+    Unlike :func:`dumps`, binary payloads inside registered classes (e.g.
+    numpy array bytes in TensorValue, Arrow IPC bytes in TableValue) are
+    stored as raw binary segments rather than being base64-encoded inside
+    the JSON metadata.  This eliminates the inner base64 layer, reducing
+    wire size by ~25 % for large tensors/tables and enabling better gzip
+    compression when the caller applies it at the transport layer.
+
+    Format::
+
+        [4B LE] metadata_len
+        [metadata_len B] UTF-8 JSON metadata
+        for each segment:
+            [4B LE] segment_len
+            [segment_len B] raw bytes
+
+    Args:
+        obj: Object to serialize (must be supported by the serde registry).
+
+    Returns:
+        Binary blob ready for network transmission.
+    """
+    ctx = BinaryContext()
+    meta_dict = _to_binary_json(obj, ctx)
+    meta_bytes = json.dumps(meta_dict, separators=(",", ":")).encode("utf-8")
+
+    parts: list[bytes] = []
+    parts.append(struct.pack("<I", len(meta_bytes)))
+    parts.append(meta_bytes)
+    for seg in ctx.segments:
+        parts.append(struct.pack("<I", len(seg)))
+        parts.append(seg)
+
+    return b"".join(parts)
+
+
+def loads_binary(data: bytes) -> Any:
+    """Deserialize an object from the binary container format.
+
+    Args:
+        data: Binary blob produced by :func:`dumps_binary`.
+
+    Returns:
+        Deserialized Python object.
+
+    Raises:
+        ValueError: If the data is malformed.
+    """
+    if len(data) < 4:
+        raise ValueError("Binary data too short: missing metadata length header")
+
+    offset = 0
+    (meta_len,) = struct.unpack_from("<I", data, offset)
+    offset += 4
+
+    if offset + meta_len > len(data):
+        raise ValueError("Binary data truncated: metadata extends beyond buffer")
+
+    meta_bytes = data[offset : offset + meta_len]
+    offset += meta_len
+
+    try:
+        meta_dict = json.loads(meta_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise ValueError(f"Malformed metadata in binary data: {e}") from e
+
+    # Use a memoryview over the original buffer so each segment slice is a
+    # zero-copy view rather than a copy of the raw bytes.  Both np.frombuffer
+    # and pa.ipc.open_stream accept the buffer protocol, so downstream
+    # consumers can use the views directly without materialising extra copies.
+    mv = memoryview(data)
+    segments: list[memoryview] = []
+    while offset < len(data):
+        if offset + 4 > len(data):
+            raise ValueError("Binary data truncated: segment length header incomplete")
+        (seg_len,) = struct.unpack_from("<I", data, offset)
+        offset += 4
+        if offset + seg_len > len(data):
+            raise ValueError("Binary data truncated: segment data incomplete")
+        segments.append(mv[offset : offset + seg_len])
+        offset += seg_len
+
+    return _from_binary_json(meta_dict, segments)

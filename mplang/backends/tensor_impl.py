@@ -145,12 +145,39 @@ class TensorValue(WrapValue[Any]):
                 "shape": list(data_np.shape),
                 "items": [serde.to_json(item) for item in data_np.flat],
             }
-        # Standard numeric arrays - use raw bytes
+        # Standard numeric arrays - use raw bytes (base64-encoded for JSON transport)
         return {
             "kind": "numeric",
             "dtype": str(data_np.dtype),
             "shape": list(data_np.shape),
             "data": base64.b64encode(data_np.tobytes()).decode("ascii"),
+        }
+
+    def to_binary_json(self, ctx: serde.BinaryContext) -> dict[str, Any]:
+        """Binary-aware serialization: stores array bytes as a raw segment.
+
+        Numeric arrays are stored without base64 encoding by pushing the raw
+        bytes into *ctx* and recording the segment index in the metadata dict.
+        Object arrays (encrypted values, etc.) fall back to the JSON path.
+        """
+        data_np = np.asarray(self._data)
+
+        if data_np.dtype == np.object_:
+            # Object arrays: serialize elements recursively so nested bytes,
+            # ndarrays, and binary-aware registered types still emit segments.
+            return {
+                "kind": "object",
+                "shape": list(data_np.shape),
+                "items": [serde._to_binary_json(item, ctx) for item in data_np.flat],
+            }
+
+        raw = data_np.tobytes()
+        seg_idx = ctx.add_segment(raw)
+        return {
+            "kind": "numeric_bref",
+            "dtype": str(data_np.dtype),
+            "shape": list(data_np.shape),
+            "bref": seg_idx,
         }
 
     @classmethod
@@ -170,6 +197,34 @@ class TensorValue(WrapValue[Any]):
                 dtype=np.dtype(data["dtype"]),
             )
             return cls(arr.reshape(shape).copy())
+
+    @classmethod
+    def from_binary_json(
+        cls, data: dict[str, Any], segments: list[memoryview]
+    ) -> TensorValue:
+        """Binary-aware deserialization: reads array bytes from raw segments."""
+        kind = data.get("kind", "numeric")
+        shape = tuple(data["shape"])
+
+        if kind == "object":
+            items = [serde._from_binary_json(item, segments) for item in data["items"]]
+            arr = np.empty(len(items), dtype=object)
+            for i, item in enumerate(items):
+                arr[i] = item
+            return cls(arr.reshape(shape))
+
+        if kind == "numeric_bref":
+            seg_idx: int = data["bref"]
+            raw = segments[seg_idx]
+            arr = np.frombuffer(raw, dtype=np.dtype(data["dtype"]))
+            return cls(arr.reshape(shape).copy())
+
+        # Fallback: base64-encoded "numeric" from to_json()
+        arr = np.frombuffer(
+            base64.b64decode(data["data"]),
+            dtype=np.dtype(data["dtype"]),
+        )
+        return cls(arr.reshape(shape).copy())
 
 
 # Module-level helpers for convenience (delegate to class methods)

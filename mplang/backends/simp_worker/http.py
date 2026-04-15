@@ -35,11 +35,14 @@ Security:
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import os
 import pathlib
 import threading
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -47,7 +50,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi import Request as FastAPIRequest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from mplang.backends.simp_worker.base import (
     Request,
@@ -659,7 +662,6 @@ def register_routes(
         store: The ObjectStore for data persistence.
         exec_pool: Thread pool for executing graphs.
     """
-    import asyncio
     from typing import cast
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
@@ -702,7 +704,7 @@ def register_routes(
             # Use secure JSON deserialization
             graph = serde.loads_b64(req.graph)
             inputs = serde.loads_b64(req.inputs)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 exec_pool, _do_execute, graph, inputs, req.job_id
             )
@@ -816,8 +818,6 @@ def register_routes(
                         status_code=400, detail=f"Invalid JSON body: {e}"
                     ) from e
                 try:
-                    from pydantic import ValidationError
-
                     req = CommRequest(**body_json)
                 except (TypeError, ValidationError) as e:
                     raise HTTPException(
@@ -841,7 +841,7 @@ def register_routes(
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/fetch")
-    async def fetch(req: FetchRequest) -> dict[str, str]:
+    def fetch(req: FetchRequest) -> dict[str, str]:
         """Fetch data by URI (e.g. ``mem://abc123``, ``fs://ckpt/s100``)."""
         logger.debug(f"Worker {rank} received fetch request for {req.uri}")
         try:
@@ -853,7 +853,7 @@ def register_routes(
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.get("/objects")
-    async def list_objects() -> dict[str, list[str]]:
+    def list_objects() -> dict[str, list[str]]:
         """List all objects in the worker's store (transient + persistent)."""
         try:
             state = cast(SimpWorker, worker.get_dialect_state("simp"))
@@ -866,13 +866,6 @@ def register_routes(
     async def health() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "ok", "rank": str(rank), "world_size": str(world_size)}
-
-    @app.on_event("shutdown")
-    def shutdown_event() -> None:
-        """Cleanup on shutdown."""
-        worker.shutdown()
-        comm.shutdown()
-        exec_pool.shutdown(wait=True)
 
 
 def create_worker_app(
@@ -910,8 +903,6 @@ def create_worker_app(
     from mplang.backends.simp_worker import ops as _simp_worker_ops  # noqa: F401
     from mplang.backends.simp_worker.ops import WORKER_HANDLERS
 
-    app = FastAPI(title=f"SIMP Worker {rank}")
-
     # Persistence root: ${MPLANG_DATA_ROOT}/<cluster_id>/node<rank>/
     data_root = pathlib.Path(os.environ.get("MPLANG_DATA_ROOT", ".mpl"))
     cluster_id = os.environ.get("MPLANG_CLUSTER_ID", f"__http_{world_size}")
@@ -939,6 +930,15 @@ def create_worker_app(
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
     )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        await asyncio.to_thread(worker.shutdown)
+        await asyncio.to_thread(comm.shutdown)
+        await asyncio.to_thread(exec_pool.shutdown, True)
+
+    app = FastAPI(title=f"SIMP Worker {rank}", lifespan=lifespan)
 
     register_routes(
         app,

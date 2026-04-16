@@ -936,7 +936,7 @@ def create_worker_app(
         yield
         await asyncio.to_thread(worker.shutdown)
         await asyncio.to_thread(comm.shutdown)
-        await asyncio.to_thread(exec_pool.shutdown, True)
+        await asyncio.to_thread(exec_pool.shutdown, wait=True)
 
     app = FastAPI(title=f"SIMP Worker {rank}", lifespan=lifespan)
 

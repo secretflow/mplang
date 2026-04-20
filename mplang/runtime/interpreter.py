@@ -985,12 +985,47 @@ class Interpreter(AbstractInterpreter):
             )
         return cast(int, exec_id)
 
+    @staticmethod
+    def _build_value_gc_info(graph: Graph) -> dict[Value, int]:
+        """Build consumer-count map for value GC during graph execution.
+
+        For each Value consumed by an operation, counts how many operations
+        consume it.  Graph outputs get an extra +1 so they survive until the
+        caller retrieves them.
+
+        Args:
+            graph: The graph being executed.
+
+        Returns:
+            Mapping from Value to its remaining consumer count.
+        """
+        remaining_consumers: dict[Value, int] = {}
+
+        for op in graph.operations:
+            for val in op.inputs:
+                if val in remaining_consumers:
+                    remaining_consumers[val] += 1
+                else:
+                    remaining_consumers[val] = 1
+
+        # Graph outputs must not be evicted before return.
+        for out in graph.outputs:
+            if out in remaining_consumers:
+                remaining_consumers[out] += 1
+            else:
+                remaining_consumers[out] = 1
+
+        return remaining_consumers
+
     def _evaluate_graph_sync(
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> list[Any]:
         """Synchronous execution (Baseline)."""
         # Local environment: Value -> Runtime Object
         env = dict(zip(graph.inputs, inputs, strict=True))
+
+        # Build consumer counts for intermediate value GC
+        remaining_consumers = self._build_value_gc_info(graph)
 
         op_exec_base = self._reserve_op_exec_base(graph)
 
@@ -1044,6 +1079,14 @@ class Interpreter(AbstractInterpreter):
                 for out_val, res in zip(op.outputs, results, strict=True):
                     env[out_val] = res
 
+            # GC: release intermediate values whose last consumer just ran
+            for val in op.inputs:
+                if val in remaining_consumers:
+                    remaining_consumers[val] -= 1
+                    if remaining_consumers[val] == 0:
+                        env.pop(val, None)
+                        del remaining_consumers[val]
+
         # Return outputs
         if self.tracer and job_id:
             self.tracer.save_trace(job_id=job_id, rank=self.trace_pid)
@@ -1077,7 +1120,7 @@ class Interpreter(AbstractInterpreter):
         # Value -> list[Op] (Consumers)
         value_to_consumers: dict[Any, list[Any]] = collections.defaultdict(list)
         # Value -> Remaining Consumers Count (for GC)
-        remaining_consumers: dict[Any, int] = collections.defaultdict(int)
+        remaining_consumers = self._build_value_gc_info(graph)
 
         # 2. Build Dependency Graph
         for op in graph.operations:
@@ -1085,14 +1128,8 @@ class Interpreter(AbstractInterpreter):
             for val in op.inputs:
                 if val not in env:  # If not already resolved (input or constant)
                     value_to_consumers[val].append(op)
-                    remaining_consumers[val] += 1
                     count += 1
             pending_counts[op] = count
-
-        # Mark graph outputs as having an extra consumer (the user)
-        # so they are not GC'd before return
-        for out in graph.outputs:
-            remaining_consumers[out] += 1
 
         # 3. Synchronization
         lock = threading.Lock()

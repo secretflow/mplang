@@ -999,21 +999,13 @@ class Interpreter(AbstractInterpreter):
         Returns:
             Mapping from Value to its remaining consumer count.
         """
-        remaining_consumers: dict[Value, int] = {}
-
-        for op in graph.operations:
-            for val in op.inputs:
-                if val in remaining_consumers:
-                    remaining_consumers[val] += 1
-                else:
-                    remaining_consumers[val] = 1
+        remaining_consumers: collections.Counter[Value] = collections.Counter(
+            val for op in graph.operations for val in op.inputs
+        )
 
         # Graph outputs must not be evicted before return.
         for out in graph.outputs:
-            if out in remaining_consumers:
-                remaining_consumers[out] += 1
-            else:
-                remaining_consumers[out] = 1
+            remaining_consumers[out] += 1
 
         return remaining_consumers
 

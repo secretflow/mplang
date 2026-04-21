@@ -188,6 +188,7 @@ def _exec_ae(
     input_names: list[str],
     output_names: list[str],
     config: SPUConfig,
+    ir_type: str,
 ) -> tuple[elt.SSType, ...] | elt.SSType:
     """Execute SPU kernel on shares."""
     # Validate inputs are SS types or Tensor types
@@ -311,42 +312,51 @@ def run_jax(
             else libspu.Visibility.VIS_PUBLIC
         )
 
-    # Note: normalized_fn takes a list of variables as input
-    executable, output_info = spu_fe.compile(
-        spu_fe.Kind.JAX,
-        normalized_fn,
-        [jax_args_flat],
-        {},
-        input_names=[f"in{i}" for i in range(len(in_vars))],
-        input_vis=[vis_to_libspu(v) for v in input_vis],
-        outputNameGen=lambda outs: [f"out{i}" for i in range(len(outs))],
-    )
+    input_names = [f"in{i}" for i in range(len(in_vars))]
 
     # 4. Execute SPU Kernel
     if has_dynamic_shape:
-        from ._jax_utils import compile_jax
+        from ._jax_utils import compile_jax, patch_jax
 
         # Fix output shape by ensuring symbolic dimensions are represented as -1
-        compilation = compile_jax(normalized_fn, in_vars, symbolic_shapes)
+        with patch_jax():
+            compilation = compile_jax(normalized_fn, in_vars, symbolic_shapes)
         output_types = compilation.output_types
         out_tree = compilation.out_tree
+        code = compilation.stablehlo
+        output_names = [f"out{i}" for i in range(len(output_types))]
+        ir_type = "stablehlo"
     else:
+        # Note: normalized_fn takes a list of variables as input
+        executable, output_info = spu_fe.compile(
+            spu_fe.Kind.JAX,
+            normalized_fn,
+            [jax_args_flat],
+            {},
+            input_names=input_names,
+            input_vis=[vis_to_libspu(v) for v in input_vis],
+            outputNameGen=lambda outs: [f"out{i}" for i in range(len(outs))],
+        )
         flat_outputs_info, out_tree = tree_flatten(output_info)
         output_types = [
             elt.TensorType(dtypes.from_dtype(out.dtype), out.shape)
             for out in flat_outputs_info
         ]
+        code = executable.code
+        output_names = executable.output_names
+        ir_type = "pphlo"
     output_vis_list: list[Visibility] = ["secret"] * len(output_types)
 
     res_shares = exec_p.bind(
         *in_vars,
-        executable=executable.code,
+        executable=code,
         input_vis=input_vis,
         output_vis=output_vis_list,
         output_types=output_types,
-        input_names=executable.input_names,
-        output_names=executable.output_names,
+        input_names=input_names,
+        output_names=output_names,
         config=config,
+        ir_type=ir_type,
     )
 
     # 5. Unflatten results

@@ -13,7 +13,8 @@
 # limitations under the License.
 
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -201,3 +202,28 @@ def compile_jax(
         has_dynamic_shape=has_dynamic_shape,
     )
     return compilation
+
+
+@contextmanager
+def patch_jax() -> Generator[None, None, None]:
+    """Context manager that patches JAX for SPU compatibility.
+
+    This patches JAX's lax operations to be compatible with SPU.
+    The patches are automatically restored when exiting the context.
+
+    Usage:
+        with patch_jax():
+            # JAX code that needs SPU compatibility
+            result = jax.jit(fn)(args)
+    """
+    # Import here to avoid circular imports
+    import spu.utils.frontend as spu_fe
+
+    # Apply patches
+    patches = spu_fe._patch_jax()
+
+    try:
+        yield
+    finally:
+        # Always restore the original JAX functions
+        spu_fe._restore_jax_patch(patches)

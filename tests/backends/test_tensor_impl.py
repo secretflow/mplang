@@ -58,26 +58,16 @@ def test_tensor_run_dynamic_shape():
     """
     import shutil
 
-    import pytest
-
-    # Check if stablehlo-opt is available (for dynamic shape compilation)
-    if not shutil.which("stablehlo-opt"):
-        pytest.skip("stablehlo-opt not available, skipping dynamic shape test")
-
-    # Check if IREE is available
-    try:
-        import iree.compiler  # noqa: F401
-        import iree.runtime  # noqa: F401
-    except ImportError:
-        pytest.skip("IREE not installed, skipping dynamic shape test")
-
     import jax.numpy as jnp
+    import pytest
 
     import mplang as mp
     import mplang.edsl as el
     import mplang.edsl.typing as elt
 
-    # jax.config.update("jax_enable_x64", True)
+    # Check if stablehlo-opt is available (for dynamic shape compilation)
+    if not shutil.which("stablehlo-opt"):
+        pytest.skip("stablehlo-opt not available, skipping dynamic shape test")
 
     # Phase 1: Define function with type annotations
     def square(x: jnp.ndarray):

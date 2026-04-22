@@ -316,11 +316,16 @@ def run_jax(
 
     # 4. Execute SPU Kernel
     if has_dynamic_shape:
-        from ._jax_utils import compile_jax, patch_jax
+        from ._jax_utils import compile_jax, patch_spu_jax
 
-        # Fix output shape by ensuring symbolic dimensions are represented as -1
-        with patch_jax():
-            compilation = compile_jax(normalized_fn, in_vars, symbolic_shapes)
+        with patch_spu_jax():
+            compilation = compile_jax(
+                normalized_fn,
+                in_vars,
+                symbolic_shapes,
+                platforms=("interpreter",),
+                disabled_checks=["spu.reveal"],
+            )
         output_types = compilation.output_types
         out_tree = compilation.out_tree
         code = compilation.stablehlo

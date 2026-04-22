@@ -638,43 +638,6 @@ wheels = [
 ]
 
 [[package]]
-name = "iree-compiler"
-version = "20241104.1068"
-source = { registry = "https://pypi.antfin-inc.com/simple-dev/" }
-dependencies = [
-    { name = "numpy" },
-    { name = "sympy" },
-]
-wheels = [
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252Fdb%252Fd8%252Fe5ff81b96ca02008fb639370480a149102a7ad854d9946fd4be72a2fcd57/iree_compiler-20241104.1068-cp311-cp311-macosx_13_0_universal2.whl", hash = "sha256:7d674456d46fc1ea861a00642fa5ad9045d6f9c7d5482dd7f8bab3ca462543bb" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252F24%252Fe7%252Fc0d50c74f1613e17ddeef509f885194ba0a75ee6bb83cac1c886a9be3adf/iree_compiler-20241104.1068-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:740d5f34aad78aa509038c27df0b9d4c43781fc6db48152257934046da15ae3d" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252F13%252F84%252Fb50c55d6727d6aa04cc413aac0f0e38920c6d14ff9a9cb2fbeecca439064/iree_compiler-20241104.1068-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:aeac74cc2e3eb34a453427df2c5ddbe85e9d8ee942dc97eae42ead6fc8f24fa8" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252Fb0%252Ff8%252Fee5591301ee2e3119aaa0838d9d8fa1d6007fcc558417bdbe0c3f15b3ef9/iree_compiler-20241104.1068-cp311-cp311-win_amd64.whl", hash = "sha256:62a64945b5b269d9a3f20c80dc1dc335ca1961365e6ec4ee31c27b0e5197cfec" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252Fd5%252F86%252F1bd674964d67effad4d9187afa75814ce8505bb6998b4e1bdaa73a46e355/iree_compiler-20241104.1068-cp312-cp312-macosx_13_0_universal2.whl", hash = "sha256:2077182344235f75b8c7707586f24a3b68d556ccc5771e0926f14819d6115e03" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252F28%252Fee%252F4e6bbeace037bb449dd539912afcba3ea5a88f2fe9494d74161a200f1532/iree_compiler-20241104.1068-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:87f49105a10825a68055226e7e3fbf313590d766ad208ab70d35f6ab79044775" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252F3b%252F6e%252F87756b7be8b2235c398283589e7591f917b8df4c5cef1d660ea43d15ec85/iree_compiler-20241104.1068-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:39eb1c01a208399c844ac961ef52aeb6be780db4f87fac59ceeb59b8d8c68719" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-compiler/..%252F..%252Fpackages%252F0f%252Fc5%252Fccb4a5355c3231d2d9d55740b4024cf6b1f3a1155a1a5268db0425c59ca3/iree_compiler-20241104.1068-cp312-cp312-win_amd64.whl", hash = "sha256:2e7e88b4e63caf529c0ad4f1e55cfd7624e0ac0bf4034cd7e0f935f23251073c" },
-]
-
-[[package]]
-name = "iree-runtime"
-version = "20241104.1068"
-source = { registry = "https://pypi.antfin-inc.com/simple-dev/" }
-dependencies = [
-    { name = "numpy" },
-]
-wheels = [
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252Fc5%252F7d%252F4cb7af5459ddded9854ded4a342a4d2993e3b84789eef488ae5a8ae25efb/iree_runtime-20241104.1068-cp311-cp311-macosx_13_0_universal2.whl", hash = "sha256:e2f2c188965114a4dda5d93d457c414ed63c915866a9699e9a9676d1e87e642c" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252Ffd%252F11%252F2454a66f7ffc2b86ac188c9bcc0e4c1cda3737eb425639fc4414a56ec200/iree_runtime-20241104.1068-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:83e880b45e7f82e73be17f04dd4a6793a0e3f1c3e058c6642932ca091c7ebded" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252Fb0%252Fe2%252F0ce63cc3b6b7e71dc71441830eb34a5fe415cce8d21ca915a18548ef6c6c/iree_runtime-20241104.1068-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:50b35be116589b154ae807747727c9ecc8851958d7137a440d58592b4b1adbb8" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252Ff8%252Faf%252Fa1d19d316b8fd22620e44047a62c497ddfcae7b5f5f5081c4db439083e43/iree_runtime-20241104.1068-cp311-cp311-win_amd64.whl", hash = "sha256:cfa02dfae6644bb6ce3a9c3995cb6287ebb13de5881304aa21cd21ab44fbc7b5" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252F21%252Fe4%252Faebf18d31aa0a9c820371a97bdd3f9834f780ab5aeeebcad751139555acf/iree_runtime-20241104.1068-cp312-cp312-macosx_13_0_universal2.whl", hash = "sha256:4a0c52dfe2443bdc47c2990d55423579d9cd9e0da7d0df50c685d6b8b474c3ee" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252F92%252Fec%252F4eab1dd626d2e7e48c424c31678196a622d0374b0f718091e809464ee75f/iree_runtime-20241104.1068-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:488efb65428d0525bfec628380c49662cd27a7a3f2fb510e9b0f50fa0058fa47" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252F33%252F1e%252Ff55daece2adafb20c3ae23ba6a78cf582a7aa1b1ff468d3c4e4d92fcd899/iree_runtime-20241104.1068-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:38a052b97c81a71c6c5c7a82e8395d0537bd88cbf0e2847575512464a7f04f8c" },
-    { url = "https://pypi.antfin-inc.com/artifact/repositories/simple-remote/iree-runtime/..%252F..%252Fpackages%252Fd3%252F7c%252F17976da37bd02e508e6f8062a6eb5396f2d69f80346ced04ef213b7d9a56/iree_runtime-20241104.1068-cp312-cp312-win_amd64.whl", hash = "sha256:8f1b288773a63ef0289ab492396cc12399e1fcd6e5c6841547a4f6f658143c50" },
-]
-
-[[package]]
 name = "jax"
 version = "0.8.0"
 source = { registry = "https://pypi.antfin-inc.com/simple-dev/" }
@@ -902,8 +865,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "flax" },
     { name = "httpx" },
-    { name = "iree-compiler" },
-    { name = "iree-runtime" },
     { name = "jax" },
     { name = "lightphe" },
     { name = "numpy" },
@@ -916,12 +877,6 @@ dependencies = [
     { name = "tenseal" },
     { name = "typing-extensions" },
     { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-iree = [
-    { name = "iree-compiler" },
-    { name = "iree-runtime" },
 ]
 
 [package.dev-dependencies]
@@ -950,10 +905,6 @@ requires-dist = [
     { name = "fastapi" },
     { name = "flax", specifier = ">=0.12.0" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
-    { name = "iree-compiler" },
-    { name = "iree-compiler", marker = "extra == 'iree'" },
-    { name = "iree-runtime" },
-    { name = "iree-runtime", marker = "extra == 'iree'" },
     { name = "jax", extras = ["cpu"], specifier = "==0.8.0" },
     { name = "lightphe", specifier = ">=0.0.15,<0.1.0" },
     { name = "numpy", specifier = ">=2.0.0,!=2.4.0" },
@@ -967,7 +918,6 @@ requires-dist = [
     { name = "typing-extensions" },
     { name = "uvicorn", extras = ["standard"] },
 ]
-provides-extras = ["iree"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -751,11 +751,8 @@ def run_jax_impl(
         )
     has_dynamic_shape = op.attrs.get("has_dynamic_shape", False)
 
-    backend = op.attrs.get("backend", "")
-    if backend == "" or backend == "auto":
-        backend = "xla"
+    backend = op.attrs.get("backend", "xla")
 
-    # Use IREE if available (supports dynamic shapes), otherwise use XLA
     if IREE_AVAILABLE and backend == "iree":
         return _run_jax_with_iree(interpreter, op, args, stablehlo_code)
     else:

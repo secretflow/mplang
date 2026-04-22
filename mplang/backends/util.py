@@ -1,4 +1,4 @@
-# Copyright 2025 Ant Group Co., Ltd.
+# Copyright 2026 Ant Group Co., Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,45 @@ class TensorLike(Protocol):
     def dtype(self) -> np.dtype[Any]: ...
 
 
+def _make_tensor_type(x: TensorLike) -> str:
+    # Convert numpy dtype to MLIR dtype string
+    dtype_map = {
+        "float16": "f16",
+        "float32": "f32",
+        "float64": "f64",
+        "int8": "i8",
+        "int16": "i16",
+        "int32": "i32",
+        "int64": "i64",
+        "uint8": "ui8",
+        "uint16": "ui16",
+        "uint32": "ui32",
+        "uint64": "ui64",
+        "bool": "i1",
+    }
+
+    # Get dtype string, fall back to manual conversion for unknown types
+    dtype_str = dtype_map.get(str(x.dtype), None)
+    if dtype_str is None:
+        # Fallback to string replacement for custom dtypes
+        dtype_str = (
+            str(x.dtype)
+            .replace("float", "f")
+            .replace("int", "i")
+            .replace("uint", "ui")
+            .replace("bool", "i1")
+        )
+
+    # Handle empty shape (scalar)
+    if len(x.shape) == 0:
+        return f"tensor<{dtype_str}>"
+
+    # Build shape part with static dimensions only
+    shape_part = "x".join(str(dim) for dim in x.shape)
+    tensor_type = f"tensor<{shape_part}x{dtype_str}>"
+    return tensor_type
+
+
 def _refine_stablehlo(code: str, args: tuple[TensorLike, ...]) -> str:
     """Convert dynamic shapes in StableHLO MLIR to static shapes using stablehlo-opt.
 
@@ -47,21 +86,7 @@ def _refine_stablehlo(code: str, args: tuple[TensorLike, ...]) -> str:
         )
 
     # Build type strings for each input tensor
-    type_strings = []
-    for arg in args:
-        # Get dtype name (e.g., f32, i64)
-        dtype_str = (
-            str(arg.dtype)
-            .replace("float", "f")
-            .replace("int", "i")
-            .replace("uint", "u")
-            .replace("bool", "i1")
-        )
-
-        # Build tensor type with static shape
-        shape_part = "x".join(str(dim) for dim in arg.shape)
-        tensor_type = f"tensor<{shape_part}x{dtype_str}>"
-        type_strings.append(tensor_type)
+    type_strings = [_make_tensor_type(arg) for arg in args]
 
     # Build the refine arguments string
     refine_args = "types=" + ",".join(type_strings)

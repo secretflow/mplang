@@ -103,6 +103,7 @@ def _table2tensor_ae(table_t: elt.TableType, *, number_rows: int) -> elt.TensorT
     assert isinstance(first_scalar, elt.ScalarType)
     return elt.TensorType(first_scalar, (number_rows, column_shape))
 
+
 @tensor2table_p.def_abstract_eval
 def _tensor2table_ae(
     tensor_t: elt.TensorType, *, column_names: list[str]

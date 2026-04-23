@@ -667,6 +667,17 @@ def table2tensor_impl(interpreter: Interpreter, op: Operation, table_val: Any) -
     tbl = _unwrap(table_val)
     arr = table_to_numpy(tbl)
 
+    expected_rows = op.attrs["number_rows"]
+    actual_rows = arr.shape[0]
+    if expected_rows == -1:
+        pass  # dynamic mode: accept any row count
+    elif actual_rows != expected_rows:
+        raise ValueError(
+            f"table2tensor: expected {expected_rows} rows, "
+            f"got {actual_rows}. Either fix the input data or "
+            f"use number_rows=-1 for dynamic row count."
+        )
+
     return TensorValue.wrap(arr)
 
 

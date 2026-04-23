@@ -74,8 +74,10 @@ def _table2tensor_ae(table_t: elt.TableType, *, number_rows: int) -> elt.TensorT
 
     if not isinstance(number_rows, int):
         raise TypeError("number_rows must be an int")
-    if number_rows < 0:
-        raise ValueError("number_rows must be >= 0")
+    if number_rows < -1:
+        raise ValueError("number_rows must be >= -1")
+    if number_rows == 0:
+        raise ValueError("number_rows must be != 0")
     if not table_t.schema:
         raise ValueError("Cannot convert empty table to tensor")
 
@@ -155,8 +157,18 @@ def run_sql(
     )
 
 
-def table2tensor(table: el.TraceObject, *, number_rows: int) -> el.Object:
-    """Convert a homogeneous table into a dense tensor."""
+def table2tensor(table: el.TraceObject, *, number_rows: int | None = None) -> el.Object:
+    """Convert a homogeneous table into a dense tensor.
+
+    If number_rows is None and table's type has static nrows, use that.
+    Otherwise falls back to dynamic mode (number_rows=-1).
+    """
+    if number_rows is None:
+        table_type = table.type
+        if isinstance(table_type, elt.TableType) and table_type.nrows > 0:
+            number_rows = table_type.nrows
+        else:
+            number_rows = -1
 
     return table2tensor_p.bind(table, number_rows=number_rows)
 

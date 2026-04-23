@@ -24,7 +24,7 @@ import pytest
 
 import mplang.edsl as el
 import mplang.edsl.typing as elt
-from mplang.dialects.table import table2tensor, tensor2table
+from mplang.dialects.table import table2tensor
 from mplang.edsl.typing import TableType
 from mplang.runtime.interpreter import InterpObject
 
@@ -47,7 +47,6 @@ class TestTable2TensorRuntimeValidation:
 
     def test_row_count_match(self):
         """Runtime accepts matching row count (existing behavior preserved)."""
-        import pyarrow as pa
 
         import mplang.backends.table_impl  # noqa: F401 - register impl
 
@@ -65,7 +64,6 @@ class TestTable2TensorRuntimeValidation:
     def test_row_count_mismatch(self):
         """Runtime rejects mismatched row count."""
         import mplang.backends.table_impl  # noqa: F401 - register impl
-
         from mplang.dialects import table
 
         data = {"a": [1.0, 2.0, 3.0, 4.0, 5.0], "b": [1.0, 2.0, 3.0, 4.0, 5.0]}
@@ -114,7 +112,6 @@ class TestTable2TensorDynamicRows:
     def test_dynamic_rows_impl(self):
         """Dynamic mode accepts any row count at runtime."""
         import mplang.backends.table_impl  # noqa: F401 - register impl
-
         from mplang.dialects import table
 
         data = {"a": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]}

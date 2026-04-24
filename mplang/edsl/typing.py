@@ -571,45 +571,79 @@ Vector = VectorType
 class TableType(BaseType):
     """Represents a table with a named schema of types.
 
+    Args:
+        schema: Mapping of column names to column types.
+        nrows: Expected number of rows.
+            -1 (default) = dynamic/unknown.
+            >0 = static row count constraint.
+
     Examples:
         >>> TableType({"id": i64, "name": STRING})
         Table[{'id': i64, 'name': Custom[string]}]
 
-        >>> Table[{"col_a": i32, "col_b": f64}]
-        Table[{'col_a': i32, 'col_b': f64}]
+        >>> TableType({"f1": f64, "f2": f64}, nrows=100)
+        Table[{'f1': f64, 'f2': f64}, nrows=100]
     """
 
-    def __init__(self, schema: dict[str, BaseType]):
+    def __init__(self, schema: dict[str, BaseType], nrows: int = -1):
+        if not isinstance(nrows, int):
+            raise TypeError(f"nrows must be an int, got {type(nrows).__name__}")
+        if nrows < -1 or nrows == 0:
+            raise ValueError(
+                f"nrows must be -1 (dynamic) or a positive integer, got {nrows}"
+            )
         self.schema = schema
+        self.nrows = nrows
 
     def __class_getitem__(cls, schema: dict[str, BaseType]) -> TableType:
-        """Enables the syntax `Table[{'col_a': i32, ...}]`."""
+        """Enables the syntax ``Table[{'col_a': i32, ...}]``.
+
+        This shorthand always creates a dynamic-row table (nrows=-1).
+        To specify a static row count, use the constructor directly::
+
+            TableType({"col_a": i32}, nrows=100)
+        """
         return cls(schema)
 
     def __str__(self) -> str:
         schema_str = ", ".join(f"'{k}': {v}" for k, v in self.schema.items())
-        return f"Table[{{{schema_str}}}]"
+        nrows_str = f", nrows={self.nrows}" if self.nrows != -1 else ""
+        return f"Table[{{{schema_str}}}{nrows_str}]"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TableType):
             return NotImplemented
-        return self.schema == other.schema
+        return self.schema == other.schema and self.nrows == other.nrows
 
     def __hash__(self) -> int:
-        return hash(("TableType", tuple(self.schema.items())))
+        return hash(("TableType", tuple(self.schema.items()), self.nrows))
+
+    @property
+    def is_dynamic(self) -> bool:
+        """Row count is unknown at compile time."""
+        return self.nrows == -1
+
+    @property
+    def is_static(self) -> bool:
+        """Row count is known at compile time."""
+        return self.nrows > 0
 
     # --- Serde methods ---
     _serde_kind: ClassVar[str] = "mplang.TableType"
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "schema": {name: serde.to_json(t) for name, t in self.schema.items()},
         }
+        if self.nrows != -1:
+            d["nrows"] = self.nrows
+        return d
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> TableType:
         schema = {name: serde.from_json(t) for name, t in data["schema"].items()}
-        return cls(schema)
+        nrows = data.get("nrows", -1)
+        return cls(schema, nrows=nrows)
 
 
 Table = TableType

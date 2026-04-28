@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import threading
 import time
 from typing import Any
@@ -24,7 +23,6 @@ from typing import Any
 from mplang.edsl.graph import Graph, Operation
 from mplang.edsl.registry import register_impl
 from mplang.runtime.interpreter import Interpreter
-
 
 # ---------------------------------------------------------------------------
 # Test helpers / dummy ops

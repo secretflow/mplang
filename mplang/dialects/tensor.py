@@ -134,7 +134,6 @@ def _run_jax_trace(
     compilation_id = _register_compilation(compilation)
 
     # Emit graph operation
-    backend = "iree" if compilation.has_dynamic_shape else "auto"
     input_values = [cast(el.TraceObject, var)._graph_value for var in variables]
     result_values = tracer.graph.add_op(
         opcode="tensor.run_jax",
@@ -145,7 +144,7 @@ def _run_jax_trace(
             "text_ref": compilation_id,
             "stablehlo_code": compilation.stablehlo,
             "arg_keep_map": compilation.arg_keep_map,
-            "backend": backend,
+            "has_dynamic_shape": compilation.has_dynamic_shape,
         },
     )
 

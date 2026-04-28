@@ -15,6 +15,7 @@
 """Tests for SPU backend implementation."""
 
 import numpy as np
+import pytest
 
 import mplang as mp
 import mplang.backends.tensor_impl
@@ -202,6 +203,11 @@ def test_spu_run_dynamic_shape():
     1. Compile with dynamic shape (-1) - shape unknown at compile time
     2. Execute multiple times with different actual data to demonstrate dynamic behavior
     """
+    import shutil
+
+    # Check if stablehlo-opt is available
+    if not shutil.which("stablehlo-opt"):
+        pytest.skip("stablehlo-opt not available, skipping dynamic shape test")
 
     # Phase 1: Setup and compilation
 

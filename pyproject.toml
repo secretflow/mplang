@@ -41,9 +41,6 @@ dependencies = [
     "cryptography>=43.0.0",
     "coincurve>=20.0.0",
     "PyYAML>=6.0",
-    # IREE for dynamic shape support
-    "iree-compiler",
-    "iree-runtime",
 ]
 
 [project.scripts]
@@ -171,8 +168,9 @@ disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
 # ignore errors in generated protobuf files
-module = ["mplang.protos.v1alpha1.*"]
+module = ["mplang.protos.v1alpha1.*", "iree.*"]
 ignore_errors = true
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

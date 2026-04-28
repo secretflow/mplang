@@ -992,6 +992,7 @@ class Interpreter(AbstractInterpreter):
             if is_top_level_job:
                 # Serving mode: clean up per-job exec_id counters to avoid
                 # memory leak across many requests.
+                assert job_id is not None  # guaranteed by is_top_level_job
                 self._cleanup_job_exec_bases(job_id)
 
     def _reserve_op_exec_base(self, graph: Graph) -> int:

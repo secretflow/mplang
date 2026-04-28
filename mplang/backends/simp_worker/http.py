@@ -671,7 +671,7 @@ def register_routes(
             store.get(inp) if inp is not None else None for inp in inputs
         ]
 
-        result = worker.evaluate_graph(graph, resolved_inputs)
+        result = worker.evaluate_graph(graph, resolved_inputs, job_id=job_id)
         comm.wait_pending_sends()
 
         # Store results and return URIs (result is always a list)

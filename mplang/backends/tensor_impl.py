@@ -432,7 +432,6 @@ def _run_jax_with_iree(
     op: Operation,
     args: tuple[TensorValue, ...],
     stablehlo_code: str,
-    t0: float,
 ) -> TensorValue | list[TensorValue]:
     """Execute JAX function using IREE runtime.
 
@@ -560,7 +559,6 @@ def _run_jax_with_iree(
     # Profiling
     if interpreter.tracer:
         p = interpreter.tracer
-        p.log_custom_event("IREE Prep", t0, t1, cat="iree")
         p.log_custom_event("IREE Cast", t1, t2, cat="iree")
         p.log_custom_event("IREE Compile", t2, t3, cat="iree")
         p.log_custom_event("IREE Exec", t3, t4, cat="iree")
@@ -581,7 +579,7 @@ def _run_jax_with_xla(
     op: Operation,
     args: tuple[TensorValue, ...],
     stablehlo_code: str,
-    t0: float,
+    has_dynamic_shape: bool,
 ) -> TensorValue | list[TensorValue]:
     """Execute JAX function using JAX XLA compilation.
 
@@ -597,6 +595,9 @@ def _run_jax_with_xla(
     Returns:
         Output tensor value(s)
     """
+    from .util import _refine_stablehlo
+
+    t0 = time.time()
     # Compile StableHLO
     client = jxt.backend.get_backend()
 
@@ -615,7 +616,7 @@ def _run_jax_with_xla(
         cache_path = str(cache_dir / f"{code_hash}.pjrt")
         loaded_from_disk = False
 
-        if os.path.exists(cache_path):
+        if not has_dynamic_shape and os.path.exists(cache_path):
             try:
                 with open(cache_path, "rb") as f:
                     serialized = f.read()
@@ -629,6 +630,8 @@ def _run_jax_with_xla(
 
         if not loaded_from_disk:
             try:
+                if has_dynamic_shape:
+                    stablehlo_code = _refine_stablehlo(stablehlo_code, args)
                 compiled = client.compile_and_load(
                     stablehlo_code, client.devices(), compile_options
                 )
@@ -643,7 +646,8 @@ def _run_jax_with_xla(
             except Exception as e:
                 raise RuntimeError(f"StableHLO compile failed: {e}") from e
 
-        _XLA_CACHE[code_hash] = compiled
+        if not has_dynamic_shape:
+            _XLA_CACHE[code_hash] = compiled
 
     # Cast inputs to expected types (Boundary Type Guard)
     # This allows users to pass Python ints/floats to functions expecting f32/i32
@@ -739,24 +743,22 @@ def run_jax_impl(
     IREE is preferred because it supports dynamic shapes via shape polymorphism,
     while XLA requires static shapes.
     """
-    t0 = time.time()
-
     # Get StableHLO code
     stablehlo_code = op.attrs.get("stablehlo_code")
     if stablehlo_code is None:
         raise NotImplementedError(
             "run_jax execution requires 'stablehlo_code' attribute"
         )
+    has_dynamic_shape = op.attrs.get("has_dynamic_shape", False)
 
-    backend = op.attrs.get("backend", "")
-    if backend == "" or backend == "auto":
-        backend = "xla"
+    backend = op.attrs.get("backend", "xla")
 
-    # Use IREE if available (supports dynamic shapes), otherwise use XLA
     if IREE_AVAILABLE and backend == "iree":
-        return _run_jax_with_iree(interpreter, op, args, stablehlo_code, t0)
+        return _run_jax_with_iree(interpreter, op, args, stablehlo_code)
     else:
-        return _run_jax_with_xla(interpreter, op, args, stablehlo_code, t0)
+        return _run_jax_with_xla(
+            interpreter, op, args, stablehlo_code, has_dynamic_shape
+        )
 
 
 @tensor.gather_p.def_impl

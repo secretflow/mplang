@@ -11,7 +11,7 @@ workflows:
       - path-filtering/filter:
           base-revision: main
           config-path: .circleci/continue-config.yml
-          tag: "3.9"
+          tag: "3.10"
           mapping: |
             mplang/.*                     test-changed true
             tests/.*                      test-changed true

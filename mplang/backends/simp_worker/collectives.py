@@ -40,6 +40,8 @@ class _ExecContext(Protocol):
 
     def current_graph_exec_key(self) -> str: ...
 
+    def current_job_id(self) -> str | None: ...
+
 
 class _Worker(Protocol):
     rank: int
@@ -91,8 +93,10 @@ def _collective_prefix(
 ) -> str:
     exec_id = interpreter.current_op_exec_id()
     graph_key = interpreter.current_graph_exec_key()
+    job_id = interpreter.current_job_id()
     op_name = op.name if op is not None else "_"
-    return f"coll_{graph_key}_{op_name}_{exec_id}_{name}"
+    job_part = f"{job_id}_" if job_id is not None else ""
+    return f"coll_{graph_key}_{job_part}{op_name}_{exec_id}_{name}"
 
 
 def barrier(

@@ -35,6 +35,9 @@ class _FakeInterpreter:
     def current_graph_exec_key(self) -> str:
         return "test_graph"
 
+    def current_job_id(self) -> str | None:
+        return None
+
 
 @dataclass
 class _Worker:

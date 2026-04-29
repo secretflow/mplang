@@ -49,6 +49,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Sentinel used to distinguish "not passed" from ``None`` for job_id in
+# ``_tls_exec_context``, since ``None`` is a valid value (meaning "no job").
+_SENTINEL: object = object()
+
 
 class ExecutionTracer:
     """Tracer for DAG execution events (Chrome Tracing format).
@@ -472,8 +476,12 @@ class Interpreter(AbstractInterpreter):
         # - Reservation is persisted per graph_exec_key (structural hash).
         # - We forbid concurrent execution of the same graph_hash to avoid
         #   message tag confusion when a backend uses only per-op tags.
+        # - When job_id is provided (Serving Mode), exec_id counters are
+        #   namespaced by (job_id, graph_key) and the concurrency lock is
+        #   bypassed, allowing concurrent execution of the same graph by
+        #   different jobs.
         self._exec_id_lock = threading.Lock()
-        self._graph_next_exec_base: dict[str, int] = {}
+        self._graph_next_exec_base: dict[str | tuple[str, str], int] = {}
         self._active_graph_exec_keys: set[str] = set()
         self._tls = threading.local()
         self.executor = executor
@@ -488,16 +496,20 @@ class Interpreter(AbstractInterpreter):
         *,
         graph_exec_key: str | None = None,
         op_exec_id: int | None = None,
+        job_id: str | None = _SENTINEL,  # type: ignore[assignment]
     ) -> Iterator[None]:
         """Temporarily set execution context in thread-local storage."""
 
         prev_graph_key = getattr(self._tls, "current_graph_exec_key", None)
         prev_exec_id = getattr(self._tls, "current_op_exec_id", None)
+        prev_job_id = getattr(self._tls, "current_job_id", _SENTINEL)
 
         if graph_exec_key is not None:
             self._tls.current_graph_exec_key = graph_exec_key
         if op_exec_id is not None:
             self._tls.current_op_exec_id = op_exec_id
+        if job_id is not _SENTINEL:
+            self._tls.current_job_id = job_id
 
         try:
             yield
@@ -513,6 +525,15 @@ class Interpreter(AbstractInterpreter):
                     delattr(self._tls, "current_op_exec_id")
                 else:
                     self._tls.current_op_exec_id = prev_exec_id
+
+            if job_id is not _SENTINEL:
+                if prev_job_id is _SENTINEL:
+                    try:
+                        delattr(self._tls, "current_job_id")
+                    except AttributeError:
+                        pass
+                else:
+                    self._tls.current_job_id = prev_job_id
 
     def _graph_exec_key(self, graph: Graph) -> str:
         """Return a deterministic, structural hash for a graph.
@@ -915,24 +936,40 @@ class Interpreter(AbstractInterpreter):
         Args:
             graph: Finalized Graph IR to execute
             inputs: Runtime objects corresponding to graph.inputs (positional)
-            job_id: Optional unique ID for this execution job (for profiling/tracing).
+            job_id: Optional unique ID for this execution job.
+                When provided, concurrent execution of the same graph is
+                allowed because communication keys and exec_id counters
+                are isolated by job_id.  Also used for profiling/tracing.
 
         Returns:
             List of runtime execution results corresponding to graph.outputs.
         """
         graph_exec_key = self._graph_exec_key(graph)
+        # Determine effective job context: explicit job_id, or inherited from
+        # a parent evaluate_graph call via TLS (nested region graphs).
+        effective_job_id = job_id if job_id is not None else self.current_job_id()
+        is_top_level_job = job_id is not None and self.current_job_id() is None
 
-        # Prevent concurrent execution of the same graph hash.
-        with self._exec_id_lock:
-            if graph_exec_key in self._active_graph_exec_keys:
-                raise RuntimeError(
-                    "Concurrent execution of the same graph is not allowed. "
-                    f"graph_exec_key={graph_exec_key}"
-                )
-            self._active_graph_exec_keys.add(graph_exec_key)
+        if effective_job_id is None:
+            # Driverless / Simulator mode: forbid concurrent same-graph execution.
+            with self._exec_id_lock:
+                if graph_exec_key in self._active_graph_exec_keys:
+                    raise RuntimeError(
+                        "Concurrent execution of the same graph is not allowed. "
+                        f"graph_exec_key={graph_exec_key}"
+                    )
+                self._active_graph_exec_keys.add(graph_exec_key)
 
         try:
-            with self._tls_exec_context(graph_exec_key=graph_exec_key):
+            # Only set job_id in TLS when explicitly provided at the top level.
+            # Nested evaluate_graph calls (e.g., region graphs in pcall_static,
+            # while_loop) inherit the parent's job_id via TLS automatically.
+            tls_job_id: Any = _SENTINEL  # don't touch TLS
+            if job_id is not None:
+                tls_job_id = job_id
+            with self._tls_exec_context(
+                graph_exec_key=graph_exec_key, job_id=tls_job_id
+            ):
                 logger.debug(
                     "Evaluating graph: %d inputs, %d ops, %d outputs (job_id=%s, async=%s, graph_key=%s)",
                     len(inputs),
@@ -947,19 +984,45 @@ class Interpreter(AbstractInterpreter):
                 else:
                     return self._evaluate_graph_sync(graph, inputs, job_id)
         finally:
-            with self._exec_id_lock:
-                self._active_graph_exec_keys.discard(graph_exec_key)
+            if effective_job_id is None:
+                with self._exec_id_lock:
+                    self._active_graph_exec_keys.discard(graph_exec_key)
+            if is_top_level_job:
+                # Serving mode: clean up per-job exec_id counters to avoid
+                # memory leak across many requests.
+                assert job_id is not None  # guaranteed by is_top_level_job
+                self._cleanup_job_exec_bases(job_id)
 
     def _reserve_op_exec_base(self, graph: Graph) -> int:
         """Reserve a contiguous exec_id range for a single evaluate_graph call.
 
-        Counter is namespaced by the current graph_exec_key.
+        Counter is namespaced by (job_id, graph_exec_key) when a job_id is
+        set, or by graph_exec_key alone otherwise.  Per-job namespacing
+        ensures each concurrent request starts its counter from 0
+        independently, so all Workers agree on deterministic exec_ids.
         """
-        key = self.current_graph_exec_key()
+        graph_key = self.current_graph_exec_key()
+        jid = self.current_job_id()
+        key: str | tuple[str, str] = (jid, graph_key) if jid is not None else graph_key
         with self._exec_id_lock:
             base = self._graph_next_exec_base.get(key, 0)
             self._graph_next_exec_base[key] = base + len(graph.operations)
         return base
+
+    def _cleanup_job_exec_bases(self, job_id: str) -> None:
+        """Remove all exec_id counter entries belonging to *job_id*.
+
+        Called after a top-level job completes in Serving Mode to prevent
+        unbounded growth of ``_graph_next_exec_base``.
+        """
+        with self._exec_id_lock:
+            keys_to_remove = [
+                k
+                for k in self._graph_next_exec_base
+                if isinstance(k, tuple) and k[0] == job_id
+            ]
+            for k in keys_to_remove:
+                del self._graph_next_exec_base[k]
 
     def current_graph_exec_key(self) -> str:
         """Return current graph execution key during evaluate_graph execution."""
@@ -970,6 +1033,15 @@ class Interpreter(AbstractInterpreter):
                 "current_graph_exec_key() called outside of evaluate_graph execution"
             )
         return cast(str, key)
+
+    def current_job_id(self) -> str | None:
+        """Return the current job_id, or ``None`` if not in a job context.
+
+        Unlike :meth:`current_graph_exec_key` and :meth:`current_op_exec_id`,
+        this method never raises — it returns ``None`` when called outside
+        of a job-scoped ``evaluate_graph`` execution.
+        """
+        return getattr(self._tls, "current_job_id", None)
 
     def current_op_exec_id(self) -> int:
         """Return current op exec_id during graph execution.

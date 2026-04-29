@@ -87,7 +87,9 @@ def _shuffle_static_worker_impl(
 
     exec_id = interpreter.current_op_exec_id()
     graph_key = interpreter.current_graph_exec_key()
-    key_prefix = f"shuffle_{graph_key}_{op.name}_{exec_id}"
+    job_id = interpreter.current_job_id()
+    job_part = f"{job_id}_" if job_id is not None else ""
+    key_prefix = f"shuffle_{graph_key}_{job_part}{op.name}_{exec_id}"
 
     for tgt, src in routing.items():
         if src == my_rank and tgt != my_rank:

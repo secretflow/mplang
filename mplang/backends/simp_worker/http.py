@@ -666,12 +666,22 @@ def register_routes(
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
         """Execute graph in worker thread."""
+        # Validate job_id to prevent path-traversal or routing issues since
+        # it is interpolated into communication keys used in URL paths.
+        if job_id is not None:
+            import re
+
+            if not re.fullmatch(r"[A-Za-z0-9._\-]+", job_id):
+                raise ValueError(
+                    f"Invalid job_id: must match [A-Za-z0-9._-]+, got {job_id!r}"
+                )
+
         # Resolve URI inputs (None means rank has no data)
         resolved_inputs = [
             store.get(inp) if inp is not None else None for inp in inputs
         ]
 
-        result = worker.evaluate_graph(graph, resolved_inputs)
+        result = worker.evaluate_graph(graph, resolved_inputs, job_id=job_id)
         comm.wait_pending_sends()
 
         # Store results and return URIs (result is always a list)

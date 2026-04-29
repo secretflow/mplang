@@ -95,9 +95,8 @@ def _collective_prefix(
     graph_key = interpreter.current_graph_exec_key()
     job_id = interpreter.current_job_id()
     op_name = op.name if op is not None else "_"
-    if job_id is not None:
-        return f"coll_{graph_key}_{job_id}_{op_name}_{exec_id}_{name}"
-    return f"coll_{graph_key}_{op_name}_{exec_id}_{name}"
+    job_part = f"{job_id}_" if job_id is not None else ""
+    return f"coll_{graph_key}_{job_part}{op_name}_{exec_id}_{name}"
 
 
 def barrier(

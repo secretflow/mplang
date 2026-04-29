@@ -54,28 +54,6 @@ def _build_shuffle_graph() -> Graph:
     return g
 
 
-def _run_on_workers(
-    cluster: MemCluster,
-    graph: Graph,
-    per_rank_inputs: dict[int, list[Any]],
-    job_id: str,
-) -> list[Any]:
-    """Submit graph to all workers and collect results."""
-    futures: list[concurrent.futures.Future[Any]] = []
-    for rank in range(cluster.world_size):
-        worker = cluster.workers[rank]
-        ctx = cast(SimpWorker, worker.get_dialect_state("simp"))
-        inputs = per_rank_inputs.get(rank, [None])
-        # Store input data and get URIs
-        uri_inputs = [ctx.store.put(v) if v is not None else None for v in inputs]
-        futures.append(
-            concurrent.futures.ThreadPoolExecutor(max_workers=1).submit(
-                _worker_execute, worker, ctx, graph, uri_inputs, job_id
-            )
-        )
-    return [f.result() for f in futures]
-
-
 def _worker_execute(
     worker: Interpreter,
     ctx: SimpWorker,
@@ -101,40 +79,41 @@ def test_concurrent_shuffle_with_job_ids() -> None:
     cluster = MemCluster(world_size=2)
     graph = _build_shuffle_graph()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        # Request 1: send value 100
-        f1_workers: list[concurrent.futures.Future[Any]] = []
-        for rank in range(2):
-            worker = cluster.workers[rank]
-            ctx = cast(SimpWorker, worker.get_dialect_state("simp"))
-            inp = np.array(100, dtype=np.int32) if rank == 0 else None
-            uri_inp = [ctx.store.put(inp) if inp is not None else None]
-            f1_workers.append(
-                pool.submit(_worker_execute, worker, ctx, graph, uri_inp, "req-001")
-            )
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            # Request 1: send value 100
+            f1_workers: list[concurrent.futures.Future[Any]] = []
+            for rank in range(2):
+                worker = cluster.workers[rank]
+                ctx = cast(SimpWorker, worker.get_dialect_state("simp"))
+                inp = np.array(100, dtype=np.int32) if rank == 0 else None
+                uri_inp = [ctx.store.put(inp) if inp is not None else None]
+                f1_workers.append(
+                    pool.submit(_worker_execute, worker, ctx, graph, uri_inp, "req-001")
+                )
 
-        # Request 2: send value 200
-        f2_workers: list[concurrent.futures.Future[Any]] = []
-        for rank in range(2):
-            worker = cluster.workers[rank]
-            ctx = cast(SimpWorker, worker.get_dialect_state("simp"))
-            inp = np.array(200, dtype=np.int32) if rank == 0 else None
-            uri_inp = [ctx.store.put(inp) if inp is not None else None]
-            f2_workers.append(
-                pool.submit(_worker_execute, worker, ctx, graph, uri_inp, "req-002")
-            )
+            # Request 2: send value 200
+            f2_workers: list[concurrent.futures.Future[Any]] = []
+            for rank in range(2):
+                worker = cluster.workers[rank]
+                ctx = cast(SimpWorker, worker.get_dialect_state("simp"))
+                inp = np.array(200, dtype=np.int32) if rank == 0 else None
+                uri_inp = [ctx.store.put(inp) if inp is not None else None]
+                f2_workers.append(
+                    pool.submit(_worker_execute, worker, ctx, graph, uri_inp, "req-002")
+                )
 
-        r1 = [f.result() for f in f1_workers]
-        r2 = [f.result() for f in f2_workers]
+            r1 = [f.result() for f in f1_workers]
+            r2 = [f.result() for f in f2_workers]
 
-    # Party 1 (rank=1) should have received the value via shuffle
-    ctx1 = cast(SimpWorker, cluster.workers[1].get_dialect_state("simp"))
-    val1 = ctx1.store.get(r1[1][0])
-    val2 = ctx1.store.get(r2[1][0])
-    assert int(val1) == 100, f"Expected 100, got {val1}"
-    assert int(val2) == 200, f"Expected 200, got {val2}"
-
-    cluster.shutdown()
+        # Party 1 (rank=1) should have received the value via shuffle
+        ctx1 = cast(SimpWorker, cluster.workers[1].get_dialect_state("simp"))
+        val1 = ctx1.store.get(r1[1][0])
+        val2 = ctx1.store.get(r2[1][0])
+        assert int(val1) == 100, f"Expected 100, got {val1}"
+        assert int(val2) == 200, f"Expected 200, got {val2}"
+    finally:
+        cluster.shutdown()
 
 
 def test_concurrent_same_graph_without_job_id_blocked() -> None:
@@ -191,9 +170,11 @@ def test_concurrent_same_graph_without_job_id_blocked() -> None:
     t1.join(timeout=10)
     t2.join(timeout=10)
 
-    # Thread 2 should have gotten a RuntimeError
-    assert isinstance(errors[1], RuntimeError), (
-        f"Expected RuntimeError from thread 2, got: {errors[1]}"
-    )
-    assert errors[0] is None, f"Thread 1 should succeed, got: {errors[0]}"
-    cluster.shutdown()
+    try:
+        # Thread 2 should have gotten a RuntimeError
+        assert isinstance(errors[1], RuntimeError), (
+            f"Expected RuntimeError from thread 2, got: {errors[1]}"
+        )
+        assert errors[0] is None, f"Thread 1 should succeed, got: {errors[0]}"
+    finally:
+        cluster.shutdown()

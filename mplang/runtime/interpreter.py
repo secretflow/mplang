@@ -482,7 +482,7 @@ class Interpreter(AbstractInterpreter):
         #   different jobs.
         self._exec_id_lock = threading.Lock()
         self._graph_next_exec_base: dict[str | tuple[str, str], int] = {}
-        self._graph_exec_locks: dict[str, threading.Lock] = {}
+        self._active_graph_exec_keys: set[str] = set()
         self._tls = threading.local()
         self.executor = executor
         self.async_ops: set[str] = set()
@@ -945,23 +945,20 @@ class Interpreter(AbstractInterpreter):
             List of runtime execution results corresponding to graph.outputs.
         """
         graph_exec_key = self._graph_exec_key(graph)
+        # Determine effective job context: explicit job_id, or inherited from
+        # a parent evaluate_graph call via TLS (nested region graphs).
+        effective_job_id = job_id if job_id is not None else self.current_job_id()
         is_top_level_job = job_id is not None and self.current_job_id() is None
 
-        graph_lock: threading.Lock | None = None
-        if job_id is None:
+        if effective_job_id is None:
             # Driverless / Simulator mode: forbid concurrent same-graph execution.
-            # Use a per-graph lock held for the entire execution duration so that
-            # a second thread reliably sees the conflict even for very fast graphs.
             with self._exec_id_lock:
-                if graph_exec_key not in self._graph_exec_locks:
-                    self._graph_exec_locks[graph_exec_key] = threading.Lock()
-                graph_lock = self._graph_exec_locks[graph_exec_key]
-            acquired = graph_lock.acquire(blocking=False)
-            if not acquired:
-                raise RuntimeError(
-                    "Concurrent execution of the same graph is not allowed. "
-                    f"graph_exec_key={graph_exec_key}"
-                )
+                if graph_exec_key in self._active_graph_exec_keys:
+                    raise RuntimeError(
+                        "Concurrent execution of the same graph is not allowed. "
+                        f"graph_exec_key={graph_exec_key}"
+                    )
+                self._active_graph_exec_keys.add(graph_exec_key)
 
         try:
             # Only set job_id in TLS when explicitly provided at the top level.
@@ -987,8 +984,9 @@ class Interpreter(AbstractInterpreter):
                 else:
                     return self._evaluate_graph_sync(graph, inputs, job_id)
         finally:
-            if graph_lock is not None:
-                graph_lock.release()
+            if effective_job_id is None:
+                with self._exec_id_lock:
+                    self._active_graph_exec_keys.discard(graph_exec_key)
             if is_top_level_job:
                 # Serving mode: clean up per-job exec_id counters to avoid
                 # memory leak across many requests.

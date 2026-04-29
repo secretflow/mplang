@@ -366,7 +366,9 @@ def from_pandas(pd_dtype: Any) -> scalar_types.BaseType:
         return scalar_types.c64
     elif dtype_name in ("complex128",):
         return scalar_types.c128
-    elif dtype_name == "object" or dtype_name.startswith("string"):
+    elif (
+        dtype_name == "object" or dtype_name.startswith("string") or dtype_name == "str"
+    ):
         return scalar_types.STRING
     elif dtype_name.startswith("datetime"):
         return scalar_types.TIMESTAMP

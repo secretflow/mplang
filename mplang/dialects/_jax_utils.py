@@ -13,7 +13,8 @@
 # limitations under the License.
 
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -132,6 +133,8 @@ def compile_jax(
     normalized_fn: Callable[..., Any],
     variables: list[el.Object],
     symbolic_shapes: Sequence[Sequence[str | None]] | None = None,
+    platforms: Sequence[str] | None = None,
+    disabled_checks: Sequence[str] | None = None,
 ) -> JaxCompilation:
     """Compile JAX function to StableHLO MLIR.
 
@@ -166,12 +169,15 @@ def compile_jax(
     def wrapped_fn(*args: Any) -> Any:
         return normalized_fn(list(args))
 
-    # Tip: Use `jax.config.update("jax_traceback_in_locations_limit", 0)` to reduce location information
-    # in MLIR output. This disables JAX traceback locations, removing verbose source location
-    # annotations (e.g., #loc = #loc1) from the generated MLIR, which makes the output more
-    # readable and reduces serialization overhead.
     jitted = jax.jit(wrapped_fn)
-    exported = jax.export.export(jitted)(*placeholders)
+    disabled_safety_checks: Sequence[jax.export.DisabledSafetyCheck] = (
+        [jax.export.DisabledSafetyCheck.custom_call(x) for x in disabled_checks]
+        if disabled_checks
+        else ()
+    )
+    exported = jax.export.export(
+        jitted, platforms=platforms, disabled_checks=disabled_safety_checks
+    )(*placeholders)
     stablehlo_text = str(exported.mlir_module())
 
     # Handle JAX's unused parameter elimination
@@ -201,3 +207,43 @@ def compile_jax(
         has_dynamic_shape=has_dynamic_shape,
     )
     return compilation
+
+
+def _register_backend() -> None:
+    from jax._src.xla_bridge import _backend_lock, _backends, register_backend_factory
+
+    has_interpreter_backend = False
+    with _backend_lock:
+        if "interpreter" in _backends:
+            has_interpreter_backend = True
+    if not has_interpreter_backend:
+        from jax.interpreters.xla import Backend as xla_back
+
+        register_backend_factory("interpreter", xla_back, priority=-100)
+
+
+@contextmanager
+def patch_spu_jax() -> Generator[None, None, None]:
+    """Context manager that patches JAX for SPU compatibility.
+
+    This patches JAX's lax operations to be compatible with SPU.
+    The patches are automatically restored when exiting the context.
+
+    Usage:
+        with patch_jax():
+            # JAX code that needs SPU compatibility
+            result = jax.jit(fn)(args)
+    """
+    # Import here to avoid circular imports
+    import spu.utils.frontend as spu_fe
+
+    _register_backend()
+
+    # Apply patches
+    patches = spu_fe._patch_jax()
+
+    try:
+        yield
+    finally:
+        # Always restore the original JAX functions
+        spu_fe._restore_jax_patch(patches)

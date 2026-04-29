@@ -105,14 +105,19 @@ def test_func_call_handles_complex_pytree_output():
     normalized = re.sub(
         r"fn=<function .*? at 0x[\da-f]+>", "fn='<FN>'", normalized, flags=re.MULTILINE
     )
+    # Remove has_dynamic_shape attribute to make test not depend on it
+    # First remove the attribute and handle trailing comma
+    normalized = re.sub(
+        r", has_dynamic_shape=(True|False)", "", normalized, flags=re.MULTILINE
+    )
     expected_ir = dedent(
         """\
             (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
               %0 = func.func() {in_morph=(PyTreeDef(((*, *), {})), (0, 1), []), out_morph=(PyTreeDef({'nested': (*, {'orig': *}), 'sum': *}), (0, 1, 2), []), output_types=[Tensor[f32, ()], Tensor[f32, ()], Tensor[f32, ()]], sym_name='_complex_body'} : Custom[function] {
                 (%arg0: Tensor[f32, ()], %arg1: Tensor[f32, ()]) {
-                  %0 = tensor.run_jax(%arg0) {arg_keep_map=None, backend='auto', ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
-                  %1 = tensor.run_jax(%0, %arg1) {arg_keep_map=None, backend='auto', ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
-                  %2 = tensor.run_jax(%1, %arg0) {arg_keep_map=None, backend='auto', ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %0 = tensor.run_jax(%arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %1 = tensor.run_jax(%0, %arg1) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
+                  %2 = tensor.run_jax(%1, %arg0) {arg_keep_map=None, ir_type='stablehlo', stablehlo_code='<ID>', text_ref='<ID>'} : Tensor[f32, ()]
                   return %2, %arg1, %1
                 }
               }

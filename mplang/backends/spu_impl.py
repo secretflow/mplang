@@ -156,6 +156,72 @@ def reconstruct_impl(
     return TensorValue.wrap(result)
 
 
+_dtype_mapping = {
+    libspu.DataType.DT_I1: np.bool_,
+    libspu.DataType.DT_I8: np.int8,
+    libspu.DataType.DT_I16: np.int16,
+    libspu.DataType.DT_I32: np.int32,
+    libspu.DataType.DT_I64: np.int64,
+    libspu.DataType.DT_U8: np.uint8,
+    libspu.DataType.DT_U16: np.uint16,
+    libspu.DataType.DT_U32: np.uint32,
+    libspu.DataType.DT_U64: np.uint64,
+    libspu.DataType.DT_F16: np.float16,
+    libspu.DataType.DT_F32: np.float32,
+    libspu.DataType.DT_F64: np.float64,
+}
+
+
+def _compile(
+    stablehlo: str,
+    input_vis: list[str],
+    input_names: list[str],
+    runtime: spu_api.Runtime,
+) -> bytes:
+    # Convert string visibility to libspu.Visibility
+    def vis_to_libspu(v: str) -> libspu.Visibility:
+        return (
+            libspu.Visibility.VIS_SECRET
+            if v == "secret"
+            else libspu.Visibility.VIS_PUBLIC
+        )
+
+    # Convert input_vis from string list to libspu.Visibility list
+    input_vis_libspu = [vis_to_libspu(v) for v in input_vis]
+    from types import SimpleNamespace
+
+    from .util import TensorLike, _refine_stablehlo
+
+    def dtype_to_np(dtype: libspu.DataType) -> np.dtype[Any]:
+        """Convert libspu.DataType to numpy dtype."""
+        # Map SPU data types to numpy dtypes (wrap in np.dtype to ensure proper stringification)
+        if dtype in _dtype_mapping:
+            return np.dtype(_dtype_mapping[dtype])
+        raise ValueError(f"Unsupported SPU data type: {dtype}")
+
+    tensor_infos: list[TensorLike] = []
+    for name in input_names:
+        meta = runtime.get_var_meta(name)
+        info = SimpleNamespace(
+            shape=tuple(meta.shape.dims), dtype=dtype_to_np(meta.data_type)
+        )
+        tensor_infos.append(info)
+
+    code = _refine_stablehlo(stablehlo, tuple(tensor_infos))
+    source = libspu.CompilationSource(
+        libspu.SourceIRType.STABLEHLO, code, input_vis_libspu
+    )
+    copts = libspu.CompilerOptions()
+
+    try:
+        mlir = spu_api.compile(source, copts)
+        return bytes(mlir)
+    except Exception as e:
+        raise RuntimeError(
+            f"SPU compilation failed: {e}\nStableHLO code:\n{code}"
+        ) from e
+
+
 @spu.exec_p.def_impl
 def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     """Execute SPU kernel using spu.Runtime.
@@ -238,14 +304,8 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
     executable_code = op.attrs["executable"]
     input_names = op.attrs["input_names"]
     output_names = op.attrs["output_names"]
-
-    # Create Executable
-    executable = libspu.Executable(
-        name="spu_kernel",
-        input_names=input_names,
-        output_names=output_names,
-        code=executable_code,
-    )
+    input_vis = op.attrs.get("input_vis", [])
+    ir_type = op.attrs.get("ir_type", "pphlo")
 
     # Set inputs
     for name, share in zip(input_names, args, strict=True):
@@ -264,6 +324,15 @@ def exec_impl(interpreter: Interpreter, op: Operation, *args: Any) -> Any:
 
         runtime.set_var(name, libspu_share)
 
+    if ir_type == "stablehlo":
+        executable_code = _compile(executable_code, input_vis, input_names, runtime)
+    # Create Executable
+    executable = libspu.Executable(
+        name="spu_kernel",
+        input_names=input_names,
+        output_names=output_names,
+        code=executable_code,
+    )
     # Run
     runtime.run(executable)
 

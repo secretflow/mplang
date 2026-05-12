@@ -1231,10 +1231,13 @@ class Interpreter(AbstractInterpreter):
                 )
 
             if op.opcode in self.async_ops and self.executor:
-                # Spawn a child CommContext in the main thread (deterministic
-                # order across ranks) so each async op has its own counter
-                # namespace — thread-scheduling order becomes irrelevant.
-                child_ctx = root_comm_ctx.spawn() if root_comm_ctx else None
+            # Use the op's fixed index in the graph to derive a deterministic
+            # child context ID, ensuring matching keys across ranks regardless
+            # of async scheduling order.
+            op_idx = op_to_index[op]
+            child_ctx = CommContext(root_comm_ctx._comm, f"{root_comm_ctx._id}.{op_idx}", root_comm_ctx._rank) if root_comm_ctx else None
+
+            if op.opcode in self.async_ops and self.executor:
 
                 with lock:
                     active_tasks += 1

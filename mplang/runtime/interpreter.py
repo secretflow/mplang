@@ -1231,14 +1231,21 @@ class Interpreter(AbstractInterpreter):
                 )
 
             if op.opcode in self.async_ops and self.executor:
-            # Use the op's fixed index in the graph to derive a deterministic
-            # child context ID, ensuring matching keys across ranks regardless
-            # of async scheduling order.
-            op_idx = op_to_index[op]
-            child_ctx = CommContext(root_comm_ctx._comm, f"{root_comm_ctx._id}.{op_idx}", root_comm_ctx._rank) if root_comm_ctx else None
+                # Use the op's fixed index in the graph to derive a deterministic
+                # child context ID, ensuring matching keys across ranks regardless
+                # of async scheduling order.
+                op_idx = op_to_index[op]
+                child_ctx = (
+                    CommContext(
+                        root_comm_ctx._comm,
+                        f"{root_comm_ctx._id}.{op_idx}",
+                        root_comm_ctx._rank,
+                    )
+                    if root_comm_ctx
+                    else None
+                )
 
             if op.opcode in self.async_ops and self.executor:
-
                 with lock:
                     active_tasks += 1
                     # profiler.sample(active_tasks, ready_queue.qsize())

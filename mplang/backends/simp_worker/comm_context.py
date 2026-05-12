@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from mplang.backends.simp_worker.base import CommunicatorProtocol
+from mplang.backends.simp_worker.base import CommunicatorProtocol, SendRequest
 
 
 class CommContext:

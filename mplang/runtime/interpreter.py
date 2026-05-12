@@ -1272,8 +1272,8 @@ class Interpreter(AbstractInterpreter):
                     with self._tls_exec_context(
                         graph_exec_key=graph_exec_key, op_exec_id=exec_id
                     ):
-                        if root_comm_ctx is not None:
-                            self._tls.comm_ctx = root_comm_ctx
+                        if child_ctx is not None:
+                            self._tls.comm_ctx = child_ctx
                         start_ts = tracer.log_start(
                             op, pid=self.trace_pid, namespace=self.trace_pid
                         )

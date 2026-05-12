@@ -921,8 +921,15 @@ def create_worker_app(
 
     handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
 
+    from mplang.backends.simp_worker.comm_context import CommContext
+
+    comm_ctx = CommContext(comm, context_id="ctx", my_rank=rank)
     worker = Interpreter(
-        tracer=tracer, root_dir=root_dir, handlers=handlers, store=store
+        tracer=tracer,
+        root_dir=root_dir,
+        handlers=handlers,
+        store=store,
+        comm_ctx=comm_ctx,
     )
     # Register SimpWorker context as 'simp' dialect state
     worker.set_dialect_state("simp", ctx)

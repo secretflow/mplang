@@ -45,6 +45,7 @@ from mplang.runtime.object_store import ObjectStore
 from mplang.utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from mplang.backends.simp_worker.comm_context import CommContext
     from mplang.edsl.primitive import Primitive
 
 logger = get_logger(__name__)
@@ -425,6 +426,7 @@ class Interpreter(AbstractInterpreter):
         store: ObjectStore | None = None,
         root_dir: str | pathlib.Path | None = None,
         handlers: dict[str, Callable[..., Any]] | None = None,
+        comm_ctx: CommContext | None = None,
     ) -> None:
         # Persistence Root
         self.root_dir = (
@@ -481,6 +483,7 @@ class Interpreter(AbstractInterpreter):
         self.name = name
         self.trace_pid = trace_pid
         self.store: ObjectStore | None = store
+        self.comm_ctx = comm_ctx
 
     @contextlib.contextmanager
     def _tls_exec_context(
@@ -985,6 +988,20 @@ class Interpreter(AbstractInterpreter):
             )
         return cast(int, exec_id)
 
+    def current_comm_ctx(self) -> CommContext:
+        """Return the current CommContext for this execution.
+
+        The CommContext is set in TLS during ``evaluate_graph`` execution.
+        In the async path, each async op gets a spawned child context.
+        """
+        ctx: CommContext | None = getattr(self._tls, "comm_ctx", None)
+        if ctx is None:
+            raise RuntimeError(
+                "current_comm_ctx() called outside of evaluate_graph execution "
+                "or Interpreter was created without a comm_ctx"
+            )
+        return ctx
+
     @staticmethod
     def _build_value_gc_info(graph: Graph) -> dict[Value, int]:
         """Build consumer-count map for value GC during graph execution.
@@ -1015,6 +1032,13 @@ class Interpreter(AbstractInterpreter):
         """Synchronous execution (Baseline)."""
         # Local environment: Value -> Runtime Object
         env = dict(zip(graph.inputs, inputs, strict=True))
+
+        # Set CommContext in TLS if not already set (save/restore for nested
+        # evaluate_graph calls — e.g. pcall_static inside an async op that
+        # already has a child CommContext in TLS).
+        prev_comm_ctx = getattr(self._tls, "comm_ctx", None)
+        if prev_comm_ctx is None and self.comm_ctx is not None:
+            self._tls.comm_ctx = self.comm_ctx
 
         # Build consumer counts for intermediate value GC
         remaining_consumers = self._build_value_gc_info(graph)
@@ -1083,6 +1107,13 @@ class Interpreter(AbstractInterpreter):
         if self.tracer and job_id:
             self.tracer.save_trace(job_id=job_id, rank=self.trace_pid)
 
+        # Restore previous comm_ctx (only if we were the one who set it)
+        if prev_comm_ctx is None and self.comm_ctx is not None:
+            try:
+                delattr(self._tls, "comm_ctx")
+            except AttributeError:
+                pass
+
         return [env[out] for out in graph.outputs]
 
     def _evaluate_graph_async(
@@ -1092,6 +1123,10 @@ class Interpreter(AbstractInterpreter):
         graph_exec_key = self.current_graph_exec_key()
         op_exec_base = self._reserve_op_exec_base(graph)
         op_to_index = {op: i for i, op in enumerate(graph.operations)}
+
+        # CommContext for this execution scope
+        root_comm_ctx = getattr(self._tls, "comm_ctx", self.comm_ctx)
+
         # Tracer setup (if not provided, use a disabled stub)
         tracer: ExecutionTracer | _NullTracer
         if self.tracer:
@@ -1196,6 +1231,11 @@ class Interpreter(AbstractInterpreter):
                 )
 
             if op.opcode in self.async_ops and self.executor:
+                # Spawn a child CommContext in the main thread (deterministic
+                # order across ranks) so each async op has its own counter
+                # namespace — thread-scheduling order becomes irrelevant.
+                child_ctx = root_comm_ctx.spawn() if root_comm_ctx else None
+
                 with lock:
                     active_tasks += 1
                     # profiler.sample(active_tasks, ready_queue.qsize())
@@ -1205,6 +1245,8 @@ class Interpreter(AbstractInterpreter):
                     with self._tls_exec_context(
                         graph_exec_key=graph_exec_key, op_exec_id=exec_id
                     ):
+                        if child_ctx is not None:
+                            self._tls.comm_ctx = child_ctx
                         start_ts = tracer.log_start(
                             op, pid=self.trace_pid, namespace=self.trace_pid
                         )
@@ -1227,6 +1269,8 @@ class Interpreter(AbstractInterpreter):
                     with self._tls_exec_context(
                         graph_exec_key=graph_exec_key, op_exec_id=exec_id
                     ):
+                        if root_comm_ctx is not None:
+                            self._tls.comm_ctx = root_comm_ctx
                         start_ts = tracer.log_start(
                             op, pid=self.trace_pid, namespace=self.trace_pid
                         )

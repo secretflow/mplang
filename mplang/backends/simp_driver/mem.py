@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from mplang.backends.simp_driver.state import SimpDriver
 from mplang.backends.simp_worker import WORKER_HANDLERS, SimpWorker
+from mplang.backends.simp_worker.comm_context import CommContext
 from mplang.backends.simp_worker.mem import LocalMesh
 from mplang.runtime.interpreter import ExecutionTracer, Interpreter
 from mplang.runtime.object_store import FileSystemBackend, ObjectStore
@@ -92,6 +93,11 @@ class MemCluster:
             )
 
             w_handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
+            comm_ctx = CommContext(
+                self._mesh.comms[rank],
+                context_id="ctx",
+                my_rank=rank,
+            )
             w_interp = Interpreter(
                 name=f"Worker-{rank}",
                 tracer=self.tracer,
@@ -99,6 +105,7 @@ class MemCluster:
                 store=store,
                 root_dir=worker_root,
                 handlers=w_handlers,
+                comm_ctx=comm_ctx,
             )
             w_interp.set_dialect_state("simp", worker_state)
 

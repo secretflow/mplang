@@ -74,7 +74,7 @@ class CommContext:
         self._spawn_counter += 1
         return CommContext(self._comm, child_id, self._rank)
 
-    def send(self, to: int, data: Any, *, is_raw_bytes: bool = False) -> Any:
+    def send(self, to: int, data: Any, *, is_raw_bytes: bool = False) -> SendRequest:
         seq = self._seq[to]
         self._seq[to] = seq + 1
         key = f"{self._id}:{seq}"

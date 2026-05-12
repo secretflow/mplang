@@ -1230,20 +1230,22 @@ class Interpreter(AbstractInterpreter):
                     f"No implementation registered for opcode: {op.opcode}"
                 )
 
-            if op.opcode in self.async_ops and self.executor:
-                # Use the op's fixed index in the graph to derive a deterministic
-                # child context ID, ensuring matching keys across ranks regardless
-                # of async scheduling order.
-                op_idx = op_to_index[op]
-                child_ctx = (
-                    CommContext(
-                        root_comm_ctx._comm,
-                        f"{root_comm_ctx._id}.{op_idx}",
-                        root_comm_ctx._rank,
-                    )
-                    if root_comm_ctx
-                    else None
+            # Use the op's fixed index in the graph together with the
+            # current graph execution key to derive a deterministic child
+            # context ID.  This keeps IDs stable across ranks for the same
+            # execution while preventing collisions between concurrent
+            # evaluate_graph runs.
+            op_idx = op_to_index[op]
+            if root_comm_ctx is not None:
+                from mplang.backends.simp_worker.comm_context import CommContext
+
+                child_ctx: CommContext | None = CommContext(
+                    root_comm_ctx._comm,
+                    f"{root_comm_ctx._id}.{graph_exec_key}.{op_idx}",
+                    root_comm_ctx._rank,
                 )
+            else:
+                child_ctx = None
 
             if op.opcode in self.async_ops and self.executor:
                 with lock:

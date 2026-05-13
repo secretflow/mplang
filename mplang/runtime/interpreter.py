@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures
-import contextlib
 import hashlib
 import json
 import os
@@ -32,7 +31,7 @@ import pathlib
 import queue
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from mplang.edsl.context import AbstractInterpreter
@@ -427,6 +426,9 @@ class Interpreter(AbstractInterpreter):
         root_dir: str | pathlib.Path | None = None,
         handlers: dict[str, Callable[..., Any]] | None = None,
         comm_ctx: CommContext | None = None,
+        *,
+        owns_executor: bool = True,
+        owns_tracer: bool = True,
     ) -> None:
         # Persistence Root
         self.root_dir = (
@@ -457,26 +459,6 @@ class Interpreter(AbstractInterpreter):
         #    all sibling outputs are cached here to avoid re-execution.
         self._execution_cache: dict[Any, InterpObject] = {}
 
-        # -----------------------------------------------------------------
-        # Graph-local op execution ids (for deterministic communication tags)
-        # -----------------------------------------------------------------
-        # We assign a monotonically increasing exec_id to each op execution
-        # within a graph namespace, and keep it deterministic across parties.
-        #
-        # IMPORTANT:
-        # - We intentionally make exec_id grow across repeated executions of the
-        #   same region graph (e.g., while_loop iterations) to avoid tag/key reuse.
-        #
-        # Implementation:
-        # - Each evaluate_graph(graph, ...) reserves a contiguous exec_id range
-        #   [base, base + len(graph.operations)).
-        # - Op exec_id = base + op_index_in_graph.
-        # - Reservation is persisted per graph_exec_key (structural hash).
-        # - We forbid concurrent execution of the same graph_hash to avoid
-        #   message tag confusion when a backend uses only per-op tags.
-        self._exec_id_lock = threading.Lock()
-        self._graph_next_exec_base: dict[str, int] = {}
-        self._active_graph_exec_keys: set[str] = set()
         self._tls = threading.local()
         self.executor = executor
         self.async_ops: set[str] = set()
@@ -484,45 +466,16 @@ class Interpreter(AbstractInterpreter):
         self.trace_pid = trace_pid
         self.store: ObjectStore | None = store
         self.comm_ctx = comm_ctx
-
-    @contextlib.contextmanager
-    def _tls_exec_context(
-        self,
-        *,
-        graph_exec_key: str | None = None,
-        op_exec_id: int | None = None,
-    ) -> Iterator[None]:
-        """Temporarily set execution context in thread-local storage."""
-
-        prev_graph_key = getattr(self._tls, "current_graph_exec_key", None)
-        prev_exec_id = getattr(self._tls, "current_op_exec_id", None)
-
-        if graph_exec_key is not None:
-            self._tls.current_graph_exec_key = graph_exec_key
-        if op_exec_id is not None:
-            self._tls.current_op_exec_id = op_exec_id
-
-        try:
-            yield
-        finally:
-            if graph_exec_key is not None:
-                if prev_graph_key is None:
-                    delattr(self._tls, "current_graph_exec_key")
-                else:
-                    self._tls.current_graph_exec_key = prev_graph_key
-
-            if op_exec_id is not None:
-                if prev_exec_id is None:
-                    delattr(self._tls, "current_op_exec_id")
-                else:
-                    self._tls.current_op_exec_id = prev_exec_id
+        # Ownership flags: when False, shutdown() skips releasing these
+        # shared resources.  Per-request Interpreters set these to False.
+        self._owns_executor = owns_executor
+        self._owns_tracer = owns_tracer
 
     def _graph_exec_key(self, graph: Graph) -> str:
         """Return a deterministic, structural hash for a graph.
 
         Used for:
-        - Namespacing per-graph exec_id counters
-        - Communication tag disambiguation (worker ops may include this key)
+        - Communication tag disambiguation in async child CommContext IDs
 
         Note: we cache on the Graph object assuming graphs are immutable during
         execution (finalized graphs / regions).
@@ -657,20 +610,20 @@ class Interpreter(AbstractInterpreter):
 
         This method is idempotent and safe to call multiple times.
         It performs the following cleanup:
-        1. Shuts down the internal executor (if any).
-        2. Stops the execution tracer (if any).
+        1. Shuts down the internal executor (if owned).
+        2. Stops the execution tracer (if owned).
         3. Shuts down any attached dialect states (e.g., stopping drivers).
         """
         logger.info("Shutting down Interpreter '%s'", self.name)
 
-        # 1. Shutdown Executor
-        if self.executor:
+        # 1. Shutdown Executor (only if we own it)
+        if self.executor and self._owns_executor:
             logger.debug("Shutting down executor")
             self.executor.shutdown(wait=True)
             self.executor = None
 
-        # 2. Stop Tracer
-        if self.tracer:
+        # 2. Stop Tracer (only if we own it)
+        if self.tracer and self._owns_tracer:
             logger.debug("Stopping execution tracer")
             self.tracer.stop()
             # Don't clear self.tracer, as we might want to read stats later
@@ -923,70 +876,18 @@ class Interpreter(AbstractInterpreter):
         Returns:
             List of runtime execution results corresponding to graph.outputs.
         """
-        graph_exec_key = self._graph_exec_key(graph)
-
-        # Prevent concurrent execution of the same graph hash.
-        with self._exec_id_lock:
-            if graph_exec_key in self._active_graph_exec_keys:
-                raise RuntimeError(
-                    "Concurrent execution of the same graph is not allowed. "
-                    f"graph_exec_key={graph_exec_key}"
-                )
-            self._active_graph_exec_keys.add(graph_exec_key)
-
-        try:
-            with self._tls_exec_context(graph_exec_key=graph_exec_key):
-                logger.debug(
-                    "Evaluating graph: %d inputs, %d ops, %d outputs (job_id=%s, async=%s, graph_key=%s)",
-                    len(inputs),
-                    len(graph.operations),
-                    len(graph.outputs),
-                    job_id,
-                    self.executor is not None,
-                    graph_exec_key,
-                )
-                if self.executor:
-                    return self._evaluate_graph_async(graph, inputs, job_id)
-                else:
-                    return self._evaluate_graph_sync(graph, inputs, job_id)
-        finally:
-            with self._exec_id_lock:
-                self._active_graph_exec_keys.discard(graph_exec_key)
-
-    def _reserve_op_exec_base(self, graph: Graph) -> int:
-        """Reserve a contiguous exec_id range for a single evaluate_graph call.
-
-        Counter is namespaced by the current graph_exec_key.
-        """
-        key = self.current_graph_exec_key()
-        with self._exec_id_lock:
-            base = self._graph_next_exec_base.get(key, 0)
-            self._graph_next_exec_base[key] = base + len(graph.operations)
-        return base
-
-    def current_graph_exec_key(self) -> str:
-        """Return current graph execution key during evaluate_graph execution."""
-
-        key = getattr(self._tls, "current_graph_exec_key", None)
-        if key is None:
-            raise RuntimeError(
-                "current_graph_exec_key() called outside of evaluate_graph execution"
-            )
-        return cast(str, key)
-
-    def current_op_exec_id(self) -> int:
-        """Return current op exec_id during graph execution.
-
-        Worker-side implementations can use this to build deterministic,
-        unique communication tags without coupling to any specific op.
-        """
-
-        exec_id = getattr(self._tls, "current_op_exec_id", None)
-        if exec_id is None:
-            raise RuntimeError(
-                "current_op_exec_id() called outside of evaluate_graph execution"
-            )
-        return cast(int, exec_id)
+        logger.debug(
+            "Evaluating graph: %d inputs, %d ops, %d outputs (job_id=%s, async=%s)",
+            len(inputs),
+            len(graph.operations),
+            len(graph.outputs),
+            job_id,
+            self.executor is not None,
+        )
+        if self.executor:
+            return self._evaluate_graph_async(graph, inputs, job_id)
+        else:
+            return self._evaluate_graph_sync(graph, inputs, job_id)
 
     def current_comm_ctx(self) -> CommContext:
         """Return the current CommContext for this execution.
@@ -1043,10 +944,7 @@ class Interpreter(AbstractInterpreter):
         # Build consumer counts for intermediate value GC
         remaining_consumers = self._build_value_gc_info(graph)
 
-        op_exec_base = self._reserve_op_exec_base(graph)
-
-        for op_index, op in enumerate(graph.operations):
-            exec_id = op_exec_base + op_index
+        for _op_index, op in enumerate(graph.operations):
             # Resolve inputs
             try:
                 args = [env[val] for val in op.inputs]
@@ -1070,16 +968,15 @@ class Interpreter(AbstractInterpreter):
             if not handler:
                 handler = get_impl(op.opcode)
 
-            with self._tls_exec_context(op_exec_id=exec_id):
-                if handler:
-                    # Pass interpreter to support recursive execution (HOFs)
-                    # Pass op to access attributes and regions
-                    # Pass args as runtime values
-                    results = handler(self, op, *args)
-                else:
-                    raise NotImplementedError(
-                        f"No implementation registered for opcode: {op.opcode}"
-                    )
+            if handler:
+                # Pass interpreter to support recursive execution (HOFs)
+                # Pass op to access attributes and regions
+                # Pass args as runtime values
+                results = handler(self, op, *args)
+            else:
+                raise NotImplementedError(
+                    f"No implementation registered for opcode: {op.opcode}"
+                )
 
             # Update environment with outputs
             # Handler should return a single value or a tuple/list of values
@@ -1120,8 +1017,7 @@ class Interpreter(AbstractInterpreter):
         self, graph: Graph, inputs: list[Any], job_id: str | None = None
     ) -> list[Any]:
         """Asynchronous execution with non-blocking DAG scheduling."""
-        graph_exec_key = self.current_graph_exec_key()
-        op_exec_base = self._reserve_op_exec_base(graph)
+        graph_exec_key = self._graph_exec_key(graph)
         op_to_index = {op: i for i, op in enumerate(graph.operations)}
 
         # CommContext for this execution scope
@@ -1219,8 +1115,6 @@ class Interpreter(AbstractInterpreter):
             # Extract args from env (must be ready)
             args = [env[val] for val in op.inputs]
 
-            exec_id = op_exec_base + op_to_index[op]
-
             handler = self.handlers.get(op.opcode)
             if not handler:
                 handler = get_impl(op.opcode)
@@ -1230,20 +1124,17 @@ class Interpreter(AbstractInterpreter):
                     f"No implementation registered for opcode: {op.opcode}"
                 )
 
-            # Use the op's fixed index in the graph together with the
-            # current graph execution key to derive a deterministic child
-            # context ID.  This keeps IDs stable across ranks for the same
-            # execution while preventing collisions between concurrent
-            # evaluate_graph runs.
+            # Derive a deterministic child CommContext ID for this op.
+            # We include graph_exec_key (structural hash of the graph) to prevent
+            # op_idx collisions between *different nested graphs* within the same
+            # request.  For example, two simp.pcall_static ops in the same parent
+            # graph each trigger a sub-graph execution — without graph_exec_key,
+            # their child ops at the same positional index would share the same
+            # CommContext ID and corrupt each other's messages.
+            # Cross-request isolation is already handled by root context_id (= job_id).
             op_idx = op_to_index[op]
             if root_comm_ctx is not None:
-                from mplang.backends.simp_worker.comm_context import CommContext
-
-                child_ctx: CommContext | None = CommContext(
-                    root_comm_ctx._comm,
-                    f"{root_comm_ctx._id}.{graph_exec_key}.{op_idx}",
-                    root_comm_ctx._rank,
-                )
+                child_ctx = root_comm_ctx.spawn(suffix=f"{graph_exec_key}.{op_idx}")
             else:
                 child_ctx = None
 
@@ -1254,17 +1145,14 @@ class Interpreter(AbstractInterpreter):
 
                 # Submit to executor
                 def task() -> Any:
-                    with self._tls_exec_context(
-                        graph_exec_key=graph_exec_key, op_exec_id=exec_id
-                    ):
-                        if child_ctx is not None:
-                            self._tls.comm_ctx = child_ctx
-                        start_ts = tracer.log_start(
-                            op, pid=self.trace_pid, namespace=self.trace_pid
-                        )
-                        res = handler(self, op, *args)
-                        tracer.log_end(op, start_ts, pid=self.trace_pid)
-                        return res
+                    if child_ctx is not None:
+                        self._tls.comm_ctx = child_ctx
+                    start_ts = tracer.log_start(
+                        op, pid=self.trace_pid, namespace=self.trace_pid
+                    )
+                    res = handler(self, op, *args)
+                    tracer.log_end(op, start_ts, pid=self.trace_pid)
+                    return res
 
                 def callback(fut: Any) -> None:
                     try:
@@ -1278,17 +1166,14 @@ class Interpreter(AbstractInterpreter):
             else:
                 # Sync execution (run immediately)
                 try:
-                    with self._tls_exec_context(
-                        graph_exec_key=graph_exec_key, op_exec_id=exec_id
-                    ):
-                        if child_ctx is not None:
-                            self._tls.comm_ctx = child_ctx
-                        start_ts = tracer.log_start(
-                            op, pid=self.trace_pid, namespace=self.trace_pid
-                        )
-                        res = handler(self, op, *args)
-                        tracer.log_end(op, start_ts, pid=self.trace_pid)
-                        on_op_done(op, res)
+                    if child_ctx is not None:
+                        self._tls.comm_ctx = child_ctx
+                    start_ts = tracer.log_start(
+                        op, pid=self.trace_pid, namespace=self.trace_pid
+                    )
+                    res = handler(self, op, *args)
+                    tracer.log_end(op, start_ts, pid=self.trace_pid)
+                    on_op_done(op, res)
                 except Exception as e:
                     on_op_done(op, None, error=e)
 

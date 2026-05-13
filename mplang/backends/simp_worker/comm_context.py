@@ -62,15 +62,25 @@ class CommContext:
     def world_size(self) -> int:
         return self._comm.world_size
 
-    def spawn(self) -> CommContext:
+    def spawn(self, suffix: str | None = None) -> CommContext:
         """Create a child context with independent counter namespace.
 
-        Child ``context_id = f"{parent_id}.{spawn_seq}"``.  ``spawn_seq``
-        increments in the calling thread's order, so if all ranks call
-        ``spawn()`` in the same program-order position, children get matching
-        IDs across ranks.
+        Args:
+            suffix: Explicit suffix for the child context ID.  When provided,
+                ``context_id = f"{parent_id}.{suffix}"``.  This is used when
+                the caller needs a deterministic, content-based ID that is
+                stable across ranks regardless of call order (e.g. the async
+                DAG scheduler uses ``f"{graph_exec_key}.{op_idx}"``).
+
+                When *None* (default), an auto-incrementing counter is used:
+                ``context_id = f"{parent_id}.{spawn_seq}"``.  This is suitable
+                for SPMD code where all ranks call ``spawn()`` in the same
+                program-order position.
         """
-        child_id = f"{self._id}.{self._spawn_counter}"
+        if suffix is None:
+            child_id = f"{self._id}.{self._spawn_counter}"
+        else:
+            child_id = f"{self._id}.{self._spawn_counter}.{suffix}"
         self._spawn_counter += 1
         return CommContext(self._comm, child_id, self._rank)
 

@@ -28,6 +28,7 @@ import spu.libspu as libspu
 from mplang.runtime.dialect_state import DialectState
 
 if TYPE_CHECKING:
+    from mplang.backends.simp_worker.infra import WorkerInfra
     from mplang.dialects import spu
 
 
@@ -37,18 +38,60 @@ class SPUState(DialectState):
     Caches SPU Runtime and Io objects per (local_rank, world_size, config, link_mode)
     to enable reuse across multiple SPU kernel executions.
 
+    When created with a ``WorkerInfra`` reference (per-request mode), template
+    links are obtained from the shared infra (thread-safe) and then spawned
+    via ``link.spawn()`` for per-request isolation.
+
     This replaces the previous global `_SPU_RUNTIMES` cache with a properly
     lifecycle-managed dialect state.
     """
 
     dialect_name: str = "spu"
 
-    def __init__(self) -> None:
+    def __init__(self, infra: WorkerInfra | None = None) -> None:
+        # Optional shared infrastructure (for per-request isolation via link.spawn)
+        self._infra = infra
         # Key: (local_rank, world_size, protocol, field, link_mode)
         # Value: (Runtime, Io)
         self._runtimes: dict[
             tuple[int, int, str, str, str], tuple[spu_api.Runtime, spu_api.Io]
         ] = {}
+        # Local template link cache (used when no WorkerInfra is provided)
+        self._template_links: dict[tuple, libspu.link.Context] = {}
+
+    def _get_template_link(
+        self,
+        cache_key: tuple,
+        local_rank: int,
+        spu_world_size: int,
+        communicator: object | None,
+        parties: list[int] | None,
+        spu_endpoints: list[str] | None,
+    ) -> libspu.link.Context:
+        """Get or create a template link for the given configuration.
+
+        With ``WorkerInfra``: uses infra's thread-safe shared cache.
+        Without: uses a local (non-thread-safe) cache on this SPUState.
+        """
+
+        def _create() -> libspu.link.Context:
+            if communicator is not None:
+                if parties is None:
+                    raise ValueError("parties required when using communicator")
+                return self._create_channels_link(
+                    local_rank, spu_world_size, communicator, parties
+                )
+            elif spu_endpoints:
+                return self._create_brpc_link(local_rank, spu_endpoints)
+            else:
+                return self._create_mem_link(local_rank, spu_world_size)
+
+        if self._infra is not None:
+            return self._infra.get_or_create_spu_link(cache_key, _create)
+
+        if cache_key not in self._template_links:
+            self._template_links[cache_key] = _create()
+        return self._template_links[cache_key]
 
     def get_or_create(
         self,
@@ -95,17 +138,16 @@ class SPUState(DialectState):
         if cache_key in self._runtimes:
             return self._runtimes[cache_key]
 
-        # Create Link
-        if communicator is not None:
-            if parties is None:
-                raise ValueError("parties required when using communicator")
-            link = self._create_channels_link(
-                local_rank, spu_world_size, communicator, parties
-            )
-        elif spu_endpoints:
-            link = self._create_brpc_link(local_rank, spu_endpoints)
-        else:
-            link = self._create_mem_link(local_rank, spu_world_size)
+        # Unified path: get-or-create template link, then spawn for isolation
+        template_link = self._get_template_link(
+            cache_key,
+            local_rank,
+            spu_world_size,
+            communicator,
+            parties,
+            spu_endpoints,
+        )
+        link = template_link.spawn()
 
         # Create Runtime and Io
         runtime_config = to_runtime_config(config)
@@ -183,5 +225,6 @@ class SPUState(DialectState):
         return libspu.link.create_brpc(desc, local_rank)
 
     def shutdown(self) -> None:
-        """Clear all cached runtimes."""
+        """Clear all cached runtimes and template links."""
         self._runtimes.clear()
+        self._template_links.clear()

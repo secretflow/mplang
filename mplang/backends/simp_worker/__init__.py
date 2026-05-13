@@ -38,11 +38,14 @@ from mplang.backends.simp_worker.http import (
     RecvTimeoutError,
     SendTimeoutError,
 )
+from mplang.backends.simp_worker.infra import DEFAULT_ASYNC_OPS, WorkerInfra
 from mplang.backends.simp_worker.mem import LocalMesh, ThreadCommunicator
 from mplang.backends.simp_worker.ops import WORKER_HANDLERS
+from mplang.backends.simp_worker.request import create_request_interpreter
 from mplang.backends.simp_worker.state import SimpWorker
 
 __all__ = [
+    "DEFAULT_ASYNC_OPS",
     "WORKER_HANDLERS",
     "CommConfig",
     "CommStats",
@@ -56,6 +59,8 @@ __all__ = [
     "SendTimeoutError",
     "SimpWorker",
     "ThreadCommunicator",
+    "WorkerInfra",
+    "create_request_interpreter",
     "testall",
     "testany",
     "wait_all",

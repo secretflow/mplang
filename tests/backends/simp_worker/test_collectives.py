@@ -25,15 +25,8 @@ from mplang.backends.simp_worker.collectives import (
     barrier,
     broadcast,
 )
+from mplang.backends.simp_worker.comm_context import CommContext
 from mplang.backends.simp_worker.mem import LocalMesh
-
-
-class _FakeInterpreter:
-    def current_op_exec_id(self) -> int:
-        return 1
-
-    def current_graph_exec_key(self) -> str:
-        return "test_graph"
 
 
 @dataclass
@@ -46,17 +39,16 @@ class _Worker:
 
 def test_broadcast_roundtrip() -> None:
     mesh = LocalMesh(world_size=3)
-    interp: Any = _FakeInterpreter()
 
     def run_rank(rank: int) -> Any:
+        ctx = CommContext(mesh.comms[rank], context_id="test", my_rank=rank)
         worker = _Worker(rank, 3, mesh.comms[rank])
         return broadcast(
-            interp,
+            ctx,
             worker,
             {"x": 123},
             root=0,
             participants=(0, 1, 2),
-            name="test_broadcast",
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
@@ -68,16 +60,15 @@ def test_broadcast_roundtrip() -> None:
 
 def test_allgather_obj_order() -> None:
     mesh = LocalMesh(world_size=3)
-    interp: Any = _FakeInterpreter()
 
     def run_rank(rank: int) -> Any:
+        ctx = CommContext(mesh.comms[rank], context_id="test", my_rank=rank)
         worker = _Worker(rank, 3, mesh.comms[rank])
         gathered = allgather_obj(
-            interp,
+            ctx,
             worker,
             rank,
             participants=(0, 1, 2),
-            name="test_allgather",
         )
         return tuple(gathered)
 
@@ -90,26 +81,24 @@ def test_allgather_obj_order() -> None:
 
 def test_allreduce_bool_and_or() -> None:
     mesh = LocalMesh(world_size=3)
-    interp: Any = _FakeInterpreter()
 
     inputs = {0: True, 1: True, 2: False}
 
     def run_rank(rank: int) -> tuple[bool, bool]:
+        ctx = CommContext(mesh.comms[rank], context_id="test", my_rank=rank)
         worker = _Worker(rank, 3, mesh.comms[rank])
         v = inputs[rank]
         r_and = allreduce_bool_and(
-            interp,
+            ctx,
             worker,
             v,
             participants=(0, 1, 2),
-            name="test_allreduce_and",
         )
         r_or = allreduce_bool_or(
-            interp,
+            ctx,
             worker,
             v,
             participants=(0, 1, 2),
-            name="test_allreduce_or",
         )
         return r_and, r_or
 
@@ -122,15 +111,14 @@ def test_allreduce_bool_and_or() -> None:
 
 def test_barrier_completes() -> None:
     mesh = LocalMesh(world_size=3)
-    interp: Any = _FakeInterpreter()
 
     def run_rank(rank: int) -> int:
+        ctx = CommContext(mesh.comms[rank], context_id="test", my_rank=rank)
         worker = _Worker(rank, 3, mesh.comms[rank])
         barrier(
-            interp,
+            ctx,
             worker,
             participants=(0, 1, 2),
-            name="test_barrier",
         )
         return rank
 

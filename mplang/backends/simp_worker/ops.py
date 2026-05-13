@@ -81,25 +81,19 @@ def _shuffle_static_worker_impl(
     if routing is None:
         return args[0]
 
-    comm = worker.communicator
+    ctx = interpreter.current_comm_ctx()
     my_rank = worker.rank
     data = args[0]
 
-    exec_id = interpreter.current_op_exec_id()
-    graph_key = interpreter.current_graph_exec_key()
-    key_prefix = f"shuffle_{graph_key}_{op.name}_{exec_id}"
-
     for tgt, src in routing.items():
         if src == my_rank and tgt != my_rank:
-            key = f"{key_prefix}_{tgt}"
-            comm.send(tgt, key, data)
+            ctx.send(tgt, data)
 
     if my_rank in routing:
         src = routing[my_rank]
         if src == my_rank:
             return data
-        key = f"{key_prefix}_{my_rank}"
-        return comm.recv(src, key)
+        return ctx.recv(src)
     else:
         return None
 
@@ -124,7 +118,8 @@ def _uniform_cond_worker_impl(
         pred = bool(pred.unwrap())
 
     if op.attrs.get("verify_uniform", True):
-        pred = verify_uniform_predicate(interpreter, worker, bool(pred), op=op)
+        ctx = interpreter.current_comm_ctx()
+        pred = verify_uniform_predicate(ctx, worker, bool(pred), op=op)
 
     if pred:
         result = interpreter.evaluate_graph(op.regions[0], list(args))

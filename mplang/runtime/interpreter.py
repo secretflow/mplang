@@ -1134,13 +1134,7 @@ class Interpreter(AbstractInterpreter):
             # Cross-request isolation is already handled by root context_id (= job_id).
             op_idx = op_to_index[op]
             if root_comm_ctx is not None:
-                from mplang.backends.simp_worker.comm_context import CommContext
-
-                child_ctx: CommContext | None = CommContext(
-                    root_comm_ctx._comm,
-                    f"{root_comm_ctx._id}.{graph_exec_key}.{op_idx}",
-                    root_comm_ctx._rank,
-                )
+                child_ctx = root_comm_ctx.spawn(suffix=f"{graph_exec_key}.{op_idx}")
             else:
                 child_ctx = None
 

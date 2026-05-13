@@ -124,6 +124,20 @@ def test_spawn_hierarchy() -> None:
     mesh.shutdown()
 
 
+def test_spawn_explicit_suffix() -> None:
+    """spawn(suffix=...) includes counter and suffix in child ID."""
+    mesh = LocalMesh(world_size=2)
+    ctx = CommContext(mesh.comms[0], context_id="root", my_rank=0)
+
+    child = ctx.spawn(suffix="abc123.5")
+    assert child._id == "root.0.abc123.5"
+
+    # Counter advances regardless of suffix usage
+    auto_child = ctx.spawn()
+    assert auto_child._id == "root.1"
+    mesh.shutdown()
+
+
 def test_barrier_via_comm_context() -> None:
     """CommContext works correctly with collective barrier pattern."""
     from mplang.backends.simp_worker import collective_algorithms as algo

@@ -61,10 +61,10 @@ from mplang.backends.simp_worker.base import (
     wait_all,
     wait_any,
 )
-from mplang.backends.simp_worker.state import SimpWorker
+from mplang.backends.simp_worker.infra import WorkerInfra
 from mplang.edsl import serde
 from mplang.edsl.graph import Graph
-from mplang.runtime.interpreter import ExecutionTracer, Interpreter
+from mplang.runtime.interpreter import ExecutionTracer
 from mplang.runtime.object_store import FileSystemBackend, ObjectStore
 from mplang.utils.logging import get_logger
 
@@ -636,7 +636,7 @@ def register_routes(
     *,
     rank: int,
     world_size: int,
-    worker: Interpreter,
+    infra: WorkerInfra,
     comm: HttpCommunicator,
     store: ObjectStore,
     exec_pool: concurrent.futures.ThreadPoolExecutor,
@@ -648,36 +648,38 @@ def register_routes(
     enabling reuse in custom server setups.
 
     Note:
-        The *worker* ``Interpreter`` must have the ``"simp"`` dialect state
-        registered (via ``worker.set_dialect_state("simp", ctx)``) before
-        any request is served, as the ``/fetch`` and ``/objects`` endpoints
-        rely on it.
+        The *infra* ``WorkerInfra`` contains all shared infrastructure needed
+        to create per-request Interpreters.
 
     Args:
         app: The FastAPI application to register routes on.
         rank: This worker's rank.
         world_size: Total number of workers.
-        worker: The Interpreter instance for graph execution.
+        infra: The WorkerInfra for creating per-request Interpreters.
         comm: The HttpCommunicator for inter-worker communication.
         store: The ObjectStore for data persistence.
         exec_pool: Thread pool for executing graphs.
     """
-    from typing import cast
+    from mplang.backends.simp_worker.request import create_request_interpreter
 
     def _do_execute(graph: Graph, inputs: list[Any], job_id: str | None = None) -> Any:
-        """Execute graph in worker thread."""
-        # Resolve URI inputs (None means rank has no data)
-        resolved_inputs = [
-            store.get(inp) if inp is not None else None for inp in inputs
-        ]
+        """Execute graph in worker thread with per-request isolation."""
+        request_interp = create_request_interpreter(infra, job_id or "anonymous")
+        try:
+            # Resolve URI inputs (None means rank has no data)
+            resolved_inputs = [
+                store.get(inp) if inp is not None else None for inp in inputs
+            ]
 
-        result = worker.evaluate_graph(graph, resolved_inputs)
-        comm.wait_pending_sends()
+            result = request_interp.evaluate_graph(graph, resolved_inputs, job_id)
+            comm.wait_pending_sends()
 
-        # Store results and return URIs (result is always a list)
-        if not graph.outputs:
-            return None
-        return [store.put(res) if res is not None else None for res in result]
+            # Store results and return URIs (result is always a list)
+            if not graph.outputs:
+                return None
+            return [store.put(res) if res is not None else None for res in result]
+        finally:
+            request_interp.shutdown()
 
     # Mutable closure state shared between endpoint handlers and exec_pool threads.
     async_tasks: dict[str, AsyncTaskState] = {}
@@ -845,8 +847,7 @@ def register_routes(
         """Fetch data by URI (e.g. ``mem://abc123``, ``fs://ckpt/s100``)."""
         logger.debug(f"Worker {rank} received fetch request for {req.uri}")
         try:
-            state = cast(SimpWorker, worker.get_dialect_state("simp"))
-            val = state.store.get(req.uri)
+            val = store.get(req.uri)
             return {"result": serde.dumps_b64(val)}
         except Exception as e:
             logger.error(f"Worker {rank} fetch failed: {e}")
@@ -856,8 +857,7 @@ def register_routes(
     def list_objects() -> dict[str, list[str]]:
         """List all objects in the worker's store (transient + persistent)."""
         try:
-            state = cast(SimpWorker, worker.get_dialect_state("simp"))
-            return {"objects": state.store.list_keys()}
+            return {"objects": store.list_keys()}
         except Exception as e:
             logger.error(f"Worker {rank} list_objects failed: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -917,22 +917,22 @@ def create_worker_app(
     comm = HttpCommunicator(rank, world_size, endpoints, tracer=tracer)
     if store is None:
         store = ObjectStore(persistent=FileSystemBackend(root_path=str(root_dir)))
-    ctx = SimpWorker(rank, world_size, comm, store, spu_endpoints)
 
     handlers: dict[str, Callable[..., Any]] = {**WORKER_HANDLERS}  # type: ignore[dict-item]
 
-    from mplang.backends.simp_worker.comm_context import CommContext
+    from mplang.backends.simp_worker.infra import DEFAULT_ASYNC_OPS, WorkerInfra
 
-    comm_ctx = CommContext(comm, context_id="ctx", my_rank=rank)
-    worker = Interpreter(
+    infra = WorkerInfra(
+        rank=rank,
+        world_size=world_size,
+        communicator=comm,
+        store=store,
+        handlers=handlers,
+        spu_endpoints=spu_endpoints,
         tracer=tracer,
         root_dir=root_dir,
-        handlers=handlers,
-        store=store,
-        comm_ctx=comm_ctx,
+        async_ops=DEFAULT_ASYNC_OPS,
     )
-    # Register SimpWorker context as 'simp' dialect state
-    worker.set_dialect_state("simp", ctx)
 
     exec_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=2, thread_name_prefix=f"exec_{rank}"
@@ -941,7 +941,7 @@ def create_worker_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
-        await asyncio.to_thread(worker.shutdown)
+        await asyncio.to_thread(infra.shutdown)
         await asyncio.to_thread(comm.shutdown)
         await asyncio.to_thread(exec_pool.shutdown, wait=True)
 
@@ -951,7 +951,7 @@ def create_worker_app(
         app,
         rank=rank,
         world_size=world_size,
-        worker=worker,
+        infra=infra,
         comm=comm,
         store=store,
         exec_pool=exec_pool,

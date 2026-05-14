@@ -104,13 +104,18 @@ class SPUState(DialectState):
     ) -> tuple[spu_api.Runtime, spu_api.Io]:
         """Get or create SPU Runtime and Io for the given configuration.
 
+        Link mode priority: spu_endpoints (BRPC) > communicator (Channels) > mem.
+        When ``spu_endpoints`` is provided it always takes precedence, even if
+        a ``communicator`` is also supplied.
+
         Args:
             local_rank: The local rank within the SPU device (0-indexed).
             spu_world_size: The number of parties in the SPU device.
             config: SPU configuration including protocol settings.
-            spu_endpoints: Optional list of BRPC endpoints. If None, use mem link.
+            spu_endpoints: Optional list of BRPC endpoints. Takes highest
+                priority when provided.
             communicator: Optional v2 communicator (ThreadCommunicator/HttpCommunicator).
-                If provided, use Channels mode to reuse existing communication.
+                Used only when ``spu_endpoints`` is not provided.
             parties: Optional list of global ranks for SPU parties.
                 Required when communicator is provided.
 
@@ -133,6 +138,7 @@ class SPUState(DialectState):
             config.protocol,
             config.field,
             link_mode,
+            tuple(spu_endpoints) if spu_endpoints else None,
         )
 
         if cache_key in self._runtimes:

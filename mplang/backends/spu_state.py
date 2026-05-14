@@ -51,10 +51,11 @@ class SPUState(DialectState):
     def __init__(self, infra: WorkerInfra | None = None) -> None:
         # Optional shared infrastructure (for per-request isolation via link.spawn)
         self._infra = infra
-        # Key: (local_rank, world_size, protocol, field, link_mode)
+        # Key: (local_rank, world_size, protocol, field, link_mode, spu_endpoints)
         # Value: (Runtime, Io)
         self._runtimes: dict[
-            tuple[int, int, str, str, str], tuple[spu_api.Runtime, spu_api.Io]
+            tuple[int, int, str, str, str, tuple[str, ...] | None],
+            tuple[spu_api.Runtime, spu_api.Io],
         ] = {}
         # Local template link cache (used when no WorkerInfra is provided)
         self._template_links: dict[tuple, libspu.link.Context] = {}

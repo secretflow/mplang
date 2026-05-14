@@ -51,10 +51,11 @@ class SPUState(DialectState):
     def __init__(self, infra: WorkerInfra | None = None) -> None:
         # Optional shared infrastructure (for per-request isolation via link.spawn)
         self._infra = infra
-        # Key: (local_rank, world_size, protocol, field, link_mode)
+        # Key: (local_rank, world_size, protocol, field, link_mode, spu_endpoints)
         # Value: (Runtime, Io)
         self._runtimes: dict[
-            tuple[int, int, str, str, str], tuple[spu_api.Runtime, spu_api.Io]
+            tuple[int, int, str, str, str, tuple[str, ...] | None],
+            tuple[spu_api.Runtime, spu_api.Io],
         ] = {}
         # Local template link cache (used when no WorkerInfra is provided)
         self._template_links: dict[tuple, libspu.link.Context] = {}
@@ -75,14 +76,14 @@ class SPUState(DialectState):
         """
 
         def _create() -> libspu.link.Context:
-            if communicator is not None:
+            if spu_endpoints:
+                return self._create_brpc_link(local_rank, spu_endpoints)
+            elif communicator is not None:
                 if parties is None:
                     raise ValueError("parties required when using communicator")
                 return self._create_channels_link(
                     local_rank, spu_world_size, communicator, parties
                 )
-            elif spu_endpoints:
-                return self._create_brpc_link(local_rank, spu_endpoints)
             else:
                 return self._create_mem_link(local_rank, spu_world_size)
 
@@ -104,13 +105,18 @@ class SPUState(DialectState):
     ) -> tuple[spu_api.Runtime, spu_api.Io]:
         """Get or create SPU Runtime and Io for the given configuration.
 
+        Link mode priority: spu_endpoints (BRPC) > communicator (Channels) > mem.
+        When ``spu_endpoints`` is provided it always takes precedence, even if
+        a ``communicator`` is also supplied.
+
         Args:
             local_rank: The local rank within the SPU device (0-indexed).
             spu_world_size: The number of parties in the SPU device.
             config: SPU configuration including protocol settings.
-            spu_endpoints: Optional list of BRPC endpoints. If None, use mem link.
+            spu_endpoints: Optional list of BRPC endpoints. Takes highest
+                priority when provided.
             communicator: Optional v2 communicator (ThreadCommunicator/HttpCommunicator).
-                If provided, use Channels mode to reuse existing communication.
+                Used only when ``spu_endpoints`` is not provided.
             parties: Optional list of global ranks for SPU parties.
                 Required when communicator is provided.
 
@@ -120,10 +126,10 @@ class SPUState(DialectState):
         from mplang.backends.spu_impl import to_runtime_config
 
         # Determine link mode
-        if communicator is not None:
-            link_mode = "channels"
-        elif spu_endpoints:
+        if spu_endpoints:
             link_mode = "brpc"
+        elif communicator is not None:
+            link_mode = "channels"
         else:
             link_mode = "mem"
 
@@ -133,6 +139,7 @@ class SPUState(DialectState):
             config.protocol,
             config.field,
             link_mode,
+            tuple(spu_endpoints) if spu_endpoints else None,
         )
 
         if cache_key in self._runtimes:

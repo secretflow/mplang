@@ -75,14 +75,14 @@ class SPUState(DialectState):
         """
 
         def _create() -> libspu.link.Context:
-            if communicator is not None:
+            if spu_endpoints:
+                return self._create_brpc_link(local_rank, spu_endpoints)
+            elif communicator is not None:
                 if parties is None:
                     raise ValueError("parties required when using communicator")
                 return self._create_channels_link(
                     local_rank, spu_world_size, communicator, parties
                 )
-            elif spu_endpoints:
-                return self._create_brpc_link(local_rank, spu_endpoints)
             else:
                 return self._create_mem_link(local_rank, spu_world_size)
 
@@ -120,10 +120,10 @@ class SPUState(DialectState):
         from mplang.backends.spu_impl import to_runtime_config
 
         # Determine link mode
-        if communicator is not None:
-            link_mode = "channels"
-        elif spu_endpoints:
+        if spu_endpoints:
             link_mode = "brpc"
+        elif communicator is not None:
+            link_mode = "channels"
         else:
             link_mode = "mem"
 

@@ -194,6 +194,50 @@ def test_nested_pcall():
         assert values == [20, 40]
 
 
+def test_pcall_static_zero_output():
+    """Regression: pcall_static body returning None must not crash (IndexError).
+
+    When a function returns None, its traced graph has 0 outputs.
+    The driver/worker dispatch must handle this correctly.
+    """
+    sim = simp.make_simulator(world_size=2)
+    with sim:
+
+        def side_effect_only(x):
+            # Produces a traced op but returns nothing
+            run_jax(jnp.abs, x)
+            return None
+
+        x0 = simp.constant((0,), 1)
+        x1 = simp.constant((1,), 2)
+        x_obj = simp.converge(x0, x1)
+
+        # Should not raise IndexError
+        result = pcall_static((0, 1), side_effect_only, x_obj)
+        assert result is None
+
+
+def test_pcall_static_zero_output_compile_evaluate():
+    """Regression: compile+evaluate path with zero-output pcall_static."""
+    sim = simp.make_simulator(world_size=2)
+    with sim:
+
+        def workflow():
+            x0 = simp.constant((0,), 42)
+            x1 = simp.constant((1,), 99)
+            x_obj = simp.converge(x0, x1)
+
+            def body(x):
+                run_jax(jnp.abs, x)
+                return None
+
+            pcall_static((0, 1), body, x_obj)
+
+        traced = mp.compile(workflow)
+        result = mp.evaluate(traced)
+        assert result is None
+
+
 def test_mp_function_decorator():
     """Test @mp.function decorator which implies pcall_static(ALL, ...)."""
     sim = simp.make_simulator(world_size=3)

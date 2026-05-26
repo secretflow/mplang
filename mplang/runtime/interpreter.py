@@ -1082,7 +1082,9 @@ class Interpreter(AbstractInterpreter):
                     return
 
                 # Store results
-                if len(op.outputs) == 1:
+                if len(op.outputs) == 0:
+                    pass  # Void operation
+                elif len(op.outputs) == 1:
                     env[op.outputs[0]] = result
                 else:
                     for out_val, res in zip(op.outputs, result, strict=True):

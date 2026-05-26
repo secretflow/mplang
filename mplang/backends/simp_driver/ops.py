@@ -45,8 +45,8 @@ def _wrap_op_as_graph(op: Operation) -> Graph:
     # Create graph inputs
     graph_inputs = [g.add_input(f"in_{i}", any_type) for i in range(len(op.inputs))]
 
-    # Determine output types
-    output_types = [out.type for out in op.outputs] if op.outputs else [any_type]
+    # Determine output types (faithfully mirror the original op)
+    output_types = [out.type for out in op.outputs]
 
     # Add the operation (this handles outputs and value registration)
     g.add_op(
@@ -77,7 +77,7 @@ def _collect_to_hostvars(results: list[Any], num_outputs: int, world_size: int) 
         Single DriverVar if num_outputs == 1, else list of DriverVars
     """
     if num_outputs == 0:
-        return None
+        return []
 
     # Transpose [worker][output] -> [output][worker]
     # results[worker_idx] is a list of URIs for that worker's outputs
@@ -117,7 +117,7 @@ def _generic_simp_dispatch(interpreter: Any, op: Operation, *args: Any) -> Any:
     results = driver.collect(futures)
 
     # 4. Assemble into DriverVar(s)
-    num_outputs = len(op.outputs) if op.outputs else 1
+    num_outputs = len(op.outputs)
     return _collect_to_hostvars(results, num_outputs, world_size)
 
 

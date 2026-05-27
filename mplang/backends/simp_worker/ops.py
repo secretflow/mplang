@@ -53,13 +53,19 @@ def _pcall_static_worker_impl(
 
         try:
             result = interpreter.evaluate_graph(fn_graph, list(args))
-            # Return single value for single output (interpreter expects this)
-            return result[0] if len(op.outputs) == 1 else result
+            # Use inner graph's actual output count for safety
+            n_out = len(fn_graph.outputs)
+            if n_out == 0:
+                return []
+            return result[0] if n_out == 1 else result
         finally:
             worker.current_parties = prev_parties
     else:
         # No data for this rank
-        return None if len(op.outputs) == 1 else [None] * len(op.outputs)
+        n_out = len(op.outputs)
+        if n_out == 0:
+            return []
+        return None if n_out == 1 else [None] * n_out
 
 
 def _pcall_dynamic_worker_impl(
@@ -68,7 +74,10 @@ def _pcall_dynamic_worker_impl(
     """Worker implementation of pcall_dynamic."""
     fn_graph = op.regions[0]
     result = interpreter.evaluate_graph(fn_graph, list(args))
-    return result[0] if len(op.outputs) == 1 else result
+    n_out = len(fn_graph.outputs)
+    if n_out == 0:
+        return []
+    return result[0] if n_out == 1 else result
 
 
 def _shuffle_static_worker_impl(

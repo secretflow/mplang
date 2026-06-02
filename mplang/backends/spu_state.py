@@ -43,7 +43,7 @@ def _opt_int_env(name: str) -> int | None:
     return int(val) if val else None
 
 
-@dataclass
+@dataclass(frozen=True)
 class BrpcLinkConfig:
     """Tunables for the brpc-backed SPU link.
 
@@ -59,20 +59,22 @@ class BrpcLinkConfig:
     ``http_timeout_ms`` defaults to ``None`` (use brpc's own default) —
     long-running MPC jobs traversing a gateway with idle timeout should
     set this explicitly to cover the longest single RPC.
+
+    Frozen so instances are hashable and safe to embed in cache keys.
     """
 
     protocol: str = field(
-        default_factory=lambda: os.getenv("MPLANG_BRPC_PROTOCOL", "http")
+        default_factory=lambda: os.getenv("MPLANG_BRPC_PROTOCOL") or "http"
     )
     connection_type: str = field(
-        default_factory=lambda: os.getenv("MPLANG_BRPC_CONN_TYPE", "pooled")
+        default_factory=lambda: os.getenv("MPLANG_BRPC_CONN_TYPE") or "pooled"
     )
     recv_timeout_ms: int = field(
-        default_factory=lambda: int(os.getenv("MPLANG_BRPC_RECV_TIMEOUT_MS", "100000"))
+        default_factory=lambda: int(os.getenv("MPLANG_BRPC_RECV_TIMEOUT_MS") or 100000)
     )
     http_max_payload_size: int = field(
         default_factory=lambda: int(
-            os.getenv("MPLANG_BRPC_HTTP_MAX_PAYLOAD", str(32 * 1024 * 1024))
+            os.getenv("MPLANG_BRPC_HTTP_MAX_PAYLOAD") or 32 * 1024 * 1024
         )
     )
     # Per-RPC HTTP timeout. None = inherit brpc default. Set when going
@@ -82,11 +84,11 @@ class BrpcLinkConfig:
     )
     # Initial connect retry — tolerates peers that come up later.
     connect_retry_times: int = field(
-        default_factory=lambda: int(os.getenv("MPLANG_BRPC_CONNECT_RETRY_TIMES", "60"))
+        default_factory=lambda: int(os.getenv("MPLANG_BRPC_CONNECT_RETRY_TIMES") or 60)
     )
     connect_retry_interval_ms: int = field(
         default_factory=lambda: int(
-            os.getenv("MPLANG_BRPC_CONNECT_RETRY_INTERVAL_MS", "1000")
+            os.getenv("MPLANG_BRPC_CONNECT_RETRY_INTERVAL_MS") or 1000
         )
     )
 
@@ -115,10 +117,14 @@ class SPUState(DialectState):
         # Optional shared infrastructure (for per-request isolation via link.spawn)
         self._infra = infra
         self._brpc_config = brpc_config or BrpcLinkConfig()
-        # Key: (local_rank, world_size, protocol, field, link_mode, spu_endpoints)
+        # Key: (local_rank, world_size, protocol, field, link_mode, spu_endpoints, brpc_config)
+        # ``brpc_config`` participates only when link_mode == "brpc" (else None) so that
+        # callers passing custom configs don't silently reuse the first config's link.
         # Value: (Runtime, Io)
         self._runtimes: dict[
-            tuple[int, int, str, str, str, tuple[str, ...] | None],
+            tuple[
+                int, int, str, str, str, tuple[str, ...] | None, BrpcLinkConfig | None
+            ],
             tuple[spu_api.Runtime, spu_api.Io],
         ] = {}
         # Local template link cache (used when no WorkerInfra is provided)
@@ -204,6 +210,7 @@ class SPUState(DialectState):
             config.field,
             link_mode,
             tuple(spu_endpoints) if spu_endpoints else None,
+            self._brpc_config if link_mode == "brpc" else None,
         )
 
         if cache_key in self._runtimes:

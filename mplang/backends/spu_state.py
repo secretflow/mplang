@@ -37,6 +37,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _opt_int_env(name: str) -> int | None:
+    """Read an optional int env var; return None when unset/empty."""
+    val = os.getenv(name)
+    return int(val) if val else None
+
+
 @dataclass
 class BrpcLinkConfig:
     """Tunables for the brpc-backed SPU link.
@@ -49,6 +55,10 @@ class BrpcLinkConfig:
     traffic must traverse an L7 gateway that does not understand the
     default ``baidu_std`` binary protocol. HTTP/1.1 requires
     ``connection_type="pooled"`` to avoid head-of-line blocking.
+
+    ``http_timeout_ms`` defaults to ``None`` (use brpc's own default) —
+    long-running MPC jobs traversing a gateway with idle timeout should
+    set this explicitly to cover the longest single RPC.
     """
 
     protocol: str = field(
@@ -63,6 +73,22 @@ class BrpcLinkConfig:
     http_max_payload_size: int = field(
         default_factory=lambda: int(
             os.getenv("MPLANG_BRPC_HTTP_MAX_PAYLOAD", str(32 * 1024 * 1024))
+        )
+    )
+    # Per-RPC HTTP timeout. None = inherit brpc default. Set when going
+    # through a gateway with its own idle/request timeout.
+    http_timeout_ms: int | None = field(
+        default_factory=lambda: _opt_int_env("MPLANG_BRPC_HTTP_TIMEOUT_MS")
+    )
+    # Initial connect retry — tolerates peers that come up later.
+    connect_retry_times: int = field(
+        default_factory=lambda: int(
+            os.getenv("MPLANG_BRPC_CONNECT_RETRY_TIMES", "60")
+        )
+    )
+    connect_retry_interval_ms: int = field(
+        default_factory=lambda: int(
+            os.getenv("MPLANG_BRPC_CONNECT_RETRY_INTERVAL_MS", "1000")
         )
     )
 
@@ -268,19 +294,28 @@ class SPUState(DialectState):
         desc.http_max_payload_size = cfg.http_max_payload_size
         desc.brpc_channel_protocol = cfg.protocol
         desc.brpc_channel_connection_type = cfg.connection_type
+        desc.connect_retry_times = cfg.connect_retry_times
+        desc.connect_retry_interval_ms = cfg.connect_retry_interval_ms
+        if cfg.http_timeout_ms is not None:
+            desc.http_timeout_ms = cfg.http_timeout_ms
 
         for i, endpoint in enumerate(spu_endpoints):
             desc.add_party(f"P{i}", endpoint)
 
         logger.info(
             "Creating SPU brpc link: rank=%d, endpoints=%s, protocol=%s, "
-            "connection_type=%s, recv_timeout_ms=%d, http_max_payload_size=%d",
+            "connection_type=%s, recv_timeout_ms=%d, http_timeout_ms=%s, "
+            "http_max_payload_size=%d, connect_retry_times=%d, "
+            "connect_retry_interval_ms=%d",
             local_rank,
             spu_endpoints,
             cfg.protocol,
             cfg.connection_type,
             cfg.recv_timeout_ms,
+            cfg.http_timeout_ms,
             cfg.http_max_payload_size,
+            cfg.connect_retry_times,
+            cfg.connect_retry_interval_ms,
         )
 
         return libspu.link.create_brpc(desc, local_rank)

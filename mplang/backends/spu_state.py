@@ -52,10 +52,10 @@ class BrpcLinkConfig:
     """
 
     protocol: str = field(
-        default_factory=lambda: os.getenv("MPLANG_BRPC_PROTOCOL", "baidu_std")
+        default_factory=lambda: os.getenv("MPLANG_BRPC_PROTOCOL", "http")
     )
     connection_type: str = field(
-        default_factory=lambda: os.getenv("MPLANG_BRPC_CONN_TYPE", "single")
+        default_factory=lambda: os.getenv("MPLANG_BRPC_CONN_TYPE", "pooled")
     )
     recv_timeout_ms: int = field(
         default_factory=lambda: int(os.getenv("MPLANG_BRPC_RECV_TIMEOUT_MS", "100000"))

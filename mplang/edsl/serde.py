@@ -213,18 +213,15 @@ def to_json(obj: Any) -> dict[str, Any]:
         pd = None
 
     if pa is not None and isinstance(obj, pa.Table):
+        table_obj: Any = obj
+    elif pa is not None and pd is not None and isinstance(obj, pd.DataFrame):
+        table_obj = pa.Table.from_pandas(obj, preserve_index=False)
+    else:
+        table_obj = None
+    if table_obj is not None:
         sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, obj.schema) as writer:
-            writer.write_table(obj)
-        return {
-            "_kind": "_pa_table",
-            "data": base64.b64encode(sink.getvalue().to_pybytes()).decode("ascii"),
-        }
-    if pa is not None and pd is not None and isinstance(obj, pd.DataFrame):
-        table = pa.Table.from_pandas(obj, preserve_index=False)
-        sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, table.schema) as writer:
-            writer.write_table(table)
+        with pa.ipc.new_stream(sink, table_obj.schema) as writer:
+            writer.write_table(table_obj)
         return {
             "_kind": "_pa_table",
             "data": base64.b64encode(sink.getvalue().to_pybytes()).decode("ascii"),
@@ -335,6 +332,7 @@ def from_json(data: dict[str, Any]) -> Any:
     # Tabular data round-tripped via pyarrow IPC (see to_json companion).
     if kind == "_pa_table":
         import pyarrow as pa
+
         buf = base64.b64decode(data["data"])
         return pa.ipc.open_stream(pa.BufferReader(buf)).read_all()
 
@@ -604,7 +602,10 @@ def _from_binary_json(data: dict[str, Any], segments: list[memoryview]) -> Any:
 
     if kind == "_pa_table_bref":
         import pyarrow as pa
-        buf = bytes(segments[data["bref"]])
+
+        # ``pa.BufferReader`` accepts any buffer-protocol object, so we pass
+        # the memoryview through to avoid an extra ``bytes(...)`` copy.
+        buf = segments[data["bref"]]
         return pa.ipc.open_stream(pa.BufferReader(buf)).read_all()
 
     if kind == "_list":

@@ -291,13 +291,11 @@ class TestArrowTableRoundTrip:
     def test_to_json_pa_table_roundtrip(self):
         import pyarrow as pa
 
-        t = pa.table(
-            {
-                "bin_id": [0, 1, 2, 3],
-                "edge": [0.1, 0.5, 0.9, 1.0],
-                "name": ["a", "b", "c", "d"],
-            }
-        )
+        t = pa.table({
+            "bin_id": [0, 1, 2, 3],
+            "edge": [0.1, 0.5, 0.9, 1.0],
+            "name": ["a", "b", "c", "d"],
+        })
         payload = serde.to_json(t)
         assert payload["_kind"] == "_pa_table"
 
@@ -307,15 +305,13 @@ class TestArrowTableRoundTrip:
         assert result.equals(t)
 
     def test_to_json_pandas_dataframe_roundtrip_as_pa_table(self):
-        import pandas as pd
+        pd = pytest.importorskip("pandas")
         import pyarrow as pa
 
-        df = pd.DataFrame(
-            {
-                "bin_id": [0, 1, 2, 3],
-                "edge": [0.1, 0.5, 0.9, 1.0],
-            }
-        )
+        df = pd.DataFrame({
+            "bin_id": [0, 1, 2, 3],
+            "edge": [0.1, 0.5, 0.9, 1.0],
+        })
         payload = serde.to_json(df)
         assert payload["_kind"] == "_pa_table"
 
@@ -343,7 +339,7 @@ class TestArrowTableRoundTrip:
         assert result.equals(t)
 
     def test_dumps_binary_pandas_dataframe_uses_segment_reference(self):
-        import pandas as pd
+        pd = pytest.importorskip("pandas")
         import pyarrow as pa
 
         df = pd.DataFrame({"a": [1, 2], "b": [3.5, 4.5]})

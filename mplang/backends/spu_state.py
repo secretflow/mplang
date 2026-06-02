@@ -82,9 +82,7 @@ class BrpcLinkConfig:
     )
     # Initial connect retry — tolerates peers that come up later.
     connect_retry_times: int = field(
-        default_factory=lambda: int(
-            os.getenv("MPLANG_BRPC_CONNECT_RETRY_TIMES", "60")
-        )
+        default_factory=lambda: int(os.getenv("MPLANG_BRPC_CONNECT_RETRY_TIMES", "60"))
     )
     connect_retry_interval_ms: int = field(
         default_factory=lambda: int(

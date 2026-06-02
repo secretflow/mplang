@@ -144,6 +144,7 @@ def to_json(obj: Any) -> dict[str, Any]:
     3. Be a list/tuple of serializable objects
     4. Be a dict with string keys and serializable values
     5. Be a numpy ndarray
+    6. Be a pyarrow Table or pandas DataFrame (round-tripped via Arrow IPC)
 
     Args:
         obj: Object to serialize
@@ -194,6 +195,36 @@ def to_json(obj: Any) -> dict[str, Any]:
             "dtype": str(obj.dtype),
             "shape": list(obj.shape),
             "data": base64.b64encode(obj.tobytes()).decode("ascii"),
+        }
+
+    # Tabular data with named columns. Both pyarrow Table and pandas
+    # DataFrame expose ``__array__`` and would otherwise fall into the
+    # ndarray branch below, losing column names and dtype info. Use pyarrow
+    # IPC for lossless round-trip. Trigger: any op-attr carrying tabular
+    # data (e.g. ``ibis.memtable({...})`` placed via ``mp.put`` →
+    # ``simp.constant`` → ``table.constant_p``).
+    try:
+        import pyarrow as pa
+    except ImportError:  # pragma: no cover - pyarrow is a hard dep elsewhere
+        pa = None
+    try:
+        import pandas as pd
+    except ImportError:  # pragma: no cover
+        pd = None
+
+    if pa is not None and isinstance(obj, pa.Table):
+        table_obj: Any = obj
+    elif pa is not None and pd is not None and isinstance(obj, pd.DataFrame):
+        table_obj = pa.Table.from_pandas(obj, preserve_index=False)
+    else:
+        table_obj = None
+    if table_obj is not None:
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, table_obj.schema) as writer:
+            writer.write_table(table_obj)
+        return {
+            "_kind": "_pa_table",
+            "data": base64.b64encode(sink.getvalue().to_pybytes()).decode("ascii"),
         }
 
     # Array-like (JAX, etc.) - convert to numpy
@@ -297,6 +328,13 @@ def from_json(data: dict[str, Any]) -> Any:
             arr[i] = item
         # Always reshape - empty tuple () means scalar, which requires reshape
         return arr.reshape(shape)
+
+    # Tabular data round-tripped via pyarrow IPC (see to_json companion).
+    if kind == "_pa_table":
+        import pyarrow as pa
+
+        buf = base64.b64decode(data["data"])
+        return pa.ipc.open_stream(pa.BufferReader(buf)).read_all()
 
     # Registered classes
     if kind in _CLASS_REGISTRY:
@@ -485,6 +523,30 @@ def _to_binary_json(obj: Any, ctx: BinaryContext) -> dict[str, Any]:
         seg_idx = ctx.add_segment(obj)
         return {"_kind": "_bytes_bref", "bref": seg_idx}
 
+    # Tabular data (parity with to_json) — emit Arrow IPC bytes as a
+    # binary segment instead of inlining base64. Must come before the
+    # ``__array__`` check, since pa.Table / pd.DataFrame both expose it.
+    try:
+        import pyarrow as pa
+    except ImportError:  # pragma: no cover
+        pa = None
+    try:
+        import pandas as pd
+    except ImportError:  # pragma: no cover
+        pd = None
+
+    table_obj: Any = None
+    if pa is not None and isinstance(obj, pa.Table):
+        table_obj = obj
+    elif pa is not None and pd is not None and isinstance(obj, pd.DataFrame):
+        table_obj = pa.Table.from_pandas(obj, preserve_index=False)
+    if table_obj is not None:
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, table_obj.schema) as writer:
+            writer.write_table(table_obj)
+        seg_idx = ctx.add_segment(sink.getvalue().to_pybytes())
+        return {"_kind": "_pa_table_bref", "bref": seg_idx}
+
     # Array-like (e.g., JAX arrays)
     if hasattr(obj, "__array__"):
         return _to_binary_json(np.asarray(obj), ctx)
@@ -537,6 +599,14 @@ def _from_binary_json(data: dict[str, Any], segments: list[memoryview]) -> Any:
         raw = segments[data["bref"]]
         arr = np.frombuffer(raw, dtype=np.dtype(data["dtype"]))
         return arr.reshape(tuple(data["shape"])).copy()
+
+    if kind == "_pa_table_bref":
+        import pyarrow as pa
+
+        # ``pa.BufferReader`` accepts any buffer-protocol object, so we pass
+        # the memoryview through to avoid an extra ``bytes(...)`` copy.
+        buf = segments[data["bref"]]
+        return pa.ipc.open_stream(pa.BufferReader(buf)).read_all()
 
     if kind == "_list":
         return [_from_binary_json(item, segments) for item in data["items"]]

@@ -276,6 +276,85 @@ class TestBinaryWireFormat:
 
 
 # =============================================================================
+# Tests: Tabular Data (pyarrow.Table / pandas.DataFrame)
+# =============================================================================
+
+
+class TestArrowTableRoundTrip:
+    """Tabular data must round-trip losslessly, preserving column names + dtypes.
+
+    Both ``pa.Table`` and ``pd.DataFrame`` expose ``__array__``. Before the
+    fix they fell into the numpy ndarray branch which collapsed the columns
+    into a single 2-D array, losing names and per-column dtypes.
+    """
+
+    def test_to_json_pa_table_roundtrip(self):
+        import pyarrow as pa
+
+        t = pa.table({
+            "bin_id": [0, 1, 2, 3],
+            "edge": [0.1, 0.5, 0.9, 1.0],
+            "name": ["a", "b", "c", "d"],
+        })
+        payload = serde.to_json(t)
+        assert payload["_kind"] == "_pa_table"
+
+        result = serde.from_json(payload)
+        assert isinstance(result, pa.Table)
+        assert result.schema.equals(t.schema)
+        assert result.equals(t)
+
+    def test_to_json_pandas_dataframe_roundtrip_as_pa_table(self):
+        pd = pytest.importorskip("pandas")
+        import pyarrow as pa
+
+        df = pd.DataFrame({
+            "bin_id": [0, 1, 2, 3],
+            "edge": [0.1, 0.5, 0.9, 1.0],
+        })
+        payload = serde.to_json(df)
+        assert payload["_kind"] == "_pa_table"
+
+        result = serde.from_json(payload)
+        # Deserialized as pa.Table (canonical tabular form). Column names and
+        # numeric dtypes must survive.
+        assert isinstance(result, pa.Table)
+        assert result.column_names == ["bin_id", "edge"]
+        assert pa.Table.from_pandas(df, preserve_index=False).equals(result)
+
+    def test_dumps_binary_pa_table_uses_segment_reference(self):
+        import pyarrow as pa
+
+        t = pa.table({"x": [1, 2, 3], "y": [10.0, 20.0, 30.0]})
+        serialized = serde.dumps_binary(t)
+        meta_len = struct.unpack_from("<I", serialized, 0)[0]
+        meta = json.loads(serialized[4 : 4 + meta_len].decode("utf-8"))
+
+        assert meta["_kind"] == "_pa_table_bref"
+        assert "bref" in meta
+        assert "data" not in meta  # binary path must not base64-inline
+
+        result = serde.loads_binary(serialized)
+        assert isinstance(result, pa.Table)
+        assert result.equals(t)
+
+    def test_dumps_binary_pandas_dataframe_uses_segment_reference(self):
+        pd = pytest.importorskip("pandas")
+        import pyarrow as pa
+
+        df = pd.DataFrame({"a": [1, 2], "b": [3.5, 4.5]})
+        serialized = serde.dumps_binary(df)
+        meta_len = struct.unpack_from("<I", serialized, 0)[0]
+        meta = json.loads(serialized[4 : 4 + meta_len].decode("utf-8"))
+
+        assert meta["_kind"] == "_pa_table_bref"
+
+        result = serde.loads_binary(serialized)
+        assert isinstance(result, pa.Table)
+        assert result.column_names == ["a", "b"]
+
+
+# =============================================================================
 # Tests: Error Handling
 # =============================================================================
 

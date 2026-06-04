@@ -366,11 +366,6 @@ class ObjectStore:
                 )
             self._backends[persistent.scheme] = persistent
 
-    @property
-    def persistent(self) -> StoreBackend | None:
-        """The persistent storage backend, or ``None`` if not configured."""
-        return self._persistent
-
     # ------------------------------------------------------------------
     # URI helpers
     # ------------------------------------------------------------------

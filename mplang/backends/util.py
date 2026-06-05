@@ -101,21 +101,16 @@ def _refine_stablehlo(code: str, args: tuple[TensorLike, ...]) -> str:
         cmd = [
             "stablehlo-opt",
             input_file,
+            "--inline",
             f"--stablehlo-refine-arguments={refine_args}",
             "--stablehlo-refine-shapes",
             "--stablehlo-canonicalize-dynamism",
+            "--stablehlo-check-shape-assertions",
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-        # Filter out shape_assertion custom calls that cause compilation errors
-        filtered_output = "\n".join(
-            line
-            for line in result.stdout.split("\n")
-            if "stablehlo.custom_call @shape_assertion" not in line
-        )
-
-        return filtered_output
+        return result.stdout
 
     except subprocess.CalledProcessError as e:
         # Re-throw with additional information

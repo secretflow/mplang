@@ -614,7 +614,7 @@ class Interpreter(AbstractInterpreter):
         2. Stops the execution tracer (if owned).
         3. Shuts down any attached dialect states (e.g., stopping drivers).
         """
-        logger.info("Shutting down Interpreter '%s'", self.name)
+        logger.debug("Shutting down Interpreter '%s'", self.name)
 
         # 1. Shutdown Executor (only if we own it)
         if self.executor and self._owns_executor:

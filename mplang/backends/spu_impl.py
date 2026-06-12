@@ -25,6 +25,7 @@ from typing import Any, ClassVar
 import numpy as np
 import spu.api as spu_api
 import spu.libspu as libspu
+import spu.libspu.logging as spu_logging
 
 from mplang.backends.spu_state import SPUState
 from mplang.backends.tensor_impl import TensorValue
@@ -36,6 +37,13 @@ from mplang.runtime.value import WrapValue
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Quiet down libspu's own logger: it defaults to INFO with a console sink,
+# which floods stderr during MPC execution. Restrict it to ERROR.
+# Done once at backend import time.
+_spu_log_options = spu_logging.LogOptions()
+_spu_log_options.log_level = spu_logging.LogLevel.ERROR
+spu_logging.setup_logging(_spu_log_options)
 
 # =============================================================================
 # SPU Share Wrapper

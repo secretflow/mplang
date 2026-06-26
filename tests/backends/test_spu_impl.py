@@ -196,6 +196,45 @@ def test_spu_channels_mode_simulation():
             sim._simp_cluster.shutdown()
 
 
+def test_spu_dynamic_shape_allows_cache_custom_calls():
+    """SPU dynamic JAX export should allow SPU-owned cache custom calls."""
+    from spu.experimental import drop_cached_var, make_cached_var
+
+    def exec_spu(x):
+        spu_config = spu.SPUConfig()
+        spu_parties = (0, 1, 2)
+
+        x_shares = simp.pcall_static((0,), spu.make_shares, spu_config, x, count=3)
+        x_enc = simp.converge(*[
+            simp.shuffle_static(x_shares[i], {spu_parties[i]: 0}) for i in range(3)
+        ])
+
+        def cache_roundtrip(v):
+            cached = make_cached_var(v)
+            return drop_cached_var(cached) + 1.0
+
+        z_enc = simp.pcall_static(
+            spu_parties, spu.run_jax, spu_config, cache_roundtrip, x_enc
+        )
+        z_shares = [
+            simp.shuffle_static(
+                simp.pcall_static((source,), lambda x: x, z_enc), {0: source}
+            )
+            for source in spu_parties
+        ]
+        return simp.pcall_static(
+            (0,), lambda *s: spu.reconstruct(spu_config, s), *z_shares
+        )
+
+    tracer = el.Tracer()
+    x_obj = tracer._new_arg(elt.TensorType(elt.f32, (-1, 2)))
+    traced_fn = mp.compile(exec_spu, x_obj)
+    out_type = traced_fn.graph.outputs[0].type
+    assert isinstance(out_type, elt.MPType)
+    assert isinstance(out_type.value_type, elt.TensorType)
+    assert out_type.value_type.shape == (-1, 2)
+
+
 def test_spu_run_dynamic_shape():
     """Test SPU backend with dynamic shapes (using -1 for unknown dimensions).
 

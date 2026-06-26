@@ -324,7 +324,11 @@ def run_jax(
                 in_vars,
                 symbolic_shapes,
                 platforms=("interpreter",),
-                disabled_checks=["spu.reveal"],
+                disabled_checks=[
+                    "spu.reveal",
+                    "spu.make_cached_var",
+                    "spu.drop_cached_var",
+                ],
             )
         output_types = compilation.output_types
         out_tree = compilation.out_tree

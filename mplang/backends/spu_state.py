@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import spu.api as spu_api
@@ -117,18 +117,52 @@ class SPUState(DialectState):
         # Optional shared infrastructure (for per-request isolation via link.spawn)
         self._infra = infra
         self._brpc_config = brpc_config or BrpcLinkConfig()
-        # Key: (local_rank, world_size, protocol, field, link_mode, spu_endpoints, brpc_config)
-        # ``brpc_config`` participates only when link_mode == "brpc" (else None) so that
-        # callers passing custom configs don't silently reuse the first config's link.
+        # Key: (local_rank, world_size, protocol, field, fxp_fraction_bits,
+        # link_mode, spu_endpoints, brpc_config). ``brpc_config`` participates
+        # only when link_mode == "brpc" (else None) so callers passing custom
+        # configs don't silently reuse the first config's link.
         # Value: (Runtime, Io)
         self._runtimes: dict[
             tuple[
-                int, int, str, str, str, tuple[str, ...] | None, BrpcLinkConfig | None
+                int,
+                int,
+                str,
+                str,
+                int,
+                str,
+                tuple[str, ...] | None,
+                BrpcLinkConfig | None,
             ],
             tuple[spu_api.Runtime, spu_api.Io],
         ] = {}
         # Local template link cache (used when no WorkerInfra is provided)
         self._template_links: dict[tuple, libspu.link.Context] = {}
+
+    def _effective_brpc_config(self, config: spu.SPUConfig) -> BrpcLinkConfig:
+        """Merge per-SPU link_desc over this state's default brpc config."""
+        link_desc = config.link_desc
+        if link_desc is None:
+            return self._brpc_config
+
+        overrides: dict[str, Any] = {}
+        if link_desc.brpc_channel_protocol is not None:
+            overrides["protocol"] = link_desc.brpc_channel_protocol
+        if link_desc.brpc_channel_connection_type is not None:
+            overrides["connection_type"] = link_desc.brpc_channel_connection_type
+        if link_desc.recv_timeout_ms is not None:
+            overrides["recv_timeout_ms"] = link_desc.recv_timeout_ms
+        if link_desc.http_max_payload_size is not None:
+            overrides["http_max_payload_size"] = link_desc.http_max_payload_size
+        if link_desc.http_timeout_ms is not None:
+            overrides["http_timeout_ms"] = link_desc.http_timeout_ms
+        if link_desc.connect_retry_times is not None:
+            overrides["connect_retry_times"] = link_desc.connect_retry_times
+        if link_desc.connect_retry_interval_ms is not None:
+            overrides["connect_retry_interval_ms"] = link_desc.connect_retry_interval_ms
+
+        if not overrides:
+            return self._brpc_config
+        return replace(self._brpc_config, **overrides)
 
     def _get_template_link(
         self,
@@ -138,6 +172,7 @@ class SPUState(DialectState):
         communicator: object | None,
         parties: list[int] | None,
         spu_endpoints: list[str] | None,
+        brpc_config: BrpcLinkConfig | None = None,
     ) -> libspu.link.Context:
         """Get or create a template link for the given configuration.
 
@@ -147,7 +182,8 @@ class SPUState(DialectState):
 
         def _create() -> libspu.link.Context:
             if spu_endpoints:
-                return self._create_brpc_link(local_rank, spu_endpoints)
+                cfg = brpc_config or self._brpc_config
+                return self._create_brpc_link(local_rank, spu_endpoints, cfg)
             elif communicator is not None:
                 if parties is None:
                     raise ValueError("parties required when using communicator")
@@ -203,14 +239,18 @@ class SPUState(DialectState):
         else:
             link_mode = "mem"
 
+        brpc_config = (
+            self._effective_brpc_config(config) if link_mode == "brpc" else None
+        )
         cache_key = (
             local_rank,
             spu_world_size,
             config.protocol,
             config.field,
+            config.fxp_fraction_bits,
             link_mode,
             tuple(spu_endpoints) if spu_endpoints else None,
-            self._brpc_config if link_mode == "brpc" else None,
+            brpc_config,
         )
 
         if cache_key in self._runtimes:
@@ -224,6 +264,7 @@ class SPUState(DialectState):
             communicator,
             parties,
             spu_endpoints,
+            brpc_config,
         )
         link = template_link.spawn()
 
@@ -290,10 +331,13 @@ class SPUState(DialectState):
         return libspu.link.create_with_channels(desc, local_rank, channels)
 
     def _create_brpc_link(
-        self, local_rank: int, spu_endpoints: list[str]
+        self,
+        local_rank: int,
+        spu_endpoints: list[str],
+        brpc_config: BrpcLinkConfig | None = None,
     ) -> libspu.link.Context:
         """Create BRPC link for distributed execution."""
-        cfg = self._brpc_config
+        cfg = brpc_config or self._brpc_config
         desc = libspu.link.Desc()  # type: ignore
         desc.recv_timeout_ms = cfg.recv_timeout_ms
         desc.http_max_payload_size = cfg.http_max_payload_size

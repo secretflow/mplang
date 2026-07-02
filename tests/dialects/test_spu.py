@@ -20,11 +20,79 @@ import pytest
 import mplang.edsl as el
 import mplang.edsl.typing as elt
 from mplang.dialects import simp, spu
+from mplang.edsl import serde
 
 
 def test_spu_config():
     config = spu.SPUConfig()
     assert config.protocol == "SEMI2K"
+    assert config.link_desc is None
+
+
+def test_spu_config_from_dict_rejects_non_dict():
+    with pytest.raises(TypeError, match=r"SPUConfig\.from_dict expects dict"):
+        spu.SPUConfig.from_dict("bad")
+
+
+def test_spu_link_desc_from_dict_rejects_non_dict():
+    with pytest.raises(TypeError, match=r"SPULinkDesc\.from_dict expects dict"):
+        spu.SPULinkDesc.from_dict([("recv_timeout_ms", 1)])
+
+
+def test_spu_config_from_secretflow_dict():
+    config = spu.SPUConfig.from_dict({
+        "runtime_config": {
+            "protocol": "ABY3",
+            "field": "FM64",
+            "fxp_fraction_bits": 20,
+        },
+        "link_desc": {
+            "connect_retry_times": 7200000,
+            "connect_retry_interval_ms": 7200000,
+            "brpc_channel_protocol": "http",
+            "brpc_channel_connection_type": "pooled",
+            "recv_timeout_ms": 7200000,
+            "http_timeout_ms": 7200000,
+            "http_max_payload_size": 67108864,
+        },
+    })
+
+    assert config.protocol == "ABY3"
+    assert config.field == "FM64"
+    assert config.fxp_fraction_bits == 20
+    assert config.link_desc is not None
+    assert config.link_desc.brpc_channel_protocol == "http"
+    assert config.link_desc.brpc_channel_connection_type == "pooled"
+    assert config.link_desc.recv_timeout_ms == 7200000
+    assert config.link_desc.http_timeout_ms == 7200000
+    assert config.link_desc.http_max_payload_size == 67108864
+    assert config.link_desc.connect_retry_times == 7200000
+    assert config.link_desc.connect_retry_interval_ms == 7200000
+
+
+def test_spu_config_json_roundtrip_keeps_link_desc():
+    config = spu.SPUConfig(
+        protocol="SEMI2K",
+        field="FM128",
+        fxp_fraction_bits=18,
+        link_desc=spu.SPULinkDesc(
+            recv_timeout_ms=1234,
+            http_timeout_ms=5678,
+            brpc_channel_protocol="h2",
+            brpc_channel_connection_type="pooled",
+        ),
+    )
+
+    payload = serde.to_json(config)
+    result = serde.from_json(payload)
+
+    assert result == config
+    assert payload["link_desc"] == {
+        "recv_timeout_ms": 1234,
+        "http_timeout_ms": 5678,
+        "brpc_channel_protocol": "h2",
+        "brpc_channel_connection_type": "pooled",
+    }
 
 
 def test_encrypt_decrypt_flow():

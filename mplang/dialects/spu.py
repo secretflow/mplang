@@ -94,6 +94,48 @@ from mplang.utils import normalize_fn
 # ==============================================================================
 
 
+@dataclass(frozen=True)
+class SPULinkDesc:
+    """SPU brpc link configuration compatible with SecretFlow link_desc."""
+
+    recv_timeout_ms: int | None = None
+    http_timeout_ms: int | None = None
+    http_max_payload_size: int | None = None
+    brpc_channel_protocol: str | None = None
+    brpc_channel_connection_type: str | None = None
+    connect_retry_times: int | None = None
+    connect_retry_interval_ms: int | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any] | SPULinkDesc) -> SPULinkDesc:
+        if isinstance(d, SPULinkDesc):
+            return d
+        if not isinstance(d, dict):
+            raise TypeError(f"SPULinkDesc.from_dict expects dict, got {type(d)!r}")
+        return cls(
+            recv_timeout_ms=d.get("recv_timeout_ms"),
+            http_timeout_ms=d.get("http_timeout_ms"),
+            http_max_payload_size=d.get("http_max_payload_size"),
+            brpc_channel_protocol=d.get("brpc_channel_protocol") or d.get("protocol"),
+            brpc_channel_connection_type=d.get("brpc_channel_connection_type")
+            or d.get("connection_type"),
+            connect_retry_times=d.get("connect_retry_times"),
+            connect_retry_interval_ms=d.get("connect_retry_interval_ms"),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        data = {
+            "recv_timeout_ms": self.recv_timeout_ms,
+            "http_timeout_ms": self.http_timeout_ms,
+            "http_max_payload_size": self.http_max_payload_size,
+            "brpc_channel_protocol": self.brpc_channel_protocol,
+            "brpc_channel_connection_type": self.brpc_channel_connection_type,
+            "connect_retry_times": self.connect_retry_times,
+            "connect_retry_interval_ms": self.connect_retry_interval_ms,
+        }
+        return {key: value for key, value in data.items() if value is not None}
+
+
 @serde.register_class
 @dataclass(frozen=True)
 class SPUConfig:
@@ -103,37 +145,55 @@ class SPUConfig:
         protocol: SPU protocol (e.g., "SEMI2K", "ABY3").
         field: SPU field type (e.g., "FM64", "FM128").
         fxp_fraction_bits: Fixed-point fraction bits.
+        link_desc: Optional brpc link configuration.
     """
 
     protocol: str = "SEMI2K"
     field: str = "FM128"
     fxp_fraction_bits: int = 18
+    link_desc: SPULinkDesc | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> SPUConfig:
+        if not isinstance(d, dict):
+            raise TypeError(f"SPUConfig.from_dict expects dict, got {type(d)!r}")
+        runtime_config = d.get("runtime_config") or {}
+        if not isinstance(runtime_config, dict):
+            raise TypeError(
+                f"SPUConfig.runtime_config must be a dict, got {runtime_config!r}"
+            )
+        link_desc = d.get("link_desc")
+        protocol = cast(
+            str, runtime_config.get("protocol", d.get("protocol", "SEMI2K"))
+        )
+        field = cast(str, runtime_config.get("field", d.get("field", "FM128")))
+        fxp_fraction_bits = cast(
+            int,
+            runtime_config.get("fxp_fraction_bits", d.get("fxp_fraction_bits", 18)),
+        )
         return cls(
-            protocol=d.get("protocol", "SEMI2K"),
-            field=d.get("field", "FM128"),
-            fxp_fraction_bits=d.get("fxp_fraction_bits", 18),
+            protocol=protocol,
+            field=field,
+            fxp_fraction_bits=fxp_fraction_bits,
+            link_desc=SPULinkDesc.from_dict(link_desc) if link_desc else None,
         )
 
     # --- Serde methods ---
     _serde_kind: ClassVar[str] = "spu.SPUConfig"
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "protocol": self.protocol,
             "field": self.field,
             "fxp_fraction_bits": self.fxp_fraction_bits,
         }
+        if self.link_desc is not None:
+            data["link_desc"] = self.link_desc.to_json()
+        return data
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> SPUConfig:
-        return cls(
-            protocol=data["protocol"],
-            field=data["field"],
-            fxp_fraction_bits=data["fxp_fraction_bits"],
-        )
+        return cls.from_dict(data)
 
 
 # ==============================================================================

@@ -110,6 +110,8 @@ class SPULinkDesc:
     def from_dict(cls, d: dict[str, Any] | SPULinkDesc) -> SPULinkDesc:
         if isinstance(d, SPULinkDesc):
             return d
+        if not isinstance(d, dict):
+            raise TypeError(f"SPULinkDesc.from_dict expects dict, got {type(d)!r}")
         return cls(
             recv_timeout_ms=d.get("recv_timeout_ms"),
             http_timeout_ms=d.get("http_timeout_ms"),
@@ -153,18 +155,26 @@ class SPUConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> SPUConfig:
+        if not isinstance(d, dict):
+            raise TypeError(f"SPUConfig.from_dict expects dict, got {type(d)!r}")
         runtime_config = d.get("runtime_config") or {}
         if not isinstance(runtime_config, dict):
             raise TypeError(
                 f"SPUConfig.runtime_config must be a dict, got {runtime_config!r}"
             )
         link_desc = d.get("link_desc")
+        protocol = cast(
+            str, runtime_config.get("protocol", d.get("protocol", "SEMI2K"))
+        )
+        field = cast(str, runtime_config.get("field", d.get("field", "FM128")))
+        fxp_fraction_bits = cast(
+            int,
+            runtime_config.get("fxp_fraction_bits", d.get("fxp_fraction_bits", 18)),
+        )
         return cls(
-            protocol=runtime_config.get("protocol", d.get("protocol", "SEMI2K")),
-            field=runtime_config.get("field", d.get("field", "FM128")),
-            fxp_fraction_bits=runtime_config.get(
-                "fxp_fraction_bits", d.get("fxp_fraction_bits", 18)
-            ),
+            protocol=protocol,
+            field=field,
+            fxp_fraction_bits=fxp_fraction_bits,
             link_desc=SPULinkDesc.from_dict(link_desc) if link_desc else None,
         )
 

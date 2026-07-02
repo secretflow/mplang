@@ -29,6 +29,16 @@ def test_spu_config():
     assert config.link_desc is None
 
 
+def test_spu_config_from_dict_rejects_non_dict():
+    with pytest.raises(TypeError, match=r"SPUConfig\.from_dict expects dict"):
+        spu.SPUConfig.from_dict("bad")
+
+
+def test_spu_link_desc_from_dict_rejects_non_dict():
+    with pytest.raises(TypeError, match=r"SPULinkDesc\.from_dict expects dict"):
+        spu.SPULinkDesc.from_dict([("recv_timeout_ms", 1)])
+
+
 def test_spu_config_from_secretflow_dict():
     config = spu.SPUConfig.from_dict({
         "runtime_config": {

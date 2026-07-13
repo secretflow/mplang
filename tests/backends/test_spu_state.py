@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from mplang.backends import spu_state
 from mplang.backends.spu_state import BrpcLinkConfig, SPUState
 from mplang.dialects import spu
@@ -54,8 +56,17 @@ def test_effective_brpc_config_merges_spu_link_desc() -> None:
     assert effective.connect_retry_interval_ms == 4
 
 
-def test_runtime_cache_distinguishes_profiling_config_and_reuses_link(
-    monkeypatch,
+@pytest.mark.parametrize(
+    "profiling_flag",
+    [
+        "enable_pphlo_profile",
+        "enable_hal_profile",
+        "enable_pphlo_trace",
+        "enable_action_trace",
+    ],
+)
+def test_runtime_cache_distinguishes_each_profiling_config_and_reuses_link(
+    monkeypatch, profiling_flag
 ) -> None:
     class FakeTemplateLink:
         def spawn(self):
@@ -75,12 +86,7 @@ def test_runtime_cache_distinguishes_profiling_config_and_reuses_link(
 
     state = SPUState()
     default_config = spu.SPUConfig()
-    profiling_config = spu.SPUConfig(
-        enable_pphlo_profile=True,
-        enable_hal_profile=True,
-        enable_pphlo_trace=True,
-        enable_action_trace=True,
-    )
+    profiling_config = spu.SPUConfig(**{profiling_flag: True})
 
     default_runtime = state.get_or_create(0, 1, default_config)
     cached_default_runtime = state.get_or_create(0, 1, default_config)

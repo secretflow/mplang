@@ -56,6 +56,16 @@ class StoreBackend(ABC):
         self._root_path: str | None = root_path
 
     @property
+    def root_path(self) -> str | None:
+        """Base path for all storage operations.
+
+        Returns the configured root directory (local path, S3 prefix, etc.)
+        under which all keys are resolved.  May be ``None`` for backends
+        that do not use a root path (e.g. in-memory).
+        """
+        return self._root_path
+
+    @property
     @abstractmethod
     def scheme(self) -> str:
         """URI scheme identifying this backend (e.g. ``mem``, ``fs``, ``s3``)."""

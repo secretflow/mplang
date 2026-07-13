@@ -94,6 +94,21 @@ from mplang.utils import normalize_fn
 # ==============================================================================
 
 
+def _parse_bool(value: Any, field_name: str) -> bool:
+    """Parse a boolean config value without truthiness coercion."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise ValueError(
+        f"SPUConfig.{field_name} must be a boolean or 'true'/'false', got {value!r}"
+    )
+
+
 @dataclass(frozen=True)
 class SPULinkDesc:
     """SPU brpc link configuration compatible with SecretFlow link_desc."""
@@ -145,19 +160,29 @@ class SPUConfig:
         protocol: SPU protocol (e.g., "SEMI2K", "ABY3").
         field: SPU field type (e.g., "FM64", "FM128").
         fxp_fraction_bits: Fixed-point fraction bits.
+        enable_pphlo_profile: Whether to emit PPHLO profiling summaries.
+        enable_hal_profile: Whether to emit HAL profiling summaries.
+        enable_pphlo_trace: Whether to emit detailed PPHLO traces.
+        enable_action_trace: Whether to emit detailed action traces.
         link_desc: Optional brpc link configuration.
     """
 
     protocol: str = "SEMI2K"
     field: str = "FM128"
     fxp_fraction_bits: int = 18
+    enable_pphlo_profile: bool = False
+    enable_hal_profile: bool = False
+    enable_pphlo_trace: bool = False
+    enable_action_trace: bool = False
     link_desc: SPULinkDesc | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> SPUConfig:
         if not isinstance(d, dict):
             raise TypeError(f"SPUConfig.from_dict expects dict, got {type(d)!r}")
-        runtime_config = d.get("runtime_config") or {}
+        runtime_config = d.get("runtime_config", {})
+        if runtime_config is None:
+            runtime_config = {}
         if not isinstance(runtime_config, dict):
             raise TypeError(
                 f"SPUConfig.runtime_config must be a dict, got {runtime_config!r}"
@@ -171,10 +196,19 @@ class SPUConfig:
             int,
             runtime_config.get("fxp_fraction_bits", d.get("fxp_fraction_bits", 18)),
         )
+
+        def profiling_flag(name: str) -> bool:
+            value = runtime_config.get(name, d.get(name, False))
+            return _parse_bool(value, name)
+
         return cls(
             protocol=protocol,
             field=field,
             fxp_fraction_bits=fxp_fraction_bits,
+            enable_pphlo_profile=profiling_flag("enable_pphlo_profile"),
+            enable_hal_profile=profiling_flag("enable_hal_profile"),
+            enable_pphlo_trace=profiling_flag("enable_pphlo_trace"),
+            enable_action_trace=profiling_flag("enable_action_trace"),
             link_desc=SPULinkDesc.from_dict(link_desc) if link_desc else None,
         )
 
@@ -186,6 +220,10 @@ class SPUConfig:
             "protocol": self.protocol,
             "field": self.field,
             "fxp_fraction_bits": self.fxp_fraction_bits,
+            "enable_pphlo_profile": self.enable_pphlo_profile,
+            "enable_hal_profile": self.enable_hal_profile,
+            "enable_pphlo_trace": self.enable_pphlo_trace,
+            "enable_action_trace": self.enable_action_trace,
         }
         if self.link_desc is not None:
             data["link_desc"] = self.link_desc.to_json()

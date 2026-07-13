@@ -24,6 +24,24 @@ from mplang.dialects import simp, spu
 from mplang.edsl import typing as elt
 
 
+def test_to_runtime_config_preserves_profiling_flags():
+    from mplang.backends.spu_impl import to_runtime_config
+
+    runtime_config = to_runtime_config(
+        spu.SPUConfig(
+            enable_pphlo_profile=True,
+            enable_hal_profile=True,
+            enable_pphlo_trace=True,
+            enable_action_trace=True,
+        )
+    )
+
+    assert runtime_config.enable_pphlo_profile is True
+    assert runtime_config.enable_hal_profile is True
+    assert runtime_config.enable_pphlo_trace is True
+    assert runtime_config.enable_action_trace is True
+
+
 def test_spu_e2e_simulation():
     """Test SPU end-to-end flow using SimpSimulator."""
     # 1. Setup

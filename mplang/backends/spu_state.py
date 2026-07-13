@@ -118,9 +118,10 @@ class SPUState(DialectState):
         self._infra = infra
         self._brpc_config = brpc_config or BrpcLinkConfig()
         # Key: (local_rank, world_size, protocol, field, fxp_fraction_bits,
-        # link_mode, spu_endpoints, brpc_config). ``brpc_config`` participates
-        # only when link_mode == "brpc" (else None) so callers passing custom
-        # configs don't silently reuse the first config's link.
+        # profiling flags, link_mode, spu_endpoints, brpc_config).
+        # ``brpc_config`` participates only when link_mode == "brpc" (else None)
+        # so callers passing custom configs don't silently reuse the first
+        # config's link.
         # Value: (Runtime, Io)
         self._runtimes: dict[
             tuple[
@@ -129,6 +130,10 @@ class SPUState(DialectState):
                 str,
                 str,
                 int,
+                bool,
+                bool,
+                bool,
+                bool,
                 str,
                 tuple[str, ...] | None,
                 BrpcLinkConfig | None,
@@ -242,7 +247,7 @@ class SPUState(DialectState):
         brpc_config = (
             self._effective_brpc_config(config) if link_mode == "brpc" else None
         )
-        cache_key = (
+        link_cache_key = (
             local_rank,
             spu_world_size,
             config.protocol,
@@ -252,13 +257,27 @@ class SPUState(DialectState):
             tuple(spu_endpoints) if spu_endpoints else None,
             brpc_config,
         )
+        runtime_cache_key = (
+            local_rank,
+            spu_world_size,
+            config.protocol,
+            config.field,
+            config.fxp_fraction_bits,
+            config.enable_pphlo_profile,
+            config.enable_hal_profile,
+            config.enable_pphlo_trace,
+            config.enable_action_trace,
+            link_mode,
+            tuple(spu_endpoints) if spu_endpoints else None,
+            brpc_config,
+        )
 
-        if cache_key in self._runtimes:
-            return self._runtimes[cache_key]
+        if runtime_cache_key in self._runtimes:
+            return self._runtimes[runtime_cache_key]
 
         # Unified path: get-or-create template link, then spawn for isolation
         template_link = self._get_template_link(
-            cache_key,
+            link_cache_key,
             local_rank,
             spu_world_size,
             communicator,
@@ -273,7 +292,7 @@ class SPUState(DialectState):
         runtime = spu_api.Runtime(link, runtime_config)
         io = spu_api.Io(spu_world_size, runtime_config)
 
-        self._runtimes[cache_key] = (runtime, io)
+        self._runtimes[runtime_cache_key] = (runtime, io)
         return runtime, io
 
     def _create_mem_link(

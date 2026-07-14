@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from mplang.backends import spu_state
 from mplang.backends.spu_state import BrpcLinkConfig, SPUState
 from mplang.dialects import spu
@@ -52,6 +54,52 @@ def test_effective_brpc_config_merges_spu_link_desc() -> None:
     assert effective.http_max_payload_size == 1024
     assert effective.connect_retry_times == 3
     assert effective.connect_retry_interval_ms == 4
+
+
+@pytest.mark.parametrize(
+    "profiling_flag",
+    [
+        "enable_pphlo_profile",
+        "enable_hal_profile",
+        "enable_pphlo_trace",
+        "enable_action_trace",
+    ],
+)
+def test_runtime_cache_distinguishes_each_profiling_config_and_reuses_link(
+    monkeypatch, profiling_flag
+) -> None:
+    class FakeTemplateLink:
+        def spawn(self):
+            return object()
+
+    template_link = FakeTemplateLink()
+    link_keys = []
+    monkeypatch.setattr(
+        SPUState,
+        "_get_template_link",
+        lambda self, cache_key, *args, **kwargs: (
+            link_keys.append(cache_key) or template_link
+        ),
+    )
+    monkeypatch.setattr(spu_state.spu_api, "Runtime", lambda link, config: object())
+    monkeypatch.setattr(spu_state.spu_api, "Io", lambda world_size, config: object())
+
+    state = SPUState()
+    default_config = spu.SPUConfig()
+    profiling_config = spu.SPUConfig(**{profiling_flag: True})
+
+    default_runtime = state.get_or_create(0, 1, default_config)
+    cached_default_runtime = state.get_or_create(0, 1, default_config)
+    assert cached_default_runtime[0] is default_runtime[0]
+    assert cached_default_runtime[1] is default_runtime[1]
+
+    profiling_runtime = state.get_or_create(0, 1, profiling_config)
+    assert profiling_runtime[0] is not default_runtime[0]
+    assert profiling_runtime[1] is not default_runtime[1]
+    cached_profiling_runtime = state.get_or_create(0, 1, profiling_config)
+    assert cached_profiling_runtime[0] is profiling_runtime[0]
+    assert cached_profiling_runtime[1] is profiling_runtime[1]
+    assert link_keys[0] == link_keys[1]
 
 
 def test_create_brpc_link_applies_explicit_config(monkeypatch) -> None:

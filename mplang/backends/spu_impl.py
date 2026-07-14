@@ -115,6 +115,10 @@ def to_runtime_config(config: spu.SPUConfig) -> libspu.RuntimeConfig:
     runtime_config.protocol = getattr(libspu.ProtocolKind, config.protocol)
     runtime_config.field = getattr(libspu.FieldType, config.field)
     runtime_config.fxp_fraction_bits = config.fxp_fraction_bits
+    runtime_config.enable_pphlo_profile = config.enable_pphlo_profile
+    runtime_config.enable_hal_profile = config.enable_hal_profile
+    runtime_config.enable_pphlo_trace = config.enable_pphlo_trace
+    runtime_config.enable_action_trace = config.enable_action_trace
     return runtime_config
 
 

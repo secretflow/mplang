@@ -24,6 +24,29 @@ from mplang.dialects import simp, spu
 from mplang.edsl import typing as elt
 
 
+@pytest.mark.parametrize(
+    "enabled_field",
+    [
+        "enable_pphlo_profile",
+        "enable_hal_profile",
+        "enable_pphlo_trace",
+        "enable_action_trace",
+    ],
+)
+def test_to_runtime_config_preserves_profiling_flags(enabled_field):
+    from mplang.backends.spu_impl import to_runtime_config
+
+    runtime_config = to_runtime_config(spu.SPUConfig(**{enabled_field: True}))
+
+    for field_name in (
+        "enable_pphlo_profile",
+        "enable_hal_profile",
+        "enable_pphlo_trace",
+        "enable_action_trace",
+    ):
+        assert getattr(runtime_config, field_name) is (field_name == enabled_field)
+
+
 def test_spu_e2e_simulation():
     """Test SPU end-to-end flow using SimpSimulator."""
     # 1. Setup

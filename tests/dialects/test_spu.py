@@ -26,6 +26,10 @@ from mplang.edsl import serde
 def test_spu_config():
     config = spu.SPUConfig()
     assert config.protocol == "SEMI2K"
+    assert config.enable_pphlo_profile is False
+    assert config.enable_hal_profile is False
+    assert config.enable_pphlo_trace is False
+    assert config.enable_action_trace is False
     assert config.link_desc is None
 
 
@@ -45,6 +49,10 @@ def test_spu_config_from_secretflow_dict():
             "protocol": "ABY3",
             "field": "FM64",
             "fxp_fraction_bits": 20,
+            "enable_pphlo_profile": True,
+            "enable_hal_profile": False,
+            "enable_pphlo_trace": True,
+            "enable_action_trace": False,
         },
         "link_desc": {
             "connect_retry_times": 7200000,
@@ -60,6 +68,10 @@ def test_spu_config_from_secretflow_dict():
     assert config.protocol == "ABY3"
     assert config.field == "FM64"
     assert config.fxp_fraction_bits == 20
+    assert config.enable_pphlo_profile is True
+    assert config.enable_hal_profile is False
+    assert config.enable_pphlo_trace is True
+    assert config.enable_action_trace is False
     assert config.link_desc is not None
     assert config.link_desc.brpc_channel_protocol == "http"
     assert config.link_desc.brpc_channel_connection_type == "pooled"
@@ -75,6 +87,10 @@ def test_spu_config_json_roundtrip_keeps_link_desc():
         protocol="SEMI2K",
         field="FM128",
         fxp_fraction_bits=18,
+        enable_pphlo_profile=True,
+        enable_hal_profile=False,
+        enable_pphlo_trace=True,
+        enable_action_trace=False,
         link_desc=spu.SPULinkDesc(
             recv_timeout_ms=1234,
             http_timeout_ms=5678,
@@ -93,6 +109,62 @@ def test_spu_config_json_roundtrip_keeps_link_desc():
         "brpc_channel_protocol": "h2",
         "brpc_channel_connection_type": "pooled",
     }
+
+
+@pytest.mark.parametrize(
+    "enabled_field",
+    [
+        "enable_pphlo_profile",
+        "enable_hal_profile",
+        "enable_pphlo_trace",
+        "enable_action_trace",
+    ],
+)
+def test_spu_config_from_dict_reads_flat_profiling_flags(enabled_field):
+    config = spu.SPUConfig.from_dict({enabled_field: True})
+
+    for field_name in (
+        "enable_pphlo_profile",
+        "enable_hal_profile",
+        "enable_pphlo_trace",
+        "enable_action_trace",
+    ):
+        assert getattr(config, field_name) is (field_name == enabled_field)
+
+
+def test_spu_config_nested_profiling_flags_override_flat_flags():
+    config = spu.SPUConfig.from_dict({
+        "enable_pphlo_profile": True,
+        "runtime_config": {"enable_pphlo_profile": False},
+    })
+
+    assert config.enable_pphlo_profile is False
+
+
+def test_spu_config_parses_string_boolean_strictly():
+    config = spu.SPUConfig.from_dict({
+        "enable_pphlo_profile": "true",
+        "enable_hal_profile": "FALSE",
+    })
+
+    assert config.enable_pphlo_profile is True
+    assert config.enable_hal_profile is False
+
+    with pytest.raises(ValueError, match="enable_pphlo_trace must be a boolean"):
+        spu.SPUConfig.from_dict({"enable_pphlo_trace": "yes"})
+
+
+def test_spu_config_from_old_json_defaults_profiling_flags_to_false():
+    config = spu.SPUConfig.from_json({
+        "protocol": "ABY3",
+        "field": "FM64",
+        "fxp_fraction_bits": 20,
+    })
+
+    assert config.enable_pphlo_profile is False
+    assert config.enable_hal_profile is False
+    assert config.enable_pphlo_trace is False
+    assert config.enable_action_trace is False
 
 
 def test_encrypt_decrypt_flow():

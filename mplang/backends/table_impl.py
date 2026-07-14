@@ -609,7 +609,12 @@ def _unwrap(val: TableValue | pa.Table | pd.DataFrame) -> pa.Table:
 
 @table.run_sql_p.def_impl
 def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableValue:
-    """Execute SQL query on input tables."""
+    """Execute SQL query on input tables.
+
+    Query relations from a DuckDB state other than the selected execution state
+    are materialized as Arrow tables before registration. This may use
+    substantial memory for large intermediate relations.
+    """
     query = op.attrs["query"]
     dialect = op.attrs.get("dialect", "duckdb")
     table_names = op.attrs["table_names"]
@@ -626,8 +631,6 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableVa
         if isinstance(data, QueryTableSource):
             if state is None:
                 state = data.state
-            elif state != data.state:
-                raise ValueError("All tables must belong to the same DuckDB connection")
 
     if state is None:
         conn = duckdb.connect()
@@ -638,6 +641,8 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableVa
         # register tables or create view
         for name, tbl in zip(table_names, tables, strict=True):
             data = tbl.unwrap()
+            if isinstance(data, QueryTableSource) and data.state is not state:
+                data = tbl.data
             if name in state.tables:
                 if state.tables[name] is not data:
                     # TODO: rename and rewrite sql??

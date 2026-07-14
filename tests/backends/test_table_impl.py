@@ -15,12 +15,20 @@
 """Tests for Table Runtime Implementation."""
 
 import os
+from types import SimpleNamespace
 
+import duckdb
 import pyarrow as pa
 import pytest
 
 import mplang.edsl.typing as elt
-from mplang.backends.table_impl import ParquetReader, TableValue
+from mplang.backends.table_impl import (
+    DuckDBState,
+    ParquetReader,
+    QueryTableSource,
+    TableValue,
+    run_sql_impl,
+)
 from mplang.dialects import table
 
 
@@ -79,6 +87,175 @@ def test_table_ops_e2e():
         assert res_table == expected
 
     os.remove(path)
+
+
+def test_run_sql_materializes_query_source_from_different_state():
+    """Foreign DuckDB relations are materialized into the selected state."""
+    local_conn = duckdb.connect()
+    foreign_conn = duckdb.connect()
+    try:
+        local_state = DuckDBState(local_conn)
+        foreign_state = DuckDBState(foreign_conn)
+        local = TableValue(
+            QueryTableSource(
+                local_conn.sql("SELECT 1 AS id, 'local' AS local_value"),
+                local_state,
+            )
+        )
+        foreign = TableValue(
+            QueryTableSource(
+                foreign_conn.sql("SELECT 1 AS id, 'foreign' AS foreign_value"),
+                foreign_state,
+            )
+        )
+        op = SimpleNamespace(
+            attrs={
+                "query": (
+                    "SELECT local_t.id, local_value, foreign_value "
+                    "FROM local_t JOIN foreign_t USING (id)"
+                ),
+                "dialect": "duckdb",
+                "table_names": ["local_t", "foreign_t"],
+            }
+        )
+
+        result = run_sql_impl(None, op, local, foreign)
+
+        assert result.data == pa.table({
+            "id": pa.array([1], type=pa.int32()),
+            "local_value": ["local"],
+            "foreign_value": ["foreign"],
+        })
+        assert isinstance(local.unwrap(), QueryTableSource)
+        assert isinstance(foreign.unwrap(), pa.Table)
+        assert local_state.tables["foreign_t"] is foreign.data
+    finally:
+        local_conn.close()
+        foreign_conn.close()
+
+
+def test_run_sql_keeps_same_state_query_sources_lazy():
+    """Relations from the execution state keep the lazy view path."""
+    conn = duckdb.connect()
+    try:
+        state = DuckDBState(conn)
+        left = TableValue(
+            QueryTableSource(conn.sql("SELECT 1 AS id, 'left' AS left_value"), state)
+        )
+        right = TableValue(
+            QueryTableSource(conn.sql("SELECT 1 AS id, 'right' AS right_value"), state)
+        )
+        op = SimpleNamespace(
+            attrs={
+                "query": (
+                    "SELECT left_t.id, left_value, right_value "
+                    "FROM left_t JOIN right_t USING (id)"
+                ),
+                "dialect": "duckdb",
+                "table_names": ["left_t", "right_t"],
+            }
+        )
+
+        result = run_sql_impl(None, op, left, right)
+
+        assert result.data == pa.table({
+            "id": pa.array([1], type=pa.int32()),
+            "left_value": ["left"],
+            "right_value": ["right"],
+        })
+        assert isinstance(left.unwrap(), QueryTableSource)
+        assert isinstance(right.unwrap(), QueryTableSource)
+        assert state.tables["left_t"] is left.unwrap()
+        assert state.tables["right_t"] is right.unwrap()
+    finally:
+        conn.close()
+
+
+def test_run_sql_reuses_materialized_foreign_table_with_same_name():
+    """The registered Arrow object preserves same-name identity validation."""
+    local_conn = duckdb.connect()
+    foreign_conn = duckdb.connect()
+    try:
+        local_state = DuckDBState(local_conn)
+        foreign_state = DuckDBState(foreign_conn)
+        local = TableValue(
+            QueryTableSource(
+                local_conn.sql("SELECT 1 AS id, 'local' AS local_value"),
+                local_state,
+            )
+        )
+        foreign = TableValue(
+            QueryTableSource(
+                foreign_conn.sql("SELECT 1 AS id, 'foreign' AS foreign_value"),
+                foreign_state,
+            )
+        )
+        op = SimpleNamespace(
+            attrs={
+                "query": "SELECT * FROM local_t JOIN foreign_t USING (id)",
+                "dialect": "duckdb",
+                "table_names": ["local_t", "foreign_t"],
+            }
+        )
+
+        run_sql_impl(None, op, local, foreign)
+        result = run_sql_impl(None, op, local, foreign)
+
+        assert result.data.to_pylist() == [
+            {
+                "id": 1,
+                "local_value": "local",
+                "foreign_value": "foreign",
+            }
+        ]
+    finally:
+        local_conn.close()
+        foreign_conn.close()
+
+
+def test_run_sql_rejects_different_table_with_registered_name():
+    """A different object cannot replace a registered foreign table name."""
+    local_conn = duckdb.connect()
+    foreign_conn = duckdb.connect()
+    try:
+        local_state = DuckDBState(local_conn)
+        foreign_state = DuckDBState(foreign_conn)
+        local = TableValue(
+            QueryTableSource(
+                local_conn.sql("SELECT 1 AS id, 'local' AS local_value"),
+                local_state,
+            )
+        )
+        foreign = TableValue(
+            QueryTableSource(
+                foreign_conn.sql("SELECT 1 AS id, 'foreign' AS foreign_value"),
+                foreign_state,
+            )
+        )
+        op = SimpleNamespace(
+            attrs={
+                "query": "SELECT * FROM local_t JOIN foreign_t USING (id)",
+                "dialect": "duckdb",
+                "table_names": ["local_t", "foreign_t"],
+            }
+        )
+
+        run_sql_impl(None, op, local, foreign)
+        replacement = TableValue(
+            pa.table({
+                "id": pa.array([1], type=pa.int32()),
+                "foreign_value": ["replacement"],
+            })
+        )
+
+        with pytest.raises(RuntimeError) as error:
+            run_sql_impl(None, op, local, replacement)
+
+        assert isinstance(error.value.__cause__, ValueError)
+        assert str(error.value.__cause__) == "foreign_t has been registered."
+    finally:
+        local_conn.close()
+        foreign_conn.close()
 
 
 def test_table_constant_dataframe():

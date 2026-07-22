@@ -18,6 +18,7 @@ import os
 from types import SimpleNamespace
 
 import duckdb
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -586,6 +587,141 @@ def test_file_table_source():
         )
         with source_bad.open():
             pass  # This should raise ValueError during open
+
+
+@pytest.mark.parametrize("format_name", ["parquet", "csv", "json"])
+def test_file_table_source_register_applies_declared_schema(tmp_path, format_name):
+    """SQL registration and direct reads must enforce the same schema."""
+    import pyarrow.csv as pa_csv
+    import pyarrow.parquet as pq
+
+    from mplang.backends.table_impl import FileTableSource
+
+    path = tmp_path / f"labels.{format_name}"
+    inferred_table = pa.table({"id": [1, 2], "y": [0, 1]})
+    match format_name:
+        case "parquet":
+            pq.write_table(inferred_table, path)
+        case "csv":
+            pa_csv.write_csv(inferred_table, path)
+        case "json":
+            inferred_table.to_pandas().to_json(path, orient="records", lines=True)
+
+    schema = pa.schema([("id", pa.int64()), ("y", pa.float64())])
+    expected = pa.table({
+        "id": pa.array([1, 2], type=pa.int64()),
+        "y": pa.array([0.0, 1.0], type=pa.float64()),
+    })
+    source = FileTableSource(str(path), format_name, schema)
+
+    with source.open() as reader:
+        assert reader.read_all() == expected
+
+    with duckdb.connect() as conn:
+        source.register(conn, "input_table")
+        assert conn.table("input_table").fetch_arrow_table() == expected
+
+
+def test_file_table_source_register_escapes_path_and_identifiers(tmp_path):
+    """File paths and schema identifiers are not interpolated as raw SQL."""
+    import pyarrow.csv as pa_csv
+
+    from mplang.backends.table_impl import FileTableSource
+
+    column_name = 'label"value'
+    view_name = 'input"table'
+    path = tmp_path / "labels'quoted.csv"
+    pa_csv.write_csv(pa.table({column_name: [0, 1]}), path)
+    source = FileTableSource(str(path), "csv", pa.schema([(column_name, pa.float64())]))
+
+    with duckdb.connect() as conn:
+        source.register(conn, view_name)
+        result = conn.sql('SELECT * FROM "input""table"').fetch_arrow_table()
+
+    assert result == pa.table({column_name: pa.array([0.0, 1.0], type=pa.float64())})
+
+
+def test_file_table_source_register_rejects_missing_schema_column(tmp_path):
+    import pyarrow.csv as pa_csv
+
+    from mplang.backends.table_impl import FileTableSource
+
+    path = tmp_path / "missing.csv"
+    pa_csv.write_csv(pa.table({"y": [0, 1]}), path)
+    source = FileTableSource(
+        str(path),
+        "csv",
+        pa.schema([("y", pa.float64()), ("missing", pa.float64())]),
+    )
+
+    with duckdb.connect() as conn:
+        with pytest.raises(ValueError, match=r"missing columns.*missing"):
+            source.register(conn, "input_table")
+
+
+def test_file_table_source_register_reports_invalid_schema_conversion(tmp_path):
+    import pyarrow.csv as pa_csv
+
+    from mplang.backends.table_impl import FileTableSource
+
+    path = tmp_path / "invalid.csv"
+    pa_csv.write_csv(pa.table({"y": ["0", "invalid"]}), path)
+    source = FileTableSource(str(path), "csv", pa.schema([("y", pa.float64())]))
+
+    with duckdb.connect() as conn:
+        source.register(conn, "input_table")
+        with pytest.raises(duckdb.ConversionException, match=r"invalid.*DOUBLE"):
+            conn.table("input_table").fetch_arrow_table()
+
+
+def test_csv_schema_survives_sql_table2tensor_compile_evaluate(tmp_path):
+    """Regression for catalog f64 labels whose CSV values look integral."""
+    import pyarrow.csv as pa_csv
+
+    import mplang as mp
+    from mplang.backends.tensor_impl import TensorValue
+    from mplang.runtime.interpreter import Interpreter
+
+    path = tmp_path / "labels.csv"
+    pa_csv.write_csv(pa.table({"feature": [10, 20], "y": [0, 1]}), path)
+    input_type = elt.TableType({"feature": elt.i64, "y": elt.f64})
+    output_type = elt.TableType({"y": elt.f64})
+
+    def workload():
+        source = table.read(str(path), schema=input_type)
+        selected = table.run_sql(
+            "SELECT y FROM source", out_type=output_type, source=source
+        )
+        return table.table2tensor(selected, number_rows=-1)
+
+    interpreter = Interpreter()
+    program = mp.compile(workload, context=interpreter)
+    result = mp.evaluate(program, context=interpreter)
+
+    assert program.graph.outputs[0].type == elt.TensorType(elt.f64, (-1, 1))
+    assert isinstance(result.runtime_obj, TensorValue)
+    np.testing.assert_array_equal(
+        result.runtime_obj.unwrap(),
+        np.array([[0.0], [1.0]], dtype=np.float64),
+    )
+
+
+def test_table2tensor_rejects_runtime_dtype_different_from_declared_type():
+    """Backend values cannot silently violate table2tensor's IR output type."""
+
+    def workload():
+        source = table.constant({"y": [0, 1]})
+        declared_float = table.run_sql(
+            "SELECT y FROM source",
+            out_type=elt.TableType({"y": elt.f64}),
+            source=source,
+        )
+        return table.table2tensor(declared_float, number_rows=-1)
+
+    with pytest.raises(
+        TypeError, match=r"runtime dtype int64.*declared tensor dtype float64"
+    ):
+        workload()
 
 
 def test_write_basic(tmp_path):

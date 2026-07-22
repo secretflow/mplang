@@ -22,7 +22,7 @@ from __future__ import annotations
 import base64
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol, Self, runtime_checkable
+from typing import Any, ClassVar, Protocol, Self, cast, runtime_checkable
 
 import duckdb
 import pandas as pd
@@ -383,6 +383,41 @@ _type_mapping = {
 }
 
 
+_duckdb_type_mapping = {
+    pa.bool_(): "BOOLEAN",
+    pa.int8(): "TINYINT",
+    pa.int16(): "SMALLINT",
+    pa.int32(): "INTEGER",
+    pa.int64(): "BIGINT",
+    pa.uint8(): "UTINYINT",
+    pa.uint16(): "USMALLINT",
+    pa.uint32(): "UINTEGER",
+    pa.uint64(): "UBIGINT",
+    pa.float32(): "FLOAT",
+    pa.float64(): "DOUBLE",
+    pa.string(): "VARCHAR",
+    pa.date64(): "DATE",
+    pa.time32("ms"): "TIME",
+    pa.timestamp("ms"): "TIMESTAMP_MS",
+    pa.binary(): "BLOB",
+    pa.json_(): "JSON",
+}
+
+
+def _duckdb_type_name(data_type: pa.DataType) -> str:
+    """Return the DuckDB SQL type corresponding to an Arrow schema type."""
+    if pa.types.is_decimal(data_type):
+        return f"DECIMAL({data_type.precision}, {data_type.scale})"
+    if data_type in _duckdb_type_mapping:
+        return _duckdb_type_mapping[data_type]
+    raise ValueError(f"Schema type {data_type} is not supported by DuckDB SQL")
+
+
+def _quote_identifier(identifier: str) -> str:
+    """Quote a SQL identifier using DuckDB's double-quote escaping rules."""
+    return f'"{identifier.replace(chr(34), chr(34) * 2)}"'
+
+
 def _pa_schema(s: elt.TableType) -> pa.Schema:
     fields = []
     for k, v in s.schema.items():
@@ -404,25 +439,37 @@ class FileTableSource(TableSource):
     def register(
         self, conn: duckdb.DuckDBPyConnection, name: str, replace: bool = True
     ) -> None:
-        """Register the file as a view in DuckDB."""
-        func_name = ""
-        match self.format:
+        """Register the file as a view while enforcing its declared schema."""
+        match self.format.lower():
             case "parquet":
-                func_name = "read_parquet"
+                relation = conn.read_parquet([self.path])
             case "csv":
-                func_name = "read_csv_auto"
+                relation = conn.from_csv_auto(self.path)
             case "json":
-                func_name = "read_json_auto"
+                relation = conn.read_json(self.path)
             case _:
                 raise ValueError(f"Unsupported format: {self.format}")
 
-        safe_path = self.path.replace("'", "''")
-        base_query = f"SELECT * FROM {func_name}('{safe_path}')"
-        if replace:
-            query = f"CREATE OR REPLACE VIEW {name} AS {base_query}"
-        else:
-            query = f"CREATE VIEW {name} AS {base_query}"
-        conn.execute(query)
+        if self.schema:
+            missing_columns = [
+                column for column in self.schema.names if column not in relation.columns
+            ]
+            if missing_columns:
+                raise ValueError(
+                    f"Cannot apply schema to {self.path}: missing columns "
+                    f"{missing_columns}; available columns are {relation.columns}"
+                )
+
+            projections = []
+            for field in self.schema:
+                identifier = _quote_identifier(field.name)
+                projections.append(
+                    f"CAST({identifier} AS {_duckdb_type_name(field.type)}) "
+                    f"AS {identifier}"
+                )
+            relation = relation.project(", ".join(projections))
+
+        relation.create_view(name, replace=replace)
 
     def open(self, batch_size: int = DEFAULT_BATCH_SIZE) -> TableReader:
         """Create a streaming reader for the file."""
@@ -681,6 +728,22 @@ def table2tensor_impl(interpreter: Interpreter, op: Operation, table_val: Any) -
         )
 
     arr = table_to_numpy(tbl)
+
+    output_type = op.outputs[0].type
+    if not isinstance(output_type, elt.TensorType) or not isinstance(
+        output_type.element_type, elt.ScalarType
+    ):
+        raise TypeError(f"table2tensor: expected scalar TensorType, got {output_type}")
+
+    from mplang.dialects import dtypes
+
+    expected_dtype = dtypes.to_numpy(cast(elt.ScalarType, output_type.element_type))
+    if arr.dtype != expected_dtype:
+        raise TypeError(
+            f"table2tensor: runtime dtype {arr.dtype} does not match "
+            f"declared tensor dtype {expected_dtype}"
+        )
+
     return TensorValue.wrap(arr)
 
 

@@ -15,21 +15,13 @@
 """Tests for Table Runtime Implementation."""
 
 import os
-from types import SimpleNamespace
 
-import duckdb
 import numpy as np
 import pyarrow as pa
 import pytest
 
 import mplang.edsl.typing as elt
-from mplang.backends.table_impl import (
-    DuckDBState,
-    ParquetReader,
-    QueryTableSource,
-    TableValue,
-    run_sql_impl,
-)
+from mplang.backends.table_impl import TableValue
 from mplang.dialects import table
 
 
@@ -90,175 +82,6 @@ def test_table_ops_e2e():
     os.remove(path)
 
 
-def test_run_sql_materializes_query_source_from_different_state():
-    """Foreign DuckDB relations are materialized into the selected state."""
-    local_conn = duckdb.connect()
-    foreign_conn = duckdb.connect()
-    try:
-        local_state = DuckDBState(local_conn)
-        foreign_state = DuckDBState(foreign_conn)
-        local = TableValue(
-            QueryTableSource(
-                local_conn.sql("SELECT 1 AS id, 'local' AS local_value"),
-                local_state,
-            )
-        )
-        foreign = TableValue(
-            QueryTableSource(
-                foreign_conn.sql("SELECT 1 AS id, 'foreign' AS foreign_value"),
-                foreign_state,
-            )
-        )
-        op = SimpleNamespace(
-            attrs={
-                "query": (
-                    "SELECT local_t.id, local_value, foreign_value "
-                    "FROM local_t JOIN foreign_t USING (id)"
-                ),
-                "dialect": "duckdb",
-                "table_names": ["local_t", "foreign_t"],
-            }
-        )
-
-        result = run_sql_impl(None, op, local, foreign)
-
-        assert result.data == pa.table({
-            "id": pa.array([1], type=pa.int32()),
-            "local_value": ["local"],
-            "foreign_value": ["foreign"],
-        })
-        assert isinstance(local.unwrap(), QueryTableSource)
-        assert isinstance(foreign.unwrap(), pa.Table)
-        assert local_state.tables["foreign_t"] is foreign.data
-    finally:
-        local_conn.close()
-        foreign_conn.close()
-
-
-def test_run_sql_keeps_same_state_query_sources_lazy():
-    """Relations from the execution state keep the lazy view path."""
-    conn = duckdb.connect()
-    try:
-        state = DuckDBState(conn)
-        left = TableValue(
-            QueryTableSource(conn.sql("SELECT 1 AS id, 'left' AS left_value"), state)
-        )
-        right = TableValue(
-            QueryTableSource(conn.sql("SELECT 1 AS id, 'right' AS right_value"), state)
-        )
-        op = SimpleNamespace(
-            attrs={
-                "query": (
-                    "SELECT left_t.id, left_value, right_value "
-                    "FROM left_t JOIN right_t USING (id)"
-                ),
-                "dialect": "duckdb",
-                "table_names": ["left_t", "right_t"],
-            }
-        )
-
-        result = run_sql_impl(None, op, left, right)
-
-        assert result.data == pa.table({
-            "id": pa.array([1], type=pa.int32()),
-            "left_value": ["left"],
-            "right_value": ["right"],
-        })
-        assert isinstance(left.unwrap(), QueryTableSource)
-        assert isinstance(right.unwrap(), QueryTableSource)
-        assert state.tables["left_t"] is left.unwrap()
-        assert state.tables["right_t"] is right.unwrap()
-    finally:
-        conn.close()
-
-
-def test_run_sql_reuses_materialized_foreign_table_with_same_name():
-    """The registered Arrow object preserves same-name identity validation."""
-    local_conn = duckdb.connect()
-    foreign_conn = duckdb.connect()
-    try:
-        local_state = DuckDBState(local_conn)
-        foreign_state = DuckDBState(foreign_conn)
-        local = TableValue(
-            QueryTableSource(
-                local_conn.sql("SELECT 1 AS id, 'local' AS local_value"),
-                local_state,
-            )
-        )
-        foreign = TableValue(
-            QueryTableSource(
-                foreign_conn.sql("SELECT 1 AS id, 'foreign' AS foreign_value"),
-                foreign_state,
-            )
-        )
-        op = SimpleNamespace(
-            attrs={
-                "query": "SELECT * FROM local_t JOIN foreign_t USING (id)",
-                "dialect": "duckdb",
-                "table_names": ["local_t", "foreign_t"],
-            }
-        )
-
-        run_sql_impl(None, op, local, foreign)
-        result = run_sql_impl(None, op, local, foreign)
-
-        assert result.data.to_pylist() == [
-            {
-                "id": 1,
-                "local_value": "local",
-                "foreign_value": "foreign",
-            }
-        ]
-    finally:
-        local_conn.close()
-        foreign_conn.close()
-
-
-def test_run_sql_rejects_different_table_with_registered_name():
-    """A different object cannot replace a registered foreign table name."""
-    local_conn = duckdb.connect()
-    foreign_conn = duckdb.connect()
-    try:
-        local_state = DuckDBState(local_conn)
-        foreign_state = DuckDBState(foreign_conn)
-        local = TableValue(
-            QueryTableSource(
-                local_conn.sql("SELECT 1 AS id, 'local' AS local_value"),
-                local_state,
-            )
-        )
-        foreign = TableValue(
-            QueryTableSource(
-                foreign_conn.sql("SELECT 1 AS id, 'foreign' AS foreign_value"),
-                foreign_state,
-            )
-        )
-        op = SimpleNamespace(
-            attrs={
-                "query": "SELECT * FROM local_t JOIN foreign_t USING (id)",
-                "dialect": "duckdb",
-                "table_names": ["local_t", "foreign_t"],
-            }
-        )
-
-        run_sql_impl(None, op, local, foreign)
-        replacement = TableValue(
-            pa.table({
-                "id": pa.array([1], type=pa.int32()),
-                "foreign_value": ["replacement"],
-            })
-        )
-
-        with pytest.raises(RuntimeError) as error:
-            run_sql_impl(None, op, local, replacement)
-
-        assert isinstance(error.value.__cause__, ValueError)
-        assert str(error.value.__cause__) == "foreign_t has been registered."
-    finally:
-        local_conn.close()
-        foreign_conn.close()
-
-
 def test_table_constant_dataframe():
     """Test creating constant table from DataFrame."""
     import pandas as pd
@@ -272,333 +95,18 @@ def test_table_constant_dataframe():
     pd.testing.assert_frame_equal(df_in, df_out)
 
 
-def test_parquet_reader():
-    """Test ParquetReader implementation for reading parquet files with column selection."""
-    import os
-    import tempfile
-
-    import pyarrow.parquet as pq
-
-    # Create test data
-    data = pa.table({
-        "id": pa.array([1, 2, 3, 4, 5], type=pa.int64()),
-        "name": pa.array(["Alice", "Bob", "Charlie", "David", "Eve"], type=pa.string()),
-        "score": pa.array([85.5, 90.0, 78.5, 95.5, 88.0], type=pa.float64()),
-        "active": pa.array([True, False, True, True, False], type=pa.bool_()),
-    })
-
-    # Write to temporary parquet file
-    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp_file:
-        tmp_path = tmp_file.name
-        pq.write_table(data, tmp_path)
-
-    try:
-        # Test 1: Read all columns
-        reader_all = ParquetReader(tmp_path, columns=None)
-
-        # Test basic properties
-        assert reader_all.num_rows == 5
-        # When columns=None, schema is a ParquetSchema object
-        assert hasattr(reader_all.schema, "names")
-        assert reader_all.schema.names == ["id", "name", "score", "active"]
-
-        # Test that we can access column metadata
-        for field_name in ["id", "name", "score", "active"]:
-            assert field_name in reader_all.schema.names
-
-        # Test reading batches
-        batch1 = reader_all.read_next_batch()
-        assert batch1.num_rows == 5  # All data in one batch
-        assert batch1.column_names == ["id", "name", "score", "active"]
-
-        # Verify data
-        assert batch1.to_pandas()["id"].tolist() == [1, 2, 3, 4, 5]
-        assert batch1.to_pandas()["name"].tolist() == [
-            "Alice",
-            "Bob",
-            "Charlie",
-            "David",
-            "Eve",
-        ]
-        assert batch1.to_pandas()["score"].tolist() == [85.5, 90.0, 78.5, 95.5, 88.0]
-        assert batch1.to_pandas()["active"].tolist() == [True, False, True, True, False]
-
-        # Test 2: Read selected columns
-        reader_selected = ParquetReader(tmp_path, columns=["id", "score"])
-
-        # Test properties with column selection
-        assert reader_selected.num_rows == 5
-        # Schema is always a pa.Schema object
-        assert isinstance(reader_selected.schema, pa.Schema)
-        assert len(reader_selected.schema) == 2
-        # Extract field names from the schema
-        schema_names = reader_selected.schema.names
-        assert schema_names == ["id", "score"]
-
-        # Verify the field names and types are correct
-        id_field = reader_selected.schema.field("id")
-        score_field = reader_selected.schema.field("score")
-        assert id_field.name == "id"
-        assert id_field.type == pa.int64()
-        assert score_field.name == "score"
-        assert score_field.type == pa.float64()
-
-        # Test reading batches with selected columns
-        batch2 = reader_selected.read_next_batch()
-        assert batch2.num_rows == 5
-        assert batch2.column_names == ["id", "score"]
-
-        # Verify selected data
-        assert batch2.to_pandas()["id"].tolist() == [1, 2, 3, 4, 5]
-        assert batch2.to_pandas()["score"].tolist() == [85.5, 90.0, 78.5, 95.5, 88.0]
-
-        # Test 3: Test cast interface (inherited from pa.RecordBatchReader)
-        reader_cast = ParquetReader(tmp_path, columns=["id", "score"])
-
-        # Cast id column from int64 to float64 using reader's cast method
-        # This should return a new RecordBatchReader that casts batches lazily
-        casted_reader = reader_cast.cast(
-            pa.schema([("id", pa.float64()), ("score", pa.float64())])
-        )
-
-        # Verify the casted reader has the correct schema
-        assert casted_reader.schema.field("id").type == pa.float64()
-        assert casted_reader.schema.field("score").type == pa.float64()
-
-        # Read from the casted reader and verify data
-        casted_batch = casted_reader.read_next_batch()
-        assert casted_batch.schema.field("id").type == pa.float64()
-        assert casted_batch.schema.field("score").type == pa.float64()
-        assert casted_batch.to_pandas()["id"].tolist() == [1.0, 2.0, 3.0, 4.0, 5.0]
-        assert casted_batch.to_pandas()["score"].tolist() == [
-            85.5,
-            90.0,
-            78.5,
-            95.5,
-            88.0,
-        ]
-
-        # Test 4: Test iterator protocol
-        reader_iter = ParquetReader(tmp_path, columns=["name"])
-        batches = list(reader_iter)
-        assert len(batches) == 1
-        assert batches[0].column_names == ["name"]
-        assert batches[0].to_pandas()["name"].tolist() == [
-            "Alice",
-            "Bob",
-            "Charlie",
-            "David",
-            "Eve",
-        ]
-
-        # Test 5: Test context manager
-        with ParquetReader(tmp_path, columns=["active"]) as reader_ctx:
-            batch_ctx = reader_ctx.read_next_batch()
-            assert batch_ctx.column_names == ["active"]
-            assert batch_ctx.to_pandas()["active"].tolist() == [
-                True,
-                False,
-                True,
-                True,
-                False,
-            ]
-
-        # Test 6: Test empty columns list (should read all)
-        reader_empty = ParquetReader(tmp_path, columns=[])
-        assert reader_empty.num_rows == 5
-        # Empty list is treated like None - returns ParquetSchema
-        assert hasattr(reader_empty.schema, "names")
-        assert len(reader_empty.schema.names) == 4
-
-        # Test 7: Test with non-existent column (should work normally)
-        reader_partial = ParquetReader(tmp_path, columns=["id", "nonexistent"])
-        # Only existing columns should be in schema
-        assert isinstance(reader_partial.schema, pa.Schema)
-        assert len(reader_partial.schema) == 1
-        assert reader_partial.schema.names[0] == "id"
-
-        # Test 8: Test cast validation - wrong number of columns
-        reader_cast_val = ParquetReader(tmp_path, columns=["id", "score"])
-        with pytest.raises(ValueError) as exc_info:
-            reader_cast_val.cast(pa.schema([("id", pa.float64())]))
-        assert "target schema has 1 columns, but current schema has 2 columns" in str(
-            exc_info.value
-        )
-
-        # Test 9: Test cast validation - wrong field name
-        with pytest.raises(ValueError) as exc_info:
-            reader_cast_val.cast(
-                pa.schema([("id", pa.float64()), ("wrong_name", pa.float64())])
-            )
-        assert "field name at position 1 differs" in str(exc_info.value)
-        assert "Current: 'score', Target: 'wrong_name'" in str(exc_info.value)
-
-        # Test 10: Test cast with no changes - should not set _cast
-        # Cast to the same schema
-        same_schema = pa.schema([("id", pa.int64()), ("score", pa.float64())])
-        reader_no_change = ParquetReader(tmp_path, columns=["id", "score"])
-        casted_reader_no_change = reader_no_change.cast(same_schema)
-
-        # _cast should be False when there are no changes
-        assert (
-            not hasattr(casted_reader_no_change, "_cast")
-            or not casted_reader_no_change._cast
-        )
-
-        # Reading should work normally
-        batch = casted_reader_no_change.read_next_batch()
-        assert batch.schema.field("id").type == pa.int64()
-        assert batch.schema.field("score").type == pa.float64()
-
-    finally:
-        # Clean up temporary file
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
-
-def test_parquet_reader_empty_file():
-    """Test ParquetReader with empty file (schema exists but no data)."""
-    import tempfile
-
-    import pyarrow.parquet as pq
-
-    # Create test data with schema but no rows
-    data = pa.table({
-        "id": pa.array([], type=pa.int64()),
-        "name": pa.array([], type=pa.string()),
-        "score": pa.array([], type=pa.float64()),
-    })
-
-    # Write to temporary parquet file
-    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp_file:
-        tmp_path = tmp_file.name
-        pq.write_table(data, tmp_path)
-
-    try:
-        # Test reading empty file
-        reader = ParquetReader(tmp_path, columns=None)
-        assert reader.num_rows == 0
-        assert hasattr(reader.schema, "names")
-        assert reader.schema.names == ["id", "name", "score"]
-        assert reader.read_all().num_rows == 0
-
-        # Test with column selection
-        reader = ParquetReader(tmp_path, columns=["id"])
-        assert reader.num_rows == 0
-        assert reader.schema.names == ["id"]
-        assert reader.read_all().num_rows == 0
-
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
-
-def test_file_table_source():
-    """Test FileTableSource implementation for different file formats."""
-    import os
-    import tempfile
-
-    import duckdb
-    import pyarrow.parquet as pq
-
-    from mplang.backends.table_impl import FileTableSource, TableReader
-
-    # Create test data
-    data = {
-        "id": [1, 2, 3, 4, 5],
-        "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
-        "score": [85.5, 90.1, 78.5, 95.5, 88.1],
-        "active": [True, False, True, True, False],
-    }
-    table = pa.table(data)
-
-    # Define schema - using pa.Schema matching the table
-    schema = pa.schema([
-        ("id", pa.int64()),
-        ("name", pa.string()),
-        ("score", pa.float64()),
-        ("active", pa.bool_()),
-    ])
-
-    cast_schema = pa.schema([("id", pa.int64()), ("score", pa.string())])
-    cast_table = pa.table({"id": data["id"], "score": data["score"]}).cast(cast_schema)
-
-    # Test with different file formats
-    formats = {
-        "parquet": lambda p, t: pq.write_table(t, p),
-        "csv": lambda p, t: t.to_pandas().to_csv(p, index=False),
-        "json": lambda p, t: t.to_pandas().to_json(p, orient="records", lines=True),
-    }
-
-    for format_name, write_func in formats.items():
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(
-            suffix=f".{format_name}", delete=False
-        ) as tmp_file:
-            tmp_path = tmp_file.name
-            write_func(tmp_path, table)
-
-        try:
-            # Test 1: Create FileTableSource
-            source = FileTableSource(path=tmp_path, format=format_name, schema=schema)
-            assert source.path == tmp_path
-            assert source.format == format_name
-            assert source.schema == schema
-
-            # Test 2: Open and read data
-            with source.open() as reader:
-                assert isinstance(reader, TableReader)
-
-                # Read all data
-                result = reader.read_all()
-                assert result == table
-
-            # Test 3: register and exec sql
-            with duckdb.connect() as conn:
-                source.register(conn, "table1")
-                result = conn.execute("SELECT * FROM table1").fetch_arrow_table()
-                assert result == table
-
-            # Test 4: Batch read
-            with source.open(batch_size=2) as reader:
-                batches = list(reader)
-                num_rows = [batch.num_rows for batch in batches]
-                # 5 rows with batch_size=2 => 3 batches
-                assert len(batches) == 3 and num_rows == [2, 2, 1]
-                assert pa.Table.from_batches(batches) == table
-
-            # Test 5: Test casting - data source schema differs from target schema
-            source1 = FileTableSource(
-                path=tmp_path, format=format_name, schema=cast_schema
-            )
-            with source1.open() as reader:
-                result = reader.read_all()
-                assert result == cast_table
-
-        finally:
-            # Clean up temporary file
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-
-    # Test unsupported format
-    with pytest.raises(ValueError, match="Unsupported format: unsupported"):
-        source_bad = FileTableSource(
-            path="test.txt", format="unsupported", schema=schema
-        )
-        with source_bad.open():
-            pass  # This should raise ValueError during open
-
-
 @pytest.mark.parametrize("format_name", ["parquet", "csv", "json"])
-def test_file_table_source_register_applies_declared_schema(tmp_path, format_name):
-    """SQL registration and direct reads must enforce the same schema."""
+def test_read_enforces_declared_schema(tmp_path, format_name):
+    """table.read materializes with the declared schema (integral y cast to f64).
+
+    Replaces the removed FileTableSource.register schema-enforcement tests:
+    enforcement now happens at read time instead of DuckDB view registration.
+    """
     import pyarrow.csv as pa_csv
     import pyarrow.parquet as pq
 
-    from mplang.backends.table_impl import FileTableSource
-
     path = tmp_path / f"labels.{format_name}"
-    inferred_table = pa.table({"id": [1, 2], "y": [0, 1]})
+    inferred_table = pa.table({"id": [1, 2], "y": [0, 1]})  # y looks integral
     match format_name:
         case "parquet":
             pq.write_table(inferred_table, path)
@@ -607,71 +115,28 @@ def test_file_table_source_register_applies_declared_schema(tmp_path, format_nam
         case "json":
             inferred_table.to_pandas().to_json(path, orient="records", lines=True)
 
-    schema = pa.schema([("id", pa.int64()), ("y", pa.float64())])
+    schema = elt.TableType({"id": elt.i64, "y": elt.f64})
+    result = _get_table(table.read(str(path), schema=schema))
+
     expected = pa.table({
         "id": pa.array([1, 2], type=pa.int64()),
         "y": pa.array([0.0, 1.0], type=pa.float64()),
     })
-    source = FileTableSource(str(path), format_name, schema)
-
-    with source.open() as reader:
-        assert reader.read_all() == expected
-
-    with duckdb.connect() as conn:
-        source.register(conn, "input_table")
-        assert conn.table("input_table").fetch_arrow_table() == expected
+    assert result == expected
+    assert result.schema.field("y").type == pa.float64()
 
 
-def test_file_table_source_register_escapes_path_and_identifiers(tmp_path):
-    """File paths and schema identifiers are not interpolated as raw SQL."""
+def test_read_rejects_missing_declared_column(tmp_path):
+    """A declared column absent from the file fails fast at read time."""
     import pyarrow.csv as pa_csv
-
-    from mplang.backends.table_impl import FileTableSource
-
-    column_name = 'label"value'
-    view_name = 'input"table'
-    path = tmp_path / "labels'quoted.csv"
-    pa_csv.write_csv(pa.table({column_name: [0, 1]}), path)
-    source = FileTableSource(str(path), "csv", pa.schema([(column_name, pa.float64())]))
-
-    with duckdb.connect() as conn:
-        source.register(conn, view_name)
-        result = conn.sql('SELECT * FROM "input""table"').fetch_arrow_table()
-
-    assert result == pa.table({column_name: pa.array([0.0, 1.0], type=pa.float64())})
-
-
-def test_file_table_source_register_rejects_missing_schema_column(tmp_path):
-    import pyarrow.csv as pa_csv
-
-    from mplang.backends.table_impl import FileTableSource
 
     path = tmp_path / "missing.csv"
     pa_csv.write_csv(pa.table({"y": [0, 1]}), path)
-    source = FileTableSource(
-        str(path),
-        "csv",
-        pa.schema([("y", pa.float64()), ("missing", pa.float64())]),
-    )
 
-    with duckdb.connect() as conn:
-        with pytest.raises(ValueError, match=r"missing columns.*missing"):
-            source.register(conn, "input_table")
-
-
-def test_file_table_source_register_reports_invalid_schema_conversion(tmp_path):
-    import pyarrow.csv as pa_csv
-
-    from mplang.backends.table_impl import FileTableSource
-
-    path = tmp_path / "invalid.csv"
-    pa_csv.write_csv(pa.table({"y": ["0", "invalid"]}), path)
-    source = FileTableSource(str(path), "csv", pa.schema([("y", pa.float64())]))
-
-    with duckdb.connect() as conn:
-        source.register(conn, "input_table")
-        with pytest.raises(duckdb.ConversionException, match=r"invalid.*DOUBLE"):
-            conn.table("input_table").fetch_arrow_table()
+    schema = elt.TableType({"y": elt.f64, "missing": elt.f64})
+    # pyarrow raises ArrowInvalid (parquet/csv) or KeyError (json) for absent columns.
+    with pytest.raises((pa.ArrowInvalid, KeyError)):
+        _get_table(table.read(str(path), schema=schema))
 
 
 def test_csv_schema_survives_sql_table2tensor_compile_evaluate(tmp_path):

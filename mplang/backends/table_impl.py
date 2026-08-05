@@ -38,6 +38,12 @@ from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Target rows per batch when rechunking inputs that must stream in lockstep
+# (see write_impl: MultiTableReader zips one batch per reader, so non-aligned
+# native chunk boundaries — e.g. Parquet row groups of different sizes — must
+# be normalized to a common size before they can be combined column-wise).
+DEFAULT_BATCH_SIZE = 1_000_000
+
 
 class BatchReader(ABC):
     @property
@@ -233,8 +239,12 @@ class TableReader(BatchReader):
         if len(batches) == 1:
             return batches[0]
 
-        # Otherwise, combine all batches and return as a single RecordBatch
-        combined = pa.Table.from_batches(batches)
+        # Otherwise, combine all batches and return as a single RecordBatch.
+        # ``from_batches`` keeps each input as a separate chunk, so without
+        # ``combine_chunks`` the ``to_batches()[0]`` below would return only
+        # the first chunk and silently drop the rest — truncating the output
+        # the first time multiple native batches accumulate under one batch.
+        combined = pa.Table.from_batches(batches).combine_chunks()
         return combined.to_batches()[0]
 
     def close(self) -> None:
@@ -627,10 +637,18 @@ def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> 
     fmt = _infer_format(path, format_hint)
 
     def _do_write(resolved: str) -> None:
+        # MultiTableReader zips one batch per reader, requiring matching row
+        # counts per round. Eagerly read pa.Tables keep native chunk boundaries
+        # (e.g. Parquet row groups), so two same-length inputs chunked as
+        # [2,2,1] vs [3,2] would otherwise raise "Batch 1 has 3 rows, expected
+        # 2". Normalizing to a common batch_size makes aligned batches (equal
+        # total rows => equal full-batch counts and matching final partial
+        # batch) without losing the genuine row-count mismatch error below.
+        batch_size = DEFAULT_BATCH_SIZE if len(tables) > 1 else -1
         readers: list[TableReader] = []
         for t in tables:
             data = t.unwrap()  # always pa.Table now
-            readers.append(TableReader(data))
+            readers.append(TableReader(data, batch_size=batch_size))
 
         reader: BatchReader = (
             readers[0] if len(readers) == 1 else MultiTableReader(readers)

@@ -205,18 +205,36 @@ def test_write_basic(tmp_path):
 
 
 def test_write_multi_tables(tmp_path):
-    data1 = {"x": [10, 20], "y": ["foo", "bar"]}
-    data2 = {"z": [0.1, 0.2]}
+    """Multi-table write combines same-length inputs column-wise and rejects
+    row-count / column-name conflicts.
+
+    The happy path reads two Parquet sources with *different* row-group sizes
+    (chunks [2,2,1] vs [3,2]); after the eager-read refactor these materialize
+    as multi-chunk pa.Tables, so MultiTableReader must rechunk before combining
+    them or it raises ``Batch 1 has 3 rows, expected 2``.
+    """
+    import pyarrow.parquet as pq
+
+    data1 = {"x": [10, 20, 30, 40, 50], "y": ["foo", "bar", "baz", "qux", "quux"]}
+    data2 = {"z": [0.1, 0.2, 0.3, 0.4, 0.5]}
+    p1 = tmp_path / "src1.parquet"
+    p2 = tmp_path / "src2.parquet"
+    pq.write_table(pa.table(data1), p1, row_group_size=2)  # row groups [2, 2, 1]
+    pq.write_table(pa.table(data2), p2, row_group_size=3)  # row groups [3, 2]
+    # regression precondition: differing native chunk sizes
+    assert [b.num_rows for b in pq.read_table(p1).to_batches()] == [2, 2, 1]
+    assert [b.num_rows for b in pq.read_table(p2).to_batches()] == [3, 2]
+
+    path = tmp_path / "test_multi_write.parquet"
 
     def workload():
-        t1 = table.constant(data1)
-        t2 = table.constant(data2)
-        path = str(tmp_path / "test_multi_write.parquet")
-        table.write([t1, t2], path=path)
-        result = table.read(
-            path, schema=elt.TableType({"x": elt.i64, "y": elt.STRING, "z": elt.f64})
+        t1 = table.read(str(p1), schema=elt.TableType({"x": elt.i64, "y": elt.STRING}))
+        t2 = table.read(str(p2), schema=elt.TableType({"z": elt.f64}))
+        table.write([t1, t2], path=str(path))
+        return table.read(
+            str(path),
+            schema=elt.TableType({"x": elt.i64, "y": elt.STRING, "z": elt.f64}),
         )
-        return result
 
     result = workload()
     res_table = _get_table(result)
@@ -251,11 +269,22 @@ def test_write_multi_tables(tmp_path):
         workload_duplicate()
 
 
-def test_read_write_with_store(tmp_path):
+def test_read_write_with_store(tmp_path, monkeypatch):
     """Test that read/write resolve relative paths via ObjectStore."""
     from mplang.edsl.context import set_root_context
     from mplang.runtime.interpreter import Interpreter
     from mplang.runtime.object_store import FileSystemBackend, ObjectStore
+
+    # Table I/O materialises relative paths into a CWD-relative ".tmp/"
+    # staging dir before delegating to the store, and store.download() leaves
+    # a symlink in that staging dir pointing into the store root.  If that
+    # staging dir lives in the project root it survives across pytest
+    # sessions; once the previous session's tmp_path is reaped the symlink
+    # dangles and the next run's write fails with FileNotFoundError.  chdir
+    # into tmp_path so the staging dir is created under the per-session
+    # tmp_path and cleaned up by pytest -- parallel-safe and free of any
+    # pre-existing project-root ".tmp/" leftovers.
+    monkeypatch.chdir(tmp_path)
 
     store = ObjectStore(persistent=FileSystemBackend(root_path=str(tmp_path)))
     interp = Interpreter(store=store)

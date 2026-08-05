@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import base64
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Any, ClassVar, Protocol, Self, cast, runtime_checkable
 
 import duckdb
@@ -38,6 +37,12 @@ from mplang.runtime.value import WrapValue
 from mplang.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Target rows per batch when rechunking inputs that must stream in lockstep
+# (see write_impl: MultiTableReader zips one batch per reader, so non-aligned
+# native chunk boundaries — e.g. Parquet row groups of different sizes — must
+# be normalized to a common size before they can be combined column-wise).
+DEFAULT_BATCH_SIZE = 1_000_000
 
 
 class BatchReader(ABC):
@@ -234,8 +239,12 @@ class TableReader(BatchReader):
         if len(batches) == 1:
             return batches[0]
 
-        # Otherwise, combine all batches and return as a single RecordBatch
-        combined = pa.Table.from_batches(batches)
+        # Otherwise, combine all batches and return as a single RecordBatch.
+        # ``from_batches`` keeps each input as a separate chunk, so without
+        # ``combine_chunks`` the ``to_batches()[0]`` below would return only
+        # the first chunk and silently drop the rest — truncating the output
+        # the first time multiple native batches accumulate under one batch.
+        combined = pa.Table.from_batches(batches).combine_chunks()
         return combined.to_batches()[0]
 
     def close(self) -> None:
@@ -251,113 +260,39 @@ class TableReader(BatchReader):
         self._eof = False
 
 
-DEFAULT_BATCH_SIZE = 1_000_000
+class MultiTableReader(BatchReader):
+    def __init__(self, readers: list[TableReader]) -> None:
+        fields = {}
+        for r in readers:
+            for f in r.schema:
+                if f.name in fields:
+                    raise ValueError(f"Field name conflict. {f.name}")
+                fields[f.name] = f
 
-
-class TableSource(ABC):
-    """Abstract base class for lazy table operations.
-
-    Provides deferred execution for table operations to prevent OOM issues.
-    """
-
-    @abstractmethod
-    def register(
-        self, conn: duckdb.DuckDBPyConnection, name: str, replace: bool = True
-    ) -> None: ...
-
-    @abstractmethod
-    def open(self, batch_size: int = DEFAULT_BATCH_SIZE) -> TableReader:
-        """Read data as a stream of record batches."""
-        ...
-
-
-class ParquetReader(pa.RecordBatchReader):
-    """A reader that implements the pa.RecordBatchReader interface for Parquet files."""
-
-    def __init__(self, source: Any, columns: list[str] | None = None):
-        import pyarrow.parquet as pq
-
-        file = pq.ParquetFile(source)
-
-        # Use schema_arrow to get the proper pa.Schema
-        if columns:
-            # Filter the schema to only include selected columns
-            fields = [
-                file.schema_arrow.field(col)
-                for col in columns
-                if col in file.schema_arrow.names
-            ]
-            schema = pa.schema(fields)
-        else:
-            schema = file.schema_arrow
-
-        self._file = file
-        self._schema = schema
-        self._cast = False
-        self._num_rows = int(file.metadata.num_rows)
-        self._iter = file.iter_batches(columns=columns)
-
-    @property
-    def num_rows(self) -> int:
-        return self._num_rows
+        self._readers = readers
+        self._schema = pa.schema(list(fields.values()))
 
     @property
     def schema(self) -> pa.Schema:
         return self._schema
 
-    def cast(self, target_schema: pa.Schema) -> ParquetReader:
-        # Validate that the number of columns is the same
-        if len(target_schema) != len(self._schema):
-            raise ValueError(
-                f"Cannot cast schema: target schema has {len(target_schema)} columns, "
-                f"but current schema has {len(self._schema)} columns"
-            )
-
-        # Check if there are any changes in the schema
-        schema_changed = False
-        for i, (target_field, current_field) in enumerate(
-            zip(target_schema, self._schema, strict=True)
-        ):
-            # Check if field names are the same (allowing type changes)
-            if target_field.name != current_field.name:
-                raise ValueError(
-                    f"Cannot cast schema: field name at position {i} differs. "
-                    f"Current: '{current_field.name}', Target: '{target_field.name}'. "
-                    f"Field names must match."
-                )
-            # Check if types are different
-            if target_field.type != current_field.type:
-                schema_changed = True
-
-        # Only set _cast if there are actual changes
-        if schema_changed:
-            self._schema = target_schema
-            self._cast = True
-
-        return self
-
-    def read_all(self) -> pa.Table:
-        batches = []
-        try:
-            while True:
-                batch = self.read_next_batch()
-                batches.append(batch)
-        except StopIteration:
-            pass
-        if batches:
-            return pa.Table.from_batches(batches)
-        return pa.Table.from_batches([], schema=self._schema)
-
     def read_next_batch(self) -> pa.RecordBatch:
-        batch = next(self._iter)
-        if self._cast:
-            return batch.cast(self._schema)
-        else:
-            return batch
+        num_rows = -1
+        columns: list[pa.ChunkedArray] = []
+        for idx, r in enumerate(self._readers):
+            batch = r.read_next_batch()
+            if num_rows == -1:
+                num_rows = batch.num_rows
+            elif num_rows != batch.num_rows:
+                raise ValueError(
+                    f"Batch {idx} has {batch.num_rows} rows, expected {num_rows}"
+                )
+            columns.extend(batch.columns)
+        return pa.RecordBatch.from_arrays(columns, names=self._schema.names)
 
     def close(self) -> None:
-        """Close the Parquet reader and release resources."""
-        self._file.close()
+        for r in self._readers:
+            r.close()
 
 
 _type_mapping = {
@@ -383,41 +318,6 @@ _type_mapping = {
 }
 
 
-_duckdb_type_mapping = {
-    pa.bool_(): "BOOLEAN",
-    pa.int8(): "TINYINT",
-    pa.int16(): "SMALLINT",
-    pa.int32(): "INTEGER",
-    pa.int64(): "BIGINT",
-    pa.uint8(): "UTINYINT",
-    pa.uint16(): "USMALLINT",
-    pa.uint32(): "UINTEGER",
-    pa.uint64(): "UBIGINT",
-    pa.float32(): "FLOAT",
-    pa.float64(): "DOUBLE",
-    pa.string(): "VARCHAR",
-    pa.date64(): "DATE",
-    pa.time32("ms"): "TIME",
-    pa.timestamp("ms"): "TIMESTAMP_MS",
-    pa.binary(): "BLOB",
-    pa.json_(): "JSON",
-}
-
-
-def _duckdb_type_name(data_type: pa.DataType) -> str:
-    """Return the DuckDB SQL type corresponding to an Arrow schema type."""
-    if pa.types.is_decimal(data_type):
-        return f"DECIMAL({data_type.precision}, {data_type.scale})"
-    if data_type in _duckdb_type_mapping:
-        return _duckdb_type_mapping[data_type]
-    raise ValueError(f"Schema type {data_type} is not supported by DuckDB SQL")
-
-
-def _quote_identifier(identifier: str) -> str:
-    """Quote a SQL identifier using DuckDB's double-quote escaping rules."""
-    return f'"{identifier.replace(chr(34), chr(34) * 2)}"'
-
-
 def _pa_schema(s: elt.TableType) -> pa.Schema:
     fields = []
     for k, v in s.schema.items():
@@ -428,122 +328,13 @@ def _pa_schema(s: elt.TableType) -> pa.Schema:
     return pa.schema(fields)
 
 
-@dataclass
-class FileTableSource(TableSource):
-    """Lazy table handle for file-based operations with streaming reads."""
-
-    path: str
-    format: str
-    schema: pa.Schema | None = None
-
-    def register(
-        self, conn: duckdb.DuckDBPyConnection, name: str, replace: bool = True
-    ) -> None:
-        """Register the file as a view while enforcing its declared schema."""
-        match self.format.lower():
-            case "parquet":
-                relation = conn.read_parquet([self.path])
-            case "csv":
-                relation = conn.from_csv_auto(self.path)
-            case "json":
-                relation = conn.read_json(self.path)
-            case _:
-                raise ValueError(f"Unsupported format: {self.format}")
-
-        if self.schema:
-            missing_columns = [
-                column for column in self.schema.names if column not in relation.columns
-            ]
-            if missing_columns:
-                raise ValueError(
-                    f"Cannot apply schema to {self.path}: missing columns "
-                    f"{missing_columns}; available columns are {relation.columns}"
-                )
-
-            projections = []
-            for field in self.schema:
-                identifier = _quote_identifier(field.name)
-                projections.append(
-                    f"CAST({identifier} AS {_duckdb_type_name(field.type)}) "
-                    f"AS {identifier}"
-                )
-            relation = relation.project(", ".join(projections))
-
-        relation.create_view(name, replace=replace)
-
-    def open(self, batch_size: int = DEFAULT_BATCH_SIZE) -> TableReader:
-        """Create a streaming reader for the file."""
-        import pyarrow.csv as pa_csv
-        import pyarrow.json as pa_json
-
-        columns = self.schema.names if self.schema else None
-
-        reader = None
-        num_rows = -1
-        match self.format.lower():
-            case "parquet":
-                reader = ParquetReader(self.path, columns)
-                num_rows = reader.num_rows
-            case "csv":
-                read_options = pa_csv.ReadOptions(use_threads=True)
-                convert_options = pa_csv.ConvertOptions(
-                    column_types=self.schema,
-                    include_columns=columns,
-                )
-                reader = pa_csv.open_csv(
-                    self.path,
-                    read_options=read_options,
-                    convert_options=convert_options,
-                )
-            case "json":
-                read_options = pa_json.ReadOptions(use_threads=True)
-                table = pa_json.read_json(self.path, read_options=read_options)
-                if columns:
-                    table = table.select(columns)
-                reader = table.to_reader()
-                num_rows = table.num_rows
-            case _:
-                raise ValueError(f"Unsupported format: {self.format}")
-
-        if self.schema and self.schema != reader.schema:
-            reader = reader.cast(self.schema)
-
-        return TableReader(reader, num_rows=num_rows, batch_size=batch_size)
-
-
-class DuckDBState:
-    def __init__(self, conn: duckdb.DuckDBPyConnection) -> None:
-        self.conn = conn
-        self.tables: dict[str, Any] = {}
-
-
-@dataclass(frozen=True)
-class QueryTableSource(TableSource):
-    """Handle for existing DuckDB relations (kept for compatibility)."""
-
-    relation: duckdb.DuckDBPyRelation
-    state: DuckDBState
-
-    def register(
-        self, conn: duckdb.DuckDBPyConnection, name: str, replace: bool = True
-    ) -> None:
-        self.relation.create_view(name, replace)
-
-    def open(self, batch_size: int = DEFAULT_BATCH_SIZE) -> TableReader:
-        """Read from the DuckDB relation."""
-        if batch_size <= 0:
-            batch_size = DEFAULT_BATCH_SIZE
-        reader = self.relation.arrow(batch_size)
-        return TableReader(reader)
-
-
 # =============================================================================
 # TableValue Wrapper
 # =============================================================================
 
 
 @serde.register_class
-class TableValue(WrapValue[pa.Table | TableSource]):
+class TableValue(WrapValue[pa.Table]):
     """Runtime value wrapping a PyArrow Table.
 
     Provides serialization via Arrow IPC format (streaming).
@@ -554,31 +345,19 @@ class TableValue(WrapValue[pa.Table | TableSource]):
 
     @property
     def data(self) -> pa.Table:
-        """Get the underlying PyArrow Table data.
-
-        For lazy TableSource, this triggers a full read of the data and caches
-        the result in self._data. Subsequent calls will return the cached table.
-
-        Returns:
-            The PyArrow Table containing all data
-        """
-        if isinstance(self._data, TableSource):
-            source = self._data
-            with source.open() as reader:
-                self._data = reader.read_all()
-
+        """Get the underlying PyArrow Table data."""
         return self._data
 
     # =========== Wrap/Unwrap ===========
 
-    def _convert(self, data: Any) -> pa.Table | TableSource:
-        """Convert input data to pa.Table or TableSource."""
+    def _convert(self, data: Any) -> pa.Table:
+        """Convert input data to pa.Table."""
         if isinstance(data, TableValue):
             return data.unwrap()
         if isinstance(data, pd.DataFrame):
             data = pa.Table.from_pandas(data)
-        if not isinstance(data, pa.Table | TableSource):
-            raise TypeError(f"Expected pa.Table or TableSource, got {type(data)}")
+        if not isinstance(data, pa.Table):
+            raise TypeError(f"Expected pa.Table, got {type(data)}")
         return data
 
     # =========== Serialization ===========
@@ -628,7 +407,7 @@ class TableValue(WrapValue[pa.Table | TableSource]):
 
 
 # Module-level helpers for convenience (delegate to class methods)
-def _wrap(val: pa.Table | pd.DataFrame | TableSource | TableValue) -> TableValue:
+def _wrap(val: pa.Table | pd.DataFrame | TableValue) -> TableValue:
     """Wrap a table-like value into TableValue."""
     return TableValue.wrap(val)
 
@@ -658,9 +437,10 @@ def _unwrap(val: TableValue | pa.Table | pd.DataFrame) -> pa.Table:
 def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableValue:
     """Execute SQL query on input tables.
 
-    Query relations from a DuckDB state other than the selected execution state
-    are materialized as Arrow tables before registration. This may use
-    substantial memory for large intermediate relations.
+    Inputs are materialized ``pa.Table`` values; they are registered with a
+    fresh DuckDB connection and the query result is materialized back into a
+    ``pa.Table`` immediately, so the returned ``TableValue`` never holds a live
+    DuckDB relation (and is therefore picklable for ``store.save``).
     """
     query = op.attrs["query"]
     dialect = op.attrs.get("dialect", "duckdb")
@@ -669,40 +449,14 @@ def run_sql_impl(interpreter: Interpreter, op: Operation, *args: Any) -> TableVa
     if dialect != "duckdb":
         raise ValueError(f"Unsupported dialect: {dialect}")
 
-    state: DuckDBState | None = None
-    tables: list[TableValue] = []
-    for arg in args:
-        tbl = _wrap(arg)
-        tables.append(tbl)
-        data = tbl.unwrap()
-        if isinstance(data, QueryTableSource):
-            if state is None:
-                state = data.state
-
-    if state is None:
-        conn = duckdb.connect()
-        state = DuckDBState(conn)
+    tables = [_unwrap(arg) for arg in args]
 
     try:
-        conn = state.conn
-        # register tables or create view
-        for name, tbl in zip(table_names, tables, strict=True):
-            data = tbl.unwrap()
-            if isinstance(data, QueryTableSource) and data.state is not state:
-                data = tbl.data
-            if name in state.tables:
-                if state.tables[name] is not data:
-                    # TODO: rename and rewrite sql??
-                    raise ValueError(f"{name} has been registered.")
-            else:
-                state.tables[name] = data
-            if isinstance(data, TableSource):
-                data.register(state.conn, name)
-            else:
-                conn.register(name, data)
-
-        relation = conn.sql(query)
-        return _wrap(QueryTableSource(relation, state))
+        with duckdb.connect() as conn:
+            for name, tbl in zip(table_names, tables, strict=True):
+                conn.register(name, tbl)
+            result = conn.execute(query).fetch_arrow_table()
+        return _wrap(result)
     except Exception as e:
         raise RuntimeError(f"Failed to execute SQL query: {query}") from e
 
@@ -809,9 +563,11 @@ def _infer_format(path: str, format_hint: str) -> str:
 
 @table.read_p.def_impl
 def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
-    """Read table from file.
+    """Read table from file into a materialized ``pa.Table``.
 
-    Supported formats: parquet, csv, json
+    Supported formats: parquet, csv, json. The declared schema is enforced at
+    read time (parse-time column types for CSV, post-read cast otherwise), so
+    integral-looking values declared as ``f64`` parse straight to float64.
     """
     import os
 
@@ -824,7 +580,37 @@ def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
         if not os.path.exists(resolved):
             raise FileNotFoundError(f"{resolved} does not exist")
         pa_schema = _pa_schema(schema) if schema else None
-        return _wrap(FileTableSource(path=resolved, format=fmt, schema=pa_schema))
+        columns = pa_schema.names if pa_schema else None
+
+        match fmt:
+            case "parquet":
+                import pyarrow.parquet as pq
+
+                table = pq.read_table(resolved, columns=columns)
+            case "csv":
+                import pyarrow.csv as pa_csv
+
+                table = pa_csv.read_csv(
+                    resolved,
+                    convert_options=pa_csv.ConvertOptions(
+                        column_types=pa_schema,
+                        include_columns=columns,
+                    ),
+                )
+            case "json":
+                import pyarrow.json as pa_json
+
+                table = pa_json.read_json(resolved)
+                if columns:
+                    table = table.select(columns)
+            case _:
+                raise ValueError(f"Unsupported format: {fmt}")
+
+        # Parquet/JSON enforce types only via post-read cast; CSV already used
+        # parse-time column_types. Guard both against no-op casts.
+        if pa_schema and table.schema != pa_schema:
+            table = table.cast(pa_schema)
+        return _wrap(table)
 
     if interpreter.store:
         local_path = os.path.abspath(os.path.join(".tmp", path))
@@ -832,41 +618,6 @@ def read_impl(interpreter: Interpreter, op: Operation) -> TableValue:
         interpreter.store.download(path, local_path)
         return _do_read(local_path)
     return _do_read(path)
-
-
-class MultiTableReader(BatchReader):
-    def __init__(self, readers: list[TableReader]) -> None:
-        fields = {}
-        for r in readers:
-            for f in r.schema:
-                if f.name in fields:
-                    raise ValueError(f"Field name conflict. {f.name}")
-                fields[f.name] = f
-
-        self._readers = readers
-        self._schema = pa.schema(list(fields.values()))
-
-    @property
-    def schema(self) -> pa.Schema:
-        return self._schema
-
-    def read_next_batch(self) -> pa.RecordBatch:
-        num_rows = -1
-        columns: list[pa.ChunkedArray] = []
-        for idx, r in enumerate(self._readers):
-            batch = r.read_next_batch()
-            if num_rows == -1:
-                num_rows = batch.num_rows
-            elif num_rows != batch.num_rows:
-                raise ValueError(
-                    f"Batch {idx} has {batch.num_rows} rows, expected {num_rows}"
-                )
-            columns.extend(batch.columns)
-        return pa.RecordBatch.from_arrays(columns, names=self._schema.names)
-
-    def close(self) -> None:
-        for r in self._readers:
-            r.close()
 
 
 @table.write_p.def_impl
@@ -886,15 +637,18 @@ def write_impl(interpreter: Interpreter, op: Operation, *tables: TableValue) -> 
     fmt = _infer_format(path, format_hint)
 
     def _do_write(resolved: str) -> None:
+        # MultiTableReader zips one batch per reader, requiring matching row
+        # counts per round. Eagerly read pa.Tables keep native chunk boundaries
+        # (e.g. Parquet row groups), so two same-length inputs chunked as
+        # [2,2,1] vs [3,2] would otherwise raise "Batch 1 has 3 rows, expected
+        # 2". Normalizing to a common batch_size makes aligned batches (equal
+        # total rows => equal full-batch counts and matching final partial
+        # batch) without losing the genuine row-count mismatch error below.
         batch_size = DEFAULT_BATCH_SIZE if len(tables) > 1 else -1
         readers: list[TableReader] = []
         for t in tables:
-            data = t.unwrap()
-            readers.append(
-                data.open(batch_size)
-                if isinstance(data, TableSource)
-                else TableReader(data)
-            )
+            data = t.unwrap()  # always pa.Table now
+            readers.append(TableReader(data, batch_size=batch_size))
 
         reader: BatchReader = (
             readers[0] if len(readers) == 1 else MultiTableReader(readers)
